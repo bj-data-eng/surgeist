@@ -230,6 +230,10 @@ impl HtmlMicrodataProviderRevision {
     }
 }
 
+/// Comparison steps charged for searching or sorting `n` records.
+fn md_log2(n: usize) -> usize {
+    (usize::BITS - n.leading_zeros()) as usize
+}
 // A proved violation dominates unavailable unrelated alternatives in an AND;
 // a proved satisfying alternative dominates unknown alternatives in an OR.
 fn md_and<T>(
@@ -341,47 +345,54 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         graph: &Graph,
     ) -> Result<HtmlMicrodataCondition<HtmlCaptureSubjectId>, HtmlSemanticFailure> {
+        let items = &graph.items;
+        let mut keys = Vec::new();
+        let mut outgoing = Vec::new();
+        let mut start = Vec::new();
         let mut visited = Vec::new();
-        let mut path = Vec::new();
+        let mut on_path = Vec::new();
         let mut frames = Vec::new();
         let result = (|| {
-            for root in &graph.items {
+            self.md_edge_index(
+                items,
+                &graph.edges,
+                EdgeEnd::From,
+                &mut keys,
+                &mut outgoing,
+                &mut start,
+            )?;
+            self.reserve_scratch(&mut visited, items.len())?;
+            self.charge(items.len())?;
+            visited.resize(items.len(), false);
+            self.reserve_scratch(&mut on_path, items.len())?;
+            self.charge(items.len())?;
+            on_path.resize(items.len(), false);
+            for root in 0..items.len() {
                 self.charge(1)?;
-                if self.md_contains(&visited, root)? {
+                if visited[root] {
                     continue;
                 }
-                self.md_push(&mut path, root.clone())?;
-                self.md_push(&mut frames, (root.clone(), 0usize))?;
-                while !frames.is_empty() {
+                on_path[root] = true;
+                self.md_push(&mut frames, (root, start[root]))?;
+                while let Some(&(current, next)) = frames.last() {
                     self.charge(1)?;
                     let index = frames.len() - 1;
-                    let (current, next) = frames[index].clone();
-                    let mut cursor = next;
-                    let mut child = None;
-                    while cursor < graph.edges.len() {
-                        self.charge(1)?;
-                        let (from, to) = &graph.edges[cursor];
-                        cursor += 1;
-                        if from == &current {
-                            child = Some(to.clone());
-                            break;
-                        }
-                    }
                     self.charge(1)?;
-                    frames[index].1 = cursor;
-                    if let Some(child) = child {
-                        if self.md_contains(&path, &child)? {
-                            return Ok(HtmlMicrodataCondition::Violated(child));
+                    if next < start[current + 1] {
+                        let child = outgoing[next].2;
+                        frames[index].1 = next + 1;
+                        if on_path[child] {
+                            return Ok(HtmlMicrodataCondition::Violated(items[child].clone()));
                         }
-                        if !self.md_contains(&visited, &child)? {
-                            self.md_push(&mut path, child.clone())?;
-                            self.md_push(&mut frames, (child, 0))?;
+                        if !visited[child] {
+                            on_path[child] = true;
+                            self.md_push(&mut frames, (child, start[child]))?;
                         }
                     } else {
-                        self.md_push(&mut visited, current)?;
+                        visited[current] = true;
                         self.charge(2)?;
                         frames.pop();
-                        path.pop();
+                        on_path[current] = false;
                     }
                 }
             }
@@ -390,8 +401,11 @@ impl<'a> HtmlSemanticSession<'a> {
                 HtmlMicrodataCondition::Missing,
             ))
         })();
+        self.release_scratch(keys.capacity());
+        self.release_scratch(outgoing.capacity());
+        self.release_scratch(start.capacity());
         self.release_scratch(visited.capacity());
-        self.release_scratch(path.capacity());
+        self.release_scratch(on_path.capacity());
         self.release_scratch(frames.capacity());
         result
     }
@@ -405,6 +419,7 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let graph = self.md_graph(id)?;
         let mut frames = Vec::new();
+        let mut contributors = Vec::new();
         let result = (|| {
             let cycles = self.md_cycles(&graph)?;
             let revisits = if let Some(id) = &graph.revisit {
@@ -415,6 +430,14 @@ impl<'a> HtmlSemanticSession<'a> {
                     HtmlMicrodataCondition::Missing,
                 )
             };
+            // Property elements that contributed to some item, by capture ordinal.
+            self.reserve_scratch(&mut contributors, graph.properties.len())?;
+            for (_, property) in &graph.properties {
+                self.charge(1)?;
+                contributors.push(property.ordinal());
+            }
+            self.md_charge_product(&[contributors.len(), md_log2(contributors.len())])?;
+            contributors.sort_unstable();
             let mut orphans = HtmlMicrodataCondition::Satisfied;
             let mut current = Some(id.clone());
             while let Some(subject) = current {
@@ -423,14 +446,8 @@ impl<'a> HtmlSemanticSession<'a> {
                     && self.md_attribute(e, "itemprop")?.is_some()
                 {
                     let names = self.md_tokens(e, HtmlMicrodataTokenKind::ItemProp)?;
-                    let mut contributed = false;
-                    for (_, property) in &graph.properties {
-                        self.charge(1)?;
-                        if property == &subject {
-                            contributed = true;
-                            break;
-                        }
-                    }
+                    self.charge(md_log2(contributors.len()))?;
+                    let contributed = contributors.binary_search(&subject.ordinal()).is_ok();
                     if !contributed {
                         orphans = md_and(
                             orphans,
@@ -465,6 +482,7 @@ impl<'a> HtmlSemanticSession<'a> {
             }))
         })();
         self.release_scratch(frames.capacity());
+        self.release_scratch(contributors.capacity());
         self.md_release_graph(&graph);
         result
     }
@@ -1453,6 +1471,27 @@ struct Graph {
     revisit: Option<HtmlCaptureSubjectId>,
 }
 #[derive(Clone, Copy)]
+enum EdgeEnd {
+    From,
+    To,
+}
+/// IDs of one ordinary tree sorted by value, ties kept in tree order. Each
+/// entry keeps the first coverage gap met before it, and the index keeps the
+/// first ID the interpreter would refuse, so a lookup answers exactly as a
+/// tree-order scan from the root would, including where that scan would stop.
+struct IdIndex<'a> {
+    root: HtmlCaptureSubjectId,
+    entries: Vec<IdEntry<'a>>,
+    missing: Option<HtmlSemanticMissing>,
+    refused: Option<(usize, HtmlValueAdmissionError)>,
+}
+struct IdEntry<'a> {
+    value: &'a [u16],
+    order: usize,
+    subject: HtmlCaptureSubjectId,
+    missing: Option<HtmlSemanticMissing>,
+}
+#[derive(Clone, Copy)]
 enum UrlUse {
     Absolute,
     IdAuthor,
@@ -1553,6 +1592,16 @@ impl<'a> HtmlSemanticSession<'a> {
         HtmlMicrodataTokenInterpretation::try_finish(&mut owner)
             .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))
     }
+    /// Charge a product of record counts, refusing an unrepresentable one.
+    fn md_charge_product(&mut self, factors: &[usize]) -> Result<(), HtmlSemanticFailure> {
+        let mut work = 1usize;
+        for &factor in factors {
+            work = work
+                .checked_mul(factor)
+                .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+        }
+        self.charge(work)
+    }
     fn md_contains(
         &mut self,
         ids: &[HtmlCaptureSubjectId],
@@ -1632,6 +1681,99 @@ impl<'a> HtmlSemanticSession<'a> {
         self.release_scratch(frames.capacity());
         result
     }
+    /// Collect the IDs of the ordinary tree at `root` once, visiting elements
+    /// in the order `md_find_id` scans them. Admission is checked without
+    /// stopping: a refused ID stops the session only when a lookup's scan
+    /// would have reached it.
+    fn md_id_index(
+        &mut self,
+        root: &HtmlCaptureSubjectId,
+    ) -> Result<IdIndex<'a>, HtmlSemanticFailure> {
+        let mut index = IdIndex {
+            root: root.clone(),
+            entries: Vec::new(),
+            missing: None,
+            refused: None,
+        };
+        let mut frames = Vec::new();
+        let result = (|| {
+            let mut current = Some(root.clone());
+            let mut order = 0;
+            let mut longest = 0;
+            while let Some(id) = current {
+                let node = self.node(&id)?;
+                if let HtmlCapturedNodeKind::Element(e) = node.kind()
+                    && let Some(raw) = self.attribute(e, "id")?
+                {
+                    self.charge(1)?;
+                    if let Err(error) = self.interpreter.admit_attribute_raw(Some(raw.value())) {
+                        index.refused.get_or_insert((order, error));
+                    } else if !raw.value().is_empty() {
+                        let value = raw.value().code_units();
+                        longest = longest.max(value.len());
+                        let entry = IdEntry {
+                            value,
+                            order,
+                            subject: id.clone(),
+                            missing: index.missing.clone(),
+                        };
+                        self.md_push(&mut index.entries, entry)?;
+                    }
+                    order += 1;
+                }
+                current = match self.ordinary_tree_next(node, &mut frames)? {
+                    Ok(next) => next,
+                    Err(m) => {
+                        index.missing.get_or_insert(m);
+                        self.ordinary_tree_resume(&mut frames)?
+                    }
+                };
+            }
+            // Tree order breaks ties, so the first equal entry is the first
+            // element; each comparison walks up to the longest ID.
+            let n = index.entries.len();
+            self.md_charge_product(&[n, md_log2(n), longest + 1])?;
+            index
+                .entries
+                .sort_unstable_by(|a, b| a.value.cmp(b.value).then(a.order.cmp(&b.order)));
+            Ok(())
+        })();
+        self.release_scratch(frames.capacity());
+        if let Err(error) = result {
+            self.md_release_id_index(&index);
+            return Err(error);
+        }
+        Ok(index)
+    }
+    fn md_release_id_index(&mut self, index: &IdIndex<'a>) {
+        self.release_scratch(index.entries.capacity());
+    }
+    /// The answer `md_find_id(root, units)` gives for the indexed tree.
+    fn md_lookup_id(
+        &mut self,
+        index: &IdIndex<'a>,
+        units: &[u16],
+    ) -> Result<HtmlSemanticValue<Option<HtmlCaptureSubjectId>>, HtmlSemanticFailure> {
+        self.md_charge_product(&[md_log2(index.entries.len()) + 1, units.len() + 1])?;
+        let at = index.entries.partition_point(|e| e.value < units);
+        let found = index.entries.get(at).filter(|e| e.value == units);
+        // The scan stops at the first refused ID it reaches before a match.
+        if let Some((order, error)) = index.refused
+            && found.is_none_or(|found| order < found.order)
+        {
+            return Err(self.stop(HtmlSemanticFailureKind::Attribute(error)));
+        }
+        Ok(match found {
+            Some(e) => match &e.missing {
+                Some(m) => HtmlSemanticValue::Missing(m.clone()),
+                None => HtmlSemanticValue::Known(Some(e.subject.clone())),
+            },
+            None => match &index.missing {
+                Some(m) => HtmlSemanticValue::Missing(m.clone()),
+                None => HtmlSemanticValue::Known(None),
+            },
+        })
+    }
     fn md_path(
         &mut self,
         id: &HtmlCaptureSubjectId,
@@ -1705,7 +1847,13 @@ impl<'a> HtmlSemanticSession<'a> {
         self.release_scratch(b.capacity());
         result
     }
-    fn md_crawl(&mut self, root: &HtmlCaptureSubjectId) -> Result<Crawl, HtmlSemanticFailure> {
+    /// Inside a graph, `ids` lazily holds the ID index of the graph's tree,
+    /// which is every crawled item's ordinary tree.
+    fn md_crawl(
+        &mut self,
+        root: &HtmlCaptureSubjectId,
+        mut ids: Option<&mut Option<IdIndex<'a>>>,
+    ) -> Result<Crawl, HtmlSemanticFailure> {
         let mut pending = Vec::new();
         let mut memory = Vec::new();
         let mut results = Vec::new();
@@ -1723,7 +1871,18 @@ impl<'a> HtmlSemanticSession<'a> {
                         for t in refs.tokens() {
                             let units =
                                 &refs.raw().expect("token raw").code_units()[t.start()..t.end()];
-                            match self.md_find_id(&bound, units)? {
+                            let found = match ids.as_deref_mut() {
+                                Some(cache) => {
+                                    if cache.is_none() {
+                                        *cache = Some(self.md_id_index(&bound)?);
+                                    }
+                                    let index = cache.as_ref().expect("cached ID index");
+                                    debug_assert!(index.root == bound, "one graph, one tree");
+                                    self.md_lookup_id(index, units)?
+                                }
+                                None => self.md_find_id(&bound, units)?,
+                            };
+                            match found {
                                 HtmlSemanticValue::Known(Some(id)) => {
                                     self.md_push(&mut pending, id)?
                                 }
@@ -1951,6 +2110,7 @@ impl<'a> HtmlSemanticSession<'a> {
             revisit: None,
         };
         let mut frames = Vec::new();
+        let mut ids = None;
         let result = (|| {
             let mut current = Some(root.clone());
             while let Some(id) = current {
@@ -1969,7 +2129,7 @@ impl<'a> HtmlSemanticSession<'a> {
             for i in 0..graph.items.len() {
                 self.charge(1)?;
                 let item = graph.items[i].clone();
-                let crawl = self.md_crawl(&item)?;
+                let crawl = self.md_crawl(&item, Some(&mut ids))?;
                 match crawl.revisit {
                     HtmlMicrodataCondition::Violated(id) => {
                         graph.revisit.get_or_insert(id);
@@ -1994,6 +2154,9 @@ impl<'a> HtmlSemanticSession<'a> {
             Ok(())
         })();
         self.release_scratch(frames.capacity());
+        if let Some(index) = &ids {
+            self.md_release_id_index(index);
+        }
         if let Err(error) = result {
             self.md_release_graph(&graph);
             return Err(error);
@@ -2005,94 +2168,183 @@ impl<'a> HtmlSemanticSession<'a> {
         self.release_scratch(graph.edges.capacity());
         self.release_scratch(graph.properties.capacity());
     }
+    /// Capture-local position of a graph item, found by binary search over the
+    /// item ordinals collected once per query.
+    fn md_position(
+        &mut self,
+        keys: &[(usize, usize)],
+        id: &HtmlCaptureSubjectId,
+    ) -> Result<usize, HtmlSemanticFailure> {
+        self.charge(md_log2(keys.len()))?;
+        let at = keys
+            .binary_search_by_key(&id.ordinal(), |&(ordinal, _)| ordinal)
+            .expect("graph edge endpoint is a graph item");
+        Ok(keys[at].1)
+    }
+    /// Edge index over one graph: `index[start[k]..start[k + 1]]` holds, in edge
+    /// order, `(k, edge ordinal, other end)` for every edge whose `by` end is
+    /// item `k`, so the first route in edge order is still explored first.
+    fn md_edge_index(
+        &mut self,
+        items: &[HtmlCaptureSubjectId],
+        edges: &[(HtmlCaptureSubjectId, HtmlCaptureSubjectId)],
+        by: EdgeEnd,
+        keys: &mut Vec<(usize, usize)>,
+        index: &mut Vec<(usize, usize, usize)>,
+        start: &mut Vec<usize>,
+    ) -> Result<(), HtmlSemanticFailure> {
+        self.reserve_scratch(keys, items.len())?;
+        for (position, item) in items.iter().enumerate() {
+            self.charge(1)?;
+            keys.push((item.ordinal(), position));
+        }
+        self.md_charge_product(&[items.len(), md_log2(items.len())])?;
+        keys.sort_unstable();
+        self.reserve_scratch(index, edges.len())?;
+        for (ordinal, (from, to)) in edges.iter().enumerate() {
+            let from = self.md_position(keys, from)?;
+            let to = self.md_position(keys, to)?;
+            index.push(match by {
+                EdgeEnd::From => (from, ordinal, to),
+                EdgeEnd::To => (to, ordinal, from),
+            });
+        }
+        // The edge ordinal breaks ties, keeping each key's edges in edge order.
+        self.md_charge_product(&[edges.len(), md_log2(edges.len())])?;
+        index.sort_unstable();
+        self.reserve_scratch(start, items.len() + 1)?;
+        let mut cursor = 0;
+        for key in 0..=items.len() {
+            while cursor < index.len() && index[cursor].0 < key {
+                self.charge(1)?;
+                cursor += 1;
+            }
+            self.charge(1)?;
+            start.push(cursor);
+        }
+        Ok(())
+    }
     fn md_type_context(
         &mut self,
         id: &HtmlCaptureSubjectId,
         own: HtmlMicrodataTokenReport,
         graph: Option<&Graph>,
     ) -> Result<HtmlMicrodataTypeContext, HtmlSemanticFailure> {
+        // Every edge endpoint is a graph item, so a subject outside the items
+        // (beneath unavailable children) has no receivers; it is walked alone
+        // and the graph's coverage gap is still reported below.
+        let mut in_graph = false;
+        if let Some(graph) = graph {
+            for item in &graph.items {
+                self.charge(1)?;
+                if item == id {
+                    in_graph = true;
+                    break;
+                }
+            }
+        }
+        let (items, edges): (&[HtmlCaptureSubjectId], &[_]) = match graph {
+            Some(graph) if in_graph => (&graph.items, &graph.edges),
+            _ => (std::slice::from_ref(id), &[]),
+        };
         let mut paths = Vec::new();
-        let mut path = Vec::new();
-        let mut frames = Vec::new();
+        let mut keys = Vec::new();
+        let mut incoming = Vec::new();
+        let mut start = Vec::new();
         // Relevant types come from each item for which the subject is a
         // property's value, so every immediate receiver keeps its own paths.
         // Above a receiver each item is entered once: further routes to the
-        // same ancestor are that receiver's own context, not another one, and
-        // the walk stays proportional to the item graph per receiver.
+        // same ancestor are that receiver's own context, not another one. With
+        // the incoming index and per-item flags, each receiver's walk touches
+        // every item and edge at most once.
+        let mut on_path = Vec::new();
         let mut explored = Vec::new();
+        let mut path = Vec::new();
+        let mut frames = Vec::new();
         let mut cycle = None;
         let result = (|| {
-            self.md_push(&mut path, id.clone())?;
-            self.md_push(&mut frames, (id.clone(), 0usize, false))?;
-            self.md_push(&mut explored, id.clone())?;
-            while !frames.is_empty() {
+            self.md_edge_index(
+                items,
+                edges,
+                EdgeEnd::To,
+                &mut keys,
+                &mut incoming,
+                &mut start,
+            )?;
+            self.reserve_scratch(&mut on_path, items.len())?;
+            self.charge(items.len())?;
+            on_path.resize(items.len(), false);
+            self.reserve_scratch(&mut explored, items.len())?;
+            self.charge(items.len())?;
+            explored.resize(items.len(), 0usize);
+            // Explored marks carry the receiver epoch, so a new receiver starts
+            // its own exploration without clearing the flags.
+            let mut epoch = 0usize;
+            let subject = self.md_position(&keys, id)?;
+            on_path[subject] = true;
+            self.md_push(&mut path, subject)?;
+            self.md_push(&mut frames, (subject, start[subject], false))?;
+            while let Some(&(current, next, entered)) = frames.last() {
                 self.charge(1)?;
                 let index = frames.len() - 1;
-                let (current, next, entered) = frames[index].clone();
                 if !entered {
-                    let types = if &current == id {
+                    let types = if current == subject {
                         None
                     } else {
-                        let e = self.md_element(&current)?.expect("graph item");
+                        let e = self.md_element(&items[current])?.expect("graph item");
                         Some(self.md_tokens(e, HtmlMicrodataTokenKind::ItemType)?)
                     };
                     let types = types.as_ref().unwrap_or(&own);
                     if !types.tokens().is_empty() {
-                        let mut items = Vec::new();
-                        for item in &path {
-                            self.reserve_nested_output(&mut items, 1)?;
+                        let mut path_items = Vec::new();
+                        for &position in &path {
+                            self.reserve_nested_output(&mut path_items, 1)?;
                             self.charge(1)?;
-                            items.push(item.clone());
+                            path_items.push(items[position].clone());
                         }
                         // Reconstruct token evidence through its controlled owner,
                         // rather than cloning the variable token vector.
-                        let e = self.md_element(&current)?.expect("typed item");
+                        let e = self.md_element(&items[current])?.expect("typed item");
                         let types = self.md_tokens(e, HtmlMicrodataTokenKind::ItemType)?;
                         self.reserve_nested_output(&mut paths, 1)?;
                         self.charge(1)?;
-                        paths.push(HtmlMicrodataTypePath { items, types });
+                        paths.push(HtmlMicrodataTypePath {
+                            items: path_items,
+                            types,
+                        });
                         self.charge(2)?;
                         frames.pop();
+                        on_path[current] = false;
                         path.pop();
                         continue;
                     }
                     self.charge(1)?;
                     frames[index].2 = true;
                 }
-                let mut parent = None;
-                let mut cursor = next;
-                if let Some(graph) = graph {
-                    while cursor < graph.edges.len() {
-                        self.charge(1)?;
-                        let (from, to) = &graph.edges[cursor];
-                        cursor += 1;
-                        if to == &current {
-                            parent = Some(from.clone());
-                            break;
-                        }
-                    }
-                }
                 self.charge(1)?;
-                frames[index].1 = cursor;
-                if let Some(parent) = parent {
-                    if self.md_contains(&path, &parent)? {
-                        cycle.get_or_insert(parent);
+                if next < start[current + 1] {
+                    let parent = incoming[next].2;
+                    frames[index].1 = next + 1;
+                    if on_path[parent] {
+                        cycle.get_or_insert(items[parent].clone());
                         continue;
                     }
                     if path.len() == 1 {
                         // A new immediate receiver starts its own exploration.
                         self.charge(1)?;
-                        explored.truncate(1);
+                        epoch += 1;
                     }
-                    if self.md_contains(&explored, &parent)? {
+                    if explored[parent] == epoch {
                         continue;
                     }
-                    self.md_push(&mut explored, parent.clone())?;
-                    self.md_push(&mut path, parent.clone())?;
-                    self.md_push(&mut frames, (parent, 0, false))?;
+                    explored[parent] = epoch;
+                    on_path[parent] = true;
+                    self.md_push(&mut path, parent)?;
+                    self.md_push(&mut frames, (parent, start[parent], false))?;
                 } else {
                     self.charge(2)?;
                     frames.pop();
+                    on_path[current] = false;
                     path.pop();
                 }
             }
@@ -2117,9 +2369,13 @@ impl<'a> HtmlSemanticSession<'a> {
                 cycle,
             })
         })();
+        self.release_scratch(keys.capacity());
+        self.release_scratch(incoming.capacity());
+        self.release_scratch(start.capacity());
+        self.release_scratch(on_path.capacity());
+        self.release_scratch(explored.capacity());
         self.release_scratch(path.capacity());
         self.release_scratch(frames.capacity());
-        self.release_scratch(explored.capacity());
         result
     }
     pub(super) fn microdata_item(
@@ -2167,7 +2423,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 _ => HtmlSemanticValue::Missing(self.md_missing(id)),
             }
         };
-        let crawl = self.md_crawl(id)?;
+        let crawl = self.md_crawl(id, None)?;
         let properties = match crawl.missing {
             None => {
                 let mut rows = Vec::new();

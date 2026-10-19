@@ -73,6 +73,10 @@ impl HtmlCaptureSubjectId {
     pub fn capture(&self) -> &HtmlCaptureId {
         &self.capture
     }
+    /// Dense subject position within its capture, for capture-local indexes.
+    pub(crate) fn ordinal(&self) -> usize {
+        self.index
+    }
 }
 /// Local handle issued by one one-shot capture builder.
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -450,6 +450,121 @@ fn shared_itemref_routes_report_each_receiver_once() {
     }
 }
 #[test]
+fn itemref_resolution_reads_ids_only_up_to_the_first_match() {
+    // HTML877d §5.2 resolves an itemref token to the first element in tree
+    // order with that ID, so an oversized ID after the match is never read
+    // while one before it stops the session at its admission.
+    for refused_before_match in [false, true] {
+        let (mut b, d) = builder();
+        let owner = el(&mut b, &d, "div", &[("itemscope", ""), ("itemref", "a")]);
+        let target = el(&mut b, &d, "p", &[("id", "a"), ("itemprop", "x")]);
+        let oversized = el(&mut b, &d, "span", &[("id", "toolong")]);
+        cs(&mut b, &owner, &[]);
+        cs(&mut b, &target, &[]);
+        cs(&mut b, &oversized, &[]);
+        let children = if refused_before_match {
+            vec![owner.clone(), oversized, target]
+        } else {
+            vec![owner.clone(), target, oversized]
+        };
+        cs(&mut b, &d, &children);
+        let c = b.finish().unwrap();
+        let cx = context(&c);
+        for (subject, query) in [
+            (
+                c.subject_id(&owner).unwrap(),
+                HtmlSemanticQuery::MicrodataItem,
+            ),
+            (
+                c.subject_id(&d).unwrap(),
+                HtmlSemanticQuery::MicrodataDocumentAuthor,
+            ),
+        ] {
+            let mut s = HtmlSemanticSession::new(
+                &c,
+                &cx,
+                HtmlValueInterpreter::new(5),
+                limits(),
+                HtmlSemanticCancellation::new(),
+            )
+            .unwrap();
+            let result = s.query(&[HtmlSemanticRequest::new(subject, query)]);
+            if refused_before_match {
+                assert!(
+                    matches!(
+                        result.unwrap_err().kind(),
+                        HtmlSemanticFailureKind::Attribute(_)
+                    ),
+                    "{query:?}"
+                );
+            } else {
+                // The itemref resolves to the target, which contributes the
+                // item's only property and so is not an orphan.
+                let r = result.unwrap();
+                match query {
+                    HtmlSemanticQuery::MicrodataItem => {
+                        assert_eq!(known(item(&r).properties()).len(), 1);
+                    }
+                    _ => assert_eq!(document(&r).orphans(), &HtmlMicrodataCondition::Satisfied),
+                }
+            }
+        }
+    }
+}
+#[test]
+fn a_later_itemref_token_stops_at_a_refused_id_before_its_match() {
+    // Each token resolves by its own tree-order scan: `a` is matched before
+    // the oversized ID, while the scan for `b` reaches that ID first.
+    let (mut b, d) = builder();
+    let owner = el(&mut b, &d, "div", &[("itemscope", ""), ("itemref", "a b")]);
+    let first = el(&mut b, &d, "p", &[("id", "a"), ("itemprop", "x")]);
+    let oversized = el(&mut b, &d, "span", &[("id", "toolong")]);
+    let second = el(&mut b, &d, "p", &[("id", "b"), ("itemprop", "y")]);
+    for leaf in [&owner, &first, &oversized, &second] {
+        cs(&mut b, leaf, &[]);
+    }
+    cs(&mut b, &d, &[owner.clone(), first, oversized, second]);
+    let c = b.finish().unwrap();
+    let cx = context(&c);
+    let mut s = HtmlSemanticSession::new(
+        &c,
+        &cx,
+        HtmlValueInterpreter::new(5),
+        limits(),
+        HtmlSemanticCancellation::new(),
+    )
+    .unwrap();
+    let request = HtmlSemanticRequest::new(
+        c.subject_id(&d).unwrap(),
+        HtmlSemanticQuery::MicrodataDocumentAuthor,
+    );
+    assert!(matches!(
+        s.query(&[request]).unwrap_err().kind(),
+        HtmlSemanticFailureKind::Attribute(_)
+    ));
+}
+#[test]
+fn item_beneath_unavailable_children_reports_the_tree_gap() {
+    // The item's parent is known but the parent's ordered children are not,
+    // so the item graph cannot contain it and its context stays Missing.
+    let (mut b, d) = builder();
+    let item_element = el(&mut b, &d, "div", &[("itemscope", "")]);
+    cs(&mut b, &item_element, &[]);
+    b.establish_parent(&item_element, &d).unwrap();
+    let c = b.finish().unwrap();
+    let id = c.subject_id(&item_element).unwrap();
+    let r = run(&c, &context(&c), &id, HtmlSemanticQuery::MicrodataItem);
+    let missing = HtmlSemanticMissing::OrderedChildren(c.subject_id(&d).unwrap());
+    assert_eq!(
+        item(&r).type_context().typing(),
+        &HtmlMicrodataTyping::Missing(missing.clone())
+    );
+    assert_eq!(
+        item(&r).type_context().paths(),
+        &HtmlSemanticValue::Missing(missing)
+    );
+}
+#[test]
 fn item_and_document_queries_scale_with_the_item_graph_not_its_routes() {
     // Doubling the levels doubles the items, edges and itemref tokens. Work
     // proportional to the graph (up to a logarithmic search factor) grows by
