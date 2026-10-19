@@ -1,5 +1,4 @@
 //! CSS Syntax preprocessing, raw block recovery and source ownership oracles.
-#![forbid(unsafe_code)]
 
 use std::sync::Arc;
 use surgeist_css::*;
