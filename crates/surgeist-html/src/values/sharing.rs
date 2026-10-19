@@ -452,10 +452,14 @@ macro_rules! concrete_pool {
             pub fn mark_work() -> HtmlValuePoolWork {
                 policy::mark_work::<$value>()
             }
-            /// Admit before freezing a root. Validation and closing afterward
-            /// need no further admission callback.
+            /// Admit before each attempt to freeze a root, including a retry
+            /// after unresolved marks refused preparation. This pays the
+            /// bounded readiness/metadata checks, not another root copy.
+            /// Root construction already prepays fixed closing/header moves;
+            /// mutation layouts prepay inverse and backing cleanup. Validation
+            /// and closing afterward need no further admission callback.
             pub fn seal_work() -> HtmlValuePoolWork {
-                policy::root_work::<$value>()
+                policy::seal_work()
             }
             /// O(1) admitted heap extent, including undo and conservative
             /// per-Weak target space. This is not distinct physical allocation

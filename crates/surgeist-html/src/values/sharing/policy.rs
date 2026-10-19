@@ -1184,6 +1184,18 @@ pub(super) fn root_work<T: Value>() -> HtmlValuePoolWork {
         ..HtmlValuePoolWork::default()
     }
 }
+pub(super) fn seal_work() -> HtmlValuePoolWork {
+    // Preparation visits at most MARKS readiness cells plus the four fixed
+    // owner/root/readiness/freeze-and-invalidation metadata stages. It wraps
+    // existing root authority; it neither copies a Root nor allocates backing.
+    // root_work already prepays fixed closing/header moves, and each mutation
+    // prepays its variable inverse/storage work. A refused preparation keeps
+    // its root unchanged; another attempt must pay these readiness visits anew.
+    HtmlValuePoolWork {
+        record_visits: MARKS + 4,
+        ..HtmlValuePoolWork::default()
+    }
+}
 pub(super) fn disposal_work() -> HtmlValuePoolWork {
     let slots = PAGES * PAGE;
     let saved = slots * (MARKS + 1);
