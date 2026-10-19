@@ -1,3 +1,4 @@
+use crate::parser::support::limits;
 use surgeist_color::{Color, ColorSpace, PredefinedColorSpace};
 use surgeist_html::*;
 use surgeist_html_parser::{
@@ -106,31 +107,6 @@ fn color_input_preserves_red_default_and_publishes_sanitized_current_with_form_s
         }
     }
     assert_eq!((inputs, owners), (1, 1));
-}
-
-fn limits() -> HtmlParseLimits {
-    HtmlParseLimits::builder()
-        .source_units(100_000)
-        .buffered_utf16_units(100_000)
-        .token_attributes(10_000)
-        .auxiliary_entries(1_000_000)
-        .managed_nodes(100_000)
-        .managed_edges(100_000)
-        .managed_attributes(100_000)
-        .managed_utf16_units(100_000)
-        .source_map_entries(100_000)
-        .source_map_payload_units(100_000)
-        .diagnostics(100_000)
-        .diagnostic_payload_units(100_000)
-        .context_effects(100_000)
-        .open_elements(100)
-        .tree_depth(100_000)
-        .managed_capacity_bytes(100_000_000)
-        .peak_transient_bytes(100_000_000)
-        .atomic_layout_bytes(100_000_000)
-        .work_credits(100_000_000)
-        .finish()
-        .unwrap()
 }
 
 #[test]

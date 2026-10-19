@@ -1,4 +1,4 @@
-#![forbid(unsafe_code)]
+use crate::parser::support::revision;
 use surgeist_html::*;
 use surgeist_html_parser::*;
 use surgeist_html_semantics::*;
@@ -26,9 +26,6 @@ fn limits() -> HtmlParseLimits {
         .work_credits(100000000)
         .finish()
         .unwrap()
-}
-fn revision() -> HtmlBaseFactsRevision {
-    HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3)
 }
 fn record(
     r: &HtmlBaseFactsRevision,
