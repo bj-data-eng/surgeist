@@ -4979,3 +4979,6 @@ fn parsed_values_reuse_native_backing_without_rewriting_report_or_parser_state()
         assert_eq!(text.shared_code_units().capacity(), capacity);
     }
 }
+
+#[path = "parsed_ordinary_installation/meta_selection.rs"]
+mod meta_selection;
