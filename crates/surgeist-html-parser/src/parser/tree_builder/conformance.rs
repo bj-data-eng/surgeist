@@ -6329,6 +6329,96 @@ mod comment_diagnostic_corpus {
             result
         }
 
+        fn html_context_request(name: &str, input: &str, utf16: bool) -> HtmlFragmentParseRequest {
+            let mut builder = HtmlCaptureBuilder::new(
+                HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
+                HtmlHostFactsRevision::fresh(),
+            );
+            let document = builder
+                .add_document(
+                    HtmlDocumentMode::NoQuirks,
+                    HtmlScriptingStatus::Disabled,
+                    HtmlCaptureRegistryInput::Null,
+                )
+                .unwrap();
+            builder
+                .establish_document_template_facts(
+                    &document,
+                    HtmlDocumentClass::Html,
+                    HtmlTemplateDocumentRole::Ordinary,
+                    HtmlCaptureTemplateCacheInput::Absent,
+                )
+                .unwrap();
+            let element = builder
+                .add_element(
+                    &document,
+                    QualifiedName::new(Namespace::html(), None, name),
+                    OrderedAttributes::default(),
+                    HtmlCapturedIsValue::Absent,
+                    HtmlCaptureRegistryInput::Null,
+                )
+                .unwrap();
+            builder.establish_root(&element).unwrap();
+            let capture = builder.finish().unwrap();
+            let context =
+                HtmlFragmentContext::element(&capture, &capture.subject_id(&element).unwrap())
+                    .unwrap();
+            HtmlFragmentParseRequest::new(
+                source(input, utf16),
+                context,
+                super::super::super::tests::limits(1_000),
+            )
+            .unwrap()
+        }
+
+        #[test]
+        fn select_context_fragment_ignores_input_and_select_start_tags() {
+            // HTML877d "in body" input and select start tags: "If the parser's
+            // fragment context element is a select element (fragment case):
+            // parse error; ignore the token." Expected trees follow that rule,
+            // not current output.
+            for (input, raw) in [
+                (
+                    "<option>a",
+                    "#data\n<option>a\n#errors\n#document-fragment\nselect\n#document\n| <option>\n|   \"a\"\n",
+                ),
+                (
+                    "<option>a<input>b",
+                    "#data\n<option>a<input>b\n#errors\n#document-fragment\nselect\n#document\n| <option>\n|   \"ab\"\n",
+                ),
+                (
+                    "x<select>y",
+                    "#data\nx<select>y\n#errors\n#document-fragment\nselect\n#document\n| \"xy\"\n",
+                ),
+                (
+                    "<input>",
+                    "#data\n<input>\n#errors\n#document-fragment\nselect\n#document\n",
+                ),
+            ] {
+                let fixture = decode(raw).unwrap().into_iter().next().unwrap();
+                let expected = parsed_expected(&fixture, HtmlDocumentMode::NoQuirks).unwrap();
+                for utf16 in [false, true] {
+                    check_fragment(html_context_request("select", input, utf16), &expected)
+                        .unwrap_or_else(|error| panic!("{input:?} utf16={utf16}: {error}"));
+                }
+            }
+        }
+
+        #[test]
+        fn non_select_context_fragment_still_inserts_input_and_select() {
+            for (input, raw) in [(
+                "<input>x<select>y",
+                "#data\n<input>x<select>y\n#errors\n#document-fragment\ndiv\n#document\n| <input>\n| \"x\"\n| <select>\n|   \"y\"\n",
+            )] {
+                let fixture = decode(raw).unwrap().into_iter().next().unwrap();
+                let expected = parsed_expected(&fixture, HtmlDocumentMode::NoQuirks).unwrap();
+                for utf16 in [false, true] {
+                    check_fragment(html_context_request("div", input, utf16), &expected)
+                        .unwrap_or_else(|error| panic!("{input:?} utf16={utf16}: {error}"));
+                }
+            }
+        }
+
         #[test]
         fn retained_template_context_fragment_matches_actual_output_and_content_owner() {
             let fixture = &fixtures()[108];
