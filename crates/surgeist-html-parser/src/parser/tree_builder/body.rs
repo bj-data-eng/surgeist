@@ -212,6 +212,25 @@ impl HeadState<'_> {
         }
         Ok(())
     }
+    /// Whether this is the fragment case with an HTML `local` context element.
+    fn fragment_context_is_html(
+        &self,
+        local: &'static str,
+        c: &mut ParseControl,
+    ) -> Result<bool, HeadError> {
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        let Some(context) = self.before.kernel.session.fragment_context(c)? else {
+            return Ok(false);
+        };
+        let node = context
+            .capture()
+            .node(context.context_element().subject())
+            .map_err(|_| crate::construction::SessionError::ContextUnavailable)?;
+        let crate::HtmlCapturedNodeKind::Element(element) = node.kind() else {
+            return Err(KernelError::NotElement.into());
+        };
+        Ok(super::tag_sets::html_named(element.name(), local, c)?)
+    }
     pub(super) fn first_lf(&mut self, c: &mut ParseControl) -> Result<bool, HeadError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
         c.charge(WorkCategory::InspectByte, size_of::<bool>() as u64)?;
@@ -771,6 +790,17 @@ impl HeadState<'_> {
             }
             if self.token_in(&["input"], c)?.is_some() {
                 self.admit_hidden_capability(c)?;
+                if self.fragment_context_is_html("select", c)? {
+                    self.emit(
+                        HeadCondition::UnexpectedBodyToken,
+                        crate::construction::evidence::DiagnosticRule {
+                            anchor: "parsing-main-inbody",
+                            branch: "input-start/select-fragment-context",
+                        },
+                        c,
+                    )?;
+                    return Ok(Some(self.discard(c)?));
+                }
                 if self
                     .before
                     .kernel
@@ -1046,6 +1076,17 @@ impl HeadState<'_> {
                         .into());
                 }
                 other => other?,
+            }
+            if name == "select" && self.fragment_context_is_html("select", c)? {
+                self.emit(
+                    HeadCondition::UnexpectedBodyToken,
+                    crate::construction::evidence::DiagnosticRule {
+                        anchor: "parsing-main-inbody",
+                        branch: "select-start/select-fragment-context",
+                    },
+                    c,
+                )?;
+                return Ok(Some(self.discard(c)?));
             }
             let select = self
                 .before
