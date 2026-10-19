@@ -6464,6 +6464,51 @@ mod comment_diagnostic_corpus {
         }
 
         #[test]
+        fn initial_lf_is_ignored_only_when_it_is_the_next_token() {
+            // HTML877d pre/listing and textarea start tags: "If the next token is
+            // a U+000A LINE FEED (LF) character token, then ignore that token and
+            // move on to the next one." Only the immediately following token is
+            // affected; a later text token keeps its leading LF.
+            for (input, raw) in [
+                (
+                    "<pre>\nX",
+                    "#data\n<pre>\nX\n#errors\n#document\n| <html>\n|   <head>\n|   <body>\n|     <pre>\n|       \"X\"\n",
+                ),
+                (
+                    "<listing>\nX",
+                    "#data\n<listing>\nX\n#errors\n#document\n| <html>\n|   <head>\n|   <body>\n|     <listing>\n|       \"X\"\n",
+                ),
+                (
+                    "<textarea>\nX</textarea>",
+                    "#data\n<textarea>\nX</textarea>\n#errors\n#document\n| <html>\n|   <head>\n|   <body>\n|     <textarea>\n|       \"X\"\n",
+                ),
+                (
+                    "<pre></pre>\nX",
+                    "#data\n<pre></pre>\nX\n#errors\n#document\n| <html>\n|   <head>\n|   <body>\n|     <pre>\n|     \"\nX\"\n",
+                ),
+                (
+                    "<table><caption><pre></caption></table>\nX",
+                    "#data\n<table><caption><pre></caption></table>\nX\n#errors\n#document\n| <html>\n|   <head>\n|   <body>\n|     <table>\n|       <caption>\n|         <pre>\n|     \"\nX\"\n",
+                ),
+                (
+                    "<table><tr><td><pre></td><td>\nX",
+                    "#data\n<table><tr><td><pre></td><td>\nX\n#errors\n#document\n| <html>\n|   <head>\n|   <body>\n|     <table>\n|       <tbody>\n|         <tr>\n|           <td>\n|             <pre>\n|           <td>\n|             \"\nX\"\n",
+                ),
+            ] {
+                let fixture = decode(raw).unwrap().into_iter().next().unwrap();
+                let expected = parsed_expected(&fixture, HtmlDocumentMode::Quirks).unwrap();
+                for utf16 in [false, true] {
+                    let request = HtmlDocumentParseRequest::offline(
+                        source(input, utf16),
+                        super::super::super::tests::limits(1_000),
+                    );
+                    check(&request, &expected)
+                        .unwrap_or_else(|error| panic!("{input:?} utf16={utf16}: {error:?}"));
+                }
+            }
+        }
+
+        #[test]
         fn retained_template_context_fragment_matches_actual_output_and_content_owner() {
             let fixture = &fixtures()[108];
             assert_eq!(fixture.ordinal, 109);
