@@ -73,6 +73,7 @@ fn parsed() -> Identity {
 const NATIVE: &str =
     "token=unit-token\npid=42\npopulation=detached-text\nmanaged=1000\nsample=0\nstage=edited\n";
 const PARSED: &str = "token=unit-token\npid=42\nfixture=parsed-table\nrows=4\ncolumns=8\ncells=32\nparsed_nodes=75\nmanaged=76\nsample=0\nstage=edited\ncheckpoint=0\n";
+const LAYERED: &str = "token=unit-token\npid=42\nfixture=native-layered\nmode=combined\nids=row-ids\nrows=2\ncolumns=3\ncells=6\nmanaged=16\nsample=0\nstage=edited\ncheckpoint=1\n";
 
 #[test]
 fn file_gate_preserves_the_native_record_and_keeps_runner_artifacts() {
@@ -145,6 +146,52 @@ fn parsed_acknowledgement_binds_every_geometry_and_selection_field() {
         ("checkpoint=0", "checkpoint=1"),
     ] {
         fs::write(directory.0.join("ack"), PARSED.replace(old, new)).unwrap();
+        assert_eq!(
+            pending.acknowledged().unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+    }
+}
+
+#[test]
+fn layered_acknowledgement_binds_mode_id_pattern_geometry_and_checkpoint() {
+    let identity = Identity::Layered {
+        mode: "combined",
+        ids: "row-ids",
+        rows: 2,
+        columns: 3,
+        cells: 6,
+        managed: 16,
+        sample: Sample::First,
+    };
+    let directory = Directory::new();
+    let pending = PendingAck::publish(
+        &directory.0,
+        identity.record("unit-token", 42, "edited", Some(1)),
+        Duration::from_secs(1),
+    )
+    .unwrap();
+    assert_eq!(
+        fs::read(directory.0.join("ready")).unwrap(),
+        LAYERED.as_bytes()
+    );
+    fs::write(directory.0.join("ack"), LAYERED).unwrap();
+    assert!(pending.acknowledged().unwrap());
+    for (old, new) in [
+        ("unit-token", "foreign"),
+        ("pid=42", "pid=43"),
+        ("fixture=native-layered", "fixture=parsed-table"),
+        ("mode=combined", "mode=banks-only"),
+        ("ids=row-ids", "ids=cell-ids"),
+        ("rows=2", "rows=3"),
+        ("columns=3", "columns=4"),
+        ("cells=6", "cells=7"),
+        ("managed=16", "managed=17"),
+        ("sample=0", "sample=1"),
+        ("stage=edited", "stage=released"),
+        ("checkpoint=1", "checkpoint=0"),
+    ] {
+        fs::write(directory.0.join("ack"), LAYERED.replace(old, new)).unwrap();
         assert_eq!(
             pending.acknowledged().unwrap_err().kind(),
             io::ErrorKind::InvalidData

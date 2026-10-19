@@ -1,12 +1,15 @@
 //! Small native XML layered-sharing fixtures. Backing observations describe only
 //! the required immutable reuse, never allocation totals or physical memory.
 use std::sync::{Arc, atomic::AtomicBool};
+use std::time::{Duration, Instant};
 
 use crate::store::value_sharing::fixture::{Layers, control};
 use crate::{
     DocumentId, DocumentString, Dom, DomBatch, DomChange, DomCommit, DomLimits, DomNameLimits,
     DomNodeKind, DomSnapshot, NodeId,
 };
+
+mod selected;
 
 const ROWS: usize = 2;
 const COLUMNS: usize = 3;
@@ -17,34 +20,53 @@ const NEXT: &[u16] = &[110, 101, 120, 116];
 const ROW_IDS: [&str; ROWS] = ["r0", "r1"];
 const CELL_IDS: [&str; CELLS] = ["c0", "c1", "c2", "c3", "c4", "c5"];
 
-#[derive(Clone, Copy, Debug)]
-struct Mode {
-    layers: Layers,
-    caller_shared: bool,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Mode {
+    Independent,
+    CallerShared,
+    BanksOnly,
+    Combined,
+}
+impl Mode {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Independent => "independent",
+            Self::CallerShared => "caller-shared",
+            Self::BanksOnly => "banks-only",
+            Self::Combined => "combined",
+        }
+    }
+    fn layers(self) -> Layers {
+        match self {
+            Self::Independent | Self::CallerShared => Layers::CallerOnly,
+            Self::BanksOnly => Layers::BanksOnly,
+            Self::Combined => Layers::Combined,
+        }
+    }
+    fn caller_shared(self) -> bool {
+        self == Self::CallerShared
+    }
 }
 const MODES: [Mode; 4] = [
-    Mode {
-        layers: Layers::CallerOnly,
-        caller_shared: false,
-    },
-    Mode {
-        layers: Layers::CallerOnly,
-        caller_shared: true,
-    },
-    Mode {
-        layers: Layers::BanksOnly,
-        caller_shared: false,
-    },
-    Mode {
-        layers: Layers::Combined,
-        caller_shared: false,
-    },
+    Mode::Independent,
+    Mode::CallerShared,
+    Mode::BanksOnly,
+    Mode::Combined,
 ];
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Unique {
     None,
     Rows,
     Cells,
+}
+impl Unique {
+    fn name(self) -> &'static str {
+        match self {
+            Self::None => "repeated",
+            Self::Rows => "row-ids",
+            Self::Cells => "cell-ids",
+        }
+    }
 }
 struct Grid {
     document: DocumentId,
@@ -52,10 +74,13 @@ struct Grid {
     rows: Vec<NodeId>,
     cells: Vec<NodeId>,
     texts: Vec<NodeId>,
+}
+struct Constructed {
+    grid: Grid,
     // Keep independently authored inputs observable, so an allocator cannot
     // recycle their addresses and imitate a sharing observation.
     inputs: Vec<[DocumentString; 3]>,
-    _creation: DomCommit,
+    creation: DomCommit,
 }
 fn owner() -> Dom {
     Dom::new(
@@ -79,12 +104,12 @@ fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
 fn raw() -> DocumentString {
     DocumentString::from_utf16(RAW.to_vec())
 }
-fn construct(dom: &mut Dom, mode: Mode, unique: Unique) -> Grid {
+fn construct(dom: &mut Dom, mode: Mode, unique: Unique) -> Constructed {
     let caller = raw();
     let inputs: Vec<_> = (0..CELLS)
         .map(|_| {
             std::array::from_fn(|_| {
-                if mode.caller_shared {
+                if mode.caller_shared() {
                     caller.clone()
                 } else {
                     raw()
@@ -92,16 +117,6 @@ fn construct(dom: &mut Dom, mode: Mode, unique: Unique) -> Grid {
             })
         })
         .collect();
-    if !mode.caller_shared {
-        assert!(!Arc::ptr_eq(
-            inputs[0][0].shared_code_units(),
-            inputs[1][0].shared_code_units()
-        ));
-        assert!(!Arc::ptr_eq(
-            inputs[0][0].shared_code_units(),
-            inputs[0][2].shared_code_units()
-        ));
-    }
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let table = batch.create_element(&document, "table");
@@ -132,7 +147,7 @@ fn construct(dom: &mut Dom, mode: Mode, unique: Unique) -> Grid {
         rows.push(parent);
     }
     let creation = apply(dom, batch);
-    Grid {
+    let grid = Grid {
         document: creation.document(&document).unwrap(),
         table: creation.created(&table).unwrap().unwrap(),
         rows: rows
@@ -147,8 +162,11 @@ fn construct(dom: &mut Dom, mode: Mode, unique: Unique) -> Grid {
             .iter()
             .map(|id| creation.created(id).unwrap().unwrap())
             .collect(),
+    };
+    Constructed {
+        grid,
         inputs,
-        _creation: creation,
+        creation,
     }
 }
 fn attributes(snapshot: &DomSnapshot, id: NodeId) -> &[crate::DomAttribute] {
@@ -294,135 +312,308 @@ fn same_bank(snapshot: &DomSnapshot, first: NodeId, second: NodeId) -> bool {
     std::ptr::eq(first.as_ptr(), second.as_ptr())
 }
 
+fn check_inputs(inputs: &[[DocumentString; 3]], mode: Mode) {
+    assert_eq!(inputs.len(), CELLS);
+    if !mode.caller_shared() {
+        assert!(!Arc::ptr_eq(
+            inputs[0][0].shared_code_units(),
+            inputs[1][0].shared_code_units()
+        ));
+        assert!(!Arc::ptr_eq(
+            inputs[0][0].shared_code_units(),
+            inputs[0][2].shared_code_units()
+        ));
+    }
+}
+fn check_reuse(
+    snapshot: &DomSnapshot,
+    grid: &Grid,
+    inputs: &[[DocumentString; 3]],
+    mode: Mode,
+    unique: Unique,
+) {
+    // The independent inputs remain held throughout every backing comparison.
+    check_inputs(inputs, mode);
+    let banks = mode.layers() != Layers::CallerOnly && unique != Unique::Cells;
+    let strings = mode.layers() == Layers::Combined || mode.caller_shared();
+    for index in 1..CELLS {
+        assert_eq!(
+            same_bank(snapshot, grid.cells[0], grid.cells[index]),
+            banks,
+            "{mode:?} {unique:?}"
+        );
+        assert_eq!(
+            Arc::ptr_eq(
+                text(snapshot, grid.texts[0]).shared_code_units(),
+                text(snapshot, grid.texts[index]).shared_code_units()
+            ),
+            strings,
+            "{mode:?} {unique:?}"
+        );
+    }
+    let first = attributes(snapshot, grid.cells[0]);
+    assert_eq!(
+        Arc::ptr_eq(
+            first[0].value().shared_code_units(),
+            first[1].value().shared_code_units()
+        ),
+        strings,
+        "{mode:?}"
+    );
+    assert_eq!(
+        Arc::ptr_eq(
+            first[0].value().shared_code_units(),
+            text(snapshot, grid.texts[0]).shared_code_units()
+        ),
+        strings,
+        "{mode:?}"
+    );
+    if mode.layers() == Layers::CallerOnly {
+        for (index, input) in inputs.iter().enumerate() {
+            for (offset, value) in input[..2].iter().enumerate() {
+                assert!(Arc::ptr_eq(
+                    attributes(snapshot, grid.cells[index])[offset]
+                        .value()
+                        .shared_code_units(),
+                    value.shared_code_units()
+                ));
+            }
+            assert!(Arc::ptr_eq(
+                text(snapshot, grid.texts[index]).shared_code_units(),
+                input[2].shared_code_units()
+            ));
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HolderStage {
+    HarnessOnly,
+    CallerInputsHeld,
+    Populated,
+    BeforeAttributeEdit,
+    AttributeEdited,
+    BeforeTextEdit,
+    TextEdited,
+    Edited,
+    OwnerDropped,
+    OldOnly,
+    Released,
+}
+impl HolderStage {
+    const ALL: [Self; 11] = [
+        Self::HarnessOnly,
+        Self::CallerInputsHeld,
+        Self::Populated,
+        Self::BeforeAttributeEdit,
+        Self::AttributeEdited,
+        Self::BeforeTextEdit,
+        Self::TextEdited,
+        Self::Edited,
+        Self::OwnerDropped,
+        Self::OldOnly,
+        Self::Released,
+    ];
+    fn name(self) -> &'static str {
+        match self {
+            Self::HarnessOnly => "harness-only",
+            Self::CallerInputsHeld => "caller-inputs-held",
+            Self::Populated => "populated",
+            Self::BeforeAttributeEdit => "before-attribute-edit",
+            Self::AttributeEdited => "attribute-edited",
+            Self::BeforeTextEdit => "before-text-edit",
+            Self::TextEdited => "text-edited",
+            Self::Edited => "edited",
+            Self::OwnerDropped => "owner-dropped",
+            Self::OldOnly => "old-only",
+            Self::Released => "released",
+        }
+    }
+}
+fn observe(observer: &mut Option<&mut dyn FnMut(HolderStage)>, at: HolderStage) {
+    if let Some(observer) = observer {
+        observer(at);
+    }
+}
+
+/// Operation intervals exclude callbacks, semantic/backing oracles, and commit
+/// destruction. Setup includes authored inputs, batch construction, application
+/// and qualified identity lookup. Grid/backing checks are separately timed;
+/// commit-change assertions and commit destruction are outside both intervals.
+struct SampleTimes {
+    setup: Duration,
+    old_snapshot: Duration,
+    caller_inputs_drop: Duration,
+    attribute_edit: Duration,
+    text_edit: Duration,
+    current_snapshot: Duration,
+    oracle_checks: Duration,
+    owner_drop: Duration,
+    current_drop: Duration,
+    last_snapshot_drop: Duration,
+}
+fn elapsed(started: Option<Instant>) -> Duration {
+    started.map_or(Duration::ZERO, |started| started.elapsed())
+}
+
+/// The same real workload drives ordinary assertions and external checkpoints.
+/// The callback receives no holders; all pointer observations borrow live data.
+/// No counter-enabled timing is returned, and external inspection can perturb
+/// even counter-disabled execution after a checkpoint wait has been excluded.
+fn run_sample(
+    mode: Mode,
+    unique: Unique,
+    mut observer: Option<&mut dyn FnMut(HolderStage)>,
+) -> Option<SampleTimes> {
+    let timing = !super::scale_metrics::ENABLED;
+    observe(&mut observer, HolderStage::HarnessOnly);
+    let started = timing.then(Instant::now);
+    let mut dom = owner();
+    let guard = control(&dom.value_sharing, mode.layers());
+    let Constructed {
+        grid,
+        inputs,
+        creation,
+    } = construct(&mut dom, mode, unique);
+    let setup = elapsed(started);
+    let started = timing.then(Instant::now);
+    let old = dom.snapshot();
+    let old_snapshot = elapsed(started);
+    let started = timing.then(Instant::now);
+    check_grid(&old, &grid, unique, false, false);
+    check_reuse(&old, &grid, &inputs, mode, unique);
+    let mut oracle_checks = elapsed(started);
+    // These genuine checks complete before the creation receipt/snapshot goes.
+    drop(creation);
+    observe(&mut observer, HolderStage::CallerInputsHeld);
+    let started = timing.then(Instant::now);
+    drop(inputs);
+    let caller_inputs_drop = elapsed(started);
+    observe(&mut observer, HolderStage::Populated);
+
+    observe(&mut observer, HolderStage::BeforeAttributeEdit);
+    let started = timing.then(Instant::now);
+    let mut batch = DomBatch::new();
+    batch.set_attribute(
+        grid.cells[0],
+        "data-a",
+        DocumentString::from_utf16(NEXT.to_vec()),
+    );
+    let attr_commit = apply(&mut dom, batch);
+    let attribute_edit = elapsed(started);
+    assert_eq!(
+        attr_commit.changes().changes(),
+        [DomChange::Attributes(grid.cells[0])]
+    );
+    assert_eq!(dom.revision().get(), old.revision().get() + 1);
+    drop(attr_commit);
+    observe(&mut observer, HolderStage::AttributeEdited);
+
+    observe(&mut observer, HolderStage::BeforeTextEdit);
+    let started = timing.then(Instant::now);
+    let mut batch = DomBatch::new();
+    batch.replace_data(
+        grid.texts[0],
+        0,
+        usize::MAX,
+        DocumentString::from_utf16(NEXT.to_vec()),
+    );
+    let text_commit = apply(&mut dom, batch);
+    let text_edit = elapsed(started);
+    assert_eq!(
+        text_commit.changes().changes(),
+        [DomChange::Data(grid.texts[0])]
+    );
+    assert_eq!(dom.revision().get(), old.revision().get() + 2);
+    drop(text_commit);
+    observe(&mut observer, HolderStage::TextEdited);
+
+    let started = timing.then(Instant::now);
+    let current = dom.snapshot();
+    let current_snapshot = elapsed(started);
+    let started = timing.then(Instant::now);
+    assert_eq!(current.revision().get(), old.revision().get() + 2);
+    check_topology(&old, &current);
+    check_grid(&current, &grid, unique, true, true);
+    check_grid(&old, &grid, unique, false, false);
+    for index in 1..CELLS {
+        assert!(std::ptr::eq(
+            attributes(&current, grid.cells[index]).as_ptr(),
+            attributes(&old, grid.cells[index]).as_ptr()
+        ));
+        assert!(Arc::ptr_eq(
+            text(&current, grid.texts[index]).shared_code_units(),
+            text(&old, grid.texts[index]).shared_code_units()
+        ));
+    }
+    assert!(!std::ptr::eq(
+        attributes(&current, grid.cells[0]).as_ptr(),
+        attributes(&old, grid.cells[0]).as_ptr()
+    ));
+    assert!(!Arc::ptr_eq(
+        text(&current, grid.texts[0]).shared_code_units(),
+        text(&old, grid.texts[0]).shared_code_units()
+    ));
+    oracle_checks += elapsed(started);
+    observe(&mut observer, HolderStage::Edited);
+
+    // The diagnostic Weak must die before measuring actual owner loss.
+    drop(guard);
+    let started = timing.then(Instant::now);
+    drop(dom);
+    let owner_drop = elapsed(started);
+    let started = timing.then(Instant::now);
+    check_grid(&current, &grid, unique, true, true);
+    check_grid(&old, &grid, unique, false, false);
+    oracle_checks += elapsed(started);
+    observe(&mut observer, HolderStage::OwnerDropped);
+    let started = timing.then(Instant::now);
+    drop(current);
+    let current_drop = elapsed(started);
+    let started = timing.then(Instant::now);
+    check_grid(&old, &grid, unique, false, false);
+    oracle_checks += elapsed(started);
+    observe(&mut observer, HolderStage::OldOnly);
+    // Grid contains scalar IDs and their Vec buffers, not a snapshot/commit.
+    // Release this scratch after its last oracle, before the last snapshot.
+    drop(grid);
+    let started = timing.then(Instant::now);
+    drop(old);
+    let last_snapshot_drop = elapsed(started);
+    observe(&mut observer, HolderStage::Released);
+    timing.then_some(SampleTimes {
+        setup,
+        old_snapshot,
+        caller_inputs_drop,
+        attribute_edit,
+        text_edit,
+        current_snapshot,
+        oracle_checks,
+        owner_drop,
+        current_drop,
+        last_snapshot_drop,
+    })
+}
+
 #[test]
 fn ordinary_layers_preserve_equal_banks_text_and_isolated_edits() {
     for mode in MODES {
-        let mut dom = owner();
-        let guard = control(&dom.value_sharing, mode.layers);
-        let grid = construct(&mut dom, mode, Unique::None);
-        let old = dom.snapshot();
-        check_grid(&old, &grid, Unique::None, false, false);
-        let banks = mode.layers != Layers::CallerOnly;
-        let strings = mode.layers == Layers::Combined || mode.caller_shared;
-        for index in 1..CELLS {
-            assert_eq!(
-                same_bank(&old, grid.cells[0], grid.cells[index]),
-                banks,
-                "{mode:?}"
-            );
-            assert_eq!(
-                Arc::ptr_eq(
-                    text(&old, grid.texts[0]).shared_code_units(),
-                    text(&old, grid.texts[index]).shared_code_units()
-                ),
-                strings,
-                "{mode:?}"
-            );
-        }
-        let first = attributes(&old, grid.cells[0]);
-        assert_eq!(
-            Arc::ptr_eq(
-                first[0].value().shared_code_units(),
-                first[1].value().shared_code_units()
-            ),
-            strings,
-            "{mode:?}"
-        );
-        assert_eq!(
-            Arc::ptr_eq(
-                first[0].value().shared_code_units(),
-                text(&old, grid.texts[0]).shared_code_units()
-            ),
-            strings,
-            "{mode:?}"
-        );
-        if mode.layers == Layers::CallerOnly {
-            for index in 0..CELLS {
-                for offset in 0..2 {
-                    assert!(Arc::ptr_eq(
-                        attributes(&old, grid.cells[index])[offset]
-                            .value()
-                            .shared_code_units(),
-                        grid.inputs[index][offset].shared_code_units()
-                    ));
-                }
-                assert!(Arc::ptr_eq(
-                    text(&old, grid.texts[index]).shared_code_units(),
-                    grid.inputs[index][2].shared_code_units()
-                ));
-            }
-        }
-        let mut batch = DomBatch::new();
-        batch.set_attribute(
-            grid.cells[0],
-            "data-a",
-            DocumentString::from_utf16(NEXT.to_vec()),
-        );
-        let attr_commit = apply(&mut dom, batch);
-        assert_eq!(
-            attr_commit.changes().changes(),
-            [DomChange::Attributes(grid.cells[0])]
-        );
-        assert_eq!(dom.revision().get(), old.revision().get() + 1);
-        let mut batch = DomBatch::new();
-        batch.replace_data(
-            grid.texts[0],
-            0,
-            usize::MAX,
-            DocumentString::from_utf16(NEXT.to_vec()),
-        );
-        let text_commit = apply(&mut dom, batch);
-        assert_eq!(
-            text_commit.changes().changes(),
-            [DomChange::Data(grid.texts[0])]
-        );
-        let current = dom.snapshot();
-        assert_eq!(current.revision().get(), old.revision().get() + 2);
-        check_topology(&old, &current);
-        check_grid(&current, &grid, Unique::None, true, true);
-        check_grid(&old, &grid, Unique::None, false, false);
-        for index in 1..CELLS {
-            assert!(std::ptr::eq(
-                attributes(&current, grid.cells[index]).as_ptr(),
-                attributes(&old, grid.cells[index]).as_ptr()
-            ));
-            assert!(Arc::ptr_eq(
-                text(&current, grid.texts[index]).shared_code_units(),
-                text(&old, grid.texts[index]).shared_code_units()
-            ));
-        }
-        assert!(!std::ptr::eq(
-            attributes(&current, grid.cells[0]).as_ptr(),
-            attributes(&old, grid.cells[0]).as_ptr()
-        ));
-        assert!(!Arc::ptr_eq(
-            text(&current, grid.texts[0]).shared_code_units(),
-            text(&old, grid.texts[0]).shared_code_units()
-        ));
-        drop(guard);
-        drop(attr_commit);
-        drop(text_commit);
-        drop(dom);
-        check_grid(&current, &grid, Unique::None, true, true);
-        check_grid(&old, &grid, Unique::None, false, false);
-        drop(grid);
-        drop(current);
-        assert_eq!(old.nodes().count(), NODES);
-        drop(old);
+        let _ = run_sample(mode, Unique::None, None);
     }
 }
 
 #[test]
 fn unique_row_ids_preserve_cell_bank_reuse_while_unique_cell_ids_keep_banks_distinct() {
-    for layers in [Layers::BanksOnly, Layers::Combined] {
+    for mode in [Mode::BanksOnly, Mode::Combined] {
         for unique in [Unique::Rows, Unique::Cells] {
-            let mode = Mode {
-                layers,
-                caller_shared: false,
-            };
             let mut dom = owner();
-            let guard = control(&dom.value_sharing, layers);
-            let grid = construct(&mut dom, mode, unique);
+            let guard = control(&dom.value_sharing, mode.layers());
+            let Constructed {
+                grid,
+                inputs,
+                creation,
+            } = construct(&mut dom, mode, unique);
+            check_inputs(&inputs, mode);
             let old = dom.snapshot();
             check_grid(&old, &grid, unique, false, false);
             for index in 1..CELLS {
@@ -474,6 +665,8 @@ fn unique_row_ids_preserve_cell_bank_reuse_while_unique_cell_ids_keep_banks_dist
             drop(dom);
             assert_eq!(current.nodes().count(), NODES);
             check_grid(&old, &grid, unique, false, false);
+            drop(inputs);
+            drop(creation);
             drop(grid);
             drop(current);
             drop(old);

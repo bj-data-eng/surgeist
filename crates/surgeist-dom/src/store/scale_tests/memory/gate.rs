@@ -62,6 +62,15 @@ pub(super) enum Identity {
         managed: usize,
         sample: Sample,
     },
+    Layered {
+        mode: &'static str,
+        ids: &'static str,
+        rows: usize,
+        columns: usize,
+        cells: usize,
+        managed: usize,
+        sample: Sample,
+    },
 }
 
 impl Identity {
@@ -91,6 +100,19 @@ impl Identity {
                 sample,
             } => format!(
                 "token={token}\npid={pid}\nfixture=parsed-table\nrows={rows}\ncolumns={columns}\ncells={cells}\nparsed_nodes={parsed_nodes}\nmanaged={managed}\nsample={}\nstage={stage}\ncheckpoint={}\n",
+                sample.name(),
+                ordinal.unwrap_or(0)
+            ),
+            Self::Layered {
+                mode,
+                ids,
+                rows,
+                columns,
+                cells,
+                managed,
+                sample,
+            } => format!(
+                "token={token}\npid={pid}\nfixture=native-layered\nmode={mode}\nids={ids}\nrows={rows}\ncolumns={columns}\ncells={cells}\nmanaged={managed}\nsample={}\nstage={stage}\ncheckpoint={}\n",
                 sample.name(),
                 ordinal.unwrap_or(0)
             ),
