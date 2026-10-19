@@ -277,3 +277,102 @@ fn inline_request_boundary_returns_before_policy_and_resume_services_same_reques
     assert_eq!(calls, 2);
     assert!(session.dom().pending_source_edit().is_none());
 }
+
+#[test]
+fn bound_retirement_returns_original_pair_and_releases_runtime_source_owner() {
+    let cancel = AtomicBool::new(false);
+    let mut session = session();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let element = batch.create_element_ns(&document, Namespace::html(), "div");
+    let keeper = batch.create_element_ns(&document, Namespace::html(), "aside");
+    let made = session.dom().apply(batch, &cancel).unwrap();
+    let document = made.document(&document).unwrap();
+    let element = made.created(&element).unwrap().unwrap();
+    let keeper = made.created(&keeper).unwrap().unwrap();
+    let (properties, context) = bind(&mut session, element, document);
+    let old = session
+        .dom()
+        .raw_mut()
+        .capture_inline_style(element)
+        .unwrap()
+        .unwrap();
+    let result = session
+        .source_execution()
+        .apply_with_inline_styles(
+            &mut session.dom(),
+            DomSourceInlineStyleEdit::new(DomSourceEdit::destroy(element), context, requests()),
+            limits(),
+            &mut DomSourceServices {
+                execution_scope: None,
+                style_policy: &mut |_| panic!("no Style service"),
+                url: None,
+            },
+            |_, _| panic!("retirement makes no declaration decision"),
+            &cancel,
+        )
+        .unwrap();
+    let DomSourceDriveProgress::InlineSource {
+        source: DomSourceProgress::Complete(done),
+        publication,
+    } = result
+    else {
+        panic!("retirement returns its original completion and paired publication")
+    };
+    assert_eq!(publication.dom().from(), old.dom().stamp());
+    assert_eq!(publication.dom().to(), done.commit().changes().to());
+    assert!(
+        publication
+            .dom()
+            .changes()
+            .contains(&surgeist_dom::DomChange::Destroyed(element))
+    );
+    let surgeist_cssom::CssomPublication::Changed(summary) = publication.inline().publication()
+    else {
+        panic!("the actual bound block retired")
+    };
+    assert_eq!(summary.from(), old.properties().snapshot().revision());
+    assert!(
+        summary
+            .affected()
+            .contains(&surgeist_cssom::CssomObjectId::Block(
+                properties.id().clone()
+            ))
+    );
+    assert!(summary.after_inputs().inline_declarations.is_empty());
+    assert!(publication.inline().owner_effects().is_empty());
+    assert!(matches!(
+        session.snapshot().node(element),
+        Err(surgeist_dom::DomError::StaleNode)
+    ));
+    assert!(old.dom().node(element).is_ok());
+    assert!(old.properties().snapshot().block(properties.id()).is_ok());
+    assert!(session.dom().pending_source_edit().is_none());
+
+    let next = session
+        .source_execution()
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::set_attribute(keeper, "id", "still-live"),
+            limits(),
+            &mut DomSourceServices {
+                execution_scope: None,
+                style_policy: &mut |_| panic!("no Style service"),
+                url: None,
+            },
+            &cancel,
+        )
+        .unwrap();
+    assert!(matches!(next, DomSourceDriveProgress::Complete(_)));
+    assert!(session.dom().pending_source_edit().is_none());
+    assert_eq!(
+        session
+            .snapshot()
+            .node(keeper)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .attribute(&"id".into()),
+        Some(&"still-live".into())
+    );
+}

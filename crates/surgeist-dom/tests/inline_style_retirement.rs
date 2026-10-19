@@ -755,3 +755,279 @@ fn pending_feedback_still_refuses_unrelated_bound_retirement_and_preserves_origi
         );
     }
 }
+
+#[test]
+fn first_middle_last_and_multiple_retirements_preserve_each_surviving_live_object() {
+    for source in [false, true] {
+        for retired in [&[0usize][..], &[3][..], &[5][..], &[0, 1, 3][..]] {
+            let (mut dom, document) = owner(
+                6,
+                32,
+                CssomLimits {
+                    max_objects: 7, // Root sheet-list plus six live bound objects.
+                    ..Default::default()
+                },
+            );
+            let mut batch = DomBatch::new();
+            let root = batch.create_element_ns(document, Namespace::html(), "section");
+            let tickets: Vec<_> = (0..6)
+                .map(|index| {
+                    let element = batch.create_element_ns(document, Namespace::html(), "div");
+                    batch.set_attribute(&element, "style", format!("width: {}px", index + 1));
+                    if retired.contains(&index) {
+                        batch.insert_before(&element, &root, None);
+                    }
+                    element
+                })
+                .collect();
+            let commit = dom.apply(batch, &cancel()).unwrap();
+            let root = commit.created(&root).unwrap().unwrap();
+            let elements: Vec<_> = tickets
+                .iter()
+                .map(|ticket| commit.created(ticket).unwrap().unwrap())
+                .collect();
+            for &element in &elements {
+                bind(&mut dom, document, element);
+            }
+            let old: Vec<_> = elements
+                .iter()
+                .map(|&element| capture(&dom, element))
+                .collect();
+            let profiles: Vec<_> = retired
+                .iter()
+                .map(|&index| checked_profile(&dom, elements[index], document))
+                .collect();
+            let receipt = if source {
+                let context =
+                    DomInlineStyleSourceContext::new(dom.snapshot().stamp(), profiles).unwrap();
+                let mut lease = dom
+                    .begin_source_edit_with_inline_styles(
+                        DomSourceEdit::destroy(root),
+                        context,
+                        source_limits(8192),
+                        requests(),
+                        &cancel(),
+                    )
+                    .unwrap();
+                let result = lease
+                    .advance_with_inline_styles(no_decisions, &cancel())
+                    .unwrap();
+                assert!(matches!(result.source(), DomSourceProgress::Complete(_)));
+                let (_, pair) = result.into_parts();
+                drop(lease);
+                pair.unwrap().into_parts().1
+            } else {
+                let mut batch = DomBatch::new();
+                batch.destroy(root);
+                let context =
+                    DomInlineStyleBatchContext::new(&batch, dom.snapshot().stamp(), profiles)
+                        .unwrap();
+                dom.apply_with_inline_styles(batch, context, requests(), no_decisions, &cancel())
+                    .unwrap()
+                    .into_parts()
+                    .1
+                    .unwrap()
+            };
+            let keeper = (0..elements.len())
+                .find(|index| !retired.contains(index))
+                .unwrap();
+            let current = capture(&dom, elements[keeper]);
+            let retired_handles: Vec<_> = retired
+                .iter()
+                .map(|&index| old[index].properties().handle())
+                .collect();
+            assert_retirement_receipt(
+                &receipt,
+                old[0].properties().snapshot().revision(),
+                current.properties().snapshot().revision(),
+                &retired_handles,
+            );
+            for (index, &element) in elements.iter().enumerate() {
+                let expected = format!("{}px", index + 1);
+                assert_eq!(width(&old[index]), expected);
+                if retired.contains(&index) {
+                    assert!(matches!(
+                        dom.snapshot().node(element),
+                        Err(DomError::StaleNode)
+                    ));
+                    assert!(matches!(
+                        old[index]
+                            .properties()
+                            .handle()
+                            .capture(current.properties().snapshot()),
+                        Err(CssomError::MissingObject)
+                    ));
+                    continue;
+                }
+                let before = capture(&dom, element);
+                assert_eq!(
+                    before.properties().handle(),
+                    old[index].properties().handle()
+                );
+                assert_eq!(width(&before), expected);
+                let context = DomInlineStyleSourceContext::new(
+                    dom.snapshot().stamp(),
+                    vec![checked_profile(&dom, element, document)],
+                )
+                .unwrap();
+                let mut lease = dom
+                    .begin_source_edit_with_inline_styles(
+                        DomSourceEdit::set_attribute(element, "style", "width: 19px"),
+                        context,
+                        source_limits(8192),
+                        requests(),
+                        &cancel(),
+                    )
+                    .unwrap();
+                let result = lease
+                    .advance_with_inline_styles(no_decisions, &cancel())
+                    .unwrap();
+                assert!(matches!(result.source(), DomSourceProgress::Complete(_)));
+                assert!(result.inline().is_some());
+                drop(lease);
+                let after = capture(&dom, element);
+                assert_eq!(
+                    after.properties().handle(),
+                    old[index].properties().handle()
+                );
+                assert_eq!(width(&after), "19px");
+                assert_eq!(width(&old[index]), expected);
+            }
+        }
+    }
+}
+
+#[test]
+fn owned_shadow_and_template_contents_retire_with_their_host_and_preserve_captures() {
+    for source in [false, true] {
+        let (mut dom, document) = owner(3, 64, Default::default());
+        let mut batch = DomBatch::new();
+        let host = batch.create_element_ns(document, Namespace::html(), "div");
+        let shadow = batch.attach_shadow(&host, DomShadowRootInit::new(HtmlShadowRootMode::Closed));
+        let template = batch.create_element_ns(document, Namespace::html(), "template");
+        batch.insert_before(&template, &host, None);
+        let keeper = batch.create_element_ns(document, Namespace::html(), "aside");
+        batch.set_attribute(&keeper, "style", "width: 9px");
+        let commit = dom.apply(batch, &cancel()).unwrap();
+        let host = commit.created(&host).unwrap().unwrap();
+        let shadow = commit.created(&shadow).unwrap().unwrap();
+        let template = commit.created(&template).unwrap().unwrap();
+        let keeper = commit.created(&keeper).unwrap().unwrap();
+        let snapshot = dom.snapshot();
+        let contents = snapshot
+            .node(template)
+            .unwrap()
+            .as_template()
+            .unwrap()
+            .contents()
+            .unwrap();
+        let inert_document = snapshot.node(contents).unwrap().owner_document().unwrap();
+        let mut batch = DomBatch::new();
+        let shadow_child = batch.create_element_ns(document, Namespace::html(), "span");
+        batch.insert_before(&shadow_child, shadow, None);
+        batch.set_attribute(&shadow_child, "style", "width: 3px");
+        let contents_child = batch.create_element_ns(inert_document, Namespace::html(), "div");
+        batch.insert_before(&contents_child, contents, None);
+        batch.set_attribute(&contents_child, "style", "width: 6px");
+        let commit = dom.apply(batch, &cancel()).unwrap();
+        let shadow_child = commit.created(&shadow_child).unwrap().unwrap();
+        let contents_child = commit.created(&contents_child).unwrap().unwrap();
+        bind(&mut dom, document, shadow_child);
+        bind(&mut dom, inert_document, contents_child);
+        let keeper_handle = bind(&mut dom, document, keeper);
+        let old_shadow = capture(&dom, shadow_child);
+        let old_contents = capture(&dom, contents_child);
+        let old_keeper = capture(&dom, keeper);
+        assert_eq!(old_shadow.tree_scope().root(), shadow);
+        assert_eq!(old_shadow.tree_scope().host(), Some(host));
+        assert_eq!(old_contents.tree_scope().root(), contents);
+        assert_eq!(
+            old_contents.dom().node(contents).unwrap().fragment_host(),
+            Some(template)
+        );
+        let profiles = vec![
+            checked_profile(&dom, shadow_child, document),
+            checked_profile(&dom, contents_child, inert_document),
+        ];
+        let receipt = if source {
+            let context =
+                DomInlineStyleSourceContext::new(dom.snapshot().stamp(), profiles).unwrap();
+            let mut lease = dom
+                .begin_source_edit_with_inline_styles(
+                    DomSourceEdit::destroy(host),
+                    context,
+                    source_limits(8192),
+                    requests(),
+                    &cancel(),
+                )
+                .unwrap();
+            let result = lease
+                .advance_with_inline_styles(no_decisions, &cancel())
+                .unwrap();
+            assert!(matches!(result.source(), DomSourceProgress::Complete(_)));
+            let (_, pair) = result.into_parts();
+            drop(lease);
+            pair.unwrap().into_parts().1
+        } else {
+            let mut batch = DomBatch::new();
+            batch.destroy(host);
+            let context =
+                DomInlineStyleBatchContext::new(&batch, dom.snapshot().stamp(), profiles).unwrap();
+            dom.apply_with_inline_styles(batch, context, requests(), no_decisions, &cancel())
+                .unwrap()
+                .into_parts()
+                .1
+                .unwrap()
+        };
+        let current = capture(&dom, keeper);
+        assert_retirement_receipt(
+            &receipt,
+            old_keeper.properties().snapshot().revision(),
+            current.properties().snapshot().revision(),
+            &[
+                old_shadow.properties().handle(),
+                old_contents.properties().handle(),
+            ],
+        );
+        for element in [
+            host,
+            shadow,
+            template,
+            contents,
+            shadow_child,
+            contents_child,
+        ] {
+            assert!(matches!(
+                dom.snapshot().node(element),
+                Err(DomError::StaleNode)
+            ));
+        }
+        assert_retired(&dom, keeper, &[&old_shadow, &old_contents]);
+        assert_eq!(width(&old_shadow), "3px");
+        assert_eq!(width(&old_contents), "6px");
+        let context = DomInlineStyleSourceContext::new(
+            dom.snapshot().stamp(),
+            vec![checked_profile(&dom, keeper, document)],
+        )
+        .unwrap();
+        let mut lease = dom
+            .begin_source_edit_with_inline_styles(
+                DomSourceEdit::set_attribute(keeper, "style", "width: 17px"),
+                context,
+                source_limits(8192),
+                requests(),
+                &cancel(),
+            )
+            .unwrap();
+        let result = lease
+            .advance_with_inline_styles(no_decisions, &cancel())
+            .unwrap();
+        assert!(matches!(result.source(), DomSourceProgress::Complete(_)));
+        assert!(result.inline().is_some());
+        drop(lease);
+        let current = capture(&dom, keeper);
+        assert_eq!(current.properties().handle(), &keeper_handle);
+        assert_eq!(width(&current), "17px");
+        assert_eq!(width(&old_keeper), "9px");
+    }
+}

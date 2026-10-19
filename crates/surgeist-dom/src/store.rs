@@ -1593,7 +1593,8 @@ impl Dom {
         cancelled: &AtomicBool,
     ) -> Result<PreparedPublication, DomError> {
         check_cancel(cancelled)?;
-        let inline_index = self.prepare_inline_publication(&prepared, cancelled)?;
+        let (inline_index, inline_retirement) =
+            self.prepare_inline_publication(&prepared, cancelled)?;
         let usage = prepared.state.root_usage()?;
         transaction::nodes::resize_debit(&mut prepared.root_debit, usage, |usage| match &prepared
             .formation
@@ -1784,6 +1785,7 @@ impl Dom {
             retirement_publication,
             style_custody,
             inline_index,
+            inline_retirement,
             inline_recording,
             retired_authority,
             owner,
@@ -1804,6 +1806,10 @@ impl Dom {
         &mut self,
         publication: PreparedPublication,
     ) -> CommittedPublication {
+        let (inline_index, inline_objects) = match self.inline_styles.as_mut() {
+            Some(owner) => (Some(&mut owner.index), Some(&mut owner.objects)),
+            None => (None, None),
+        };
         PublicationFields {
             state: &mut self.state,
             state_custody: &mut self.state_custody,
@@ -1811,7 +1817,8 @@ impl Dom {
             revision: &mut self.revision,
             history: &mut self.history,
             active_task: &mut self.active_task,
-            inline_index: self.inline_styles.as_mut().map(|owner| &mut owner.index),
+            inline_index,
+            inline_objects,
         }
         .publish(publication)
     }
@@ -1850,6 +1857,7 @@ struct PublicationFields<'a> {
     history: &'a mut history::History,
     active_task: &'a mut std::sync::Weak<crate::select::Authorization>,
     inline_index: Option<&'a mut inline_style::Index>,
+    inline_objects: Option<&'a mut Vec<inline_style::ObjectEntry>>,
 }
 impl PublicationFields<'_> {
     fn publish(mut self, publication: PreparedPublication) -> CommittedPublication {
@@ -1871,6 +1879,7 @@ impl PublicationFields<'_> {
             retirement_publication,
             style_custody,
             inline_index,
+            inline_retirement,
             inline_recording: _,
             retired_authority,
             owner,
@@ -1899,6 +1908,13 @@ impl PublicationFields<'_> {
             }
             *self.state = state;
             *self.state_custody = state_custody;
+            if let Some(plan) = inline_retirement {
+                plan.publish(
+                    self.inline_objects
+                        .as_deref_mut()
+                        .expect("prepared inline objects"),
+                );
+            }
             if let Some(index) = inline_index {
                 *self
                     .inline_index
@@ -2091,6 +2107,7 @@ pub(crate) struct PreparedPublication {
     retirement_publication: dispatch::PublicationPlan,
     style_custody: Option<style_custody::Bank>,
     inline_index: Option<inline_style::Index>,
+    inline_retirement: Option<inline_style::RetirementPlan>,
     inline_recording: Option<inline_style::recording::Recording>,
     retired_authority: Option<Arc<crate::select::Authorization>>,
     owner: Arc<BatchIdentity>,

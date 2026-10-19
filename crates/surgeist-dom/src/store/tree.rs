@@ -670,6 +670,7 @@ impl Draft {
                             let document = self.node(key)?.document();
                             self.record_dispatch_retirement(target, document, cancel)?;
                         }
+                        self.inline_retirement(key, cancel)?;
                         self.retire_autofocus_candidate(key, cancel)?;
                         self.retire_fullscreen_membership(key, cancel)?;
                         self.retire_range_container(key, cancel)?;

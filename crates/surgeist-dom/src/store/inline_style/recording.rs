@@ -181,15 +181,38 @@ enum Input {
     Context,
     Attribute(Option<DocumentString>),
 }
-struct Event {
+struct LiveInput {
     element: NodeId,
     facts: Facts,
     profile: usize,
     serial: u64,
     input: Input,
 }
+enum Event {
+    Input(LiveInput),
+    Retirement {
+        element: NodeId,
+        owner_revision: Option<u64>,
+    },
+}
+impl Event {
+    fn element(&self) -> NodeId {
+        match self {
+            Self::Input(input) => input.element,
+            Self::Retirement { element, .. } => *element,
+        }
+    }
+    fn live(&self) -> &LiveInput {
+        match self {
+            Self::Input(input) => input,
+            Self::Retirement { .. } => unreachable!("live input frontier"),
+        }
+    }
+}
 #[derive(Clone, Default)]
 struct Log {
+    retirements: bank::Bank<Event>,
+    retirements_custody: bank::BankCustody<Event>,
     entries: bank::Bank<Event>,
     latest: bank::Bank<Event>,
     attributes: bank::Bank<Event>,
@@ -333,10 +356,13 @@ impl Recording {
         }
         if let Some(event) = self.log.entries.get_with(0, &mut step)? {
             return Err(required(
-                event.element,
-                match event.input {
-                    Input::Context => DomInlineStyleChange::Context,
-                    Input::Attribute(_) => DomInlineStyleChange::Attribute,
+                event.element(),
+                match event {
+                    Event::Input(input) => match input.input {
+                        Input::Context => DomInlineStyleChange::Context,
+                        Input::Attribute(_) => DomInlineStyleChange::Attribute,
+                    },
+                    Event::Retirement { .. } => DomInlineStyleChange::Retirement,
                 },
             ));
         }
@@ -408,7 +434,7 @@ impl Recording {
     ) -> Result<(), DomError> {
         if input.is_none() {
             let before = match self.log.latest.get_with(element.slot, &mut || p.step())? {
-                Some(event) => event.facts.read(),
+                Some(event) => event.live().facts.read(),
                 None => facts(
                     OrderView::state(&draft.base, draft.store),
                     Key::Existing(element),
@@ -430,7 +456,7 @@ impl Recording {
             usage = usage.checked_add(custody::Usage::new(payload.bytes, payload.units))?;
         }
         let debit = draft.custody_ledger().retain(usage, |u| p.admit(u))?;
-        let event = Event {
+        let event = Event::Input(LiveInput {
             element,
             facts: next.owned(),
             profile,
@@ -439,7 +465,7 @@ impl Recording {
                 None => Input::Context,
                 Some(value) => Input::Attribute(value.cloned()),
             },
-        };
+        });
         let controlled = record(
             custody::Held::new(event, debit),
             draft.custody_registry(),
@@ -497,6 +523,103 @@ impl Recording {
         self.log.len = len;
         Ok(())
     }
+    fn append_retirement(
+        &mut self,
+        draft: &Draft,
+        element: NodeId,
+        p: &Processing<'_>,
+    ) -> Result<(), DomError> {
+        self.require_unblocked()?;
+        let owner_revision = self
+            .log
+            .latest
+            .get_with(element.slot, &mut || p.step())?
+            .map(|event| event.live().serial);
+        self.index.relocate_staged(
+            element,
+            draft.order_view(),
+            false,
+            draft.custody_registry(),
+            p,
+        )?;
+        self.index
+            .remove_binding(element, draft.custody_registry(), p)?;
+        let usage = custody::Usage::new(size_of::<Event>(), 0);
+        let debit = draft.custody_ledger().retain(usage, |u| p.admit(u))?;
+        let controlled = record(
+            custody::Held::new(
+                Event::Retirement {
+                    element,
+                    owner_revision,
+                },
+                debit,
+            ),
+            draft.custody_registry(),
+            p,
+        )?;
+        let totals = bank::Totals {
+            bytes: usage.bytes(),
+            units: 0,
+            occurrences: 1,
+        };
+        let entries = self.log.entries.set_controlled(
+            &self.log.entries_custody,
+            self.log.len,
+            controlled.clone(),
+            false,
+            totals,
+            draft.custody_registry(),
+            |u| p.admit(u),
+        )?;
+        let latest = self.log.latest.set_controlled(
+            &self.log.latest_custody,
+            element.slot,
+            controlled.clone(),
+            false,
+            totals,
+            draft.custody_registry(),
+            |u| p.admit(u),
+        )?;
+        let retirements = self.log.retirements.set_controlled(
+            &self.log.retirements_custody,
+            self.retirement_count(),
+            controlled,
+            false,
+            totals,
+            draft.custody_registry(),
+            |u| p.admit(u),
+        )?;
+        self.log.len = self
+            .log
+            .len
+            .checked_add(1)
+            .ok_or(DomError::RepresentationExhausted)?;
+        (self.log.entries, self.log.entries_custody) = entries;
+        (self.log.latest, self.log.latest_custody) = latest;
+        (self.log.retirements, self.log.retirements_custody) = retirements;
+        Ok(())
+    }
+    pub(super) fn retirement_count(&self) -> usize {
+        self.log.retirements.record_count()
+    }
+    pub(super) fn retirement_at(
+        &self,
+        index: usize,
+        p: &Processing<'_>,
+    ) -> Result<NodeId, DomError> {
+        Ok(self
+            .log
+            .retirements
+            .get_with(index, &mut || p.step())?
+            .expect("dense actual retirement log")
+            .element())
+    }
+    pub(super) fn retired(&self, element: NodeId, p: &Processing<'_>) -> Result<bool, DomError> {
+        Ok(
+            matches!(self.log.latest.get_with(element.slot, &mut || p.step())?,
+            Some(Event::Retirement { element: retired, .. }) if *retired == element),
+        )
+    }
     fn contexts(
         &mut self,
         draft: &Draft,
@@ -532,7 +655,7 @@ impl Recording {
         let Some(event) = self.log.latest.get_with(element.slot, &mut || p.step())? else {
             return Ok(false);
         };
-        event.facts.read().same(
+        event.live().facts.read().same(
             facts(view, Key::Existing(element), p)?,
             p,
             |key| match key {
@@ -554,7 +677,7 @@ impl Recording {
         else {
             return Ok(false);
         };
-        let Input::Attribute(old) = &event.input else {
+        let Input::Attribute(old) = &event.live().input else {
             unreachable!("attribute frontier")
         };
         same_optional_text(old.as_ref(), value, p)
@@ -562,6 +685,36 @@ impl Recording {
 }
 
 impl Draft {
+    pub(in crate::store) fn inline_retirement(
+        &mut self,
+        key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let Key::Existing(element) = self.live_key(key) else {
+            return Ok(());
+        };
+        let Some(membership) = &self.inline_membership else {
+            return Ok(());
+        };
+        if !membership
+            .bindings
+            .get_with(element.slot, &mut || self.source_step(cancel))?
+            .is_some_and(|row| row.element == element)
+        {
+            return Ok(());
+        }
+        let Some(recording) = &self.inline_recording else {
+            return Err(required(element, DomInlineStyleChange::Retirement));
+        };
+        let undo = self.prepare_undo_slots(1, cancel)?;
+        let formation = Formation::new(self, cancel)?;
+        let p = recording.processing(formation.as_ref(), cancel);
+        let mut next = recording.clone();
+        next.append_retirement(self, element, &p)?;
+        drop(formation);
+        self.commit_inline_recording(Some(next), undo);
+        Ok(())
+    }
     pub(in crate::store) fn prepare_inline_relation(
         &self,
         change: transaction::RelationChange<'_>,
@@ -802,7 +955,7 @@ impl Dom {
         if self
             .inline_styles
             .as_ref()
-            .is_none_or(|owner| owner.index.membership.bindings.is_empty())
+            .is_none_or(|owner| owner.index.membership.bindings.record_count() == 0)
         {
             return Ok(None);
         }
@@ -823,7 +976,7 @@ impl Dom {
                 Ok(None)
             };
         };
-        if !required && owner.index.membership.bindings.is_empty() {
+        if !required && owner.index.membership.bindings.record_count() == 0 {
             return Ok(None);
         }
         let p = processing(&owner.limits, formation, cancel);
@@ -903,7 +1056,7 @@ impl Dom {
     /// Apply an ordinary DOM batch with authentic, invocation-ordered inline
     /// attribute and context inputs. All DOM formation precedes the single
     /// CSSOM commit; the following canonical DOM publication is infallible.
-    /// Unbound Elements remain lazy. Bound retirement is currently refused.
+    /// Unbound Elements remain lazy; retirement keeps its original source order.
     pub fn apply_with_inline_styles(
         &mut self,
         batch: DomBatch,
@@ -959,6 +1112,51 @@ impl Dom {
                 .entries
                 .get_with(index, &mut || p.step())?
                 .expect("ordered recorded occurrence");
+            let element = event.element();
+            let binding = owner
+                .index
+                .membership
+                .bindings
+                .get_with(element.slot, &mut || p.step())?
+                .filter(|binding| binding.element == element)
+                .ok_or(DomError::StaleNode)?;
+            let object = &owner.objects[binding.ordinal];
+            assert_eq!(object.element, element, "canonical exact inline locator");
+            let id = object.properties.id();
+            if let Event::Retirement { owner_revision, .. } = event {
+                let snapshot = store.snapshot();
+                let current = snapshot.block(id)?.owner().expect("bound inline owner");
+                let bytes = size_of::<CssomInputVersion>()
+                    .checked_add(current.identity.capacity())
+                    .ok_or(DomError::RepresentationExhausted)?;
+                p.scratch(bytes)?;
+                let mut debit = self
+                    .custody_registry
+                    .ledger()
+                    .retain(custody::Usage::new(bytes, 0), |u| p.admit(u))?;
+                for _ in 0..current.identity.len() {
+                    p.step()?;
+                }
+                let mut expected = current.clone();
+                transaction::nodes::resize_debit(
+                    &mut debit,
+                    custody::Usage::new(
+                        size_of::<CssomInputVersion>()
+                            .checked_add(expected.identity.capacity())
+                            .ok_or(DomError::RepresentationExhausted)?,
+                        0,
+                    ),
+                    |u| p.admit(u),
+                )?;
+                if let Some(revision) = owner_revision {
+                    expected.revision = *revision;
+                }
+                // Context events used this original serial in their accepted
+                // packet. The producer preserves owner identity across updates.
+                batch.retire_inline_declarations(id, &expected)?;
+                continue;
+            }
+            let event = event.live();
             let profile = &recording.inputs().context.profiles[event.profile];
             let document = match event.facts.document {
                 Key::Existing(id) => id,
@@ -980,13 +1178,6 @@ impl Dom {
                 &self.custody_registry,
                 &p,
             )?;
-            let binding = owner
-                .index
-                .membership
-                .bindings
-                .get_with(event.element.slot, &mut || p.step())?
-                .expect("recorded exact binding");
-            let id = owner.objects[binding.ordinal].id();
             batch.update_inline_declaration_context(id, packet.value().clone())?;
             if let Input::Attribute(value) = &event.input {
                 let change = CssomStyleAttributeChange {
@@ -1294,7 +1485,7 @@ mod tests {
         let recording = draft.inline_recording.as_ref().unwrap();
         assert!(recording.log.len >= 3);
         let spent = recording.inputs().spent.load(Ordering::Relaxed);
-        let serial = recording.log.entries.get(0).unwrap().serial;
+        let serial = recording.log.entries.get(0).unwrap().live().serial;
         checkpoint.restore(&mut draft);
         let recording = draft.inline_recording.as_ref().unwrap();
         assert_eq!(recording.log.len, 0);
@@ -1315,7 +1506,7 @@ mod tests {
             .unwrap();
         let recording = draft.inline_recording.as_ref().unwrap();
         assert_eq!(recording.log.len, 1);
-        assert!(recording.log.entries.get(0).unwrap().serial > serial);
+        assert!(recording.log.entries.get(0).unwrap().live().serial > serial);
         let prepared = draft.finish(&dom, &cancel()).unwrap();
         assert_eq!(prepared.state.node(dom.owner, first).unwrap().document(), a);
         assert!(dom.prepare_publication(prepared, &cancel()).is_ok());

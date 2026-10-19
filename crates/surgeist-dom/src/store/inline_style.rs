@@ -2,6 +2,8 @@
 use super::*;
 pub(crate) mod feedback;
 pub(in crate::store) mod recording;
+mod retirement;
+pub(super) use retirement::RetirementPlan;
 #[cfg(test)]
 mod tests;
 use crate::inline_style::*;
@@ -17,6 +19,11 @@ use transaction::ordered_members::{
     Edit, Map, MapCustody, Members, MembersCustody, Membership as MemberChange, Mode, OrderView,
     Qualified, RootHeader,
 };
+
+pub(super) struct ObjectEntry {
+    element: NodeId,
+    properties: CssStyleProperties,
+}
 
 #[derive(Clone)]
 struct Binding {
@@ -91,7 +98,7 @@ pub(super) struct Owner {
     limits: DomInlineStyleLimits,
     store: Option<CssomStore>,
     pub(super) index: Index,
-    objects: Vec<CssStyleProperties>,
+    pub(super) objects: Vec<ObjectEntry>,
     issuer: Option<Arc<recording::InputIssuer>>,
     feedback: Option<custody::Held<Box<feedback::Resident>>>,
     object_debit: custody::Debit,
@@ -253,11 +260,9 @@ impl Index {
         self.change_group(root, membership, false, order, registry, p)?;
         self.change_group(document, membership, true, order, registry, p)
     }
-    fn install(
+    fn replace_binding(
         &mut self,
         binding: Binding,
-        state: &State,
-        owner: DomOwnerId,
         registry: &bank::CustodyRegistry,
         p: &Processing<'_>,
     ) -> Result<(), DomError> {
@@ -282,7 +287,43 @@ impl Index {
             bindings: bank,
             _custody: custody,
         };
+        Ok(())
+    }
+    fn install(
+        &mut self,
+        binding: Binding,
+        state: &State,
+        owner: DomOwnerId,
+        registry: &bank::CustodyRegistry,
+        p: &Processing<'_>,
+    ) -> Result<(), DomError> {
+        let element = binding.element;
+        self.replace_binding(binding, registry, p)?;
         self.relocate(element, state, owner, true, registry, p)
+    }
+    fn remove_binding(
+        &mut self,
+        element: NodeId,
+        registry: &bank::CustodyRegistry,
+        p: &Processing<'_>,
+    ) -> Result<(), DomError> {
+        p.step()?;
+        let (bindings, custody, removed) = self.membership.bindings.remove_controlled(
+            &self.membership._custody,
+            element.slot,
+            registry,
+            |u| p.admit(u),
+        )?;
+        assert!(
+            removed
+                .as_ref()
+                .is_some_and(|row| row.value().element == element)
+        );
+        self.membership = Membership {
+            bindings,
+            _custody: custody,
+        };
+        Ok(())
     }
     fn select(
         &self,
@@ -747,7 +788,7 @@ impl Dom {
             let store = owner.store.as_ref().expect("bound inline store");
             let snapshot = store.snapshot();
             let context = snapshot
-                .block(owner.objects[binding.ordinal].id())?
+                .block(owner.objects[binding.ordinal].properties.id())?
                 .inline_context()
                 .expect("DOM-created inline packet")
                 .context();
@@ -755,7 +796,7 @@ impl Dom {
                 || !context.inputs.iter().any(|i| i.version == inputs.support_version && matches!(&i.data, CssomInputData::Support(support) if support == &inputs.support)) {
                 return Err(DomInlineStyleError::ContextUpdateRequired);
             }
-            return Ok(owner.objects[binding.ordinal].clone());
+            return Ok(owner.objects[binding.ordinal].properties.clone());
         }
         owner.require_no_feedback()?;
         admit(
@@ -864,7 +905,7 @@ impl Dom {
                 .max(4)
                 .min(owner.limits.bindings);
             let bytes = capacity
-                .checked_mul(size_of::<CssStyleProperties>())
+                .checked_mul(size_of::<ObjectEntry>())
                 .ok_or(DomError::RepresentationExhausted)?;
             let debit = self
                 .custody_registry
@@ -877,7 +918,7 @@ impl Dom {
             let actual = next
                 .value()
                 .capacity()
-                .checked_mul(size_of::<CssStyleProperties>())
+                .checked_mul(size_of::<ObjectEntry>())
                 .ok_or(DomError::RepresentationExhausted)?;
             transaction::nodes::resize_debit(
                 next.debit_mut(),
@@ -929,7 +970,10 @@ impl Dom {
             );
             drop(old);
         }
-        owner.objects.push(properties.clone());
+        owner.objects.push(ObjectEntry {
+            element,
+            properties: properties.clone(),
+        });
         owner.index = index;
         Ok(properties)
     }
@@ -959,6 +1003,7 @@ impl Dom {
         let dom = self.snapshot();
         let scope = dom.node(element)?.tree_scope();
         let properties = owner.objects[binding.ordinal]
+            .properties
             .capture(&owner.store.as_ref().expect("bound store").snapshot())?;
         Ok(Some(DomInlineStyleCapture {
             element,
@@ -972,13 +1017,13 @@ impl Dom {
         &self,
         prepared: &Prepared,
         cancel: &AtomicBool,
-    ) -> Result<Option<Index>, DomError> {
+    ) -> Result<(Option<Index>, Option<RetirementPlan>), DomError> {
         let Some(owner) = self
             .inline_styles
             .as_ref()
-            .filter(|o| !o.index.membership.bindings.is_empty())
+            .filter(|o| o.index.membership.bindings.record_count() != 0)
         else {
-            return Ok(None);
+            return Ok((None, None));
         };
         let p = match &prepared.inline_recording {
             Some(recording) => recording.processing(prepared.formation.as_ref(), cancel),
@@ -1031,7 +1076,16 @@ impl Dom {
                         .select_document(*id, &mut selected, &self.custody_registry, &p)?
                 }
                 DomChange::Destroyed(id) if owner.index.membership.contains(*id) => {
-                    return Err(required(*id, DomInlineStyleChange::Retirement));
+                    if !prepared
+                        .inline_recording
+                        .as_ref()
+                        .map(|recording| recording.retired(*id, &p))
+                        .transpose()?
+                        .unwrap_or(false)
+                    {
+                        return Err(required(*id, DomInlineStyleChange::Retirement));
+                    }
+                    selected.insert(Key::Existing(*id), &self.custody_registry, &p)?;
                 }
                 DomChange::NodeDocument(id) if owner.index.membership.contains(*id) => {
                     selected.insert(Key::Existing(*id), &self.custody_registry, &p)?;
@@ -1042,6 +1096,15 @@ impl Dom {
                         .node(self.owner, *id)?
                         .element()
                         .ok_or(DomError::WrongNodeKind)?;
+                    if prepared
+                        .inline_recording
+                        .as_ref()
+                        .map(|recording| recording.retired(*id, &p))
+                        .transpose()?
+                        .unwrap_or(false)
+                    {
+                        continue;
+                    }
                     let b = prepared
                         .state
                         .node(self.owner, *id)?
@@ -1069,12 +1132,21 @@ impl Dom {
             }
         }
         if selected.values.values().next().is_none() {
-            return Ok(None);
+            return Ok((None, None));
         }
         for key in selected.values.values() {
             let Key::Existing(id) = key else {
                 unreachable!("published binding identity");
             };
+            if prepared
+                .inline_recording
+                .as_ref()
+                .map(|recording| recording.retired(*id, &p))
+                .transpose()?
+                .unwrap_or(false)
+            {
+                continue;
+            }
             if owner.feedback_target() == Some(*id)
                 && !same_context(&self.state, &prepared.state, self.owner, *id, &p)?
             {
@@ -1116,6 +1188,16 @@ impl Dom {
             let Key::Existing(id) = key else {
                 unreachable!("published binding identity");
             };
+            if prepared
+                .inline_recording
+                .as_ref()
+                .map(|recording| recording.retired(*id, &p))
+                .transpose()?
+                .unwrap_or(false)
+            {
+                candidate.remove_binding(*id, &self.custody_registry, &p)?;
+                continue;
+            }
             candidate.relocate(
                 *id,
                 &prepared.state,
@@ -1125,7 +1207,15 @@ impl Dom {
                 &p,
             )?;
         }
-        Ok(Some(candidate))
+        let retirement = prepared
+            .inline_recording
+            .as_ref()
+            .map(|recording| {
+                owner.prepare_retirement(recording, &mut candidate, &self.custody_registry, &p)
+            })
+            .transpose()?
+            .flatten();
+        Ok((Some(candidate), retirement))
     }
 }
 
@@ -1133,7 +1223,7 @@ impl Dom {
     pub(super) fn inline_membership(&self) -> Option<Membership> {
         self.inline_styles
             .as_ref()
-            .filter(|o| !o.index.membership.bindings.is_empty())
+            .filter(|o| o.index.membership.bindings.record_count() != 0)
             .map(|o| o.index.membership.clone())
     }
 }

@@ -97,6 +97,13 @@ the context-free service refuses reached inline inputs before publishing that
 prefix. DOM admits wrapper and continuation custody; CSSOM receipts retain their
 independent producer output contract, with no composed physical-memory bound.
 
+Context-bearing destruction retires bound declarations in the same CSSOM batch
+as its canonical destruction segment. Real child-removal hooks run first and
+retain their live context profiles; retirement itself requires no parsing or
+declaration decision. Current retired handles become missing, surviving bindings
+keep their identities, and released binding capacity can be reused. Historical
+captures remain readable; a reused node slot never inherits a retired binding.
+
 A context-free ordinary or Source operation that reaches a bound style
 notification, a relevant context change or retirement returns
 `InlineStyleContextRequired` before that publication. Same-value style setters
@@ -122,10 +129,10 @@ observation's mandatory tail cannot advance until its feedback drains. This
 does not grant general caller reentry. Only an exactly classified echo skips
 inline ingestion; other native hooks still execute. Historical captures remain
 readable, while the incomplete binding refuses a latest coupled capture.
-Terminal owner effects remain terminal and retained; reconciliation and bound
-retirement are unavailable. Inline formation has explicit original DOM custody
-and work limits alongside CSSOM's independent logical/source quotas; neither is
-a process memory measurement.
+Terminal owner effects remain terminal and retained; explicit reconciliation or
+bound retirement while such an outcome is resident is unavailable. Inline
+formation has explicit original DOM custody and work limits alongside CSSOM's
+independent logical/source quotas; neither is a process memory measurement.
 
 For contribution routing and focused verification commands, read the
 [crate guide](AGENTS.md). The [source](src/lib.rs) and [tests](tests/) establish

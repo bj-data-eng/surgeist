@@ -472,6 +472,7 @@ impl Dom {
             let Owner {
                 store,
                 index,
+                objects,
                 feedback,
                 ..
             } = inline_styles.as_mut().expect("resident owner").as_mut();
@@ -493,6 +494,7 @@ impl Dom {
                 history,
                 active_task,
                 inline_index: Some(index),
+                inline_objects: Some(objects),
             }
             .publish(publication)
             .commit;
