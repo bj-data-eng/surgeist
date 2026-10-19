@@ -142,12 +142,18 @@ impl DeclarationBudget {
     }
     pub fn input(&mut self, source: &str) -> Result<CssComponentValueLimits, CssomError> {
         self.text(source)?;
+        self.input_components(self.limits.max_input_bytes)
+    }
+    pub(crate) fn input_components(
+        &mut self,
+        max_bytes: usize,
+    ) -> Result<CssComponentValueLimits, CssomError> {
         let components = self.limits.max_input_components.min(self.input / 3);
         self.input -= components;
         CssComponentValueLimits::try_new(
             self.limits.max_nesting_depth,
             components,
-            self.limits.max_input_bytes,
+            self.limits.max_input_bytes.min(max_bytes),
         )
         .ok_or(CssomError::InvalidInput("declaration nesting bound"))
     }

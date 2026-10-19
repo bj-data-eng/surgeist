@@ -341,6 +341,18 @@ pub struct CssomBatch {
     pub(crate) terminal_replacement: Option<CssomReplaceToken>,
 }
 impl CssomBatch {
+    pub(crate) fn created_block_id(
+        &self,
+        ticket: &CssomBlockTicket,
+    ) -> Result<&CssomBlockId, CssomError> {
+        if !Arc::ptr_eq(&self.token, &ticket.token) {
+            return Err(CssomError::ForeignTicket);
+        }
+        match self.created.get(ticket.index) {
+            Some(Created::Block(id)) => Ok(id),
+            _ => Err(CssomError::ForeignTicket),
+        }
+    }
     /// Resolve a construction ticket against this exact staged owner before publication.
     pub(crate) fn created_sheet_id(
         &self,
@@ -354,15 +366,19 @@ impl CssomBatch {
             _ => Err(CssomError::ForeignTicket),
         }
     }
-    pub(crate) fn apply<T>(
+    pub(crate) fn apply<T, E: From<CssomError>>(
         &mut self,
-        operation: impl FnOnce(&mut Self) -> Result<T, CssomError>,
-    ) -> Result<T, CssomError> {
+        operation: impl FnOnce(&mut Self) -> Result<T, E>,
+    ) -> Result<T, E> {
         if self.poisoned {
-            return Err(CssomError::BatchAborted);
+            return Err(CssomError::BatchAborted.into());
         }
-        let result = operation(self)
-            .and_then(|value| self.staged.check_limits(&self.limits).map(|()| value));
+        let result = operation(self).and_then(|value| {
+            self.staged
+                .check_limits(&self.limits)
+                .map(|()| value)
+                .map_err(E::from)
+        });
         if result.is_err() {
             self.poisoned = true;
         }

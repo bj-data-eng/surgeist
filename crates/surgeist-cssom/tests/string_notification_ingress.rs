@@ -42,7 +42,9 @@ fn selected_notification_source() -> CssSourceSnapshot {
                 value: Some("--x:a\r\nb".into()),
                 echo: None,
             },
+            surgeist_css::CssUtf16InputLimits::default(),
             CssomDeclarationRequestLimits::default(),
+            || Ok::<_, ()>(()),
         )
         .unwrap()
         .unwrap();

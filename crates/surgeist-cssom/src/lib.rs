@@ -36,6 +36,7 @@ mod sheet_replacement;
 mod source_retention;
 mod state_limits;
 mod store;
+mod style_attribute;
 
 pub use declaration::*;
 pub use declaration_budget::CssomDeclarationRequestLimits;
@@ -61,3 +62,4 @@ pub use rule_serialization::CssomRuleFormatLimits;
 pub use sheet_operations::*;
 pub use sheet_replacement::*;
 pub use store::*;
+pub use style_attribute::{CssomStyleAttributeError, CssomStyleAttributeInput};

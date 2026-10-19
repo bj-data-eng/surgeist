@@ -509,10 +509,12 @@ fn explicit_empty_support_and_nonqualifying_notifications_do_not_resolve_or_pars
             edit.prepare_style_attribute_change(
                 &id,
                 &change,
+                surgeist_css::CssUtf16InputLimits::default(),
                 CssomDeclarationRequestLimits {
                     max_input_bytes: 0,
                     ..Default::default()
-                }
+                },
+                || Ok::<_, ()>(())
             )
             .unwrap()
             .is_none()

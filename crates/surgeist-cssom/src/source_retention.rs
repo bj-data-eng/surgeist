@@ -217,7 +217,10 @@ impl State {
                         sources.visit(block.data.as_ref())?;
                         sources.visit(block.counter_edits.as_slice())?;
                         if let Some(value) = &block.replacement_input {
-                            sources.visit(value.diagnostics.as_slice())?;
+                            if let Some(source) = value.parse_source() {
+                                sources.source(source.source())?;
+                            }
+                            sources.visit(value.diagnostics())?;
                         }
                         if let Some(value) = &block.selected_font_face {
                             sources.visit(value.as_ref())?;

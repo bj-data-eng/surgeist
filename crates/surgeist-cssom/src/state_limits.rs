@@ -175,8 +175,8 @@ impl State {
                 add(&mut entries, selected.entries().len());
             }
             if let Some(input) = &block.replacement_input {
-                add(&mut strings, input.source.len());
-                add(&mut entries, input.diagnostics.len());
+                add(&mut strings, input.source().len());
+                add(&mut entries, input.diagnostics().len());
             }
             add(&mut entries, block.admission_inputs.len());
             for input in block.admission_inputs.iter() {

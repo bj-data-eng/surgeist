@@ -526,11 +526,73 @@ pub enum CssomBlockData {
     FontFace(CssFontFaceDescriptors),
 }
 /// Genuine raw contents of the last replacement request, independent of edited selected values.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct CssomDeclarationInput {
-    pub source: String,
-    pub parser_context: CssParserContext,
-    pub diagnostics: Vec<CssRecoveryDiagnostic>,
+    source: DeclarationInputSource,
+    diagnostics: Vec<CssRecoveryDiagnostic>,
+}
+#[derive(Clone, Debug)]
+enum DeclarationInputSource {
+    Utf8(String, CssParserContext),
+    Parsed(CssParseSource),
+}
+impl CssomDeclarationInput {
+    pub(crate) fn utf8(
+        source: &str,
+        parser_context: CssParserContext,
+        diagnostics: Vec<CssRecoveryDiagnostic>,
+    ) -> Self {
+        Self {
+            source: DeclarationInputSource::Utf8(source.to_owned(), parser_context),
+            diagnostics,
+        }
+    }
+    pub(crate) fn parsed(source: CssParseSource, diagnostics: Vec<CssRecoveryDiagnostic>) -> Self {
+        Self {
+            source: DeclarationInputSource::Parsed(source),
+            diagnostics,
+        }
+    }
+    /// The actual parser text: normalized CSS for a preprocessed notification,
+    /// or original UTF8 for an ordinary setter replacement.
+    pub fn source(&self) -> &str {
+        match &self.source {
+            DeclarationInputSource::Utf8(text, _) => text,
+            DeclarationInputSource::Parsed(source) => source.source().as_str(),
+        }
+    }
+    pub fn parser_context(&self) -> CssParserContext {
+        match &self.source {
+            DeclarationInputSource::Utf8(_, context) => *context,
+            DeclarationInputSource::Parsed(source) => source.context(),
+        }
+    }
+    /// Mandatory complete source for the preprocessed notification path,
+    /// including empty or entirely discarded input. Ordinary setters stay UTF8.
+    pub fn parse_source(&self) -> Option<&CssParseSource> {
+        match &self.source {
+            DeclarationInputSource::Utf8(_, _) => None,
+            DeclarationInputSource::Parsed(source) => Some(source),
+        }
+    }
+    pub fn diagnostics(&self) -> &[CssRecoveryDiagnostic] {
+        &self.diagnostics
+    }
+}
+impl PartialEq for CssomDeclarationInput {
+    fn eq(&self, other: &Self) -> bool {
+        self.diagnostics == other.diagnostics
+            && match (&self.source, &other.source) {
+                (DeclarationInputSource::Utf8(a, ac), DeclarationInputSource::Utf8(b, bc)) => {
+                    a == b && ac == bc
+                }
+                (DeclarationInputSource::Parsed(a), DeclarationInputSource::Parsed(b)) => {
+                    a.context() == b.context()
+                        && a.source().original_utf16() == b.source().original_utf16()
+                }
+                _ => false,
+            }
+    }
 }
 #[derive(Clone, Debug)]
 pub struct CssomBlock {

@@ -425,6 +425,28 @@ CSS-owned values expose, with no invented parsed name position; retained survivo
 keep their original checked occurrences. Parsed/typed ingress remains
 honest about its original parser context.
 
+Owner style-attribute notifications accept borrowed UTF8 or shared original UTF16
+through `CssomStyleAttributeInput`. Both enter CSS's lossless preprocessing and
+raw declaration-block grammar in the block's current context. Preparation takes
+explicit UTF16 input limits, declaration-request limits and an interruption poll;
+input failures retain their typed cause and poison the batch. UTF8 encoding is
+bounded by original units/source backing and polls per scalar. CSS preparation
+work and cumulative component/depth/byte admission remain separate from the
+opaque general grammar between boundary polls. This is not a whole-operation
+live-memory receipt. Unrelated/computed/updating notifications do no input work;
+absence keeps the existing parsed empty-replacement branch.
+
+`prepare_created_style_attribute_change` resolves an exact batch-local block
+ticket for initialization before the same commit exposes its live ID. Notifications
+request no echo owner write. Effect classification compares raw UTF16 units to
+the serialized effect without preprocessing; absent and present-empty differ.
+`CssomDeclarationInput` readbacks expose text, parser context, diagnostics and an
+optional complete parse source. Notification inputs retain that mandatory source
+even when empty or entirely discarded, under the canonical source quota, without
+an extra String copy. Existing cssText/property setters keep their own UTF8
+semantics. Later selected-entry edits preserve the original replacement source
+without reconstructing declarations from historical shorthands.
+
 Readonly errors precede source mutation branches. Computed remains independent:
 reads/no-ops follow their selected source branches, while a reached owner-update
 branch returns `ComputedStyleUpdatePrecondition` before testing for a null owner.

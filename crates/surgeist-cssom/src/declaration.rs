@@ -568,11 +568,8 @@ impl CssomBatch {
                         maximum: limits.max_entries,
                     })?,
             );
-            let input = CssomDeclarationInput {
-                source: text.to_owned(),
-                parser_context: context.parser_context(),
-                diagnostics: diagnostics.clone(),
-            };
+            let input =
+                CssomDeclarationInput::utf8(text, context.parser_context(), diagnostics.clone());
             let mut preparation = this.preparation(
                 id.clone(),
                 PreparedAction::Replace(items),
@@ -695,29 +692,42 @@ impl CssomBatch {
             Ok(this.preparation(id.clone(), action, diagnostics, budget))
         })
     }
-    /// Supplied inline attribute notification; qualifying external changes do not echo a host write.
-    /// Unrelated local names/namespaces and computed blocks take the source no-op branch.
-    pub fn prepare_style_attribute_change(
+    pub(crate) fn prepare_attribute_report(
         &mut self,
         id: &CssomBlockId,
-        change: &CssomStyleAttributeChange,
-        limits: CssomDeclarationRequestLimits,
-    ) -> Result<Option<CssomPreparedDeclaration>, CssomError> {
-        self.apply(|this| {
-            let block = this.staged.block(id)?;
-            if change.local_name != "style"
-                || change.namespace.is_some()
-                || block.flags.computed
-                || block.flags.updating
-            {
-                return Ok(None);
-            }
-            if block.owner() != Some(&change.owner) {
-                return Err(CssomError::StaleOwnerNotification);
-            }
-            this.prepare_contents(id, change.value.as_deref().unwrap_or(""), limits, false)
-                .map(Some)
-        })
+        report: CssDeclarationBlockParseReport,
+        mut budget: DeclarationBudget,
+    ) -> Result<CssomPreparedDeclaration, CssomError> {
+        let (source, report) = report.into_parts();
+        let (body, diagnostics) = report.into_parts();
+        check_input_storage(source.source().as_str(), self.limits.max_input_bytes)?;
+        budget.text(source.source().as_str())?;
+        check_resource_diagnostics(&diagnostics)?;
+        budget.scan(body.len())?;
+        budget.phases(
+            body.len()
+                .checked_mul(4)
+                .and_then(|n| n.checked_add(6))
+                .ok_or(CssomError::Limit {
+                    resource: "declaration phases",
+                    maximum: budget.limits.max_entries,
+                })?,
+        );
+        let items = body
+            .iter()
+            .cloned()
+            .map(CssomDeclarationValue::Property)
+            .collect();
+        let input = CssomDeclarationInput::parsed(source, diagnostics.clone());
+        let mut preparation = self.preparation(
+            id.clone(),
+            PreparedAction::Replace(items),
+            diagnostics,
+            budget,
+        );
+        preparation.reflect_owner = false;
+        preparation.input = Some(input);
+        Ok(preparation)
     }
     pub fn prepare_css_float(
         &mut self,

@@ -81,11 +81,11 @@ impl Drop for CssomOwnerEffect {
 }
 /// Exact host facts. Unrelated notifications remain owned/queued by the caller.
 #[derive(Clone, Debug)]
-pub struct CssomStyleAttributeChange {
+pub struct CssomStyleAttributeChange<'a> {
     pub owner: CssomInputVersion,
     pub local_name: String,
     pub namespace: Option<String>,
-    pub value: Option<String>,
+    pub value: Option<CssomStyleAttributeInput<'a>>,
     pub echo: Option<CssomOwnerEffectId>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -107,12 +107,15 @@ impl CssomOwnerApplication<'_, '_> {
             .flags
             .with_updating()
     }
-    pub fn classify(&self, change: &CssomStyleAttributeChange) -> CssomOwnerNotification {
+    pub fn classify(&self, change: &CssomStyleAttributeChange<'_>) -> CssomOwnerNotification {
         if change.echo.as_ref() == Some(&self.effect.id)
             && change.owner == self.effect.owner
             && change.local_name == "style"
             && change.namespace.is_none()
-            && change.value.as_deref() == Some(self.effect.value.as_str())
+            && change
+                .value
+                .as_ref()
+                .is_some_and(|value| value.matches_utf8(&self.effect.value))
         {
             CssomOwnerNotification::MatchingEcho
         } else {
