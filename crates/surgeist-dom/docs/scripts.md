@@ -45,18 +45,26 @@ No HTML empty/type/async/preparation guards or restart hooks are imported.
 Ordinary Template contents and detached hosts remain disconnected; Slot assignment
 alone does not connect them. Removal and later href/content edits do not restart.
 
-Native constructors establish a private immutable closed SVG processing witness:
-all network/data/same-document script acquisition and inline/external execution
-are disabled, and no admitted SVG load/error recipient, executable handler,
-callback, retained task, event or resource output can observe omitted notification.
-This follows the actual constructor/command/host/output boundary, independently
-of null browsing context or HTML Disabled. Authored handler strings are inert
-UTF-16 data; existing Slot intentions remain real and deliverable. The processing
-step consumes that witness from the script's actual node Document, which can
-differ from its shadow-connected host's Document. No URL is classified, fetched
-or decoded, no success/error/event/promise is fabricated, and no execution occurs.
-Resource-capable processing is not admitted. Retained-history installation uses
-its actual qualified transition before using this closed premise.
+Native creation qualifies disabled script acquisition and execution independently
+of null browsing context or HTML Disabled. Before changing an eligible false bit,
+processing also checks the actual staged Load/Error paths for executable
+recipients. Runtime registrations retain DOM-issued affine capabilities across
+all registries using the owner. Capture listeners count at ancestors; noncapture
+listeners count at actual at-target invocations. Registration before creation,
+later insertion or adoption cannot bypass this check. An applicable recipient
+causes atomic `SvgScriptProcessingUnavailable`, preserving the unprocessed bit.
+Removing the last applicable registration permits a later processing attempt.
+
+Configure `DomEventRecipientLimits` explicitly to admit Load/Error registrations;
+its default is zero. Its storage and work are separate from already-started
+dispatch custody. Unused owners need no recipient allocation or route traversal.
+Removal releases live registration capacity; reusable endpoint index backing
+can remain charged until the DOM owner is dropped.
+The actual node Document still qualifies processing even when it differs from
+the shadow-connected host's Document. Authored handler strings remain inert data.
+No URL, acquisition result, event, promise or task is fabricated. Retained-history
+installation preserves its original qualified processing history; registration
+after processing does not replay it.
 
 Clone/import copies the actual true or false bit through the shared clone rule,
 sets Clone cause after copied attributes and before parent insertion, and uses
@@ -66,7 +74,7 @@ unchanged final topology. Snapshots/captures retain their original state. Native
 fragment installation uses fresh native cause and these same insertion hooks;
 it does not certify parsed/resource history. Scalar state adds no retained string
 cost. Processing reuses the finite canonical-node static traversal and fallible
-buffers with per-node cancellation; it introduces no task queue or numeric quota.
+buffers with per-node cancellation, plus finite recipient lookup when needed.
 SVG use-instance trees and resource-capable processing remain separate domains.
 
 [Back to surgeist-dom](../README.md).

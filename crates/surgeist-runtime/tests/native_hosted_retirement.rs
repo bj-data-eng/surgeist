@@ -145,10 +145,10 @@ fn started_hosted_details_dispatch_delivers_later_listener_after_target_retireme
     })
     .unwrap();
     {
-        let dom = session.dom();
+        let mut dom = session.dom();
         registry
             .add_listener(
-                &dom,
+                &mut dom,
                 target,
                 DomEventType::Toggle,
                 DomEventCallback::new(|dom, _, context: &mut Context, event| {
@@ -168,7 +168,7 @@ fn started_hosted_details_dispatch_delivers_later_listener_after_target_retireme
             .unwrap();
         registry
             .add_listener(
-                &dom,
+                &mut dom,
                 target,
                 DomEventType::Toggle,
                 DomEventCallback::new(|dom, _, context: &mut Context, event| {
@@ -362,10 +362,10 @@ fn reentry_registry(
         nested_dispatches: 4,
     })
     .unwrap();
-    let dom = session.dom();
+    let mut dom = session.dom();
     registry
         .add_listener(
-            &dom,
+            &mut dom,
             target,
             DomEventType::Toggle,
             DomEventCallback::new(|dom, _, context: &mut ReentryContext, event| {
@@ -406,7 +406,7 @@ fn reentry_registry(
         .unwrap();
     registry
         .add_listener(
-            &dom,
+            &mut dom,
             target,
             DomEventType::Toggle,
             DomEventCallback::new(|dom, _, context: &mut ReentryContext, event| {
@@ -838,7 +838,7 @@ fn retained_retirement_resumes_without_replay_or_replacement_delivery_after_wron
     assert_ne!(replacement, target);
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             replacement,
             DomEventType::Toggle,
             DomEventCallback::new(|_, _, context: &mut ReentryContext, _| {
@@ -850,7 +850,7 @@ fn retained_retirement_resumes_without_replay_or_replacement_delivery_after_wron
         .unwrap();
     assert!(matches!(
         registry.add_listener(
-            &session.dom(),
+            &mut session.dom(),
             target,
             DomEventType::Toggle,
             DomEventCallback::new(|_, _, _: &mut ReentryContext, _| Ok(())),

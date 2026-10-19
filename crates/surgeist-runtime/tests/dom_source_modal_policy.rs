@@ -223,7 +223,7 @@ fn initial_iframe_focus_policy_denial_completes_modal_before_focus_target_select
     .unwrap();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(move |_, _, calls: &mut usize, event| {

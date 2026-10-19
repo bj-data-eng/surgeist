@@ -30,6 +30,7 @@ impl Draft {
             .document_metadata(document)?
             .document_environment()
             .clone();
+        self.require_svg_notification_closed(key, cancel)?;
         check_cancel(cancel)?;
         let result = self.with_element_fields(key, cancel, |element| {
             element

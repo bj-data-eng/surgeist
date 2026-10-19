@@ -17,7 +17,7 @@ fn show(session: &mut DomSession, subject: NodeId) {
     let mut registry = dispatcher();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(|_, _, calls: &mut usize, event| {
@@ -276,7 +276,7 @@ fn exercise(retain: bool) {
     let mut before = dispatcher();
     let before_listener = before
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(|_, _, calls: &mut usize, event| {
@@ -309,7 +309,7 @@ fn exercise(retain: bool) {
     let mut registry = dispatcher();
     let first_listener = registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::Toggle,
             DomEventCallback::new(move |dom, _, context: &mut Reentry, event| {
@@ -326,7 +326,7 @@ fn exercise(retain: bool) {
         .unwrap();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::Toggle,
             DomEventCallback::new(move |dom, _, context: &mut Reentry, event| {
@@ -347,7 +347,7 @@ fn exercise(retain: bool) {
         .unwrap();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::Close,
             DomEventCallback::new(move |dom, _, context: &mut Reentry, event| {

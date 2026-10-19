@@ -53,6 +53,10 @@ fn hosted_session() -> DomSession {
                 surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
             )
             .unwrap()
+            .with_event_recipients(
+                surgeist_dom::DomEventRecipientLimits::new(64, 16_000_000, 16_000_000, 4_000_000)
+                    .unwrap(),
+            )
             .with_dispatch_custody(
                 surgeist_dom::DomDispatchCustodyLimits::new(
                     64, 4096, 16_000_000, 16_000_000, 4_000_000,
@@ -140,7 +144,7 @@ fn dispatch_hosted(kind: DomEventType) {
         for capture in [false, true] {
             listeners
                 .add_listener(
-                    &session.dom(),
+                    &mut session.dom(),
                     endpoint,
                     kind,
                     observer(capture),

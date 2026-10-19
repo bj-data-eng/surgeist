@@ -109,7 +109,7 @@ fn parked_live(denied: bool) -> LiveCase {
     .unwrap();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(|_, _, calls: &mut usize, _| {
@@ -618,7 +618,7 @@ fn real_modal_close_reserves_its_post_watcher_pending_removal_output_before_queu
     .unwrap();
     registry
         .add_listener(
-            &case.session.dom(),
+            &mut case.session.dom(),
             case.subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(|_, _, calls: &mut usize, event| {

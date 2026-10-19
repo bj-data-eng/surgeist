@@ -958,7 +958,7 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
         let mut calls = 0usize;
         listeners
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 subject,
                 crate::DomEventType::BeforeToggle,
                 crate::DomEventCallback::new(|_, _, calls: &mut usize, _| {
@@ -1134,7 +1134,7 @@ fn real_child_complete_keeps_registered_window_payload_under_the_original_parent
     let mut listeners = dispatcher();
     listeners
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             parent,
             crate::DomEventType::BeforeToggle,
             crate::DomEventCallback::new(move |dom, _, context: &mut Context, event| {
@@ -1612,7 +1612,7 @@ fn ancestor_removal_attempt(
     let mut listeners = dispatcher();
     listeners
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             parent,
             crate::DomEventType::BeforeToggle,
             crate::DomEventCallback::new(move |dom, _, context: &mut AncestorRemoval, event| {

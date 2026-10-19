@@ -309,7 +309,7 @@ fn listeners(
     let mut registry = dispatcher();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(|_, _, context: &mut Context, event| {
@@ -323,7 +323,7 @@ fn listeners(
     for kind in [DomEventType::Close, DomEventType::Toggle] {
         registry
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 subject,
                 kind,
                 DomEventCallback::new(move |dom, _, context: &mut Context, event| {
@@ -876,7 +876,7 @@ fn mutation_registry(
     let mut registry = dispatcher();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             mutate_before_close(subject),
@@ -947,7 +947,7 @@ fn started_close_finishes_late_once_listener_then_reports_exact_retired_read_ope
     let mut registry = mutation_registry(&mut session, subject);
     let late = registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(move |_, _, context: &mut MutationContext, event| {
@@ -1207,7 +1207,7 @@ fn completed_show_then_close_replaces_toggle_with_equal_states_but_keeps_plain_c
     let mut show_registry = dispatcher();
     show_registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(move |dom, _, adoption: &mut Adoption, event| {
@@ -1624,7 +1624,7 @@ fn queued_plain_close_retirement_before_or_during_dispatch_settles_original_cust
         let mut registry = dispatcher();
         registry
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 subject,
                 DomEventType::Close,
                 DomEventCallback::new(
@@ -1644,7 +1644,7 @@ fn queued_plain_close_retirement_before_or_during_dispatch_settles_original_cust
             .unwrap();
         let late = registry
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 subject,
                 DomEventType::Close,
                 DomEventCallback::new(move |_, _, context: &mut CloseRetirementContext, event| {

@@ -31,9 +31,10 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use surgeist_dom::{
-    Dom, DomDispatchCustody, DomError, DomHostedError, DomHostedGlobalId, DomNodeKind, DomSnapshot,
-    HtmlShadowRootMode, NodeId,
+    Dom, DomDispatchCustody, DomError, DomEventParentQuery, DomEventRecipient, DomHostedError,
+    DomSnapshot, HtmlShadowRootMode, NodeId,
 };
+pub use surgeist_dom::{DomEventTarget, DomEventType};
 
 /// Scoped access to the original canonical DOM. The mutable owner cannot be
 /// extracted or replaced. A fresh reborrow is supplied to every listener.
@@ -140,71 +141,6 @@ impl<'a> DomEventDom<'a> {
 
 static NEXT_REGISTRY: AtomicU64 = AtomicU64::new(1);
 
-/// One actual native event endpoint. A Global identity is never a tree node.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DomEventTarget {
-    /// An exact canonical node, including a Document.
-    Node(NodeId),
-    /// The canonical identity of a real native hosted global endpoint.
-    Global(DomHostedGlobalId),
-}
-impl DomEventTarget {
-    /// Returns the canonical node when this endpoint is a node.
-    pub const fn node(self) -> Option<NodeId> {
-        match self {
-            Self::Node(node) => Some(node),
-            Self::Global(_) => None,
-        }
-    }
-    /// Returns the real global identity when this endpoint is a global.
-    pub const fn global(self) -> Option<DomHostedGlobalId> {
-        match self {
-            Self::Global(global) => Some(global),
-            Self::Node(_) => None,
-        }
-    }
-}
-impl From<NodeId> for DomEventTarget {
-    fn from(node: NodeId) -> Self {
-        Self::Node(node)
-    }
-}
-impl From<DomHostedGlobalId> for DomEventTarget {
-    fn from(global: DomHostedGlobalId) -> Self {
-        Self::Global(global)
-    }
-}
-
-/// Native event types currently admitted by the source-qualified producers.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum DomEventType {
-    /// The Style completion load event.
-    Load,
-    /// The Style completion error event.
-    Error,
-    /// The Details notification toggle event with its exact queued payload.
-    Toggle,
-    /// The source-qualified Dialog beforetoggle event.
-    BeforeToggle,
-    /// The plain user-interaction Dialog close notification.
-    Close,
-    /// The plain Dialog close-watcher cancel event.
-    Cancel,
-}
-impl DomEventType {
-    /// Exact source event type spelling.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Load => "load",
-            Self::Error => "error",
-            Self::Toggle => "toggle",
-            Self::BeforeToggle => "beforetoggle",
-            Self::Close => "close",
-            Self::Cancel => "cancel",
-        }
-    }
-}
 /// Source invocation phase, separate from listener capture selection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomEventPhase {
@@ -324,8 +260,6 @@ pub enum DomEventDispatchError {
     IdentityExhausted,
     /// A canonical event-parent chain repeated a node.
     CyclicPath,
-    /// Current Document facts do not establish the supported native no-global parent.
-    UnsupportedDocumentParent,
 }
 impl std::fmt::Display for DomEventDispatchError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -346,9 +280,6 @@ impl std::fmt::Display for DomEventDispatchError {
                 f.write_str("native DOM event registration identity is exhausted")
             }
             Self::CyclicPath => f.write_str("native DOM event parent path contains a cycle"),
-            Self::UnsupportedDocumentParent => {
-                f.write_str("native DOM event Document parent is unsupported")
-            }
         }
     }
 }
@@ -358,6 +289,19 @@ impl std::error::Error for DomEventDispatchError {
             Self::Dom(error) => Some(error),
             Self::Hosted(error) => Some(error),
             _ => None,
+        }
+    }
+}
+impl From<DomError> for DomEventDispatchError {
+    fn from(error: DomError) -> Self {
+        Self::Dom(error)
+    }
+}
+impl From<DomHostedError> for DomEventDispatchError {
+    fn from(error: DomHostedError) -> Self {
+        match error {
+            DomHostedError::Dom(error) => Self::Dom(error),
+            other => Self::Hosted(other),
         }
     }
 }
@@ -460,6 +404,8 @@ struct Registration<C> {
     options: DomEventListenerOptions,
     callback: DomEventCallback<C>,
     order: u64,
+    // The actual callback occurrence drops before its positive DOM lease.
+    _recipient: Option<DomEventRecipient>,
 }
 struct Slot<C> {
     generation: u64,
@@ -510,9 +456,11 @@ impl<C> DomEventDispatcher<C> {
     }
     /// Add in deterministic order. The target/type/callback identity/capture key
     /// deduplicates; changing `once` on a duplicate does not change the listener.
+    /// Load/Error registrations retain a finite canonical recipient lease until
+    /// this exact registration is removed, invoked once, or its dispatcher drops.
     pub fn add_listener(
         &mut self,
-        dom: &DomEventDom<'_>,
+        dom: &mut DomEventDom<'_>,
         target: impl Into<DomEventTarget>,
         event_type: DomEventType,
         callback: DomEventCallback<C>,
@@ -530,7 +478,7 @@ impl<C> DomEventDispatcher<C> {
                 let synchronous = AtomicBool::new(false);
                 dom.raw()
                     .dispatch_global_document(global, &synchronous)
-                    .map_err(DomEventDispatchError::Hosted)?;
+                    .map_err(DomEventDispatchError::from)?;
             }
         }
         for (slot, entry) in self.slots.iter().enumerate() {
@@ -566,15 +514,26 @@ impl<C> DomEventDispatcher<C> {
             .slots
             .iter()
             .position(|s| s.registration.is_none() && s.generation < u64::MAX);
-        let slot = if let Some(slot) = reusable {
-            slot
-        } else {
+        if reusable.is_none() {
             if self.slots.len() >= self.limits.registrations {
                 return Err(DomEventDispatchError::IdentityExhausted);
             }
             self.slots
                 .try_reserve_exact(1)
                 .map_err(|_| DomEventDispatchError::Admission(DomEventResource::Allocation))?;
+        }
+        // Every fallible Runtime preparation precedes acquiring the canonical
+        // registration. Duplicates returned above retain their original lease.
+        let synchronous = AtomicBool::new(false);
+        let recipient = dom.raw_mut().retain_event_recipient(
+            target,
+            event_type,
+            options.capture,
+            &synchronous,
+        )?;
+        let slot = if let Some(slot) = reusable {
+            slot
+        } else {
             self.slots.push(Slot {
                 generation: 0,
                 registration: None,
@@ -589,6 +548,7 @@ impl<C> DomEventDispatcher<C> {
             options,
             callback,
             order,
+            _recipient: recipient,
         });
         self.next_order = order;
         Ok(DomEventRegistrationId {
@@ -1802,36 +1762,6 @@ fn root(
         }
     }
 }
-fn shadow_including_ancestor(
-    snapshot: &DomSnapshot,
-    ancestor: NodeId,
-    mut node: NodeId,
-    budget: &mut Budget<'_>,
-) -> Result<bool, DomEventDispatchError> {
-    loop {
-        source_tick(budget)?;
-        if ancestor == node {
-            return Ok(true);
-        }
-        match snapshot
-            .node(node)
-            .map_err(DomEventDispatchError::Dom)?
-            .shadow_including_parent()
-        {
-            Some(parent) => node = parent,
-            None => return Ok(false),
-        }
-    }
-}
-fn assigned(snapshot: &DomSnapshot, node: NodeId) -> Result<Option<NodeId>, DomEventDispatchError> {
-    let node = snapshot.node(node).map_err(DomEventDispatchError::Dom)?;
-    if matches!(node.kind(), DomNodeKind::Element(_) | DomNodeKind::Text(_)) {
-        node.stored_assigned_slot()
-            .map_err(DomEventDispatchError::Dom)
-    } else {
-        Ok(None)
-    }
-}
 fn build_path(
     dom: &Dom,
     snapshot: &DomSnapshot,
@@ -1882,41 +1812,16 @@ fn build_path(
             closed_slot,
             custody_row: None,
         });
-        let assigned = assigned(snapshot, node)?;
-        let parent = if let Some(shadow) = view.as_shadow_root() {
-            // EventInit.composed is false, but the root test is against the
-            // *first invocation target*, not the first encountered ShadowRoot.
-            if first_root == node {
-                None
-            } else {
-                Some(shadow.host())
-            }
-        } else if let Some(document) = view.as_document() {
-            // Selected native prestart admission: retired hosted provenance
-            // cannot become a fresh closed proof when BC state clears. This is
-            // not an extra requirement of Document's source parent algorithm.
-            let global = if document
-                .metadata()
-                .document_environment()
-                .has_ever_had_navigable()
-            {
-                source_tick(budget)?;
-                Some(
-                    dom.dispatch_relevant_global(node, budget.cancel)
-                        .map_err(DomEventDispatchError::Hosted)?
-                        .ok_or(DomEventDispatchError::UnsupportedDocumentParent)?,
-                )
-            } else {
-                None
-            };
-            if event_type != DomEventType::Load
-                && document
-                    .metadata()
-                    .document_environment()
-                    .browsing_context()
-                    != surgeist_html::HtmlBrowsingContextPresence::Absent
-            {
-                let global = global.ok_or(DomEventDispatchError::UnsupportedDocumentParent)?;
+        let cancel = budget.cancel;
+        let next = dom.dispatch_event_parent(
+            snapshot,
+            DomEventParentQuery::new(node, first_root, target, event_type),
+            cancel,
+            &mut || source_tick(budget),
+        )?;
+        let parent = match next.parent() {
+            Some(DomEventTarget::Node(parent)) => parent,
+            Some(DomEventTarget::Global(global)) => {
                 source_tick(budget)?;
                 if path.len() >= budget.limits.path_items {
                     return Err(DomEventDispatchError::Admission(
@@ -1931,24 +1836,20 @@ fn build_path(
                     closed_slot: false,
                     custody_row: None,
                 });
+                // A native Global's default EventTarget parent is null.
+                break;
             }
-            // Load stops at Document. A non-load hosted Document adds its
-            // actual relevant Global, whose default EventTarget parent is null.
-            None
-        } else {
-            assigned.or(view.parent())
+            None => break,
         };
-        let Some(parent) = parent else {
-            break;
-        };
-        closed_slot = assigned.is_some()
+        closed_slot = next.via_assigned_slot()
             && snapshot
                 .node(root(snapshot, parent, budget)?)
                 .map_err(DomEventDispatchError::Dom)?
                 .as_shadow_root()
                 .is_some_and(|r| r.state().mode() == HtmlShadowRootMode::Closed);
-        at_target =
-            !shadow_including_ancestor(snapshot, root(snapshot, target, budget)?, parent, budget)?;
+        at_target = !next
+            .parent_in_adjusted_target_tree()
+            .expect("a canonical Node parent includes its target-tree relationship");
         if at_target {
             target = parent;
         }

@@ -41,7 +41,7 @@ fn shown_and_initial_toggle_delivered(
     let mut registry = dispatcher::<usize>();
     let once = registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(|_, _, calls: &mut usize, event| {
@@ -102,7 +102,7 @@ fn shown_and_initial_toggle_delivered(
     let mut registry = dispatcher::<QueueContext>();
     let once = registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::Toggle,
             DomEventCallback::new(|_, _, context: &mut QueueContext, event| {
@@ -202,7 +202,7 @@ fn deliver_closed_tasks(session: &mut DomSession, top: DomHostedTopLevel, subjec
     for kind in [DomEventType::Toggle, DomEventType::Close] {
         registry
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 subject,
                 kind,
                 DomEventCallback::new(move |_, _, context: &mut QueueContext, event| {
@@ -302,7 +302,7 @@ fn canceled_modal_request_keeps_layer_then_uncanceled_request_closes_with_real_p
     let mut registry = dispatcher::<usize>();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::Cancel,
             DomEventCallback::new(|_, _, calls: &mut usize, event| {

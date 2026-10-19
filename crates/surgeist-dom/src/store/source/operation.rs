@@ -627,6 +627,7 @@ impl Operation {
             return;
         }
         let draft = &mut self.draft;
+        draft.dom_limits.event_recipients = limits.event_recipients;
         draft
             .input_processing
             .update_limits(limits.input_scratch, limits.input_work);

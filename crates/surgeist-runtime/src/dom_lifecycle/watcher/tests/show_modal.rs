@@ -65,7 +65,7 @@ fn show_modal_watcher_refusal_and_lease_reacquisition_preserve_prefix_and_settle
     let mut registry = dispatcher::<usize>();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(|_, _, calls: &mut usize, _| {
@@ -220,7 +220,7 @@ fn modal_publication_output_refusal_keeps_real_watcher_prefix_and_retries_withou
     let mut registry = dispatcher::<usize>();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(|_, _, calls: &mut usize, _| {
@@ -550,7 +550,7 @@ fn inactive_adoption_assertion_retains_real_cleanup_cause_across_admission_drop_
     let mut registry = dispatcher::<usize>();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(move |dom, _, calls: &mut usize, _| {

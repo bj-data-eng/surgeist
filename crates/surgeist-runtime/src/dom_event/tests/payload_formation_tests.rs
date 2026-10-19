@@ -14,7 +14,7 @@ fn retained_failure() -> (
         let code = u64::try_from(index).unwrap();
         dispatcher
             .add_listener(
-                &DomEventDom::borrow(&mut fixture.dom),
+                &mut DomEventDom::borrow(&mut fixture.dom),
                 fixture.target,
                 DomEventType::Load,
                 DomEventCallback::new(move |_, _, calls: &mut Vec<usize>, _| {

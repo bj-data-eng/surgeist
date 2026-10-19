@@ -36,6 +36,7 @@ mod document;
 mod element_tasks;
 #[cfg(test)]
 pub(crate) mod empty_sequence_observation;
+pub(crate) mod event;
 mod focus;
 mod form;
 mod fullscreen;
@@ -131,6 +132,14 @@ pub enum DomResource {
     DispatchCustodyRetainedBytes,
     /// Temporary registration and retirement-publication banks.
     DispatchCustodyScratch,
+    /// Live positive Load/Error recipient capabilities across all registries.
+    EventRecipients,
+    /// Actual recipient owner, endpoint index, buckets and lease occurrences.
+    EventRecipientRetainedBytes,
+    /// Temporary recipient index and topology-query storage.
+    EventRecipientScratch,
+    /// Recipient admission and reached topology/index query work.
+    EventRecipientWork,
     SourceRetainedBytes,
     SourceRetainedUnits,
     /// Directly owned name records, index capacity and operation receipts.
@@ -371,6 +380,7 @@ pub struct DomLimits {
     fullscreen_events: usize,
     ranges: usize,
     dispatch_custody: crate::DomDispatchCustodyLimits,
+    event_recipients: crate::DomEventRecipientLimits,
     nodes: usize,
     units: usize,
     commands: usize,
@@ -458,6 +468,15 @@ impl DomLimits {
     pub fn dispatch_custody(self) -> crate::DomDispatchCustodyLimits {
         self.dispatch_custody
     }
+    /// Finite positive Load/Error recipient ownership; unused owners allocate nothing.
+    pub fn with_event_recipients(mut self, limits: crate::DomEventRecipientLimits) -> Self {
+        self.event_recipients = limits;
+        self
+    }
+    /// Current independent positive recipient capability policy.
+    pub fn event_recipients(self) -> crate::DomEventRecipientLimits {
+        self.event_recipients
+    }
     #[expect(
         clippy::too_many_arguments,
         reason = "Every independent owner allowance is explicit at construction; required name admission must not acquire an implicit policy"
@@ -503,6 +522,7 @@ impl DomLimits {
             fullscreen_events: 0,
             ranges: 0,
             dispatch_custody: crate::DomDispatchCustodyLimits::default(),
+            event_recipients: crate::DomEventRecipientLimits::default(),
             nodes,
             units,
             commands,
@@ -1123,6 +1143,7 @@ pub struct Dom {
     next_fullscreen_exit: u64,
     element_tasks: Option<std::sync::Weak<crate::element_tasks::Binding>>,
     dispatch_custody: dispatch::CustodyBank,
+    event_recipients: Option<Arc<event::Owner>>,
     owner: DomOwnerId,
     revision: DomRevision,
     limits: DomLimits,
@@ -1213,6 +1234,7 @@ impl Dom {
             fullscreen_exits: fullscreen::custody::Invocations::new(&registry),
             next_fullscreen_exit: 1,
             dispatch_custody: dispatch::CustodyBank::default(),
+            event_recipients: None,
             element_tasks: None,
             owner,
             names,
@@ -1313,6 +1335,9 @@ impl Dom {
             return Err(DomError::SourceOperationPending);
         }
         self.names.admit_limits(limits.names())?;
+        if let Some(owner) = &self.event_recipients {
+            owner.admit_limits(limits.event_recipients())?;
+        }
         admit(self.state.ranges.len(), limits.ranges, DomResource::Ranges)?;
         admit(
             self.fullscreen_exits.len(),
@@ -1869,6 +1894,7 @@ use transaction::staged::DraftNode;
 
 struct Draft {
     base: Arc<State>,
+    event_recipients: Option<Arc<event::Owner>>,
     dom_limits: DomLimits,
     base_custody: transaction::StateCustody,
     input_captures: bank::Bank<source::input::InputEntry>,
@@ -2381,6 +2407,7 @@ impl Draft {
         let ranges = transaction::ranges::Ranges::new(&dom.state, &dom.state_custody);
         Ok(Self {
             base: dom.state.clone(),
+            event_recipients: dom.event_recipients.clone(),
             dom_limits: dom.limits,
             base_custody: dom.state_custody.clone(),
             input_captures: bank::Bank::default(),

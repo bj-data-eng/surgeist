@@ -63,7 +63,7 @@ fn ancestor(cap: u64) -> Result<Ancestor, Failure> {
         nested_dispatches: 2,
     })?;
     registry.add_listener(
-        &session.dom(),
+        &mut session.dom(),
         parent,
         DomEventType::BeforeToggle,
         DomEventCallback::new(|dom, _, context: &mut Child, _| {

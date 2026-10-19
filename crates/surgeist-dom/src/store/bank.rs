@@ -2126,6 +2126,15 @@ impl<T> Bank<T> {
         self.get_shared(index).map(Arc::as_ref)
     }
 
+    pub fn get_with<E>(
+        &self,
+        index: usize,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<&T>, E> {
+        self.entry_with(index, step)
+            .map(|entry| entry.map(|entry| entry.value.as_ref()))
+    }
+
     pub fn get_shared(&self, index: usize) -> Option<&Arc<T>> {
         self.entry(index).map(|entry| &entry.value)
     }
@@ -2144,19 +2153,32 @@ impl<T> Bank<T> {
     }
 
     fn entry(&self, index: usize) -> Option<&Entry<T>> {
+        self.entry_with(index, &mut || Ok::<(), std::convert::Infallible>(()))
+            .expect("infallible observation")
+    }
+
+    fn entry_with<E>(
+        &self,
+        index: usize,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<&Entry<T>>, E> {
+        step()?;
         #[cfg(test)]
         {
             metric(Event::Entered(Domain::Bank));
             metric(Event::BankLookup);
         }
         if index >= self.extent {
-            return None;
+            return Ok(None);
         }
-        let mut page = self.root.as_deref()?;
+        let Some(mut page) = self.root.as_deref() else {
+            return Ok(None);
+        };
         if !fits(index, page.shift) {
-            return None;
+            return Ok(None);
         }
         loop {
+            step()?;
             #[cfg(test)]
             metric(Event::BankPageVisited);
             match &page.contents {
@@ -2166,10 +2188,13 @@ impl<T> Bank<T> {
                     if entry.is_some() {
                         metric(Event::CanonicalRecordRead);
                     }
-                    return entry;
+                    return Ok(entry);
                 }
                 Contents::Branch(children) => {
-                    page = children[(index >> page.shift) & MASK].as_deref()?;
+                    let Some(child) = children[(index >> page.shift) & MASK].as_deref() else {
+                        return Ok(None);
+                    };
+                    page = child;
                 }
             }
         }

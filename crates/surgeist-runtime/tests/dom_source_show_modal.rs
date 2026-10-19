@@ -337,7 +337,7 @@ fn active_show_modal_publishes_structural_phase_then_waits_for_unobserved_rememb
     let mut registry = dispatcher::<usize>();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(|_, _, calls: &mut usize, event| {
@@ -423,7 +423,7 @@ fn canceled_or_post_event_disconnected_show_modal_completes_without_open_or_task
         let mut registry = dispatcher::<usize>();
         registry
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 subject,
                 DomEventType::BeforeToggle,
                 DomEventCallback::new(move |dom, _, calls: &mut usize, event| {
@@ -558,7 +558,7 @@ fn callback_adoption_into_genuinely_inactive_document_keeps_open_and_queue_then_
     let mut registry = dispatcher::<usize>();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(move |dom, _, calls: &mut usize, event| {
@@ -730,7 +730,7 @@ fn started_beforetoggle_finishes_late_once_after_actual_receiver_retirement() {
         let mut registry = dispatcher::<Vec<&'static str>>();
         registry
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 subject,
                 DomEventType::BeforeToggle,
                 DomEventCallback::new(move |dom, _, calls: &mut Vec<&'static str>, event| {
@@ -754,7 +754,7 @@ fn started_beforetoggle_finishes_late_once_after_actual_receiver_retirement() {
             .unwrap();
         let late = registry
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 subject,
                 DomEventType::BeforeToggle,
                 DomEventCallback::new(move |_, _, calls: &mut Vec<&'static str>, event| {
@@ -819,7 +819,7 @@ fn canceled_and_callback_refused_service_retain_actual_dispatch_then_retry_witho
     let mut registry = dispatcher::<usize>();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(|_, _, calls: &mut usize, _| {

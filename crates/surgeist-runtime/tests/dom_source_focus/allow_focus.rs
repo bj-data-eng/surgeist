@@ -132,7 +132,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
     .unwrap();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(move |dom, _, context: &mut Context, event| {
@@ -507,7 +507,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
     .unwrap();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::Toggle,
             DomEventCallback::new(move |dom, _, delivery: &mut Delivery, event| {

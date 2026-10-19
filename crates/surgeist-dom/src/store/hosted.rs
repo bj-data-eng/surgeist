@@ -1101,6 +1101,15 @@ pub(crate) struct GlobalDocumentIndex {
     entries: transaction::auxiliary::index::Index<GlobalMapping>,
     _retained: Retained,
 }
+enum GlobalReadError<E> {
+    Work(E),
+    Identity(DomError),
+}
+impl<E> From<DomError> for GlobalReadError<E> {
+    fn from(error: DomError) -> Self {
+        Self::Identity(error)
+    }
+}
 #[derive(Debug)]
 pub(in crate::store) struct GlobalMapping {
     pub global: DomHostedGlobalId,
@@ -1132,16 +1141,26 @@ impl GlobalDocumentIndex {
         &self,
         global: DomHostedGlobalId,
     ) -> Result<DocumentId, DomHostedError> {
+        self.document_with(global, &mut || Ok(()))
+    }
+    pub(in crate::store) fn document_with<E: From<DomHostedError>>(
+        &self,
+        global: DomHostedGlobalId,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<DocumentId, E> {
         let key =
             transaction::auxiliary::index::Key::new(global.source, global.slot, global.generation);
         self.entries
-            .get(key)
+            .get_with(key, &mut || step().map_err(GlobalReadError::Work))
             .map_err(|error| match error {
-                DomError::ForeignOwner => DomHostedError::StaleIdentity,
-                other => other.into(),
+                GlobalReadError::Work(error) => error,
+                GlobalReadError::Identity(DomError::ForeignOwner) => {
+                    DomHostedError::StaleIdentity.into()
+                }
+                GlobalReadError::Identity(other) => DomHostedError::from(other).into(),
             })?
             .map(|entry| entry.document)
-            .ok_or(DomHostedError::StaleIdentity)
+            .ok_or_else(|| DomHostedError::StaleIdentity.into())
     }
     #[cfg(test)]
     pub(in crate::store) fn inspect_materializations(
@@ -1288,10 +1307,22 @@ impl Dom {
         node: NodeId,
         cancel: &AtomicBool,
     ) -> Result<Option<DomHostedGlobalId>, DomHostedError> {
+        self.dispatch_relevant_global_with(node, cancel, &mut || Ok(()))
+    }
+    pub(in crate::store) fn dispatch_relevant_global_with<E>(
+        &self,
+        node: NodeId,
+        cancel: &AtomicBool,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<DomHostedGlobalId>, E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+    {
         let _work = self.dispatch_hosted_read_work(cancel)?;
+        step()?;
         let global = self.snapshot().relevant_global(node)?;
         if let Some(global) = global {
-            self.dispatch_global_document_current(global)?;
+            self.dispatch_global_document_current_with(global, step)?;
         }
         Ok(global)
     }
@@ -1308,8 +1339,27 @@ impl Dom {
         &self,
         global: DomHostedGlobalId,
     ) -> Result<DocumentId, DomHostedError> {
+        self.dispatch_global_document_current_with(global, &mut || Ok(()))
+    }
+    fn dispatch_global_document_current_with<E>(
+        &self,
+        global: DomHostedGlobalId,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<DocumentId, E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+    {
+        if global.source.owner != self.owner {
+            return Err(DomHostedError::ForeignSource.into());
+        }
         let snapshot = self.snapshot();
-        let document = snapshot.global_document(global)?;
+        let document = self
+            .state
+            .hosted_globals
+            .as_ref()
+            .ok_or(DomHostedError::StaleIdentity)?
+            .document_with(global, step)?;
+        step()?;
         let environment = snapshot
             .document(document)?
             .metadata()
@@ -1317,6 +1367,7 @@ impl Dom {
         environment
             .hosted
             .as_ref()
+            .filter(|association| association.global == global)
             .ok_or(DomHostedError::StaleIdentity)?
             .validate_live()?;
         Ok(document)
@@ -1362,6 +1413,13 @@ impl Draft {
         document: Key,
         cancel: &AtomicBool,
     ) -> Result<bool, DomError> {
+        self.document_fully_active_with(document, || self.source_step(cancel))
+    }
+    pub(super) fn document_fully_active_with(
+        &self,
+        document: Key,
+        mut step: impl FnMut() -> Result<(), DomError>,
+    ) -> Result<bool, DomError> {
         match &self
             .document_metadata(document)?
             .document_environment()
@@ -1386,13 +1444,11 @@ impl Draft {
                     .hosted_history
                     .as_deref()
                     .ok_or(DomError::HostedSourceUnavailable)?;
-                captured_fully_active(graph, document, navigable, || {
-                    self.source_step(cancel).map_err(Into::into)
-                })
-                .map_err(|error| match error {
-                    DomHostedError::Dom(error) => error,
-                    _ => DomError::HostedSourceUnavailable,
-                })
+                captured_fully_active(graph, document, navigable, || step().map_err(Into::into))
+                    .map_err(|error| match error {
+                        DomHostedError::Dom(error) => error,
+                        _ => DomError::HostedSourceUnavailable,
+                    })
             }
         }
     }
