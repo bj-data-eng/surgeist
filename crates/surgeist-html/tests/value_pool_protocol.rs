@@ -1003,3 +1003,124 @@ miss_promotion!(
     6,
     69
 );
+
+fn assert_freeze_string(value: &DocumentString) {
+    assert_eq!(value.code_units(), [0xd800, 0, 41]);
+}
+fn assert_freeze_attributes(value: &OrderedAttributes) {
+    assert_eq!(value.len(), 1);
+    let attribute = value.iter().next().unwrap();
+    assert!(attribute.name().namespace().uri().is_none());
+    assert!(attribute.name().prefix().is_none());
+    assert_eq!(
+        attribute.name().local_name().code_units(),
+        [99, 101, 108, 108]
+    );
+    assert_eq!(attribute.value().code_units(), [0xd800, 0, 41]);
+}
+
+macro_rules! freeze_readiness_only {
+    ($test:ident, $owner:ident, $pool:ty, $input:ident, $shared:ident, $assert_literal:path) => {
+        #[test]
+        fn $test() {
+            let meter = Meter::new();
+            let freeze_work = <$pool>::seal_work();
+            {
+                let mut owner = $owner::new(&meter);
+                let original = $input(&meter, 41);
+                let equal = $input(&meter, 41);
+                let transient = $input(&meter, 42);
+                assert!(!Arc::ptr_eq(
+                    original.value.$shared(),
+                    equal.value.$shared()
+                ));
+                let root = owner.begin();
+                assert_eq!(owner.run(&original.value, true).label(), "Offered");
+                let before_mark = owner.storage();
+                let mark = owner.mark(&root).unwrap();
+                assert_eq!(owner.run(&transient.value, true).label(), "Offered");
+                let before_refusal = owner.storage();
+                let root = match owner.prepare(root) {
+                    Err((error, root)) => {
+                        assert_eq!(error, HtmlValuePoolError::NotReady);
+                        root
+                    }
+                    Ok(seal) => {
+                        owner.abort_seal(seal);
+                        panic!("freeze accepted an unresolved nested mark");
+                    }
+                };
+                assert_eq!(owner.storage(), before_refusal);
+                let usable = owner
+                    .mark(&root)
+                    .expect("refusal must retain the original root");
+                owner.accept(usable);
+                owner.restore(mark);
+                assert_eq!(owner.storage(), before_mark);
+                assert_eq!(owner.run(&transient.value, false).label(), "Miss");
+                let Done::Hit(before_freeze) = owner.run(&equal.value, false) else {
+                    panic!("restoring the nested mark lost the root's original offer");
+                };
+                $assert_literal(&before_freeze.value);
+                assert!(Arc::ptr_eq(
+                    before_freeze.value.$shared(),
+                    original.value.$shared()
+                ));
+                let seal = owner.prepare(root).unwrap();
+                owner.pool.validate_seal(&seal).unwrap();
+                owner.seal(seal);
+                let sealed_storage = owner.storage();
+                let Done::Hit(after_seal) = owner.run(&equal.value, false) else {
+                    panic!("sealing lost the retained original offer");
+                };
+                $assert_literal(&after_seal.value);
+                assert!(Arc::ptr_eq(
+                    after_seal.value.$shared(),
+                    original.value.$shared()
+                ));
+                assert_eq!(owner.storage(), sealed_storage);
+                let fresh = owner.begin();
+                owner.abort(fresh);
+                drop(owner);
+                $assert_literal(&after_seal.value);
+                assert!(Arc::ptr_eq(
+                    after_seal.value.$shared(),
+                    original.value.$shared()
+                ));
+            }
+            assert_eq!(meter.0.live.get(), Storage::default());
+            assert!(meter.0.actions.get() > 0 && meter.0.reads.get() > 0);
+            // Root creation prepaid its fixed close, and mutation action
+            // layouts prepaid inverse/storage cleanup. Freezing checks only
+            // readiness; it must not bill those already admitted operations again.
+            assert_eq!(
+                freeze_work.copied_bytes(),
+                0,
+                "freeze must not recopy root state"
+            );
+            assert_eq!(freeze_work.inspected_bytes(), 0);
+            assert_eq!(freeze_work.reserve_bytes(), 0);
+            assert_eq!(freeze_work.provider_calls(), 0);
+            assert!(
+                freeze_work.record_visits() > 0,
+                "freeze still admits readiness checks"
+            );
+        }
+    };
+}
+freeze_readiness_only!(
+    string_freeze_charges_readiness_without_recharging_prepaid_root_closure,
+    Strings,
+    HtmlStringPool,
+    string,
+    shared_code_units,
+    assert_freeze_string
+);
+freeze_readiness_only!(
+    attribute_freeze_charges_readiness_without_recharging_prepaid_root_closure,
+    Attributes,
+    HtmlAttributePool,
+    attributes,
+    shared_attributes,
+    assert_freeze_attributes
+);
