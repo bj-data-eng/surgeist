@@ -2,6 +2,8 @@
 //! the consuming owner; this bank owns path copying and vacancy summaries.
 
 pub(crate) mod owned;
+#[cfg(test)]
+mod weak_registry_tests;
 
 use std::{
     any::Any,
