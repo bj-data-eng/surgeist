@@ -47,7 +47,7 @@ policies. Across all 935 retained records, outcomes are 351 clean, 337 strict
 rejections, 94 recoveries, and 153 explicit unsupported dispositions. The
 unsupported count includes all 115 panic-freedom-only records and 38 active
 records; it is not an additional set of cases. The
-[census contract](../../csstree_oracle.rs) independently asserts this partition.
+[census contract](../../css/corpora/csstree/csstree_oracle.rs) independently asserts this partition.
 These corpus results do not establish complete grammar coverage of the selected
 standards profile.
 

@@ -2,9 +2,14 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static FIXTURE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+// All consumer tests share one libtest process, so admit one nested Cargo
+// build at a time to keep the repository's one-build-job-per-command limit.
+static NESTED_CARGO: Mutex<()> = Mutex::new(());
 
 fn owned_target_directory(label: &str) -> std::io::Result<PathBuf> {
     reserve_target_directory(&std::env::temp_dir(), label, &FIXTURE_SEQUENCE)
@@ -59,6 +64,10 @@ fn run_owned_cargo(
         .stdin(Stdio::null());
     configure(&mut command, &target);
 
+    // A failed sibling build poisons the lock without invalidating it.
+    let _admission = NESTED_CARGO
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     run_owned_command(command, &target, label)
 }
 
@@ -92,8 +101,6 @@ pub(crate) fn run_example(example: &str) -> Output {
     })
 }
 
-// Only the metadata integration target selects a nested library test.
-#[allow(dead_code)]
 pub(crate) fn run_selected_library_test(name: &str) -> Output {
     run_owned_cargo("property-metadata-owner", "test", |command, target| {
         command.args(["--lib", "--target-dir"]).arg(target).args([

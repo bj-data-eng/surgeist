@@ -21,7 +21,7 @@ the HTML, JavaScript, browser test harness, or font resources.
 The JSON vectors are reviewed literal adaptations, owned by `surgeist-css`.
 They are separate from imported source and from the generator's receipt. Each
 case binds to its upstream path, raw source digest, one-based source line, and
-literal case text. The [parser harness](../../wpt_parsing.rs) verifies those
+literal case text. The [parser harness](../../css/corpora/wpt_parsing.rs) verifies those
 bindings with the shared test digest helper before exercising `parse_sheet`.
 It never derives expected acceptance from Surgeist output.
 
