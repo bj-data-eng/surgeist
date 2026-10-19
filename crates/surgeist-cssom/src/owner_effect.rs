@@ -93,6 +93,24 @@ pub enum CssomOwnerNotification {
     MatchingEcho,
     Unrelated,
 }
+fn classify_notification(
+    effect: &CssomOwnerEffect,
+    change: &CssomStyleAttributeChange<'_>,
+) -> CssomOwnerNotification {
+    if change.echo.as_ref() == Some(&effect.id)
+        && change.owner == effect.owner
+        && change.local_name == "style"
+        && change.namespace.is_none()
+        && change
+            .value
+            .as_ref()
+            .is_some_and(|value| value.matches_utf8(&effect.value))
+    {
+        CssomOwnerNotification::MatchingEcho
+    } else {
+        CssomOwnerNotification::Unrelated
+    }
+}
 /// The binding holds this before its synchronous write. No host callback runs in CSSOM.
 pub struct CssomOwnerApplication<'store, 'effect> {
     store: &'store mut CssomStore,
@@ -108,19 +126,7 @@ impl CssomOwnerApplication<'_, '_> {
             .with_updating()
     }
     pub fn classify(&self, change: &CssomStyleAttributeChange<'_>) -> CssomOwnerNotification {
-        if change.echo.as_ref() == Some(&self.effect.id)
-            && change.owner == self.effect.owner
-            && change.local_name == "style"
-            && change.namespace.is_none()
-            && change
-                .value
-                .as_ref()
-                .is_some_and(|value| value.matches_utf8(&self.effect.value))
-        {
-            CssomOwnerNotification::MatchingEcho
-        } else {
-            CssomOwnerNotification::Unrelated
-        }
+        classify_notification(self.effect, change)
     }
     pub fn finish_success(mut self) {
         self.finish(CssomOwnerEffectStatus::Applied);
@@ -154,10 +160,13 @@ impl CssomStore {
         flags.updating = self.updating.as_ref() == Some(id);
         Ok(flags)
     }
-    pub fn begin_owner_application<'store, 'effect>(
-        &'store mut self,
-        effect: &'effect mut CssomOwnerEffect,
-    ) -> Result<CssomOwnerApplication<'store, 'effect>, CssomError> {
+    /// Validate the authentic Pending packet without consuming its reservation
+    /// or entering updating state. A binding may perform fallible owner-write
+    /// preparation afterward; application revalidates before the actual write.
+    pub fn validate_pending_owner_effect(
+        &self,
+        effect: &CssomOwnerEffect,
+    ) -> Result<(), CssomError> {
         if effect.id.owner != self.state.owner {
             return Err(CssomError::ForeignOwner);
         }
@@ -170,6 +179,23 @@ impl CssomStore {
         {
             return Err(CssomError::StaleOwnerEffect);
         }
+        Ok(())
+    }
+    /// Classify a prospective notification against an exactly current Pending
+    /// effect. Matching does not start application or assert successful delivery.
+    pub fn classify_pending_owner_notification(
+        &self,
+        effect: &CssomOwnerEffect,
+        change: &CssomStyleAttributeChange<'_>,
+    ) -> Result<CssomOwnerNotification, CssomError> {
+        self.validate_pending_owner_effect(effect)?;
+        Ok(classify_notification(effect, change))
+    }
+    pub fn begin_owner_application<'store, 'effect>(
+        &'store mut self,
+        effect: &'effect mut CssomOwnerEffect,
+    ) -> Result<CssomOwnerApplication<'store, 'effect>, CssomError> {
+        self.validate_pending_owner_effect(effect)?;
         effect.status = CssomOwnerEffectStatus::Applying;
         self.updating = Some(effect.block.clone());
         Ok(CssomOwnerApplication {

@@ -677,6 +677,51 @@ impl CssomBatch {
             Ok(true)
         })
     }
+    /// Explicitly retire an inline declaration after its owning Element is
+    /// destroyed. Detach or adoption alone does not authorize retirement.
+    /// Historical captures retain their record; current handles become missing.
+    /// Externally held effects keep their own status and reservation lifecycle.
+    pub fn retire_inline_declarations(
+        &mut self,
+        id: &CssomBlockId,
+        expected_owner: &CssomInputVersion,
+    ) -> Result<(), CssomError> {
+        self.apply(|this| {
+            let block = this.staged.block(id)?;
+            if block.inline_context().is_none()
+                || block.parent().is_some()
+                || !matches!(
+                    block.data(),
+                    CssomBlockData::Properties {
+                        domain: CssomPropertyDomain::Ordinary,
+                        ..
+                    }
+                )
+            {
+                return Err(CssomError::WrongKind);
+            }
+            if block.owner() != Some(expected_owner) {
+                return Err(CssomError::StaleContext);
+            }
+            this.staged.blocks.remove(id);
+            this.owner_updates.retain(|(old, _)| old != id);
+            this.affect(
+                CssomObjectId::Block(id.clone()),
+                &[
+                    CssomChange::Declarations,
+                    CssomChange::Provenance,
+                    CssomChange::Parser,
+                    CssomChange::Support,
+                    CssomChange::Owner,
+                    CssomChange::Base,
+                    CssomChange::Origin,
+                    CssomChange::Layer,
+                    CssomChange::ImportLinks,
+                ],
+            );
+            Ok(())
+        })
+    }
     /// Removes a selected terminal directly; this is a product operation, not the
     /// broader source removeProperty algorithm (which also handles shorthands).
     pub fn remove_selected_terminal(
@@ -1120,8 +1165,11 @@ impl CssomBatch {
                     }
             }
             CssomObjectId::Block(id) => {
-                let a = &self.staged.blocks[id];
-                let b = &self.base.blocks[id];
+                let (a, b) = match (self.staged.blocks.get(id), self.base.blocks.get(id)) {
+                    (None, None) => return false,
+                    (Some(a), Some(b)) => (a, b),
+                    _ => return true,
+                };
                 a.binding != b.binding
                     || a.flags != b.flags
                     || match (a.data(), b.data()) {

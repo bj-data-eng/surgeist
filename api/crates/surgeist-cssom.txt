@@ -2886,6 +2886,7 @@ pub fn surgeist_cssom::CssomBatch::prepare_css_float(&mut self, id: &surgeist_cs
 pub fn surgeist_cssom::CssomBatch::prepare_css_text(&mut self, id: &surgeist_cssom::CssomBlockId, text: &str, limits: surgeist_cssom::CssomDeclarationRequestLimits) -> core::result::Result<surgeist_cssom::CssomPreparedDeclaration, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::prepare_set_property(&mut self, id: &surgeist_cssom::CssomBlockId, name: &str, value: &str, priority: &str, limits: surgeist_cssom::CssomDeclarationRequestLimits) -> core::result::Result<surgeist_cssom::CssomPreparedDeclaration, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::remove_property(&mut self, id: &surgeist_cssom::CssomBlockId, name: &str, limits: surgeist_cssom::CssomDeclarationRequestLimits) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::request_owner_synchronization(&mut self, id: &surgeist_cssom::CssomBlockId, limits: surgeist_cssom::CssomDeclarationRequestLimits) -> core::result::Result<(), surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomBatch
 pub fn surgeist_cssom::CssomBatch::associate_import(&mut self, rule: &surgeist_cssom::CssomRuleId, sheet: &surgeist_cssom::CssomSheetId, input: surgeist_cssom::CssomInputVersion, resolved_location: core::option::Option<alloc::string::String>) -> core::result::Result<bool, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::create_declarations(&mut self, declarations: surgeist_css::syntax::CssDeclarationList, computed: bool, readonly: bool, owner: core::option::Option<surgeist_cssom::CssomInputVersion>) -> core::result::Result<surgeist_cssom::CssomBlockTicket, surgeist_cssom::CssomError>
@@ -2899,6 +2900,7 @@ pub fn surgeist_cssom::CssomBatch::delete_group_rule(&mut self, id: &surgeist_cs
 pub fn surgeist_cssom::CssomBatch::delete_sheet_rule(&mut self, id: &surgeist_cssom::CssomSheetId, index: usize) -> core::result::Result<surgeist_cssom::CssomRuleId, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::remove_selected_terminal(&mut self, id: &surgeist_cssom::CssomBlockId, name: surgeist_css::syntax::CssPropertyNameRef<'_>) -> core::result::Result<bool, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::replace_sheet_text(&mut self, id: &surgeist_cssom::CssomSheetId, source: &str) -> core::result::Result<(), surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::retire_inline_declarations(&mut self, id: &surgeist_cssom::CssomBlockId, expected_owner: &surgeist_cssom::CssomInputVersion) -> core::result::Result<(), surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::set_disabled(&mut self, id: &surgeist_cssom::CssomSheetId, disabled: bool) -> core::result::Result<bool, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::set_rule_css_text(&mut self, id: &surgeist_cssom::CssomRuleId, _text: &str) -> core::result::Result<(), surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::update_context(&mut self, context: surgeist_cssom::CssomContext) -> core::result::Result<bool, surgeist_cssom::CssomError>
@@ -4743,7 +4745,9 @@ pub fn surgeist_cssom::CssomStore::new(limits: surgeist_cssom::CssomLimits, cont
 pub fn surgeist_cssom::CssomStore::snapshot(&self) -> surgeist_cssom::CssomSnapshot
 impl surgeist_cssom::CssomStore
 pub fn surgeist_cssom::CssomStore::begin_owner_application<'store, 'effect>(&'store mut self, effect: &'effect mut surgeist_cssom::CssomOwnerEffect) -> core::result::Result<surgeist_cssom::CssomOwnerApplication<'store, 'effect>, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomStore::classify_pending_owner_notification(&self, effect: &surgeist_cssom::CssomOwnerEffect, change: &surgeist_cssom::CssomStyleAttributeChange<'_>) -> core::result::Result<surgeist_cssom::CssomOwnerNotification, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomStore::declaration_flags(&self, id: &surgeist_cssom::CssomBlockId) -> core::result::Result<surgeist_cssom::CssomBlockFlags, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomStore::validate_pending_owner_effect(&self, effect: &surgeist_cssom::CssomOwnerEffect) -> core::result::Result<(), surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomStore
 pub fn surgeist_cssom::CssomStore::begin_replace_sheet(&mut self, guard: surgeist_cssom::CssomEditGuard, sheet: &surgeist_cssom::CssomSheetId, source: &str) -> core::result::Result<surgeist_cssom::CssomReplaceJob, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomStore::cancel_replace_sheet(&mut self, token: &surgeist_cssom::CssomReplaceToken) -> core::result::Result<surgeist_cssom::CssomReplaceCompletion, surgeist_cssom::CssomError>

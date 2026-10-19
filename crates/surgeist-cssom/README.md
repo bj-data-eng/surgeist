@@ -60,6 +60,23 @@ still require the exact whole-store revision and manifest, so even an unrelated
 inline commit can stale a pending effect. These producer APIs do not implement a
 DOM binding or change the existing post-publication owner-write contract.
 
+`validate_pending_owner_effect` and `classify_pending_owner_notification` let a
+binding prepare fallible owner work while the original effect remains Pending.
+They share application validation and exact echo matching without setting the
+updating flag. `begin_owner_application` revalidates before the actual write;
+dropping its guard still marks an unfinished application Abandoned. Terminal
+effects cannot be replayed. `request_owner_synchronization` explicitly reserves
+a fresh effect for current selected entries, without reparsing or editing them;
+an unchanged CSSOM publication can therefore carry a new owner obligation.
+
+`retire_inline_declarations` removes a current inline block after its owner
+Element is explicitly destroyed, checking its exact current owner version.
+Live reads then return `MissingObject`; historical captures retain their old
+declarations and context. Detach and adoption preserve the block. Retirement
+releases current-state object, packet and source reachability while IDs remain
+unreused. It drops queued writes for that block but does not cancel effects held
+by callers. Bindings own pending-effect coordination and actual Element lifetime.
+
 `CssStyleProperties` provides generated Rust getters/setters for CSS-owned
 canonical spellings, vendor aliases and distinct legacy grammars. Captures have
 only getters. Reflections delegate the common declaration operations with empty

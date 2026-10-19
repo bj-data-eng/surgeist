@@ -1175,6 +1175,42 @@ impl CssomBatch {
             &[CssomChange::Declarations, CssomChange::Provenance],
         );
     }
+    /// Request a fresh write of the current selected declaration state without
+    /// changing or reparsing declarations. Commit admits serialization, effect
+    /// quota and a new single-use identity even when publication is Unchanged.
+    /// Terminal effects remain terminal; this request does not revive them.
+    pub fn request_owner_synchronization(
+        &mut self,
+        id: &CssomBlockId,
+        limits: CssomDeclarationRequestLimits,
+    ) -> Result<(), CssomError> {
+        self.apply(|this| {
+            let block = this.staged.block(id)?;
+            source_precondition(block)?;
+            if !matches!(
+                block.data(),
+                CssomBlockData::Properties { .. }
+                    | CssomBlockData::Page { .. }
+                    | CssomBlockData::FontFace(_)
+            ) {
+                return Err(CssomError::WrongKind);
+            }
+            if block.owner().is_none() {
+                return Err(CssomError::InvalidInput(
+                    "owner synchronization requires a bound declaration",
+                ));
+            }
+            if !this.owner_updates.iter().any(|(old, _)| old == id) {
+                this.owner_updates
+                    .try_reserve(1)
+                    .map_err(|_| CssomError::Limit {
+                        resource: "owner update capacity",
+                        maximum: this.limits.max_pending_owner_effects,
+                    })?;
+            }
+            this.request_owner_update(id, &DeclarationBudget::new(limits, 1))
+        })
+    }
     fn request_owner_update(
         &mut self,
         id: &CssomBlockId,
