@@ -72,6 +72,23 @@ the ordered construction effects. Missing or changed required facts receive
 original roles. An optional unused whole captured Base bank remains fully charged
 historical request data; it does not override the current canonical bindings.
 
+## Control state and form associations
+
+Installation transfers the report's current values, dirty/checked/selected flags,
+control state and qualified associations. Result-local Form and Option/Select
+references map to their fresh canonical identities. Parser-special nonancestor
+Form associations from ordinary document parsing retain their actual owner and
+parser-inserted flag through installation.
+
+A captured nearest Form supplies fragment parsing context. It does not itself
+establish a parser-special external owner: the pinned
+[create-element algorithm](../../../references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md)
+requires a null fragment context for that association. Detached installation
+preserves the actual report state. Later explicit insertion, clone/import,
+removal and adoption apply their ordinary copy/reset rules against the current
+canonical tree. Retained reports and installation snapshots preserve their
+historical values and associations after those edits.
+
 ## Contextual SVG Script and Dialog history
 
 Completed contextual SVG Script transfer uses the original closed fragment
