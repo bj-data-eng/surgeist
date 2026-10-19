@@ -94,6 +94,15 @@ impl DomElement {
         }
     }
 
+    /// Change only an equal prefix backing on an exclusively held candidate.
+    /// Native state and the mandatory namespace/local atoms are untouched.
+    pub(crate) fn replace_name_prefix(
+        &mut self,
+        prefix: Option<DocumentString>,
+    ) -> Option<DocumentString> {
+        self.name.replace_prefix(prefix)
+    }
+
     pub(crate) fn attributes_payload(
         &self,
     ) -> Result<crate::store::source::storage::Payload, DomError> {

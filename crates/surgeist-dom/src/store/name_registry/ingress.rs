@@ -9,10 +9,14 @@ pub(in crate::store) struct AttributeInput {
     pub entries: Vec<crate::DomAttribute>,
     global: Option<custody::Debit>,
     local: Option<name_registry::Attribution>,
+    selected: Option<custody::Debit>,
 }
 pub(in crate::store) struct FormedAttributes {
     pub value: AttributeStorage,
     pub custody: Option<bank::ObjectCustody>,
+    // Ordinary candidate occurrences remain guarded until the receiving Slot
+    // has adopted them. Source occurrences move to their original Formation.
+    pub selected: Option<custody::Debit>,
 }
 // Name conversion creates at most namespace, prefix and local buffers.
 // These fixed stack slots are not an allocated directory. Each actual new
@@ -289,6 +293,7 @@ impl Draft {
             entries: Vec::new(),
             global,
             local,
+            selected: None,
         };
         allocate(&mut input.entries)?;
         let actual = if input.entries.capacity() == 0 {
@@ -315,9 +320,130 @@ impl Draft {
         Ok(input)
     }
 
-    pub(in crate::store) fn form_attributes(
+    fn selected_attribute_credit(
+        &self,
+        input: &mut AttributeInput,
+        original: source::storage::Payload,
+        selected: custody::Debit,
+        budget: Option<&source::formation::Formation>,
+    ) {
+        if let Some(budget) = budget {
+            // The old field was destroyed before this exact occurrence ends.
+            budget.release_payload(original);
+            budget.absorb_payload_debit(selected);
+        } else if let Some(credit) = &mut input.selected {
+            credit
+                .absorb(selected)
+                .expect("one original DOM custody domain");
+        } else {
+            input.selected = Some(selected);
+        }
+    }
+
+    fn share_attribute_strings(
+        &self,
+        input: &mut AttributeInput,
+        budget: Option<&source::formation::Formation>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let Some(session) = self.sharing_session() else {
+            return Ok(());
+        };
+        for index in 0..input.entries.len() {
+            self.source_step(cancel)?;
+            self.seed_name_atoms(input.entries[index].name(), cancel)?;
+            if let Some(prefix) = input.entries[index].name().prefix() {
+                let selected = self.with_sharing_admission(cancel, |admission| {
+                    session.share_string(prefix, admission)
+                })?;
+                if let Some(selected) = selected
+                    && !Arc::ptr_eq(
+                        prefix.shared_code_units(),
+                        selected.value().shared_code_units(),
+                    )
+                {
+                    let mut original = source::storage::Payload::default();
+                    original.string(prefix)?;
+                    let (value, credit) = selected.into_held().into_parts();
+                    drop(input.entries[index].replace_prefix(Some(value)));
+                    self.selected_attribute_credit(input, original, credit, budget);
+                }
+            }
+            let value = input.entries[index].value();
+            let selected = self.with_sharing_admission(cancel, |admission| {
+                session.share_string(value, admission)
+            })?;
+            if let Some(selected) = selected
+                && !Arc::ptr_eq(
+                    value.shared_code_units(),
+                    selected.value().shared_code_units(),
+                )
+            {
+                let mut original = source::storage::Payload::default();
+                original.string(value)?;
+                let (value, credit) = selected.into_held().into_parts();
+                drop(input.entries[index].replace_value(value));
+                self.selected_attribute_credit(input, original, credit, budget);
+            }
+        }
+        Ok(())
+    }
+
+    fn reuse_attributes(
         &self,
         input: AttributeInput,
+        selected: value_sharing::SelectedBank,
+        budget: Option<&source::formation::Formation>,
+        cancel: &AtomicBool,
+    ) -> Result<FormedAttributes, DomError> {
+        let custody = payload::adopt_attributes(
+            selected.storage(),
+            self.custody_registry(),
+            Some(&self.names),
+            |next| self.admit_custody_usage(next, cancel),
+        )?;
+        let mut original = source::storage::Payload::default();
+        original.add_bytes(
+            input
+                .entries
+                .capacity()
+                .checked_mul(size_of::<crate::DomAttribute>())
+                .and_then(|bytes| bytes.checked_add(size_of::<payload::Payload<AttributeValues>>()))
+                .ok_or(DomError::RepresentationExhausted)?,
+        )?;
+        for entry in &input.entries {
+            self.source_step(cancel)?;
+            original.append(entry.retained_payload()?)?;
+        }
+        let text = selected.storage().text_payload();
+        let mut selected = selected.into_held();
+        let text_credit = selected
+            .debit_mut()
+            .split(custody::Usage::new(text.bytes, text.units))?;
+        let (value, selected_credit) = selected.into_parts();
+        // The selected target and mandatory name graph now have actual custody.
+        // Its temporary strong revival receipt can end after that adoption.
+        drop(selected_credit);
+        // Destroy the unused canonical input array and its fields before their
+        // original array and string occurrence credits are released.
+        drop(input);
+        let selected = if let Some(budget) = budget {
+            budget.release_payload(original);
+            budget.absorb_payload_debit(text_credit);
+            None
+        } else {
+            Some(text_credit)
+        };
+        Ok(FormedAttributes {
+            value,
+            custody,
+            selected,
+        })
+    }
+
+    pub(in crate::store) fn form_attributes(
+        &self,
+        mut input: AttributeInput,
         budget: Option<&source::formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<FormedAttributes, DomError> {
@@ -325,8 +451,25 @@ impl Draft {
             return Ok(FormedAttributes {
                 value: AttributeStorage::default(),
                 custody: None,
+                selected: None,
             });
         }
+        // Names are already owner-resolved. Whole-bank reuse precedes any
+        // new materialization identity, target or optional per-string work.
+        let miss = if let Some(session) = self.sharing_session() {
+            match self.with_sharing_admission(cancel, |admission| {
+                session.probe_bank(&input.entries, admission)
+            })? {
+                value_sharing::BankProbe::Hit(selected) => {
+                    return self.reuse_attributes(input, selected, budget, cancel);
+                }
+                value_sharing::BankProbe::Miss(miss) => Some(miss),
+                value_sharing::BankProbe::Bypassed => None,
+            }
+        } else {
+            None
+        };
+        self.share_attribute_strings(&mut input, budget, cancel)?;
         let reserved = payload::Reserved::new()?;
         let body = size_of::<payload::Payload<AttributeValues>>();
         let bytes = input
@@ -339,6 +482,7 @@ impl Draft {
             entries,
             global,
             local,
+            selected,
         } = input;
         let debit = match budget {
             Some(budget) => budget
@@ -380,10 +524,17 @@ impl Draft {
             .seal_with_children(self.custody_registry(), dependency, |next| {
                 self.admit_custody_usage(next, cancel)
             })?;
-        Ok(FormedAttributes {
+        let formed = FormedAttributes {
             value: AttributeStorage::from_payload(sealed.value),
             custody: Some(sealed.custody),
-        })
+            selected,
+        };
+        if let Some(session) = self.sharing_session() {
+            self.with_sharing_admission(cancel, |admission| {
+                session.offer_bank(&formed.value, miss, admission)
+            })?;
+        }
+        Ok(formed)
     }
 
     pub(in crate::store) fn native_element(

@@ -79,6 +79,37 @@ creates a new payload while the staged and previous versions remain controlled.
 Historical adoption borrows that same immutable payload and its cached receipt;
 the external semantic handle itself carries no custody.
 
+Optional owner-local pools reuse equal ordered attribute banks and immutable
+UTF-16 strings during creation, import, installation and actual edits. Whole-bank
+lookup follows required name resolution and precedes optional component sharing.
+Text replacement offers the completed value. Namespace/local-name atoms keep
+their required identity; sharing prefixes, values or Text never merges node
+identity, native state or parser provenance. A semantic no-op keeps its original
+backing and history, including deliberately reserved capacity.
+
+The pools live outside snapshots and retain bounded weak entries. Their bucket,
+inverse and known weak-target storage is admitted separately. A strong candidate
+upgrade admits its full retained graph before selection; sharing does not reduce
+the established per-field occurrence charges. Fresh zero-capacity attribute banks
+have no target to pool. String reuse can avoid duplicate empty UTF-16 targets;
+reserved empty backing still contributes its actual capacity. Installation keeps
+the producer report and receipt intact while forming canonical DOM arrays, so
+retained producer and DOM arrays remain separate storage.
+
+The session attachment retains its admitted weak-owner storage, but pool roots
+remain dormant until eligible value work starts. Value-free edits pay no pool
+root, mark or seal work. A Source checkpoint predating activation restores by
+aborting that session's late root; an existing active root uses paired marks to
+undo the selected suffix. Both preserve spent work. Resumed formation uses the
+current admission envelope after external retained data has been reconciled.
+
+Publication prepares all closing work before accepting marks and freezing the
+paired pools; the final seal is infallible. Refusal, cancellation and
+whole-operation no-ops abort their session. Discarding a Draft for reentrant
+observation ends its uncommitted session before child edits use the current
+owner. Bounded eviction and optional qualifier exhaustion affect reuse, never
+semantic identity.
+
 Revision history uses closed chunks of 32 entries with direct oldest and newest
 access. Publication prepares its insertion, actual oldest-entry evictions and
 storage peak before committing. Unchanged entries are neither copied nor

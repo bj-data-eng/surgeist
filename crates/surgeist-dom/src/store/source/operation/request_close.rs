@@ -321,6 +321,7 @@ impl DomSourceLease<'_> {
         &mut self,
         op: &mut Operation,
         require_history_action_activation: bool,
+        checkpoint: &checkpoint::Checkpoint,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         if op.request_close.is_some() {
@@ -345,7 +346,13 @@ impl DomSourceLease<'_> {
         if !op.command_admitted {
             op.admit_current_command(self.dom, cancel)?;
         }
-        op.publication(self.dom, true, PublicationTarget::None, cancel)?;
+        op.publication(
+            self.dom,
+            true,
+            PublicationTarget::None,
+            Some(checkpoint),
+            cancel,
+        )?;
         op.draft.source_invocation = method;
         op.request_close = Some(Call {
             outer,
@@ -502,7 +509,7 @@ impl DomSourceLease<'_> {
                 .source_invocation
                 .checked_add(1)
                 .ok_or(DomError::RepresentationExhausted)?;
-            op.publication(self.dom, true, PublicationTarget::None, cancel)?;
+            op.publication(self.dom, true, PublicationTarget::None, None, cancel)?;
             op.draft.source_invocation = occurrence;
             call.occurrence = Some(occurrence);
             let request = call.request(op.failure)?;

@@ -135,6 +135,7 @@ pub struct DomDialogTaskQueueCommit<'a, 'dom> {
     lease: &'a mut DomSourceLease<'dom>,
     prepared: Option<crate::store::PreparedPublication>,
     rebase: Option<transaction::PreparedRebase>,
+    sharing: Option<value_sharing::CloseReady>,
     plan: DomDialogTaskQueuePlan,
     task: Option<DomDialogTask>,
     outputs: usize,
@@ -145,11 +146,22 @@ impl DomDialogTaskQueueCommit<'_, '_> {
     /// Publish the already admitted canonical tracker after the actual owner
     /// removes/clears/appends/stores its prepared task. This fence cannot fail.
     pub fn publish(mut self) -> (DomDialogTask, DomDialogTaskQueuePublication) {
-        let prepared = self.prepared.take().expect("prepared fence");
+        let mut prepared = self.prepared.take().expect("prepared fence");
         let rebase = self
             .rebase
             .take()
             .expect("prepared current-root continuation");
+        self.lease
+            .dom
+            .source_operation
+            .as_mut()
+            .expect("exclusive original operation")
+            .draft
+            .close_sharing_publication(
+                &mut prepared,
+                self.sharing.take(),
+                self.checkpoint.as_ref(),
+            );
         let crate::store::CommittedPublication { commit, committed } =
             self.lease.dom.publish_prepared_with_proof(prepared);
         let op = self
@@ -374,7 +386,7 @@ impl<'dom> DomSourceLease<'dom> {
                 element.commit(cancel)?;
             }
             op.draft.queue_details_clear(cancel)?;
-            let mut prepared = op.draft.finish(self.dom, cancel)?;
+            let mut prepared = op.draft.finish_segment(self.dom, cancel)?;
             prepared.state.incomplete_source = Some(self.id);
             if self.dom.state.incomplete_source != Some(self.id) {
                 formation::reserve(
@@ -561,7 +573,12 @@ impl<'dom> DomSourceLease<'dom> {
             }
             let mut prepared = self.dom.prepare_publication(prepared, cancel)?;
             let rebase = op.draft.prepare_rebase(&mut prepared, cancel)?;
-            Ok((prepared, rebase, outputs, required_phases - 1))
+            let sharing = op.draft.prepare_sharing_publication(
+                prepared.changed,
+                Some(&checkpoint),
+                cancel,
+            )?;
+            Ok((prepared, rebase, sharing, outputs, required_phases - 1))
         })();
         if result.is_err() {
             checkpoint.restore(&mut op.draft);
@@ -569,11 +586,13 @@ impl<'dom> DomSourceLease<'dom> {
             return Err(result.err().expect("failure"));
         }
         self.dom.source_operation = Some(op);
-        let (prepared, rebase, outputs, remaining_phases) = result.expect("formed publication");
+        let (prepared, rebase, sharing, outputs, remaining_phases) =
+            result.expect("formed publication");
         Ok(DomDialogTaskQueueCommit {
             lease: self,
             prepared: Some(prepared),
             rebase: Some(rebase),
+            sharing,
             plan,
             task: Some(DomDialogTask {
                 info: plan.info,

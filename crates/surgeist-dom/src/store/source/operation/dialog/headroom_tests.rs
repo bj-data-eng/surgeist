@@ -241,6 +241,12 @@ fn called_request_close_admits_exact_five_revisions_and_phases_before_its_first_
                 focusing: None,
             },
         ));
+        operation.refresh_admission(&cancel).unwrap();
+        let input_bytes = operation.input_bytes().unwrap();
+        let checkpoint = operation
+            .draft
+            .source_checkpoint(input_bytes, 0, &cancel)
+            .unwrap();
         let Command::RequestCloseDialog { result, .. } = &operation.commands[0] else {
             panic!("original method input");
         };
@@ -257,7 +263,12 @@ fn called_request_close_admits_exact_five_revisions_and_phases_before_its_first_
         ));
         // Independent five stops: request slots, Toggle, watcher/open removal,
         // Close queue, final marker/reset. No sixth epilogue is required.
-        let result = lease.begin_request_close(&mut operation, false, &cancel);
+        let result = lease.begin_request_close(&mut operation, false, &checkpoint, &cancel);
+        if result.is_err() {
+            checkpoint.restore(&mut operation.draft);
+        } else {
+            drop(checkpoint);
+        }
         lease.dom.source_operation = Some(operation);
         match expected {
             "revision" => assert!(matches!(result, Err(DomError::RevisionExhausted))),

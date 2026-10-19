@@ -432,6 +432,39 @@ impl Formation {
             }
         }
     }
+    /// Transfer an already admitted payload occurrence from its constructing
+    /// holder. The caller keeps the represented data alive through this move;
+    /// this does not allocate, admit, or change the original work owner.
+    pub(in crate::store) fn absorb_payload_debit(&self, incoming: custody::Debit) {
+        assert!(
+            incoming.belongs_to(self.storage.ledger()),
+            "same original Source payload ledger"
+        );
+        let usage = incoming.usage();
+        let own = self
+            .own
+            .get()
+            .checked_add(usage.bytes())
+            .expect("admitted payload bytes");
+        let units = self
+            .own_units
+            .get()
+            .checked_add(usage.units())
+            .expect("admitted payload units");
+        self.live
+            .load(Ordering::Relaxed)
+            .checked_add(usage.bytes())
+            .expect("admitted live bytes");
+        self.live_units
+            .load(Ordering::Relaxed)
+            .checked_add(usage.units())
+            .expect("admitted live units");
+        self.absorb_debit(Some(incoming));
+        self.own.set(own);
+        self.own_units.set(units);
+        self.live.fetch_add(usage.bytes(), Ordering::Relaxed);
+        self.live_units.fetch_add(usage.units(), Ordering::Relaxed);
+    }
     pub(in crate::store) fn absorb(&self, other: Self) {
         assert!(
             Arc::ptr_eq(&self.live, &other.live)

@@ -503,6 +503,7 @@ pub(super) fn allocate(
     c: &mut Control<'_>,
 ) -> Result<Key, Error> {
     let mut attributes_custody = None;
+    let mut attributes_selected = None;
     let mut attribute_scratch = 0usize;
     #[cfg(test)]
     let mut written = crate::store::CopyObservation::default();
@@ -641,6 +642,7 @@ pub(super) fn allocate(
             }
             let attributes = draft.form_attributes(entries, None, c.cancel)?;
             attributes_custody = attributes.custody;
+            attributes_selected = attributes.selected;
             DomNodeKind::Element(DomElement::from_parsed(
                 name,
                 attributes.value,
@@ -659,6 +661,7 @@ pub(super) fn allocate(
         .checked_sub(attribute_scratch)
         .expect("transferred attribute scratch");
     drop(attributes_custody);
+    drop(attributes_selected);
     Ok(key)
 }
 

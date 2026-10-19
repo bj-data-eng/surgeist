@@ -862,7 +862,7 @@ impl DomHostedCreationLease {
             return Err(DomHostedError::WrongPhase);
         };
         let result = *result;
-        let draft = dom.hosted_draft(operation, source, cancel)?;
+        let mut draft = dom.hosted_draft(operation, source, cancel)?;
         let mut prepared = draft.finish(dom, cancel)?;
         set_pending(&mut prepared, None, cancel)?;
         let permit = source.permit(request, source.revision()?, true, cancel)?;

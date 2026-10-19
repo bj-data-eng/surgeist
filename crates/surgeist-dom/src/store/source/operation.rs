@@ -1060,9 +1060,10 @@ impl Operation {
         dom: &mut Dom,
         incomplete: bool,
         target: PublicationTarget,
+        checkpoint: Option<&checkpoint::Checkpoint>,
         cancel: &AtomicBool,
     ) -> Result<PublishedSegment, DomError> {
-        self.publication_with_hosted(dom, incomplete, target, None, cancel)
+        self.publication_with_hosted(dom, incomplete, target, None, checkpoint, cancel)
             .map_err(|error| match error {
                 crate::hosted::DomHostedError::Dom(error) => error,
                 _ => {
@@ -1080,13 +1081,14 @@ impl Operation {
             &crate::hosted::Request,
             crate::DomHostedSourceRevision,
         )>,
+        checkpoint: Option<&checkpoint::Checkpoint>,
         cancel: &AtomicBool,
     ) -> Result<PublishedSegment, crate::hosted::DomHostedError> {
-        let segment = self.prepare_segment(dom, incomplete, target, hosted, cancel)?;
+        let segment = self.prepare_segment(dom, incomplete, target, hosted, checkpoint, cancel)?;
         let permit = hosted
             .map(|(source, request, revision)| source.permit(request, revision, false, cancel))
             .transpose()?;
-        let published = segment.publish(self, dom);
+        let published = segment.publish(self, dom, checkpoint);
         if let Some(permit) = permit {
             permit.commit();
         }
@@ -1102,6 +1104,7 @@ impl Operation {
             &crate::hosted::Request,
             crate::DomHostedSourceRevision,
         )>,
+        checkpoint: Option<&checkpoint::Checkpoint>,
         cancel: &AtomicBool,
     ) -> Result<SegmentPublication, crate::hosted::DomHostedError> {
         formation::SourceStorage::record_entry();
@@ -1128,7 +1131,7 @@ impl Operation {
             Some(Invocation::Exposed(_)) | None => None,
         };
         self.refresh_admission(cancel)?;
-        let mut prepared = self.draft.finish(dom, cancel)?;
+        let mut prepared = self.draft.finish_segment(dom, cancel)?;
         let incomplete_owner = if incomplete {
             Some(self.id)
         } else {
@@ -1505,9 +1508,13 @@ impl Operation {
         let owner_custody = dom.source_owner_custody_bytes()?;
         let mut prepared = dom.prepare_publication(prepared, cancel)?;
         let rebase = self.draft.prepare_rebase(&mut prepared, cancel)?;
+        let sharing = self
+            .draft
+            .prepare_sharing_publication(changed, checkpoint, cancel)?;
         Ok(SegmentPublication {
             prepared,
             rebase,
+            sharing,
             owner_custody,
             issued_next,
             source,
@@ -1531,6 +1538,7 @@ impl Operation {
 struct SegmentPublication {
     prepared: PreparedPublication,
     rebase: transaction::PreparedRebase,
+    sharing: Option<value_sharing::CloseReady>,
     owner_custody: usize,
     issued_next: Option<u64>,
     source: Option<Arc<DomStyleSource>>,
@@ -1547,10 +1555,16 @@ struct SegmentPublication {
     design_mode: Option<crate::DomSourceDesignModeRequest>,
 }
 impl SegmentPublication {
-    fn publish(self, op: &mut Operation, dom: &mut Dom) -> PublishedSegment {
+    fn publish(
+        self,
+        op: &mut Operation,
+        dom: &mut Dom,
+        checkpoint: Option<&checkpoint::Checkpoint>,
+    ) -> PublishedSegment {
         let Self {
-            prepared,
+            mut prepared,
             rebase,
+            sharing,
             owner_custody,
             issued_next,
             source,
@@ -1566,6 +1580,8 @@ impl SegmentPublication {
             autofocus,
             design_mode,
         } = self;
+        op.draft
+            .close_sharing_publication(&mut prepared, sharing, checkpoint);
         let crate::store::CommittedPublication { commit, committed } =
             dom.publish_prepared_with_proof(prepared);
         op.draft.commit_publication(rebase, &committed);
@@ -1788,6 +1804,7 @@ impl DomSourceLease<'_> {
         if !op.event_exposed
             && let OperationRoot::DialogTask(task) = op.commands
         {
+            op.refresh_admission(cancel)?;
             return op.observe_dialog_task(self.dom, task, cancel);
         }
         if op.cancelled && !op.published && !op.event_exposed {
@@ -1866,6 +1883,7 @@ impl DomSourceLease<'_> {
             )));
         }
         if op.draft.fullscreen_exit.is_some() {
+            op.refresh_admission(cancel)?;
             let request = op.fullscreen_handoff_request(self.dom, cancel)?;
             op.event_exposed = true;
             return Ok(DomSourceProgress::Request(
@@ -1873,6 +1891,9 @@ impl DomSourceLease<'_> {
             ));
         }
         loop {
+            // External task/runtime guards may have released storage since the
+            // last receipt. Refresh before resumed methods or value formation.
+            op.refresh_admission(cancel)?;
             if op.failure.is_some() && op.request_close.is_none() {
                 return self.finish_source_failure(op, cancel);
             }
@@ -1882,7 +1903,7 @@ impl DomSourceLease<'_> {
             {
                 return Ok(progress);
             }
-            op.refresh_admission(cancel)?;
+            op.draft.ensure_sharing(&self.dom.value_sharing, cancel)?;
             if op.published
                 && !op.started
                 && !op.cancelled
@@ -2024,6 +2045,7 @@ impl DomSourceLease<'_> {
                         self.dom,
                         true,
                         PublicationTarget::DesignMode(pending),
+                        Some(&checkpoint),
                         cancel,
                     ) {
                         Ok(published) => published,
@@ -2059,6 +2081,7 @@ impl DomSourceLease<'_> {
                         self.dom,
                         true,
                         PublicationTarget::AutofocusInsertion(pending),
+                        Some(&checkpoint),
                         cancel,
                     ) {
                         Ok(published) => published,
@@ -2095,6 +2118,7 @@ impl DomSourceLease<'_> {
                         self.dom,
                         true,
                         PublicationTarget::DialogFocusing(pending),
+                        Some(&checkpoint),
                         cancel,
                     ) {
                         Ok(published) => published,
@@ -2132,9 +2156,13 @@ impl DomSourceLease<'_> {
                 }) if op.is_show_modal_method() => {
                     // AddOpen and every reached hook finish before this internal
                     // boundary. Rollback is allowed only before this publication.
-                    if let Err(error) =
-                        op.publication(self.dom, true, PublicationTarget::None, cancel)
-                    {
+                    if let Err(error) = op.publication(
+                        self.dom,
+                        true,
+                        PublicationTarget::None,
+                        Some(&checkpoint),
+                        cancel,
+                    ) {
                         checkpoint.restore(&mut op.draft);
                         op.restore_external_receipt(external_applied);
                         op.started = started;
@@ -2152,8 +2180,12 @@ impl DomSourceLease<'_> {
                             require_history_action_activation,
                         },
                 }) => {
-                    let started_call =
-                        self.begin_request_close(op, require_history_action_activation, cancel);
+                    let started_call = self.begin_request_close(
+                        op,
+                        require_history_action_activation,
+                        &checkpoint,
+                        cancel,
+                    );
                     if let Err(error) = started_call {
                         checkpoint.restore(&mut op.draft);
                         op.restore_external_receipt(external_applied);
@@ -2201,6 +2233,7 @@ impl DomSourceLease<'_> {
                         self.dom,
                         true,
                         PublicationTarget::Dialog(pending),
+                        Some(&checkpoint),
                         cancel,
                     ) {
                         Ok(published) => published,
@@ -2231,9 +2264,13 @@ impl DomSourceLease<'_> {
                     }
                     op.started = true;
                     let frame = op.frame()?;
-                    if let Err(e) =
-                        op.publication(self.dom, true, PublicationTarget::Style(frame), cancel)
-                    {
+                    if let Err(e) = op.publication(
+                        self.dom,
+                        true,
+                        PublicationTarget::Style(frame),
+                        Some(&checkpoint),
+                        cancel,
+                    ) {
                         checkpoint.restore(&mut op.draft);
                         op.restore_external_receipt(external_applied);
                         op.started = started;
@@ -2259,9 +2296,13 @@ impl DomSourceLease<'_> {
                         continue;
                     }
                     op.started = true;
-                    if let Err(error) =
-                        op.publication(self.dom, true, PublicationTarget::None, cancel)
-                    {
+                    if let Err(error) = op.publication(
+                        self.dom,
+                        true,
+                        PublicationTarget::None,
+                        Some(&checkpoint),
+                        cancel,
+                    ) {
                         checkpoint.restore(&mut op.draft);
                         op.restore_external_receipt(external_applied);
                         op.started = started;
@@ -2385,6 +2426,7 @@ impl DomSourceLease<'_> {
                             self.dom,
                             false,
                             PublicationTarget::None,
+                            Some(&checkpoint),
                             cancel,
                         ) {
                             Ok(published) => published.commit,
@@ -4406,7 +4448,7 @@ pub(in crate::store) mod accounting_tests {
             baseline + raw.units
         );
         let draft = &lease.dom.source_operation.as_ref().unwrap().draft;
-        let prepared = draft.finish(lease.dom, &cancel).unwrap();
+        let prepared = draft.finish_segment(lease.dom, &cancel).unwrap();
         let DomNodeKind::Element(element) =
             &prepared.state.node(lease.dom.owner, input).unwrap().kind
         else {
@@ -5807,7 +5849,7 @@ pub(in crate::store) mod accounting_tests {
         let draft = &lease.dom.source_operation.as_ref().unwrap().draft;
         let units = draft.custody_ledger().total().units();
         let original = dom_slot(&lease.dom.state, text);
-        let prepared = draft.finish(lease.dom, &cancel).unwrap();
+        let prepared = draft.finish_segment(lease.dom, &cancel).unwrap();
         assert!(Arc::ptr_eq(
             original,
             prepared.state.slots.get_shared(text.slot).unwrap()
@@ -5870,7 +5912,7 @@ pub(in crate::store) mod accounting_tests {
         op.draft.source_limits.as_mut().unwrap().retained_bytes = exact - 1;
         let draft = &lease.dom.source_operation.as_ref().unwrap().draft;
         assert!(
-            matches!(draft.finish(lease.dom, &cancel), Err(DomError::ResourceLimit {resource:DomResource::SourceRetainedBytes,limit}) if limit==exact-1)
+            matches!(draft.finish_segment(lease.dom, &cancel), Err(DomError::ResourceLimit {resource:DomResource::SourceRetainedBytes,limit}) if limit==exact-1)
         );
         assert_eq!(lease.snapshot().stamp(), before.stamp());
         assert!(Arc::ptr_eq(&original, dom_slot(&lease.dom.state, text)));
@@ -5885,7 +5927,7 @@ pub(in crate::store) mod accounting_tests {
             .unwrap()
             .retained_bytes = exact;
         let draft = &lease.dom.source_operation.as_ref().unwrap().draft;
-        let prepared = draft.finish(lease.dom, &cancel).unwrap();
+        let prepared = draft.finish_segment(lease.dom, &cancel).unwrap();
         assert_eq!(
             draft.custody_ledger().total().bytes() + draft.source_other_bytes,
             exact
@@ -5967,7 +6009,7 @@ pub(in crate::store) mod accounting_tests {
             op.draft.source_limits.as_mut().unwrap().retained_units = limit;
             let draft = &lease.dom.source_operation.as_ref().unwrap().draft;
             let before = lease.snapshot();
-            let result = draft.finish(lease.dom, &cancel);
+            let result = draft.finish_segment(lease.dom, &cancel);
             if short {
                 assert!(
                     matches!(result, Err(DomError::ResourceLimit {resource:DomResource::SourceRetainedUnits,limit:actual}) if actual==limit)
@@ -6029,7 +6071,7 @@ pub(in crate::store) mod accounting_tests {
         ));
         let frame = op.frame().unwrap();
         let op = lease.dom.source_operation.as_ref().unwrap();
-        let prepared = op.draft.finish(lease.dom, &cancel).unwrap();
+        let prepared = op.draft.finish_segment(lease.dom, &cancel).unwrap();
         let prior = op.draft.source_temporary_units.load(Ordering::Relaxed);
         let source = op
             .source(

@@ -498,6 +498,28 @@ pub(in crate::store) fn slot_dependency(
     children_dependency(form, element, registry, names, admit)
 }
 
+/// Adopt the one actual immutable attribute target and its qualified name
+/// children. Existing controlled targets reuse their original custody; callers
+/// never reconstruct or charge another attribute-child graph for that alias.
+pub(in crate::store) fn adopt_attributes(
+    storage: &crate::name::AttributeStorage,
+    registry: &bank::CustodyRegistry,
+    names: Option<&super::name_registry::Operation>,
+    mut admit: impl FnMut(Usage) -> Result<(), DomError>,
+) -> Result<Option<bank::ObjectCustody>, DomError> {
+    storage
+        .payload()
+        .map(|value| {
+            registry.adopt_object_with_children(
+                value.identity,
+                storage.own_usage(),
+                |admit| attribute_dependency(&value.value, registry, names, false, admit),
+                &mut admit,
+            )
+        })
+        .transpose()
+}
+
 fn children_dependency(
     form: Option<bank::ObjectCustody>,
     element: Option<&crate::DomElement>,
@@ -520,21 +542,9 @@ fn children_dependency(
         .map(|element| NameChildren::adopt(element.name(), registry, names, &mut admit))
         .transpose()?;
     let attributes = element
-        .and_then(|element| {
-            element
-                .attributes_backing()
-                .payload()
-                .map(|value| (element.attributes_backing(), value))
-        })
-        .map(|(storage, value)| {
-            registry.adopt_object_with_children(
-                value.identity,
-                storage.own_usage(),
-                |admit| attribute_dependency(&value.value, registry, names, false, admit),
-                &mut admit,
-            )
-        })
-        .transpose()?;
+        .map(|element| adopt_attributes(element.attributes_backing(), registry, names, &mut admit))
+        .transpose()?
+        .flatten();
     bank::Dependency::new(
         SlotChildren {
             _form_names: form,

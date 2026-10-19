@@ -1316,6 +1316,7 @@ impl DomSourceLease<'_> {
                     true,
                     super::PublicationTarget::None,
                     Some((source, inner.request(), current.revision)),
+                    Some(&checkpoint),
                     cancel,
                 )?;
                 Ok(next_phase)
@@ -1494,6 +1495,7 @@ impl DomSourceLease<'_> {
                     true,
                     super::PublicationTarget::None,
                     Some((source, original, packet.revision)),
+                    Some(&checkpoint),
                     cancel,
                 )?;
                 Ok(())
@@ -1733,6 +1735,7 @@ impl DomSourceLease<'_> {
                         true,
                         super::PublicationTarget::None,
                         Some((source, original, packet.revision)),
+                        Some(&checkpoint),
                         cancel,
                     )?;
                     Ok(())

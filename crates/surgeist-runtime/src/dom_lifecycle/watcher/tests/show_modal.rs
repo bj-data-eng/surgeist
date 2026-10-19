@@ -605,6 +605,8 @@ fn inactive_adoption_assertion_retains_real_cleanup_cause_across_admission_drop_
     // one-step caller-policy sequence so an expensive earlier segment cannot
     // carry excess allowance through the shorter terminal tail. This locates
     // actual admission phases; it does not assert a numeric work tariff.
+    // Bound each search by the fixture's declared caller work policy. Refused
+    // attempts restore cold state, so spent work is not remaining allowance.
     let mut found = None;
     let queue_stamp = session.snapshot().stamp();
     let queue_publications = session
@@ -614,7 +616,7 @@ fn inactive_adoption_assertion_retains_real_cleanup_cause_across_admission_drop_
         .published_phases();
     let mut prefix_published = false;
     'search: for prefix_state in 0..2 {
-        for allowance in 1..=2048 {
+        for allowance in 1..=source_limits().work() {
             let spent = session.dom().pending_source_edit().unwrap().spent_work();
             let cap = spent
                 .checked_add(resume_work)

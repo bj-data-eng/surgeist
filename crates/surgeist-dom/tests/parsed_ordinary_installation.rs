@@ -4683,3 +4683,292 @@ fn parsed_input_image_history_transfers_never_entered_absent_empty_and_nonempty_
         assert_eq!(installed.node_for(&source), Some(input));
     }
 }
+
+#[test]
+fn parsed_values_reuse_native_backing_without_rewriting_report_or_parser_state() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, environment) = setup();
+    let mut seed = DomBatch::new();
+    let native_document = seed.create_document();
+    let native_input = seed.create_element_ns(&native_document, Namespace::html(), "input");
+    seed.set_attribute(&native_input, "type", "text");
+    seed.set_attribute(&native_input, "value", "initial");
+    seed.set_attribute(&native_input, "class", "cell");
+    let mut text = Vec::with_capacity(64);
+    text.extend("repeat".encode_utf16());
+    let native_text = seed.create_text(&native_document, DocumentString::from_utf16(text));
+    let seeded = dom.apply(seed, &cancel).unwrap();
+    let native_input = seeded.created(&native_input).unwrap().unwrap();
+    let native_text = seeded.created(&native_text).unwrap().unwrap();
+    let native = dom.snapshot();
+    let native_bank = native
+        .node(native_input)
+        .unwrap()
+        .as_element()
+        .unwrap()
+        .attributes();
+    assert_eq!(native_bank.len(), 3);
+    let native_data = native.node(native_text).unwrap().data().unwrap();
+    assert_eq!(native_data.code_units(), [114, 101, 112, 101, 97, 116]);
+    assert_eq!(native_data.shared_code_units().capacity(), 64);
+    assert!(
+        !native
+            .node(native_input)
+            .unwrap()
+            .as_input()
+            .unwrap()
+            .state()
+            .parser_inserted()
+    );
+
+    let markup = concat!(
+        "<!doctype html><form>",
+        "<input type=text value=initial class=cell>",
+        "<input type=text value=initial class=cell>",
+        "<p class=cell>repeat</p><p class=cell>repeat</p></form>"
+    );
+    let mut source = Vec::with_capacity(8192);
+    source.extend(markup.encode_utf16());
+    let report = parse(HtmlSource::utf16(DocumentString::from_utf16(source)));
+    let source_identity = report.source().identity().clone();
+    let source_backing = Arc::as_ptr(report.source().as_utf16().unwrap().shared_code_units());
+    let source_capacity = report
+        .source()
+        .as_utf16()
+        .unwrap()
+        .shared_code_units()
+        .capacity();
+    assert_eq!(source_capacity, 8192);
+    let receipt = report.retained_construction_bytes();
+    assert!(receipt > 0);
+    let mut pending = vec![report.document().unwrap().root()];
+    let mut source_inputs = Vec::new();
+    let mut source_texts = Vec::new();
+    while let Some(node) = pending.pop() {
+        match node.kind() {
+            surgeist_html::HtmlNodeKind::Element(element)
+                if element.name().local_name() == &DocumentString::from("input") =>
+            {
+                let bank = element.attributes().shared_attributes();
+                assert_eq!(bank.len(), 3);
+                let fields: Vec<_> = bank
+                    .iter()
+                    .map(|attribute| {
+                        (
+                            Arc::as_ptr(attribute.value().shared_code_units()),
+                            attribute.value().shared_code_units().capacity(),
+                        )
+                    })
+                    .collect();
+                source_inputs.push((
+                    node.id(),
+                    Arc::as_ptr(bank),
+                    bank.capacity(),
+                    bank.as_slice().as_ptr() as usize,
+                    fields,
+                ));
+            }
+            surgeist_html::HtmlNodeKind::Text(text) => {
+                assert_eq!(text.code_units(), [114, 101, 112, 101, 97, 116]);
+                source_texts.push((
+                    node.id(),
+                    Arc::as_ptr(text.shared_code_units()),
+                    text.shared_code_units().capacity(),
+                ));
+            }
+            _ => {}
+        }
+        pending.extend(
+            node.children()
+                .rev()
+                .map(|id| report.document().unwrap().node(&id).unwrap()),
+        );
+    }
+    assert_eq!(source_inputs.len(), 2);
+    assert_eq!(source_texts.len(), 2);
+    let result = install(&mut dom, report.clone(), environment);
+    let inputs: Vec<_> = source_inputs
+        .iter()
+        .map(|(id, ..)| result.node_for(id).unwrap())
+        .collect();
+    let texts: Vec<_> = source_texts
+        .iter()
+        .map(|(id, ..)| result.node_for(id).unwrap())
+        .collect();
+    let form = element(&result, "form");
+    assert_ne!(inputs[0], inputs[1]);
+    assert_ne!(texts[0], texts[1]);
+    for (index, input) in inputs.iter().enumerate() {
+        let node = result.snapshot().node(*input).unwrap();
+        let attributes = node.as_element().unwrap().attributes();
+        assert_eq!(
+            attributes.as_ptr(),
+            native_bank.as_ptr(),
+            "canonical bank reuse is independent of the report's HTML bank"
+        );
+        assert_ne!(
+            attributes.as_ptr() as usize,
+            source_inputs[index].3,
+            "the retained HTML and canonical DOM arrays are distinct live allocations"
+        );
+        for (attribute, (name, value)) in
+            attributes
+                .iter()
+                .zip([("type", "text"), ("value", "initial"), ("class", "cell")])
+        {
+            assert!(attribute.name().namespace_uri().is_none());
+            assert!(attribute.name().prefix().is_none());
+            assert!(
+                attribute
+                    .name()
+                    .local_name()
+                    .code_units()
+                    .iter()
+                    .copied()
+                    .eq(name.encode_utf16())
+            );
+            assert!(
+                attribute
+                    .value()
+                    .code_units()
+                    .iter()
+                    .copied()
+                    .eq(value.encode_utf16())
+            );
+        }
+        let input = node.as_input().unwrap();
+        assert!(input.state().parser_inserted());
+        assert!(!input.state().flags().dirty_value());
+        assert_eq!(input.form_owner().unwrap(), Some(form));
+        assert_eq!(input.value(), "initial".encode_utf16().collect::<Vec<_>>());
+    }
+    for text in &texts {
+        let data = result.snapshot().node(*text).unwrap().data().unwrap();
+        assert!(Arc::ptr_eq(
+            data.shared_code_units(),
+            native_data.shared_code_units()
+        ));
+        assert_eq!(data.code_units(), [114, 101, 112, 101, 97, 116]);
+        assert_eq!(data.shared_code_units().capacity(), 64);
+    }
+    let mut edit = DomBatch::new();
+    edit.set_attribute(inputs[0], "class", "edited");
+    edit.set_input_value(inputs[0], "current");
+    edit.replace_data(texts[0], 0, 6, "changed");
+    dom.apply(edit, &cancel).unwrap();
+    let current = dom.snapshot();
+    assert_eq!(
+        current.node(inputs[0]).unwrap().as_input().unwrap().value(),
+        "current".encode_utf16().collect::<Vec<_>>()
+    );
+    assert!(
+        current
+            .node(inputs[0])
+            .unwrap()
+            .as_input()
+            .unwrap()
+            .state()
+            .flags()
+            .dirty_value()
+    );
+    assert_eq!(
+        current.node(texts[0]).unwrap().data().unwrap(),
+        &DocumentString::from("changed")
+    );
+    for snapshot in [&native, result.snapshot(), &current] {
+        assert_eq!(
+            snapshot
+                .node(native_input)
+                .unwrap()
+                .as_input()
+                .unwrap()
+                .value(),
+            "initial".encode_utf16().collect::<Vec<_>>()
+        );
+        assert!(
+            !snapshot
+                .node(native_input)
+                .unwrap()
+                .as_input()
+                .unwrap()
+                .state()
+                .parser_inserted()
+        );
+        assert_eq!(
+            snapshot.node(native_text).unwrap().data().unwrap(),
+            &DocumentString::from("repeat")
+        );
+    }
+    for (snapshot, input, text) in [
+        (result.snapshot(), inputs[0], texts[0]),
+        (result.snapshot(), inputs[1], texts[1]),
+        (&current, inputs[1], texts[1]),
+    ] {
+        let element = snapshot.node(input).unwrap().as_element().unwrap();
+        assert_eq!(
+            element.attribute(&"class".into()),
+            Some(&DocumentString::from("cell"))
+        );
+        assert_eq!(
+            snapshot.node(input).unwrap().as_input().unwrap().value(),
+            "initial".encode_utf16().collect::<Vec<_>>()
+        );
+        let data = snapshot.node(text).unwrap().data().unwrap();
+        assert!(Arc::ptr_eq(
+            data.shared_code_units(),
+            native_data.shared_code_units()
+        ));
+        assert_eq!(data.code_units(), [114, 101, 112, 101, 97, 116]);
+    }
+    assert!(std::ptr::eq(result.report(), Arc::as_ref(&report)));
+    assert_eq!(report.source().identity(), &source_identity);
+    assert_eq!(report.retained_construction_bytes(), receipt);
+    assert_eq!(
+        Arc::as_ptr(report.source().as_utf16().unwrap().shared_code_units()),
+        source_backing
+    );
+    assert_eq!(
+        report
+            .source()
+            .as_utf16()
+            .unwrap()
+            .shared_code_units()
+            .capacity(),
+        source_capacity
+    );
+    assert!(
+        report
+            .source()
+            .as_utf16()
+            .unwrap()
+            .code_units()
+            .iter()
+            .copied()
+            .eq(markup.encode_utf16())
+    );
+    for (id, pointer, capacity, buffer, fields) in source_inputs {
+        let surgeist_html::HtmlNodeKind::Element(element) =
+            report.document().unwrap().node(&id).unwrap().kind()
+        else {
+            panic!("same report Input");
+        };
+        let bank = element.attributes().shared_attributes();
+        assert_eq!(Arc::as_ptr(bank), pointer);
+        assert_eq!(bank.capacity(), capacity);
+        assert_eq!(bank.as_slice().as_ptr() as usize, buffer);
+        for (attribute, (pointer, capacity)) in bank.iter().zip(fields) {
+            assert_eq!(Arc::as_ptr(attribute.value().shared_code_units()), pointer);
+            assert_eq!(attribute.value().shared_code_units().capacity(), capacity);
+        }
+    }
+    for (id, pointer, capacity) in source_texts {
+        let surgeist_html::HtmlNodeKind::Text(text) =
+            report.document().unwrap().node(&id).unwrap().kind()
+        else {
+            panic!("same report Text");
+        };
+        assert_eq!(text.code_units(), [114, 101, 112, 101, 97, 116]);
+        assert_eq!(Arc::as_ptr(text.shared_code_units()), pointer);
+        assert_eq!(text.shared_code_units().capacity(), capacity);
+    }
+}

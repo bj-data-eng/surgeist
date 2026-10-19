@@ -94,7 +94,7 @@ fn draft(dom: &Dom) -> Draft {
     .unwrap()
     .0
 }
-fn publish(dom: &mut Dom, draft: &Draft) {
+fn publish(dom: &mut Dom, draft: &mut Draft) {
     let prepared = draft.finish(dom, &cancel()).unwrap();
     dom.publish(prepared, &cancel()).unwrap();
 }
@@ -135,7 +135,7 @@ fn actual_source_unfullscreen_with_no_flagged_members_does_not_scan_unrelated_ra
             let key = staged.resolve((*member).into()).unwrap();
             staged.add_top_layer(key, &cancel).unwrap();
         }
-        publish(&mut dom, &staged);
+        publish(&mut dom, &mut staged);
         let old = dom.snapshot();
         let mut lease = dom
             .begin_source_edit(
@@ -212,7 +212,7 @@ fn unavailable_document_lists_refuse_the_first_read_without_flag_or_layer_public
             fields.interactive_document = Some(DocumentInteractiveState::Unavailable)
         })
         .unwrap();
-    publish(&mut dom, &staged);
+    publish(&mut dom, &mut staged);
     let before = dom.snapshot();
     let mut lease = dom
         .begin_source_edit(
@@ -262,7 +262,7 @@ fn pending_flagged_member_counts_for_simple_document_while_unflagged_raw_members
     staged
         .request_top_layer_removal(first_key, &cancel())
         .unwrap();
-    publish(&mut dom, &staged);
+    publish(&mut dom, &mut staged);
     let before = dom.snapshot();
     let view = before.document(document).unwrap();
     assert_eq!(view.fullscreen_model_element().unwrap(), Some(first));
@@ -324,7 +324,7 @@ fn checkpoint_restores_model_flags_and_lists_after_the_real_unfullscreen_command
         vec![first_key]
     );
     assert_eq!(staged.select_temporary_bytes.load(Ordering::Relaxed), 0);
-    publish(&mut dom, &staged);
+    publish(&mut dom, &mut staged);
     assert_eq!(
         dom.snapshot()
             .document(document)
@@ -391,7 +391,7 @@ fn detached_adoption_preflight_does_not_scan_unrelated_raw_or_pending_members() 
                 .relations_insert(owner, role, 0, &keys, &cancel)
                 .unwrap();
         }
-        publish(&mut dom, &staged);
+        publish(&mut dom, &mut staged);
         let old = dom.snapshot();
         let mut staged = form(&dom);
         let subject_key = staged.resolve(subject.into()).unwrap();

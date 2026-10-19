@@ -221,12 +221,34 @@ impl<'a> Admission<'a> {
 pub(in crate::store) struct Checkpoint {
     mark: transaction::JournalMark,
     control: super::control::Snapshot,
+    sharing: SharingCheckpoint,
     _header: custody::Debit,
 }
+enum SharingCheckpoint {
+    Absent,
+    Dormant,
+    Marked(value_sharing::Checkpoint),
+}
 impl Checkpoint {
+    pub(in crate::store) fn sharing(&self) -> Option<&value_sharing::Checkpoint> {
+        match &self.sharing {
+            SharingCheckpoint::Marked(mark) => Some(mark),
+            SharingCheckpoint::Absent | SharingCheckpoint::Dormant => None,
+        }
+    }
     pub(in crate::store) fn restore(self, draft: &mut Draft) {
+        // Journal rollback first validates this transaction, publication epoch,
+        // and nested boundary before a cold boundary may reset its attachment.
         draft.rollback_journal(self.mark);
         self.control.restore(draft);
+        match self.sharing {
+            SharingCheckpoint::Absent => drop(draft.sharing.take()),
+            SharingCheckpoint::Dormant => draft
+                .sharing_session()
+                .expect("a dormant boundary retains its attachment")
+                .reset_dormant(),
+            SharingCheckpoint::Marked(mark) => mark.restore(),
+        }
     }
 }
 impl Draft {
@@ -247,6 +269,18 @@ impl Draft {
             .retain(custody::Usage::new(size_of::<Checkpoint>(), 0), |usage| {
                 self.admit_custody_usage(usage.checked_add(extra)?, cancel)
             })?;
+        let sharing = match self.sharing_session() {
+            None => SharingCheckpoint::Absent,
+            Some(session) if session.is_dormant() => SharingCheckpoint::Dormant,
+            Some(session) => {
+                SharingCheckpoint::Marked(session.checkpoint(&mut value_sharing::Admission {
+                    global: &mut |usage| {
+                        self.admit_custody_usage(usage.checked_add(extra)?, cancel)
+                    },
+                    step: &mut || self.source_step(cancel),
+                })?)
+            }
+        };
         let mark = self.journal_mark(extra_bytes, extra_units, cancel)?;
         let control = super::control::Snapshot::capture(self);
         self.source_other_bytes = self.source_other_bytes.max(other_live_bytes);
@@ -261,6 +295,7 @@ impl Draft {
         Ok(Checkpoint {
             mark,
             control,
+            sharing,
             _header: header,
         })
     }

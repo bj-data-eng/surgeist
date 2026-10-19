@@ -38,7 +38,7 @@ fn draft(dom: &Dom) -> Draft {
     .unwrap()
     .0
 }
-fn publish(dom: &mut Dom, draft: Draft) {
+fn publish(dom: &mut Dom, mut draft: Draft) {
     let prepared = draft.finish(dom, &AtomicBool::new(false)).unwrap();
     dom.publish(prepared, &AtomicBool::new(false)).unwrap();
 }

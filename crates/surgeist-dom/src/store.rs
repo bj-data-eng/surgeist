@@ -77,6 +77,10 @@ mod transaction;
 #[cfg(test)]
 pub(crate) use transaction::CopyObservation;
 mod tree;
+mod value_sharing;
+mod value_sharing_ingress;
+#[cfg(test)]
+mod value_sharing_lifecycle_tests;
 mod view_transition;
 use crate::view_transition::*;
 pub(crate) use bank::owned::{EmptyPath, OwnedBank};
@@ -1208,6 +1212,7 @@ pub struct Dom {
     details_transferred: bool,
     hosted_operations: hosted::operations::Operations,
     hosted_revisions: u64,
+    value_sharing: value_sharing::Owner,
     _custody_administration: custody::Debit,
 }
 impl Dom {
@@ -1264,6 +1269,14 @@ impl Dom {
                 step: &mut || Ok(()),
             },
         )?;
+        let value_sharing = value_sharing::Owner::new(
+            owner,
+            ledger.clone(),
+            &mut value_sharing::Admission {
+                global: &mut |_| Ok(()),
+                step: &mut || Ok(()),
+            },
+        )?;
         Ok(Self {
             style_cssom_roots: style_custody::Bank::new(&registry),
             fullscreen_exits: fullscreen::custody::Invocations::new(&registry),
@@ -1272,6 +1285,7 @@ impl Dom {
             element_tasks: None,
             owner,
             names,
+            value_sharing,
             revision: DomRevision(0),
             limits,
             state: Arc::new(state),
@@ -1575,7 +1589,8 @@ impl Dom {
         prepared: Prepared,
         cancelled: &AtomicBool,
     ) -> Result<DomCommit, DomError> {
-        let publication = self.prepare_publication(prepared, cancelled)?;
+        let mut publication = self.prepare_publication(prepared, cancelled)?;
+        publication.close_ordinary_sharing(cancelled)?;
         Ok(self.publish_prepared(publication))
     }
     fn prepare_publication(
@@ -1613,6 +1628,7 @@ impl Dom {
         )?;
         let changed = guarded.value.changed_from(&self.state);
         let Prepared {
+            sharing,
             name_promotions,
             formation,
             state_frontiers: _,
@@ -1753,6 +1769,7 @@ impl Dom {
         // callbacks or external effects occur while prepared state is private.
         check_cancel(cancelled)?;
         Ok(PreparedPublication {
+            sharing: sharing.map(SharingPublication::Open),
             name_promotions,
             state_custody,
             allocation_ids,
@@ -1788,6 +1805,7 @@ impl Dom {
         publication: PreparedPublication,
     ) -> CommittedPublication {
         let PreparedPublication {
+            sharing,
             name_promotions,
             state_custody,
             allocation_ids: _,
@@ -1814,6 +1832,14 @@ impl Dom {
             changes,
             _formation,
         } = publication;
+        if let Some(sharing) = sharing {
+            match sharing {
+                SharingPublication::Prepared(prepared) => prepared.commit(),
+                SharingPublication::Open(_) => {
+                    unreachable!("value sharing closes before publication")
+                }
+            }
+        }
         if changed {
             name_promotions.commit();
             #[cfg(test)]
@@ -2030,7 +2056,12 @@ struct Draft {
     source_mirrors: source::formation::SourceMirrors,
     source_ancestor_custody: Option<Arc<source::formation::EventWorkCustody>>,
     names: name_registry::Operation,
+    sharing: Option<value_sharing::Session>,
     _header_custody: custody::Debit,
+}
+enum SharingPublication {
+    Open(value_sharing::Session),
+    Prepared(value_sharing::Prepared),
 }
 pub(crate) struct PreparedPublication {
     created_ranges: Vec<Option<crate::DomRangeId>>,
@@ -2060,6 +2091,7 @@ pub(crate) struct PreparedPublication {
     _transition_outputs: custody::Debit,
     _formation: Option<source::formation::Formation>,
     name_promotions: name_registry::Promotions,
+    sharing: Option<SharingPublication>,
 }
 struct Prepared {
     state: State,
@@ -2084,6 +2116,7 @@ struct Prepared {
     _transition_outputs: custody::Debit,
     formation: Option<source::formation::Formation>,
     name_promotions: name_registry::Promotions,
+    sharing: Option<value_sharing::Session>,
 }
 
 struct PreparedRoot {
@@ -2102,7 +2135,107 @@ impl Prepared {
     }
 }
 
+impl PreparedPublication {
+    fn close_ordinary_sharing(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
+        let Some(SharingPublication::Open(session)) = &self.sharing else {
+            return Ok(());
+        };
+        let ready = if self.changed {
+            Some(session.prepare_close(
+                &[],
+                &mut value_sharing::Admission {
+                    global: &mut |usage| match &self._formation {
+                        Some(formation) => formation.admit_custody_usage(usage, cancel),
+                        None => check_cancel(cancel),
+                    },
+                    step: &mut || source::formation::step(self._formation.as_ref(), cancel),
+                },
+            )?)
+        } else {
+            None
+        };
+        let Some(SharingPublication::Open(session)) = self.sharing.take() else {
+            unreachable!("exclusive ordinary sharing preparation")
+        };
+        if let Some(ready) = ready {
+            self.sharing = Some(SharingPublication::Prepared(session.close(ready, &[])));
+        } else {
+            drop(session);
+        }
+        Ok(())
+    }
+}
+
 impl Draft {
+    pub(in crate::store) fn sharing_session(&self) -> Option<&value_sharing::Session> {
+        self.sharing.as_ref()
+    }
+
+    pub(in crate::store) fn with_sharing_admission<T>(
+        &self,
+        cancel: &AtomicBool,
+        action: impl FnOnce(&mut value_sharing::Admission<'_>) -> Result<T, DomError>,
+    ) -> Result<T, DomError> {
+        action(&mut value_sharing::Admission {
+            global: &mut |usage| self.admit_custody_usage(usage, cancel),
+            step: &mut || self.source_step(cancel),
+        })
+    }
+
+    fn ensure_sharing(
+        &mut self,
+        owner: &value_sharing::Owner,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if self.sharing.is_none() {
+            self.sharing =
+                Some(self.with_sharing_admission(cancel, |admission| owner.attach(admission))?);
+        }
+        Ok(())
+    }
+
+    fn prepare_sharing_publication(
+        &self,
+        changed: bool,
+        checkpoint: Option<&source::checkpoint::Checkpoint>,
+        cancel: &AtomicBool,
+    ) -> Result<Option<value_sharing::CloseReady>, DomError> {
+        let Some(session) = self.sharing.as_ref().filter(|_| changed) else {
+            return Ok(None);
+        };
+        let mark = checkpoint.and_then(source::checkpoint::Checkpoint::sharing);
+        self.with_sharing_admission(cancel, |admission| {
+            session.prepare_close(mark.as_slice(), admission).map(Some)
+        })
+    }
+
+    fn close_sharing_publication(
+        &mut self,
+        publication: &mut PreparedPublication,
+        ready: Option<value_sharing::CloseReady>,
+        checkpoint: Option<&source::checkpoint::Checkpoint>,
+    ) {
+        let Some(session) = self.sharing.take() else {
+            assert!(ready.is_none(), "no closing plan without a sharing session");
+            return;
+        };
+        if publication.changed {
+            let mark = checkpoint.and_then(source::checkpoint::Checkpoint::sharing);
+            let prepared = session.close(
+                ready.expect("all sharing close admission precedes the fence"),
+                mark.as_slice(),
+            );
+            assert!(
+                publication.sharing.is_none(),
+                "one value root per publication"
+            );
+            publication.sharing = Some(SharingPublication::Prepared(prepared));
+        } else {
+            assert!(ready.is_none(), "a whole no-op aborts optional sharing");
+            drop(session);
+        }
+    }
+
     pub(in crate::store) fn source_work_custody(&self) -> source::formation::SourceWorkCustody {
         self.source_work_custody.clone()
     }
@@ -2288,6 +2421,10 @@ impl Draft {
                 )?
             }
         };
+        let sharing = dom.value_sharing.attach(&mut value_sharing::Admission {
+            global: &mut admit_initial,
+            step: &mut || source::initial::step(initial, cancelled),
+        })?;
         let existing = bank::Bank::default();
         let existing_custody = bank::BankCustody::default();
         let records_charge = ledger.retain(custody::Usage::ZERO, &mut admit_initial)?;
@@ -2338,6 +2475,7 @@ impl Draft {
             input_captures_custody: bank::BankCustody::default(),
             custody_registry: registry,
             names,
+            sharing: Some(sharing),
             journal,
             _header_custody: header,
             ranges,
@@ -2576,6 +2714,7 @@ impl Draft {
         cancel: &AtomicBool,
         formation: Option<source::formation::Formation>,
     ) -> Result<Key, DomError> {
+        let retained_occurrence = formation.is_some();
         let debit = match formation.and_then(source::formation::Formation::into_debit) {
             Some(debit) => debit,
             None => self
@@ -2584,7 +2723,13 @@ impl Draft {
                     self.admit_custody_usage(usage, cancel)
                 })?,
         };
-        self.allocate_retained(custody::Held::new(kind, debit), document, limits, cancel)
+        self.allocate_retained(
+            custody::Held::new(kind, debit),
+            retained_occurrence,
+            document,
+            limits,
+            cancel,
+        )
     }
     pub(in crate::store) fn allocate_charged(
         &mut self,
@@ -2594,6 +2739,7 @@ impl Draft {
         cancel: &AtomicBool,
         charge: Option<source::checkpoint::Charge>,
     ) -> Result<Key, DomError> {
+        let retained_occurrence = charge.is_some();
         let debit = match charge.and_then(source::checkpoint::Charge::into_debit) {
             Some(debit) => debit,
             None => self
@@ -2602,11 +2748,18 @@ impl Draft {
                     self.admit_custody_usage(usage, cancel)
                 })?,
         };
-        self.allocate_retained(custody::Held::new(kind, debit), document, limits, cancel)
+        self.allocate_retained(
+            custody::Held::new(kind, debit),
+            retained_occurrence,
+            document,
+            limits,
+            cancel,
+        )
     }
     fn allocate_retained(
         &mut self,
         kind: custody::Held<DomNodeKind>,
+        retained_occurrence: bool,
         document: Key,
         limits: DomLimits,
         cancel: &AtomicBool,
@@ -2623,6 +2776,11 @@ impl Draft {
         admit(units, limits.units, DomResource::StringCodeUnits)?;
         self.reserve_created_arena(cancel)?;
         self.source_admit(0, cancel)?;
+        // These producer fronts retain the actual kind occurrence, not an
+        // inferred subset of unrelated formation metadata. Raw installation
+        // inputs instead receive a separate temporary occurrence in the helper.
+        let kind = self.share_held_text(kind, retained_occurrence, cancel)?;
+        let kind = self.share_held_element_prefix(kind, retained_occurrence, cancel)?;
         let key = Key::Created(self.created.len());
         let reflected_targets = match kind.value() {
             DomNodeKind::Element(element) if element.button_state().is_some() => {
@@ -3367,6 +3525,21 @@ impl Draft {
                     }
                     _ => unreachable!("checked CharacterData kind"),
                 };
+                let retained_occurrence = formation.is_some();
+                let credit = match formation.and_then(source::formation::Formation::into_debit) {
+                    Some(credit) => credit,
+                    None => self
+                        .custody_ledger()
+                        .retain(custody::Usage::ZERO, |usage| {
+                            self.admit_custody_usage(usage, cancelled)
+                        })?,
+                };
+                let held = self.share_held_text(
+                    custody::Held::new(kind, credit),
+                    retained_occurrence,
+                    cancelled,
+                )?;
+                let (kind, credit) = held.into_parts();
                 let units = (self.units - previous_units)
                     .checked_add(kind_units(&kind)?)
                     .ok_or(DomError::RepresentationExhausted)?;
@@ -3374,7 +3547,7 @@ impl Draft {
                 self.with_node_fields(node, cancelled, |fields| fields.kind = kind)?;
                 self.units = units;
                 self.range_replace_data(node, offset, removed, data.len(), cancelled)?;
-                drop(formation); // The actual replacement graph now belongs to Draft.
+                drop(credit); // The actual replacement graph now belongs to Draft.
                 if let Some(parent) = self.node(node)?.parent {
                     self.children_changed(parent, limits, cancelled)?;
                 }
@@ -3405,18 +3578,25 @@ impl Draft {
         }
         Ok(())
     }
-    fn finish(&self, dom: &Dom, cancelled: &AtomicBool) -> Result<Prepared, DomError> {
+    fn finish(&mut self, dom: &Dom, cancelled: &AtomicBool) -> Result<Prepared, DomError> {
         self.finish_with_mapping(dom, cancelled, std::iter::empty())
             .map(|(prepared, _)| prepared)
     }
 
+    fn finish_segment(&self, dom: &Dom, cancelled: &AtomicBool) -> Result<Prepared, DomError> {
+        self.finish_sparse(dom, cancelled, std::iter::empty())
+            .map(|(prepared, _)| prepared)
+    }
+
     fn finish_with_mapping(
-        &self,
+        &mut self,
         dom: &Dom,
         cancelled: &AtomicBool,
         requested: impl ExactSizeIterator<Item = Key>,
     ) -> Result<(Prepared, Vec<NodeId>), DomError> {
-        self.finish_sparse(dom, cancelled, requested)
+        let (mut prepared, mapped) = self.finish_sparse(dom, cancelled, requested)?;
+        prepared.sharing = self.sharing.take();
+        Ok((prepared, mapped))
     }
 }
 fn kind_units(kind: &DomNodeKind) -> Result<usize, DomError> {

@@ -972,6 +972,7 @@ impl Draft {
         let semantic_changed = !changes.is_empty();
         Ok((
             Prepared {
+                sharing: None,
                 name_promotions,
                 created_ranges,
                 retirements,

@@ -451,6 +451,12 @@ impl Draft {
         }
         #[cfg(test)]
         attribute_copy_observation::copied(copy_boundary, &attributes.entries, self, cancelled)?;
+        if let Some(name_formation) = write.name_formation {
+            candidate
+                .as_ref()
+                .expect("same Source payload producer")
+                .absorb(name_formation);
+        }
         let attributes = self.form_attributes(attributes, candidate.as_ref(), cancelled)?;
         let _attributes_custody = attributes.custody;
         let staged = element.with_attributes_formed(
@@ -460,12 +466,6 @@ impl Draft {
             candidate.as_ref(),
             cancelled,
         )?;
-        if let Some(name_formation) = write.name_formation {
-            candidate
-                .as_ref()
-                .expect("same Source payload producer")
-                .absorb(name_formation);
-        }
         self.publish_element(node, old_units, staged, candidate, limits, cancelled)?;
         #[cfg(test)]
         attribute_copy_observation::hooks(

@@ -627,9 +627,13 @@ mod tests {
         work
     }
     fn publish_phase(draft: &mut Draft, dom: &mut Dom, cancel: &AtomicBool) {
-        let prepared = draft.finish(dom, cancel).unwrap();
+        let prepared = draft.finish_segment(dom, cancel).unwrap();
         let mut publication = dom.prepare_publication(prepared, cancel).unwrap();
         let rebase = draft.prepare_rebase(&mut publication, cancel).unwrap();
+        let sharing = draft
+            .prepare_sharing_publication(publication.changed, None, cancel)
+            .unwrap();
+        draft.close_sharing_publication(&mut publication, sharing, None);
         let publication = dom.publish_prepared_with_proof(publication);
         draft.commit_publication(rebase, &publication.committed);
         crate::store::oracle_tests::assert_full_canonical(dom);
