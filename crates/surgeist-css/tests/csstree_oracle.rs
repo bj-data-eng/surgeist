@@ -1,3 +1,10 @@
+//! Contract and census checks for the parser-captured CSSTree oracle.
+//!
+//! The oracle is characterization, not a correctness oracle: its observations
+//! are captured from the current public parser. These tests bind its metadata,
+//! provenance and outcome partition; independent evidence comes from the
+//! expected classes and from `csstree_canonical.rs`.
+
 mod support;
 
 use support::csstree::{

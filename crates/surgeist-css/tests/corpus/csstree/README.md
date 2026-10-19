@@ -51,6 +51,33 @@ records; it is not an additional set of cases. The
 These corpus results do not establish complete grammar coverage of the selected
 standards profile.
 
+The oracle is characterization, not a correctness oracle. It is captured from
+the current public parser, so it detects behavior changes but cannot show that
+the captured behavior is right; a re-captured oracle is never evidence for a
+behavior change. The I01 observables fixture
+(`tests/fixtures/i01-c01-observables.tsv`) is characterization on the same
+terms. Independent evidence comes from the CSS-owned expected classes and
+reconciliation records, and from the
+[canonical comparison](../../csstree_canonical.rs). That comparison serializes
+Surgeist's public parse result for each upstream-parsed case and compares it with
+CSSTree's own generator expectation: the case's `canonical_css`, or its input
+when that field is absent, as CSSTree's `lib/__tests/generate.js` requires at
+the pinned revision. Both sides pass through one documented normalization that
+removes comments, quote style, optional whitespace and optional final
+semicolons, but keeps combinators, declarations, values and rule structure.
+Of the 721 upstream-parsed cases, 452 are compared: 277 match and 175 are
+listed in [`canonical_exceptions.rs`](../../support/csstree/canonical_exceptions.rs)
+as deliberate differences with a cited reason, or as known defects. The other
+269 have no public projection (108 panic-freedom-only cases) or retain no
+syntax after a whole-input rejection (161 cases, whose basis the expected
+classes record). A listed case that starts matching fails the comparison.
+
+A change to an expected class kind or expected diagnostic (code, recovery
+action or payload relation) in `tests/csstree/expected-classes.json` must cite
+its specification basis in the same change, in the owning reconciliation record,
+test or this guide. Parser output, the oracle and the observables fixture are not
+such a basis.
+
 The CSS-owned adapter registry sends ordinary `selector`, `selectorList`, and
 `mediaQuery` fixtures directly to their matching raw fragment parsers. Inputs
 and diagnostic coordinates remain unchanged. Selector probes provide only the

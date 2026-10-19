@@ -1,3 +1,11 @@
+//! Characterization of I01/C01 public-parser observables.
+//!
+//! `fixtures/i01-c01-observables.tsv` records parser output, including `Debug`
+//! renderings, and is not a correctness oracle: a matching row shows only that
+//! observed behavior is unchanged, and rewriting a row is never evidence that a
+//! behavior change is right. Independent expectations below cite their
+//! specification basis.
+
 use std::collections::BTreeSet;
 
 use surgeist_css::{
