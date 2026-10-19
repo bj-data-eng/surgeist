@@ -144,8 +144,9 @@ mod image;
 mod inline_style;
 mod input;
 pub use inline_style::{
-    DomInlineStyleCapture, DomInlineStyleChange, DomInlineStyleError, DomInlineStyleInputs,
-    DomInlineStyleLimits, DomInlineStyleRequestLimits,
+    DomInlineStyleBatchContext, DomInlineStyleCapture, DomInlineStyleChange, DomInlineStyleCommit,
+    DomInlineStyleError, DomInlineStyleInputs, DomInlineStyleLimits, DomInlineStyleProfile,
+    DomInlineStyleRequestLimits,
 };
 mod installation;
 mod meta;

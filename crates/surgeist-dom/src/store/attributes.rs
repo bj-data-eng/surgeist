@@ -527,7 +527,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         let node = hook.subject;
         let changed = &hook.changed;
-        self.refuse_inline_attribute(node, changed, cancelled)?;
+        self.inline_attribute(node, changed, hook.new_value.as_ref(), cancelled)?;
         let old_value = hook.old_value.as_ref();
         let new_value = hook.new_value.as_ref();
         let change = if new_value.is_none() {

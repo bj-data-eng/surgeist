@@ -74,16 +74,24 @@ attribute to CSSOM. The caller supplies explicit support/profile inputs and any
 required declaration decisions. `capture_inline_style` couples immutable DOM
 and declaration observations, which remain readable after owner destruction.
 
-Binding initializes declarations; subsequent inline edits require a
-synchronizing front. A context-free ordinary or Source operation that reaches a
-bound style notification, a relevant context change or retirement returns
+`apply_with_inline_styles` synchronizes ordinary batches with explicit
+Element/Document profiles qualified by that exact batch and canonical basis.
+Actual attribute notifications and relevant context barriers retain invocation
+order, so moving a block changes its current packet without reparsing earlier
+checked values. One CSSOM batch commits after all fallible DOM formation and
+sharing, followed by infallible canonical publication. The result retains both
+owners' actual publication evidence. Created Document operands use real batch
+tickets; DOM derives their staged mode and base without a tentative public ID.
+
+A context-free ordinary or Source operation that reaches a bound style
+notification, a relevant context change or retirement returns
 `InlineStyleContextRequired` before that publication. Same-value style setters
 still reach the notification barrier; missing removals and unrelated attributes
 retain their ordinary behavior. Same-scope moves maintain sparse membership.
-Ordered DOM-to-CSSOM updates and CSSOM owner-feedback operations are not
-currently supported. Inline formation has explicit original DOM custody/work
-limits alongside CSSOM's independent logical/source quotas; neither is a process
-memory measurement.
+Bound retirement, retained context-bearing Source synchronization and CSSOM
+owner feedback are unavailable. Inline formation has explicit original DOM
+custody/work limits alongside CSSOM's independent logical/source quotas;
+neither is a process memory measurement.
 
 For contribution routing and focused verification commands, read the
 [crate guide](AGENTS.md). The [source](src/lib.rs) and [tests](tests/) establish

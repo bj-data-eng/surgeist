@@ -164,7 +164,9 @@ impl Draft {
         retain_undo: bool,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let undo = self.prepare_undo_slots(10, cancel)? && retain_undo;
+        let undo = self
+            .prepare_undo_slots(10 + usize::from(self.inline_recording.is_some()), cancel)?
+            && retain_undo;
         let next_read = self.node(key)?.changed(overlay(candidate.value()));
         let inbound = self.prepare_inbound_fields(key, next_read, cancel)?;
         let controls = self.prepare_control_fields(key, next_read, cancel)?;
@@ -182,6 +184,7 @@ impl Draft {
             order,
             cancel,
         )?;
+        let inline = self.prepare_inline_fields(key, next_read, order, cancel)?;
         let previous_document = self.node(key)?.document();
         let next_document = next_read.document();
         let queue_documents = if previous_document != next_document {
@@ -233,6 +236,7 @@ impl Draft {
             self.commit_slot_plan(plan);
         }
         self.commit_discovery(discovery, undo);
+        self.commit_inline_recording(inline, undo);
         if undo {
             self.journal.push_prepared(Undo::Selected {
                 key,
@@ -349,7 +353,8 @@ impl Draft {
         let counts = self.relation_counts(field, old, next)?;
         let private_counts = self.private_relation_counts(key, field, old, next)?;
         let undo = self.prepare_undo_slots(
-            6 + usize::from(matches!(field, RelationField::Children)),
+            6 + usize::from(matches!(field, RelationField::Children))
+                + usize::from(self.inline_recording.is_some()),
             cancel,
         )?;
         let inbound =
@@ -397,6 +402,18 @@ impl Draft {
             order,
             cancel,
         )?;
+        let inline = self.prepare_inline_relation(
+            super::RelationChange {
+                owner: key,
+                field,
+                before: self.relation_view(key, field),
+                index,
+                removed: 0,
+                added: values,
+            },
+            order,
+            cancel,
+        )?;
         #[cfg(test)]
         super::queues::admission_observation::before_relation(self, key, field);
         let formation = source::formation::Formation::new(self, cancel)?;
@@ -428,6 +445,7 @@ impl Draft {
             self.commit_slot_plan(plan);
         }
         self.commit_discovery(discovery, undo);
+        self.commit_inline_recording(inline, undo);
         let oldcounts = std::mem::replace(&mut self.counts, counts);
         let oldprivatecounts = std::mem::replace(&mut self.private_counts, private_counts);
         if let Some(inverse) = inverse {
@@ -455,7 +473,8 @@ impl Draft {
         let counts = self.relation_counts(field, old, next)?;
         let private_counts = self.private_relation_counts(key, field, old, next)?;
         let undo = self.prepare_undo_slots(
-            6 + usize::from(matches!(field, RelationField::Children)),
+            6 + usize::from(matches!(field, RelationField::Children))
+                + usize::from(self.inline_recording.is_some()),
             cancel,
         )?;
         let view = self.relation_view(key, field);
@@ -489,6 +508,18 @@ impl Draft {
             order,
             cancel,
         )?;
+        let inline = self.prepare_inline_relation(
+            super::RelationChange {
+                owner: key,
+                field,
+                before: self.relation_view(key, field),
+                index,
+                removed: count,
+                added: &[],
+            },
+            order,
+            cancel,
+        )?;
         let formation = source::formation::Formation::new(self, cancel)?;
         let ledger = self.custody_ledger().clone();
         let inverse = self.private_node_mut(key).relation_mut(field).remove(
@@ -507,6 +538,7 @@ impl Draft {
             self.commit_slot_plan(plan);
         }
         self.commit_discovery(discovery, undo);
+        self.commit_inline_recording(inline, undo);
         let oldcounts = std::mem::replace(&mut self.counts, counts);
         let oldprivatecounts = std::mem::replace(&mut self.private_counts, private_counts);
         if let Some(inverse) = inverse {
@@ -532,7 +564,8 @@ impl Draft {
         let counts = self.relation_counts(field, old, values.len())?;
         let private_counts = self.private_relation_counts(key, field, old, values.len())?;
         let undo = self.prepare_undo_slots(
-            6 + usize::from(matches!(field, RelationField::Children)),
+            6 + usize::from(matches!(field, RelationField::Children))
+                + usize::from(self.inline_recording.is_some()),
             cancel,
         )?;
         let inbound = self.prepare_inbound_delta(
@@ -550,6 +583,18 @@ impl Draft {
             .as_ref()
             .map_or_else(|| self.order_view(), |plan| plan.order(self));
         let discovery = self.prepare_discovery_relation(
+            super::RelationChange {
+                owner: key,
+                field,
+                before: self.relation_view(key, field),
+                index: 0,
+                removed: old,
+                added: &values,
+            },
+            order,
+            cancel,
+        )?;
+        let inline = self.prepare_inline_relation(
             super::RelationChange {
                 owner: key,
                 field,
@@ -581,6 +626,7 @@ impl Draft {
             self.commit_slot_plan(plan);
         }
         self.commit_discovery(discovery, undo);
+        self.commit_inline_recording(inline, undo);
         let oldcounts = std::mem::replace(&mut self.counts, counts);
         let oldprivatecounts = std::mem::replace(&mut self.private_counts, private_counts);
         if let Some(inverse) = inverse {
@@ -970,7 +1016,8 @@ impl Draft {
         let counts = self.relation_counts(field, old, owned.values().len())?;
         let private_counts = self.private_relation_counts(key, field, old, owned.values().len())?;
         let undo = self.prepare_undo_slots(
-            6 + usize::from(matches!(field, RelationField::Children)),
+            6 + usize::from(matches!(field, RelationField::Children))
+                + usize::from(self.inline_recording.is_some()),
             cancel,
         )?;
         let inbound = self.prepare_inbound_delta(
@@ -999,6 +1046,18 @@ impl Draft {
             order,
             cancel,
         )?;
+        let inline = self.prepare_inline_relation(
+            super::RelationChange {
+                owner: key,
+                field,
+                before: self.relation_view(key, field),
+                index: 0,
+                removed: old,
+                added: owned.values(),
+            },
+            order,
+            cancel,
+        )?;
         let ledger = self.custody_ledger().clone();
         let values = owned.into_held(&ledger, |usage| self.admit_custody_usage(usage, cancel))?;
         let (values, debit) = values.into_parts();
@@ -1011,6 +1070,7 @@ impl Draft {
             self.commit_slot_plan(plan);
         }
         self.commit_discovery(discovery, undo);
+        self.commit_inline_recording(inline, undo);
         let oldcounts = std::mem::replace(&mut self.counts, counts);
         let oldprivatecounts = std::mem::replace(&mut self.private_counts, private_counts);
         if let Some(inverse) = inverse {

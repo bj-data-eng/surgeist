@@ -1,5 +1,6 @@
 //! Exclusive inline owner and sparse exact-generation operational membership.
 use super::*;
+pub(in crate::store) mod recording;
 #[cfg(test)]
 mod tests;
 use crate::inline_style::*;
@@ -90,6 +91,7 @@ pub(super) struct Owner {
     store: Option<CssomStore>,
     pub(super) index: Index,
     objects: Vec<CssStyleProperties>,
+    issuer: Option<Arc<recording::InputIssuer>>,
     object_debit: custody::Debit,
     _header: custody::Debit,
 }
@@ -99,13 +101,15 @@ struct Processing<'a> {
     formation: Option<&'a Formation>,
     cancel: &'a AtomicBool,
     spent: Cell<u64>,
+    shared: Option<&'a std::sync::atomic::AtomicU64>,
 }
 impl Processing<'_> {
     fn step(&self) -> Result<(), DomError> {
         check_cancel(self.cancel)?;
-        let next = self
-            .spent
-            .get()
+        let spent = self
+            .shared
+            .map_or_else(|| self.spent.get(), |value| value.load(Ordering::Relaxed));
+        let next = spent
             .checked_add(1)
             .ok_or(DomError::RepresentationExhausted)?;
         if next > self.limits.work {
@@ -116,6 +120,9 @@ impl Processing<'_> {
         }
         source::formation::step(self.formation, self.cancel)?;
         self.spent.set(next);
+        if let Some(shared) = self.shared {
+            shared.store(next, Ordering::Relaxed);
+        }
         Ok(())
     }
     fn admit(&self, usage: custody::Usage) -> Result<(), DomError> {
@@ -148,6 +155,7 @@ fn processing<'a>(
         formation,
         cancel,
         spent: Cell::new(0),
+        shared: None,
     }
 }
 
@@ -505,6 +513,119 @@ fn same_context(
         p,
     )
 }
+struct PacketInput<'a> {
+    element: NodeId,
+    document: NodeId,
+    parser: surgeist_css::CssParserContext,
+    support_version: &'a CssomInputVersion,
+    support: &'a surgeist_cssom::CssomDeclarationSupport,
+    base: &'a DocumentString,
+    revision: u64,
+}
+fn form_packet(
+    input: PacketInput<'_>,
+    registry: &bank::CustodyRegistry,
+    p: &Processing<'_>,
+) -> Result<custody::Held<CssomInlineDeclarationContext>, DomInlineStyleError> {
+    let base = input.base;
+    let support_bytes = support_bytes(input.support)?;
+    // Prefix/suffix plus owner, slot and generation have at most 96
+    // characters. 128 also
+    // covers temporary formatting capacity. The
+    // packet, its creation operand and current-version/owner operands are
+    // simultaneously live; admit their conservative complete overlap.
+    const ID_CAPACITY: usize = 128;
+    const ID_OCCURRENCES: usize = 24;
+    let packet_bytes = size_of::<CssomContext>()
+        .checked_add(10 * size_of::<CssomInput>())
+        .and_then(|n| n.checked_add(5 * size_of::<CssomInputVersion>()))
+        .and_then(|n| n.checked_add(ID_OCCURRENCES * ID_CAPACITY + 15))
+        .and_then(|n| base.len().checked_mul(6).and_then(|v| n.checked_add(v)))
+        .and_then(|n| {
+            input
+                .support_version
+                .identity
+                .len()
+                .checked_mul(3)
+                .and_then(|v| n.checked_add(v))
+        })
+        .and_then(|n| support_bytes.checked_mul(2).and_then(|v| n.checked_add(v)))
+        .ok_or(DomError::RepresentationExhausted)?;
+    p.scratch(packet_bytes)?;
+    for _ in 0..base
+        .len()
+        .checked_add(support_bytes)
+        .and_then(|n| n.checked_add(ID_OCCURRENCES * ID_CAPACITY))
+        .and_then(|n| {
+            input
+                .support_version
+                .identity
+                .len()
+                .checked_mul(3)
+                .and_then(|v| n.checked_add(v))
+        })
+        .ok_or(DomError::RepresentationExhausted)?
+    {
+        p.step()?;
+    }
+    let packet_credit = registry
+        .ledger()
+        .retain(custody::Usage::new(packet_bytes, 0), |u| p.admit(u))?;
+    let base = base.to_utf8().map_err(|_| DomError::NotSupported)?;
+    let identity = format!(
+        "inline:element:{}:{}:{}",
+        input.element.owner.get(),
+        input.element.slot,
+        input.element.generation
+    );
+    let document_identity = format!(
+        "inline:document:{}:{}:{}",
+        input.element.owner.get(),
+        input.document.slot,
+        input.document.generation
+    );
+    let parser_identity = format!("{identity}:parser");
+    let revision = input.revision;
+    let version = |role, identity| CssomInputVersion {
+        role,
+        identity,
+        revision,
+    };
+    let packet = CssomInlineDeclarationContext::try_new(CssomContext {
+        inputs: vec![
+            CssomInput {
+                version: version(CssomInputRole::Owner, identity.clone()),
+                data: CssomInputData::Owner {
+                    identity,
+                    attribute: Some("style".into()),
+                },
+            },
+            CssomInput {
+                version: version(CssomInputRole::Document, document_identity.clone()),
+                data: CssomInputData::Document {
+                    identity: document_identity.clone(),
+                },
+            },
+            CssomInput {
+                version: version(CssomInputRole::ParserMode, parser_identity),
+                data: CssomInputData::ParserMode(input.parser),
+            },
+            CssomInput {
+                version: version(CssomInputRole::Base, format!("{document_identity}:base")),
+                data: CssomInputData::Base {
+                    url: Some(base),
+                    location: None,
+                },
+            },
+            CssomInput {
+                version: input.support_version.clone(),
+                data: CssomInputData::Support(input.support.clone()),
+            },
+        ],
+        linked: Vec::new(),
+    })?;
+    Ok(custody::Held::new(packet, packet_credit))
+}
 fn required(element: NodeId, change: DomInlineStyleChange) -> DomError {
     DomError::InlineStyleContextRequired { element, change }
 }
@@ -532,6 +653,7 @@ impl Dom {
             store: None,
             index: Index::default(),
             objects: Vec::new(),
+            issuer: None,
             object_debit: self
                 .custody_registry
                 .ledger()
@@ -649,104 +771,23 @@ impl Dom {
         // CSSOM owns the resulting packet and its independent state quotas.
         // Admit this adapter's complete prospective construction overlap before
         // allocating identifiers, URL encoding, membership clones or the packet.
-        let support_bytes = support_bytes(&inputs.support)?;
-        // Prefix/suffix plus owner, slot and generation have at most 96
-        // characters. 128 also
-        // covers temporary formatting capacity. The
-        // packet, its creation operand and current-version/owner operands are
-        // simultaneously live; admit their conservative complete overlap.
-        const ID_CAPACITY: usize = 128;
-        const ID_OCCURRENCES: usize = 24;
-        let packet_bytes = size_of::<CssomContext>()
-            .checked_add(10 * size_of::<CssomInput>())
-            .and_then(|n| n.checked_add(5 * size_of::<CssomInputVersion>()))
-            .and_then(|n| n.checked_add(ID_OCCURRENCES * ID_CAPACITY + 15))
-            .and_then(|n| base.len().checked_mul(6).and_then(|v| n.checked_add(v)))
-            .and_then(|n| {
-                inputs
-                    .support_version
-                    .identity
-                    .len()
-                    .checked_mul(3)
-                    .and_then(|v| n.checked_add(v))
-            })
-            .and_then(|n| support_bytes.checked_mul(2).and_then(|v| n.checked_add(v)))
-            .ok_or(DomError::RepresentationExhausted)?;
-        p.scratch(packet_bytes)?;
-        for _ in 0..base
-            .len()
-            .checked_add(support_bytes)
-            .and_then(|n| n.checked_add(ID_OCCURRENCES * ID_CAPACITY))
-            .and_then(|n| {
-                inputs
-                    .support_version
-                    .identity
-                    .len()
-                    .checked_mul(3)
-                    .and_then(|v| n.checked_add(v))
-            })
-            .ok_or(DomError::RepresentationExhausted)?
-        {
-            p.step()?;
-        }
-        let packet_credit = self
-            .custody_registry
-            .ledger()
-            .retain(custody::Usage::new(packet_bytes, 0), |u| p.admit(u))?;
-        let base = base.to_utf8().map_err(|_| DomError::NotSupported)?;
-        let identity = format!(
-            "inline:element:{}:{}:{}",
-            self.owner.get(),
-            element.slot,
-            element.generation
-        );
-        let document_identity = format!(
-            "inline:document:{}:{}:{}",
-            self.owner.get(),
-            node.document().node().slot,
-            node.document().node().generation
-        );
-        let parser_identity = format!("{identity}:parser");
-        let revision = self.revision.get();
-        let version = |role, identity| CssomInputVersion {
-            role,
-            identity,
-            revision,
+        let revision = match &owner.issuer {
+            Some(issuer) => issuer.issue(self.revision.get())?,
+            None => self.revision.get(),
         };
-        let packet = CssomInlineDeclarationContext::try_new(CssomContext {
-            inputs: vec![
-                CssomInput {
-                    version: version(CssomInputRole::Owner, identity.clone()),
-                    data: CssomInputData::Owner {
-                        identity,
-                        attribute: Some("style".into()),
-                    },
-                },
-                CssomInput {
-                    version: version(CssomInputRole::Document, document_identity.clone()),
-                    data: CssomInputData::Document {
-                        identity: document_identity.clone(),
-                    },
-                },
-                CssomInput {
-                    version: version(CssomInputRole::ParserMode, parser_identity),
-                    data: CssomInputData::ParserMode(inputs.parser),
-                },
-                CssomInput {
-                    version: version(CssomInputRole::Base, format!("{document_identity}:base")),
-                    data: CssomInputData::Base {
-                        url: Some(base),
-                        location: None,
-                    },
-                },
-                CssomInput {
-                    version: inputs.support_version.clone(),
-                    data: CssomInputData::Support(inputs.support.clone()),
-                },
-            ],
-            linked: Vec::new(),
-        })?;
-        let packet = custody::Held::new(packet, packet_credit);
+        let packet = form_packet(
+            PacketInput {
+                element,
+                document: node.document().node(),
+                parser: inputs.parser,
+                support_version: &inputs.support_version,
+                support: &inputs.support,
+                base,
+                revision,
+            },
+            &self.custody_registry,
+            &p,
+        )?;
         let mut new_store = match owner.store {
             Some(_) => None,
             None => Some(CssomStore::new(
@@ -932,7 +973,10 @@ impl Dom {
         else {
             return Ok(None);
         };
-        let p = processing(&owner.limits, prepared.formation.as_ref(), cancel);
+        let p = match &prepared.inline_recording {
+            Some(recording) => recording.processing(prepared.formation.as_ref(), cancel),
+            None => processing(&owner.limits, prepared.formation.as_ref(), cancel),
+        };
         let mut selected = Selection::default();
         if let Some(positions) = &prepared.inline_positions {
             for key in positions.keys.values() {
@@ -983,7 +1027,7 @@ impl Dom {
                     return Err(required(*id, DomInlineStyleChange::Retirement));
                 }
                 DomChange::NodeDocument(id) if owner.index.membership.contains(*id) => {
-                    return Err(required(*id, DomInlineStyleChange::Context));
+                    selected.insert(Key::Existing(*id), &self.custody_registry, &p)?;
                 }
                 DomChange::Attributes(id) if owner.index.membership.contains(*id) => {
                     let a = self
@@ -996,7 +1040,14 @@ impl Dom {
                         .node(self.owner, *id)?
                         .element()
                         .ok_or(DomError::WrongNodeKind)?;
-                    if !same_optional_text(style_value(a, &p)?, style_value(b, &p)?, &p)? {
+                    if !same_optional_text(style_value(a, &p)?, style_value(b, &p)?, &p)?
+                        && !prepared
+                            .inline_recording
+                            .as_ref()
+                            .map(|r| r.final_attribute(*id, style_value(b, &p)?, &p))
+                            .transpose()?
+                            .unwrap_or(false)
+                    {
                         return Err(required(*id, DomInlineStyleChange::Attribute));
                     }
                 }
@@ -1010,7 +1061,21 @@ impl Dom {
             let Key::Existing(id) = key else {
                 unreachable!("published binding identity");
             };
-            if !same_context(&self.state, &prepared.state, self.owner, *id, &p)? {
+            if !same_context(&self.state, &prepared.state, self.owner, *id, &p)?
+                && !prepared
+                    .inline_recording
+                    .as_ref()
+                    .map(|r| {
+                        r.final_context(
+                            *id,
+                            OrderView::state(&prepared.state, self.owner),
+                            &prepared.allocation_ids,
+                            &p,
+                        )
+                    })
+                    .transpose()?
+                    .unwrap_or(false)
+            {
                 return Err(required(*id, DomInlineStyleChange::Context));
             }
         }
@@ -1051,37 +1116,5 @@ impl Dom {
             .as_ref()
             .filter(|o| !o.index.membership.bindings.is_empty())
             .map(|o| o.index.membership.clone())
-    }
-}
-impl Draft {
-    pub(in crate::store) fn refuse_inline_attribute(
-        &self,
-        key: Key,
-        name: &crate::DomQualifiedName,
-        cancel: &AtomicBool,
-    ) -> Result<(), DomError> {
-        let Some(membership) = &self.inline_membership else {
-            return Ok(());
-        };
-        if name.namespace_uri().is_some() || name.local_name().len() != 5 {
-            return Ok(());
-        }
-        for (unit, byte) in name.local_name().code_units().iter().zip(b"style") {
-            self.source_step(cancel)?;
-            if *unit != u16::from(*byte) {
-                return Ok(());
-            }
-        }
-        let Key::Existing(id) = self.live_key(key) else {
-            return Ok(());
-        };
-        if membership
-            .bindings
-            .get_with(id.slot, &mut || self.source_step(cancel))?
-            .is_some_and(|b| b.element == id)
-        {
-            return Err(required(id, DomInlineStyleChange::Attribute));
-        }
-        Ok(())
     }
 }

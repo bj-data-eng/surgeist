@@ -169,6 +169,14 @@ pub enum DomResource {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum DomError {
+    /// The explicit ordinary inline operation lacks a reached profile.
+    InlineStyleProfileMissing {
+        element: NodeId,
+    },
+    /// Several rows name the same reached Element/Document qualification.
+    InlineStyleProfileConflict {
+        element: NodeId,
+    },
     /// A reached bound change needs an inline synchronization operation.
     InlineStyleContextRequired {
         element: NodeId,
@@ -1515,6 +1523,14 @@ impl Dom {
         Ok(())
     }
     fn prepare(&self, batch: DomBatch, cancelled: &AtomicBool) -> Result<Prepared, DomError> {
+        self.prepare_with_inline(batch, None, cancelled)
+    }
+    fn prepare_with_inline(
+        &self,
+        batch: DomBatch,
+        recording: Option<inline_style::recording::Recording>,
+        cancelled: &AtomicBool,
+    ) -> Result<Prepared, DomError> {
         self.require_source_entry()?;
         check_cancel(cancelled)?;
         self.admit_batch_inputs(&batch.commands, || check_cancel(cancelled))?;
@@ -1532,6 +1548,7 @@ impl Dom {
         } else {
             Draft::new(self, batch.owner, cancelled)?
         };
+        draft.inline_recording = recording;
         for command in batch.commands {
             check_cancel(cancelled)?;
             if let Err(error) = draft.apply(&command, self.limits, cancelled) {
@@ -1603,6 +1620,7 @@ impl Dom {
         let Prepared {
             sharing,
             inline_positions: _,
+            inline_recording,
             name_promotions,
             formation,
             state_frontiers: _,
@@ -1760,6 +1778,7 @@ impl Dom {
             retirement_publication,
             style_custody,
             inline_index,
+            inline_recording,
             retired_authority,
             owner,
             created,
@@ -1797,6 +1816,7 @@ impl Dom {
             retirement_publication,
             style_custody,
             inline_index,
+            inline_recording: _,
             retired_authority,
             owner,
             created,
@@ -1922,6 +1942,7 @@ struct Draft {
     base: Arc<State>,
     event_recipients: Option<Arc<event::Owner>>,
     inline_membership: Option<inline_style::Membership>,
+    inline_recording: Option<inline_style::recording::Recording>,
     dom_limits: DomLimits,
     base_custody: transaction::StateCustody,
     input_captures: bank::Bank<source::input::InputEntry>,
@@ -2037,6 +2058,7 @@ pub(crate) struct PreparedPublication {
     retirement_publication: dispatch::PublicationPlan,
     style_custody: Option<style_custody::Bank>,
     inline_index: Option<inline_style::Index>,
+    inline_recording: Option<inline_style::recording::Recording>,
     retired_authority: Option<Arc<crate::select::Authorization>>,
     owner: Arc<BatchIdentity>,
     created: Vec<Option<NodeId>>,
@@ -2062,6 +2084,7 @@ pub(crate) struct PreparedPublication {
 struct Prepared {
     state: State,
     inline_positions: Option<transaction::slot_index::PositionChanges>,
+    inline_recording: Option<inline_style::recording::Recording>,
     created_ranges: Vec<Option<crate::DomRangeId>>,
     retirements: Vec<dispatch::Retirement>,
     owner: Arc<BatchIdentity>,
@@ -2438,6 +2461,7 @@ impl Draft {
             base: dom.state.clone(),
             event_recipients: dom.event_recipients.clone(),
             inline_membership: dom.inline_membership(),
+            inline_recording: None,
             dom_limits: dom.limits,
             base_custody: dom.state_custody.clone(),
             input_captures: bank::Bank::default(),

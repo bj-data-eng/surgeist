@@ -677,6 +677,7 @@ impl Draft {
         Ok((
             Prepared {
                 sharing: None,
+                inline_recording: self.inline_recording.clone(),
                 inline_positions: self
                     .inline_membership
                     .as_ref()

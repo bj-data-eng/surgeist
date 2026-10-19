@@ -349,3 +349,71 @@ fn cached_support_qualification_uses_the_new_observers_original_work() {
     assert_eq!(after.dom().stamp(), captured.dom().stamp());
     drop(scope);
 }
+
+#[test]
+fn ordinary_inline_replay_uses_the_observing_sources_original_remaining_work() {
+    let (mut dom, document, dialog, target) = fixture();
+    dom.configure_inline_styles(policy(), &cancel()).unwrap();
+    let i = inputs(&dom, document);
+    dom.inline_style(
+        target,
+        &i,
+        request_limits(),
+        |_, _| panic!("empty support"),
+        &cancel(),
+    )
+    .unwrap();
+    let captured = dom.capture_inline_style(target).unwrap().unwrap();
+    let executor = dom.bind_source_event_executor(&cancel()).unwrap();
+    let mut limits = source_limits();
+    limits.work = 100_000;
+    let request = {
+        let mut lease = dom
+            .begin_source_edit(DomSourceEdit::show_dialog(dialog), limits, &cancel())
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::Event(request)) =
+            lease.advance(&cancel()).unwrap()
+        else {
+            panic!("actual BeforeToggle")
+        };
+        request
+    };
+    let permit = executor.begin_dispatch(&dom, &request, &cancel()).unwrap();
+    let scope = executor.enter_dispatch(&dom, &permit, &cancel()).unwrap();
+    let mut batch = DomBatch::new();
+    batch.set_attribute(target, "style", "--x:new");
+    let row = crate::DomInlineStyleProfile::new(
+        target,
+        document,
+        CssParserContext::default(),
+        CssomInputVersion {
+            role: CssomInputRole::Support,
+            identity: "s".repeat(131_072),
+            revision: 1,
+        },
+        CssomDeclarationSupport::default(),
+    )
+    .unwrap();
+    let context =
+        crate::DomInlineStyleBatchContext::new(&batch, dom.snapshot().stamp(), vec![row]).unwrap();
+    assert!(matches!(
+        dom.apply_with_inline_styles(
+            batch,
+            context,
+            request_limits(),
+            |_, _| panic!("empty support"),
+            &cancel()
+        ),
+        Err(DomInlineStyleError::Dom(DomError::SourceWorkLimit {
+            limit: 100_000
+        }))
+    ));
+    assert_eq!(dom.pending_source_edit().unwrap().spent_work(), 100_000);
+    let after = dom.capture_inline_style(target).unwrap().unwrap();
+    assert_eq!(after.dom().stamp(), captured.dom().stamp());
+    assert_eq!(
+        after.properties().snapshot().revision(),
+        captured.properties().snapshot().revision()
+    );
+    drop(scope);
+}
