@@ -1941,6 +1941,14 @@ fn pi_recovery_chronology_and_abandoned_eof_are_public_exact_source_evidence() {
 }
 
 fn value_sharing_report(fragment: bool, markup: &str) -> surgeist_html_parser::HtmlParseReport {
+    value_sharing_report_with_limits(fragment, markup, limits())
+}
+
+fn value_sharing_report_with_limits(
+    fragment: bool,
+    markup: &str,
+    limits: HtmlParseLimits,
+) -> surgeist_html_parser::HtmlParseReport {
     let literal = if fragment {
         markup.to_owned()
     } else {
@@ -1951,18 +1959,34 @@ fn value_sharing_report(fragment: bool, markup: &str) -> surgeist_html_parser::H
     let report = if fragment {
         let context = fragment_context();
         let capture = context.capture().identity().clone();
-        let request = HtmlFragmentParseRequest::new(source, context, limits()).unwrap();
+        let request = HtmlFragmentParseRequest::new(source, context, limits).unwrap();
         let cancellation = request.cancellation().clone();
-        let report = request.parse().unwrap();
+        let report = request.parse().unwrap_or_else(|failure| {
+            panic!(
+                "value-sharing fixture: {:?}; nodes admitted at stop: {:?}",
+                failure.reason(),
+                failure
+                    .at_stop()
+                    .map(|usage| usage.resource(HtmlParseResource::ManagedNodes).current())
+            )
+        });
         cancellation.cancel();
         assert!(report.document().is_none());
         assert!(report.fragment().is_some());
         assert_eq!(report.context().unwrap().capture().identity(), &capture);
         report
     } else {
-        let request = HtmlDocumentParseRequest::offline(source, limits());
+        let request = HtmlDocumentParseRequest::offline(source, limits);
         let cancellation = request.cancellation().clone();
-        let report = request.parse().unwrap();
+        let report = request.parse().unwrap_or_else(|failure| {
+            panic!(
+                "value-sharing fixture: {:?}; nodes admitted at stop: {:?}",
+                failure.reason(),
+                failure
+                    .at_stop()
+                    .map(|usage| usage.resource(HtmlParseResource::ManagedNodes).current())
+            )
+        });
         cancellation.cancel();
         assert_eq!(
             report.document().unwrap().mode(),
@@ -2295,4 +2319,405 @@ fn report_value_sharing_independent_text_in_document() {
 #[test]
 fn report_value_sharing_independent_text_in_fragment() {
     assert_independent_report_text_shares_strings(true);
+}
+
+#[test]
+fn report_value_sharing_preserves_raw_surrogates_and_each_source_interval() {
+    let mut raw: Vec<u16> = "<!doctype html><p>".encode_utf16().collect();
+    raw.push(0xd800);
+    raw.extend("</p><p>".encode_utf16());
+    raw.push(0xd800);
+    raw.extend("</p>".encode_utf16());
+    let request = HtmlDocumentParseRequest::offline(
+        HtmlSource::utf16(DocumentString::from_utf16(raw.clone())),
+        limits(),
+    );
+    let source = request.source().identity().clone();
+    let cancel = request.cancellation().clone();
+    let report = request.parse().unwrap();
+    assert_eq!(report.source().identity(), &source);
+    assert_eq!(report.source().as_utf16().unwrap().code_units(), raw);
+    let paragraphs = value_sharing_elements(&report, "p");
+    assert_eq!(paragraphs.len(), 2);
+    let (first_id, first) = value_sharing_text(&report, &paragraphs[0]);
+    let (second_id, second) = value_sharing_text(&report, &paragraphs[1]);
+    assert_ne!(first_id, second_id);
+    assert_eq!(first.code_units(), &[0xd800]);
+    assert_eq!(second.code_units(), &[0xd800]);
+    for (id, start) in [(&first_id, 18), (&second_id, 26)] {
+        assert_value_sharing_origin(
+            &report,
+            id,
+            HtmlParseField::Text,
+            start,
+            start + 1,
+            HtmlParseOriginKind::Literal,
+        );
+    }
+    let diagnostics = report.diagnostics();
+    assert_eq!(diagnostics.len(), 2);
+    for index in 0..2 {
+        let (record, location) = diagnostics.retained_record(index).unwrap();
+        assert_eq!(
+            record.kind(),
+            HtmlParseDiagnosticKind::Tokenizer(HtmlTokenizerDiagnostic::SurrogateInInputStream)
+        );
+        assert_eq!(location.source_range().source(), &source);
+        assert_eq!(location.source_range().start(), [18, 26][index]);
+        assert_eq!(location.source_range().end(), [19, 27][index]);
+    }
+    assert!(std::sync::Arc::ptr_eq(
+        first.shared_code_units(),
+        second.shared_code_units()
+    ));
+    let held = first.clone();
+    let weak = std::sync::Arc::downgrade(held.shared_code_units());
+    let usage = report.usage().clone();
+    cancel.cancel();
+    assert_eq!(report.usage(), &usage);
+    drop(report);
+    assert_eq!(held.code_units(), &[0xd800]);
+    drop(held);
+    assert!(weak.upgrade().is_none());
+}
+
+#[test]
+fn report_value_sharing_occurs_after_real_body_attribute_merge() {
+    let report = value_sharing_report(
+        false,
+        "<body class=k><body id=x class=ignored><p class=k id=x></p>",
+    );
+    let bodies = value_sharing_elements(&report, "body");
+    let paragraphs = value_sharing_elements(&report, "p");
+    assert_eq!(bodies.len(), 1);
+    assert_eq!(paragraphs.len(), 1);
+    let body = value_sharing_element(&report, &bodies[0]);
+    let paragraph = value_sharing_element(&report, &paragraphs[0]);
+    for element in [body, paragraph] {
+        let actual: Vec<_> = element
+            .attributes()
+            .iter()
+            .map(|attribute| {
+                (
+                    attribute.name().local_name().code_units(),
+                    attribute.value().code_units(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            actual,
+            [
+                (&[99, 108, 97, 115, 115][..], &[107][..]),
+                (&[105, 100][..], &[120][..])
+            ]
+        );
+    }
+    let literal = report.source().as_utf8().unwrap();
+    for (id, value, field) in [
+        (&bodies[0], "class=k", HtmlParseField::AttributeValue(0)),
+        (&bodies[0], "id=x", HtmlParseField::AttributeValue(1)),
+    ] {
+        let start = literal.find(value).unwrap() + value.len() - 1;
+        assert_value_sharing_origin(
+            &report,
+            id,
+            field,
+            start,
+            start + 1,
+            HtmlParseOriginKind::Literal,
+        );
+    }
+    assert!(std::sync::Arc::ptr_eq(
+        body.attributes().shared_attributes(),
+        paragraph.attributes().shared_attributes()
+    ));
+}
+
+fn assert_late_report_patterns(fragment: bool) {
+    let mut markup = String::new();
+    for index in 0..384 {
+        markup.push_str(&format!("<p id=v{index:03} class=k></p>"));
+    }
+    markup.push_str("<p id=q class=z>R</p><p id=q class=z>R</p>");
+    // Native association projection prepares growing fixed-record banks before
+    // report finalization. This input-only setup envelope allows 64 copies or
+    // visits of a 512-byte record per authored paragraph pair, with 16 fixed
+    // root/late records. It is not a sharing-performance or output-size oracle.
+    // All retained-storage limits and the ordinary limit tests stay unchanged.
+    let work = 32_768 * (384_u64 + 16).pow(2);
+    let report = value_sharing_report_with_limits(
+        fragment,
+        &markup,
+        limits().into_builder().work_credits(work).finish().unwrap(),
+    );
+    let paragraphs = value_sharing_elements(&report, "p");
+    assert_eq!(paragraphs.len(), 386);
+    for (index, id) in paragraphs.iter().take(384).enumerate() {
+        let element = value_sharing_element(&report, id);
+        assert_eq!(
+            element.attributes().as_slice()[0].value(),
+            &DocumentString::from(format!("v{index:03}"))
+        );
+        assert_eq!(
+            element.attributes().as_slice()[1].value().code_units(),
+            &[107]
+        );
+        assert_eq!(value_sharing_node(&report, id).children().count(), 0);
+    }
+    let literal = report.source().as_utf8().unwrap();
+    let id_sources: Vec<_> = literal
+        .match_indices("id=q")
+        .map(|(start, _)| start + 3)
+        .collect();
+    let class_sources: Vec<_> = literal
+        .match_indices("class=z")
+        .map(|(start, _)| start + 6)
+        .collect();
+    let text_sources: Vec<_> = literal
+        .match_indices(">R<")
+        .map(|(start, _)| start + 1)
+        .collect();
+    assert_eq!(
+        (id_sources.len(), class_sources.len(), text_sources.len()),
+        (2, 2, 2)
+    );
+    let late = [&paragraphs[384], &paragraphs[385]].map(|id| value_sharing_element(&report, id));
+    let mut texts = Vec::new();
+    for index in 0..2 {
+        assert_eq!(
+            late[index].attributes().as_slice()[0].value().code_units(),
+            &[113]
+        );
+        assert_eq!(
+            late[index].attributes().as_slice()[1].value().code_units(),
+            &[122]
+        );
+        assert_value_sharing_origin(
+            &report,
+            &paragraphs[384 + index],
+            HtmlParseField::AttributeValue(0),
+            id_sources[index],
+            id_sources[index] + 1,
+            HtmlParseOriginKind::Literal,
+        );
+        assert_value_sharing_origin(
+            &report,
+            &paragraphs[384 + index],
+            HtmlParseField::AttributeValue(1),
+            class_sources[index],
+            class_sources[index] + 1,
+            HtmlParseOriginKind::Literal,
+        );
+        let (id, value) = value_sharing_text(&report, &paragraphs[384 + index]);
+        assert_eq!(value.code_units(), &[82]);
+        assert_value_sharing_origin(
+            &report,
+            &id,
+            HtmlParseField::Text,
+            text_sources[index],
+            text_sources[index] + 1,
+            HtmlParseOriginKind::Literal,
+        );
+        texts.push((id, value));
+    }
+    assert_ne!(paragraphs[384], paragraphs[385]);
+    assert_ne!(texts[0].0, texts[1].0);
+    assert!(std::sync::Arc::ptr_eq(
+        late[0].attributes().shared_attributes(),
+        late[1].attributes().shared_attributes()
+    ));
+    assert!(std::sync::Arc::ptr_eq(
+        texts[0].1.shared_code_units(),
+        texts[1].1.shared_code_units()
+    ));
+}
+
+fn assert_empty_report_values(fragment: bool) {
+    let report = value_sharing_report(fragment, "<p></p><p></p><p a='' b=''></p><p a='' b=''></p>");
+    let paragraphs = value_sharing_elements(&report, "p");
+    assert_eq!(paragraphs.len(), 4);
+    let elements = paragraphs
+        .iter()
+        .map(|id| value_sharing_element(&report, id))
+        .collect::<Vec<_>>();
+    for id in &paragraphs {
+        assert_eq!(value_sharing_node(&report, id).children().count(), 0);
+    }
+    assert!(elements[0].attributes().is_empty() && elements[1].attributes().is_empty());
+    assert!(std::sync::Arc::ptr_eq(
+        elements[0].attributes().shared_attributes(),
+        elements[1].attributes().shared_attributes()
+    ));
+    for element in &elements[2..] {
+        assert_eq!(element.attributes().len(), 2);
+        for (attribute, name) in element.attributes().iter().zip(["a", "b"]) {
+            assert_eq!(attribute.name().local_name(), &DocumentString::from(name));
+            assert_eq!(attribute.name().namespace(), &Namespace::none());
+            assert!(attribute.name().prefix().is_none());
+            assert!(attribute.value().is_empty());
+        }
+    }
+    assert!(std::sync::Arc::ptr_eq(
+        elements[2].attributes().shared_attributes(),
+        elements[3].attributes().shared_attributes()
+    ));
+    assert!(std::sync::Arc::ptr_eq(
+        elements[2].attributes().as_slice()[0]
+            .value()
+            .shared_code_units(),
+        elements[2].attributes().as_slice()[1]
+            .value()
+            .shared_code_units()
+    ));
+}
+
+fn assert_report_prefix_roles(fragment: bool) {
+    let report = value_sharing_report(
+        fragment,
+        "<svg><use xlink:href=x href=x></use><use xlink:href=x href=x></use></svg>",
+    );
+    let uses = value_sharing_elements(&report, "use");
+    assert_eq!(uses.len(), 2);
+    let elements = uses
+        .iter()
+        .map(|id| {
+            let HtmlNodeKind::Element(element) = value_sharing_node(&report, id).kind() else {
+                panic!("literal SVG use")
+            };
+            element
+        })
+        .collect::<Vec<_>>();
+    for element in &elements {
+        assert_eq!(element.name().namespace(), &Namespace::svg());
+        assert!(element.name().prefix().is_none());
+        assert_eq!(element.attributes().len(), 2);
+        let qualified = &element.attributes().as_slice()[0];
+        let plain = &element.attributes().as_slice()[1];
+        assert_eq!(
+            qualified.name().namespace(),
+            &Namespace::from_uri("http://www.w3.org/1999/xlink")
+        );
+        assert_eq!(
+            qualified.name().prefix(),
+            Some(&DocumentString::from("xlink"))
+        );
+        assert_eq!(plain.name().namespace(), &Namespace::none());
+        assert!(plain.name().prefix().is_none());
+        for attribute in [qualified, plain] {
+            assert_eq!(
+                attribute.name().local_name().code_units(),
+                &[104, 114, 101, 102]
+            );
+            assert_eq!(attribute.value().code_units(), &[120]);
+        }
+    }
+    assert_ne!(uses[0], uses[1]);
+    let literal = report.source().as_utf8().unwrap();
+    let sources: Vec<_> = literal
+        .match_indices("xlink:href=x href=x")
+        .map(|(start, _)| start)
+        .collect();
+    assert_eq!(sources.len(), 2);
+    for index in 0..2 {
+        for (ordinal, offset) in [(0, 11), (1, 18)] {
+            assert_value_sharing_origin(
+                &report,
+                &uses[index],
+                HtmlParseField::AttributeValue(ordinal),
+                sources[index] + offset,
+                sources[index] + offset + 1,
+                HtmlParseOriginKind::Literal,
+            );
+        }
+    }
+    assert!(std::sync::Arc::ptr_eq(
+        elements[0].attributes().shared_attributes(),
+        elements[1].attributes().shared_attributes()
+    ));
+    assert!(std::sync::Arc::ptr_eq(
+        elements[0].attributes().as_slice()[0]
+            .value()
+            .shared_code_units(),
+        elements[0].attributes().as_slice()[1]
+            .value()
+            .shared_code_units()
+    ));
+}
+
+fn assert_oversized_report_banks(fragment: bool) {
+    let mut tag = String::from("<p");
+    for ordinal in 0..65 {
+        tag.push_str(&format!(" a{ordinal:02}=v"));
+    }
+    tag.push_str("></p>");
+    let report = value_sharing_report(fragment, &(tag.clone() + &tag));
+    let paragraphs = value_sharing_elements(&report, "p");
+    assert_eq!(paragraphs.len(), 2);
+    assert_ne!(paragraphs[0], paragraphs[1]);
+    let literal = report.source().as_utf8().unwrap();
+    for (index, id) in paragraphs.iter().enumerate() {
+        let element = value_sharing_element(&report, id);
+        assert_eq!(element.attributes().len(), 65);
+        assert_eq!(value_sharing_node(&report, id).children().count(), 0);
+        assert!(
+            report.retained_construction_bytes()
+                >= (element.attributes().shared_attributes().capacity()
+                    * std::mem::size_of::<Attribute>()) as u64
+        );
+        for (ordinal, attribute) in element.attributes().iter().enumerate() {
+            let name = format!("a{ordinal:02}");
+            assert_eq!(
+                attribute.name().local_name(),
+                &DocumentString::from(name.clone())
+            );
+            assert_eq!(attribute.name().namespace(), &Namespace::none());
+            assert!(attribute.name().prefix().is_none());
+            assert_eq!(attribute.value().code_units(), &[118]);
+            let marker = format!("{name}=v");
+            let start = literal.match_indices(&marker).nth(index).unwrap().0 + marker.len() - 1;
+            assert_value_sharing_origin(
+                &report,
+                id,
+                HtmlParseField::AttributeValue(ordinal),
+                start,
+                start + 1,
+                HtmlParseOriginKind::Literal,
+            );
+        }
+    }
+    // Larger banks may pass through optional sharing. Exact values, order,
+    // selected capacity and each original origin remain report contracts.
+}
+
+#[test]
+fn report_value_sharing_late_patterns_in_document() {
+    assert_late_report_patterns(false);
+}
+#[test]
+fn report_value_sharing_late_patterns_in_fragment() {
+    assert_late_report_patterns(true);
+}
+#[test]
+fn report_value_sharing_empty_banks_and_values_in_document() {
+    assert_empty_report_values(false);
+}
+#[test]
+fn report_value_sharing_empty_banks_and_values_in_fragment() {
+    assert_empty_report_values(true);
+}
+#[test]
+fn report_value_sharing_preserves_prefix_roles_in_document() {
+    assert_report_prefix_roles(false);
+}
+#[test]
+fn report_value_sharing_preserves_prefix_roles_in_fragment() {
+    assert_report_prefix_roles(true);
+}
+#[test]
+fn report_value_sharing_oversized_bank_pass_through_in_document() {
+    assert_oversized_report_banks(false);
+}
+#[test]
+fn report_value_sharing_oversized_bank_pass_through_in_fragment() {
+    assert_oversized_report_banks(true);
 }

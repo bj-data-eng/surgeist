@@ -64,6 +64,7 @@ impl ParseControl {
             resource: HtmlParseResource::BufferedUtf16Units,
             data_pointer: 0,
             backing: None,
+            finalized: false,
         })
     }
     /// Bind the real newly created backing once, then suspend its actual Weak

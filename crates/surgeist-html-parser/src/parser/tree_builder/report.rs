@@ -42,6 +42,12 @@ impl ImmutableParseReport {
         input: &mut Option<SealedOrdinaryConstruction>,
     ) -> Result<Self, SessionError> {
         let sealed = input.as_mut().ok_or(SessionError::Consumed)?;
+        sealed
+            .parts
+            .arena
+            .as_ref()
+            .ok_or(SessionError::Consumed)?
+            .require_original_transfer(&mut sealed.parts.control)?;
         sealed.parts.prepare_report_request(&sealed.request)?;
         let state = sealed.parts.document_state();
         let c = &mut sealed.parts.control;
@@ -52,6 +58,8 @@ impl ImmutableParseReport {
             sealed.request.base_facts(),
             sealed.request.is_offline(),
         )?;
+        let mut storage = storage.share_values(c)?;
+        let c = storage.control();
         super::write(
             size_of::<Self>()
                 + size_of::<Option<SealedOrdinaryConstruction>>()
@@ -63,6 +71,7 @@ impl ImmutableParseReport {
         )?;
         c.checkpoint()?;
         let mut storage = storage.commit();
+        let c = &mut sealed.parts.control;
         storage.release_execution_inputs(c);
         sealed.request.release_associated_inputs();
         let usage = c.usage().clone();
@@ -82,10 +91,18 @@ impl ImmutableParseReport {
         input: &mut Option<SealedFragmentConstruction>,
     ) -> Result<Self, SessionError> {
         let sealed = input.as_mut().ok_or(SessionError::Consumed)?;
+        sealed
+            .parts
+            .arena
+            .as_ref()
+            .ok_or(SessionError::Consumed)?
+            .require_original_transfer(&mut sealed.parts.control)?;
         sealed.parts.prepare_report_request(&sealed.request)?;
         let c = &mut sealed.parts.control;
         crate::construction::read::prepare_public_readers(&sealed.parts.arena, c)?;
         let storage = PreparedReportStorage::prepare(&mut sealed.parts.arena, c, None, true)?;
+        let mut storage = storage.share_values(c)?;
+        let c = storage.control();
         super::write(
             size_of::<Self>()
                 + size_of::<Option<SealedFragmentConstruction>>()
@@ -97,6 +114,7 @@ impl ImmutableParseReport {
         )?;
         c.checkpoint()?;
         let mut storage = storage.commit();
+        let c = &mut sealed.parts.control;
         storage.release_execution_inputs(c);
         sealed.request.release_associated_inputs();
         let usage = c.usage().clone();
@@ -827,6 +845,196 @@ mod tests {
     }
 
     #[test]
+    fn finalization_capacity_refusal_keeps_terminal_owner_and_exact_source_for_cleanup() {
+        use crate::{HtmlParseResource, parser::control::ParseStop};
+        let mut input = Some(ordinary(
+            "<!doctype html><p class=k>A</p><p class=k>A</p>",
+            true,
+        ));
+        let sealed = input.as_mut().unwrap();
+        let source = sealed.source().identity().clone();
+        {
+            let c = &mut sealed.parts.control;
+            crate::construction::read::prepare_public_readers(&sealed.parts.arena, c).unwrap();
+            let prepared =
+                PreparedReportStorage::prepare(&mut sealed.parts.arena, c, None, true).unwrap();
+            // The same original controller has completed all strict alias/history
+            // qualification. Deny new finalization custody, without re-forming it.
+            c.test_limit(HtmlParseResource::ManagedCapacityBytes, 0);
+            assert!(matches!(
+                prepared.share_values(c),
+                Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::ManagedCapacityBytes,
+                    limit: 0,
+                    ..
+                }))
+            ));
+        }
+        assert!(sealed.parts.arena.is_some());
+        assert!(
+            sealed.document().is_none(),
+            "partial terminal construction is not a published view"
+        );
+        assert_eq!(sealed.source().identity(), &source);
+        let first = sealed.parts.control.first_stop_usage().unwrap().clone();
+        sealed.parts.cleanup_failure().unwrap();
+        assert!(sealed.parts.arena.is_none());
+        assert!(sealed.parts.diagnostics().is_ok());
+        assert_eq!(sealed.parts.control.first_stop_usage(), Some(&first));
+        sealed.parts.release().unwrap();
+        super::super::tests::assert_released(&sealed.parts.control);
+    }
+
+    #[test]
+    fn cancellation_after_value_finalization_retains_complete_original_owner_without_report() {
+        use crate::parser::control::ParseStop;
+        let mut input = Some(ordinary(
+            "<!doctype html><p class=k>A</p><p class=k>A</p>",
+            true,
+        ));
+        let sealed = input.as_mut().unwrap();
+        let source = sealed.source().identity().clone();
+        {
+            let c = &mut sealed.parts.control;
+            crate::construction::read::prepare_public_readers(&sealed.parts.arena, c).unwrap();
+            let prepared =
+                PreparedReportStorage::prepare(&mut sealed.parts.arena, c, None, true).unwrap();
+            prepared.share_values(c).unwrap();
+        }
+        sealed.request.cancellation().cancel();
+        assert!(matches!(
+            ImmutableParseReport::take_document(&mut input),
+            Err(SessionError::Stop(ParseStop::Cancelled))
+        ));
+        let kept = input.as_mut().unwrap();
+        assert_eq!(kept.source().identity(), &source);
+        assert!(kept.document().is_some());
+        let first = kept.parts.control.first_stop_usage().unwrap().clone();
+        kept.parts.cleanup_failure().unwrap();
+        assert!(kept.parts.arena.is_none());
+        assert_eq!(kept.parts.control.first_stop_usage(), Some(&first));
+        kept.parts.release().unwrap();
+        super::super::tests::assert_released(&kept.parts.control);
+        assert_eq!(kept.parts.control.stop(), Some(ParseStop::Cancelled));
+    }
+
+    #[test]
+    fn populated_pool_replacement_refusal_and_cancel_keep_partial_custody_cleanup_owned() {
+        use crate::{
+            HtmlParseResource,
+            parser::control::{FinalizationCut, ParseStop},
+        };
+        for kind in [FinalizationCut::Work, FinalizationCut::Cancellation] {
+            // Missing doctype gives this same actual owner one independent
+            // recovery diagnostic whose original source must survive cleanup.
+            let literal = "<p id=a class=k>A</p><p id=b class=k>B</p>";
+            let mut input = Some(ordinary(literal, true));
+            let sealed = input.as_mut().unwrap();
+            let source = sealed.source().identity().clone();
+            let ids = {
+                let document = sealed.document().unwrap();
+                let html = document.root().children().last().unwrap();
+                let body = document.node(&html).unwrap().children().last().unwrap();
+                document.node(&body).unwrap().children().collect::<Vec<_>>()
+            };
+            assert_eq!(ids.len(), 2);
+            sealed.parts.arena.as_ref().unwrap().arm_finalization_cut(
+                &ids[0],
+                &ids[1],
+                kind,
+                &mut sealed.parts.control,
+            );
+            let result = ImmutableParseReport::take_document(&mut input);
+            let kept = input
+                .as_mut()
+                .expect("failed terminal publication retains original seal");
+            let observed = kept
+                .parts
+                .control
+                .finalization_observation()
+                .expect("actual selected replacement boundary reached");
+            assert!(observed.string_pool_bytes > 0 && observed.attribute_pool_bytes > 0);
+            assert!(observed.string_insertions > 0 && observed.attribute_insertions > 0);
+            assert!(observed.earlier_promoted);
+            assert!(
+                observed.selected_bank_bytes
+                    >= size_of::<Vec<crate::Attribute>>() + 2 * size_of::<crate::Attribute>()
+            );
+            // Each of the two actual attributes has one local-name and one
+            // value output receipt; absent namespace/prefix adds no fake row.
+            assert_eq!(observed.selected_components, 4);
+            assert!(observed.selected_tickets_finalized);
+            match kind {
+                FinalizationCut::Work => assert!(
+                    matches!(result, Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::WorkCredits, limit, current, requested_delta: 1,
+                })) if limit == observed.work && current == observed.work)
+                ),
+                FinalizationCut::Cancellation => assert!(matches!(
+                    result,
+                    Err(SessionError::Stop(ParseStop::Cancelled))
+                )),
+                FinalizationCut::Panic => unreachable!("work/cancellation fixture"),
+            }
+            assert_eq!(kept.source().identity(), &source);
+            assert_eq!(kept.source().as_utf8(), Some(literal));
+            assert!(kept.parts.arena.is_some());
+            assert!(
+                kept.document().is_none(),
+                "partial promotion never publishes a report view"
+            );
+            let first = kept.parts.control.stop().unwrap();
+            let snapshot = kept.parts.control.first_stop_usage().unwrap().clone();
+            assert!(
+                snapshot.actual_capacity_bytes()
+                    > kept.parts.control.usage().actual_capacity_bytes(),
+                "live provisional/pool custody was included at first stop and released during unwind"
+            );
+            let spent = kept
+                .parts
+                .control
+                .usage()
+                .resource(HtmlParseResource::WorkCredits);
+            assert!(
+                matches!(ImmutableParseReport::take_document(&mut input), Err(SessionError::Stop(stop)) if stop == first)
+            );
+            let kept = input.as_mut().unwrap();
+            assert_eq!(
+                kept.parts
+                    .control
+                    .usage()
+                    .resource(HtmlParseResource::WorkCredits),
+                spent
+            );
+            assert_eq!(kept.source().identity(), &source);
+            kept.parts.cleanup_failure().unwrap();
+            assert!(kept.parts.arena.is_none());
+            let diagnostics = kept.parts.diagnostics().unwrap();
+            assert_eq!(diagnostics.len(), 1);
+            let (diagnostic, location) = diagnostics.retained_record(0).unwrap();
+            assert_eq!(
+                diagnostic.kind(),
+                crate::HtmlParseDiagnosticKind::Prologue(
+                    crate::HtmlPrologueDiagnostic::MissingDoctype
+                )
+            );
+            assert_eq!(location.source_range().source(), &source);
+            assert_eq!(
+                (
+                    location.source_range().start(),
+                    location.source_range().end()
+                ),
+                // Initial-mode recovery identifies the complete first token.
+                (0, "<p id=a class=k>".len())
+            );
+            assert_eq!(kept.parts.control.first_stop_usage(), Some(&snapshot));
+            kept.parts.release().unwrap();
+            super::super::tests::assert_released(&kept.parts.control);
+            assert_eq!(kept.parts.control.stop(), Some(first));
+        }
+    }
+
+    #[test]
     fn inert_fragment_report_preserves_actual_parser_script_prefix_and_diagnostics() {
         use crate::construction::report::{MetadataDocument, MetadataStep};
         let mut input = Some(fragment_with_scripting(
@@ -1297,5 +1505,155 @@ mod tests {
         }
         assert_eq!(null, 1);
         assert_eq!(report.usage(), &usage);
+    }
+    #[test]
+    fn populated_pool_unwind_keeps_terminal_partial_data_and_exact_cleanup_owner() {
+        use crate::parser::control::FinalizationCut;
+        let literal = "<p id=a class=k>A</p><p id=b class=k>B</p>";
+        let mut input = Some(ordinary(literal, true));
+        let sealed = input.as_mut().unwrap();
+        let source = sealed.source().identity().clone();
+        let ids = {
+            let document = sealed.document().unwrap();
+            let html = document.root().children().last().unwrap();
+            let body = document.node(&html).unwrap().children().last().unwrap();
+            document.node(&body).unwrap().children().collect::<Vec<_>>()
+        };
+        sealed.parts.arena.as_ref().unwrap().arm_finalization_cut(
+            &ids[0],
+            &ids[1],
+            FinalizationCut::Panic,
+            &mut sealed.parts.control,
+        );
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            ImmutableParseReport::take_document(&mut input)
+        }))
+        .unwrap_err();
+        assert_eq!(
+            panic.downcast_ref::<&str>(),
+            Some(&"terminal value-sharing replacement cut")
+        );
+        let kept = input.as_mut().unwrap();
+        let seen = kept.parts.control.finalization_observation().unwrap();
+        assert!(seen.string_pool_bytes > 0 && seen.attribute_pool_bytes > 0);
+        assert!(seen.earlier_promoted && seen.selected_tickets_finalized);
+        assert_eq!(seen.selected_components, 4);
+        assert!(seen.selected_bank_bytes > 0);
+        assert_eq!(kept.parts.control.stop(), None);
+        assert!(kept.parts.control.first_stop_usage().is_none());
+        assert_eq!(kept.source().identity(), &source);
+        assert_eq!(kept.source().as_utf8(), Some(literal));
+        assert!(kept.document().is_none());
+        let work = kept
+            .parts
+            .control
+            .usage()
+            .resource(crate::HtmlParseResource::WorkCredits);
+        assert!(matches!(
+            ImmutableParseReport::take_document(&mut input),
+            Err(SessionError::Consumed)
+        ));
+        let kept = input.as_mut().unwrap();
+        assert_eq!(
+            kept.parts
+                .control
+                .usage()
+                .resource(crate::HtmlParseResource::WorkCredits),
+            work
+        );
+        // An unwind does not manufacture a parser stop. Existing explicit
+        // same-controller disposal reclaims the truthful terminal owner.
+        kept.parts.release().unwrap();
+        super::super::tests::assert_released(&kept.parts.control);
+        assert_eq!(kept.parts.control.stop(), None);
+    }
+
+    #[test]
+    fn paired_roots_remain_guarded_through_receiver_refusal_cancellation_and_unwind() {
+        use crate::parser::control::{FinalizationCut, FinalizationTransferStage, ParseStop};
+        for stage in [
+            FinalizationTransferStage::FirstPrepared,
+            FinalizationTransferStage::Receiver,
+        ] {
+            for kind in [
+                FinalizationCut::Work,
+                FinalizationCut::Cancellation,
+                FinalizationCut::Panic,
+            ] {
+                let literal = "<p id=a class=k>A</p><p id=b class=k>B</p>";
+                let mut input = Some(ordinary(literal, true));
+                let sealed = input.as_mut().unwrap();
+                let source = sealed.source().identity().clone();
+                sealed.parts.control.arm_finalization_transfer(stage, kind);
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    ImmutableParseReport::take_document(&mut input)
+                }));
+                let kept = input.as_mut().expect("terminal source owner retained");
+                let seen = kept
+                    .parts
+                    .control
+                    .finalization_transfer_observation()
+                    .expect("actual paired boundary reached");
+                assert_eq!(seen.stage, stage);
+                assert!(seen.strings_prepared);
+                assert_eq!(
+                    seen.attributes_prepared,
+                    stage == FinalizationTransferStage::Receiver
+                );
+                assert!(seen.pool_bytes > 0);
+                assert!(seen.retained_bytes > kept.parts.control.usage().actual_capacity_bytes());
+                assert_eq!(kept.source().identity(), &source);
+                assert_eq!(kept.source().as_utf8(), Some(literal));
+                match kind {
+                    FinalizationCut::Work => assert!(
+                        matches!(result.unwrap(), Err(SessionError::Stop(ParseStop::LimitExceeded { resource: crate::HtmlParseResource::WorkCredits, limit, .. })) if limit == seen.work)
+                    ),
+                    FinalizationCut::Cancellation => assert!(matches!(
+                        result.unwrap(),
+                        Err(SessionError::Stop(ParseStop::Cancelled))
+                    )),
+                    FinalizationCut::Panic => {
+                        assert_eq!(
+                            result.unwrap_err().downcast_ref::<&str>(),
+                            Some(&"terminal value-sharing transfer cut")
+                        );
+                        assert_eq!(kept.parts.control.stop(), None);
+                        assert!(kept.parts.control.first_stop_usage().is_none());
+                    }
+                }
+                // First-prepare cuts retain recovered terminal construction;
+                // receiver cuts retain the republished immutable native view.
+                assert_eq!(
+                    kept.document().is_some(),
+                    stage == FinalizationTransferStage::Receiver
+                );
+                let first = kept.parts.control.stop();
+                let at_stop = kept.parts.control.first_stop_usage().cloned();
+                let work = kept
+                    .parts
+                    .control
+                    .usage()
+                    .resource(crate::HtmlParseResource::WorkCredits);
+                let retry = ImmutableParseReport::take_document(&mut input);
+                match first {
+                    Some(stop) => {
+                        assert!(matches!(retry, Err(SessionError::Stop(actual)) if actual == stop))
+                    }
+                    None => assert!(matches!(retry, Err(SessionError::Consumed))),
+                }
+                let kept = input.as_mut().unwrap();
+                assert_eq!(
+                    kept.parts
+                        .control
+                        .usage()
+                        .resource(crate::HtmlParseResource::WorkCredits),
+                    work
+                );
+                assert_eq!(kept.parts.control.first_stop_usage(), at_stop.as_ref());
+                kept.parts.release().unwrap();
+                assert_eq!(kept.parts.control.stop(), first);
+                super::super::tests::assert_released(&kept.parts.control);
+            }
+        }
     }
 }

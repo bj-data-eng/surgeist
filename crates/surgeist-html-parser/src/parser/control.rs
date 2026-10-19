@@ -14,6 +14,12 @@ use std::{
 
 mod attributes;
 mod construction;
+mod finalization;
+#[cfg(test)]
+pub(crate) use finalization::{
+    FinalizationCut, FinalizationObservation, FinalizationTransferObservation,
+    FinalizationTransferStage,
+};
 mod text_append;
 pub(crate) use construction::ConstructionAllocation;
 
@@ -180,6 +186,14 @@ pub(crate) struct ParseControl {
     identity: Arc<()>,
     #[cfg(test)]
     owned_spans: OwnedSpanObservation,
+    #[cfg(test)]
+    finalization_cut: Option<finalization::CutRequest>,
+    #[cfg(test)]
+    finalization_observation: Option<FinalizationObservation>,
+    #[cfg(test)]
+    finalization_transfer_cut: Option<finalization::TransferCut>,
+    #[cfg(test)]
+    finalization_transfer_observation: Option<FinalizationTransferObservation>,
 }
 
 /// Fixed-size diagnostic metadata for actual execution between real polls.
@@ -222,6 +236,14 @@ impl ParseControl {
             identity: Arc::new(()),
             #[cfg(test)]
             owned_spans: OwnedSpanObservation::default(),
+            #[cfg(test)]
+            finalization_cut: None,
+            #[cfg(test)]
+            finalization_observation: None,
+            #[cfg(test)]
+            finalization_transfer_cut: None,
+            #[cfg(test)]
+            finalization_transfer_observation: None,
         }
     }
     pub(crate) fn usage(&self) -> &ParseUsage {
@@ -855,7 +877,8 @@ impl ParseControl {
         {
             return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
         }
-        if shared.shared.as_ptr() != Arc::as_ptr(values)
+        if shared.finalized
+            || shared.shared.as_ptr() != Arc::as_ptr(values)
             || shared.bytes != size_of::<Vec<crate::Attribute>>() as u64
             || vector.capacity != values.capacity()
         {
@@ -968,6 +991,7 @@ impl ParseControl {
             shared: Arc::downgrade(&shared),
             bytes,
             element: PhantomData,
+            finalized: false,
         };
         self.finish_shared(shared, allocation)
     }
@@ -1283,6 +1307,7 @@ impl ParseControl {
             resource: HtmlParseResource::BufferedUtf16Units,
             data_pointer: buffer.as_slice().as_ptr() as usize,
             backing: None,
+            finalized: false,
         };
         Ok((buffer.into_vec(), allocation))
     }
@@ -1486,16 +1511,19 @@ impl ParseControl {
         else {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
-        if allocation
-            .backing
-            .as_ref()
-            .is_some_and(|backing| backing.strong_count() != 0)
+        if !allocation.finalized
+            && allocation
+                .backing
+                .as_ref()
+                .is_some_and(|backing| backing.strong_count() != 0)
         {
             return self.fail(ParseStop::InternalInvariant(
                 Invariant::SharedAllocationAliased,
             ));
         }
-        self.cleanup_storage(allocation.resource, allocation.units, bytes)
+        let (resource, units) = (allocation.resource, allocation.units);
+        drop(allocation);
+        self.cleanup_storage(resource, units, bytes)
     }
 }
 
@@ -1534,6 +1562,7 @@ pub(crate) struct SharedAllocation<T> {
     shared: Weak<T>,
     bytes: u64,
     element: PhantomData<T>,
+    finalized: bool,
 }
 impl<T> SharedAllocation<T> {
     #[cfg(test)]
@@ -1564,6 +1593,7 @@ pub(crate) struct DocumentStringAllocation {
     resource: HtmlParseResource,
     data_pointer: usize,
     backing: Option<Weak<Vec<u16>>>,
+    finalized: bool,
 }
 impl DocumentStringAllocation {
     #[cfg(test)]

@@ -14,7 +14,30 @@ pub(crate) struct PreparedReportStorage<'a> {
     closed_common: bool,
     associated_slot: Option<usize>,
 }
+pub(crate) struct SharedReportStorage<'a, 'c> {
+    storage: PreparedReportStorage<'a>,
+    sharing: super::value_sharing::Sharing<'c>,
+}
+impl SharedReportStorage<'_, '_> {
+    pub(crate) fn control(&mut self) -> &mut ParseControl {
+        self.sharing.control()
+    }
+    pub(crate) fn commit(self) -> ReportStorage {
+        self.sharing.commit();
+        self.storage.commit()
+    }
+}
 impl<'a> PreparedReportStorage<'a> {
+    pub(crate) fn share_values<'c>(
+        mut self,
+        c: &'c mut ParseControl,
+    ) -> Result<SharedReportStorage<'a, 'c>, SessionError> {
+        let sharing = self.history.share_values(c)?;
+        Ok(SharedReportStorage {
+            storage: self,
+            sharing,
+        })
+    }
     pub(crate) fn prepare(
         input: &'a mut Option<FrozenArena>,
         c: &mut ParseControl,
@@ -22,6 +45,7 @@ impl<'a> PreparedReportStorage<'a> {
         closed_common: bool,
     ) -> Result<Self, SessionError> {
         let frozen = input.as_ref().ok_or(SessionError::Consumed)?;
+        frozen.require_original_transfer(c)?;
         let storage = frozen.storage.as_ref().ok_or(SessionError::Consumed)?;
         c.require_identity(&storage.control)?;
         let arena = arena(storage);

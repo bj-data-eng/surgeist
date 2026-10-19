@@ -24,6 +24,13 @@ reuses unique aggregate backing while retaining immutable history leaves; the
 parser indexes current text tickets and textarea metadata with actual admitted
 capacity and cleanup.
 
+Finalization uses HTML's bounded value pools to share eligible immutable
+attribute banks, element-name components and Text data within each completed
+report. Sharing starts after mutable construction and alias checks finish;
+selected capacities and original/replacement overlap are admitted before output
+publication. Source locations, node identities and construction history remain
+per occurrence. Mutable parsing retains its original peak-storage requirements.
+
 The document profile is fresh ordinary Disabled execution. Fragments retain
 qualified Inert/Disabled context facts. JavaScript execution, resource fetching,
 live shadow attachment and browser events remain outside these profiles.

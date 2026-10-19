@@ -81,6 +81,7 @@ mod nonce;
 pub(crate) mod provenance;
 pub(crate) mod read;
 pub(crate) mod report;
+mod value_sharing;
 use provenance::{FieldCopy, OriginGroupRef};
 mod select;
 mod svg;
@@ -342,6 +343,8 @@ struct SessionStorage {
 use crate::bounded::HtmlConstructionResult;
 pub(crate) struct FrozenArena {
     storage: Option<FrozenStorage>,
+    finalizing: Option<value_sharing::Finalizing>,
+    sharing_started: bool,
 }
 
 struct FrozenStorage {
@@ -687,8 +690,14 @@ impl PayloadStorage {
             let payload = &self.values[index];
             match payload {
                 RetainedPayload::String {
-                    value, location, ..
+                    value,
+                    allocation,
+                    location,
+                    ..
                 } => {
+                    if allocation.finalized() {
+                        control.require_document_string_for_disposal(allocation, value)?;
+                    }
                     let stored = location.value(records, &self.values, index, control)?;
                     cleanup_charge(control, WorkCategory::ProviderCall, 2)?;
                     let expected = if let Some(stored) = stored {
@@ -699,16 +708,24 @@ impl PayloadStorage {
                     } else {
                         1
                     };
-                    if Arc::strong_count(value.shared_code_units()) != expected {
+                    if !allocation.finalized()
+                        && Arc::strong_count(value.shared_code_units()) != expected
+                    {
                         return Err(SessionError::AliasedPayload);
                     }
                 }
                 RetainedPayload::Attributes(Some(
                     AttributeStorage::Frozen {
-                        values, element, ..
+                        values,
+                        element,
+                        shared,
+                        ..
                     }
                     | AttributeStorage::Removing {
-                        values, element, ..
+                        values,
+                        element,
+                        shared,
+                        ..
                     },
                 )) => {
                     let expected = if let Some(index) = element {
@@ -730,7 +747,9 @@ impl PayloadStorage {
                         1
                     };
                     cleanup_charge(control, WorkCategory::ProviderCall, 1)?;
-                    if Arc::strong_count(values.shared_attributes()) != expected {
+                    if !shared.finalized()
+                        && Arc::strong_count(values.shared_attributes()) != expected
+                    {
                         return Err(SessionError::AliasedPayload);
                     }
                 }
@@ -846,6 +865,10 @@ impl PayloadStorage {
                         shared,
                         ..
                     } => {
+                        if shared.finalized() {
+                            control.release_final_attributes(values, allocation, shared);
+                            continue;
+                        }
                         let backing = values.into_shared_attributes();
                         let vector = control.release_shared(backing, shared).unwrap_or_else(|_| {
                             panic!("prechecked attribute backing has no external aliases")
@@ -7228,6 +7251,8 @@ impl ParserArenaSession {
             }
         };
         Ok(FrozenArena {
+            finalizing: None,
+            sharing_started: false,
             storage: Some(FrozenStorage {
                 view,
                 control: owner,
@@ -7291,6 +7316,9 @@ impl FrozenArena {
         &mut self,
         control: &mut ParseControl,
     ) -> Result<Option<evidence::FailureDiagnosticEvidence>, SessionError> {
+        if let Some(finalizing) = &mut self.finalizing {
+            return finalizing.take_stopped_evidence(control);
+        }
         let storage = self.storage.as_mut().ok_or(SessionError::Consumed)?;
         control.cleanup_release(&storage.control, HtmlParseResource::AuxiliaryEntries, 0)?;
         ParseEvidence::partition_failed(&mut storage.evidence, control)
@@ -7598,6 +7626,12 @@ impl FrozenArena {
         }
     }
     pub(crate) fn release(&mut self, control: &mut ParseControl) -> Result<(), SessionError> {
+        if let Some(finalizing) = &self.finalizing {
+            finalizing.require_cleanup(control)?;
+        }
+        if let Some(finalizing) = self.finalizing.take() {
+            return finalizing.release(control);
+        }
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         cleanup_owner(control, &storage.control)?;
         storage

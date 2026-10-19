@@ -228,6 +228,15 @@ pub(crate) struct PreparedHistory<'a> {
     input: &'a mut Option<FrozenArena>,
 }
 impl<'a> PreparedHistory<'a> {
+    pub(super) fn share_values<'c>(
+        &mut self,
+        c: &'c mut ParseControl,
+    ) -> Result<super::value_sharing::Sharing<'c>, SessionError> {
+        self.input
+            .as_mut()
+            .ok_or(SessionError::Consumed)?
+            .share_values(c)
+    }
     pub(crate) fn prepare(
         input: &'a mut Option<FrozenArena>,
         c: &mut ParseControl,
