@@ -6,8 +6,8 @@
 //! and prefixes. A group leaf names one of its actual members; it never copies
 //! the group's string or searches unrelated groups.
 use super::super::*;
-use super::NodeFields;
 use super::exact_forest::{self, Forest, KeyView, Suffix};
+use super::{KindRead, NodeRead};
 
 #[derive(Clone, Debug)]
 struct Facts {
@@ -771,13 +771,13 @@ impl Controls {
     }
 }
 
-fn listed(kind: &DomNodeKind) -> bool {
-    matches!(kind, DomNodeKind::Element(element) if element.native_control().is_some_and(|(_,kind)|kind.listed()))
+fn listed(kind: KindRead<'_>) -> bool {
+    matches!(kind, KindRead::Element(element) if element.native_control().is_some_and(|(_,kind)|kind.listed()))
 }
-fn attributes_same(a: &DomNodeKind, b: &DomNodeKind) -> bool {
+fn attributes_same(a: KindRead<'_>, b: KindRead<'_>) -> bool {
     match (a, b) {
-        (DomNodeKind::Element(a), DomNodeKind::Element(b)) => {
-            a.attributes_backing().same_storage(b.attributes_backing())
+        (KindRead::Element(a), KindRead::Element(b)) => {
+            a.language().same_attribute_storage(b.language())
         }
         _ => true,
     }
@@ -786,16 +786,16 @@ impl Draft {
     fn control_facts(
         &self,
         key: Key,
-        fields: &NodeFields,
+        fields: NodeRead<'_>,
         root: Key,
         reuse_attributes: bool,
         cancel: &AtomicBool,
     ) -> Result<Option<Facts>, DomError> {
-        if !listed(&fields.kind) {
+        if !listed(fields.kind()) {
             return Ok(None);
         }
         let old = self.controls.current.index.fact(key);
-        let DomNodeKind::Element(element) = &fields.kind else {
+        let KindRead::Element(element) = fields.kind() else {
             unreachable!()
         };
         let input = element.input_state();
@@ -830,9 +830,9 @@ impl Draft {
         };
         Ok(Some(Facts {
             key,
-            document: self.live_key(fields.document),
+            document: self.live_key(fields.document()),
             root: self.live_key(root),
-            owner: fields.control_owner.map(|key| self.live_key(key)),
+            owner: fields.control_owner().map(|key| self.live_key(key)),
             form_present,
             radio: input
                 .is_some_and(|input| input.input_type() == surgeist_html::HtmlInputType::Radio),
@@ -843,13 +843,13 @@ impl Draft {
     pub(in crate::store) fn prepare_control_fields(
         &self,
         key: Key,
-        fields: &NodeFields,
+        fields: NodeRead<'_>,
         cancel: &AtomicBool,
     ) -> Result<Option<ControlPlan>, DomError> {
         let key = self.live_key(key);
         let old = self.node(key)?;
-        let parent_changed = old.parent != fields.parent;
-        if !parent_changed && !listed(old.kind) && !listed(&fields.kind) {
+        let parent_changed = old.parent() != fields.parent();
+        if !parent_changed && !listed(old.kind()) && !listed(fields.kind()) {
             return Ok(None);
         }
         let previous_root = if parent_changed {
@@ -859,7 +859,7 @@ impl Draft {
         };
         let root = if parent_changed {
             fields
-                .parent
+                .parent()
                 .map(|parent| crate::slot::root(self, parent, cancel))
                 .transpose()?
                 .unwrap_or(key)
@@ -872,14 +872,14 @@ impl Draft {
         // The ordinary root of a moved subtree changes at the actual parent
         // write, before family insertion/removing controllers observe it.
         let moved = previous_root.is_some_and(|old| self.live_key(old) != self.live_key(root));
-        if !moved && !listed(old.kind) && !listed(&fields.kind) {
+        if !moved && !listed(old.kind()) && !listed(fields.kind()) {
             return Ok(None);
         }
         let next = self.control_facts(
             key,
             fields,
             root,
-            attributes_same(old.kind, &fields.kind),
+            attributes_same(old.kind(), fields.kind()),
             cancel,
         )?;
         if !moved
@@ -927,7 +927,7 @@ impl Draft {
     pub(in crate::store) fn prepare_control_created(
         &self,
         key: Key,
-        fields: &NodeFields,
+        fields: NodeRead<'_>,
         cancel: &AtomicBool,
     ) -> Result<Option<ControlPlan>, DomError> {
         let Some(facts) = self.control_facts(key, fields, key, false, cancel)? else {
@@ -1027,7 +1027,7 @@ impl Draft {
         let node = self.node(source)?;
         let fact = Facts {
             key: source,
-            document: self.live_key(node.document),
+            document: self.live_key(node.document()),
             root: if same_tree {
                 self.live_key(crate::slot::root(self, source, cancel)?)
             } else {
@@ -1556,9 +1556,9 @@ mod tests {
         let other = draft.resolve(other.into()).unwrap();
         assert_radio_group(&draft, a, &[a, b], &cancel);
         let outer = checkpoint(&mut draft, &cancel);
-        draft
-            .with_node_fields(b, &cancel, |fields| fields.control_owner = Some(other))
-            .unwrap();
+        let mut control = draft.control_fields_mut(b, &cancel).unwrap();
+        control.control_owner = Some(other);
+        control.commit(&cancel).unwrap();
         assert_radio_group(&draft, a, &[a], &cancel);
         let inner = checkpoint(&mut draft, &cancel);
         draft.pre_insert(b, other, None, limits(), &cancel).unwrap();
@@ -1579,7 +1579,7 @@ mod tests {
             )
             .unwrap();
         assert!(
-            matches!(&draft.node(b).unwrap().kind,DomNodeKind::Element(element) if element.input_state().unwrap().input_type()==surgeist_html::HtmlInputType::Checkbox)
+            matches!(draft.node(b).unwrap().kind(),KindRead::Element(element) if element.input_state().unwrap().input_type()==surgeist_html::HtmlInputType::Checkbox)
         );
         draft
             .set_attribute(b, None, &"name".into(), &"g".into(), limits(), &cancel)
@@ -1591,8 +1591,8 @@ mod tests {
         outer.restore(&mut draft);
         assert_radio_group(&draft, a, &[a, b], &cancel);
         assert!(draft.source_work.load(Ordering::Relaxed) >= spent);
-        assert_eq!(draft.node(a).unwrap().document, Key::Existing(document));
-        assert_eq!(draft.node(a).unwrap().parent, Some(Key::Existing(root)));
+        assert_eq!(draft.node(a).unwrap().document(), Key::Existing(document));
+        assert_eq!(draft.node(a).unwrap().parent(), Some(Key::Existing(root)));
     }
 
     #[test]
@@ -1615,9 +1615,15 @@ mod tests {
         let root = created.created(&root).unwrap().unwrap();
         let prototype = created.created(&prototype).unwrap().unwrap();
         let mut draft = source_draft(&dom, &cancel);
-        let kind = draft.node(Key::Existing(prototype)).unwrap().kind.clone();
         let target = draft
-            .allocate(kind, Key::Existing(document.node()), limits(), &cancel)
+            .import_node(
+                &dom.snapshot(),
+                prototype,
+                Key::Existing(document.node()),
+                false,
+                limits(),
+                &cancel,
+            )
             .unwrap();
         draft.mark_source_private(target, &cancel).unwrap();
         publish_phase(&mut draft, &mut dom, &cancel);
@@ -1672,7 +1678,7 @@ mod tests {
         let spent = draft.source_work.load(Ordering::Relaxed);
         outer.restore(&mut draft);
         assert_eq!(
-            draft.node(target).unwrap().document,
+            draft.node(target).unwrap().document(),
             Key::Existing(document.node())
         );
         assert_radio_group(&draft, target, &[Key::Existing(prototype), target], &cancel);

@@ -23,7 +23,10 @@ impl Draft {
         }
         let document = basis.document();
         let document_key = self.resolve(document.into())?;
-        if !matches!(self.node(document_key)?.kind, DomNodeKind::Document(_)) {
+        if !matches!(
+            self.node(document_key)?.kind(),
+            transaction::KindRead::Document(_)
+        ) {
             return Err(DomError::WrongNodeKind);
         }
         let mut next = self.view_transitions.clone();
@@ -278,10 +281,10 @@ impl Draft {
                     let key = next.transition(&self.owner, self.store, transition.clone())?;
                     next.mutable_topology(key, document)?;
                     let mut value = next.get(key)?;
-                    let has_origin = self.node(document_key)?.children.iter().any(|child| {
+                    let has_origin = self.node(document_key)?.children().iter().any(|child| {
                         matches!(
-                            self.node(child).map(|node| node.kind),
-                            Ok(DomNodeKind::Element(_))
+                            self.node(child).map(|node| node.kind()),
+                            Ok(transaction::KindRead::Element(_))
                         )
                     });
                     if !has_origin {
@@ -394,10 +397,10 @@ impl Draft {
     ) -> Result<Key, DomError> {
         let key = self.resolve(node.into())?;
         let value = self.node(key)?;
-        if value.document != Key::Existing(document.node()) {
+        if value.document() != Key::Existing(document.node()) {
             return Err(DomError::WrongDocument);
         }
-        if !matches!(value.kind, DomNodeKind::Element(_)) {
+        if !matches!(value.kind(), transaction::KindRead::Element(_)) {
             return Err(DomError::WrongNodeKind);
         }
         Ok(key)

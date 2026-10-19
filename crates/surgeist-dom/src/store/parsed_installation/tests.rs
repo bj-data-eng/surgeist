@@ -383,21 +383,14 @@ fn actual_img_generation_maps_once_and_the_next_native_update_does_not_restart_i
         )
         .unwrap();
     let id = installed.node_for(&subject.unwrap()).unwrap();
-    let imported = installed
-        .snapshot()
-        .node(id)
-        .unwrap()
-        .node
-        .image
-        .as_ref()
-        .unwrap();
+    let imported = installed.snapshot().node(id).unwrap().node.image().unwrap();
     assert_eq!(imported.high_water, 2);
     assert_eq!(imported.waiting.unwrap().invocation, 2);
     let mut batch = DomBatch::new();
     batch.set_attribute(id, "src", "x");
     dom.apply(batch, &AtomicBool::new(false)).unwrap();
     let current = dom.snapshot();
-    let next = current.node(id).unwrap().node.image.as_ref().unwrap();
+    let next = current.node(id).unwrap().node.image().unwrap();
     assert_eq!(next.high_water, 3);
     assert_eq!(next.waiting.unwrap().invocation, 3);
     assert_eq!(imported.high_water, 2);
@@ -530,7 +523,7 @@ fn actual_staged_meta_history_is_not_published_when_final_cancellation_wins() {
         .state
         .node(dom.owner, pending.document.node())
         .unwrap();
-    let DomNodeKind::Document(metadata) = &staged.kind else {
+    let DomNodeKind::Document(metadata) = staged.kind() else {
         panic!("real staged Document");
     };
     assert_eq!(
@@ -713,7 +706,7 @@ fn contextual_prepared_effects_and_complete_admission_never_publish_on_final_sto
             .state
             .node(dom.owner, host)
             .unwrap()
-            .shadow_root
+            .shadow_root()
             .is_some()
     );
     assert!(matches!(
@@ -722,7 +715,7 @@ fn contextual_prepared_effects_and_complete_admission_never_publish_on_final_sto
             .state
             .node(dom.owner, document.node())
             .unwrap()
-            .template_document,
+            .template_document(),
         Some(crate::template::TemplateDocument::Ordinary { inert: Some(_) })
     ));
     assert!(matches!(
@@ -941,7 +934,7 @@ fn captured_url_join_preserves_first_work_stop_at_every_read_and_exact_lookup_un
 
 #[test]
 fn parsed_dialog_owned_history_is_prepared_before_publication_and_late_stop_is_atomic() {
-    use crate::store::canonical::Interactive as DocumentInteractiveState;
+    use crate::store::canonical::InteractiveView as DocumentInteractiveState;
     let cancel = AtomicBool::new(false);
     let mut dom = Dom::new(
         DomLimits::new(
@@ -981,13 +974,13 @@ fn parsed_dialog_owned_history_is_prepared_before_publication_and_late_stop_is_a
             .state
             .node(dom.owner, binding.node())
             .unwrap();
-        if matches!(node.kind, DomNodeKind::Document(_)) {
+        if matches!(node.kind(), DomNodeKind::Document(_)) {
             documents += 1;
             let Some(DocumentInteractiveState::Known {
                 open_dialogs,
                 top_layer,
                 pending_top_layer_removals,
-            }) = &node.interactive_document
+            }) = node.interactive_document()
             else {
                 panic!("each actual new root/inert Document has original qualified history");
             };
@@ -997,11 +990,11 @@ fn parsed_dialog_owned_history_is_prepared_before_publication_and_late_stop_is_a
             // The original parser's Dialog-list disposition does not attest
             // its independently retained autofocus history.
             assert!(matches!(
-                node.autofocus_document,
-                Some(crate::store::canonical::Autofocus::Unavailable)
+                node.autofocus_document(),
+                Some(crate::store::canonical::AutofocusView::Unavailable)
             ));
         }
-        if let DomNodeKind::Element(element) = &node.kind
+        if let DomNodeKind::Element(element) = node.kind()
             && let Some(dialog) = element.dialog_state()
         {
             dialogs += 1;

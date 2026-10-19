@@ -12,6 +12,8 @@ pub(crate) mod fullscreen;
 #[cfg(test)]
 mod fullscreen_tests;
 pub(in crate::store) mod hosted;
+#[cfg(test)]
+mod pending_identity_tests;
 mod request_close;
 mod scope;
 #[cfg(test)]
@@ -168,7 +170,7 @@ impl Dom {
         }
         let node = self.state.node(self.owner, root)?;
         if !matches!(
-            node.kind,
+            node.kind(),
             DomNodeKind::Document(_) | DomNodeKind::ShadowRoot(_)
         ) {
             return Err(DomError::WrongNodeKind);
@@ -838,34 +840,35 @@ impl Operation {
         };
         let n = state.node(self.id.owner, id)?;
         let mut length = 0usize;
-        for child in &n.children {
+        for child in n.children() {
             self.draft.source_step(cancel)?;
-            if let DomNodeKind::Text(s) = &state.node(self.id.owner, *child)?.kind {
+            if let DomNodeKind::Text(s) = state.node(self.id.owner, *child)?.kind() {
                 length = length
                     .checked_add(s.len())
                     .ok_or(DomError::RepresentationExhausted)?;
             }
         }
         let mut root = id;
-        while let Some(parent) = state.node(self.id.owner, root)?.parent {
+        while let Some(parent) = state.node(self.id.owner, root)?.parent() {
             self.draft.source_step(cancel)?;
             root = parent;
         }
-        let root_kind = match &state.node(self.id.owner, root)?.kind {
+        let root_kind = match state.node(self.id.owner, root)?.kind() {
             DomNodeKind::Document(_) => DomStyleRootKind::Document,
             DomNodeKind::ShadowRoot(_) => DomStyleRootKind::ShadowRoot,
             _ => DomStyleRootKind::Detached,
         };
-        let DomNodeKind::Document(metadata) = &state.node(self.id.owner, n.document.node())?.kind
+        let DomNodeKind::Document(metadata) =
+            state.node(self.id.owner, n.document().node())?.kind()
         else {
             return Err(DomError::WrongDocument);
         };
-        let DomNodeKind::Element(element) = &n.kind else {
+        let DomNodeKind::Element(element) = n.kind() else {
             return Err(DomError::WrongNodeKind);
         };
         let base_url = self
             .draft
-            .document_base_url(self.draft.node(frame.key)?.document, cancel)?;
+            .document_base_url(self.draft.node(frame.key)?.document(), cancel)?;
         let media = self.draft.control_attribute(
             frame.key,
             surgeist_html::KnownHtmlAttribute::Media,
@@ -935,9 +938,9 @@ impl Operation {
         )?;
         #[cfg(test)]
         let mut copied = transaction::CopyObservation::default();
-        for child in &n.children {
+        for child in n.children() {
             self.draft.source_step(cancel)?;
-            if let DomNodeKind::Text(s) = &state.node(self.id.owner, *child)?.kind {
+            if let DomNodeKind::Text(s) = state.node(self.id.owner, *child)?.kind() {
                 for unit in s.code_units() {
                     self.draft.source_step(cancel)?;
                     text.push(*unit);
@@ -956,7 +959,7 @@ impl Operation {
             metadata: metadata.clone(),
             root_kind,
             element: id,
-            document: n.document,
+            document: n.document(),
             root,
             text: formation::allocated_arc(text),
             base_url: base_url.clone(),
@@ -980,7 +983,7 @@ impl Operation {
             let node = state.node(self.id.owner, current)?;
             if current == source.element {
                 visit(DomStyleSheetPlacement::ThisStyle)?;
-            } else if let DomNodeKind::Element(element) = &node.kind
+            } else if let DomNodeKind::Element(element) = node.kind()
                 && let Some(style) = element.style_state()
             {
                 if style.availability == DomStyleSheetAvailability::PendingParsedProcessing {
@@ -993,7 +996,7 @@ impl Operation {
                     visit(DomStyleSheetPlacement::Existing(sheet.id.clone()))?;
                 }
             }
-            if let Some(child) = node.children.first() {
+            if let Some(child) = node.children().first() {
                 current = *child;
                 continue;
             }
@@ -1003,9 +1006,9 @@ impl Operation {
                 }
                 let parent = state
                     .node(self.id.owner, current)?
-                    .parent
+                    .parent()
                     .ok_or(DomError::WrongNodeKind)?;
-                let children = &state.node(self.id.owner, parent)?.children;
+                let children = state.node(self.id.owner, parent)?.children();
                 let mut next = None;
                 let mut found = false;
                 for sibling in children {
@@ -1379,7 +1382,7 @@ impl Operation {
             };
             let document = mapped(pending.document)?;
             if !matches!(
-                prepared.state.node(self.id.owner, document)?.kind,
+                prepared.state.node(self.id.owner, document)?.kind(),
                 DomNodeKind::Document(_)
             ) {
                 return Err(DomError::WrongNodeKind.into());
@@ -1426,7 +1429,12 @@ impl Operation {
             .transpose()?;
         let request = if let (Some(source), Some(frame)) = (&source, frame) {
             let action = frame.cursor.action();
-            let state = self.draft.element(frame.key)?.style_state().expect("Style");
+            let state = self
+                .draft
+                .element(frame.key)?
+                .language()
+                .style_state()
+                .expect("Style");
             let sheet = state.sheet.clone();
             let association = if action == DomStyleAction::Update(Action::CreateSheet) {
                 let serial = state
@@ -2592,7 +2600,7 @@ impl DomSourceLease<'_> {
                 Err(DomError::StyleReceiptMismatch)
             };
         }
-        let document = self.dom.state.node(self.dom.owner, root.root())?.document;
+        let document = self.dom.state.node(self.dom.owner, root.root())?.document();
         root.snapshot()
             .map_err(DomStyleCssomRootError::into_dom_error)?;
         let replacement = self.dom.style_cssom_roots.prepare_insert(
@@ -2972,8 +2980,7 @@ impl Operation {
             }
             Receipt::Inline { observation, .. } => Reply::InlineAllowed(observation.allowed),
             Receipt::Cssom { revision, sheet } => {
-                let old = self.draft.element(frame.key)?.style_state().expect("Style");
-                let mut state = old.clone();
+                let mut state = self.draft.style_state_mut(frame.key, cancel)?;
                 if matches!(
                     request.action,
                     DomStyleAction::OwnerAttributes | DomStyleAction::SetDisabled(_)
@@ -2998,9 +3005,7 @@ impl Operation {
                 } else {
                     state.sheet = None;
                 }
-                let mut element = self.draft.element_fields_mut(frame.key, cancel)?;
-                element.set_style_state(state);
-                element.commit(cancel)?;
+                state.commit(cancel)?;
                 Reply::Applied
             }
         };
@@ -3295,12 +3300,13 @@ impl Dom {
         let key = draft.resolve(target.into())?;
         draft
             .element(key)?
+            .language()
             .style_state()
             .ok_or(DomError::WrongNodeKind)?;
         // Native Style's parser-created first conjunct is false, independently
         // of media/environment. The HTML cursor's script-blocking removal is
         // therefore inapplicable; unconditional final unblock is still real.
-        let document = draft.node(key)?.document;
+        let document = draft.node(key)?.document();
         draft.relations_retain(
             document,
             transaction::RelationField::RenderBlocking,
@@ -4386,7 +4392,7 @@ pub(in crate::store) mod accounting_tests {
         growth
     }
     #[test]
-    fn changed_input_field_keeps_unchanged_backing_and_prices_each_materialized_field() {
+    fn changed_input_field_keeps_unchanged_backing_and_prices_only_the_selected_native_body() {
         let cancel = AtomicBool::new(false);
         let mut dom = Dom::new(
             DomLimits::new(
@@ -4418,9 +4424,20 @@ pub(in crate::store) mod accounting_tests {
             .unwrap();
         assert!(!original.flags().checkedness());
         let original_buffer = original.current_value().shared_code_units().clone();
-        let raw =
-            storage::kind(&dom.state.node(dom.owner, input).unwrap().kind, || Ok(())).unwrap();
-        assert!(raw.units > 0);
+        assert!(matches!(
+            original.image_history(),
+            surgeist_html::HtmlInputImageHistory::NeverEntered
+        ));
+        // Independent raw capacity oracle for this selected Input body. Name,
+        // attributes and every other feature remain original child aliases.
+        let native_units = original.current_value().shared_code_units().capacity()
+            + original
+                .custom_validity_message()
+                .shared_code_units()
+                .capacity();
+        assert!(native_units > 0);
+        let original_element = before.node(input).unwrap().as_element().unwrap();
+        let original_native = original_element.input_payload().unwrap().clone();
         let mut commands = DomBatch::new();
         commands.set_input_checked(input, true);
         let lease = dom
@@ -4436,6 +4453,7 @@ pub(in crate::store) mod accounting_tests {
             .draft
             .element(Key::Existing(input))
             .unwrap()
+            .language()
             .input_state()
             .unwrap();
         assert!(current.flags().checkedness());
@@ -4443,14 +4461,22 @@ pub(in crate::store) mod accounting_tests {
             &original_buffer,
             current.current_value().shared_code_units()
         ));
+        let current_element = op.draft.element(Key::Existing(input)).unwrap().language();
+        assert!(Arc::ptr_eq(
+            original_element.name_payload(),
+            current_element.name_payload()
+        ));
+        assert!(original_element.same_attribute_storage(current_element));
+        let changed_native = current_element.input_payload().unwrap().clone();
+        assert!(!Arc::ptr_eq(&original_native, &changed_native));
         assert_eq!(
             op.draft.custody_ledger().total().units(),
-            baseline + raw.units
+            baseline + native_units
         );
         let draft = &lease.dom.source_operation.as_ref().unwrap().draft;
         let prepared = draft.finish_segment(lease.dom, &cancel).unwrap();
         let DomNodeKind::Element(element) =
-            &prepared.state.node(lease.dom.owner, input).unwrap().kind
+            prepared.state.node(lease.dom.owner, input).unwrap().kind()
         else {
             panic!("Input candidate")
         };
@@ -4463,12 +4489,26 @@ pub(in crate::store) mod accounting_tests {
                 .current_value()
                 .shared_code_units()
         ));
+        assert!(Arc::ptr_eq(
+            &changed_native,
+            element.input_payload().unwrap()
+        ));
+        assert!(Arc::ptr_eq(
+            original_element.name_payload(),
+            element.name_payload()
+        ));
+        assert!(original_element.same_attribute_storage(element));
+        // Publication keeps the already sealed selected native identity. It
+        // creates no second occurrence of the unchanged strings.
         assert_eq!(
             draft.custody_ledger().total().units(),
-            baseline + 2 * raw.units
+            baseline + native_units
         );
         drop(prepared);
-        assert_eq!(draft.custody_ledger().total().units(), baseline + raw.units);
+        assert_eq!(
+            draft.custody_ledger().total().units(),
+            baseline + native_units
+        );
         assert!(
             !before
                 .node(input)
@@ -5856,7 +5896,11 @@ pub(in crate::store) mod accounting_tests {
         ));
         assert_eq!(draft.custody_ledger().total().units(), units);
         assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
-        let DomNodeKind::Text(value) = &prepared.state.slots[text.slot].node.as_ref().unwrap().kind
+        let DomNodeKind::Text(value) = prepared.state.slots[text.slot]
+            .node
+            .as_ref()
+            .unwrap()
+            .kind()
         else {
             panic!("original Text")
         };
@@ -5941,7 +5985,7 @@ pub(in crate::store) mod accounting_tests {
     }
 
     #[test]
-    fn changed_text_candidate_admits_its_materialized_field_units_exactly_and_refuses_one_short() {
+    fn changed_text_candidate_reuses_its_payload_with_exact_and_one_short_union_admission() {
         let cancel = AtomicBool::new(false);
         for short in [false, true] {
             let mut dom = Dom::new(
@@ -5968,7 +6012,7 @@ pub(in crate::store) mod accounting_tests {
                 .slots
                 .values()
                 .filter_map(|slot| slot.node.as_ref())
-                .map(|node| match &node.kind {
+                .map(|node| match node.kind() {
                     DomNodeKind::Document(metadata) => {
                         [metadata.content_type(), metadata.encoding(), metadata.url()]
                             .into_iter()
@@ -5994,7 +6038,7 @@ pub(in crate::store) mod accounting_tests {
             };
             let input_units = data.shared_code_units().capacity();
             let field = op.draft.node(Key::Existing(text)).unwrap();
-            let DomNodeKind::Text(value) = &field.kind else {
+            let transaction::KindRead::Text(value) = field.kind() else {
                 panic!("actual changed Text field")
             };
             let field_units = value.shared_code_units().capacity();
@@ -6002,9 +6046,14 @@ pub(in crate::store) mod accounting_tests {
                 value.code_units(),
                 DocumentString::from("replacement").code_units()
             );
-            // Original canonical payload, original command input, newly
-            // materialized Draft field and newly materialized canonical field.
-            let exact = original_units + input_units + 2 * field_units;
+            let DraftNode::Text(staged) = op.draft.records_for(Key::Existing(text)) else {
+                panic!("actual typed Text owner")
+            };
+            let staged_data = staged.value().data.value.clone();
+            // Original canonical payload + command input + one newly sealed
+            // CharacterData target. Publication aliases that target rather
+            // than forming a second whole-kind string occurrence.
+            let exact = original_units + input_units + field_units;
             let limit = exact - usize::from(short);
             op.draft.source_limits.as_mut().unwrap().retained_units = limit;
             let draft = &lease.dom.source_operation.as_ref().unwrap().draft;
@@ -6024,7 +6073,20 @@ pub(in crate::store) mod accounting_tests {
                     dom_slot(&lease.dom.state, text),
                     prepared.state.slots.get_shared(text.slot).unwrap()
                 ));
+                let Node::Text(published) = prepared.state.node(lease.dom.owner, text).unwrap()
+                else {
+                    panic!("published typed Text owner")
+                };
+                assert!(Arc::ptr_eq(&staged_data, &published.value.data));
+                assert_eq!(
+                    published.value.data.value.value.code_units(),
+                    DocumentString::from("replacement").code_units()
+                );
                 drop(prepared);
+                assert_eq!(
+                    draft.custody_ledger().total().units() + draft.source_other_units,
+                    exact
+                );
             }
             assert_eq!(lease.snapshot().stamp(), before.stamp());
             assert_eq!(
@@ -6146,7 +6208,14 @@ pub(in crate::store) mod accounting_tests {
         batch.assign_slot(slot, vec![y.into(), x.into(), y.into()]);
         (dom, batch, slot, x, y)
     }
-    fn slot_operation_admission_case(cut: Option<usize>) -> bool {
+    #[derive(Clone, Copy)]
+    enum SlotAdmissionCut {
+        BytesAtBaseline,
+        UnitsExact,
+        UnitsOneShort,
+        WorkAtSpent,
+    }
+    fn slot_operation_admission_case(cut: Option<SlotAdmissionCut>) -> bool {
         let (mut dom, batch, slot, x, y) = slot_operation_fixture();
         let before = dom.snapshot();
         let cancel = AtomicBool::new(false);
@@ -6158,18 +6227,30 @@ pub(in crate::store) mod accounting_tests {
                 let bytes = controlled.bytes() + draft.source_other_bytes;
                 let units = controlled.units() + draft.source_other_units;
                 let spent = draft.source_work.load(Ordering::Relaxed);
+                let ledger = draft.custody_ledger().clone();
                 if let Some(dimension) = cut {
                     let policy = draft.source_limits.as_mut().unwrap();
                     match dimension {
-                        0 => policy.retained_bytes = bytes,
-                        1 => policy.retained_units = units,
-                        2 => policy.work = spent,
-                        _ => unreachable!("three actual Source admission domains"),
+                        SlotAdmissionCut::BytesAtBaseline => policy.retained_bytes = bytes,
+                        SlotAdmissionCut::UnitsExact => policy.retained_units = units,
+                        SlotAdmissionCut::UnitsOneShort => {
+                            policy.retained_units = units
+                                .checked_sub(1)
+                                .expect("nonempty original Text and Element names")
+                        }
+                        SlotAdmissionCut::WorkAtSpent => policy.work = spent,
                     }
                 }
                 match lease.advance(&cancel) {
                     Ok(DomSourceProgress::Complete(done)) => {
                         assert!(!done.cancellation_requested());
+                        if matches!(cut, Some(SlotAdmissionCut::UnitsExact)) {
+                            // Reference-only edits retain the original string
+                            // targets; the new topology/relation groups own zero
+                            // UTF16 units. Existing baseline is configuration,
+                            // not a newly priced materialization receipt.
+                            assert_eq!(ledger.total().units(), controlled.units());
+                        }
                         Ok(())
                     }
                     Ok(DomSourceProgress::Request(DomSourceRequest::Style(_))) => {
@@ -6192,17 +6273,19 @@ pub(in crate::store) mod accounting_tests {
                     }
                     Err(error) => {
                         match cut {
-                            Some(0) => assert!(
+                            Some(SlotAdmissionCut::BytesAtBaseline) => assert!(
                                 matches!(error, DomError::ResourceLimit {resource: DomResource::SourceRetainedBytes,limit} if limit==bytes)
                             ),
-                            Some(1) => assert!(
-                                matches!(error, DomError::ResourceLimit {resource: DomResource::SourceRetainedUnits,limit} if limit==units)
+                            Some(SlotAdmissionCut::UnitsOneShort) => assert!(
+                                matches!(error, DomError::ResourceLimit {resource: DomResource::SourceRetainedUnits,limit} if limit==units-1)
                             ),
-                            Some(2) => {
+                            Some(SlotAdmissionCut::WorkAtSpent) => {
                                 assert_eq!(error, DomError::SourceWorkLimit { limit: spent })
                             }
+                            Some(SlotAdmissionCut::UnitsExact) => panic!(
+                                "reference-only Slot edit exceeded its unchanged UTF16 union: {error:?}"
+                            ),
                             None => {}
-                            _ => unreachable!(),
                         }
                         Err(error)
                     }
@@ -6253,7 +6336,14 @@ pub(in crate::store) mod accounting_tests {
     #[test]
     fn actual_slot_operation_checks_each_original_admission_domain_and_rolls_back_refusal() {
         assert!(slot_operation_admission_case(None));
-        for dimension in 0..3 {
+        assert!(slot_operation_admission_case(Some(
+            SlotAdmissionCut::UnitsExact
+        )));
+        for dimension in [
+            SlotAdmissionCut::BytesAtBaseline,
+            SlotAdmissionCut::UnitsOneShort,
+            SlotAdmissionCut::WorkAtSpent,
+        ] {
             assert!(!slot_operation_admission_case(Some(dimension)));
         }
     }

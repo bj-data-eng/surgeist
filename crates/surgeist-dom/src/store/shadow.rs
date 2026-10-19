@@ -1,3 +1,4 @@
+use super::transaction::KindRead;
 use super::*;
 
 impl Draft {
@@ -13,17 +14,17 @@ impl Draft {
     ) -> Result<(), DomError> {
         self.source_step(cancelled)?;
         let host_node = self.node(host)?;
-        if !matches!(host_node.kind, DomNodeKind::Element(_)) {
+        if !matches!(host_node.kind(), KindRead::Element(_)) {
             return Err(DomError::WrongNodeKind);
         }
-        if host_node.shadow_root.is_some() {
+        if host_node.shadow_root().is_some() {
             return Err(DomError::NotSupported);
         }
         let root_node = self.node(root)?;
-        if !matches!(root_node.kind, DomNodeKind::ShadowRoot(_)) {
+        if !matches!(root_node.kind(), KindRead::ShadowRoot(_)) {
             return Err(DomError::WrongNodeKind);
         }
-        if root_node.parent.is_some() || root_node.host.is_some() {
+        if root_node.parent().is_some() || root_node.host().is_some() {
             return Err(DomError::HierarchyRequest);
         }
         let mut current = Some(host);
@@ -34,8 +35,12 @@ impl Draft {
             }
             current = self.host_including_parent(key)?;
         }
-        self.with_node_fields(root, cancelled, |fields| fields.host = Some(host))?;
-        self.with_node_fields(host, cancelled, |fields| fields.shadow_root = Some(root))?;
+        let mut relation = self.host_mut(root, cancelled)?;
+        *relation = Some(host);
+        relation.commit(cancelled)?;
+        let mut relation = self.shadow_root_mut(host, cancelled)?;
+        *relation = Some(root);
+        relation.commit(cancelled)?;
         // Attachment is not an ordinary insertion: no Style/Details/control
         // insertion hooks or adoption run for the retained descendant state.
         self.assign_tree(root, limits, cancelled)
@@ -49,7 +54,7 @@ impl Draft {
     ) -> Result<Key, DomError> {
         check_cancel(cancelled)?;
         let node = self.node(host)?;
-        let DomNodeKind::Element(element) = &node.kind else {
+        let KindRead::Element(element) = node.kind() else {
             return Err(DomError::WrongNodeKind);
         };
         if !element.name().namespace_uri().is_some_and(|uri| {
@@ -104,19 +109,23 @@ impl Draft {
             element.custom_element_state(),
             crate::HtmlCustomElementState::Uncustomized | crate::HtmlCustomElementState::Undefined
         ));
-        if node.shadow_root.is_some() {
+        if node.shadow_root().is_some() {
             // Every admitted root is non-declarative. Declarative reuse has no
             // native caller toggle and remains an installation capability.
             return Err(DomError::NotSupported);
         }
-        let document = node.document;
+        let document = node.document();
         self.document_metadata(document)?;
         let registry = element.custom_element_registry();
         let mut state = crate::DomShadowRootState::native(init);
         state.select_global_registry(registry);
-        let root = self.allocate(DomNodeKind::ShadowRoot(state), document, limits, cancelled)?;
-        self.with_node_fields(root, cancelled, |fields| fields.host = Some(host))?;
-        self.with_node_fields(host, cancelled, |fields| fields.shadow_root = Some(root))?;
+        let root = self.allocate(NewNode::ShadowRoot(state), document, limits, cancelled)?;
+        let mut relation = self.host_mut(root, cancelled)?;
+        *relation = Some(host);
+        relation.commit(cancelled)?;
+        let mut relation = self.shadow_root_mut(host, cancelled)?;
+        *relation = Some(root);
+        relation.commit(cancelled)?;
         Ok(root)
     }
 
@@ -125,13 +134,13 @@ impl Draft {
     /// this same host concept, separately from shadow connectedness.
     pub(super) fn host_including_parent(&self, key: Key) -> Result<Option<Key>, DomError> {
         let node = self.node(key)?;
-        Ok(node.parent.or(node.host))
+        Ok(node.parent().or(node.host()))
     }
     pub(super) fn shadow_including_parent(&self, key: Key) -> Result<Option<Key>, DomError> {
         let node = self.node(key)?;
-        Ok(node.parent.or_else(|| {
-            matches!(node.kind, DomNodeKind::ShadowRoot(_))
-                .then_some(node.host)
+        Ok(node.parent().or_else(|| {
+            matches!(node.kind(), KindRead::ShadowRoot(_))
+                .then_some(node.host())
                 .flatten()
         }))
     }
@@ -184,7 +193,7 @@ mod tests {
                 .state
                 .node(dom.owner, host)
                 .unwrap()
-                .shadow_root
+                .shadow_root()
                 .is_some()
         );
         assert_eq!(

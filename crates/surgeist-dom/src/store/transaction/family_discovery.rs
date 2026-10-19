@@ -3,6 +3,7 @@
 //! original native hooks. In particular, this owner never writes option caches
 //! or derives a new Selectedcontent disabled bit.
 use super::super::*;
+use super::KindRead;
 use super::exact_forest::{self, Forest, KeyView, Suffix};
 use super::ordered_members::{
     Edit, Map, MapCustody, Members, MembersCustody, Membership, Mode, OrderPair, OrderView,
@@ -293,9 +294,9 @@ impl Families {
     }
 }
 
-fn tag(kind: &DomNodeKind) -> Option<surgeist_html::KnownHtmlElement> {
+fn tag(kind: KindRead<'_>) -> Option<surgeist_html::KnownHtmlElement> {
     match kind {
-        DomNodeKind::Element(element) => surgeist_html::KnownHtmlElement::from_name(element.name()),
+        KindRead::Element(element) => surgeist_html::KnownHtmlElement::from_name(element.name()),
         _ => None,
     }
 }
@@ -319,7 +320,7 @@ fn fact(
     };
     let key = order.normalize(key);
     let node = order.node(key)?;
-    let DomNodeKind::Element(element) = node.kind else {
+    let KindRead::Element(element) = node.kind() else {
         return Ok(None);
     };
     let mut value = Fact {
@@ -365,7 +366,7 @@ fn fact(
             let mut next = order.parent(key, Mode::Ordinary, step)?;
             while let Some(parent) = next {
                 step()?;
-                match cursor.observe(tag(order.node(parent.parent)?.kind)) {
+                match cursor.observe(tag(order.node(parent.parent)?.kind())) {
                     Action::NearestSelect => {
                         value.select = Some(parent.parent);
                         break;
@@ -687,7 +688,7 @@ impl Version {
             Kind::Target => {
                 let mut next = order.parent(fact.key, Mode::Ordinary, &mut *edit.step)?;
                 while let Some(parent) = next {
-                    if tag(order.node(parent.parent)?.kind)
+                    if tag(order.node(parent.parent)?.kind())
                         == Some(surgeist_html::KnownHtmlElement::Select)
                     {
                         self.selected_group(parent.parent, fact.key, present, true, order, edit)?;
@@ -720,8 +721,8 @@ fn gather(
         keys.values
             .change(&mut keys.custody, key, Some(key), edit)?;
         let node = order.node(key)?;
-        pending.reserve(draft, node.children.len(), cancel)?;
-        pending.extend(node.children.iter());
+        pending.reserve(draft, node.children().len(), cancel)?;
+        pending.extend(node.children().iter());
     }
     Ok(())
 }
@@ -804,11 +805,9 @@ impl Families {
     ) -> Result<Option<FamilyPlan>, DomError> {
         let key = draft.live_key(change.key);
         let unchanged_attributes = match (change.before, change.after) {
-            (Some(before), Some(after)) => match (before.kind, after.kind) {
-                (DomNodeKind::Element(before), DomNodeKind::Element(after)) => {
-                    before
-                        .attributes_backing()
-                        .same_storage(after.attributes_backing())
+            (Some(before), Some(after)) => match (before.kind(), after.kind()) {
+                (KindRead::Element(before), KindRead::Element(after)) => {
+                    before.language().same_attribute_storage(after.language())
                         && surgeist_html::KnownHtmlElement::from_name(before.name())
                             == surgeist_html::KnownHtmlElement::from_name(after.name())
                 }
@@ -834,7 +833,7 @@ impl Families {
         };
         let before = self.current.index.facts.get(key);
         let different_tag =
-            change.before.map(|node| tag(node.kind)) != change.after.map(|node| tag(node.kind));
+            change.before.map(|node| tag(node.kind())) != change.after.map(|node| tag(node.kind()));
         let descendant_rule_changed =
             different_tag && change.before.is_some() && change.after.is_some();
         if !descendant_rule_changed && before == after.as_ref() {
@@ -854,8 +853,8 @@ impl Families {
             // actual descendants; ordinary scalar changes never take this path.
             let mut pending = source::scratch::ScratchVec::new(draft, false);
             let node = order.after.node(key)?;
-            pending.reserve(draft, node.children.len(), cancel)?;
-            pending.extend(node.children.iter());
+            pending.reserve(draft, node.children().len(), cancel)?;
+            pending.extend(node.children().iter());
             for child in pending.iter() {
                 gather(draft, *child, order.after, &mut keys, &mut edit, cancel)?;
             }

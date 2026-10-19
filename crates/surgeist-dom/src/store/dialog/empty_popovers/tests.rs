@@ -94,17 +94,17 @@ fn actual_hidden_popovers_qualify_with_raw_dialogs_but_unknown_history_does_not(
         1
     );
     assert!(draft.document_known_empty_popovers(first, &cancel).unwrap());
-    draft
-        .with_node_fields(document, &cancel, |fields| {
-            fields.interactive_document = Some(DocumentInteractiveState::Unavailable)
-        })
-        .unwrap();
+    {
+        let mut state = draft.interactive_document_mut(document, &cancel).unwrap();
+        *state = Some(DocumentInteractiveState::Unavailable);
+        state.commit(&cancel).unwrap();
+    }
     assert!(!draft.document_known_empty_popovers(first, &cancel).unwrap());
-    draft
-        .with_node_fields(document, &cancel, |fields| {
-            fields.interactive_document = None
-        })
-        .unwrap();
+    {
+        let mut state = draft.interactive_document_mut(document, &cancel).unwrap();
+        *state = None;
+        state.commit(&cancel).unwrap();
+    }
     assert!(!draft.document_known_empty_popovers(first, &cancel).unwrap());
     assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
     assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
@@ -141,11 +141,11 @@ fn current_receiver_document_and_previous_capture_are_independent_after_real_ado
     let current = draft.dialog_method_node_document(subject, &cancel).unwrap();
     assert_eq!(current, second);
     let original = draft.resolve(captured.node().into()).unwrap();
-    draft
-        .with_node_fields(original, &cancel, |fields| {
-            fields.interactive_document = Some(DocumentInteractiveState::Unavailable)
-        })
-        .unwrap();
+    {
+        let mut state = draft.interactive_document_mut(original, &cancel).unwrap();
+        *state = Some(DocumentInteractiveState::Unavailable);
+        state.commit(&cancel).unwrap();
+    }
     // Find qualifies the current receiver Document; Hide must separately read
     // the previously captured exact Document, never substitute this new one.
     assert!(

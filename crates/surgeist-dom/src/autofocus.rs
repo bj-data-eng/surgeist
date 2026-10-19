@@ -6,15 +6,6 @@ pub(crate) enum DocumentAutofocusState<K> {
     Known { candidates: Vec<K>, processed: bool },
     Unavailable,
 }
-impl<K> DocumentAutofocusState<K> {
-    pub(crate) fn fresh() -> Self {
-        Self::Known {
-            candidates: Vec::new(),
-            processed: false,
-        }
-    }
-}
-
 /// Actual retained autofocus history at a complete historical Document basis.
 /// Candidate identities grant no current execution or focusing authority.
 #[derive(Clone, Copy, Debug)]
@@ -39,14 +30,14 @@ impl<'a> DomDocument<'a> {
     pub fn autofocus(self) -> Result<DomDocumentAutofocus<'a>, DomError> {
         self.snapshot.require_complete_source()?;
         let node = self.snapshot.node(self.id.node())?;
-        match node.node.autofocus_document.as_ref() {
-            Some(crate::store::canonical::Autofocus::Known {
+        match node.node.autofocus_document() {
+            Some(crate::store::canonical::AutofocusView::Known {
                 candidates,
                 processed,
             }) => Ok(DomDocumentAutofocus {
                 stamp: self.stamp(),
                 candidates,
-                processed: *processed,
+                processed,
             }),
             _ => Err(DomError::AutofocusDocumentStateUnavailable),
         }

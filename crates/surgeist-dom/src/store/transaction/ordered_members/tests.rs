@@ -282,9 +282,9 @@ fn shadow_order_connects_only_reciprocal_roots_before_light_children() {
             .unwrap(),
         host
     );
-    draft
-        .with_node_fields(shadow, &cancel, |fields| fields.host = None)
-        .unwrap();
+    let mut host_link = draft.host_mut(shadow, &cancel).unwrap();
+    *host_link = None;
+    host_link.commit(&cancel).unwrap();
     assert_eq!(
         draft
             .order_view()
@@ -305,9 +305,9 @@ fn shadow_order_connects_only_reciprocal_roots_before_light_children() {
             .compare(nested, light, Mode::ShadowIncluding, &mut || Ok(())),
         Err(DomError::HierarchyRequest)
     ));
-    draft
-        .with_node_fields(shadow, &cancel, |fields| fields.host = Some(host))
-        .unwrap();
+    let mut host_link = draft.host_mut(shadow, &cancel).unwrap();
+    *host_link = Some(host);
+    host_link.commit(&cancel).unwrap();
     assert_eq!(
         draft
             .order_view()

@@ -3,7 +3,7 @@
 //! catches up before the next source controller. Shadow/Template host edges
 //! never enter this private order.
 use super::super::*;
-use super::NodeFields;
+use super::NodeRead;
 pub(in crate::store) use super::ordered_members::ChildPosition;
 use super::ordered_members::{
     Edit as Editing, Map, MapCustody, Members, MembersCustody, Membership, Mode, OrderView,
@@ -508,7 +508,7 @@ impl Draft {
             return Ok(None);
         }
         let parent = self.live_key(parent);
-        let old = self.node(parent)?.children;
+        let old = self.node(parent)?.children();
         let end = index
             .checked_add(removed)
             .filter(|end| *end <= old.len())
@@ -572,7 +572,7 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<Option<SlotPlan>, DomError> {
         let parent = self.live_key(parent);
-        let old = self.node(parent)?.children;
+        let old = self.node(parent)?.children();
         if old
             .iter()
             .eq(added.iter().copied().map(|key| self.live_key(key)))
@@ -620,10 +620,10 @@ impl Draft {
     pub(in crate::store) fn prepare_slot_created(
         &self,
         key: Key,
-        fields: &NodeFields,
+        fields: NodeRead<'_>,
         cancel: &AtomicBool,
     ) -> Result<Option<SlotPlan>, DomError> {
-        if !crate::slot::is_slot(&fields.kind) {
+        if !crate::slot::is_slot(fields.kind().into()) {
             return Ok(None);
         }
         self.slot_plan(
@@ -638,12 +638,12 @@ impl Draft {
     pub(in crate::store) fn prepare_slot_fields(
         &self,
         key: Key,
-        fields: &NodeFields,
+        fields: NodeRead<'_>,
         cancel: &AtomicBool,
     ) -> Result<Option<SlotPlan>, DomError> {
         let key = self.live_key(key);
-        let was = crate::slot::is_slot(self.node(key)?.kind);
-        let is = crate::slot::is_slot(&fields.kind);
+        let was = crate::slot::is_slot(self.node(key)?.kind().into());
+        let is = crate::slot::is_slot(fields.kind().into());
         if was == is {
             return Ok(None);
         }
@@ -666,12 +666,14 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<Option<SlotPlan>, DomError> {
         let key = self.live_key(key);
-        if self.slot_index.position(key).is_none() && !crate::slot::is_slot(self.node(key)?.kind) {
+        if self.slot_index.position(key).is_none()
+            && !crate::slot::is_slot(self.node(key)?.kind().into())
+        {
             return Ok(None);
         }
         self.slot_plan(
             |next, edit| {
-                if crate::slot::is_slot(self.node(key)?.kind) {
+                if crate::slot::is_slot(self.node(key)?.kind().into()) {
                     next.remove_member(key, edit)?;
                     next.dirty_member(key, edit)?;
                 }
@@ -700,7 +702,7 @@ impl Draft {
                     Some(key),
                     edit,
                 )?;
-                if crate::slot::is_slot(self.node(key)?.kind) {
+                if crate::slot::is_slot(self.node(key)?.kind().into()) {
                     next.dirty_member(key, edit)?;
                 }
                 Ok(())
@@ -759,7 +761,7 @@ impl Draft {
                 continue;
             };
             let mut ordinal = 0usize;
-            for child in self.node(parent)?.children.iter() {
+            for child in self.node(parent)?.children().iter() {
                 (edit.step)()?;
                 if let Some(id) = mapper(child) {
                     let key = Key::Existing(id);
@@ -783,7 +785,7 @@ impl Draft {
             (edit.step)()?;
             if self
                 .node(self.live_key(key))
-                .is_ok_and(|node| crate::slot::is_slot(node.kind))
+                .is_ok_and(|node| crate::slot::is_slot(node.kind().into()))
                 && let Some(id) = mapper(key)
             {
                 output.insert_member(Key::Existing(id), &mut edit)?;
@@ -916,7 +918,7 @@ mod tests {
         let original = draft
             .node(root)
             .unwrap()
-            .children
+            .children()
             .iter()
             .collect::<Vec<_>>();
         let outer = draft
@@ -961,7 +963,7 @@ mod tests {
             draft
                 .node(root)
                 .unwrap()
-                .children
+                .children()
                 .iter()
                 .collect::<Vec<_>>(),
             original
@@ -980,7 +982,7 @@ mod tests {
         let old = draft
             .node(root)
             .unwrap()
-            .children
+            .children()
             .iter()
             .collect::<Vec<_>>();
         let mut new = old.clone();
@@ -1008,7 +1010,7 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let draft = source(&dom, &cancel);
         let root = Key::Existing(root);
-        let children = draft.node(root).unwrap().children;
+        let children = draft.node(root).unwrap().children();
         let expected = [
             root,
             Key::Existing(ids[1]),
@@ -1040,17 +1042,12 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let mut draft = source(&dom, &cancel);
         let root = Key::Existing(root);
-        let document = draft.node(root).unwrap().document;
+        let document = draft.node(root).unwrap().document();
         let child = draft
-            .allocate(
-                DomNodeKind::Comment("new".into()),
-                document,
-                limits(),
-                &cancel,
-            )
+            .allocate(NewNode::Comment("new".into()), document, limits(), &cancel)
             .unwrap();
         assert!(!draft.journal.has_marks());
-        let index = draft.node(root).unwrap().children.len();
+        let index = draft.node(root).unwrap().children().len();
         let before = draft.slot_index.current.index.clone();
         draft.custody_registry().reconcile_releases();
         let ledger = draft.custody_ledger().clone();
@@ -1151,9 +1148,18 @@ mod tests {
         let (mut dom, root, ids) = fixture();
         let mut draft = source(&dom, &cancel);
         let root = Key::Existing(root);
-        let document = draft.node(root).unwrap().document;
-        let kind = draft.node(root).unwrap().kind.clone();
-        let target = draft.allocate(kind, document, limits(), &cancel).unwrap();
+        let document = draft.node(root).unwrap().document();
+        let source_id = draft.published_id(root).unwrap();
+        let target = draft
+            .import_node(
+                &dom.snapshot(),
+                source_id,
+                document,
+                false,
+                limits(),
+                &cancel,
+            )
+            .unwrap();
         draft.mark_source_private(target, &cancel).unwrap();
         draft
             .set_attribute(

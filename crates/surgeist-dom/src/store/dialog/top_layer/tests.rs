@@ -364,11 +364,11 @@ fn hidden_actual_popovers_allow_nonempty_modal_raw_and_unknown_state_refuses() {
             .unwrap()
     );
     let key = staged.resolve(document.node().into()).unwrap();
-    staged
-        .with_node_fields(key, &cancel(), |fields| {
-            fields.interactive_document = Some(DocumentInteractiveState::Unavailable)
-        })
-        .unwrap();
+    {
+        let mut state = staged.interactive_document_mut(key, &cancel()).unwrap();
+        *state = Some(DocumentInteractiveState::Unavailable);
+        state.commit(&cancel()).unwrap();
+    }
     assert_eq!(
         staged.add_top_layer(staged.resolve(ids[0].into()).unwrap(), &cancel()),
         Err(DomError::DialogDocumentStateUnavailable)

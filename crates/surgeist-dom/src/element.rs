@@ -1,19 +1,69 @@
 use crate::name::AttributeStorage;
 use crate::names::qualified_equals;
+use crate::store::payload::Payload;
 use crate::store::source::formation::{self, Formation};
 use crate::{
     DocumentString, DomAttribute, DomError, DomQualifiedName, DomRegistryBinding,
     HtmlCustomElementState, Namespace,
 };
+use std::sync::Arc;
+#[cfg(test)]
 use std::sync::atomic::AtomicBool;
 use surgeist_html::{
     HtmlCanvasNoneState, HtmlCommonState, HtmlElementClass as Requirement, HtmlIframeInitialState,
     HtmlMarqueeState, KnownHtmlElement,
 };
 mod family;
+mod groups;
 #[cfg(test)]
 mod tests;
 pub(crate) use family::{IframeState, NativeFamily};
+pub(crate) use groups::{
+    AttributeBinding, CustomAssociation, ElementChildren, ElementFormation, ElementName,
+    FocusReference, FormedElement, HostedContent, NonceSlot, NonceUpdate,
+};
+
+fn original_string(
+    value: &DocumentString,
+    budget: Option<&Formation>,
+) -> Result<crate::store::source::storage::Payload, DomError> {
+    let mut usage = crate::store::source::storage::Payload::default();
+    if budget.is_some() {
+        usage.string(value)?;
+    }
+    Ok(usage)
+}
+
+fn empty_string_payload(count: usize) -> Result<crate::store::source::storage::Payload, DomError> {
+    Ok(crate::store::source::storage::Payload {
+        bytes: size_of::<Vec<u16>>()
+            .checked_mul(count)
+            .ok_or(DomError::RepresentationExhausted)?,
+        units: 0,
+    })
+}
+
+const CAPTURED: u8 = 1;
+const FULLSCREEN: u8 = 2;
+const KEYBOARD_LOCK: u8 = 4;
+
+macro_rules! native_payload {
+    ($get:ident, $set:ident, $variant:ident, $state:ty) => {
+        pub(crate) fn $get(&self) -> Option<&Arc<Payload<$state>>> {
+            match &self.family {
+                NativeFamily::$variant(value) => Some(value),
+                _ => None,
+            }
+        }
+        pub(crate) fn $set(&mut self, value: Arc<Payload<$state>>) {
+            assert!(
+                matches!(self.family, NativeFamily::$variant(_)),
+                "qualified native family replacement"
+            );
+            self.family = NativeFamily::$variant(value);
+        }
+    };
+}
 
 /// Definition association established by this native generic creation surface.
 /// Registry/definition object admission is a separate, unexposed capability.
@@ -26,87 +76,121 @@ pub enum DomElementDefinition {
 /// Private fields prevent bypassing name validation and native initialization.
 #[derive(Clone, Debug)]
 pub struct DomElement {
-    name: DomQualifiedName,
-    attributes: AttributeStorage,
-    registry: DomRegistryBinding,
-    definition: DomElementDefinition,
+    name: Arc<Payload<ElementName>>,
+    attributes: Option<Arc<Payload<AttributeBinding>>>,
     custom_state: HtmlCustomElementState,
-    saved_is: Option<DocumentString>,
-    common: HtmlCommonState<crate::NodeId>,
-    nonce: Option<DocumentString>,
+    common_scope: surgeist_html::HtmlCommonScope,
+    custom: Option<Arc<Payload<CustomAssociation>>>,
+    nonce: Option<Arc<Payload<NonceSlot>>>,
+    focus: Option<Arc<Payload<FocusReference<crate::NodeId>>>>,
     family: NativeFamily,
-    content_navigable: Option<crate::DomHostedNavigableId>,
-    captured_in_view_transition: bool,
-    fullscreen: bool,
-    keyboard_lock: bool,
+    hosted: Option<Arc<Payload<HostedContent>>>,
+    flags: u8,
 }
 
 impl PartialEq for DomElement {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name
-            && self.attributes == other.attributes
-            && self.registry == other.registry
-            && self.definition == other.definition
+            && self.attributes() == other.attributes()
+            && self.custom_element_registry() == other.custom_element_registry()
+            && self.custom_element_definition() == other.custom_element_definition()
+            && self.saved_is() == other.saved_is()
             && self.custom_state == other.custom_state
-            && self.saved_is == other.saved_is
-            && self.common == other.common
+            && self.common_scope == other.common_scope
+            && self.focus == other.focus
             && self.nonce == other.nonce
             && self.family == other.family
-            && self.content_navigable == other.content_navigable
-            && self.captured_in_view_transition == other.captured_in_view_transition
-            && self.fullscreen == other.fullscreen
-            && self.keyboard_lock == other.keyboard_lock
+            && self.hosted == other.hosted
+            && self.flags == other.flags
     }
 }
 impl Eq for DomElement {}
 
 impl DomElement {
-    #[cfg(test)]
-    pub(crate) fn inspect_compact_baseline(
-        &self,
-        graph: &mut crate::store::compact_tests::AllocationGraph,
-    ) {
-        self.name.inspect_allocations(graph);
-        self.attributes.inspect_allocations(graph);
-        for attribute in self.attributes.iter() {
-            attribute.name().inspect_allocations(graph);
-            graph.string(attribute.value());
-        }
-        for value in [self.saved_is.as_ref(), self.nonce.as_ref()]
-            .into_iter()
-            .flatten()
-        {
-            graph.string(value);
-        }
-        match &self.family {
-            NativeFamily::Common | NativeFamily::Form(_) => {}
-            NativeFamily::Canvas(value) => {
-                assert_eq!(
-                    **value,
-                    HtmlCanvasNoneState::fresh(),
-                    "this raw baseline covers the actual fresh Canvas body"
-                );
-                graph.target(value, "native.canvas");
-            }
-            _ => panic!(
-                "compact baseline must explicitly describe this native family's owned allocations"
-            ),
-        }
+    pub(crate) fn name_payload(&self) -> &Arc<Payload<ElementName>> {
+        &self.name
     }
-
-    /// Change only an equal prefix backing on an exclusively held candidate.
-    /// Native state and the mandatory namespace/local atoms are untouched.
-    pub(crate) fn replace_name_prefix(
+    pub(crate) fn custom_payload(&self) -> Option<&Arc<Payload<CustomAssociation>>> {
+        self.custom.as_ref()
+    }
+    pub(crate) fn nonce_payload(&self) -> Option<&Arc<Payload<NonceSlot>>> {
+        self.nonce.as_ref()
+    }
+    pub(crate) fn focus_payload(&self) -> Option<&Arc<Payload<FocusReference<crate::NodeId>>>> {
+        self.focus.as_ref()
+    }
+    pub(crate) fn hosted_payload(&self) -> Option<&Arc<Payload<HostedContent>>> {
+        self.hosted.as_ref()
+    }
+    pub(crate) fn native_family(&self) -> &NativeFamily {
+        &self.family
+    }
+    pub(crate) fn set_focus_payload(
         &mut self,
-        prefix: Option<DocumentString>,
-    ) -> Option<DocumentString> {
-        self.name.replace_prefix(prefix)
+        value: Option<Arc<Payload<FocusReference<crate::NodeId>>>>,
+    ) {
+        assert!(
+            value.is_none() || self.common_scope == surgeist_html::HtmlCommonScope::Html,
+            "stored focus applicability"
+        );
+        self.focus = value;
     }
-
+    native_payload!(
+        input_payload,
+        set_input_payload,
+        Input,
+        crate::DomInputState
+    );
+    native_payload!(
+        textarea_payload,
+        set_textarea_payload,
+        Textarea,
+        crate::DomTextareaState
+    );
+    native_payload!(
+        output_payload,
+        set_output_payload,
+        Output,
+        crate::DomOutputState
+    );
+    native_payload!(
+        select_payload,
+        set_select_payload,
+        Select,
+        crate::DomSelectState
+    );
+    native_payload!(
+        fieldset_payload,
+        set_fieldset_payload,
+        Fieldset,
+        crate::DomFieldsetState
+    );
+    native_payload!(
+        button_payload,
+        set_button_payload,
+        Button,
+        crate::DomButtonState
+    );
+    pub(crate) fn style_payload(&self) -> Option<&Arc<Payload<crate::DomStyleState>>> {
+        match &self.family {
+            NativeFamily::Style(value) => Some(value),
+            _ => None,
+        }
+    }
+    pub(crate) fn dialog_payload(&self) -> Option<&Arc<Payload<crate::dialog::DomDialogState>>> {
+        match &self.family {
+            NativeFamily::Dialog(value) => Some(value),
+            _ => None,
+        }
+    }
+    #[cfg(test)]
     pub(crate) fn attributes_payload(
         &self,
     ) -> Result<crate::store::source::storage::Payload, DomError> {
-        Ok(self.attributes.text_payload())
+        Ok(self.attributes_backing().map_or_else(
+            crate::store::source::storage::Payload::default,
+            AttributeStorage::text_payload,
+        ))
     }
     pub(crate) fn retained_payload(
         &self,
@@ -114,128 +198,137 @@ impl DomElement {
     ) -> Result<crate::store::source::storage::Payload, DomError> {
         crate::store::source::storage::element(self, &self.family, step)
     }
-    /// Completed retained materialization. The crate-owned importer proves the
-    /// ordinary-report/profile boundary; this does not replay native hooks.
+    /// Completed retained materialization. The importer retains its native
+    /// control until this result is attached to the receiving language payload.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Independent parsed facts and already formed child owners enter one atomic Element formation; grouping them would add an artificial staging record"
+    )]
     pub(crate) fn from_parsed(
-        name: DomQualifiedName,
-        attributes: AttributeStorage,
+        name: Arc<Payload<ElementName>>,
+        attributes: Option<Arc<Payload<AttributeBinding>>>,
         custom_state: HtmlCustomElementState,
         saved_is: Option<DocumentString>,
         nonce: Option<DocumentString>,
         family: NativeFamily,
         common: HtmlCommonState<crate::NodeId>,
-    ) -> Self {
-        Self {
+        mut formation: ElementFormation<'_>,
+    ) -> Result<FormedElement, DomError> {
+        let custom = saved_is
+            .map(|value| {
+                let original = original_string(&value, formation.budget)?;
+                formation.custom(
+                    CustomAssociation {
+                        registry: DomRegistryBinding::Null,
+                        definition: DomElementDefinition::Null,
+                        saved_is: Some(value),
+                    },
+                    original,
+                )
+            })
+            .transpose()?;
+        let nonce = nonce
+            .map(|value| {
+                let original = original_string(&value, formation.budget)?;
+                formation.nonce(value, original)
+            })
+            .transpose()?;
+        let focus = common
+            .html()
+            .and_then(|html| html.previously_focused_element())
+            .copied()
+            .map(|value| formation.focus(value))
+            .transpose()?;
+        let value = Self {
             name,
             attributes,
-            registry: DomRegistryBinding::Null,
-            definition: DomElementDefinition::Null,
             custom_state,
-            saved_is,
-            common,
+            common_scope: common.scope(),
+            custom,
             nonce,
+            focus,
             family,
-            content_navigable: None,
-            captured_in_view_transition: false,
-            fullscreen: false,
-            keyboard_lock: false,
-        }
+            hosted: None,
+            flags: 0,
+        };
+        Ok(formation.finish(value))
     }
-    /// Initialize an already validated, owner-resolved and admitted name.
-    /// Native ingress owns its original validation and case-processing rules.
+
+    /// The name target is already formed and sealed by the ingress owner.
     pub(crate) fn native(
-        name: DomQualifiedName,
+        name: Arc<Payload<ElementName>>,
         environment: crate::DomDocumentEnvironment,
-        cancelled: &AtomicBool,
-        budget: Option<&Formation>,
-    ) -> Result<Self, DomError> {
-        Self::initialize(name, None, environment, cancelled, budget)
+        formation: ElementFormation<'_>,
+    ) -> Result<FormedElement, DomError> {
+        Self::initialize(name, None, environment, formation)
     }
-    /// Initialize trusted captured name fields; copied attributes and the
-    /// source nonce slot are applied separately in source cloning order.
+
+    /// Clone initialization creates fresh native state; it never interns native
+    /// identities by value. The caller supplies the new name occurrence.
     pub(crate) fn clone_initialized(
         &self,
-        name: DomQualifiedName,
+        name: Arc<Payload<ElementName>>,
         environment: crate::DomDocumentEnvironment,
-        cancelled: &AtomicBool,
-        budget: Option<&Formation>,
-    ) -> Result<Self, DomError> {
-        Self::initialize(
-            name,
-            self.saved_is
-                .as_ref()
-                .map(|value| formation::share(value, budget, cancelled))
-                .transpose()?,
-            environment,
-            cancelled,
-            budget,
-        )
+        formation: ElementFormation<'_>,
+    ) -> Result<FormedElement, DomError> {
+        let saved_is = self
+            .saved_is()
+            .map(|value| formation::share(value, formation.budget, formation.cancel))
+            .transpose()?;
+        Self::initialize(name, saved_is, environment, formation)
     }
-    fn shared_name(
-        name: &DomQualifiedName,
-        budget: Option<&Formation>,
-        cancel: &AtomicBool,
-    ) -> Result<DomQualifiedName, DomError> {
-        if let Some(budget) = budget {
-            budget.retain_payload(name.retained_payload()?, cancel)?;
-        }
-        Ok(name.clone())
-    }
-    /// Construct the actual candidate without retaining a superseded old
-    /// attribute bank. The caller owns the already formed attributes and nonce
-    /// under the same candidate lease until canonical transfer.
+
+    /// Construct only the changed binding and feature bodies. An unrelated
+    /// attribute edit aliases its original name, native state and nonce.
     pub(crate) fn with_attributes_formed(
         &self,
-        attributes: AttributeStorage,
+        attributes: Option<Arc<Payload<AttributeBinding>>>,
         changed: &DomQualifiedName,
-        nonce: Option<DocumentString>,
-        budget: Option<&Formation>,
-        cancel: &AtomicBool,
-    ) -> Result<Self, DomError> {
-        crate::store::check_cancel(cancel)?;
-        let name = Self::shared_name(&self.name, budget, cancel)?;
-        let saved_is = self
-            .saved_is
-            .as_ref()
-            .map(|value| formation::share(value, budget, cancel))
-            .transpose()?;
+        nonce: NonceUpdate,
+        mut formation: ElementFormation<'_>,
+    ) -> Result<FormedElement, DomError> {
+        crate::store::check_cancel(formation.cancel)?;
+        let budget = formation.budget;
+        let cancel = formation.cancel;
         let family = self.family.after_attribute(
             family::AttributeMutation {
-                element_name: &self.name,
+                element_name: self.name(),
                 name: changed,
-                previous: self.attributes.as_slice(),
-                attributes: attributes.as_slice(),
+                previous: self.attributes(),
+                attributes: attributes
+                    .as_ref()
+                    .map_or(&[], |binding| binding.value.storage.as_slice()),
                 content: self.child_navigable_presence(),
             },
             &mut || formation::step(budget, cancel),
-            budget,
-            cancel,
+            &mut formation,
         )?;
-        Ok(Self {
-            name,
+        let nonce = match nonce {
+            NonceUpdate::Unchanged => self.nonce.clone(),
+            NonceUpdate::Set(value) => {
+                let original = original_string(&value, formation.budget)?;
+                Some(formation.nonce(value, original)?)
+            }
+        };
+        let value = Self {
             attributes,
-            registry: self.registry,
-            definition: self.definition,
-            custom_state: self.custom_state,
-            saved_is,
-            common: self.common,
             nonce,
             family,
-            content_navigable: self.content_navigable,
-            captured_in_view_transition: self.captured_in_view_transition,
-            fullscreen: self.fullscreen,
-            keyboard_lock: self.keyboard_lock,
-        })
+            ..self.clone()
+        };
+        Ok(formation.finish(value))
     }
+
     fn initialize(
-        name: DomQualifiedName,
+        name: Arc<Payload<ElementName>>,
         saved_is: Option<DocumentString>,
         environment: crate::DomDocumentEnvironment,
-        cancelled: &AtomicBool,
-        budget: Option<&Formation>,
-    ) -> Result<Self, DomError> {
+        mut formation: ElementFormation<'_>,
+    ) -> Result<FormedElement, DomError> {
+        let budget = formation.budget;
+        let cancelled = formation.cancel;
         let initialization =
-            surgeist_html::bounded::native_element_initialization_with(&name, |_| {
+            surgeist_html::bounded::native_element_initialization_with(&name.value.value, |_| {
                 formation::step(budget, cancelled)
             })?;
         if environment.has_ever_had_navigable()
@@ -252,44 +345,6 @@ impl DomElement {
                 initialization.requirement(),
             ));
         }
-        if let Some(budget) = budget {
-            use std::mem::size_of;
-            let string = size_of::<Vec<u16>>();
-            let bytes = match initialization.requirement() {
-                Requirement::FormAssociated(
-                    surgeist_html::HtmlNativeFormAssociationKind::Button,
-                )
-                | Requirement::FormAssociated(
-                    surgeist_html::HtmlNativeFormAssociationKind::Fieldset,
-                ) => string,
-                Requirement::FormAssociated(
-                    surgeist_html::HtmlNativeFormAssociationKind::Input,
-                ) => size_of::<crate::DomInputState>() + 2 * string,
-                Requirement::FormAssociated(
-                    surgeist_html::HtmlNativeFormAssociationKind::Textarea,
-                ) => size_of::<crate::DomTextareaState>() + 2 * string,
-                Requirement::FormAssociated(
-                    surgeist_html::HtmlNativeFormAssociationKind::Output,
-                ) => size_of::<crate::DomOutputState>() + string,
-                Requirement::FormAssociated(
-                    surgeist_html::HtmlNativeFormAssociationKind::Select,
-                ) => size_of::<crate::DomSelectState>() + string,
-                Requirement::KnownHtml(KnownHtmlElement::Dialog) => {
-                    size_of::<crate::dialog::DomDialogState>() + string
-                }
-                Requirement::KnownHtml(KnownHtmlElement::Canvas) => {
-                    size_of::<HtmlCanvasNoneState>()
-                }
-                Requirement::KnownHtml(KnownHtmlElement::Style) => {
-                    size_of::<crate::DomStyleState>()
-                }
-                _ => 0,
-            };
-            budget.retain_bytes(bytes, cancelled)?;
-            if initialization.nonce().is_some() {
-                budget.retain_bytes(string, cancelled)?;
-            }
-        }
         let family = match initialization.requirement() {
             Requirement::GenericElement
             | Requirement::CommonHtml
@@ -300,7 +355,11 @@ impl DomElement {
             }
             Requirement::KnownHtml(KnownHtmlElement::Template) => NativeFamily::Template,
             Requirement::KnownHtml(KnownHtmlElement::Canvas) => {
-                NativeFamily::Canvas(std::sync::Arc::new(HtmlCanvasNoneState::fresh()))
+                NativeFamily::Canvas(formation.native(
+                    empty_string_payload(0)?,
+                    crate::store::source::storage::Payload::default(),
+                    || Ok(HtmlCanvasNoneState::fresh()),
+                )?)
             }
             Requirement::KnownHtml(KnownHtmlElement::Iframe) => {
                 // Every admitted target Document has the actual native never-BC
@@ -321,39 +380,67 @@ impl DomElement {
                 NativeFamily::Slot
             }
             Requirement::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind::Button) => {
-                NativeFamily::Button(crate::DomButtonState::fresh())
+                NativeFamily::Button(formation.native(
+                    empty_string_payload(1)?,
+                    crate::store::source::storage::Payload::default(),
+                    || Ok(crate::DomButtonState::fresh()),
+                )?)
             }
             Requirement::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind::Fieldset) => {
-                NativeFamily::Fieldset(crate::DomFieldsetState::fresh())
+                NativeFamily::Fieldset(formation.native(
+                    empty_string_payload(1)?,
+                    crate::store::source::storage::Payload::default(),
+                    || Ok(crate::DomFieldsetState::fresh()),
+                )?)
             }
             Requirement::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind::Input) => {
-                NativeFamily::Input(std::sync::Arc::new(crate::DomInputState::fresh(
-                    environment.input_platform(),
-                )))
+                NativeFamily::Input(formation.native(
+                    empty_string_payload(2)?,
+                    crate::store::source::storage::Payload::default(),
+                    || Ok(crate::DomInputState::fresh(environment.input_platform())),
+                )?)
             }
             Requirement::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind::Textarea) => {
-                NativeFamily::Textarea(std::sync::Arc::new(crate::DomTextareaState::fresh(
-                    environment.input_platform(),
-                )))
+                NativeFamily::Textarea(formation.native(
+                    empty_string_payload(2)?,
+                    crate::store::source::storage::Payload::default(),
+                    || Ok(crate::DomTextareaState::fresh(environment.input_platform())),
+                )?)
             }
             Requirement::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind::Output) => {
-                NativeFamily::Output(std::sync::Arc::new(crate::DomOutputState::fresh()))
+                NativeFamily::Output(formation.native(
+                    empty_string_payload(1)?,
+                    crate::store::source::storage::Payload::default(),
+                    || Ok(crate::DomOutputState::fresh()),
+                )?)
             }
             Requirement::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind::Select) => {
-                NativeFamily::Select(std::sync::Arc::new(crate::DomSelectState::fresh()))
+                NativeFamily::Select(formation.native(
+                    empty_string_payload(1)?,
+                    crate::store::source::storage::Payload::default(),
+                    || Ok(crate::DomSelectState::fresh()),
+                )?)
             }
             Requirement::KnownHtml(KnownHtmlElement::Option) => {
                 NativeFamily::Option(crate::DomOptionState::default())
             }
             Requirement::KnownHtml(KnownHtmlElement::Dialog) => {
-                NativeFamily::Dialog(std::sync::Arc::new(crate::dialog::DomDialogState::fresh()))
+                NativeFamily::Dialog(formation.native(
+                    empty_string_payload(1)?,
+                    crate::store::source::storage::Payload::default(),
+                    || Ok(crate::dialog::DomDialogState::fresh()),
+                )?)
             }
             Requirement::KnownHtml(KnownHtmlElement::Details) => NativeFamily::Details,
             Requirement::KnownHtml(KnownHtmlElement::Meta) => NativeFamily::Meta,
             Requirement::KnownHtml(KnownHtmlElement::Base) => NativeFamily::Base,
             Requirement::KnownHtml(KnownHtmlElement::Link) => NativeFamily::Link,
             Requirement::KnownHtml(KnownHtmlElement::Style) => {
-                NativeFamily::Style(std::sync::Arc::new(crate::DomStyleState::fresh()))
+                NativeFamily::Style(formation.native(
+                    empty_string_payload(0)?,
+                    crate::store::source::storage::Payload::default(),
+                    || Ok(crate::DomStyleState::fresh()),
+                )?)
             }
             Requirement::KnownHtml(KnownHtmlElement::A | KnownHtmlElement::Area) => {
                 NativeFamily::Hyperlink
@@ -377,26 +464,41 @@ impl DomElement {
         let custom_name = html
             && (saved_is.is_some()
                 || surgeist_html::bounded::validate_custom_element_name_with(
-                    name.local_name(),
+                    name.value.value.local_name(),
                     |_| formation::step(budget, cancelled),
                 )?
                 .is_ok());
-        let attributes = AttributeStorage::default();
-        Ok(Self {
+        let custom = saved_is
+            .map(|value| {
+                let original = original_string(&value, formation.budget)?;
+                formation.custom(
+                    CustomAssociation {
+                        registry: DomRegistryBinding::Null,
+                        definition: DomElementDefinition::Null,
+                        saved_is: Some(value),
+                    },
+                    original,
+                )
+            })
+            .transpose()?;
+        let nonce = if initialization.nonce().is_some() {
+            Some(formation.fresh_nonce()?)
+        } else {
+            None
+        };
+        let value = Self {
             name,
-            attributes,
-            registry: DomRegistryBinding::Null,
-            definition: DomElementDefinition::Null,
+            attributes: None,
             custom_state: surgeist_html::custom_element_state_without_definition(html, custom_name),
-            saved_is,
-            common,
-            nonce: initialization.nonce().map(|_| DocumentString::from("")),
+            common_scope: common.scope(),
+            custom,
+            nonce,
+            focus: None,
             family,
-            content_navigable: None,
-            captured_in_view_transition: false,
-            fullscreen: false,
-            keyboard_lock: false,
-        })
+            hosted: None,
+            flags: 0,
+        };
+        Ok(formation.finish(value))
     }
     pub(crate) fn is_template(&self) -> bool {
         matches!(self.family, NativeFamily::Template)
@@ -411,84 +513,32 @@ impl DomElement {
     /// Actual stored Fieldset state, or inapplicability for another family.
     pub fn fieldset_state(&self) -> Option<&crate::DomFieldsetState> {
         match &self.family {
-            NativeFamily::Fieldset(state) => Some(state),
+            NativeFamily::Fieldset(state) => Some(&state.value),
             _ => None,
         }
     }
     /// Actual stored Button state; raw weak slots belong to its snapshot view.
     pub fn button_state(&self) -> Option<&crate::DomButtonState> {
         match &self.family {
-            NativeFamily::Button(state) => Some(state),
+            NativeFamily::Button(state) => Some(&state.value),
             _ => None,
         }
     }
     pub fn input_state(&self) -> Option<&crate::DomInputState> {
         match &self.family {
-            NativeFamily::Input(state) => Some(state),
-            _ => None,
-        }
-    }
-    pub(crate) fn shared_family_payload(
-        &self,
-        step: impl FnMut() -> Result<(), DomError>,
-    ) -> Result<Option<crate::store::source::storage::Payload>, DomError> {
-        let shared = match &self.family {
-            NativeFamily::Input(state) => std::sync::Arc::strong_count(state) > 1,
-            NativeFamily::Textarea(state) => std::sync::Arc::strong_count(state) > 1,
-            NativeFamily::Output(state) => std::sync::Arc::strong_count(state) > 1,
-            NativeFamily::Select(state) => std::sync::Arc::strong_count(state) > 1,
-            _ => false,
-        };
-        if shared {
-            crate::store::source::storage::family_payload(&self.family, step).map(Some)
-        } else {
-            Ok(None)
-        }
-    }
-    pub(crate) fn make_family_unique(&mut self) {
-        match &mut self.family {
-            NativeFamily::Input(state) => {
-                formation::make_arc_mut(state);
-            }
-            NativeFamily::Textarea(state) => {
-                formation::make_arc_mut(state);
-            }
-            NativeFamily::Output(state) => {
-                formation::make_arc_mut(state);
-            }
-            NativeFamily::Select(state) => {
-                formation::make_arc_mut(state);
-            }
-            _ => {}
-        }
-    }
-    pub(crate) fn input_state_mut(&mut self) -> Option<&mut crate::DomInputState> {
-        match &mut self.family {
-            NativeFamily::Input(state) => Some(formation::make_arc_mut(state)),
+            NativeFamily::Input(state) => Some(&state.value),
             _ => None,
         }
     }
     pub fn textarea_state(&self) -> Option<&crate::DomTextareaState> {
         match &self.family {
-            NativeFamily::Textarea(state) => Some(state),
-            _ => None,
-        }
-    }
-    pub(crate) fn textarea_state_mut(&mut self) -> Option<&mut crate::DomTextareaState> {
-        match &mut self.family {
-            NativeFamily::Textarea(state) => Some(formation::make_arc_mut(state)),
+            NativeFamily::Textarea(state) => Some(&state.value),
             _ => None,
         }
     }
     pub fn output_state(&self) -> Option<&crate::DomOutputState> {
         match &self.family {
-            NativeFamily::Output(state) => Some(state),
-            _ => None,
-        }
-    }
-    pub(crate) fn output_state_mut(&mut self) -> Option<&mut crate::DomOutputState> {
-        match &mut self.family {
-            NativeFamily::Output(state) => Some(formation::make_arc_mut(state)),
+            NativeFamily::Output(state) => Some(&state.value),
             _ => None,
         }
     }
@@ -510,29 +560,34 @@ impl DomElement {
                 .filter(|tag| matches!(tag, KnownHtmlElement::Audio | KnownHtmlElement::Video)),
         }
     }
-    pub(crate) fn set_style_state(&mut self, value: crate::DomStyleState) {
-        match &mut self.family {
-            NativeFamily::Style(state) => *state = formation::allocated_arc(value),
-            _ => unreachable!("checked Style"),
-        }
+    pub(crate) fn set_style_payload(&mut self, value: Arc<Payload<crate::DomStyleState>>) {
+        assert!(
+            matches!(self.family, NativeFamily::Style(_)),
+            "checked Style"
+        );
+        self.family = NativeFamily::Style(value);
     }
     pub(crate) fn style_state(&self) -> Option<&crate::DomStyleState> {
         match &self.family {
-            NativeFamily::Style(state) => Some(state),
+            NativeFamily::Style(state) => Some(&state.value),
             _ => None,
         }
     }
     pub(crate) fn dialog_state(&self) -> Option<&crate::dialog::DomDialogState> {
         match &self.family {
-            NativeFamily::Dialog(state) => Some(state),
+            NativeFamily::Dialog(state) => Some(&state.value),
             _ => None,
         }
     }
-    pub(crate) fn set_dialog_state(&mut self, value: crate::dialog::DomDialogState) {
-        match &mut self.family {
-            NativeFamily::Dialog(state) => *state = formation::allocated_arc(value),
-            _ => unreachable!("checked Dialog"),
-        }
+    pub(crate) fn set_dialog_payload(
+        &mut self,
+        value: Arc<Payload<crate::dialog::DomDialogState>>,
+    ) {
+        assert!(
+            matches!(self.family, NativeFamily::Dialog(_)),
+            "checked Dialog"
+        );
+        self.family = NativeFamily::Dialog(value);
     }
     pub(crate) fn is_link(&self) -> bool {
         matches!(self.family, NativeFamily::Link)
@@ -561,13 +616,7 @@ impl DomElement {
     }
     pub fn select_state(&self) -> Option<&crate::DomSelectState> {
         match &self.family {
-            NativeFamily::Select(s) => Some(s),
-            _ => None,
-        }
-    }
-    pub(crate) fn select_state_mut(&mut self) -> Option<&mut crate::DomSelectState> {
-        match &mut self.family {
-            NativeFamily::Select(s) => Some(formation::make_arc_mut(s)),
+            NativeFamily::Select(s) => Some(&s.value),
             _ => None,
         }
     }
@@ -603,34 +652,23 @@ impl DomElement {
     )> {
         match &self.family {
             NativeFamily::Select(state) => Some((
-                &state.control,
+                &state.value.control,
                 surgeist_html::HtmlNativeFormAssociationKind::Select,
             )),
-            NativeFamily::Fieldset(state) => Some((&state.control, state.kind())),
-            NativeFamily::Button(state) => Some((&state.control, state.kind())),
+            NativeFamily::Fieldset(state) => Some((&state.value.control, state.value.kind())),
+            NativeFamily::Button(state) => Some((&state.value.control, state.value.kind())),
             NativeFamily::Input(state) => Some((
-                &state.control,
+                &state.value.control,
                 surgeist_html::HtmlNativeFormAssociationKind::Input,
             )),
             NativeFamily::Output(state) => Some((
-                &state.control,
+                &state.value.control,
                 surgeist_html::HtmlNativeFormAssociationKind::Output,
             )),
             NativeFamily::Textarea(state) => Some((
-                &state.control,
+                &state.value.control,
                 surgeist_html::HtmlNativeFormAssociationKind::Textarea,
             )),
-            _ => None,
-        }
-    }
-    pub(crate) fn native_control_mut(&mut self) -> Option<&mut crate::control::NativeControlState> {
-        match &mut self.family {
-            NativeFamily::Select(state) => Some(&mut formation::make_arc_mut(state).control),
-            NativeFamily::Fieldset(state) => Some(&mut state.control),
-            NativeFamily::Button(state) => Some(&mut state.control),
-            NativeFamily::Input(state) => Some(&mut formation::make_arc_mut(state).control),
-            NativeFamily::Textarea(state) => Some(&mut formation::make_arc_mut(state).control),
-            NativeFamily::Output(state) => Some(&mut formation::make_arc_mut(state).control),
             _ => None,
         }
     }
@@ -654,24 +692,25 @@ impl DomElement {
     pub(crate) fn is_html_script(&self) -> bool {
         matches!(self.family, NativeFamily::Script)
     }
-    pub(crate) fn remember_no_focused_element(&mut self) {
-        self.common
-            .html_mut()
-            .expect("qualified native Dialog")
-            .remember_focused_element(None);
-    }
     /// Actual current common values with canonical element references.
     pub fn common_state(&self) -> HtmlCommonState<crate::NodeId> {
-        self.common
+        let mut common = HtmlCommonState::new(self.common_scope);
+        if let Some(focus) = &self.focus {
+            common
+                .html_mut()
+                .expect("stored HTML focus applicability")
+                .remember_focused_element(Some(focus.value.value));
+        }
+        common
     }
     /// Cryptographic nonce slot, independent of content. None means inapplicable.
     pub fn nonce(&self) -> Option<&DocumentString> {
-        self.nonce.as_ref()
+        self.nonce.as_ref().map(|nonce| &nonce.value.value)
     }
     /// Actual none-mode Canvas state, or inapplicability for another family.
     pub fn canvas_none_state(&self) -> Option<&HtmlCanvasNoneState> {
         match &self.family {
-            NativeFamily::Canvas(state) => Some(state),
+            NativeFamily::Canvas(state) => Some(&state.value),
             _ => None,
         }
     }
@@ -684,19 +723,19 @@ impl DomElement {
     }
     /// Actual content navigable for Frame/Iframe. Outer None is inapplicable;
     /// Some(None) is the stored null relationship, not a creation/history proof.
-    pub(crate) fn establish_child_navigable(
+    pub(crate) fn set_hosted_payload(
         &mut self,
-        value: Option<crate::DomHostedNavigableId>,
-    ) -> Result<(), crate::DomError> {
+        value: Option<Arc<Payload<HostedContent>>>,
+    ) -> Result<(), DomError> {
         if self.child_navigable().is_none() {
-            return Err(crate::DomError::WrongNodeKind);
+            return Err(DomError::WrongNodeKind);
         }
-        self.content_navigable = value;
+        self.hosted = value;
         Ok(())
     }
     pub fn child_navigable(&self) -> Option<Option<crate::DomHostedNavigableId>> {
         matches!(self.family, NativeFamily::Frame | NativeFamily::Iframe(_))
-            .then_some(self.content_navigable)
+            .then(|| self.hosted.as_ref().map(|value| value.value.value))
     }
     /// Local guards consume this projection of the one canonical relationship.
     pub fn child_navigable_presence(&self) -> Option<surgeist_html::HtmlChildNavigablePresence> {
@@ -739,17 +778,17 @@ impl DomElement {
         }
         Ok(())
     }
-    pub(crate) fn set_nonce(&mut self, nonce: DocumentString) {
+    pub(crate) fn set_nonce_payload(&mut self, nonce: Arc<Payload<NonceSlot>>) {
         self.nonce = Some(nonce);
     }
     pub fn captured_in_view_transition(&self) -> bool {
-        self.captured_in_view_transition
+        self.flags & CAPTURED != 0
     }
     pub fn fullscreen_flag(&self) -> bool {
-        self.fullscreen
+        self.flags & FULLSCREEN != 0
     }
     pub fn keyboard_lock_flag(&self) -> bool {
-        self.keyboard_lock
+        self.flags & KEYBOARD_LOCK != 0
     }
     pub fn iframe_fullscreen_flag(&self) -> Option<bool> {
         match &self.family {
@@ -758,58 +797,80 @@ impl DomElement {
         }
     }
     pub(crate) fn set_fullscreen_flag(&mut self) {
-        self.fullscreen = true;
+        self.flags |= FULLSCREEN;
     }
     pub(crate) fn clear_fullscreen_flags(&mut self) {
-        self.fullscreen = false;
-        self.keyboard_lock = false;
+        self.flags &= !(FULLSCREEN | KEYBOARD_LOCK);
         if let NativeFamily::Iframe(state) = &mut self.family {
             state.fullscreen = false;
         }
     }
     pub(crate) fn set_captured_in_view_transition(&mut self, captured: bool) {
-        self.captured_in_view_transition = captured;
+        if captured {
+            self.flags |= CAPTURED;
+        } else {
+            self.flags &= !CAPTURED;
+        }
     }
     pub(crate) fn same_nonattribute_state(&self, other: &Self) -> bool {
         self.name == other.name
-            && self.registry == other.registry
-            && self.definition == other.definition
+            && self.custom_element_registry() == other.custom_element_registry()
+            && self.custom_element_definition() == other.custom_element_definition()
+            && self.saved_is() == other.saved_is()
             && self.custom_state == other.custom_state
-            && self.saved_is == other.saved_is
-            && self.common == other.common
+            && self.common_scope == other.common_scope
+            && self.focus == other.focus
             && self.nonce == other.nonce
             && self.family == other.family
-            && self.fullscreen == other.fullscreen
-            && self.keyboard_lock == other.keyboard_lock
+            && self.fullscreen_flag() == other.fullscreen_flag()
+            && self.keyboard_lock_flag() == other.keyboard_lock_flag()
     }
     pub fn name(&self) -> &DomQualifiedName {
-        &self.name
+        &self.name.value.value
     }
     pub fn attributes(&self) -> &[DomAttribute] {
-        self.attributes.as_slice()
+        self.attributes
+            .as_ref()
+            .map_or(&[], |value| value.value.storage.as_slice())
     }
-    pub(crate) fn attributes_backing(&self) -> &AttributeStorage {
-        &self.attributes
+    pub(crate) fn attribute_binding(&self) -> Option<&Arc<Payload<AttributeBinding>>> {
+        self.attributes.as_ref()
+    }
+    pub(crate) fn attributes_backing(&self) -> Option<&AttributeStorage> {
+        self.attributes.as_ref().map(|value| &value.value.storage)
+    }
+    pub(crate) fn same_attribute_storage(&self, other: &Self) -> bool {
+        match (self.attributes_backing(), other.attributes_backing()) {
+            (None, None) => true,
+            (Some(left), Some(right)) => left.same_storage(right),
+            _ => false,
+        }
     }
     pub fn custom_element_registry(&self) -> DomRegistryBinding {
-        self.registry
+        self.custom
+            .as_ref()
+            .map_or(DomRegistryBinding::Null, |value| value.value.registry)
     }
-    pub(crate) fn establish_registry(&mut self, registry: DomRegistryBinding) {
-        self.registry = registry;
+    pub(crate) fn set_custom_payload(&mut self, value: Option<Arc<Payload<CustomAssociation>>>) {
+        self.custom = value;
     }
     pub fn custom_element_definition(&self) -> DomElementDefinition {
-        self.definition
+        self.custom
+            .as_ref()
+            .map_or(DomElementDefinition::Null, |value| value.value.definition)
     }
     pub fn custom_element_state(&self) -> HtmlCustomElementState {
         self.custom_state
     }
-    /// Saved creation `is` is independent of the current content attribute.
+    /// Saved creation is independent of the current content attribute.
     pub fn saved_is(&self) -> Option<&DocumentString> {
-        self.saved_is.as_ref()
+        self.custom
+            .as_ref()
+            .and_then(|value| value.value.saved_is.as_ref())
     }
     /// First exact qualified spelling, without namespace interpretation.
     pub fn attribute(&self, qualified_name: &DocumentString) -> Option<&DocumentString> {
-        self.attributes
+        self.attributes()
             .iter()
             .find(|attribute| qualified_equals(attribute.name(), qualified_name))
             .map(|attribute| attribute.value())
@@ -819,7 +880,7 @@ impl DomElement {
         namespace: &Namespace,
         local_name: &DocumentString,
     ) -> Option<&DocumentString> {
-        self.attributes
+        self.attributes()
             .iter()
             .find(|attribute| {
                 attribute.name().namespace_uri() == namespace.uri()
@@ -832,12 +893,15 @@ impl DomElement {
     }
     pub(crate) fn units(&self) -> Option<usize> {
         let mut units = self
-            .name
+            .name()
             .logical_units()?
-            .checked_add(self.saved_is.as_ref().map_or(0, DocumentString::len))?
-            .checked_add(self.nonce.as_ref().map_or(0, DocumentString::len))?;
+            .checked_add(self.saved_is().map_or(0, DocumentString::len))?
+            .checked_add(self.nonce().map_or(0, DocumentString::len))?;
         units = units.checked_add(self.family.units()?)?;
-        units = units.checked_add(self.attributes.logical_units())?;
+        units = units.checked_add(
+            self.attributes_backing()
+                .map_or(0, AttributeStorage::logical_units),
+        )?;
         Some(units)
     }
 }

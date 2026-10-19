@@ -1697,7 +1697,7 @@ impl Dom {
             .document
             .ok_or(DomHostedError::StaleIdentity)?;
         let node = self.state.node(self.owner, document.node())?;
-        let DomNodeKind::Document(metadata) = &node.kind else {
+        let DomNodeKind::Document(metadata) = node.kind() else {
             return Err(DomError::WrongDocument.into());
         };
         metadata
@@ -1724,7 +1724,7 @@ impl Dom {
             .entry(id)?;
         let document = record.document.ok_or(DomHostedError::StaleIdentity)?;
         let node = self.state.node(self.owner, document.node())?;
-        let DomNodeKind::Document(metadata) = &node.kind else {
+        let DomNodeKind::Document(metadata) = node.kind() else {
             return Err(DomError::WrongDocument.into());
         };
         let environment = metadata.document_environment();

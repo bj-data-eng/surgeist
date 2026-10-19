@@ -1232,11 +1232,11 @@ impl Draft {
                 .base
                 .node(self.store, document)
                 .ok()
-                .and_then(|node| active(node.active_range));
+                .and_then(|node| active(node.active_range()));
             let after = self
                 .node(Key::Existing(document))
                 .ok()
-                .and_then(|node| active(node.active_range));
+                .and_then(|node| active(node.active_range()));
             active_changed |= before != after;
         }
         for index in self
@@ -1250,7 +1250,7 @@ impl Draft {
             active_changed |= self
                 .node(Key::Created(index))
                 .ok()
-                .and_then(|node| active(node.active_range))
+                .and_then(|node| active(node.active_range()))
                 .is_some();
         }
         let dependencies_changed = range_changed || active_changed;

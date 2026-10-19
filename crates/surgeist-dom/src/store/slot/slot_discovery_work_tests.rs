@@ -65,7 +65,7 @@ fn selected_assignment(comments: usize, slots: usize) {
     );
     assert!(spent <= allowance);
     assert!(draft.signal_slots.is_empty());
-    assert_eq!(draft.node(root).unwrap().children.len(), comments + slots);
+    assert_eq!(draft.node(root).unwrap().children().len(), comments + slots);
 }
 
 #[test]

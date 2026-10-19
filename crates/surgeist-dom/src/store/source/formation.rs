@@ -17,21 +17,6 @@ pub(crate) fn allocated_arc<T>(value: T) -> Arc<T> {
     }
     target
 }
-/// Observe a fresh copy-on-write target only when make_mut changes its actual
-/// address; a uniquely owned target remains in place and allocates nothing.
-pub(crate) fn make_arc_mut<T: Clone>(target: &mut Arc<T>) -> &mut T {
-    #[cfg(test)]
-    let before = Arc::as_ptr(target);
-    let value = Arc::make_mut(target);
-    #[cfg(test)]
-    if scale_metrics::ENABLED && !std::ptr::eq(before, value) {
-        scale_metrics::record(scale_metrics::Event::StructuralAllocation {
-            bytes: size_of::<T>(),
-        });
-    }
-    value
-}
-
 pub(super) fn allocated_box<T>(value: T) -> Box<T> {
     let result = Box::new(value);
     #[cfg(test)]
@@ -1010,7 +995,6 @@ pub(in crate::store) mod mutation_observation {
         Children,
         SelectTasks,
         Metadata,
-        Family,
         Output,
         TextareaApi,
         InputString,

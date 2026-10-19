@@ -904,11 +904,11 @@ impl Promotions {
     }
     fn visit(&self, mut visit: impl FnMut(&DomNameAtom) -> Result<()>) -> Result<()> {
         for (index, _) in self.touched.iter() {
-            let Some(crate::DomNodeKind::Element(element)) = self
+            let Some(element) = self
                 .slots
                 .get(index)
                 .and_then(|slot| slot.node.as_ref())
-                .map(|node| &node.kind)
+                .and_then(|node| node.element())
             else {
                 continue;
             };
@@ -917,9 +917,14 @@ impl Promotions {
                 visit(namespace)?;
             }
             visit(name.local_name_atom())?;
-            let unchanged = self.before.get(index).and_then(|slot| slot.node.as_ref()).is_some_and(|node| {
-                matches!(&node.kind, crate::DomNodeKind::Element(old) if old.attributes_backing().same_storage(element.attributes_backing()))
-            });
+            let unchanged = self
+                .before
+                .get(index)
+                .and_then(|slot| slot.node.as_ref())
+                .is_some_and(|node| {
+                    node.element()
+                        .is_some_and(|old| old.same_attribute_storage(element))
+                });
             if !unchanged {
                 for attribute in element.attributes() {
                     if let Some(namespace) = attribute.name().namespace() {

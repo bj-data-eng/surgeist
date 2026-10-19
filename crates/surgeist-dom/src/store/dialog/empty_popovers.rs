@@ -9,9 +9,12 @@ impl Draft {
     ) -> Result<DocumentId, DomError> {
         self.source_step(cancel)?;
         self.dialog_state(subject)?;
-        let document = self.node(subject)?.document;
+        let document = self.node(subject)?.document();
         self.source_step(cancel)?;
-        if !matches!(&self.node(document)?.kind, DomNodeKind::Document(_)) {
+        if !matches!(
+            &self.node(document)?.kind(),
+            transaction::KindRead::Document(_)
+        ) {
             return Err(DomError::WrongNodeKind);
         }
         self.published_id(document)
@@ -38,10 +41,10 @@ impl Draft {
         let _observation = scale_metrics::ENABLED.then(|| discovery_tests::QueryRead::begin(self));
         self.source_step(cancel)?;
         let node = self.node(document)?;
-        if !matches!(&node.kind, DomNodeKind::Document(_)) {
+        if !matches!(&node.kind(), transaction::KindRead::Document(_)) {
             return Err(DomError::WrongNodeKind);
         }
-        let Some(transaction::InteractiveRead::Known { .. }) = node.interactive_document else {
+        let Some(transaction::InteractiveRead::Known { .. }) = node.interactive_document() else {
             return Ok(false);
         };
         // The Auto/Hint lists filter actual showing popovers. Current admitted

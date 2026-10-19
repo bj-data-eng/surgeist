@@ -30,9 +30,14 @@ impl Payload {
     }
     pub fn string(&mut self, string: &DocumentString) -> Result<(), DomError> {
         let capacity = string.shared_code_units().capacity();
-        self.add_bytes(size_of::<Vec<u16>>())?;
+        self.empty_string()?;
         self.bank::<u16>(capacity)?;
         self.add_units(capacity)
+    }
+    /// One actual fresh `DocumentString::from("")` still owns its Vec target.
+    /// This prices it before construction without first allocating a sample.
+    pub fn empty_string(&mut self) -> Result<(), DomError> {
+        self.add_bytes(size_of::<Vec<u16>>())
     }
     pub fn bank<T>(&mut self, capacity: usize) -> Result<(), DomError> {
         self.add_bytes(
@@ -53,6 +58,20 @@ impl Payload {
         }
         self.string(name.local_name())
     }
+    /// Out-of-line extent retained by an inline producer URL snapshot.
+    pub(crate) fn hyperlink_snapshot(
+        &mut self,
+        value: &surgeist_html_semantics::HtmlHyperlinkUrlSnapshot,
+    ) -> Result<(), DomError> {
+        let usage = value.retained_storage_usage();
+        self.add_bytes(
+            usage
+                .retained_bytes()
+                .checked_sub(size_of::<surgeist_html_semantics::HtmlHyperlinkUrlSnapshot>())
+                .ok_or(DomError::RepresentationExhausted)?,
+        )?;
+        self.add_units(usage.utf16_extent())
+    }
     pub fn producer(
         &mut self,
         usage: surgeist_html_semantics::HtmlBaseRetainedStorageUsage,
@@ -61,18 +80,149 @@ impl Payload {
         self.add_units(usage.utf16_extent())
     }
 }
+/// Checked shallow receipt of one exact typed target. Callers supply only its
+/// directly owned strings/banks; independently materialized children stay out.
+pub(crate) fn typed<T>(out_of_line: Payload) -> Result<custody::Usage, DomError> {
+    custody::Usage::new(size_of::<super::super::payload::Payload<T>>(), 0)
+        .checked_add(custody::Usage::new(out_of_line.bytes, out_of_line.units))
+}
+
+pub(crate) fn document_metadata(value: &DomDocumentMetadata) -> Result<custody::Usage, DomError> {
+    typed::<DomDocumentMetadata>(Payload {
+        bytes: value.retained_payload_bytes()?,
+        units: value.retained_payload_units()?,
+    })
+}
+pub(crate) fn encoding_url(
+    value: &crate::hyperlink::EncodingUrlDocument,
+) -> Result<custody::Usage, DomError> {
+    let mut payload = Payload::default();
+    if let Some(facts) = &value.facts {
+        payload.producer(facts.retained_storage_usage())?;
+    }
+    typed::<crate::hyperlink::EncodingUrlDocument>(payload)
+}
+pub(crate) fn base<K>(value: &crate::base::BaseState<K>) -> Result<custody::Usage, DomError> {
+    let mut payload = Payload::default();
+    if let Some(frozen) = &value.frozen {
+        payload.producer(frozen.value.retained_storage_usage())?;
+    }
+    typed::<crate::base::BaseState<K>>(payload)
+}
+pub(crate) fn hyperlink<K>(
+    value: &crate::hyperlink::HyperlinkState<K>,
+) -> Result<custody::Usage, DomError> {
+    let mut payload = Payload::default();
+    if let Some(parsed) = &value.parsed {
+        payload.hyperlink_snapshot(&parsed.value)?;
+    }
+    typed::<crate::hyperlink::HyperlinkState<K>>(payload)
+}
+pub(crate) fn image<K>(value: &crate::image::ImageState<K>) -> Result<custody::Usage, DomError> {
+    let mut payload = Payload::default();
+    payload.string(value.native.current_request().current_url())?;
+    typed::<crate::image::ImageState<K>>(payload)
+}
+pub(crate) fn processing_instruction(
+    value: &crate::DomProcessingInstruction,
+    step: impl FnMut() -> Result<(), DomError>,
+) -> Result<custody::Usage, DomError> {
+    typed::<crate::DomProcessingInstruction>(value.retained_payload(step)?)
+}
+pub(crate) fn document_type(value: &crate::DomDocumentType) -> Result<custody::Usage, DomError> {
+    let mut payload = Payload::default();
+    for string in [value.name(), value.public_id(), value.system_id()] {
+        payload.string(string)?;
+    }
+    typed::<crate::DomDocumentType>(payload)
+}
+
+pub(crate) fn fieldset_state(value: &crate::DomFieldsetState) -> Result<custody::Usage, DomError> {
+    let mut payload = Payload::default();
+    payload.string(&value.control.message)?;
+    typed::<crate::DomFieldsetState>(payload)
+}
+pub(crate) fn button_state(value: &crate::DomButtonState) -> Result<custody::Usage, DomError> {
+    let mut payload = Payload::default();
+    payload.string(&value.control.message)?;
+    typed::<crate::DomButtonState>(payload)
+}
+pub(crate) fn input_state(value: &crate::DomInputState) -> Result<custody::Usage, DomError> {
+    let mut payload = Payload::default();
+    payload.string(&value.current)?;
+    payload.string(&value.control.message)?;
+    if let surgeist_html::HtmlInputImageHistory::Last {
+        source: Some(source),
+        ..
+    } = &value.image
+    {
+        payload.string(source)?;
+    }
+    typed::<crate::DomInputState>(payload)
+}
+pub(crate) fn textarea_state(value: &crate::DomTextareaState) -> Result<custody::Usage, DomError> {
+    let mut payload = Payload::default();
+    payload.string(&value.raw)?;
+    payload.string(&value.control.message)?;
+    typed::<crate::DomTextareaState>(payload)
+}
+pub(crate) fn output_state(value: &crate::DomOutputState) -> Result<custody::Usage, DomError> {
+    let mut payload = Payload::default();
+    payload.string(&value.control.message)?;
+    if let Some(value) = &value.default_override {
+        payload.string(value)?;
+    }
+    typed::<crate::DomOutputState>(payload)
+}
+pub(crate) fn select_state(value: &crate::DomSelectState) -> Result<custody::Usage, DomError> {
+    let mut payload = Payload::default();
+    payload.string(&value.control.message)?;
+    typed::<crate::DomSelectState>(payload)
+}
+pub(crate) fn dialog_state(
+    value: &crate::dialog::DomDialogState,
+) -> Result<custody::Usage, DomError> {
+    let mut payload = Payload::default();
+    payload.string(value.return_value())?;
+    if let Some(value) = &value.request_return_value {
+        payload.string(value)?;
+    }
+    typed::<crate::dialog::DomDialogState>(payload)
+}
+pub(crate) fn style_state(_value: &crate::DomStyleState) -> Result<custody::Usage, DomError> {
+    typed::<crate::DomStyleState>(Payload::default())
+}
+
+/// Aggregate diagnostics for a language value, never a new language-root debit.
+/// Each actual stable child supplies its original shallow occurrence receipt.
 pub(crate) fn element(
     element: &DomElement,
     family: &NativeFamily,
     mut step: impl FnMut() -> Result<(), DomError>,
 ) -> Result<Payload, DomError> {
-    let mut payload = Payload::default();
     step()?;
-    payload.name(element.name())?;
-    payload.append(element.attributes_payload()?)?;
-    for string in [element.saved_is(), element.nonce()].into_iter().flatten() {
+    let name = element.name_payload().own_usage;
+    let mut payload = Payload {
+        bytes: name.bytes(),
+        units: name.units(),
+    };
+    if let Some(value) = element.attribute_binding() {
+        payload.add_bytes(value.own_usage.bytes())?;
+        payload.add_units(value.own_usage.units())?;
+        payload.add_bytes(value.value.storage.own_usage().bytes())?;
+    }
+    for usage in [
+        element.custom_payload().map(|v| v.own_usage),
+        element.nonce_payload().map(|v| v.own_usage),
+        element.focus_payload().map(|v| v.own_usage),
+        element.hosted_payload().map(|v| v.own_usage),
+    ]
+    .into_iter()
+    .flatten()
+    {
         step()?;
-        payload.string(string)?;
+        payload.add_bytes(usage.bytes())?;
+        payload.add_units(usage.units())?;
     }
     payload.append(family_payload(family, step)?)?;
     Ok(payload)
@@ -81,62 +231,63 @@ pub(crate) fn family_payload(
     family: &NativeFamily,
     mut step: impl FnMut() -> Result<(), DomError>,
 ) -> Result<Payload, DomError> {
-    let mut payload = Payload::default();
-    match family {
-        NativeFamily::Fieldset(state) => payload.string(&state.control.message)?,
-        NativeFamily::Button(state) => payload.string(&state.control.message)?,
-        NativeFamily::Input(state) => {
-            payload.add_bytes(size_of::<crate::DomInputState>())?;
-            payload.string(&state.current)?;
-            payload.string(&state.control.message)?;
-            if let surgeist_html::HtmlInputImageHistory::Last {
-                source: Some(source),
-                ..
-            } = &state.image
-            {
-                payload.string(source)?;
-            }
+    step()?;
+    let usage = match family {
+        NativeFamily::Fieldset(value) => value.own_usage,
+        NativeFamily::Button(value) => value.own_usage,
+        NativeFamily::Input(value) => value.own_usage,
+        NativeFamily::Textarea(value) => value.own_usage,
+        NativeFamily::Output(value) => value.own_usage,
+        NativeFamily::Select(value) => value.own_usage,
+        NativeFamily::Dialog(value) => value.own_usage,
+        NativeFamily::Style(value) => value.own_usage,
+        NativeFamily::Canvas(value) => value.own_usage,
+        _ => custody::Usage::ZERO,
+    };
+    Ok(Payload {
+        bytes: usage.bytes(),
+        units: usage.units(),
+    })
+}
+/// Raw caller-owned creation input, before any exact-kind target is formed.
+/// This borrows the genuine ingress operand and shares the diagnostic inventory.
+#[cfg(test)]
+pub(in crate::store) fn new_kind(
+    value: &NewNode,
+    step: impl FnMut() -> Result<(), DomError>,
+) -> Result<Payload, DomError> {
+    let value = match value {
+        NewNode::Document(value) => DomNodeKind::Document(value),
+        NewNode::Element(value) => DomNodeKind::Element(value),
+        NewNode::DocumentFragment => DomNodeKind::DocumentFragment,
+        NewNode::ShadowRoot(value) => DomNodeKind::ShadowRoot(value),
+        NewNode::Text(value) => DomNodeKind::Text(value),
+        NewNode::Comment(value) => DomNodeKind::Comment(value),
+        NewNode::ProcessingInstruction(value) => DomNodeKind::ProcessingInstruction(value),
+        NewNode::DocumentType(value) => DomNodeKind::DocumentType(value),
+    };
+    kind(&value, step)
+}
+pub(in crate::store) fn kind_read(
+    kind: transaction::KindRead<'_>,
+    step: impl FnMut() -> Result<(), DomError>,
+) -> Result<Payload, DomError> {
+    let kind = match kind {
+        transaction::KindRead::Document(value) => DomNodeKind::Document(value),
+        transaction::KindRead::Element(value) => DomNodeKind::Element(value.language()),
+        transaction::KindRead::DocumentFragment => DomNodeKind::DocumentFragment,
+        transaction::KindRead::ShadowRoot(value) => DomNodeKind::ShadowRoot(value),
+        transaction::KindRead::Text(value) => DomNodeKind::Text(value),
+        transaction::KindRead::Comment(value) => DomNodeKind::Comment(value),
+        transaction::KindRead::ProcessingInstruction(value) => {
+            DomNodeKind::ProcessingInstruction(value)
         }
-        NativeFamily::Textarea(state) => {
-            payload.add_bytes(size_of::<crate::DomTextareaState>())?;
-            payload.string(&state.raw)?;
-            payload.string(&state.control.message)?;
-        }
-        NativeFamily::Output(state) => {
-            payload.add_bytes(size_of::<crate::DomOutputState>())?;
-            payload.string(&state.control.message)?;
-            if let Some(value) = &state.default_override {
-                payload.string(value)?;
-            }
-        }
-        NativeFamily::Select(state) => {
-            payload.add_bytes(size_of::<crate::DomSelectState>())?;
-            payload.string(&state.control.message)?;
-        }
-        NativeFamily::Dialog(state) => {
-            payload.add_bytes(size_of::<crate::dialog::DomDialogState>())?;
-            payload.string(state.return_value())?;
-            if let Some(value) = &state.request_return_value {
-                payload.string(value)?;
-            }
-        }
-        NativeFamily::Style(_) => payload.add_bytes(size_of::<crate::DomStyleState>())?,
-        NativeFamily::Canvas(state) => {
-            payload.add_bytes(size_of::<surgeist_html::HtmlCanvasNoneState>())?;
-            for dimension in [state.width(), state.height()] {
-                step()?;
-                if let surgeist_html::HtmlCanvasBitmapDimension::Parsed(value) = dimension {
-                    payload.add_bytes(value.retained_buffer_bytes())?;
-                    payload.add_units(value.retained_buffer_bytes())?;
-                }
-            }
-        }
-        _ => {}
-    }
-    Ok(payload)
+        transaction::KindRead::DocumentType(value) => DomNodeKind::DocumentType(value),
+    };
+    self::kind(&kind, step)
 }
 pub(in crate::store) fn kind(
-    kind: &DomNodeKind,
+    kind: &DomNodeKind<'_>,
     mut step: impl FnMut() -> Result<(), DomError>,
 ) -> Result<Payload, DomError> {
     step()?;
@@ -190,14 +341,7 @@ fn related<K>(
         step()?;
         // The Node/DraftNode bank already contains this value's inline header.
         // The producer receipt includes Self for independently held snapshots.
-        let usage = parsed.value.retained_storage_usage();
-        payload.add_bytes(
-            usage
-                .retained_bytes()
-                .checked_sub(size_of::<surgeist_html_semantics::HtmlHyperlinkUrlSnapshot>())
-                .ok_or(DomError::RepresentationExhausted)?,
-        )?;
-        payload.add_units(usage.utf16_extent())?;
+        payload.hyperlink_snapshot(&parsed.value)?;
     }
     if let Some(document) = related.encoding_url_document
         && let Some(facts) = &document.facts
@@ -212,75 +356,28 @@ fn related<K>(
     Ok(payload)
 }
 
+/// One Slot controls its own target and its exclusively nested typed root.
+/// Independently materialized language and structural children stay separate.
+pub(in crate::store) fn slot_usage(slot: &Slot) -> Result<custody::Usage, DomError> {
+    custody::Usage::new(size_of::<Slot>(), 0).checked_add(
+        slot.node
+            .as_ref()
+            .map_or(custody::Usage::ZERO, super::super::Node::own_usage),
+    )
+}
+
 pub(in crate::store) fn canonical_slot(
     slot: &Slot,
     mut step: impl FnMut() -> Result<(), DomError>,
 ) -> Result<Payload, DomError> {
     step()?;
-    let mut payload = Payload {
-        bytes: size_of::<Slot>(),
-        units: 0,
-    };
-    if let Some(node) = &slot.node {
-        payload.add_bytes(node.receipts.payload.bytes())?;
-        payload.add_units(node.receipts.payload.units())?;
-    }
-    Ok(payload)
-}
-#[cfg(test)]
-pub(in crate::store) fn refresh_node_receipts(node: &mut Node) -> Result<(), DomError> {
-    let payload = canonical_node(node, true, || Ok(()))?;
-    node.receipts.payload = custody::Usage::new(payload.bytes, payload.units);
-    node.receipts.fields = transaction::NodeFields::from_canonical(node).usage(|| Ok(()))?;
-    Ok(())
+    let usage = slot_usage(slot)?;
+    Ok(Payload {
+        bytes: usage.bytes(),
+        units: usage.units(),
+    })
 }
 
-#[cfg(test)]
-pub(in crate::store) fn canonical_node(
-    node: &Node,
-    banks: bool,
-    mut step: impl FnMut() -> Result<(), DomError>,
-) -> Result<Payload, DomError> {
-    let mut payload = Payload::default();
-    step()?;
-    payload.append(kind(&node.kind, &mut step)?)?;
-    if banks {
-        payload.add_bytes(node.fullscreen_events.retained_bytes()?)?;
-        payload.add_bytes(node.children.retained_bytes()?)?;
-        payload.add_bytes(node.manual_nodes.retained_bytes()?)?;
-        payload.add_bytes(node.assigned_nodes.retained_bytes()?)?;
-        if let Some(canonical::Autofocus::Known { candidates, .. }) = &node.autofocus_document {
-            payload.add_bytes(candidates.retained_bytes()?)?;
-        }
-        if let Some(canonical::Interactive::Known {
-            open_dialogs,
-            top_layer,
-            pending_top_layer_removals,
-        }) = &node.interactive_document
-        {
-            payload.add_bytes(open_dialogs.retained_bytes()?)?;
-            payload.add_bytes(top_layer.retained_bytes()?)?;
-            payload.add_bytes(pending_top_layer_removals.retained_bytes()?)?;
-        }
-        if let Some(document) = &node.base_document {
-            payload.add_bytes(document.render_blocking.retained_bytes()?)?;
-        }
-    }
-    payload.append(related(
-        Related {
-            base: node.base.as_ref(),
-            base_facts: node
-                .base_document
-                .as_ref()
-                .and_then(|document| document.facts.as_ref()),
-            hyperlink: node.hyperlink.as_ref(),
-            encoding_url_document: node.encoding_url_document.as_ref(),
-            image: node.image.as_ref(),
-        },
-        &mut step,
-    )?)?;
-    Ok(payload)
-}
 pub(in crate::store) fn commands(
     commands: &[Command],
     mut step: impl FnMut() -> Result<(), DomError>,

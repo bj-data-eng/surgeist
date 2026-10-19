@@ -36,7 +36,7 @@ impl<'a> DomButton<'a> {
     /// Actual established relation at this captured revision.
     pub fn form_owner(self) -> Result<Option<NodeId>, crate::DomError> {
         self.node.snapshot.require_complete_source()?;
-        Ok(self.node.node.control_owner)
+        Ok(self.node.node.control_owner())
     }
     pub fn state(self) -> &'a DomButtonState {
         self.node
@@ -49,7 +49,7 @@ impl<'a> DomButton<'a> {
     pub fn explicit_command_for(self) -> Option<NodeId> {
         self.node
             .node
-            .reflected_targets
+            .reflected_targets()
             .expect("checked Button")
             .get(ReflectedTarget::CommandFor)
             .expect("Button command slot")
@@ -58,7 +58,7 @@ impl<'a> DomButton<'a> {
     pub fn explicit_popover_target(self) -> Option<NodeId> {
         self.node
             .node
-            .reflected_targets
+            .reflected_targets()
             .expect("checked Button")
             .get(ReflectedTarget::PopoverTarget)
             .expect("Button popover slot")

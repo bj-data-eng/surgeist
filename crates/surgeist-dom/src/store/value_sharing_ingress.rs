@@ -6,14 +6,11 @@ impl Draft {
     /// producer may retain an upgraded candidate. Other node kinds pass through.
     pub(in crate::store) fn share_held_text(
         &self,
-        mut incoming: custody::Held<DomNodeKind>,
+        mut incoming: custody::Held<NewNode>,
         retained_occurrence: bool,
         cancel: &AtomicBool,
-    ) -> Result<custody::Held<DomNodeKind>, DomError> {
-        let DomNodeKind::Text(text) = incoming.value() else {
-            return Ok(incoming);
-        };
-        let Some(session) = self.sharing_session() else {
+    ) -> Result<custody::Held<NewNode>, DomError> {
+        let NewNode::Text(text) = incoming.value() else {
             return Ok(incoming);
         };
         let mut original = source::storage::Payload::default();
@@ -26,7 +23,10 @@ impl Draft {
                 .debit_mut()
                 .grow(original, |next| self.admit_custody_usage(next, cancel))?;
         }
-        let DomNodeKind::Text(text) = incoming.value() else {
+        let Some(session) = self.sharing_session() else {
+            return Ok(incoming);
+        };
+        let NewNode::Text(text) = incoming.value() else {
             unreachable!("the held candidate remains Text")
         };
         let selected =
@@ -44,52 +44,40 @@ impl Draft {
             .absorb(original_credit)
             .expect("sharing uses the original DOM custody domain");
         let (value, credit) = selected.into_parts();
-        Ok(custody::Held::new(DomNodeKind::Text(value), credit))
+        Ok(custody::Held::new(NewNode::Text(value), credit))
     }
 
     /// Element prefixes are ordinary value text, never mandatory name atoms.
     /// This storage change does not replay native initialization or alter any
     /// namespace/local-name identity or prefix-presence distinction.
-    pub(in crate::store) fn share_held_element_prefix(
+    pub(in crate::store) fn share_held_name_prefix(
         &self,
-        mut incoming: custody::Held<DomNodeKind>,
-        retained_occurrence: bool,
+        mut incoming: custody::Held<crate::DomQualifiedName>,
         cancel: &AtomicBool,
-    ) -> Result<custody::Held<DomNodeKind>, DomError> {
-        let DomNodeKind::Element(element) = incoming.value() else {
-            return Ok(incoming);
-        };
+    ) -> Result<custody::Held<crate::DomQualifiedName>, DomError> {
         let Some(session) = self.sharing_session() else {
             return Ok(incoming);
         };
-        self.seed_name_atoms(element.name(), cancel)?;
-        let Some(prefix) = element.name().prefix() else {
+        self.seed_name_atoms(incoming.value(), cancel)?;
+        let Some(prefix) = incoming.value().prefix() else {
             return Ok(incoming);
         };
         let mut original = source::storage::Payload::default();
         original.string(prefix)?;
         let original = custody::Usage::new(original.bytes, original.units);
-        // The producer classifies this exact field, rather than inferring
-        // its presence from unrelated credit in the same candidate holder.
-        if !retained_occurrence {
-            incoming
-                .debit_mut()
-                .grow(original, |next| self.admit_custody_usage(next, cancel))?;
-        }
-        let DomNodeKind::Element(element) = incoming.value() else {
-            unreachable!("the held candidate remains an Element")
-        };
-        let prefix = element.name().prefix().expect("original prefix is present");
+        // Ingress has retained this exact complete name occurrence before
+        // offering its prefix. The name is not yet a sealed payload.
+        let prefix = incoming
+            .value()
+            .prefix()
+            .expect("original prefix is present");
         let selected = self
             .with_sharing_admission(cancel, |admission| session.share_string(prefix, admission))?;
         let Some(selected) = selected else {
             return Ok(incoming);
         };
         let (value, selected_credit) = selected.into_held().into_parts();
-        let DomNodeKind::Element(element) = incoming.value_mut() else {
-            unreachable!("the held candidate remains an Element")
-        };
-        drop(element.replace_name_prefix(Some(value)));
+        drop(incoming.value_mut().replace_prefix(Some(value)));
         incoming
             .debit_mut()
             .absorb(selected_credit)
@@ -210,7 +198,7 @@ mod tests {
         let first = draft
             .share_held_text(
                 custody::Held::new(
-                    DomNodeKind::Text(DocumentString::from_utf16(units)),
+                    NewNode::Text(DocumentString::from_utf16(units)),
                     draft
                         .custody_ledger()
                         .retain(custody::Usage::ZERO, |_| Ok(()))
@@ -220,7 +208,7 @@ mod tests {
                 &cancel,
             )
             .unwrap();
-        let DomNodeKind::Text(first_text) = first.value() else {
+        let NewNode::Text(first_text) = first.value() else {
             panic!("actual Text");
         };
         assert_eq!(first_text.shared_code_units().capacity(), 19);
@@ -241,13 +229,13 @@ mod tests {
                 extra
             };
             let input = custody::Held::new(
-                DomNodeKind::Text(value),
+                NewNode::Text(value),
                 draft.custody_ledger().retain(owned, |_| Ok(())).unwrap(),
             );
             let result = draft
                 .share_held_text(input, retained_occurrence, &cancel)
                 .unwrap();
-            let DomNodeKind::Text(value) = result.value() else {
+            let NewNode::Text(value) = result.value() else {
                 panic!("same Text kind");
             };
             assert!(Arc::ptr_eq(
@@ -279,12 +267,12 @@ mod tests {
         let baseline = draft.custody_ledger().total();
         let result = draft
             .share_held_text(
-                custody::Held::new(DomNodeKind::Comment(text), debit),
+                custody::Held::new(NewNode::Comment(text), debit),
                 false,
                 &cancel,
             )
             .unwrap();
-        let DomNodeKind::Comment(text) = result.value() else {
+        let NewNode::Comment(text) = result.value() else {
             panic!("same node kind");
         };
         assert_eq!(Arc::as_ptr(text.shared_code_units()), pointer);

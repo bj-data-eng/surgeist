@@ -62,7 +62,7 @@ impl Draft {
         target: Key,
         cancel: &AtomicBool,
     ) -> Result<Option<crate::details::DomElementTaskAssociation>, DomError> {
-        let Some(global) = self.node(target)?.relevant_global else {
+        let Some(global) = self.node(target)?.relevant_global() else {
             return Ok(None);
         };
         self.source_step(cancel)?;
@@ -73,7 +73,8 @@ impl Draft {
             .document(global)
             .map_err(|_| DomError::HostedSourceUnavailable)?;
         self.source_step(cancel)?;
-        let DomNodeKind::Document(metadata) = &self.node(Key::Existing(document.node()))?.kind
+        let transaction::KindRead::Document(metadata) =
+            &self.node(Key::Existing(document.node()))?.kind()
         else {
             return Err(DomError::HostedSourceUnavailable);
         };
@@ -95,7 +96,7 @@ impl Draft {
     }
 
     fn is_details(&self, key: Key) -> Result<bool, DomError> {
-        Ok(matches!(&self.node(key)?.kind, DomNodeKind::Element(e) if e.is_details()))
+        Ok(matches!(&self.node(key)?.kind(), transaction::KindRead::Element(e) if e.is_details()))
     }
     fn details_attribute_value(
         &self,

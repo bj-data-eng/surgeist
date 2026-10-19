@@ -2,12 +2,11 @@
 //! without claiming public modal/top-layer execution can produce that state.
 use super::*;
 use crate::{Dom, DomBatch, DomLimits, Namespace};
-use std::sync::Arc;
 use surgeist_html_semantics::{
     HtmlInertFactError, HtmlSemanticFact, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticValue,
 };
 
-fn fixture() -> (DomSnapshot, DocumentId, NodeId) {
+fn fixture() -> (Dom, DocumentId, NodeId) {
     let cancel = AtomicBool::new(false);
     let mut dom = Dom::new(
         DomLimits::new(
@@ -29,7 +28,7 @@ fn fixture() -> (DomSnapshot, DocumentId, NodeId) {
     batch.insert_before(&dialog, &document, None);
     let commit = dom.apply(batch, &cancel).unwrap();
     (
-        dom.snapshot(),
+        dom,
         commit.document(&document).unwrap(),
         commit.created(&dialog).unwrap().unwrap(),
     )
@@ -76,22 +75,21 @@ fn inertness(capture: &DomHtmlCapture, node: NodeId) -> HtmlSemanticFact {
 #[test]
 fn unavailable_history_stays_missing_and_actual_raw_dialog_blocks_in_both_contexts() {
     for disposition in 0..3 {
-        let (mut source, document, dialog) = fixture();
-        // Mutate only an exclusively owned private fixture: unavailable history
-        // and a positive raw blocker, without a public setter or modal success.
-        Arc::get_mut(&mut source.state)
-            .unwrap()
-            .mutate_slot(document.node().slot, |slot| {
-                slot.node.as_mut().unwrap().interactive_document = match disposition {
-                    0 => Some(DocumentInteractiveState::Unavailable),
-                    1 => Some(DocumentInteractiveState::Known {
-                        open_dialogs: Vec::new().into(),
-                        top_layer: vec![dialog].into(),
-                        pending_top_layer_removals: Vec::new().into(),
-                    }),
-                    _ => None,
-                };
-            });
+        let (mut dom, document, dialog) = fixture();
+        // Form actual private raw history through the same admitted Draft guards
+        // as canonical publication; this grants no public modal execution.
+        let state = match disposition {
+            0 => Some(crate::dialog::DocumentInteractiveState::Unavailable),
+            1 => Some(crate::dialog::DocumentInteractiveState::Known {
+                open_dialogs: Vec::new(),
+                top_layer: vec![dialog],
+                pending_top_layer_removals: Vec::new(),
+            }),
+            _ => None,
+        };
+        crate::store::set_modal_fixture_state(&mut dom, document, state, &AtomicBool::new(false))
+            .unwrap();
+        let source = dom.snapshot();
         let initial = capture(&source, document);
         let supplemented = capture(&source, document)
             .with_slot_semantics(slot_limits(), &AtomicBool::new(false))
@@ -152,18 +150,18 @@ fn partial_document_coverage_uses_actual_lists_and_original_qualification() {
         commit.document(&second).unwrap(),
     ];
     let omitted = commit.created(&omitted).unwrap().unwrap();
-    let mut source = dom.snapshot();
-    drop(dom);
-    Arc::get_mut(&mut source.state)
-        .unwrap()
-        .mutate_slot(documents[1].node().slot, |slot| {
-            slot.node.as_mut().unwrap().interactive_document =
-                Some(DocumentInteractiveState::Known {
-                    open_dialogs: Vec::new().into(),
-                    top_layer: vec![omitted].into(),
-                    pending_top_layer_removals: Vec::new().into(),
-                });
-        });
+    crate::store::set_modal_fixture_state(
+        &mut dom,
+        documents[1],
+        Some(crate::dialog::DocumentInteractiveState::Known {
+            open_dialogs: Vec::new(),
+            top_layer: vec![omitted],
+            pending_top_layer_removals: Vec::new(),
+        }),
+        &cancel,
+    )
+    .unwrap();
+    let source = dom.snapshot();
     // Deliberately partial, but real, Document-only producer coverage. Omitting
     // the second Document's member does not qualify its raw list as empty.
     let mut builder = HtmlCaptureBuilder::new(
@@ -236,7 +234,8 @@ fn partial_document_coverage_uses_actual_lists_and_original_qualification() {
 
 #[test]
 fn partial_modal_rows_obey_adapter_bounds_producer_capacity_work_and_cancellation() {
-    let (source, document, _) = fixture();
+    let (dom, document, _) = fixture();
+    let source = dom.snapshot();
     let captured = capture(&source, document);
     let run = |subjects, adapter_work, records, producer_work, cancel: &AtomicBool| {
         with_facts(

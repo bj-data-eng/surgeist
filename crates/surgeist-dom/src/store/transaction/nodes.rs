@@ -1,91 +1,6 @@
 //! Sparse record admission and selected field mutation.
 use super::super::*;
-use super::{
-    Counts, ElementFieldsMut, NodeFields, NodeFieldsMut, NodeRead, RelationField, Sequence, Undo,
-};
-
-impl DraftNode {
-    fn capture(
-        node: &Node,
-        registry: &bank::CustodyRegistry,
-        names: &name_registry::Operation,
-        mut admit: impl FnMut(custody::Usage) -> Result<(), DomError>,
-    ) -> Result<Self, DomError> {
-        let ledger = registry.ledger();
-        let element_custody =
-            payload::element_dependency(&node.kind, registry, Some(names), &mut admit)?;
-        let fields_debit = ledger.retain(node.receipts.fields, &mut admit)?;
-        let mut fields = NodeFields::from_canonical(node);
-        if let Some(names) = &mut fields.form_past_names {
-            names.adopt(registry, &mut admit)?;
-        }
-        #[cfg(test)]
-        if scale_metrics::ENABLED {
-            scale_metrics::record(scale_metrics::Event::RecordMaterialized {
-                bytes: size_of::<NodeFields>(),
-            });
-        }
-        let relations =
-            |values: Option<&SharedVec<NodeId>>,
-             admit: &mut dyn FnMut(custody::Usage) -> Result<(), DomError>| match values
-            {
-                Some(values) => Sequence::canonical(values, Key::Existing, ledger, admit),
-                None => Sequence::empty(Key::Existing, ledger, admit),
-            };
-        let (candidates, open, top, pending, render) = (
-            match &node.autofocus_document {
-                Some(canonical::Autofocus::Known { candidates, .. }) => Some(candidates),
-                _ => None,
-            },
-            match &node.interactive_document {
-                Some(canonical::Interactive::Known { open_dialogs, .. }) => Some(open_dialogs),
-                _ => None,
-            },
-            match &node.interactive_document {
-                Some(canonical::Interactive::Known { top_layer, .. }) => Some(top_layer),
-                _ => None,
-            },
-            match &node.interactive_document {
-                Some(canonical::Interactive::Known {
-                    pending_top_layer_removals,
-                    ..
-                }) => Some(pending_top_layer_removals),
-                _ => None,
-            },
-            node.base_document.as_ref().map(|v| &v.render_blocking),
-        );
-        Ok(Self {
-            fields: custody::Held::new(Box::new(fields), fields_debit),
-            children: relations(Some(&node.children), &mut admit)?,
-            manual_nodes: relations(Some(&node.manual_nodes), &mut admit)?,
-            assigned_nodes: relations(Some(&node.assigned_nodes), &mut admit)?,
-            fullscreen_events: Sequence::canonical(
-                &node.fullscreen_events,
-                std::convert::identity,
-                ledger,
-                &mut admit,
-            )?,
-            render_blocking: relations(render, &mut admit)?,
-            autofocus_candidates: relations(candidates, &mut admit)?,
-            open_dialogs: relations(open, &mut admit)?,
-            top_layer: relations(top, &mut admit)?,
-            pending_top_layer_removals: relations(pending, &mut admit)?,
-            element_custody,
-        })
-    }
-    pub(super) fn relation_mut(&mut self, field: RelationField) -> &mut Sequence<NodeId, Key> {
-        match field {
-            RelationField::Children => &mut self.children,
-            RelationField::ManualNodes => &mut self.manual_nodes,
-            RelationField::AssignedNodes => &mut self.assigned_nodes,
-            RelationField::RenderBlocking => &mut self.render_blocking,
-            RelationField::AutofocusCandidates => &mut self.autofocus_candidates,
-            RelationField::OpenDialogs => &mut self.open_dialogs,
-            RelationField::TopLayer => &mut self.top_layer,
-            RelationField::PendingTopLayerRemovals => &mut self.pending_top_layer_removals,
-        }
-    }
-}
+use super::{Counts, RelationField, Sequence, Undo};
 
 impl Draft {
     pub(in crate::store) fn private_node_mut(&mut self, key: Key) -> &mut DraftNode {
@@ -235,68 +150,25 @@ impl Draft {
         }
         Ok(())
     }
-    pub(in crate::store) fn node_fields_mut(
+    pub(super) fn commit_selected<T>(
         &mut self,
         key: Key,
-        cancel: &AtomicBool,
-    ) -> Result<NodeFieldsMut<'_>, DomError> {
-        self.materialize_node(key, cancel)?;
-        let undo = self.prepare_undo(cancel)?;
-        #[cfg(test)]
-        super::queues::admission_observation::before_fields(self, key);
-        let usage = self.private_node_mut(key).fields.debit().usage();
-        let debit = self
-            .custody_ledger()
-            .retain(usage, |usage| self.admit_custody_usage(usage, cancel))?;
-        let mut value = Box::new((**self.private_node_mut(key).fields.value()).clone());
-        #[cfg(test)]
-        if scale_metrics::ENABLED {
-            scale_metrics::record(scale_metrics::Event::RecordMaterialized {
-                bytes: size_of::<NodeFields>(),
-            });
-        }
-        if let Some(map) = &self.phase_map {
-            value.aliases(&map.ids);
-        }
-        Ok(NodeFieldsMut {
-            draft: self,
-            key,
-            candidate: Some(custody::Held::new(value, debit)),
-            retain_undo: undo,
-        })
-    }
-    pub(in crate::store) fn element_fields_mut(
-        &mut self,
-        key: Key,
-        cancel: &AtomicBool,
-    ) -> Result<ElementFieldsMut<'_>, DomError> {
-        if !matches!(self.node(key)?.kind, DomNodeKind::Element(_)) {
-            return Err(DomError::WrongNodeKind);
-        }
-        self.node_fields_mut(key, cancel).map(ElementFieldsMut)
-    }
-    pub(in crate::store) fn commit_node_fields(
-        &mut self,
-        key: Key,
-        mut next: custody::Held<Box<NodeFields>>,
-        undo: bool,
+        candidate: custody::Held<T>,
+        overlay: impl for<'a> Fn(&'a T) -> super::records::Overlay<'a>,
+        finish: impl FnOnce(
+            &Draft,
+            Key,
+            custody::Held<T>,
+            &AtomicBool,
+        ) -> Result<super::fields::FieldUndo, DomError>,
+        retain_undo: bool,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let usage = next.value().usage(|| self.source_step(cancel))?;
-        resize_debit(next.debit_mut(), usage, |usage| {
-            self.admit_custody_usage(usage, cancel)
-        })?;
-        let element_custody = payload::element_dependency(
-            &next.value().kind,
-            self.custody_registry(),
-            Some(&self.names),
-            |usage| self.admit_custody_usage(usage, cancel),
-        )?;
-        let undo = self.prepare_undo_slots(10, cancel)? && undo;
-        let inbound = self.prepare_inbound_fields(key, next.value(), cancel)?;
-        let controls = self.prepare_control_fields(key, next.value(), cancel)?;
-        let slots = self.prepare_slot_fields(key, next.value(), cancel)?;
-        let next_read = NodeRead::staged_fields(self.records_for(key), next.value());
+        let undo = self.prepare_undo_slots(10, cancel)? && retain_undo;
+        let next_read = self.node(key)?.changed(overlay(candidate.value()));
+        let inbound = self.prepare_inbound_fields(key, next_read, cancel)?;
+        let controls = self.prepare_control_fields(key, next_read, cancel)?;
+        let slots = self.prepare_slot_fields(key, next_read, cancel)?;
         let order = slots
             .as_ref()
             .map_or_else(|| self.order_view(), |plan| plan.order(self))
@@ -310,8 +182,8 @@ impl Draft {
             order,
             cancel,
         )?;
-        let previous_document = self.node(key)?.document;
-        let next_document = next.value().document;
+        let previous_document = self.node(key)?.document();
+        let next_document = next_read.document();
         let queue_documents = if previous_document != next_document {
             Some(self.prepare_queue_document_change(
                 key,
@@ -322,46 +194,37 @@ impl Draft {
         } else {
             None
         };
-        let previous_active = self.node(key)?.active_range;
-        let next_active = next.value().active_range;
+        let previous_active = self.node(key)?.active_range();
+        let next_active = next_read.active_range();
         let before = Counts::node(self.node(key)?)?;
-        let after = Counts::node(NodeRead::staged_fields(
-            self.private_node_mut(key),
-            next.value(),
-        ))?;
+        let after = Counts::node(next_read)?;
         let counts = self.counts.checked_replace(before, after)?;
         self.admit_node_counts(counts, self.nodes, self.units, self.dom_limits)?;
-        let private = self.is_private(key);
-        let next_private_units = if private {
+        let next_private_units = if self.is_private(key) {
             self.private_units
-                .checked_sub(self.records_for(key).fields.value().logical_units()?)
-                .and_then(|u| u.checked_add(next.value().logical_units().ok()?))
+                .checked_sub(self.node(key)?.logical_units()?)
+                .and_then(|u| u.checked_add(next_read.logical_units().ok()?))
                 .ok_or(DomError::RepresentationExhausted)?
         } else {
             self.private_units
         };
-        let next_private_counts = if private {
+        let next_private_counts = if self.is_private(key) {
             self.private_counts.checked_replace(before, after)?
         } else {
             self.private_counts
         };
+        let prepared = finish(self, key, candidate, cancel)?;
         if previous_active != next_active {
             self.update_active_range_dependency(key, previous_active, next_active, cancel)?;
         }
+        let old = prepared.swap(self.private_node_mut(key));
         self.commit_inbound(inbound);
         if let Some(plan) = controls {
             self.commit_control_plan(plan);
         }
         let oldunits = self.units;
-        let oldprivateunits = self.private_units;
-        let oldprivatecounts = self.private_counts;
-        self.private_units = next_private_units;
-        self.private_counts = next_private_counts;
-        let old = std::mem::replace(&mut self.private_node_mut(key).fields, next);
-        let old_element_custody = std::mem::replace(
-            &mut self.private_node_mut(key).element_custody,
-            element_custody,
-        );
+        let oldprivateunits = std::mem::replace(&mut self.private_units, next_private_units);
+        let oldprivatecounts = std::mem::replace(&mut self.private_counts, next_private_counts);
         let oldcounts = std::mem::replace(&mut self.counts, counts);
         if let Some(plan) = queue_documents {
             self.commit_queue_document_change(plan);
@@ -371,18 +234,14 @@ impl Draft {
         }
         self.commit_discovery(discovery, undo);
         if undo {
-            self.journal.push_prepared(Undo::Fields {
+            self.journal.push_prepared(Undo::Selected {
                 key,
                 old,
-                element_custody: old_element_custody,
                 counts: oldcounts,
                 units: oldunits,
                 private_units: oldprivateunits,
                 private_counts: oldprivatecounts,
             });
-        } else {
-            drop(old);
-            drop(old_element_custody);
         }
         Ok(())
     }
@@ -482,7 +341,7 @@ impl Draft {
         values: &[Key],
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        self.materialize_node(key, cancel)?;
+        self.prepare_relation_owner(key, field, cancel)?;
         let old = self.private_node_mut(key).relation_mut(field).len();
         let next = old
             .checked_add(values.len())
@@ -497,8 +356,18 @@ impl Draft {
             self.prepare_inbound_delta(key, std::iter::empty(), values.iter().copied(), cancel)?;
         #[cfg(test)]
         let growth = if matches!(field, RelationField::Children)
-            && (self.records_for(key).children.canonical_backing().is_some()
-                || next > self.records_for(key).children.capacity())
+            && (self
+                .records_for(key)
+                .relation(RelationField::Children)
+                .expect("prepared children")
+                .canonical_backing()
+                .is_some()
+                || next
+                    > self
+                        .records_for(key)
+                        .relation(RelationField::Children)
+                        .expect("prepared children")
+                        .capacity())
         {
             source::formation::mutation_observation::before(
                 self,
@@ -547,7 +416,11 @@ impl Draft {
         if matches!(field, RelationField::Children) {
             source::formation::mutation_observation::grew(
                 growth,
-                self.records_for(key).children.capacity() * size_of::<Key>(),
+                self.records_for(key)
+                    .relation(RelationField::Children)
+                    .expect("prepared children")
+                    .capacity()
+                    * size_of::<Key>(),
             );
         }
         self.commit_inbound(inbound);
@@ -576,7 +449,7 @@ impl Draft {
         count: usize,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        self.materialize_node(key, cancel)?;
+        self.prepare_relation_owner(key, field, cancel)?;
         let old = self.private_node_mut(key).relation_mut(field).len();
         let next = old.checked_sub(count).ok_or(DomError::IndexSize)?;
         let counts = self.relation_counts(field, old, next)?;
@@ -654,7 +527,7 @@ impl Draft {
         values: Vec<Key>,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        self.materialize_node(key, cancel)?;
+        self.prepare_relation_owner(key, field, cancel)?;
         let old = self.private_node_mut(key).relation_mut(field).len();
         let counts = self.relation_counts(field, old, values.len())?;
         let private_counts = self.private_relation_counts(key, field, old, values.len())?;
@@ -729,7 +602,7 @@ impl Draft {
         mut keep: impl FnMut(Key) -> bool,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        self.materialize_node(key, cancel)?;
+        self.prepare_relation_owner(key, field, cancel)?;
         let formation = source::formation::Formation::new(self, cancel)?;
         let mut values = Vec::new();
         let source = self.relation_view(key, field);
@@ -754,7 +627,11 @@ impl Draft {
         key: Key,
         field: RelationField,
     ) -> super::SequenceView<'_, NodeId, Key> {
-        let view = self.records_for(key).relation(field).view();
+        let view = self
+            .records_for(key)
+            .relation(field)
+            .expect("prepared relation")
+            .view();
         match &self.phase_map {
             Some(map) => view.aliases(&map.ids, source::alias_key),
             None => view,
@@ -776,8 +653,8 @@ impl Draft {
         event: crate::DomFullscreenEvent,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        self.materialize_node(key, cancel)?;
-        let len = self.records_for(key).fullscreen_events.len();
+        self.prepare_fullscreen_owner(key, cancel)?;
+        let len = self.records_for(key).fullscreen_sequence().len();
         let mut counts = self.counts;
         counts.fullscreen_events = counts
             .fullscreen_events
@@ -794,17 +671,20 @@ impl Draft {
         let undo = self.prepare_undo(cancel)?;
         let formation = source::formation::Formation::new(self, cancel)?;
         let ledger = self.custody_ledger().clone();
-        let inverse = self.private_node_mut(key).fullscreen_events.insert(
-            len,
-            &[event],
-            undo,
-            &ledger,
-            |usage| match &formation {
-                Some(b) => b.admit_custody_usage(usage, cancel),
-                None => check_cancel(cancel),
-            },
-            || source::formation::step(formation.as_ref(), cancel),
-        )?;
+        let inverse = self
+            .private_node_mut(key)
+            .fullscreen_sequence_mut()
+            .insert(
+                len,
+                &[event],
+                undo,
+                &ledger,
+                |usage| match &formation {
+                    Some(b) => b.admit_custody_usage(usage, cancel),
+                    None => check_cancel(cancel),
+                },
+                || source::formation::step(formation.as_ref(), cancel),
+            )?;
         let oldcounts = std::mem::replace(&mut self.counts, counts);
         let oldprivatecounts = std::mem::replace(&mut self.private_counts, private_counts);
         if let Some(inverse) = inverse {
@@ -822,22 +702,25 @@ impl Draft {
         key: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        self.materialize_node(key, cancel)?;
-        let len = self.records_for(key).fullscreen_events.len();
+        self.prepare_fullscreen_owner(key, cancel)?;
+        let len = self.records_for(key).fullscreen_sequence().len();
         let undo = self.prepare_undo(cancel)?;
         let formation = source::formation::Formation::new(self, cancel)?;
         let ledger = self.custody_ledger().clone();
-        let inverse = self.private_node_mut(key).fullscreen_events.remove(
-            0,
-            len,
-            undo,
-            &ledger,
-            |usage| match &formation {
-                Some(b) => b.admit_custody_usage(usage, cancel),
-                None => check_cancel(cancel),
-            },
-            || source::formation::step(formation.as_ref(), cancel),
-        )?;
+        let inverse = self
+            .private_node_mut(key)
+            .fullscreen_sequence_mut()
+            .remove(
+                0,
+                len,
+                undo,
+                &ledger,
+                |usage| match &formation {
+                    Some(b) => b.admit_custody_usage(usage, cancel),
+                    None => check_cancel(cancel),
+                },
+                || source::formation::step(formation.as_ref(), cancel),
+            )?;
         let oldcounts = self.counts;
         let oldprivatecounts = self.private_counts;
         if self.is_private(self.live_key(key)) {
@@ -855,50 +738,12 @@ impl Draft {
         Ok(())
     }
 }
-impl DraftNode {
-    fn relation(&self, field: RelationField) -> &Sequence<NodeId, Key> {
-        match field {
-            RelationField::Children => &self.children,
-            RelationField::ManualNodes => &self.manual_nodes,
-            RelationField::AssignedNodes => &self.assigned_nodes,
-            RelationField::RenderBlocking => &self.render_blocking,
-            RelationField::AutofocusCandidates => &self.autofocus_candidates,
-            RelationField::OpenDialogs => &self.open_dialogs,
-            RelationField::TopLayer => &self.top_layer,
-            RelationField::PendingTopLayerRemovals => &self.pending_top_layer_removals,
-        }
-    }
-}
 
 pub(in crate::store) struct RetiredNode {
     pub style: bool,
     pub document: Key,
 }
-impl NodeFields {
-    pub(in crate::store) fn logical_units(&self) -> Result<usize, DomError> {
-        let mut units = kind_units(&self.kind)?;
-        for n in [
-            self.base.as_ref().map_or(0, crate::base::BaseState::units),
-            self.hyperlink
-                .as_ref()
-                .map_or(0, crate::hyperlink::HyperlinkState::units),
-            self.encoding_url_document
-                .as_ref()
-                .map_or(0, crate::hyperlink::EncodingUrlDocument::units),
-            self.base_document
-                .as_ref()
-                .map_or(0, crate::base::BaseDocument::units),
-            self.form_past_names
-                .as_ref()
-                .map_or(0, super::Names::logical_units),
-        ] {
-            units = units
-                .checked_add(n)
-                .ok_or(DomError::RepresentationExhausted)?;
-        }
-        Ok(units)
-    }
-}
+
 impl Draft {
     pub(in crate::store) fn retire_node(
         &mut self,
@@ -910,10 +755,9 @@ impl Draft {
         let counts = self
             .counts
             .checked_replace(Counts::node(self.node(key)?)?, Counts::default())?;
-        let units = self.records_for(key).fields.value().logical_units()?;
-        let style =
-            matches!(self.node(key)?.kind,DomNodeKind::Element(e) if e.style_state().is_some());
-        let document = self.node(key)?.document;
+        let units = self.node(key)?.logical_units()?;
+        let style = matches!(self.node(key)?.kind(),super::KindRead::Element(e) if e.style_state().is_some());
+        let document = self.node(key)?.document();
         let undo = self.prepare_undo_slots(9, cancel)?;
         let inbound = self.prepare_inbound_node(key, self.node(key)?, false, cancel)?;
         let controls = self.prepare_control_retired(key, cancel)?;
@@ -938,7 +782,7 @@ impl Draft {
         } else {
             self.private_counts
         };
-        let active = self.node(key)?.active_range;
+        let active = self.node(key)?.active_range();
         if active != crate::DomActiveRangeState::Unavailable {
             self.update_active_range_dependency(
                 key,
@@ -996,80 +840,6 @@ impl Draft {
     }
 }
 
-impl DraftNode {
-    pub(in crate::store) fn fresh(
-        mut fields: NodeFields,
-        mut incoming: custody::Debit,
-        registry: &bank::CustodyRegistry,
-        names: &name_registry::Operation,
-        mut admit: impl FnMut(custody::Usage) -> Result<(), DomError>,
-    ) -> Result<Self, DomError> {
-        let ledger = registry.ledger();
-        let element_custody =
-            payload::element_dependency(&fields.kind, registry, Some(names), &mut admit)?;
-        let mut staged = |values: Vec<Key>| -> Result<Sequence<NodeId, Key>, DomError> {
-            let bytes = values
-                .capacity()
-                .checked_mul(size_of::<Key>())
-                .ok_or(DomError::RepresentationExhausted)?;
-            let debit = ledger.retain(custody::Usage::new(bytes, 0), &mut admit)?;
-            Ok(Sequence::staged(values, debit, Key::Existing))
-        };
-        let render = fields
-            .base_document
-            .as_mut()
-            .map(|v| std::mem::take(&mut v.render_blocking))
-            .unwrap_or_default();
-        let candidates = match fields.autofocus_document.as_mut() {
-            Some(crate::autofocus::DocumentAutofocusState::Known { candidates, .. }) => {
-                std::mem::take(candidates)
-            }
-            _ => Vec::new(),
-        };
-        let (open, top, pending) = match fields.interactive_document.as_mut() {
-            Some(crate::dialog::DocumentInteractiveState::Known {
-                open_dialogs,
-                top_layer,
-                pending_top_layer_removals,
-            }) => (
-                std::mem::take(open_dialogs),
-                std::mem::take(top_layer),
-                std::mem::take(pending_top_layer_removals),
-            ),
-            _ => (Vec::new(), Vec::new(), Vec::new()),
-        };
-        let children = staged(Vec::new())?;
-        let manual_nodes = staged(Vec::new())?;
-        let assigned_nodes = staged(Vec::new())?;
-        let render_blocking = staged(render)?;
-        let autofocus_candidates = staged(candidates)?;
-        let open_dialogs = staged(open)?;
-        let top_layer = staged(top)?;
-        let pending_top_layer_removals = staged(pending)?;
-        resize_debit(&mut incoming, fields.usage(|| Ok(()))?, &mut admit)?;
-        let fields_debit = incoming;
-        #[cfg(test)]
-        if scale_metrics::ENABLED {
-            scale_metrics::record(scale_metrics::Event::RecordMaterialized {
-                bytes: size_of::<NodeFields>(),
-            });
-        }
-        let fullscreen_events = Sequence::empty(std::convert::identity, ledger, &mut admit)?;
-        Ok(Self {
-            fields: custody::Held::new(Box::new(fields), fields_debit),
-            children,
-            manual_nodes,
-            assigned_nodes,
-            render_blocking,
-            autofocus_candidates,
-            open_dialogs,
-            top_layer,
-            pending_top_layer_removals,
-            fullscreen_events,
-            element_custody,
-        })
-    }
-}
 impl Draft {
     pub(in crate::store) fn reserve_created_arena(
         &mut self,
@@ -1191,7 +961,12 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.materialize_node(key, cancel)?;
-        let old = self.records_for(key).relation(field).len();
+        self.prepare_relation_owner(key, field, cancel)?;
+        let old = self
+            .records_for(key)
+            .relation(field)
+            .expect("prepared relation")
+            .len();
         let counts = self.relation_counts(field, old, owned.values().len())?;
         let private_counts = self.private_relation_counts(key, field, old, owned.values().len())?;
         let undo = self.prepare_undo_slots(
@@ -1341,35 +1116,6 @@ impl Draft {
 }
 
 #[cfg(test)]
-impl DraftNode {
-    pub(super) fn journal_bytes(&self) -> usize {
-        let mut bytes = self.fields.debit().usage().bytes();
-        for seq in [
-            &self.children,
-            &self.manual_nodes,
-            &self.assigned_nodes,
-            &self.render_blocking,
-            &self.autofocus_candidates,
-            &self.open_dialogs,
-            &self.top_layer,
-            &self.pending_top_layer_removals,
-        ] {
-            if seq.canonical_backing().is_none() {
-                bytes = bytes
-                    .checked_add(seq.receipt().bytes())
-                    .expect("admitted saved record backing");
-            }
-        }
-        if self.fullscreen_events.canonical_backing().is_none() {
-            bytes = bytes
-                .checked_add(self.fullscreen_events.receipt().bytes())
-                .expect("admitted saved event backing");
-        }
-        bytes
-    }
-}
-
-#[cfg(test)]
 mod movement_metrics_tests {
     use super::*;
     use crate::store::scale_metrics::{self, Counters, Hooks, Measurement};
@@ -1476,7 +1222,7 @@ mod movement_metrics_tests {
             draft.reserve_created_arena(&cancel).unwrap();
             let (result, counters) = measured(|| {
                 draft.allocate(
-                    DomNodeKind::Comment("new".into()),
+                    NewNode::Comment("new".into()),
                     document,
                     draft.dom_limits,
                     &cancel,
@@ -1522,7 +1268,7 @@ mod movement_metrics_tests {
             draft.materialize_node(document, &cancel).unwrap();
             draft
                 .allocate(
-                    DomNodeKind::Comment("new".into()),
+                    NewNode::Comment("new".into()),
                     document,
                     draft.dom_limits,
                     &cancel,

@@ -45,7 +45,7 @@ fn replace(draft: &mut Draft, dom: &Dom, text: NodeId, value: &str) {
 fn assert_text(draft: &Draft, text: NodeId, expected: &str) {
     let key = draft.resolve(text.into()).unwrap();
     let node = draft.node(key).unwrap();
-    let DomNodeKind::Text(value) = &node.kind else {
+    let transaction::KindRead::Text(value) = node.kind() else {
         panic!("original text record changed kind");
     };
     assert_eq!(value, &DocumentString::from(expected));

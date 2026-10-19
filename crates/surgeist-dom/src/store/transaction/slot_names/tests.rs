@@ -77,7 +77,7 @@ fn relation_reorder_and_checkpoint_restore_named_groups_without_native_refresh()
         draft
             .node(root)
             .unwrap()
-            .children
+            .children()
             .iter()
             .collect::<Vec<_>>(),
         children
@@ -107,10 +107,17 @@ fn restored_order_and_unpublished_slot_retirement_publish_the_original_root() {
             &cancel,
         )
         .unwrap();
-    let document = draft.node(root).unwrap().document;
-    let kind = draft.node(children[0]).unwrap().kind.clone();
+    let document = draft.node(root).unwrap().document();
+    let source_id = draft.published_id(children[0]).unwrap();
     let temporary = draft
-        .allocate(kind, document, dom.limits(), &cancel)
+        .import_node(
+            &dom.snapshot(),
+            source_id,
+            document,
+            false,
+            dom.limits(),
+            &cancel,
+        )
         .unwrap();
     draft.retire_node(temporary, &cancel).unwrap();
     assert_eq!(members(&draft.slot_names.current.value, root), children);

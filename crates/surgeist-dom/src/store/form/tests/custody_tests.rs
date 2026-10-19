@@ -22,8 +22,7 @@ fn names(dom: &Dom, form: NodeId) -> &FormPastNames<NodeId> {
     dom.state
         .node(dom.owner, form)
         .unwrap()
-        .form_past_names
-        .as_ref()
+        .form_past_names()
         .unwrap()
 }
 fn assert_dependency(custody: &transaction::StateCustody, expected: &FormPastNames<NodeId>) {
@@ -60,17 +59,17 @@ fn empty_form(reserved: bool) -> (Dom, NodeId) {
     }
     if reserved {
         let value = FormPastNames::from_entries(Vec::with_capacity(7));
-        let mut candidate = transaction::Names::canonical(&value);
-        candidate
-            .adopt(draft.custody_registry(), |usage| {
-                draft.admit_custody_usage(usage, &cancel)
-            })
+        let candidate = transaction::Names::from_read(
+            transaction::NamesRead::Canonical(&value),
+            draft.custody_registry(),
+            |usage| draft.admit_custody_usage(usage, &cancel),
+        )
+        .unwrap();
+        let mut selected_names = draft
+            .form_names_mut(Key::Created(form.index), &cancel)
             .unwrap();
-        draft
-            .with_node_fields(Key::Created(form.index), &cancel, |fields| {
-                fields.form_past_names = Some(candidate);
-            })
-            .unwrap();
+        *selected_names = Some(candidate);
+        selected_names.commit(&cancel).unwrap();
     }
     let prepared = draft.finish(&dom, &cancel).unwrap();
     let commit = dom.publish(prepared, &cancel).unwrap();
@@ -108,17 +107,15 @@ fn absent_and_reserved_empty_replacements_retain_exact_original_root_and_backing
             };
             assert_eq!(original, replacement);
             assert!(!original.same_storage(&replacement));
-            let mut candidate = transaction::Names::canonical(&replacement);
-            candidate
-                .adopt(draft.custody_registry(), |usage| {
-                    draft.admit_custody_usage(usage, &cancel)
-                })
-                .unwrap();
-            draft
-                .with_node_fields(Key::Existing(form), &cancel, |fields| {
-                    fields.form_past_names = Some(candidate)
-                })
-                .unwrap();
+            let candidate = transaction::Names::from_read(
+                transaction::NamesRead::Canonical(&replacement),
+                draft.custody_registry(),
+                |usage| draft.admit_custody_usage(usage, &cancel),
+            )
+            .unwrap();
+            let mut selected_names = draft.form_names_mut(Key::Existing(form), &cancel).unwrap();
+            *selected_names = Some(candidate);
+            selected_names.commit(&cancel).unwrap();
             let prepared = draft.finish(&dom, &cancel).unwrap();
             let commit = dom.publish(prepared, &cancel).unwrap();
             assert!(commit.changes().changes().is_empty());
@@ -357,14 +354,10 @@ fn fresh_mapped_form_sealing_refusal_drops_data_before_credit_and_keeps_source_d
     draft
         .remove_form_aliases(Key::Existing(form), Key::Existing(button), &cancel)
         .unwrap();
-    let staged = draft
-        .records_for(Key::Existing(form))
-        .fields
-        .value()
-        .form_past_names
-        .as_ref()
-        .unwrap()
-        .clone();
+    let staged = {
+        let names = draft.form_names_mut(Key::Existing(form), &cancel).unwrap();
+        names.as_ref().unwrap().clone()
+    };
     let staged_identity = staged.identity().unwrap();
     let map = |key| match key {
         Key::Existing(id) => id,
@@ -435,7 +428,7 @@ fn fresh_mapped_form_sealing_refusal_drops_data_before_credit_and_keeps_source_d
         let pending = draft
             .node(Key::Existing(form))
             .unwrap()
-            .form_past_names
+            .form_past_names()
             .unwrap();
         assert_eq!(pending.len(), 1);
         assert_eq!(pending.iter().next().unwrap().target, Key::Existing(field));
@@ -449,6 +442,108 @@ fn fresh_mapped_form_sealing_refusal_drops_data_before_credit_and_keeps_source_d
     assert_dependency(&dom.state_custody, names(&dom, form));
     assert_eq!(names(&dom, form).entries().len(), 1);
     assert_eq!(names(&dom, form).entries()[0].target, field);
+    assert_eq!(original.entries().len(), 3);
+}
+
+#[test]
+fn fresh_form_dependency_refusal_in_finish_preserves_source_draft_for_exact_publication_retry() {
+    let (mut dom, _, form, button, field) = fixture();
+    let snapshot = dom.snapshot();
+    let original = names(&dom, form).clone();
+    let original_identity = original.payload().unwrap().identity;
+    let keep = &original.entries()[2];
+    assert_eq!(keep.target, field);
+    assert_eq!(keep.name, DocumentString::from("keep"));
+    let cancel = AtomicBool::new(false);
+    let batch = DomBatch::new();
+    let mut draft = Draft::new_source(
+        &dom,
+        batch.owner,
+        &batch.commands,
+        crate::DomSourceLimits::new(32_000_000, 100_000, 1_000_000, 16, 64, 64, 1),
+        &cancel,
+    )
+    .unwrap()
+    .0;
+    draft
+        .remove_form_aliases(Key::Existing(form), Key::Existing(button), &cancel)
+        .unwrap();
+    let staged_identity = {
+        let selected = draft.form_names_mut(Key::Existing(form), &cancel).unwrap();
+        selected.as_ref().unwrap().identity().unwrap()
+    };
+    draft.custody_registry().reconcile_releases();
+    let before = draft.custody_ledger().total();
+    let work = draft.source_work.clone();
+    let spent = work.load(Ordering::Relaxed);
+    let output = Vec::with_capacity(13);
+    let capacity = output.capacity();
+    let supplied = transaction::names::mapped_output_tests::SuppliedOutput::begin(output);
+    let refusal = payload::form_dependency_refusal::Refusal::begin();
+    let result = draft.finish(&dom, &cancel);
+    assert!(matches!(result, Err(DomError::Cancelled)));
+    assert!(supplied.taken(), "failure reached the actual mapped output");
+    drop(supplied);
+    let (failed_identity, reached_capacity) = refusal.reached().expect(
+        "failure reached Form child adoption, after projection and before capsule allocation",
+    );
+    assert_ne!(failed_identity, original_identity);
+    assert_ne!(failed_identity, staged_identity);
+    assert_eq!(reached_capacity, capacity);
+    assert!(capacity > 1);
+    let text_capacity = keep.name.shared_code_units().capacity();
+    let raw = custody::Usage::new(
+        size_of::<payload::Payload<History<NodeId>>>()
+            + capacity * size_of::<FormPastName<NodeId>>()
+            + size_of::<Vec<u16>>()
+            + text_capacity * size_of::<u16>(),
+        text_capacity,
+    );
+    let during = refusal
+        .destroyed_at()
+        .expect("the newly projected Form data was actually discarded");
+    assert_eq!(
+        refusal.control_alive_at_destruction(),
+        Some(true),
+        "a weak witness sees the actual immutable payload debit owner still alive, without retaining it"
+    );
+    assert!(during.bytes() >= before.bytes() + raw.bytes());
+    assert!(during.units() >= before.units() + raw.units());
+    drop(refusal);
+    draft.custody_registry().reconcile_releases();
+    assert_eq!(draft.custody_ledger().total(), before);
+    assert!(Arc::ptr_eq(&dom.state, &snapshot.state));
+    assert_eq!(dom.snapshot().stamp(), snapshot.stamp());
+    assert!(original.same_storage(names(&dom, form)));
+    assert_dependency(&dom.state_custody, &original);
+    let pending = draft
+        .node(Key::Existing(form))
+        .unwrap()
+        .form_past_names()
+        .unwrap();
+    assert_eq!(pending.len(), 1);
+    let entry = pending.iter().next().unwrap();
+    assert_eq!(entry.name, &DocumentString::from("keep"));
+    assert_eq!(entry.target, Key::Existing(field));
+    assert!(Arc::ptr_eq(&draft.source_work, &work));
+    assert!(work.load(Ordering::Relaxed) >= spent);
+
+    // This retries the exact original Source Draft, without fabricating an
+    // external acknowledgement or restarting the already staged Form edit.
+    let supplied = transaction::names::mapped_output_tests::SuppliedOutput::begin(
+        Vec::with_capacity(capacity),
+    );
+    let prepared = draft.finish(&dom, &cancel).unwrap();
+    assert!(supplied.taken());
+    drop(supplied);
+    dom.publish(prepared, &cancel).unwrap();
+    let published = names(&dom, form);
+    assert_ne!(published.payload().unwrap().identity, failed_identity);
+    assert_eq!(published.capacity(), capacity);
+    assert_eq!(published.entries().len(), 1);
+    assert_eq!(published.entries()[0].target, field);
+    assert_eq!(published.entries()[0].name, DocumentString::from("keep"));
+    assert_dependency(&dom.state_custody, published);
     assert_eq!(original.entries().len(), 3);
 }
 
@@ -508,7 +603,7 @@ fn nested_source_restore_keeps_the_original_slot_child_until_final_publication()
         draft
             .node(Key::Existing(form))
             .unwrap()
-            .form_past_names
+            .form_past_names()
             .unwrap()
             .len(),
         0
@@ -518,7 +613,7 @@ fn nested_source_restore_keeps_the_original_slot_child_until_final_publication()
         draft
             .node(Key::Existing(form))
             .unwrap()
-            .form_past_names
+            .form_past_names()
             .unwrap()
             .len(),
         1
@@ -529,7 +624,7 @@ fn nested_source_restore_keeps_the_original_slot_child_until_final_publication()
         draft
             .node(Key::Existing(form))
             .unwrap()
-            .form_past_names
+            .form_past_names()
             .unwrap()
             .len(),
         3
@@ -575,13 +670,7 @@ fn final_controlled_release_and_historical_readoption_distinguish_semantic_lifet
     let captured =
         transaction::StateCustody::adopt(&snapshot.state, &registry, None, |_| Ok(()), || Ok(()))
             .unwrap();
-    let historical = snapshot
-        .node(form)
-        .unwrap()
-        .node
-        .form_past_names
-        .as_ref()
-        .unwrap();
+    let historical = snapshot.node(form).unwrap().node.form_past_names().unwrap();
     assert_eq!(historical.payload().unwrap().identity, identity);
     assert_dependency(&captured, historical);
     drop(captured);

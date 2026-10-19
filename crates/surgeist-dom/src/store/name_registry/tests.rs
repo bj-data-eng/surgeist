@@ -728,12 +728,16 @@ fn real_source_preflight_retains_names_across_restore_and_competing_child_public
     // This command has not acknowledged an external event. Its record/index
     // reservation is the claim here; a newly formed staged containing capsule
     // is a distinct actual allocation, independently priced from its body.
-    let containing = super::super::payload::inspect_slot_child_extent();
-    // Fresh staging is followed by select_element_registry's field commit:
-    // its replacement body overlaps the fresh node's original body. Neither
-    // body is an additional name record/index/overlay reservation.
+    let containing = super::super::payload::inspect_element_language_child_extent();
+    // The whole qualified name has one real dedicated target, dependency body,
+    // and two shared-debit bodies. Registry selection aliases that name while
+    // replacing only the Element language capsule, so the two capsules overlap.
+    // These raw extents are separate from record/index/overlay reservations.
+    let name = size_of::<super::super::payload::Payload<crate::element::ElementName>>()
+        + super::super::payload::inspect_element_name_children_body_bytes()
+        + 2 * size_of::<custody::Debit>();
     dom.names
-        .set_retained_limits(live + 2 * containing, 2)
+        .set_retained_limits(live + name + 2 * containing, 2)
         .unwrap();
     draft
         .apply(&batch.commands[0], dom.limits, &cancel)
@@ -752,8 +756,8 @@ fn real_source_preflight_retains_names_across_restore_and_competing_child_public
     );
     assert_eq!(
         state.usage().unwrap().bytes(),
-        live + containing,
-        "only the actual staged containing capsule is new"
+        live + name + containing,
+        "the actual name target and staged language capsule remain retained"
     );
     drop(state);
     drop(draft);

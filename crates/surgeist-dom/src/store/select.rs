@@ -385,69 +385,15 @@ impl Dom {
     }
 }
 impl Draft {
-    pub(super) fn element(&self, key: Key) -> Result<&DomElement, DomError> {
-        match self.node(key)?.kind {
-            DomNodeKind::Element(e) => Ok(e),
+    pub(super) fn element(&self, key: Key) -> Result<transaction::ElementRead<'_>, DomError> {
+        match self.node(key)?.kind() {
+            transaction::KindRead::Element(e) => Ok(e),
             _ => Err(DomError::WrongNodeKind),
         }
     }
-    /// The original family owner admits its actual shared immutable payload
-    /// before copy-on-write. Custody transfers directly into the Draft family;
-    /// subsequent mutable access is unique and performs no second allocation.
-    pub(super) fn prepare_family_mutation(
-        &mut self,
-        key: Key,
-        cancel: &AtomicBool,
-    ) -> Result<(), DomError> {
-        if self.source_limits.is_none() {
-            return Ok(());
-        }
-        self.source_step(cancel)?;
-        let payload = self
-            .element(key)?
-            .shared_family_payload(|| self.source_step(cancel))?;
-        let Some(payload) = payload else {
-            return Ok(());
-        };
-        #[cfg(test)]
-        let before = source::formation::mutation_observation::before(
-            self,
-            source::formation::mutation_observation::Site::Family,
-            cancel,
-        )?;
-        let formation = source::formation::Formation::new(self, cancel)?.expect("source context");
-        formation.retain_payload(payload, cancel)?;
-        self.with_element_fields(key, cancel, |element| element.make_family_unique())?;
-        #[cfg(test)]
-        source::formation::mutation_observation::grew(before, payload.bytes);
-        drop(formation);
-        Ok(())
-    }
-    pub(super) fn with_node_fields<R>(
-        &mut self,
-        key: Key,
-        cancel: &AtomicBool,
-        edit: impl FnOnce(&mut transaction::NodeFields) -> R,
-    ) -> Result<R, DomError> {
-        let mut fields = self.node_fields_mut(key, cancel)?;
-        let result = edit(&mut fields);
-        fields.commit(cancel)?;
-        Ok(result)
-    }
-    pub(super) fn with_element_fields<R>(
-        &mut self,
-        key: Key,
-        cancel: &AtomicBool,
-        edit: impl FnOnce(&mut DomElement) -> R,
-    ) -> Result<R, DomError> {
-        let mut fields = self.element_fields_mut(key, cancel)?;
-        let result = edit(&mut fields);
-        fields.commit(cancel)?;
-        Ok(result)
-    }
     fn tag(&self, key: Key) -> Result<Option<Tag>, DomError> {
-        Ok(match self.node(key)?.kind {
-            DomNodeKind::Element(e) => Tag::from_name(e.name()),
+        Ok(match self.node(key)?.kind() {
+            transaction::KindRead::Element(e) => Tag::from_name(e.name()),
             _ => None,
         })
     }
@@ -514,6 +460,7 @@ impl Draft {
     fn selected(&self, key: Key) -> Result<bool, DomError> {
         Ok(self
             .element(key)?
+            .language()
             .option_state()
             .ok_or(DomError::OptionInapplicable)?
             .flags
@@ -570,7 +517,7 @@ impl Draft {
         if self.has(key, Attr::Disabled, cancel)? {
             return Ok(true);
         }
-        let mut next = self.node(key)?.parent;
+        let mut next = self.node(key)?.parent();
         while let Some(key) = next {
             self.select_step(cancel)?;
             match option_disabled_ancestor(self.tag(key)?) {
@@ -580,13 +527,13 @@ impl Draft {
                 }
                 HtmlOptionDisabledAncestor::Continue => (),
             }
-            next = self.node(key)?.parent;
+            next = self.node(key)?.parent();
         }
         Ok(false)
     }
     fn display_size(&self, key: Key, cancel: &AtomicBool) -> Result<bool, DomError> {
         self.select_step(cancel)?;
-        if self.element(key)?.select_state().is_none() {
+        if self.element(key)?.language().select_state().is_none() {
             return Ok(false);
         }
         let raw = self.control_attribute(key, Attr::Size, cancel)?;
@@ -680,10 +627,9 @@ impl Draft {
         }
         let reply = match cursor.action() {
             HtmlSelectAction::ResetSelectFlags => {
-                self.prepare_family_mutation(key, cancel)?;
-                self.with_element_fields(key, cancel, |element| {
-                    element.select_state_mut().expect("Select").flags.reset()
-                })?;
+                let mut state = self.select_state_mut(key, cancel)?;
+                state.flags.reset();
+                state.commit(cancel)?;
                 HtmlSelectReply::Applied
             }
             HtmlSelectAction::ResetOption { ordinal } => {
@@ -756,13 +702,13 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<Option<Key>, DomError> {
         let mut cursor = HtmlOptionSelectAncestors::default();
-        let mut next = self.node(key)?.parent;
+        let mut next = self.node(key)?.parent();
         while let Some(key) = next {
             self.select_step(cancel)?;
             match cursor.observe(self.tag(key)?) {
                 HtmlOptionSelectAncestorAction::NearestSelect => return Ok(Some(key)),
                 HtmlOptionSelectAncestorAction::NoSelect => return Ok(None),
-                HtmlOptionSelectAncestorAction::Continue => next = self.node(key)?.parent,
+                HtmlOptionSelectAncestorAction::Continue => next = self.node(key)?.parent(),
             }
         }
         cursor.finish_complete();
@@ -775,9 +721,13 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let old = self.node(key)?.option_select;
+        let old = self.node(key)?.option_select();
         let new = self.nearest_option_select(key, cancel)?;
-        self.with_node_fields(key, cancel, |fields| fields.option_select = new)?;
+        {
+            let mut fields = self.option_fields_mut(key, cancel)?;
+            (*fields) = new;
+            fields.commit(cancel)
+        }?;
         if old == new {
             return Ok(());
         }
@@ -807,7 +757,7 @@ impl Draft {
     ) -> Result<Option<Key>, DomError> {
         let mut cursor = HtmlSelectedcontentAncestors::default();
         let mut nearest = None;
-        let mut next = self.node(key)?.parent;
+        let mut next = self.node(key)?.parent();
         while let Some(k) = next {
             self.select_step(cancel)?;
             match cursor.observe(self.tag(k)?) {
@@ -815,7 +765,7 @@ impl Draft {
                 HtmlSelectedcontentAncestorAction::StopDisabled => break,
                 HtmlSelectedcontentAncestorAction::Continue => (),
             }
-            next = self.node(k)?.parent;
+            next = self.node(k)?.parent();
         }
         self.with_element_fields(key, cancel, |element| {
             *element
@@ -858,14 +808,18 @@ impl Draft {
     ) -> Result<(), DomError> {
         match self.tag(key)? {
             Some(Tag::Option) if self.selected(key)? => {
-                if let Some(select) = self.node(key)?.option_select {
+                if let Some(select) = self.node(key)?.option_select() {
                     self.schedule_selectedcontent(select, limits, cancel)?;
                 }
             }
             Some(Tag::Selectedcontent) => {
                 if let Some(select) = self.selectedcontent_ancestors(key, cancel)?
                     && !self.multiple(select, cancel)?
-                    && !self.element(key)?.selectedcontent_disabled().expect("SC")
+                    && !self
+                        .element(key)?
+                        .language()
+                        .selectedcontent_disabled()
+                        .expect("SC")
                 {
                     self.push_effect(
                         Effect::Target {
@@ -1262,6 +1216,7 @@ impl Draft {
                         after,
                     } => {
                         self.element(key)?
+                            .language()
                             .select_state()
                             .ok_or(DomError::SelectInapplicable)?;
                         let multiple = self.multiple(key, cancel)?;
@@ -1321,7 +1276,7 @@ impl Draft {
                         )?;
                     }
                     Effect::Clear { target } => {
-                        if let Some(child) = self.node(target)?.children.first() {
+                        if let Some(child) = self.node(target)?.children().first() {
                             self.push_effect(Effect::Clear { target }, true, cancel)?;
                             self.remove(child, limits, cancel)?;
                         }
@@ -1383,6 +1338,7 @@ impl Draft {
                         // Each target observes the current selection after all preceding effects.
                         let disabled = self
                             .element(target)?
+                            .language()
                             .selectedcontent_disabled()
                             .expect("actual selectedcontent");
                         if disabled {
@@ -1413,9 +1369,9 @@ impl Draft {
                             }
                             HtmlSelectedcontentUpdate::CloneOptionChildren { ordinal } => {
                                 let option = options[ordinal];
-                                let document = self.node(option)?.document;
+                                let document = self.node(option)?.document();
                                 let fragment = self.allocate(
-                                    DomNodeKind::DocumentFragment,
+                                    NewNode::DocumentFragment,
                                     document,
                                     limits,
                                     cancel,
@@ -1444,7 +1400,7 @@ impl Draft {
                         target,
                         index,
                     } => {
-                        if let Some(source) = self.node(option)?.children.get(index) {
+                        if let Some(source) = self.node(option)?.children().get(index) {
                             self.push_effect(
                                 Effect::Children {
                                     option,
@@ -1459,7 +1415,7 @@ impl Draft {
                                 import::Source::Staged(source),
                                 None,
                                 import::CloneRequest {
-                                    document: self.node(fragment)?.document,
+                                    document: self.node(fragment)?.document(),
                                     placement: import::Placement::AfterClone(fragment),
                                     subtree: true,
                                     scoped: true,
@@ -1472,7 +1428,7 @@ impl Draft {
                         }
                     }
                     Effect::Replace { fragment, target } => {
-                        if let Some(child) = self.node(target)?.children.first() {
+                        if let Some(child) = self.node(target)?.children().first() {
                             self.push_effect(Effect::Replace { fragment, target }, true, cancel)?;
                             self.remove(child, limits, cancel)?;
                         } else {
@@ -1486,10 +1442,10 @@ impl Draft {
                         };
                         let node = self.node(fragment)?;
                         assert!(
-                            node.children.is_empty()
-                                && node.parent.is_none()
-                                && node.host.is_none()
-                                && matches!(node.kind, DomNodeKind::DocumentFragment)
+                            node.children().is_empty()
+                                && node.parent().is_none()
+                                && node.host().is_none()
+                                && matches!(node.kind(), transaction::KindRead::DocumentFragment)
                         );
                         self.retire_node(fragment, cancel)?;
                     }
@@ -1612,7 +1568,7 @@ impl Draft {
                             attributes::AttributeChange::Removed
                         ))
                 })?;
-                if let Some(select) = self.node(key)?.option_select {
+                if let Some(select) = self.node(key)?.option_select() {
                     self.select_operation(
                         select,
                         HtmlSelectOperation::ResetSelectedness {
@@ -1624,7 +1580,7 @@ impl Draft {
                 }
             }
             Some(Tag::Option) if is(Attr::Disabled) && changed_presence => {
-                if let Some(select) = self.node(key)?.option_select {
+                if let Some(select) = self.node(key)?.option_select() {
                     self.select_operation(
                         select,
                         HtmlSelectOperation::ResetSelectedness { has_changed: false },
@@ -1658,6 +1614,7 @@ impl Draft {
             crate::select::Edit::OptionSelected(selected) => {
                 self.select_step(cancel)?;
                 self.element(key)?
+                    .language()
                     .option_state()
                     .ok_or(DomError::OptionInapplicable)?;
                 self.with_element_fields(key, cancel, |element| {
@@ -1668,7 +1625,7 @@ impl Draft {
                         .selected_setter(*selected);
                     Ok(())
                 })??;
-                if let Some(select) = self.node(key)?.option_select {
+                if let Some(select) = self.node(key)?.option_select() {
                     self.select_operation(
                         select,
                         HtmlSelectOperation::AskForReset,
@@ -1682,6 +1639,7 @@ impl Draft {
             }
             edit => {
                 self.element(key)?
+                    .language()
                     .select_state()
                     .ok_or(DomError::SelectInapplicable)?;
                 let options = self.options(key, cancel)?;
@@ -2439,12 +2397,12 @@ mod effect_scope_tests {
         draft
             .with_effect_scope(|draft| draft.pre_insert(second, inner, None, dom.limits, &cancel))
             .unwrap();
-        assert!(draft.node(outer).unwrap().children.is_empty());
+        assert!(draft.node(outer).unwrap().children().is_empty());
         assert_eq!(
             draft
                 .node(inner)
                 .unwrap()
-                .children
+                .children()
                 .iter()
                 .collect::<Vec<_>>(),
             vec![second]
@@ -2454,7 +2412,7 @@ mod effect_scope_tests {
             draft
                 .node(outer)
                 .unwrap()
-                .children
+                .children()
                 .iter()
                 .collect::<Vec<_>>(),
             vec![first]
@@ -2463,7 +2421,7 @@ mod effect_scope_tests {
             draft
                 .node(inner)
                 .unwrap()
-                .children
+                .children()
                 .iter()
                 .collect::<Vec<_>>(),
             vec![second]
@@ -2498,11 +2456,11 @@ mod effect_scope_tests {
             draft
                 .node(outer)
                 .unwrap()
-                .children
+                .children()
                 .iter()
                 .collect::<Vec<_>>(),
             vec![first]
         );
-        assert!(draft.node(inner).unwrap().children.is_empty());
+        assert!(draft.node(inner).unwrap().children().is_empty());
     }
 }

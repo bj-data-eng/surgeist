@@ -207,11 +207,13 @@ fn unavailable_document_lists_refuse_the_first_read_without_flag_or_layer_public
     let mut staged = draft(&dom);
     let document_key = staged.resolve(document.into()).unwrap();
     // Actual typed unknown-history input; no showing popover is invented.
-    staged
-        .with_node_fields(document_key, &cancel(), |fields| {
-            fields.interactive_document = Some(DocumentInteractiveState::Unavailable)
-        })
-        .unwrap();
+    {
+        let mut state = staged
+            .interactive_document_mut(document_key, &cancel())
+            .unwrap();
+        *state = Some(DocumentInteractiveState::Unavailable);
+        state.commit(&cancel()).unwrap();
+    }
     publish(&mut dom, &mut staged);
     let before = dom.snapshot();
     let mut lease = dom
@@ -397,10 +399,10 @@ fn detached_adoption_preflight_does_not_scan_unrelated_raw_or_pending_members() 
         let subject_key = staged.resolve(subject.into()).unwrap();
         let origin_key = staged.resolve(origin.into()).unwrap();
         let destination_key = staged.resolve(destination.into()).unwrap();
-        assert_eq!(staged.node(subject_key).unwrap().document, origin_key);
-        assert_eq!(staged.node(subject_key).unwrap().parent, None);
-        assert!(staged.node(subject_key).unwrap().children.is_empty());
-        assert!(staged.node(subject_key).unwrap().shadow_root.is_none());
+        assert_eq!(staged.node(subject_key).unwrap().document(), origin_key);
+        assert_eq!(staged.node(subject_key).unwrap().parent(), None);
+        assert!(staged.node(subject_key).unwrap().children().is_empty());
+        assert!(staged.node(subject_key).unwrap().shadow_root().is_none());
         assert!(!staged.element(subject_key).unwrap().fullscreen_flag());
         let mut results = Vec::new();
         for early in [true, false] {
@@ -429,8 +431,8 @@ fn detached_adoption_preflight_does_not_scan_unrelated_raw_or_pending_members() 
             let after = staged.source_work.load(Ordering::Relaxed);
             assert!(after >= spent);
             assert_eq!(staged.select_temporary_bytes.load(Ordering::Relaxed), 0);
-            assert_eq!(staged.node(subject_key).unwrap().document, origin_key);
-            assert_eq!(staged.node(subject_key).unwrap().parent, None);
+            assert_eq!(staged.node(subject_key).unwrap().document(), origin_key);
+            assert_eq!(staged.node(subject_key).unwrap().parent(), None);
             staged.source_limits = Some(generous);
             // Same-subject qualification still succeeds under the original
             // generous policy; refusal never becomes a top-layer rejection.
@@ -449,15 +451,18 @@ fn detached_adoption_preflight_does_not_scan_unrelated_raw_or_pending_members() 
         staged
             .adopt(subject_key, destination_key, dom.limits, &cancel)
             .unwrap();
-        assert_eq!(staged.node(subject_key).unwrap().document, destination_key);
+        assert_eq!(
+            staged.node(subject_key).unwrap().document(),
+            destination_key
+        );
         checkpoint.restore(&mut staged);
-        assert_eq!(staged.node(subject_key).unwrap().document, origin_key);
-        assert_eq!(staged.node(subject_key).unwrap().parent, None);
+        assert_eq!(staged.node(subject_key).unwrap().document(), origin_key);
+        assert_eq!(staged.node(subject_key).unwrap().parent(), None);
         let Some(transaction::InteractiveRead::Known {
             top_layer,
             pending_top_layer_removals,
             ..
-        }) = staged.node(origin_key).unwrap().interactive_document
+        }) = staged.node(origin_key).unwrap().interactive_document()
         else {
             panic!("actual known old-Document relations")
         };

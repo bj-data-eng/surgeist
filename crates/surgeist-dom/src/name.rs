@@ -86,11 +86,6 @@ impl DomNameAtom {
     fn same_text(&self, other: &Self) -> bool {
         self == other || self.text() == other.text()
     }
-    #[cfg(test)]
-    fn inspect_allocations(&self, graph: &mut crate::store::compact_tests::AllocationGraph) {
-        graph.target(&self.0, "name.record");
-        graph.string(self.text());
-    }
 }
 impl std::fmt::Debug for DomNameAtom {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -193,19 +188,6 @@ impl DomQualifiedName {
             payload.string(text)?;
         }
         Ok(payload)
-    }
-    #[cfg(test)]
-    pub(crate) fn inspect_allocations(
-        &self,
-        graph: &mut crate::store::compact_tests::AllocationGraph,
-    ) {
-        if let Some(namespace) = self.namespace() {
-            namespace.inspect_allocations(graph);
-        }
-        if let Some(prefix) = self.prefix() {
-            graph.string(prefix);
-        }
-        self.local.inspect_allocations(graph);
     }
 }
 impl PartialEq for DomQualifiedName {

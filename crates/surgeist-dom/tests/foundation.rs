@@ -659,3 +659,63 @@ fn fresh_identity_replacement_is_a_change_even_when_contents_are_equal() {
         dom.snapshot().node(fresh).unwrap().data()
     );
 }
+
+#[test]
+fn borrowed_kinds_copy_exact_snapshot_payload_references() {
+    fn copy_view<'a>(kind: DomNodeKind<'a>) -> (DomNodeKind<'a>, DomNodeKind<'a>) {
+        (kind, kind)
+    }
+    let mut dom = Dom::new(limits()).unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let element = batch.create_element_ns(&document, surgeist_dom::Namespace::html(), "div");
+    let text = batch.create_text(&document, DocumentString::from_utf16(vec![0xd800, 0x61]));
+    batch.insert_before(&element, &document, None);
+    batch.insert_before(&text, &element, None);
+    let commit = apply(&mut dom, batch);
+    let document = commit.document(&document).unwrap();
+    let element = commit.created(&element).unwrap().unwrap();
+    let text = commit.created(&text).unwrap().unwrap();
+    let snapshot = dom.snapshot();
+    let (first, second) = copy_view(snapshot.node(text).unwrap().kind());
+    let (DomNodeKind::Text(first), DomNodeKind::Text(second)) = (first, second) else {
+        panic!("actual Text payload");
+    };
+    assert!(std::ptr::eq(first, second));
+    assert!(std::ptr::eq(
+        first,
+        snapshot.node(text).unwrap().data().unwrap()
+    ));
+    let DomNodeKind::Element(language) = snapshot.node(element).unwrap().kind() else {
+        panic!("actual Element payload");
+    };
+    assert!(std::ptr::eq(
+        language,
+        snapshot.node(element).unwrap().as_element().unwrap()
+    ));
+    let DomNodeKind::Document(metadata) = snapshot.node(document.node()).unwrap().kind() else {
+        panic!("actual Document payload");
+    };
+    assert!(std::ptr::eq(
+        metadata,
+        snapshot.document(document).unwrap().metadata()
+    ));
+    let mut edit = DomBatch::new();
+    edit.replace_data(text, 0, usize::MAX, "new");
+    apply(&mut dom, edit);
+    assert_eq!(
+        dom.snapshot()
+            .node(text)
+            .unwrap()
+            .data()
+            .unwrap()
+            .code_units(),
+        &[110, 101, 119]
+    );
+    drop(dom);
+    // The views borrow the original snapshot rather than the temporary DomNode
+    // values used to obtain them or the subsequently edited live owner.
+    assert_eq!(first.code_units(), &[0xd800, 0x61]);
+    assert_eq!(language.name().local_name().code_units(), &[100, 105, 118]);
+    assert_eq!(metadata.class(), surgeist_dom::DomDocumentClass::Xml);
+}

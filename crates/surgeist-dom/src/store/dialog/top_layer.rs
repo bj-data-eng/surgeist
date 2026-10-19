@@ -9,7 +9,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
         self.element(subject)?;
-        let document = self.node(subject)?.document;
+        let document = self.node(subject)?.document();
         if self.dialog_list_contains(document, subject, DialogList::Raw, cancel)? {
             if !self.dialog_list_contains(document, subject, DialogList::Pending, cancel)? {
                 return Err(DomError::TopLayerAlreadyActive {
@@ -33,7 +33,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
         self.element(subject)?;
-        let document = self.node(subject)?.document;
+        let document = self.node(subject)?.document();
         if !self.dialog_list_contains(document, subject, DialogList::Raw, cancel)?
             || self.dialog_list_contains(document, subject, DialogList::Pending, cancel)?
         {
@@ -48,7 +48,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
         self.element(subject)?;
-        let document = self.node(subject)?.document;
+        let document = self.node(subject)?.document();
         self.dialog_list_remove(document, subject, DialogList::Raw, cancel)?;
         self.dialog_list_remove(document, subject, DialogList::Pending, cancel)
     }
@@ -63,12 +63,11 @@ impl Draft {
             return Ok(());
         }
         let formation = source::formation::Formation::new(self, cancel)?;
-        self.admit_dialog_state_copy(subject, formation.as_ref(), false, true, cancel)?;
+        self.admit_dialog_state_copy(subject, formation.as_ref(), true, true, cancel)?;
         self.source_step(cancel)?;
         let mut state = self.dialog_state(subject)?.clone();
         state.is_modal = modal;
-        self.with_element_fields(subject, cancel, |element| element.set_dialog_state(state))?;
-        drop(formation);
+        self.replace_dialog_state_formed(subject, state, formation, cancel)?;
         self.source_admit(0, cancel)
     }
     pub(super) fn dialog_modal_phase(
@@ -87,12 +86,12 @@ impl Draft {
                 Action::BlockNodeDocument => {
                     // Blocking is defined by raw Dialog order. Its canonical
                     // list and this flag stay private until this phase ends.
-                    self.dialog_list(self.node(subject)?.document, DialogList::Raw)?;
+                    self.dialog_list(self.node(subject)?.document(), DialogList::Raw)?;
                     Reply::Applied
                 }
                 Action::ReadTopLayerContains => {
                     Reply::TopLayerContains(self.dialog_list_contains(
-                        self.node(subject)?.document,
+                        self.node(subject)?.document(),
                         subject,
                         DialogList::Raw,
                         cancel,

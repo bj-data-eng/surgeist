@@ -113,7 +113,7 @@ mod tests {
                 .state
                 .node(self.dom.owner, self.documents[document].node())
                 .unwrap();
-            let DomNodeKind::Document(metadata) = &origin.kind else {
+            let DomNodeKind::Document(metadata) = origin.kind() else {
                 panic!("actual native Document payload")
             };
             let origin = metadata.origin().clone();
@@ -196,12 +196,12 @@ mod tests {
         let (parent, work) = f.issue(0);
         drop(work);
         let (child, work) = f.issue(1);
-        let origin = match &f
+        let origin = match f
             .dom
             .state
             .node(f.dom.owner, parent.document.node())
             .unwrap()
-            .kind
+            .kind()
         {
             DomNodeKind::Document(metadata) => metadata.origin().clone(),
             _ => panic!("actual Document"),
@@ -230,16 +230,14 @@ mod tests {
             &context,
         )
         .unwrap();
-        let state = Arc::get_mut(&mut f.dom.state).unwrap();
-        state.hosted_history = Some(graph);
-        state.mutate_slot(f.container.slot, |slot| {
-            let DomNodeKind::Element(element) = &mut slot.node.as_mut().unwrap().kind else {
-                panic!("native Iframe container")
-            };
-            element
-                .establish_child_navigable(Some(child.navigable))
-                .unwrap();
-        });
+        let batch = DomBatch::new();
+        let mut draft = Draft::new(&f.dom, batch.owner, &c).unwrap();
+        draft.set_hosted_history(Some(graph), None, &c).unwrap();
+        draft
+            .establish_child_navigable(Key::Existing(f.container), Some(child.navigable), &c)
+            .unwrap();
+        let prepared = draft.finish(&f.dom, &c).unwrap();
+        f.dom.publish(prepared, &c).unwrap();
         (f, parent, child, work)
     }
 
@@ -631,8 +629,10 @@ impl Dom {
         source: &DomHostedSource,
         creation: DomHostedCreation,
     ) -> Result<Option<DomHostedDocumentDestructionProof>, DomHostedError> {
-        let DomNodeKind::Document(metadata) =
-            &self.state.node(self.owner, creation.document.node())?.kind
+        let DomNodeKind::Document(metadata) = self
+            .state
+            .node(self.owner, creation.document.node())?
+            .kind()
         else {
             return Err(DomError::WrongDocument.into());
         };
@@ -859,8 +859,10 @@ impl Dom {
                 settled: false,
             });
         }
-        let DomNodeKind::Document(metadata) =
-            &self.state.node(self.owner, creation.document.node())?.kind
+        let DomNodeKind::Document(metadata) = self
+            .state
+            .node(self.owner, creation.document.node())?
+            .kind()
         else {
             return Err(DomError::WrongDocument.into());
         };

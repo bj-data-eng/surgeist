@@ -9,27 +9,35 @@ mod counts;
 mod discovery;
 pub(in crate::store) mod exact_forest;
 pub(in crate::store) mod family_discovery;
+mod feature_fields;
 mod fields;
 pub(in crate::store) mod inbound;
 mod journal;
 pub(in crate::store) mod names;
+mod native;
 pub(in crate::store) mod nodes;
 pub(in crate::store) mod ordered_members;
+mod projection;
 mod publication;
 pub(in crate::store) mod queues;
 pub(in crate::store) mod ranges;
 mod records;
+mod relation_capture;
 pub(in crate::store) mod role_facts;
 mod sequence;
 pub(in crate::store) mod slot_index;
 pub(in crate::store) mod slot_names;
+pub(in crate::store) mod staged;
 
 pub(in crate::store) use capture::{StateCustody, StateFrontiers};
 pub(in crate::store) use counts::Counts;
-pub(in crate::store) use fields::{ElementFieldsMut, NodeFields, NodeFieldsMut};
 pub(in crate::store) use journal::{Journal, Mark};
 pub(in crate::store) use names::Names;
-pub(in crate::store) use records::{AutofocusRead, InteractiveRead, NodeRead};
+#[cfg(test)]
+pub(in crate::store) use records::NamesRead;
+pub(in crate::store) use records::{
+    AutofocusRead, ElementRead, InteractiveRead, KindRead, NodeRead,
+};
 #[cfg(test)]
 pub(crate) use sequence::CopyObservation;
 pub(in crate::store) use sequence::{Sequence, SequenceUndo, SequenceView};
@@ -53,12 +61,6 @@ pub(in crate::store) struct RelationChange<'a> {
     pub index: usize,
     pub removed: usize,
     pub added: &'a [super::Key],
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct NodeReceipts {
-    pub fields: custody::Usage,
-    pub payload: custody::Usage,
 }
 
 /// Proof of the actual canonical publication fence. It contains no root,
@@ -141,10 +143,9 @@ pub(in crate::store) enum Undo {
         nodes: usize,
         units: usize,
     },
-    Fields {
+    Selected {
         key: super::Key,
-        old: custody::Held<Box<NodeFields>>,
-        element_custody: Option<bank::Dependency>,
+        old: fields::FieldUndo,
         counts: Counts,
         units: usize,
         private_units: usize,
@@ -266,19 +267,15 @@ impl Undo {
                 draft.nodes = nodes;
                 draft.units = units;
             }
-            Self::Fields {
+            Self::Selected {
                 key,
                 old,
-                element_custody,
                 counts,
                 units,
                 private_units,
                 private_counts,
             } => {
-                // Discard current semantic handles before their control
-                // frontier; restore both halves of the original inverse.
-                draft.private_node_mut(key).fields = old;
-                draft.private_node_mut(key).element_custody = element_custody;
+                old.restore(draft.private_node_mut(key));
                 draft.counts = counts;
                 draft.units = units;
                 draft.private_units = private_units;
@@ -306,7 +303,7 @@ impl Undo {
             } => {
                 draft
                     .private_node_mut(key)
-                    .fullscreen_events
+                    .fullscreen_sequence_mut()
                     .restore(inverse);
                 draft.counts = counts;
                 draft.private_counts = private_counts;
@@ -334,7 +331,7 @@ impl Undo {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::store) enum RelationField {
     Children,
     ManualNodes,
@@ -361,7 +358,7 @@ impl Undo {
             Self::Queue(undo) => undo.journal_bytes(),
             Self::TicketsCapacity(old) => old.debit().usage().bytes(),
             Self::RetirementsCapacity(old) => old.debit().usage().bytes(),
-            Self::Fields { old, .. } => old.debit().usage().bytes(),
+            Self::Selected { old, .. } => old.journal_bytes(),
             Self::ArenaCapacity { debit, .. } | Self::CreatedCapacity { debit, .. } => {
                 debit.usage().bytes()
             }

@@ -53,12 +53,6 @@ impl Frame {
 }
 
 impl Draft {
-    fn source_kind(&self, source: &Source) -> Result<DomNodeKind, DomError> {
-        Ok(match source {
-            Source::Published(s, id, _) => s.node(*id)?.kind().clone(),
-            Source::Staged(k) => self.node(*k)?.kind.clone(),
-        })
-    }
     fn published_clone_source(
         &mut self,
         snapshot: &DomSnapshot,
@@ -96,17 +90,20 @@ impl Draft {
             Source::Staged(k) => {
                 let n = self.node(*k)?;
                 let n = if template {
-                    if !matches!(&n.kind, DomNodeKind::Element(element) if element.is_template()) {
+                    if !matches!(n.kind(), transaction::KindRead::Element(element) if element.is_template())
+                    {
                         return Ok(None);
                     }
                     self.node(
-                        n.template_contents
+                        n.template_contents()
                             .ok_or(DomError::TemplateContentsUnavailable)?,
                     )?
                 } else {
                     n
                 };
-                Ok(n.children.get(index).map(|key| (Source::Staged(key), None)))
+                Ok(n.children()
+                    .get(index)
+                    .map(|key| (Source::Staged(key), None)))
             }
         }
     }
@@ -137,9 +134,11 @@ impl Draft {
             }
             Source::Staged(k) => self
                 .node(*k)?
-                .shadow_root
-                .map(|root| match &self.node(root)?.kind {
-                    DomNodeKind::ShadowRoot(state) => Ok((Source::Staged(root), *state, None)),
+                .shadow_root()
+                .map(|root| match self.node(root)?.kind() {
+                    transaction::KindRead::ShadowRoot(state) => {
+                        Ok((Source::Staged(root), *state, None))
+                    }
                     _ => unreachable!("owned root"),
                 })
                 .transpose(),
@@ -224,9 +223,9 @@ impl Draft {
             frame.template_child += 1;
             let parent = self
                 .node(frame.copy)?
-                .template_contents
+                .template_contents()
                 .expect("fresh contents");
-            let document = self.node(parent)?.document;
+            let document = self.node(parent)?.document();
             self.push_effect_retained(select::Effect::Clone(frame), scoped, payload, cancel)?;
             self.begin_clone(
                 source,
@@ -316,53 +315,70 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<Key, DomError> {
         check_cancel(cancel)?;
-        let original_formation = source::formation::Formation::new(self, cancel)?;
-        if let Some(budget) = &original_formation {
-            let original = match source {
-                Source::Published(snapshot, id, _) => snapshot.node(*id)?.kind(),
-                Source::Staged(key) => self.node(*key)?.kind,
-            };
-            budget.retain_payload(
-                source::storage::kind(original, || self.source_step(cancel))?,
-                cancel,
-            )?;
-        }
-        let original = self.source_kind(source)?;
+        let original = match source {
+            Source::Published(snapshot, id, _) => {
+                self.freeze_published_node_input(snapshot, *id, cancel)?
+            }
+            Source::Staged(key) => self.freeze_node_input(*key, cancel)?,
+        };
         if let Source::Published(snapshot, _, _) = source
             && snapshot.owner() != self.store
-            && matches!(&original, DomNodeKind::Element(element)
+            && matches!(original.kind(), transaction::KindRead::Element(element)
                 if !matches!(element.custom_element_registry(), crate::DomRegistryBinding::Null))
         {
             return Err(DomError::NotSupported);
         }
         let script = match source {
-            Source::Published(s, id, _) => s.node(*id)?.node.script.map(|v| v.flags),
-            Source::Staged(k) => self.node(*k)?.script.map(|v| v.flags),
+            Source::Published(s, id, _) => s.node(*id)?.node.script().map(|v| v.flags),
+            Source::Staged(k) => self.node(*k)?.script().map(|v| v.flags),
         };
         let formation = source::formation::Formation::new(self, cancel)?;
-        let kind = match &original {
-            DomNodeKind::Document(_) | DomNodeKind::ShadowRoot(_) => {
+        let copy = if let transaction::KindRead::Element(element) = original.kind() {
+            let name = self.bind_canonical_name(element.name(), formation.as_ref(), cancel)?;
+            let name = self.form_element_name(name, formation.as_ref(), cancel)?;
+            let mut admit = |next| self.admit_custody_usage(next, cancel);
+            let children = crate::element::ElementFormation::new(
+                self.custody_registry(),
+                formation.as_ref(),
+                cancel,
+                &mut admit,
+            );
+            let mut formed = element.clone_initialized(
+                name.value,
+                self.document_metadata(document)?.document_environment(),
+                children,
+            )?;
+            formed.children.name = Some(name.custody);
+            self.allocate_element_formed(formed, document, limits, cancel, formation)?
+        } else {
+            if matches!(
+                original.kind(),
+                transaction::KindRead::Document(_) | transaction::KindRead::ShadowRoot(_)
+            ) {
                 return Err(DomError::NotSupported);
             }
-            DomNodeKind::Element(e) => DomNodeKind::Element(e.clone_initialized(
-                self.bind_canonical_name(e.name(), formation.as_ref(), cancel)?,
-                self.document_metadata(document)?.document_environment(),
-                cancel,
-                formation.as_ref(),
-            )?),
-            kind => {
-                if let Some(budget) = &formation {
-                    budget.retain_payload(
-                        source::storage::kind(kind, || self.source_step(cancel))?,
-                        cancel,
-                    )?;
-                }
-                kind.clone()
+            if let Some(budget) = &formation {
+                budget.retain_payload(
+                    source::storage::kind_read(original.kind(), || self.source_step(cancel))?,
+                    cancel,
+                )?;
             }
+            let kind = match original.kind() {
+                transaction::KindRead::Element(_)
+                | transaction::KindRead::Document(_)
+                | transaction::KindRead::ShadowRoot(_) => unreachable!("handled kind"),
+                transaction::KindRead::DocumentFragment => NewNode::DocumentFragment,
+                transaction::KindRead::Text(value) => NewNode::Text(value.clone()),
+                transaction::KindRead::Comment(value) => NewNode::Comment(value.clone()),
+                transaction::KindRead::ProcessingInstruction(value) => {
+                    NewNode::ProcessingInstruction(value.clone())
+                }
+                transaction::KindRead::DocumentType(value) => NewNode::DocumentType(value.clone()),
+            };
+            self.allocate_formed(kind, document, limits, cancel, formation)?
         };
-        let copy = self.allocate_formed(kind, document, limits, cancel, formation)?;
         self.initialize_native_element(copy, limits, cancel)?;
-        if let DomNodeKind::Element(element) = &original {
+        if let transaction::KindRead::Element(element) = original.kind() {
             let cause = if element
                 .input_state()
                 .is_some_and(|s| s.input_type() == surgeist_html::HtmlInputType::Color)
@@ -379,10 +395,10 @@ impl Draft {
                 self.set_nonce(copy, nonce, limits, cancel)?;
             }
             if let Some(state) = element.svg_script_state() {
-                self.with_element_fields(copy, cancel, |element| {
-                    *element.svg_script_state_mut().expect("fresh SVG Script") =
-                        state.clone_for_element()
-                })?;
+                let mut element = self.element_fields_mut(copy, cancel)?;
+                *element.svg_script_state_mut().expect("fresh SVG Script") =
+                    state.clone_for_element();
+                element.commit(cancel)?;
             }
             if let Some(state) = element.input_state() {
                 self.clone_input_overlay(copy, state, limits, cancel)?;
@@ -392,14 +408,13 @@ impl Draft {
             }
         }
         if let Some(flags) = script {
-            self.with_node_fields(copy, cancel, |fields| {
-                fields
-                    .script
-                    .as_mut()
-                    .expect("fresh HTML Script")
-                    .flags
-                    .clone_already_started_from(flags)
-            })?;
+            let mut script = self.script_fields_mut(copy, cancel)?;
+            script
+                .as_mut()
+                .expect("fresh HTML Script")
+                .flags
+                .clone_already_started_from(flags);
+            script.commit(cancel)?;
         }
         Ok(copy)
     }

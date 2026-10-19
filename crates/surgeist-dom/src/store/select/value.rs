@@ -234,8 +234,8 @@ impl Draft {
         let (capture_limits, semantic_limits) = limits
             .select_value_queries
             .ok_or(DomError::SelectValueQueriesUnconfigured)?;
-        let mode = match &self.node(self.node(key)?.document)?.kind {
-            DomNodeKind::Document(document) => document.mode(),
+        let mode = match &self.node(self.node(key)?.document())?.kind() {
+            transaction::KindRead::Document(document) => document.mode(),
             _ => return Err(DomError::WrongDocument),
         };
         let mut producer = Producer::new(self, capture_limits, cancel)?;
@@ -253,30 +253,36 @@ impl Draft {
         let mut next = Some(key);
         while let Some(current) = next {
             self.select_step(cancel)?;
-            let subject = match &self.node(current)?.kind {
-                DomNodeKind::Element(element) => producer.call(self, cancel, |owner, envelope| {
-                    owner
-                        .add_element(
-                            &document,
-                            element.name(),
-                            element.attributes(),
-                            element.saved_is(),
-                            envelope,
-                            cancel,
-                        )
-                        .map_err(HtmlControlledOptionValueFailure::into_error)
-                }),
-                DomNodeKind::Text(value) => producer.call(self, cancel, |owner, envelope| {
-                    owner
-                        .add_text(&document, value, envelope, cancel)
-                        .map_err(HtmlControlledOptionValueFailure::into_error)
-                }),
-                DomNodeKind::Comment(value) => producer.call(self, cancel, |owner, envelope| {
-                    owner
-                        .add_comment(&document, value, envelope, cancel)
-                        .map_err(HtmlControlledOptionValueFailure::into_error)
-                }),
-                DomNodeKind::ProcessingInstruction(pi) => {
+            let subject = match &self.node(current)?.kind() {
+                transaction::KindRead::Element(element) => {
+                    producer.call(self, cancel, |owner, envelope| {
+                        owner
+                            .add_element(
+                                &document,
+                                element.name(),
+                                element.attributes(),
+                                element.saved_is(),
+                                envelope,
+                                cancel,
+                            )
+                            .map_err(HtmlControlledOptionValueFailure::into_error)
+                    })
+                }
+                transaction::KindRead::Text(value) => {
+                    producer.call(self, cancel, |owner, envelope| {
+                        owner
+                            .add_text(&document, value, envelope, cancel)
+                            .map_err(HtmlControlledOptionValueFailure::into_error)
+                    })
+                }
+                transaction::KindRead::Comment(value) => {
+                    producer.call(self, cancel, |owner, envelope| {
+                        owner
+                            .add_comment(&document, value, envelope, cancel)
+                            .map_err(HtmlControlledOptionValueFailure::into_error)
+                    })
+                }
+                transaction::KindRead::ProcessingInstruction(pi) => {
                     producer.call(self, cancel, |owner, envelope| {
                         owner
                             .add_processing_instruction(
@@ -289,7 +295,7 @@ impl Draft {
                             .map_err(HtmlControlledOptionValueFailure::into_error)
                     })
                 }
-                DomNodeKind::DocumentType(doctype) => {
+                transaction::KindRead::DocumentType(doctype) => {
                     producer.call(self, cancel, |owner, envelope| {
                         owner
                             .add_doctype(
@@ -320,12 +326,15 @@ impl Draft {
         }
         for (current, subject) in entries.iter() {
             self.select_step(cancel)?;
-            if !matches!(self.node(*current)?.kind, DomNodeKind::Element(_)) {
+            if !matches!(
+                self.node(*current)?.kind(),
+                transaction::KindRead::Element(_)
+            ) {
                 continue;
             }
             let _children_header = self.option_value_header::<HtmlCaptureBuilderSubject>(cancel)?;
             let mut children = self.select_vec();
-            for child in self.node(*current)?.children.iter() {
+            for child in self.node(*current)?.children().iter() {
                 let ordinal = rows.get(self, child, cancel)?;
                 self.select_reserve(&mut children, 1, cancel)?;
                 children.push(entries[ordinal].1.clone());

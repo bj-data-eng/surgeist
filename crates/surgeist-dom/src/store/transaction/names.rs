@@ -18,7 +18,7 @@ pub(in crate::store) struct Names {
 }
 pub(in crate::store) struct FormedNames {
     pub value: FormPastNames<NodeId>,
-    pub custody: Option<bank::ObjectCustody>,
+    pub _custody: Option<bank::ObjectCustody>,
 }
 
 pub(in crate::store) fn describe<K>(
@@ -92,7 +92,7 @@ impl PreparedNames {
                 })?;
                 Ok(FormedNames {
                     value: FormPastNames::from_payload(sealed.value),
-                    custody: Some(sealed.custody),
+                    _custody: Some(sealed.custody),
                 })
             }
         }
@@ -113,25 +113,30 @@ impl Names {
             custody: None,
         }
     }
-    pub fn canonical(values: &FormPastNames<NodeId>) -> Self {
-        Self {
-            backing: NamesBacking::Canonical(values.clone()),
-            custody: None,
-        }
-    }
-    pub fn adopt(
-        &mut self,
+    pub fn from_read(
+        value: super::records::NamesRead<'_>,
         registry: &bank::CustodyRegistry,
-        admit: impl FnMut(custody::Usage) -> Result<(), DomError>,
-    ) -> Result<(), DomError> {
-        self.custody = match &self.backing {
-            NamesBacking::Canonical(value) => value
-                .payload()
-                .map(|value| registry.adopt_object(value.identity, value.own_usage, admit))
-                .transpose()?,
-            NamesBacking::Staged(_) => unreachable!("staged history is sealed by its producer"),
+        mut admit: impl FnMut(custody::Usage) -> Result<(), DomError>,
+    ) -> Result<Self, DomError> {
+        use super::records::NamesRead;
+        let (backing, custody) = match value {
+            NamesRead::Empty => return Ok(Self::fresh()),
+            NamesRead::Canonical(value) | NamesRead::AliasedCanonical(value, _) => {
+                let custody = value
+                    .payload()
+                    .map(|v| registry.adopt_object(v.identity, v.own_usage, &mut admit))
+                    .transpose()?;
+                (NamesBacking::Canonical(value.clone()), custody)
+            }
+            NamesRead::Staged(value) | NamesRead::AliasedStaged(value, _) => {
+                let custody = value
+                    .payload()
+                    .map(|v| registry.adopt_object(v.identity, v.own_usage, &mut admit))
+                    .transpose()?;
+                (NamesBacking::Staged(value.clone()), custody)
+            }
         };
-        Ok(())
+        Ok(Self { backing, custody })
     }
     pub fn staged(
         entries: Vec<FormPastName<Key>>,
@@ -178,13 +183,13 @@ impl Names {
             };
             return Ok(PreparedNames::Alias(FormedNames {
                 value: value.clone(),
-                custody: self.custody.clone(),
+                _custody: self.custody.clone(),
             }));
         };
         if values.entries().is_empty() {
             return Ok(PreparedNames::Alias(FormedNames {
                 value: FormPastNames::fresh(),
-                custody: None,
+                _custody: None,
             }));
         }
         let old_bank = values
@@ -252,6 +257,7 @@ impl Names {
             NamesBacking::Staged(values) => super::records::NamesRead::Staged(values),
         }
     }
+    #[cfg(test)]
     pub fn logical_units(&self) -> usize {
         match &self.backing {
             NamesBacking::Canonical(values) => values.logical_units(),

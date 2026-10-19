@@ -73,7 +73,7 @@ pub(super) fn with_native_state(
         else {
             continue;
         };
-        let owner = if let Some(owner) = node.node.control_owner {
+        let owner = if let Some(owner) = node.node.control_owner() {
             let mut mapped = None;
             for candidate in entries {
                 control.charge(1)?;
@@ -153,7 +153,7 @@ pub(super) fn with_native_state(
     for entry in entries {
         control.charge(1)?;
         let node = source.node(entry.node)?;
-        if let Some(targets) = node.node.reflected_targets {
+        if let Some(targets) = node.node.reflected_targets() {
             for (slot, key) in [
                 (
                     crate::reflected::ReflectedTarget::CommandFor,

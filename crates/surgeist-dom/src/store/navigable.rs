@@ -12,15 +12,13 @@ impl Draft {
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
         let node = self.node(key)?;
-        let DomNodeKind::Element(element) = &node.kind else {
+        let Some(element) = node.element() else {
             return Ok(());
         };
         if element.child_navigable().is_none() {
             return Ok(());
         }
-        let DomNodeKind::Document(document) = &self.node(node.document)?.kind else {
-            unreachable!("canonical navigable-container node document")
-        };
+        let document = self.document_metadata(node.document())?;
         let context = document.document_environment().browsing_context();
         let returned = if element.iframe_initial_state().is_none() {
             matches!(
@@ -74,7 +72,7 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
-        let DomNodeKind::Element(element) = &self.node(key)?.kind else {
+        let Some(element) = self.node(key)?.element() else {
             return Ok(());
         };
         let destroy = element.child_navigable_presence().is_some_and(
@@ -87,17 +85,13 @@ impl Draft {
                 .flatten()
                 .ok_or(DomError::HostedSourceUnavailable)?;
             if self.headroom_child_hook(true, cancel)? {
-                self.with_element_fields(key, cancel, |element| {
-                    element.establish_child_navigable(None)
-                })??;
+                self.establish_child_navigable(key, None, cancel)?;
                 return Ok(());
             }
             if self.source_limits.is_none() {
                 return Err(DomError::HostedSourceUnavailable);
             }
-            self.with_element_fields(key, cancel, |element| {
-                element.establish_child_navigable(None)
-            })??;
+            self.establish_child_navigable(key, None, cancel)?;
             self.hosted_pending =
                 Some(source::operation::hosted::ChildHook::Remove { key, navigable });
             return Err(DomError::HostedCompositionRequired);

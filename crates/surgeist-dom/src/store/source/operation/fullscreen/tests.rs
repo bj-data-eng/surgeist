@@ -189,7 +189,7 @@ fn actual_handoff_and_outer_tail_rollback_share_the_original_cumulative_work_cap
             .state
             .node(retry.dom.owner, document.node())
             .unwrap()
-            .fullscreen_events
+            .fullscreen_events()
             .len(),
         1
     );
@@ -256,7 +256,7 @@ fn dropped_prepared_handoff_restores_its_prefix_and_reuses_only_the_same_exposed
             .state
             .node(lease.dom.owner, document.node())
             .unwrap()
-            .fullscreen_events
+            .fullscreen_events()
             .is_empty()
     );
     drop(lease);

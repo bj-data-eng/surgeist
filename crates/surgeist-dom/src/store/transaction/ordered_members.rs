@@ -2,6 +2,7 @@
 //! A node may own separate member records in several groups. Only the existing
 //! ChildPosition map establishes ordinary topology; shadow edges are reciprocal.
 use super::super::*;
+use super::KindRead;
 use super::{NodeRead, slot_index::SlotIndex};
 use std::cmp::Ordering;
 
@@ -144,11 +145,11 @@ impl<'a> OrderView<'a> {
         }
         if mode == Mode::ShadowIncluding {
             let node = self.node(key)?;
-            if matches!(node.kind, DomNodeKind::ShadowRoot(_))
-                && let Some(host) = node.host
+            if matches!(node.kind(), KindRead::ShadowRoot(_))
+                && let Some(host) = node.host()
             {
                 let reciprocal = match self.node(host) {
-                    Ok(node) => node.shadow_root.map(|root| self.normalize(root)) == Some(key),
+                    Ok(node) => node.shadow_root().map(|root| self.normalize(root)) == Some(key),
                     Err(DomError::StaleNode) => false,
                     Err(error) => return Err(error),
                 };

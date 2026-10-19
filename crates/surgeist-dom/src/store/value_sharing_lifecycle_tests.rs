@@ -48,7 +48,7 @@ fn retained_prepared_root_bypasses_sibling_and_abort_releases_only_its_candidate
     );
     let commit = dom.publish(sibling, &cancel).unwrap();
     let text = commit.created(&text).unwrap().unwrap();
-    assert!(matches!(&dom.state.node(dom.owner, text).unwrap().kind,
+    assert!(matches!(&dom.state.node(dom.owner, text).unwrap().kind(),
         DomNodeKind::Text(value) if value.code_units() == [115, 105, 98, 108, 105, 110, 103]));
 
     let mut next = DomBatch::new();
@@ -58,8 +58,8 @@ fn retained_prepared_root_bypasses_sibling_and_abort_releases_only_its_candidate
     let a = next.created(&a).unwrap().unwrap();
     let b = next.created(&b).unwrap().unwrap();
     let (DomNodeKind::Text(a), DomNodeKind::Text(b)) = (
-        &dom.state.node(dom.owner, a).unwrap().kind,
-        &dom.state.node(dom.owner, b).unwrap().kind,
+        dom.state.node(dom.owner, a).unwrap().kind(),
+        dom.state.node(dom.owner, b).unwrap().kind(),
     ) else {
         panic!("actual Text values")
     };
@@ -202,7 +202,7 @@ fn cold_checkpoint_can_close_late_root_at_the_actual_source_publication_fence() 
     let selected = share(&draft, &DocumentString::from("published-late-root"))
         .expect("the cold checkpoint's drop cannot abort the published offer")
         .into_held();
-    let DomNodeKind::Text(actual) = &dom.state.node(dom.owner, text).unwrap().kind else {
+    let DomNodeKind::Text(actual) = dom.state.node(dom.owner, text).unwrap().kind() else {
         panic!("published Text")
     };
     assert!(Arc::ptr_eq(

@@ -539,10 +539,10 @@ impl Draft {
     ) -> Result<Option<Key>, DomError> {
         self.source_step(cancel)?;
         let node = self.node(current)?;
-        if let Some(shadow) = node.shadow_root {
+        if let Some(shadow) = node.shadow_root() {
             return Ok(Some(shadow));
         }
-        if let Some(first) = node.children.first() {
+        if let Some(first) = node.children().first() {
             return Ok(Some(first));
         }
         loop {
@@ -551,16 +551,16 @@ impl Draft {
                 return Ok(None);
             }
             let node = self.node(current)?;
-            if let Some(host) = node.host {
-                if let Some(first) = self.node(host)?.children.first() {
+            if let Some(host) = node.host() {
+                if let Some(first) = self.node(host)?.children().first() {
                     return Ok(Some(first));
                 }
                 current = host;
                 continue;
             }
-            let parent = node.parent.ok_or(DomError::HostedSourceUnavailable)?;
+            let parent = node.parent().ok_or(DomError::HostedSourceUnavailable)?;
             let mut found = false;
-            for sibling in self.node(parent)?.children.iter() {
+            for sibling in self.node(parent)?.children().iter() {
                 self.source_step(cancel)?;
                 if found {
                     return Ok(Some(sibling));
@@ -674,7 +674,7 @@ impl DomSourceLease<'_> {
                 windows.push(active_association.global);
                 #[cfg(test)]
                 written.pushed::<crate::DomHostedGlobalId>();
-            } else if let DomNodeKind::Element(element) = &node.kind
+            } else if let transaction::KindRead::Element(element) = node.kind()
                 && let Some(Some(child)) = element.child_navigable()
             {
                 let row = graph.navigable_with(child, step).map_err(map)?;

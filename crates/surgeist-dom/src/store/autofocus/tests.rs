@@ -199,10 +199,11 @@ fn native_initial_history_and_unavailable_history_have_distinct_readback() {
     assert!(!view.processed());
     let mut d = draft(&dom);
     let key = d.resolve(docs[0].node().into()).unwrap();
-    d.with_node_fields(key, &cancel(), |fields| {
-        fields.autofocus_document = Some(State::Unavailable)
-    })
-    .unwrap();
+    {
+        let mut state = d.autofocus_document_mut(key, &cancel()).unwrap();
+        *state = Some(State::Unavailable);
+        state.commit(&cancel()).unwrap();
+    }
     publish(&mut dom, &mut d);
     assert_eq!(
         dom.snapshot()

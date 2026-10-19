@@ -2,9 +2,8 @@
 //! parallel nested custody banks remain with the controlled frontier.
 use super::super::*;
 use super::counted_relations::{Change, Custody as MapCustody, Delta, Index as Map};
-use super::names::NamesBacking;
 use super::records::NamesRead;
-use super::{NodeFields, NodeRead};
+use super::{KindRead, NodeRead};
 
 /// Lease-free canonical roots. Created-owner edges are indexed separately so
 /// publication never visits unrelated canonical targets to find those edges.
@@ -363,62 +362,61 @@ impl Draft {
 /// fields deliberately remain distinct, so clearing one cannot lose another.
 fn scalar_refs(node: &NodeRead<'_>) -> [Option<Key>; 24] {
     use crate::reflected::ReflectedTarget;
-    let patch = node.template_patch;
+    let patch = node.template_patch();
     [
-        Some(node.document),
-        node.parent,
-        node.shadow_root,
-        node.host,
-        node.template_contents,
+        Some(node.document()),
+        node.parent(),
+        node.shadow_root(),
+        node.host(),
+        node.template_contents(),
         patch.and_then(|value| value.target),
         patch.and_then(|value| value.start),
         patch.and_then(|value| value.end),
-        node.template_document
+        node.template_document()
             .and_then(crate::template::TemplateDocument::inert),
-        node.manual_slot,
-        node.assigned_slot,
-        node.reflected_targets
+        node.manual_slot(),
+        node.assigned_slot(),
+        node.reflected_targets()
             .and_then(|value| value.get(ReflectedTarget::CommandFor))
             .flatten(),
-        node.reflected_targets
+        node.reflected_targets()
             .and_then(|value| value.get(ReflectedTarget::PopoverTarget))
             .flatten(),
-        node.control_owner,
-        node.option_select,
-        node.script.and_then(|value| value.parser_document),
-        node.script.and_then(|value| value.preparation_document),
-        node.style_parser_document,
-        node.base
+        node.control_owner(),
+        node.option_select(),
+        node.script().and_then(|value| value.parser_document),
+        node.script().and_then(|value| value.preparation_document),
+        node.style_parser_document(),
+        node.base()
             .as_ref()
             .and_then(|value| value.frozen.as_ref())
             .map(|value| value.document),
-        node.base_document.as_ref().and_then(|value| value.first),
-        node.link.as_ref().and_then(|value| value.parser_document),
-        node.image.as_ref().map(|value| value.dimension_source),
-        node.hyperlink
+        node.base_document().as_ref().and_then(|value| value.first),
+        node.link().as_ref().and_then(|value| value.parser_document),
+        node.image().as_ref().map(|value| value.dimension_source),
+        node.hyperlink()
             .as_ref()
             .and_then(|value| value.parsed.as_ref())
             .map(|value| value.document),
-        match node.kind {
-            DomNodeKind::Element(element) => element
+        match node.kind() {
+            KindRead::Element(element) => element
                 .common_state()
                 .html()
-                .and_then(|state| state.previously_focused_element().copied())
-                .map(Key::Existing),
+                .and_then(|state| state.previously_focused_element().copied()),
             _ => None,
         },
     ]
 }
-fn same_names(old: Option<NamesRead<'_>>, next: Option<&super::Names>) -> bool {
-    match (old, next.map(|value| &value.backing)) {
-        (None, None) => true,
+fn same_names(old: Option<NamesRead<'_>>, next: Option<NamesRead<'_>>) -> bool {
+    match (old, next) {
+        (None, None) | (Some(NamesRead::Empty), Some(NamesRead::Empty)) => true,
         (
             Some(NamesRead::Canonical(old) | NamesRead::AliasedCanonical(old, _)),
-            Some(NamesBacking::Canonical(next)),
+            Some(NamesRead::Canonical(next) | NamesRead::AliasedCanonical(next, _)),
         ) => old.same_storage(next),
         (
             Some(NamesRead::Staged(old) | NamesRead::AliasedStaged(old, _)),
-            Some(NamesBacking::Staged(next)),
+            Some(NamesRead::Staged(next) | NamesRead::AliasedStaged(next, _)),
         ) => old.same_storage(next),
         _ => false,
     }
@@ -431,22 +429,22 @@ fn visit_node(
     for target in scalar_refs(&node).into_iter().flatten() {
         visit(target)?;
     }
-    if let Some(names) = node.form_past_names {
+    if let Some(names) = node.form_past_names() {
         for name in names.iter() {
             visit(name.target)?;
         }
     }
-    for values in [node.children, node.manual_nodes, node.assigned_nodes] {
+    for values in [node.children(), node.manual_nodes(), node.assigned_nodes()] {
         for target in values.iter() {
             visit(target)?;
         }
     }
-    if let Some(state) = node.base_document {
+    if let Some(state) = node.base_document() {
         for target in state.render_blocking.iter() {
             visit(target)?;
         }
     }
-    if let Some(super::AutofocusRead::Known { candidates, .. }) = node.autofocus_document {
+    if let Some(super::AutofocusRead::Known { candidates, .. }) = node.autofocus_document() {
         for target in candidates.iter() {
             visit(target)?;
         }
@@ -455,7 +453,7 @@ fn visit_node(
         open_dialogs,
         top_layer,
         pending_top_layer_removals,
-    }) = node.interactive_document
+    }) = node.interactive_document()
     {
         for values in [open_dialogs, top_layer, pending_top_layer_removals] {
             for target in values.iter() {
@@ -470,13 +468,12 @@ impl Draft {
     pub(in crate::store) fn prepare_inbound_fields(
         &self,
         owner: Key,
-        fields: &NodeFields,
+        candidate: NodeRead<'_>,
         cancel: &AtomicBool,
     ) -> Result<InboundPlan, DomError> {
         let retain_undo = self.prepare_undo(cancel)?;
         let mut next = self.inbound.clone();
         let current = self.node(owner)?;
-        let candidate = NodeRead::staged_fields(self.records_for(owner), fields);
         let private = self.is_private(self.live_key(owner));
         let normalize = |key| {
             if private {
@@ -521,8 +518,8 @@ impl Draft {
                 }
             }
         }
-        if !same_names(current.form_past_names, fields.form_past_names.as_ref()) {
-            if let Some(names) = current.form_past_names {
+        if !same_names(current.form_past_names(), candidate.form_past_names()) {
+            if let Some(names) = current.form_past_names() {
                 for name in names.iter() {
                     next.adjust_owner(
                         private,
@@ -537,8 +534,8 @@ impl Draft {
                     )?;
                 }
             }
-            if let Some(names) = &fields.form_past_names {
-                for name in names.view().iter() {
+            if let Some(names) = candidate.form_past_names() {
+                for name in names.iter() {
                     next.adjust_owner(
                         private,
                         Change {
@@ -666,13 +663,20 @@ mod tests {
         });
         // This Document acquires a public identity at the first phase. The
         // private edges must retain its original continuation alias.
-        let kind = draft.node(first).unwrap().kind.clone();
+        let kind = NewNode::Document(
+            draft
+                .node(first)
+                .unwrap()
+                .document_metadata()
+                .unwrap()
+                .clone(),
+        );
         let first = Key::Created(draft.created.len());
         assert_eq!(draft.allocate(kind, first, limits, &cancel).unwrap(), first);
         let mut selected = None;
         for _ in 0..64 {
             let key = draft
-                .allocate(DomNodeKind::Text("private".into()), first, limits, &cancel)
+                .allocate(NewNode::Text("private".into()), first, limits, &cancel)
                 .unwrap();
             draft.mark_source_private(key, &cancel).unwrap();
             selected.get_or_insert(key);
@@ -686,9 +690,9 @@ mod tests {
                 .contains(&selected)
         );
         let mark = draft.journal_mark(0, 0, &cancel).unwrap();
-        draft
-            .with_node_fields(selected, &cancel, |fields| fields.document = second)
-            .unwrap();
+        let mut common = draft.common_fields_mut(selected, &cancel).unwrap();
+        common.document = second;
+        common.commit(&cancel).unwrap();
         assert!(
             !draft
                 .inbound_keys(first, &cancel)

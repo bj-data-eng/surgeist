@@ -45,7 +45,7 @@ pub struct DomHtmlScript<'a> {
 }
 impl DomHtmlScript<'_> {
     fn state(self) -> ScriptState<NodeId> {
-        self.node.node.script.expect("checked native HTML Script")
+        *self.node.node.script().expect("checked native HTML Script")
     }
     pub fn id(self) -> NodeId {
         self.node.id()
@@ -72,7 +72,7 @@ impl DomHtmlScript<'_> {
 }
 impl<'a> DomNode<'a> {
     pub fn as_html_script(self) -> Option<DomHtmlScript<'a>> {
-        self.node.script?;
+        self.node.script()?;
         Some(DomHtmlScript { node: self })
     }
 }

@@ -367,6 +367,16 @@ impl Dependency {
             .expect("one owning dependency type")
     }
 
+    /// Inspect a heterogeneous dependency without changing its real owner.
+    #[cfg(test)]
+    pub(in crate::store) fn try_get<T: Any + Send + Sync>(&self) -> Option<Retained<T>> {
+        let value = self.value.clone().downcast::<T>().ok()?;
+        Some(Retained {
+            value,
+            debit: self.debit.clone(),
+        })
+    }
+
     fn get<T: Any + Send + Sync>(&self) -> Retained<T> {
         let value = self
             .value
@@ -656,8 +666,24 @@ struct PreparedAttachment<T> {
 
 impl ObjectCustody {
     #[cfg(test)]
+    pub(in crate::store) fn inspect_liveness(&self) -> impl Fn() -> bool + 'static {
+        let weak = Arc::downgrade(&self.0);
+        move || weak.upgrade().is_some()
+    }
+
+    #[cfg(test)]
     pub(in crate::store) fn inspect_dependency<T: Any + Send + Sync>(&self) -> Option<Retained<T>> {
-        self.0.dependency.as_ref().map(Dependency::get)
+        self.0.dependency.as_ref().and_then(|dependency| {
+            dependency
+                .value
+                .clone()
+                .downcast::<T>()
+                .ok()
+                .map(|value| Retained {
+                    value,
+                    debit: dependency.debit.clone(),
+                })
+        })
     }
     #[cfg(test)]
     pub(in crate::store) fn inspect_control_graph(&self) -> PhysicalControlGraph {
@@ -830,6 +856,32 @@ impl<T> BankCustody<T> {
                     for record in records.iter().flatten() {
                         if let Some(dependency) = &record.dependency {
                             output.push(dependency.get());
+                        }
+                    }
+                }
+            }
+        }
+        let mut output = Vec::new();
+        if let Some(root) = &self.root {
+            walk(root, &mut output);
+        }
+        output
+    }
+
+    /// Collect actual record-level dependencies; callers must reject any
+    /// unrecognized type when interpreting a heterogeneous owner graph.
+    pub(in crate::store) fn inspect_record_dependencies(&self) -> Vec<Dependency> {
+        fn walk(page: &PageCustody, output: &mut Vec<Dependency>) {
+            match &page.edges {
+                CustodyEdges::Branch(children) => {
+                    for child in children.iter().flatten() {
+                        walk(child, output);
+                    }
+                }
+                CustodyEdges::Leaf(records) => {
+                    for record in records.iter().flatten() {
+                        if let Some(dependency) = &record.dependency {
+                            output.push(dependency.clone());
                         }
                     }
                 }

@@ -222,7 +222,7 @@ impl Draft {
                 }
                 Action::ReadConnected => Reply::Connected(self.shadow_connected(key, cancel)?),
                 Action::ReadFullyActive => Reply::FullyActive(
-                    self.document_fully_active(self.node(key)?.document, cancel)?,
+                    self.document_fully_active(self.node(key)?.document(), cancel)?,
                 ),
                 Action::CaptureCloseWatcher => {
                     let watcher = self
@@ -338,14 +338,17 @@ impl Draft {
             .popover_is_hidden())
     }
     pub(in crate::store) fn dialog_state(&self, key: Key) -> Result<&DomDialogState, DomError> {
-        let DomNodeKind::Element(element) = &self.node(key)?.kind else {
+        let transaction::KindRead::Element(element) = &self.node(key)?.kind() else {
             return Err(DomError::DialogInapplicable);
         };
-        element.dialog_state().ok_or(DomError::DialogInapplicable)
+        element
+            .language()
+            .dialog_state()
+            .ok_or(DomError::DialogInapplicable)
     }
     fn is_dialog(&self, key: Key) -> Result<bool, DomError> {
-        Ok(matches!(&self.node(key)?.kind,
-            DomNodeKind::Element(element) if element.dialog_state().is_some()))
+        Ok(matches!(&self.node(key)?.kind(),
+            transaction::KindRead::Element(element) if element.dialog_state().is_some()))
     }
 
     pub(in crate::store) fn admit_dialog_state_copy(
@@ -409,9 +412,7 @@ impl Draft {
         let value = source::formation::share(value, formation.as_ref(), cancel)?;
         self.source_step(cancel)?;
         let next = self.dialog_state(key)?.with_return_value(value);
-        self.with_element_fields_formed(key, cancel, formation, |element| {
-            element.set_dialog_state(next)
-        })?;
+        self.replace_dialog_state_formed(key, next, formation, cancel)?;
         self.units = units;
         // Canonical Draft storage now owns the admitted occurrence.
         self.source_admit(0, cancel)?;
@@ -432,9 +433,7 @@ impl Draft {
         self.admit_dialog_state_copy(key, formation.as_ref(), true, true, cancel)?;
         let mut next = self.dialog_state(key)?.clone();
         next.force_watcher_enabled = value;
-        self.with_element_fields_formed(key, cancel, formation, |element| {
-            element.set_dialog_state(next)
-        })?;
+        self.replace_dialog_state_formed(key, next, formation, cancel)?;
         self.source_admit(0, cancel)
     }
     pub(in crate::store) fn set_dialog_request_source_null(
@@ -450,9 +449,7 @@ impl Draft {
         self.admit_dialog_state_copy(key, formation.as_ref(), true, true, cancel)?;
         let mut next = self.dialog_state(key)?.clone();
         next.request_source = None;
-        self.with_element_fields_formed(key, cancel, formation, |element| {
-            element.set_dialog_state(next)
-        })?;
+        self.replace_dialog_state_formed(key, next, formation, cancel)?;
         self.source_admit(0, cancel)
     }
     pub(in crate::store) fn set_dialog_request_return_value(
@@ -496,9 +493,7 @@ impl Draft {
             .map(|value| source::formation::share(value, formation.as_ref(), cancel))
             .transpose()?;
         let next = self.dialog_state(key)?.with_request_return_value(value);
-        self.with_element_fields_formed(key, cancel, formation, |element| {
-            element.set_dialog_state(next)
-        })?;
+        self.replace_dialog_state_formed(key, next, formation, cancel)?;
         self.units = units;
         self.source_admit(0, cancel)?;
         self.source_admit_units(0, cancel)
@@ -514,13 +509,11 @@ impl Draft {
         // The initial rebase owns the current state occurrences, but this
         // replacement creates another immutable body before the old one drops.
         let formation = source::formation::Formation::new(self, cancel)?;
-        self.admit_dialog_state_copy(key, formation.as_ref(), false, true, cancel)?;
+        self.admit_dialog_state_copy(key, formation.as_ref(), true, true, cancel)?;
         self.source_step(cancel)?;
         let mut next = self.dialog_state(key)?.clone();
         next.toggle_tracker = None;
-        self.with_element_fields_formed(key, cancel, formation, |element| {
-            element.set_dialog_state(next)
-        })?;
+        self.replace_dialog_state_formed(key, next, formation, cancel)?;
         // The Draft now owns the replacement; its normal recount takes over.
         self.source_admit(0, cancel)
     }
@@ -536,13 +529,11 @@ impl Draft {
             return Ok(());
         }
         let formation = source::formation::Formation::new(self, cancel)?;
-        self.admit_dialog_state_copy(key, formation.as_ref(), false, true, cancel)?;
+        self.admit_dialog_state_copy(key, formation.as_ref(), true, true, cancel)?;
         self.source_step(cancel)?;
         let mut state = self.dialog_state(key)?.clone();
         state.watcher = watcher;
-        self.with_element_fields_formed(key, cancel, formation, |element| {
-            element.set_dialog_state(state)
-        })?;
+        self.replace_dialog_state_formed(key, state, formation, cancel)?;
         self.source_admit(0, cancel)
     }
     fn dialog_relation(list: DialogList) -> transaction::RelationField {
@@ -557,7 +548,7 @@ impl Draft {
         document: Key,
         list: DialogList,
     ) -> Result<transaction::SequenceView<'_, NodeId, Key>, DomError> {
-        match self.node(document)?.interactive_document {
+        match self.node(document)?.interactive_document() {
             Some(transaction::InteractiveRead::Known {
                 open_dialogs,
                 top_layer,
@@ -576,6 +567,7 @@ impl Draft {
     #[cfg(test)]
     fn staged_dialog_list(&self, document: Key, list: DialogList) -> Result<&[Key], DomError> {
         match self.dialog_list(document, list)? {
+            transaction::SequenceView::Empty => Ok(&[]),
             transaction::SequenceView::Staged(values)
             | transaction::SequenceView::AliasedStaged(values, _, _) => Ok(values),
             transaction::SequenceView::Canonical(values, _)
@@ -752,7 +744,7 @@ impl Draft {
                 ),
                 Action::ReadModal => Reply::Modal(self.dialog_state(key)?.is_modal()),
                 Action::ReadFullyActive => Reply::FullyActive(
-                    self.document_fully_active(self.node(key)?.document, cancel)?,
+                    self.document_fully_active(self.node(key)?.document(), cancel)?,
                 ),
                 Action::ReadConnected => Reply::Connected(self.shadow_connected(key, cancel)?),
                 Action::ReadWatcherPresent => {
@@ -760,19 +752,19 @@ impl Draft {
                 }
                 Action::ReadTopLayerContains => {
                     Reply::TopLayerContains(self.dialog_list_contains(
-                        self.node(key)?.document,
+                        self.node(key)?.document(),
                         key,
                         DialogList::Raw,
                         cancel,
                     )?)
                 }
                 Action::AddOpenDialog => {
-                    self.dialog_list_add(self.node(key)?.document, key, cancel)?;
+                    self.dialog_list_add(self.node(key)?.document(), key, cancel)?;
                     Reply::Applied
                 }
                 Action::RemoveOpenDialog => {
                     self.dialog_list_remove(
-                        self.node(key)?.document,
+                        self.node(key)?.document(),
                         key,
                         DialogList::Open,
                         cancel,
@@ -975,7 +967,7 @@ mod tests {
                 result.unwrap();
             }
             let Some(transaction::InteractiveRead::Known { open_dialogs, .. }) =
-                draft.node(doc).unwrap().interactive_document
+                draft.node(doc).unwrap().interactive_document()
             else {
                 panic!("native list");
             };
@@ -1019,7 +1011,7 @@ mod tests {
     }
 
     #[test]
-    fn source_setter_candidate_admits_exact_bytes_and_units_with_live_payload_overlap() {
+    fn source_setter_admits_native_target_header_with_existing_body_credit() {
         let cancel = AtomicBool::new(false);
         for failure in [
             None,
@@ -1045,8 +1037,12 @@ mod tests {
             )
             .unwrap();
             let key = draft.resolve(dialog.into()).unwrap();
-            let expected = transaction::queues::admission_observation::dialog_fields(&draft, key);
-            let boundary = transaction::queues::admission_observation::Binding::fields(
+            // The raw body and string occurrences are already admitted. This
+            // gate checks only the residual native target header; its unit
+            // extent is zero, so a unit refusal checks the current retained limit.
+            let expected =
+                transaction::queues::admission_observation::dialog_native_target(&draft, key);
+            let boundary = transaction::queues::admission_observation::Binding::native_target(
                 key,
                 expected,
                 failure.unwrap_or(DomResource::SourceRetainedBytes),
@@ -1120,7 +1116,7 @@ mod tests {
         assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
     }
     #[test]
-    fn source_tracker_clear_admits_complete_candidate_before_replacing_state() {
+    fn source_tracker_clear_admits_native_target_header_before_replacing_state() {
         let cancel = AtomicBool::new(false);
         for short in [true, false] {
             let (mut dom, dialog) = fixture();
@@ -1143,8 +1139,9 @@ mod tests {
             let original = draft.dialog_state(key).unwrap() as *const DomDialogState;
             let original_units = draft.units;
             let original_work = draft.source_work.load(Ordering::Relaxed);
-            let expected = transaction::queues::admission_observation::dialog_fields(&draft, key);
-            let boundary = transaction::queues::admission_observation::Binding::fields(
+            let expected =
+                transaction::queues::admission_observation::dialog_native_target(&draft, key);
+            let boundary = transaction::queues::admission_observation::Binding::native_target(
                 key,
                 expected,
                 DomResource::SourceRetainedBytes,
@@ -1164,7 +1161,7 @@ mod tests {
                 assert!(std::ptr::eq(draft.dialog_state(key).unwrap(), original));
                 assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
                 draft.source_limits = Some(generous);
-                let exact = transaction::queues::admission_observation::Binding::fields(
+                let exact = transaction::queues::admission_observation::Binding::native_target(
                     key,
                     expected,
                     DomResource::SourceRetainedBytes,
@@ -1187,9 +1184,9 @@ mod tests {
             assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
             assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);
             assert_eq!(
-                transaction::queues::admission_observation::dialog_fields(&draft, key),
+                transaction::queues::admission_observation::dialog_native_target(&draft, key),
                 expected,
-                "the transferred replacement has the original retained shape"
+                "the replacement needs the same native target header"
             );
             assert_eq!(dom.snapshot().stamp(), before.stamp());
             assert_eq!(

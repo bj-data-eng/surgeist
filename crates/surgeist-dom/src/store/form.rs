@@ -13,7 +13,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         let source = self
             .node(owner)?
-            .form_past_names
+            .form_past_names()
             .expect("actual former Form");
         let mut removed_units = 0usize;
         let mut retained = 0usize;
@@ -60,7 +60,11 @@ impl Draft {
             }
         }
         let names = transaction::Names::staged(entries, formation, self, cancel)?;
-        self.with_node_fields(owner, cancel, |fields| fields.form_past_names = Some(names))?;
+        {
+            let mut fields = self.form_names_mut(owner, cancel)?;
+            (*fields) = Some(names);
+            fields.commit(cancel)
+        }?;
         self.units -= removed_units;
         Ok(())
     }
@@ -75,10 +79,14 @@ impl Draft {
         for key in affected.iter().copied() {
             self.source_step(cancel)?;
             let Ok(node) = self.node(key) else { continue };
-            let clear_owner = node.control_owner == Some(retired);
-            let form = node.form_past_names.is_some();
+            let clear_owner = node.control_owner() == Some(retired);
+            let form = node.form_past_names().is_some();
             if clear_owner {
-                self.with_node_fields(key, cancel, |fields| fields.control_owner = None)?;
+                {
+                    let mut fields = self.control_fields_mut(key, cancel)?;
+                    fields.control_owner = None;
+                    fields.commit(cancel)
+                }?;
                 self.input_radio_normalize(
                     key,
                     surgeist_html::HtmlRadioTrigger::FormOwner,
@@ -148,11 +156,12 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
         let names = transaction::Names::staged(names, None, &draft, &cancel).unwrap();
-        draft
-            .with_node_fields_formed(Key::Existing(form), &cancel, None, |fields| {
-                fields.form_past_names = Some(names);
-            })
-            .unwrap();
+        {
+            let mut fields = draft.form_names_mut(Key::Existing(form), &cancel).unwrap();
+            (*fields) = Some(names);
+            fields.commit_formed(None, &cancel)
+        }
+        .unwrap();
         draft.units += 12; // 5 + 3 + 4 exact UTF-16 code units.
         let prepared = draft.finish(&dom, &cancel).unwrap();
         dom.publish(prepared, &cancel).unwrap();
@@ -310,8 +319,7 @@ mod tests {
             draft
                 .node(Key::Existing(form))
                 .unwrap()
-                .form_past_names
-                .as_ref()
+                .form_past_names()
                 .unwrap()
                 .len(),
             1
@@ -320,11 +328,11 @@ mod tests {
             .retire_form_relations(Key::Existing(form), &cancel)
             .unwrap();
         assert_eq!(
-            draft.node(Key::Existing(field)).unwrap().control_owner,
+            draft.node(Key::Existing(field)).unwrap().control_owner(),
             None
         );
         assert_eq!(
-            draft.node(Key::Existing(button)).unwrap().control_owner,
+            draft.node(Key::Existing(button)).unwrap().control_owner(),
             None
         );
         assert_eq!(
@@ -372,6 +380,23 @@ mod tests {
         );
     }
 
+    fn history_identity(draft: &Draft, form: NodeId) -> custody::MaterializationId {
+        match draft
+            .node(Key::Existing(form))
+            .unwrap()
+            .form_past_names()
+            .unwrap()
+        {
+            transaction::NamesRead::Empty => panic!("fixture has retained Form history"),
+            transaction::NamesRead::Canonical(names)
+            | transaction::NamesRead::AliasedCanonical(names, _) => {
+                names.payload().unwrap().identity
+            }
+            transaction::NamesRead::Staged(names)
+            | transaction::NamesRead::AliasedStaged(names, _) => names.payload().unwrap().identity,
+        }
+    }
+
     #[test]
     fn source_alias_cleanup_restore_refusal_and_replay_keep_original_custody() {
         let (mut dom, _, form, button, field) = fixture();
@@ -382,8 +407,7 @@ mod tests {
             .node(form)
             .unwrap()
             .node
-            .form_past_names
-            .as_ref()
+            .form_past_names()
             .unwrap()
             .clone();
         let batch = DomBatch::new();
@@ -410,7 +434,7 @@ mod tests {
             draft
                 .node(Key::Existing(form))
                 .unwrap()
-                .form_past_names
+                .form_past_names()
                 .unwrap()
                 .len(),
             3
@@ -421,20 +445,12 @@ mod tests {
         draft
             .remove_form_aliases(Key::Existing(form), Key::Existing(button), &cancel)
             .unwrap();
-        let first_id = draft
-            .records_for(Key::Existing(form))
-            .fields
-            .value()
-            .form_past_names
-            .as_ref()
-            .unwrap()
-            .identity()
-            .unwrap();
+        let first_id = history_identity(&draft, form);
         assert_eq!(
             draft
                 .node(Key::Existing(form))
                 .unwrap()
-                .form_past_names
+                .form_past_names()
                 .unwrap()
                 .len(),
             1
@@ -446,7 +462,7 @@ mod tests {
             draft
                 .node(Key::Existing(form))
                 .unwrap()
-                .form_past_names
+                .form_past_names()
                 .unwrap()
                 .len(),
             3
@@ -465,7 +481,7 @@ mod tests {
             draft
                 .node(Key::Existing(form))
                 .unwrap()
-                .form_past_names
+                .form_past_names()
                 .unwrap()
                 .len(),
             3
@@ -484,15 +500,7 @@ mod tests {
         draft
             .remove_form_aliases(Key::Existing(form), Key::Existing(button), &cancel)
             .unwrap();
-        let second_id = draft
-            .records_for(Key::Existing(form))
-            .fields
-            .value()
-            .form_past_names
-            .as_ref()
-            .unwrap()
-            .identity()
-            .unwrap();
+        let second_id = history_identity(&draft, form);
         assert_ne!(
             first_id, second_id,
             "restored provisional identity is never reused"
@@ -503,13 +511,7 @@ mod tests {
         dom.publish(prepared, &cancel).unwrap();
         oracle_tests::assert_full_canonical(&dom);
         let current = dom.snapshot();
-        let final_names = current
-            .node(form)
-            .unwrap()
-            .node
-            .form_past_names
-            .as_ref()
-            .unwrap();
+        let final_names = current.node(form).unwrap().node.form_past_names().unwrap();
         assert_eq!(
             final_names
                 .entries()
@@ -519,17 +521,7 @@ mod tests {
             [field]
         );
         assert_eq!(names.entries().len(), 3);
-        assert!(
-            names.same_storage(
-                before
-                    .node(form)
-                    .unwrap()
-                    .node
-                    .form_past_names
-                    .as_ref()
-                    .unwrap()
-            )
-        );
+        assert!(names.same_storage(before.node(form).unwrap().node.form_past_names().unwrap()));
     }
 
     #[test]
@@ -562,7 +554,7 @@ mod tests {
             draft
                 .node(Key::Existing(form))
                 .unwrap()
-                .form_past_names
+                .form_past_names()
                 .unwrap()
                 .len(),
             3
@@ -580,7 +572,7 @@ mod tests {
             draft
                 .node(Key::Existing(form))
                 .unwrap()
-                .form_past_names
+                .form_past_names()
                 .unwrap()
                 .len(),
             3,
@@ -595,7 +587,7 @@ mod tests {
             draft
                 .node(Key::Existing(form))
                 .unwrap()
-                .form_past_names
+                .form_past_names()
                 .unwrap()
                 .len(),
             1
@@ -634,13 +626,7 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let before = dom.snapshot();
         let original = dom.state.clone();
-        let old = before
-            .node(form)
-            .unwrap()
-            .node
-            .form_past_names
-            .as_ref()
-            .unwrap();
+        let old = before.node(form).unwrap().node.form_past_names().unwrap();
         let entries = old
             .entries()
             .iter()
@@ -655,11 +641,12 @@ mod tests {
             candidate.identity(),
             old.payload().map(|value| value.identity)
         );
-        draft
-            .with_node_fields(Key::Existing(form), &cancel, |fields| {
-                fields.form_past_names = Some(candidate)
-            })
-            .unwrap();
+        {
+            let mut fields = draft.form_names_mut(Key::Existing(form), &cancel).unwrap();
+            (*fields) = Some(candidate);
+            fields.commit(&cancel)
+        }
+        .unwrap();
         let prepared = draft.finish(&dom, &cancel).unwrap();
         let commit = dom.publish(prepared, &cancel).unwrap();
         assert!(commit.changes().changes().is_empty());
@@ -670,8 +657,7 @@ mod tests {
                 dom.state
                     .node(dom.owner, form)
                     .unwrap()
-                    .form_past_names
-                    .as_ref()
+                    .form_past_names()
                     .unwrap()
             )
         );
