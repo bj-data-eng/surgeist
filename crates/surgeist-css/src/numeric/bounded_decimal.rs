@@ -418,7 +418,11 @@ impl DecimalCursor {
         match kernel {
             DecimalKernel::Normalize => {
                 let Some(first) = self.first else {
-                    self.finish(0);
+                    // Values 4: authored 0, +0 and -0 all produce the unsigned
+                    // zero (0⁺). Only a nonzero mantissa that rounds to zero
+                    // keeps its authored sign.
+                    self.stage = Stage::Terminal;
+                    self.request = DecimalRequest::Done(DecimalOutcome::Finite(0.0));
                     return;
                 };
                 self.significant = self.last - first + 1;
@@ -690,12 +694,14 @@ mod tests {
                 "999999999999999999999999999999999999999999",
                 0,
             ),
+            // An authored zero mantissa is the unsigned zero whatever its sign;
+            // a nonzero mantissa that underflows keeps its sign.
             (
                 true,
                 "000",
                 true,
                 "999999999999999999999999999999999999999999",
-                1_u64 << 63,
+                0,
             ),
             (
                 true,

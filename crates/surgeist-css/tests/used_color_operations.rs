@@ -83,6 +83,32 @@ fn equal_absolute_relative_and_mixed_channels_preserve_selected_serialization() 
 }
 
 #[test]
+fn authored_negative_zero_is_the_unsigned_zero_in_color_calculations() {
+    // Values 4 (WD-20240312 §10.9): "0, +0 and -0 all produce the standard
+    // 'unsigned' zero, which is considered positive (0⁺)". So 1 / sign(-0) is
+    // +∞, which top-level range checking clamps to the channel maximum. A
+    // genuinely negative operand keeps its sign and clamps to the minimum.
+    let facts = absent_facts();
+    for (input, expected) in [
+        ("rgb(0 0 calc(1 / sign(-0)))", "rgb(0, 0, 255)"),
+        ("rgb(0 0 calc(1 / sign(+0)))", "rgb(0, 0, 255)"),
+        ("rgb(0 0 calc(1 / sign(0)))", "rgb(0, 0, 255)"),
+        ("rgb(0 0 calc(1 / sign(-0.000)))", "rgb(0, 0, 255)"),
+        ("rgb(0 0 calc(1 / sign(-0e999999)))", "rgb(0, 0, 255)"),
+        ("rgb(calc(1 / -0) 0 0)", "rgb(255, 0, 0)"),
+        ("rgb(0 0 calc(1 / sign(-1)))", "rgb(0, 0, 0)"),
+    ] {
+        let actual = value(input, &facts);
+        assert_eq!(
+            surgeist_color::serialize(actual, SerializationRequest::Css, numerical_limits())
+                .unwrap(),
+            expected,
+            "{input}"
+        );
+    }
+}
+
+#[test]
 fn equal_floating_and_byte_alpha_keep_their_distinct_serialization_policies() {
     let facts = absent_facts();
     for (byte, floating, expected_byte, expected_float) in [
