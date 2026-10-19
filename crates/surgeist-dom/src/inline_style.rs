@@ -2,7 +2,7 @@
 //!
 //! Bindings initialize declarations from the current canonical attribute.
 //! Context-bearing ordinary batches synchronize real ordered DOM inputs atomically.
-//! Context-free and Source edits refuse reached bound changes; CSSOM owner feedback
+//! Context-free edits refuse reached bound changes; CSSOM owner feedback
 //! and bound retirement remain separate capabilities.
 use crate::{
     DomBatch, DomCommit, DomDocumentStamp, DomError, DomSnapshot, DomStamp, DomTreeScope, NodeId,
@@ -84,6 +84,82 @@ impl DomInlineStyleBatchContext {
             batch: batch.owner.clone(),
             profiles,
         })
+    }
+}
+
+/// Explicit inline profiles for one original Source invocation. Source roots
+/// accept published operands only; the original basis is checked at entry and
+/// the same profiles survive that invocation's own publications and resumes.
+#[derive(Clone, Debug)]
+pub struct DomInlineStyleSourceContext {
+    pub(crate) basis: DomStamp,
+    pub(crate) profiles: Vec<DomInlineStyleProfile>,
+}
+impl DomInlineStyleSourceContext {
+    /// Qualify independently selected grammar/support for existing Elements and
+    /// Documents. Actual staged mode, base and topology remain DOM-owned facts.
+    pub fn new(
+        basis: DomStamp,
+        profiles: Vec<DomInlineStyleProfile>,
+    ) -> Result<Self, DomInlineStyleError> {
+        for row in &profiles {
+            for operand in [&row.element, &row.document] {
+                match operand {
+                    NodeOperand::Existing(id) if id.owner() == basis.owner() => {}
+                    NodeOperand::Existing(_) => return Err(DomError::ForeignOwner.into()),
+                    NodeOperand::Created(_) => return Err(DomError::ForeignBatch.into()),
+                }
+            }
+        }
+        Ok(Self { basis, profiles })
+    }
+}
+
+/// Original evidence from one Source segment that synchronized inline inputs.
+/// The CSSOM receipt retains its producer-owned logical/output contract; this
+/// wrapper does not claim a physical bound on the producer's private backing.
+pub struct DomInlineStyleSourcePublication {
+    pub(crate) dom: crate::DomChanges,
+    pub(crate) inline: surgeist_cssom::CssomCommit,
+}
+impl DomInlineStyleSourcePublication {
+    /// Exact canonical segment paired with this inline publication.
+    pub fn dom(&self) -> &crate::DomChanges {
+        &self.dom
+    }
+    /// The original producer receipt, returned once at its publication boundary.
+    pub fn inline(&self) -> &surgeist_cssom::CssomCommit {
+        &self.inline
+    }
+    /// Transfer the two original owners' publication evidence.
+    pub fn into_parts(self) -> (crate::DomChanges, surgeist_cssom::CssomCommit) {
+        (self.dom, self.inline)
+    }
+}
+
+/// Progress of the original Source invocation and its optional inline evidence.
+/// A repeated external request does not repeat an already returned publication.
+pub struct DomInlineStyleSourceProgress {
+    pub(crate) source: crate::DomSourceProgress,
+    pub(crate) inline: Option<DomInlineStyleSourcePublication>,
+}
+impl DomInlineStyleSourceProgress {
+    /// The original Source controller's request or completion.
+    pub fn source(&self) -> &crate::DomSourceProgress {
+        &self.source
+    }
+    /// Original inline evidence produced by this advance, if any.
+    pub fn inline(&self) -> Option<&DomInlineStyleSourcePublication> {
+        self.inline.as_ref()
+    }
+    /// Transfer progress and its original publication without retaining history.
+    pub fn into_parts(
+        self,
+    ) -> (
+        crate::DomSourceProgress,
+        Option<DomInlineStyleSourcePublication>,
+    ) {
+        (self.source, self.inline)
     }
 }
 
@@ -197,7 +273,8 @@ pub enum DomInlineStyleChange {
     Retirement,
 }
 
-/// Binding/observation refusal. No CSSOM or DOM publication occurs on error.
+/// Binding, observation or synchronization refusal. The refused segment does
+/// not publish; successful preceding Source prefixes remain canonical.
 #[derive(Debug)]
 pub enum DomInlineStyleError {
     /// The canonical owner rejected input or admission.

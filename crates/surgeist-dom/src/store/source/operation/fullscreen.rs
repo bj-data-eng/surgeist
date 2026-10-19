@@ -318,6 +318,12 @@ impl<'dom> DomSourceLease<'dom> {
                     crate::DomHostedError::Dom(error) => error,
                     _ => DomError::HostedSourceUnavailable,
                 })?;
+            if let Some(recording) = segment.prepared.inline_recording.as_ref() {
+                // This external handoff has no inline resolver. A preceding
+                // relation barrier may already have recorded a bound context
+                // change; its publication must not certify an unreplayed log.
+                recording.require_unreached(|| op.draft.source_step(cancel))?;
+            }
             if let (Some(destination), Some(formation)) =
                 (segment.prepared._formation.as_ref(), formation)
             {

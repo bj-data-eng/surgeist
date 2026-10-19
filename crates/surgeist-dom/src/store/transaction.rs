@@ -77,6 +77,7 @@ impl PublicationCommitted {
 }
 
 pub(in crate::store) struct PreparedRebase {
+    pub(super) inline_recording: Option<super::inline_style::recording::Recording>,
     pub(super) state: Arc<State>,
     pub(super) custody: StateCustody,
     pub(super) stamp: DomStamp,

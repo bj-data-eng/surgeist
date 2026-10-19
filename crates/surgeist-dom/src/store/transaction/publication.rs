@@ -717,6 +717,14 @@ impl Draft {
         self.source_step(cancel)?;
         let journal = self.journal.prepare_commit()?;
         Ok(super::PreparedRebase {
+            inline_recording: self.inline_recording.as_ref().map(|recording| {
+                recording.restarted(
+                    publication
+                        .inline_index
+                        .as_ref()
+                        .unwrap_or(recording.index()),
+                )
+            }),
             state: publication.state.clone(),
             custody: publication.state_custody.clone(),
             stamp: publication.to,
@@ -734,6 +742,7 @@ impl Draft {
         committed: &super::PublicationCommitted,
     ) {
         self.journal.commit(rebase.journal);
+        self.inline_recording = rebase.inline_recording;
         // Old provisional records release before their matching root custody.
         self.records.clear();
         self.existing = bank::Bank::default();

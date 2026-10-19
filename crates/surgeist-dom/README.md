@@ -83,13 +83,26 @@ sharing, followed by infallible canonical publication. The result retains both
 owners' actual publication evidence. Created Document operands use real batch
 tickets; DOM derives their staged mode and base without a tentative public ID.
 
+`begin_source_edit_with_inline_styles` retains published-Element/Document
+profiles for one authentic Source root. Each `advance_with_inline_styles` borrows
+its pure resolver for that call. Actual hooks record inputs during speculative
+admission; parsing and resolution run only after full segment/rebase/sharing
+formation. The single CSSOM commit precedes infallible DOM publication, and the
+advance returns the original `DomChanges`/`CssomCommit` pair once at that boundary.
+Drop/resume preserves the original invocation, profiles, cumulative work and
+mandatory tails. An authenticated callback can create the first binding without
+replacing the original Source capability. A fullscreen handoff service has no
+inline resolver and refuses a preceding recorded inline context change before
+publishing that prefix; the original invocation remains retained. DOM admits wrapper and continuation
+custody; CSSOM receipts retain their independent producer output contract, with
+no composed physical-memory bound.
+
 A context-free ordinary or Source operation that reaches a bound style
 notification, a relevant context change or retirement returns
 `InlineStyleContextRequired` before that publication. Same-value style setters
 still reach the notification barrier; missing removals and unrelated attributes
 retain their ordinary behavior. Same-scope moves maintain sparse membership.
-Bound retirement, retained context-bearing Source synchronization and CSSOM
-owner feedback are unavailable. Inline formation has explicit original DOM
+Bound retirement and CSSOM owner feedback are unavailable. Inline formation has explicit original DOM
 custody/work limits alongside CSSOM's independent logical/source quotas;
 neither is a process memory measurement.
 

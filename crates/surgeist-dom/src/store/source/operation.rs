@@ -8,6 +8,8 @@ pub(crate) mod dialog_queue;
 pub(in crate::store) mod empty_policy_tests;
 mod failure;
 mod focus;
+mod inline;
+use inline::{AdvanceError, Execution};
 pub(crate) mod fullscreen;
 #[cfg(test)]
 mod fullscreen_tests;
@@ -69,6 +71,7 @@ pub(in crate::store) struct Operation {
     id: DomSourceOperationId,
     entry_scope: EntryScope,
     limits: DomSourceLimits,
+    inline_source: Option<inline::SourceInline>,
     draft: dialog::OperationDraft,
     commands: OperationRoot,
     index: usize,
@@ -340,6 +343,7 @@ impl Dom {
             limits: original_limits,
             names: draft.names.clone(),
             draft: dialog::OperationDraft::Segment(draft),
+            inline_source: None,
             commands,
             index: 0,
             started: false,
@@ -1089,6 +1093,9 @@ impl Operation {
         cancel: &AtomicBool,
     ) -> Result<PublishedSegment, crate::hosted::DomHostedError> {
         let segment = self.prepare_segment(dom, incomplete, target, hosted, checkpoint, cancel)?;
+        if let Some(recording) = segment.prepared.inline_recording.as_ref() {
+            recording.require_unreached(|| self.draft.source_step(cancel))?;
+        }
         let permit = hosted
             .map(|(source, request, revision)| source.permit(request, revision, false, cancel))
             .transpose()?;
@@ -1716,6 +1723,19 @@ impl DomSourceLease<'_> {
         self.dom.snapshot()
     }
     pub fn advance(&mut self, cancel: &AtomicBool) -> Result<DomSourceProgress, DomError> {
+        match self.advance_execution(&mut Execution::disabled(), cancel) {
+            Ok(progress) => Ok(progress),
+            Err(AdvanceError::Dom(error)) => Err(error),
+            Err(AdvanceError::Inline(_) | AdvanceError::Unwind(_)) => {
+                unreachable!("no resolver in context-free advance")
+            }
+        }
+    }
+    fn advance_execution(
+        &mut self,
+        execution: &mut Execution<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceProgress, AdvanceError> {
         check_cancel(cancel)?;
         if !self
             .dom
@@ -1723,7 +1743,7 @@ impl DomSourceLease<'_> {
             .as_ref()
             .is_some_and(|operation| operation.id == self.id)
         {
-            return Err(DomError::InvalidSourceOperation);
+            return Err(DomError::InvalidSourceOperation.into());
         }
         self.dom
             .source_operation
@@ -1744,18 +1764,19 @@ impl DomSourceLease<'_> {
                     .is_some_and(|actual| Arc::ptr_eq(binding, &actual))
             })
         {
-            return Err(DomError::InvalidSourceOperation);
+            return Err(DomError::InvalidSourceOperation.into());
         }
         // Independent public capabilities may commit concurrently. Keep the
         // exact owner locked from receipt validation through canonical source
-        // publication; this segment executes no external callbacks.
+        // publication. An inline resolver consumes immutable input packets; it
+        // does not grant event-observer reentry or access to this locked owner.
         if self
             .dom
             .source_operation
             .as_ref()
             .is_some_and(|op| op.observation().is_some())
         {
-            return self.advance_dialog_observation(cancel);
+            return self.advance_dialog_observation(execution, cancel);
         }
         let root = self
             .dom
@@ -1782,18 +1803,19 @@ impl DomSourceLease<'_> {
             if let Some(Receipt::Cssom { revision, .. }) = &op.receipt
                 && store.snapshot().revision() != revision
             {
-                return Err(DomError::StyleReceiptMismatch);
+                return Err(DomError::StyleReceiptMismatch.into());
             }
         }
         let custody = self.dom.source_owner_custody_bytes()?;
+        let custody_units = self.dom.fullscreen_custody_units()?;
         let mut op = self
             .dom
             .source_operation
             .take()
             .ok_or(DomError::InvalidSourceOperation)?;
         op.custody_bytes = custody;
-        op.custody_units = self.dom.fullscreen_custody_units()?;
-        let result = self.advance_operation(&mut op, cancel);
+        op.custody_units = custody_units;
+        let result = self.advance_operation(&mut op, execution, cancel);
         if self.complete || matches!(&result, Ok(DomSourceProgress::Complete(_))) {
             self.complete = true;
             drop(op);
@@ -1808,16 +1830,19 @@ impl DomSourceLease<'_> {
     fn advance_operation(
         &mut self,
         op: &mut Operation,
+        execution: &mut Execution<'_>,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceProgress, DomError> {
+    ) -> Result<DomSourceProgress, AdvanceError> {
         // A genuine observer may create the first binding after this Source
         // began. Refresh operational membership before any resumed mutation.
-        op.draft.inline_membership = self.dom.inline_membership();
+        op.refresh_inline_execution(self.dom, execution.resolver.is_some());
         if !op.event_exposed
             && let OperationRoot::DialogTask(task) = op.commands
         {
             op.refresh_admission(cancel)?;
-            return op.observe_dialog_task(self.dom, task, cancel);
+            return op
+                .observe_dialog_task(self.dom, task, cancel)
+                .map_err(Into::into);
         }
         if op.cancelled && !op.published && !op.event_exposed {
             // No canonical phase or external effect occurred. Return the actual
@@ -1907,7 +1932,7 @@ impl DomSourceLease<'_> {
             // last receipt. Refresh before resumed methods or value formation.
             op.refresh_admission(cancel)?;
             if op.failure.is_some() && op.request_close.is_none() {
-                return self.finish_source_failure(op, cancel);
+                return self.finish_source_failure(op, cancel).map_err(Into::into);
             }
             if op.request_close.is_some()
                 && !op.request_close.as_ref().is_some_and(|call| call.nested)
@@ -2028,7 +2053,7 @@ impl DomSourceLease<'_> {
                         Err(error) => {
                             checkpoint.restore(&mut op.draft);
                             op.started = started;
-                            return Err(error);
+                            return Err(error.into());
                         }
                     };
                     op.started = true;
@@ -2053,11 +2078,12 @@ impl DomSourceLease<'_> {
                         continue;
                     }
                     op.started = true;
-                    let published = match op.publication(
+                    let published = match op.publication_inline(
                         self.dom,
                         true,
                         PublicationTarget::DesignMode(pending),
                         Some(&checkpoint),
+                        execution,
                         cancel,
                     ) {
                         Ok(published) => published,
@@ -2089,11 +2115,12 @@ impl DomSourceLease<'_> {
                         continue;
                     }
                     op.started = true;
-                    let published = match op.publication(
+                    let published = match op.publication_inline(
                         self.dom,
                         true,
                         PublicationTarget::AutofocusInsertion(pending),
                         Some(&checkpoint),
+                        execution,
                         cancel,
                     ) {
                         Ok(published) => published,
@@ -2126,11 +2153,12 @@ impl DomSourceLease<'_> {
                         continue;
                     }
                     op.started = true;
-                    let published = match op.publication(
+                    let published = match op.publication_inline(
                         self.dom,
                         true,
                         PublicationTarget::DialogFocusing(pending),
                         Some(&checkpoint),
+                        execution,
                         cancel,
                     ) {
                         Ok(published) => published,
@@ -2161,18 +2189,19 @@ impl DomSourceLease<'_> {
                         checkpoint.restore(&mut op.draft);
                         op.restore_external_receipt(external_applied);
                     }
-                    return observed;
+                    return observed.map_err(Into::into);
                 }
                 Err(DomError::DialogProcessingUnavailable {
                     action: surgeist_html::HtmlDialogAction::AssertCloseWatcherPresent,
                 }) if op.is_show_modal_method() => {
                     // AddOpen and every reached hook finish before this internal
                     // boundary. Rollback is allowed only before this publication.
-                    if let Err(error) = op.publication(
+                    if let Err(error) = op.publication_inline(
                         self.dom,
                         true,
                         PublicationTarget::None,
                         Some(&checkpoint),
+                        execution,
                         cancel,
                     ) {
                         checkpoint.restore(&mut op.draft);
@@ -2202,7 +2231,7 @@ impl DomSourceLease<'_> {
                         checkpoint.restore(&mut op.draft);
                         op.restore_external_receipt(external_applied);
                         op.started = started;
-                        return Err(error);
+                        return Err(error.into());
                     }
                     drop(checkpoint);
                     continue;
@@ -2241,11 +2270,12 @@ impl DomSourceLease<'_> {
                         continue;
                     }
                     op.started = true;
-                    let published = match op.publication(
+                    let published = match op.publication_inline(
                         self.dom,
                         true,
                         PublicationTarget::Dialog(pending),
                         Some(&checkpoint),
+                        execution,
                         cancel,
                     ) {
                         Ok(published) => published,
@@ -2276,11 +2306,12 @@ impl DomSourceLease<'_> {
                     }
                     op.started = true;
                     let frame = op.frame()?;
-                    if let Err(e) = op.publication(
+                    if let Err(e) = op.publication_inline(
                         self.dom,
                         true,
                         PublicationTarget::Style(frame),
                         Some(&checkpoint),
+                        execution,
                         cancel,
                     ) {
                         checkpoint.restore(&mut op.draft);
@@ -2308,11 +2339,12 @@ impl DomSourceLease<'_> {
                         continue;
                     }
                     op.started = true;
-                    if let Err(error) = op.publication(
+                    if let Err(error) = op.publication_inline(
                         self.dom,
                         true,
                         PublicationTarget::None,
                         Some(&checkpoint),
+                        execution,
                         cancel,
                     ) {
                         checkpoint.restore(&mut op.draft);
@@ -2334,7 +2366,7 @@ impl DomSourceLease<'_> {
                     checkpoint.restore(&mut op.draft);
                     op.restore_external_receipt(external_applied);
                     op.started = started;
-                    return Err(e);
+                    return Err(e.into());
                 }
                 Ok(()) => {
                     if op
@@ -2406,7 +2438,7 @@ impl DomSourceLease<'_> {
                                 op.restore_external_receipt(external_applied);
                                 op.started = started;
                                 op.index = command_index;
-                                return Err(error);
+                                return Err(error.into());
                             }
                         }
                         // All fallible continuation cleanup precedes moving
@@ -2426,7 +2458,7 @@ impl DomSourceLease<'_> {
                             let select = op.select.as_ref().expect("actual Select root");
                             if !matches!(op.draft.native_tasks.first(), Some(select::Pending::Update {serial:Some(serial),target}) if serial==select.operation.serial && op.draft.resolve(select.target.into()).is_ok_and(|key|key==target))
                             {
-                                return Err(DomError::InvalidNativeTask);
+                                return Err(DomError::InvalidNativeTask.into());
                             }
                             op.draft.queue_native_remove(0, 1, cancel)?;
                         }
@@ -2434,11 +2466,12 @@ impl DomSourceLease<'_> {
                         // and canonical publication succeeds. A refusal restores
                         // the Draft checkpoint; no independent finished flag may
                         // outlive that rollback and suppress removal on retry.
-                        let commit = match op.publication(
+                        let commit = match op.publication_inline(
                             self.dom,
                             false,
                             PublicationTarget::None,
                             Some(&checkpoint),
+                            execution,
                             cancel,
                         ) {
                             Ok(published) => published.commit,
@@ -3158,6 +3191,7 @@ impl Dom {
                 limits: original_limits,
                 names: staged.draft.names.clone(),
                 draft: dialog::OperationDraft::Segment(staged.draft),
+                inline_source: None,
                 commands: OperationRoot::NativeInstallation,
                 index: 0,
                 started: false,

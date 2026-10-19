@@ -1,7 +1,13 @@
-//! Ordinary inline input occurrences at the canonical relation/field barriers.
+//! Ordered inline input occurrences at the canonical relation/field barriers.
 use super::*;
 use crate::{DomInlineStyleBatchContext, DomInlineStyleCommit, DomInlineStyleProfile};
 use std::sync::atomic::AtomicU64;
+
+pub(in crate::store) type Resolver<'a> = dyn FnMut(
+        &[CssomDeclarationCandidate],
+        &CssomContext,
+    ) -> Result<CssomAdmission, surgeist_cssom::CssomError>
+    + 'a;
 
 pub(super) struct InputIssuer {
     next: AtomicU64,
@@ -28,7 +34,7 @@ impl InputIssuer {
         }
     }
 }
-struct Profiles {
+pub(in crate::store) struct Profiles {
     context: DomInlineStyleBatchContext,
     issuer: Arc<InputIssuer>,
     revision: u64,
@@ -268,6 +274,47 @@ impl Index {
     }
 }
 impl Recording {
+    pub(in crate::store) fn profiles(&self) -> Arc<Profiles> {
+        self.profiles.clone()
+    }
+    pub(in crate::store) fn from_profiles(profiles: Arc<Profiles>, index: &super::Index) -> Self {
+        Self {
+            profiles,
+            index: index.clone(),
+            log: Log::default(),
+        }
+    }
+    pub(in crate::store) fn has_inputs(&self) -> bool {
+        self.log.len != 0
+    }
+    pub(in crate::store) fn require_unreached(
+        &self,
+        mut step: impl FnMut() -> Result<(), DomError>,
+    ) -> Result<(), DomError> {
+        if !self.has_inputs() {
+            return Ok(());
+        }
+        if let Some(event) = self.log.entries.get_with(0, &mut step)? {
+            return Err(required(
+                event.element,
+                match event.input {
+                    Input::Context => DomInlineStyleChange::Context,
+                    Input::Attribute(_) => DomInlineStyleChange::Attribute,
+                },
+            ));
+        }
+        Ok(())
+    }
+    pub(in crate::store) fn index(&self) -> &super::Index {
+        &self.index
+    }
+    pub(in crate::store) fn restarted(&self, index: &super::Index) -> Self {
+        Self {
+            profiles: self.profiles.clone(),
+            index: index.clone(),
+            log: Log::default(),
+        }
+    }
     pub(super) fn processing<'a>(
         &'a self,
         formation: Option<&'a Formation>,
@@ -690,15 +737,34 @@ impl Dom {
         if context.basis != self.snapshot().stamp() {
             return Err(DomInlineStyleError::StaleContext);
         }
-        let Some(owner) = self
+        if self
             .inline_styles
             .as_ref()
-            .filter(|o| !o.index.membership.bindings.is_empty())
-        else {
+            .is_none_or(|owner| owner.index.membership.bindings.is_empty())
+        {
             return Ok(None);
-        };
+        }
         let formation = self.source_observation_formation(cancel)?;
-        let p = processing(&owner.limits, formation.as_ref(), cancel);
+        self.form_inline_recording(context, formation.as_ref(), false, cancel)
+    }
+    pub(in crate::store) fn form_inline_recording(
+        &mut self,
+        context: DomInlineStyleBatchContext,
+        formation: Option<&Formation>,
+        required: bool,
+        cancel: &AtomicBool,
+    ) -> Result<Option<Recording>, DomInlineStyleError> {
+        let Some(owner) = self.inline_styles.as_ref() else {
+            return if required {
+                Err(DomInlineStyleError::Unconfigured)
+            } else {
+                Ok(None)
+            };
+        };
+        if !required && owner.index.membership.bindings.is_empty() {
+            return Ok(None);
+        }
+        let p = processing(&owner.limits, formation, cancel);
         let mut bytes = size_of::<Profiles>()
             .checked_add(
                 context
@@ -796,111 +862,128 @@ impl Dom {
         let prepared = self.prepare_with_inline(batch, recording, cancel)?;
         let mut publication = self.prepare_publication(prepared, cancel)?;
         publication.close_ordinary_sharing(cancel)?;
-        let inline = if let Some(recording) = publication
-            .inline_recording
-            .take()
-            .filter(|r| r.log.len != 0)
-        {
-            let owner = self.inline_styles.as_ref().expect("recorded live owner");
-            let store = owner.store.as_ref().expect("bound store");
-            let mut batch = store.batch(CssomEditGuard::from_snapshot(&store.snapshot()))?;
-            let p = recording.processing(publication._formation.as_ref(), cancel);
-            for index in 0..recording.log.len {
-                p.step()?;
-                let event = recording
-                    .log
-                    .entries
-                    .get_with(index, &mut || p.step())?
-                    .expect("ordered recorded occurrence");
-                let profile = &recording.profiles.context.profiles[event.profile];
-                let document = match event.facts.document {
-                    Key::Existing(id) => id,
-                    Key::Created(index) => publication
-                        .allocation_ids
-                        .get(index)
-                        .expect("a created Document cannot retire through ordinary Destroy"),
-                };
-                let packet = form_packet(
-                    PacketInput {
-                        element: event.element,
-                        document,
-                        parser: profile.parser.with_mode(event.facts.mode),
-                        support_version: &profile.support_version,
-                        support: &profile.support,
-                        base: &event.facts.base,
-                        revision: event.serial,
-                    },
-                    &self.custody_registry,
-                    &p,
-                )?;
-                let binding = owner
-                    .index
-                    .membership
-                    .bindings
-                    .get_with(event.element.slot, &mut || p.step())?
-                    .expect("recorded exact binding");
-                let id = owner.objects[binding.ordinal].id();
-                batch.update_inline_declaration_context(id, packet.value().clone())?;
-                if let Input::Attribute(value) = &event.input {
-                    let change = CssomStyleAttributeChange {
-                        owner: packet.value().owner().clone(),
-                        local_name: "style".into(),
-                        namespace: None,
-                        value: value.as_ref().map(|v| {
-                            CssomStyleAttributeInput::Utf16(v.shared_code_units().clone())
-                        }),
-                        echo: None,
-                    };
-                    if let Some(prepared) = batch.prepare_style_attribute_change(
-                        id,
-                        &change,
-                        limits.input,
-                        limits.declaration,
-                        || p.step(),
-                    )? {
-                        let admission = if prepared.candidates().is_empty() {
-                            CssomAdmission::new(
-                                Vec::new(),
-                                packet
-                                    .value()
-                                    .context()
-                                    .inputs
-                                    .iter()
-                                    .map(|i| i.version.clone())
-                                    .collect(),
-                            )
-                        } else {
-                            resolver(prepared.candidates(), packet.value().context())?
-                        };
-                        batch.apply_declaration_with_inputs(
-                            prepared,
-                            admission.decisions(),
-                            admission.current_inputs(),
-                        )?;
-                    }
-                }
-            }
-            check_cancel(cancel)?;
-            let commit = self
-                .inline_styles
-                .as_mut()
-                .expect("bound owner")
-                .store
-                .as_mut()
-                .expect("bound store")
-                .commit(batch)?;
-            assert!(
-                commit.owner_effects().is_empty(),
-                "DOM notifications and current-context updates never echo"
-            );
-            Some(commit)
-        } else {
-            None
-        };
+        let inline = self
+            .prepare_inline_batch(&publication, limits, &mut resolver, cancel)?
+            .map(|batch| self.commit_inline_batch(batch))
+            .transpose()?;
         Ok(DomInlineStyleCommit {
             dom: self.publish_prepared(publication),
             inline,
         })
+    }
+    pub(in crate::store) fn prepare_inline_batch(
+        &self,
+        publication: &PreparedPublication,
+        limits: DomInlineStyleRequestLimits,
+        resolver: &mut Resolver<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<Option<surgeist_cssom::CssomBatch>, DomInlineStyleError> {
+        let Some(recording) = publication
+            .inline_recording
+            .as_ref()
+            .filter(|r| r.has_inputs())
+        else {
+            return Ok(None);
+        };
+        let owner = self.inline_styles.as_ref().expect("recorded live owner");
+        let store = owner.store.as_ref().expect("bound store");
+        let mut batch = store.batch(CssomEditGuard::from_snapshot(&store.snapshot()))?;
+        let p = recording.processing(publication._formation.as_ref(), cancel);
+        for index in 0..recording.log.len {
+            p.step()?;
+            let event = recording
+                .log
+                .entries
+                .get_with(index, &mut || p.step())?
+                .expect("ordered recorded occurrence");
+            let profile = &recording.profiles.context.profiles[event.profile];
+            let document = match event.facts.document {
+                Key::Existing(id) => id,
+                Key::Created(index) => publication
+                    .allocation_ids
+                    .get(index)
+                    .expect("a created Document cannot retire through ordinary Destroy"),
+            };
+            let packet = form_packet(
+                PacketInput {
+                    element: event.element,
+                    document,
+                    parser: profile.parser.with_mode(event.facts.mode),
+                    support_version: &profile.support_version,
+                    support: &profile.support,
+                    base: &event.facts.base,
+                    revision: event.serial,
+                },
+                &self.custody_registry,
+                &p,
+            )?;
+            let binding = owner
+                .index
+                .membership
+                .bindings
+                .get_with(event.element.slot, &mut || p.step())?
+                .expect("recorded exact binding");
+            let id = owner.objects[binding.ordinal].id();
+            batch.update_inline_declaration_context(id, packet.value().clone())?;
+            if let Input::Attribute(value) = &event.input {
+                let change = CssomStyleAttributeChange {
+                    owner: packet.value().owner().clone(),
+                    local_name: "style".into(),
+                    namespace: None,
+                    value: value
+                        .as_ref()
+                        .map(|v| CssomStyleAttributeInput::Utf16(v.shared_code_units().clone())),
+                    echo: None,
+                };
+                if let Some(prepared) = batch.prepare_style_attribute_change(
+                    id,
+                    &change,
+                    limits.input,
+                    limits.declaration,
+                    || p.step(),
+                )? {
+                    let admission = if prepared.candidates().is_empty() {
+                        CssomAdmission::new(
+                            Vec::new(),
+                            packet
+                                .value()
+                                .context()
+                                .inputs
+                                .iter()
+                                .map(|i| i.version.clone())
+                                .collect(),
+                        )
+                    } else {
+                        resolver(prepared.candidates(), packet.value().context())?
+                    };
+                    batch.apply_declaration_with_inputs(
+                        prepared,
+                        admission.decisions(),
+                        admission.current_inputs(),
+                    )?;
+                }
+            }
+        }
+        check_cancel(cancel)?;
+        Ok(Some(batch))
+    }
+    pub(in crate::store) fn commit_inline_batch(
+        &mut self,
+        batch: surgeist_cssom::CssomBatch,
+    ) -> Result<surgeist_cssom::CssomCommit, DomInlineStyleError> {
+        let commit = self
+            .inline_styles
+            .as_mut()
+            .expect("bound owner")
+            .store
+            .as_mut()
+            .expect("bound store")
+            .commit(batch)?;
+        assert!(
+            commit.owner_effects().is_empty(),
+            "DOM inputs never echo owner effects"
+        );
+        Ok(commit)
     }
 }
 

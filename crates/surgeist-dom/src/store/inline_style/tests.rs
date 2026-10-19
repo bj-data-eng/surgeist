@@ -9,6 +9,20 @@ use surgeist_cssom::{
     CssomLimits,
 };
 
+impl Dom {
+    // Owning inspection keeps independent producer observations distinct from
+    // the public coupled capture, which correctly rejects incomplete Source.
+    pub(in crate::store) fn inline_snapshot_for_test(
+        &self,
+    ) -> Option<surgeist_cssom::CssomSnapshot> {
+        self.inline_styles
+            .as_ref()?
+            .store
+            .as_ref()
+            .map(CssomStore::snapshot)
+    }
+}
+
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }

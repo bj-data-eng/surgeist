@@ -146,7 +146,8 @@ mod input;
 pub use inline_style::{
     DomInlineStyleBatchContext, DomInlineStyleCapture, DomInlineStyleChange, DomInlineStyleCommit,
     DomInlineStyleError, DomInlineStyleInputs, DomInlineStyleLimits, DomInlineStyleProfile,
-    DomInlineStyleRequestLimits,
+    DomInlineStyleRequestLimits, DomInlineStyleSourceContext, DomInlineStyleSourceProgress,
+    DomInlineStyleSourcePublication,
 };
 mod installation;
 mod meta;
