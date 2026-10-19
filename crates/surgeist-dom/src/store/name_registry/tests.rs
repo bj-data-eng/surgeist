@@ -999,3 +999,5 @@ fn normalized_name_conversion_admits_actual_scratch_and_charges_each_completed_u
     assert_eq!(*operation.scope.scratch.lock().unwrap(), scratch);
     assert_eq!(ledger.total(), baseline);
 }
+
+mod memory_report;
