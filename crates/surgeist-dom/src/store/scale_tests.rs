@@ -27,6 +27,8 @@ use crate::{
     DomStyleCssomRoot, DomStyleInlineCspObservation, Namespace, NodeId,
 };
 
+mod memory;
+
 const SIZES: [usize; 3] = [10_000, 100_000, 1_000_000];
 const CHUNK: usize = 8192;
 const WARMUPS: usize = 1;
