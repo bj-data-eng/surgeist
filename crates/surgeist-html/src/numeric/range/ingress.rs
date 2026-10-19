@@ -395,8 +395,15 @@ impl FiniteDecimalIngressCursor {
         }
     }
     fn finish(&mut self, result: Result<u64, RangeNumericError>) {
-        self.result =
-            Some(result.map(|bits| bits | if self.parts.negative { 1u64 << 63 } else { 0 }));
+        // Step 15 converts into the finite binary64 values except −0, so a zero
+        // magnitude (exact or underflowed) is the unsigned zero whatever the sign.
+        self.result = Some(result.map(|bits| {
+            if bits == 0 || !self.parts.negative {
+                bits
+            } else {
+                bits | 1u64 << 63
+            }
+        }));
         self.active = ActiveHelper::None;
         self.phase = Phase::Done;
         self.io.request = None;
