@@ -1,14 +1,14 @@
-use crate::semantics::support::builder;
-use crate::semantics::support::context;
-use crate::semantics::support::session;
+use crate::semantics::support::{
+    builder, collection_limits as resource_limits, context, semantic_limits as limits, session,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlAreaCollection, HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject,
     HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue,
     HtmlCapturedShadowProperties, HtmlSemanticCancellation, HtmlSemanticContext,
-    HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
-    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticMissing,
+    HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource,
+    HtmlSemanticSession, HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn element(
@@ -52,10 +52,6 @@ fn children(
     cs: &[HtmlCaptureBuilderSubject],
 ) {
     b.establish_children(p, cs).unwrap();
-}
-
-fn limits() -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(20000000, 100, 1000, 0, 1000000, 100000)
 }
 
 fn request(id: &HtmlCaptureSubjectId) -> HtmlSemanticRequest {
@@ -353,36 +349,6 @@ fn map_role_case_namespace_and_non_element_subjects_have_typed_outcomes() {
             HtmlSemanticUnsupported::ForeignNamespace
         ))
     );
-}
-fn resource_limits(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(
-        if resource == HtmlSemanticResource::Work {
-            cap
-        } else {
-            limits().work()
-        },
-        if resource == HtmlSemanticResource::OutputRecords {
-            cap
-        } else {
-            100
-        },
-        if resource == HtmlSemanticResource::ScratchRecords {
-            cap
-        } else {
-            1000
-        },
-        0,
-        if resource == HtmlSemanticResource::AllocatedBytes {
-            cap
-        } else {
-            1000000
-        },
-        if resource == HtmlSemanticResource::NestedOutputRecords {
-            cap
-        } else {
-            100000
-        },
-    )
 }
 #[test]
 fn full_collection_has_exact_one_short_work_output_scratch_nested_capacity_and_bytes() {

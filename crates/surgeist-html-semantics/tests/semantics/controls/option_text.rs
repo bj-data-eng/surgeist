@@ -1,4 +1,4 @@
-use crate::semantics::support::builder;
+use crate::semantics::support::{builder, semantic_limits as limits, session};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
@@ -7,7 +7,7 @@ use surgeist_html_semantics::{
     HtmlOptionReadbackOrigin, HtmlSelectValue, HtmlSemanticCancellation, HtmlSemanticContext,
     HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
     HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticResource,
-    HtmlSemanticSession, HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn attrs(values: &[(&str, &str)]) -> OrderedAttributes {
@@ -77,18 +77,6 @@ fn context(c: &HtmlCapture, flags: &[(HtmlCaptureSubjectId, Option<bool>)]) -> H
         0,
     )
     .unwrap()
-}
-fn limits() -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(20000000, 100, 1000, 0, 1000000, 100000)
-}
-fn session<'a>(
-    c: &'a HtmlCapture,
-    cx: &'a HtmlSemanticContext,
-    l: HtmlSemanticLimits,
-    raw: usize,
-    cancellation: HtmlSemanticCancellation,
-) -> HtmlSemanticSession<'a> {
-    HtmlSemanticSession::new(c, cx, HtmlValueInterpreter::new(raw), l, cancellation).unwrap()
 }
 fn request(id: &HtmlCaptureSubjectId, q: HtmlSemanticQuery) -> HtmlSemanticRequest {
     HtmlSemanticRequest::new(id.clone(), q)

@@ -1,3 +1,4 @@
+use crate::semantics::support::dimension_semantic_limits as limits;
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
@@ -119,9 +120,6 @@ fn expectation(
 }
 fn fact_limits() -> HtmlImageDimensionFactsLimits {
     HtmlImageDimensionFactsLimits::new(1000, 10000000, 1000000)
-}
-fn limits() -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(10000000, 100, 10000, 10000, 10000000, 100)
 }
 fn context(
     c: &HtmlCapture,

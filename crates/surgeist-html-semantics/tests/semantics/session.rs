@@ -1,4 +1,4 @@
-use crate::semantics::support::context;
+use crate::semantics::support::{context, small_builder_with_short_text as builder};
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
@@ -29,20 +29,6 @@ fn attributes(values: &[(&str, &str)]) -> OrderedAttributes {
             .map(|(n, v)| Attribute::new(name(Namespace::none(), n), *v)),
     )
     .unwrap()
-}
-fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 1000, 100, 10000, 100, 0, 0, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
-    let d = b
-        .add_document(
-            HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Unavailable,
-            HtmlCaptureRegistryInput::Null,
-        )
-        .unwrap();
-    (b, d)
 }
 fn element(
     b: &mut HtmlCaptureBuilder,

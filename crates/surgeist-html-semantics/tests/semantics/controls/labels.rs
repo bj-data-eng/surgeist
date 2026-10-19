@@ -1,13 +1,15 @@
+use crate::semantics::support::{
+    compact_builder_without_registries as builder, moderate_semantic_limits_with_scratch as limits,
+};
 use surgeist_html::*;
-use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits,
-    HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedNodeKind,
-    HtmlCapturedShadowProperties, HtmlControlLabels, HtmlCustomControlClassification,
-    HtmlScriptingStatus, HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput,
-    HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
-    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
+    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedNodeKind, HtmlCapturedShadowProperties,
+    HtmlControlLabels, HtmlCustomControlClassification, HtmlSemanticCancellation,
+    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact,
+    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
+    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession,
+    HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn attrs(values: &[(&str, &str)]) -> OrderedAttributes {
@@ -17,20 +19,6 @@ fn attrs(values: &[(&str, &str)]) -> OrderedAttributes {
             .map(|(n, v)| Attribute::new(QualifiedName::new(Namespace::none(), None, *n), *v)),
     )
     .unwrap()
-}
-fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(1000, 10000, 1000, 100000, 1000, 0, 0, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
-    let d = b
-        .add_document(
-            HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Unavailable,
-            HtmlCaptureRegistryInput::Null,
-        )
-        .unwrap();
-    (b, d)
 }
 fn expanded(
     b: &mut HtmlCaptureBuilder,
@@ -94,9 +82,6 @@ fn context(f: &Fixture, classifications: &[(usize, bool)]) -> HtmlSemanticContex
         100,
     )
     .unwrap()
-}
-fn limits() -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(10000000, 100, 10000, 0, 1000000, 10000)
 }
 fn session<'a>(
     f: &'a Fixture,

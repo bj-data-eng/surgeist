@@ -1,4 +1,4 @@
-use crate::semantics::support::context;
+use crate::semantics::support::{builder_with, context};
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
@@ -14,18 +14,9 @@ use surgeist_html_semantics::{
 };
 
 fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 1000, 100, 100000, 100, 10, 100, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
-    let d = b
-        .add_document(
-            HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Unavailable,
-            HtmlCaptureRegistryInput::Null,
-        )
-        .unwrap();
-    (b, d)
+    builder_with(HtmlCaptureLimits::new(
+        100, 1000, 100, 100000, 100, 10, 100, 16_777_216,
+    ))
 }
 fn definition(name: &str, local: &str) -> HtmlCustomElementDefinition {
     HtmlCustomElementDefinition::new(name.into(), local.into(), false, false)

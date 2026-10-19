@@ -1,10 +1,9 @@
-use crate::semantics::support::context;
+use crate::semantics::support::{builder_with, context};
 use surgeist_html::*;
-use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
     HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue,
-    HtmlCapturedShadowProperties, HtmlScriptingStatus, HtmlSemanticCancellation, HtmlSemanticFact,
+    HtmlCapturedShadowProperties, HtmlSemanticCancellation, HtmlSemanticFact,
     HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
     HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession,
     HtmlSemanticUnsupported, HtmlSemanticValue, HtmlTableCellKind, HtmlTableModel,
@@ -12,18 +11,9 @@ use surgeist_html_semantics::{
 };
 
 fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(10000, 100000, 10000, 1000000, 1000, 0, 0, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
-    let d = b
-        .add_document(
-            HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Unavailable,
-            HtmlCaptureRegistryInput::Null,
-        )
-        .unwrap();
-    (b, d)
+    builder_with(HtmlCaptureLimits::new(
+        10000, 100000, 10000, 1000000, 1000, 0, 0, 16_777_216,
+    ))
 }
 fn element(
     b: &mut HtmlCaptureBuilder,

@@ -1,5 +1,4 @@
-use crate::semantics::support::builder;
-use crate::semantics::support::session;
+use crate::semantics::support::{builder, session};
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{

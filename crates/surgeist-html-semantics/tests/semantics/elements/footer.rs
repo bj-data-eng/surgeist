@@ -1,15 +1,14 @@
-use crate::semantics::support::builder;
-use crate::semantics::support::context;
-use crate::semantics::support::scalar_limits as resource_limits;
+use crate::semantics::support::{
+    builder, context, scalar_limits as resource_limits, scalar_semantic_limits as limits, session,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
     HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue,
     HtmlCapturedShadowProperties, HtmlFooterScope, HtmlScriptingStatus, HtmlSemanticCancellation,
-    HtmlSemanticContext, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind,
-    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
-    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticSession,
-    HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticMissing,
+    HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource,
+    HtmlSemanticResult, HtmlSemanticSession, HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn expanded(
@@ -41,18 +40,6 @@ fn children(
     b.establish_children(parent, list).unwrap();
 }
 
-fn limits() -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(20000000, 100, 0, 0, 1000000, 0)
-}
-fn session<'a>(
-    c: &'a HtmlCapture,
-    cx: &'a HtmlSemanticContext,
-    limits: HtmlSemanticLimits,
-    raw: usize,
-    cancel: HtmlSemanticCancellation,
-) -> HtmlSemanticSession<'a> {
-    HtmlSemanticSession::new(c, cx, HtmlValueInterpreter::new(raw), limits, cancel).unwrap()
-}
 fn request(id: &HtmlCaptureSubjectId) -> HtmlSemanticRequest {
     HtmlSemanticRequest::new(id.clone(), HtmlSemanticQuery::FooterScope)
 }

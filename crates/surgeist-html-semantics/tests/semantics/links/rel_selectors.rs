@@ -1,4 +1,4 @@
-use crate::semantics::support::context;
+use crate::semantics::support::{builder_with, context};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits,
@@ -14,15 +14,13 @@ use surgeist_html_semantics::{
     HtmlMediaProducerId, HtmlNextDocumentIconInput, HtmlRelDefinition, HtmlRelDefinitionId,
     HtmlRelDefinitionKey, HtmlRelExpectedRevisions, HtmlRelFacts, HtmlRelFactsError,
     HtmlRelFactsInput, HtmlRelFactsLimits, HtmlRelMissingFact, HtmlRelProducerId,
-    HtmlRelRegistryOccurrence, HtmlRelRegistryStatus, HtmlRelRevision, HtmlScriptingStatus,
-    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact,
-    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
-    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession,
-    HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlRelRegistryOccurrence, HtmlRelRegistryStatus, HtmlRelRevision, HtmlSemanticCancellation,
+    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
+    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUnsupported,
+    HtmlSemanticValue,
 };
-use surgeist_html_semantics::{
-    HtmlHostFactsRevision, HtmlIconExaminationId, HtmlIconPresentationId, HtmlIconResourceId,
-};
+use surgeist_html_semantics::{HtmlIconExaminationId, HtmlIconPresentationId, HtmlIconResourceId};
 use surgeist_html_semantics::{HtmlMediaEnvironmentRevision, HtmlMediaGrammarRevision};
 
 fn limits() -> HtmlRelFactsLimits {
@@ -32,18 +30,9 @@ fn revision(n: u64) -> HtmlRelRevision {
     HtmlRelRevision::new(HtmlRelProducerId::fresh(), 4, n)
 }
 fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(200, 1000, 100, 10000, 200, 0, 0, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
-    let d = b
-        .add_document(
-            HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Unavailable,
-            HtmlCaptureRegistryInput::Null,
-        )
-        .unwrap();
-    (b, d)
+    builder_with(HtmlCaptureLimits::new(
+        200, 1000, 100, 10000, 200, 0, 0, 16_777_216,
+    ))
 }
 fn element(
     b: &mut HtmlCaptureBuilder,

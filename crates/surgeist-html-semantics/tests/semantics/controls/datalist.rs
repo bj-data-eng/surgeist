@@ -1,6 +1,4 @@
-use crate::semantics::support::builder;
-use crate::semantics::support::context;
-use crate::semantics::support::session;
+use crate::semantics::support::{builder, context, semantic_limits as limits, session};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
@@ -50,10 +48,6 @@ fn children(
     items: &[HtmlCaptureBuilderSubject],
 ) {
     b.establish_children(p, items).unwrap();
-}
-
-fn limits() -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(20000000, 100, 1000, 0, 1000000, 100000)
 }
 
 fn request(id: &HtmlCaptureSubjectId, q: HtmlSemanticQuery) -> HtmlSemanticRequest {

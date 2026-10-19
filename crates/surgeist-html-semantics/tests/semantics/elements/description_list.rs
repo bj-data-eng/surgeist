@@ -1,14 +1,18 @@
-use crate::semantics::support::builder;
-use crate::semantics::support::context;
+use crate::semantics::support::{
+    SCALAR_AND_NESTED_RESOURCES, builder, cap_resources, context,
+    semantic_limits_without_scratch as limits,
+};
+// The grouping algorithm consumes no attribute/text values, so zero is a
+// meaningful unrelated raw-input cap even for nodes with large contents.
+use crate::semantics::support::session_without_raw_values as session;
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedChildren, HtmlCapturedIsValue, HtmlCapturedNodeKind,
     HtmlCapturedParent, HtmlCapturedShadowProperties, HtmlDescriptionListGroups,
-    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticFact, HtmlSemanticFailureKind,
-    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
-    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticSession,
-    HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlSemanticCancellation, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
+    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
+    HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 // Independent literal group expectations from HTML 877d §4.4.9:
@@ -45,21 +49,8 @@ fn children(
     b.establish_children(p, cs).unwrap();
 }
 
-fn limits() -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(20000000, 100, 0, 0, 1000000, 100000)
-}
 fn request(id: &HtmlCaptureSubjectId) -> HtmlSemanticRequest {
     HtmlSemanticRequest::new(id.clone(), HtmlSemanticQuery::DescriptionListGroups)
-}
-fn session<'a>(
-    c: &'a HtmlCapture,
-    cx: &'a HtmlSemanticContext,
-    l: HtmlSemanticLimits,
-    cancellation: HtmlSemanticCancellation,
-) -> HtmlSemanticSession<'a> {
-    // The grouping algorithm consumes no attribute/text values, so zero is a
-    // meaningful unrelated raw-input cap even for nodes with large contents.
-    HtmlSemanticSession::new(c, cx, HtmlValueInterpreter::new(0), l, cancellation).unwrap()
 }
 fn report(c: &HtmlCapture, id: &HtmlCaptureSubjectId) -> HtmlSemanticReport {
     session(c, &context(c), limits(), HtmlSemanticCancellation::new())
@@ -491,30 +482,7 @@ fn only_exact_html_dl_is_applicable_without_irrelevant_topology() {
     );
 }
 fn capped(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(
-        if resource == HtmlSemanticResource::Work {
-            cap
-        } else {
-            20000000
-        },
-        if resource == HtmlSemanticResource::OutputRecords {
-            cap
-        } else {
-            100
-        },
-        0,
-        0,
-        if resource == HtmlSemanticResource::AllocatedBytes {
-            cap
-        } else {
-            1000000
-        },
-        if resource == HtmlSemanticResource::NestedOutputRecords {
-            cap
-        } else {
-            100000
-        },
-    )
+    cap_resources(limits(), SCALAR_AND_NESTED_RESOURCES, resource, cap)
 }
 #[test]
 fn exact_and_one_short_work_and_actual_vector_caps_are_atomic_and_sticky() {

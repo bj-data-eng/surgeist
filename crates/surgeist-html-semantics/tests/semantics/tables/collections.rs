@@ -1,6 +1,7 @@
-use crate::semantics::support::builder;
-use crate::semantics::support::context;
-use crate::semantics::support::session;
+use crate::semantics::support::{
+    SCALAR_AND_NESTED_RESOURCES, builder, cap_resources, context, semantic_limits as limits,
+    semantic_limits_without_scratch, session,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
@@ -51,10 +52,6 @@ fn children(
     cs: &[HtmlCaptureBuilderSubject],
 ) {
     b.establish_children(p, cs).unwrap();
-}
-
-fn limits() -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(20000000, 100, 1000, 0, 1000000, 100000)
 }
 
 fn request(id: &HtmlCaptureSubjectId, q: HtmlSemanticQuery) -> HtmlSemanticRequest {
@@ -433,29 +430,11 @@ fn namespace_case_and_non_element_subject_roles_preserve_typed_applicability() {
     );
 }
 fn resource_limits(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(
-        if resource == HtmlSemanticResource::Work {
-            cap
-        } else {
-            limits().work()
-        },
-        if resource == HtmlSemanticResource::OutputRecords {
-            cap
-        } else {
-            100
-        },
-        0,
-        0,
-        if resource == HtmlSemanticResource::AllocatedBytes {
-            cap
-        } else {
-            1000000
-        },
-        if resource == HtmlSemanticResource::NestedOutputRecords {
-            cap
-        } else {
-            100000
-        },
+    cap_resources(
+        semantic_limits_without_scratch(),
+        SCALAR_AND_NESTED_RESOURCES,
+        resource,
+        cap,
     )
 }
 #[test]

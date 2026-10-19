@@ -1,15 +1,17 @@
+use crate::semantics::support::{
+    context, semantic_limits_without_nested_output as limits, session,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits,
     HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue,
     HtmlCapturedShadowProperties, HtmlScriptingStatus, HtmlSemanticCancellation,
-    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact,
-    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
-    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticResult,
-    HtmlSemanticSession, HtmlSemanticUnsupported, HtmlSemanticValue, HtmlUsemapAuthorDefinition,
-    HtmlUsemapMatch, HtmlUsemapProcessingResult, HtmlUsemapReferenceResult,
-    HtmlUsemapSelectedTargetDiagnostic,
+    HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
+    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
+    HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticSession, HtmlSemanticUnsupported,
+    HtmlSemanticValue, HtmlUsemapAuthorDefinition, HtmlUsemapMatch, HtmlUsemapProcessingResult,
+    HtmlUsemapReferenceResult, HtmlUsemapSelectedTargetDiagnostic,
 };
 
 fn capture_builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
@@ -68,36 +70,8 @@ fn children(
 ) {
     builder.establish_children(parent, children).unwrap();
 }
-fn context(capture: &HtmlCapture) -> HtmlSemanticContext {
-    HtmlSemanticContext::new(
-        capture,
-        capture.host_facts_revision().clone(),
-        HtmlSemanticContextInput::new(vec![]),
-        0,
-    )
-    .unwrap()
-}
-fn limits() -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(20000000, 100, 1000, 0, 1000000, 0)
-}
 fn request(subject: &HtmlCaptureSubjectId) -> HtmlSemanticRequest {
     HtmlSemanticRequest::new(subject.clone(), HtmlSemanticQuery::UsemapReference)
-}
-fn session<'a>(
-    capture: &'a HtmlCapture,
-    context: &'a HtmlSemanticContext,
-    limits: HtmlSemanticLimits,
-    raw: usize,
-    cancellation: HtmlSemanticCancellation,
-) -> HtmlSemanticSession<'a> {
-    HtmlSemanticSession::new(
-        capture,
-        context,
-        HtmlValueInterpreter::new(raw),
-        limits,
-        cancellation,
-    )
-    .unwrap()
 }
 fn query(capture: &HtmlCapture, image: &HtmlCaptureSubjectId, raw: usize) -> HtmlSemanticReport {
     session(

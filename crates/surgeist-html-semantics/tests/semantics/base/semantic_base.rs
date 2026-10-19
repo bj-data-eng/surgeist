@@ -1,4 +1,6 @@
+use crate::semantics::support::builder_with;
 use surgeist_html::*;
+use surgeist_html_semantics::select_frozen_base;
 use surgeist_html_semantics::{
     HtmlAboutBaseUrl, HtmlBaseAllowed, HtmlBaseDocumentFacts, HtmlBaseEncoding, HtmlBaseFactsError,
     HtmlBaseFactsLimits, HtmlBaseFactsRevision, HtmlBaseMissing, HtmlBaseParseObservation,
@@ -6,13 +8,11 @@ use surgeist_html_semantics::{
     HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits, HtmlCaptureRegistryInput,
     HtmlCapturedBaseDocument, HtmlCapturedBaseFacts, HtmlCapturedFrozenBase, HtmlCapturedIsValue,
     HtmlControlFacts, HtmlControlFactsLimits, HtmlFormAssociation, HtmlFormAssociationState,
-    HtmlParseBaseFacts, HtmlScriptingStatus, HtmlSemanticCancellation, HtmlSemanticContext,
-    HtmlSemanticContextError, HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind,
-    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
-    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticValue,
-    HtmlTargetOrigin,
+    HtmlParseBaseFacts, HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextError,
+    HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
+    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
+    HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticValue, HtmlTargetOrigin,
 };
-use surgeist_html_semantics::{HtmlHostFactsRevision, select_frozen_base};
 
 #[test]
 fn base_observation_access_preserves_exact_inputs_and_owner_qualification() {
@@ -184,18 +184,9 @@ fn attr(name: &str, value: impl Into<DocumentString>) -> Attribute {
     Attribute::new(QualifiedName::new(Namespace::none(), None, name), value)
 }
 fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
-    let document = builder
-        .add_document(
-            HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Unavailable,
-            HtmlCaptureRegistryInput::Null,
-        )
-        .unwrap();
-    (builder, document)
+    builder_with(HtmlCaptureLimits::new(
+        100, 10000, 100, 100000, 100, 10, 10, 16_777_216,
+    ))
 }
 fn element(
     builder: &mut HtmlCaptureBuilder,

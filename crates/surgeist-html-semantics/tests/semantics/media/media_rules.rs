@@ -1,20 +1,20 @@
+use crate::semantics::support::{builder_with, capture_limits, semantic_limits as limits};
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
-    HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCaptureSubjectId,
-    HtmlCaptureTemplateCacheInput, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
-    HtmlDocumentClass, HtmlMediaAttributeInput, HtmlMediaAttributeReadback, HtmlMediaCondition,
-    HtmlMediaContextRevision, HtmlMediaExternalCapability, HtmlMediaFact, HtmlMediaFacts,
-    HtmlMediaFactsError, HtmlMediaFactsLimits, HtmlMediaGrammarAttestation,
-    HtmlMediaGrammarEvidence, HtmlMediaGrammarOutcome, HtmlMediaMatchAttestation,
-    HtmlMediaMatchOutcome, HtmlMediaProcessing, HtmlMediaProducerId, HtmlMetaMediaProcessing,
-    HtmlPictureSourceRequirement, HtmlScriptingStatus, HtmlSemanticCancellation,
-    HtmlSemanticContext, HtmlSemanticContextError, HtmlSemanticContextInput, HtmlSemanticFact,
-    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
-    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticSession, HtmlSemanticUnsupported,
-    HtmlSemanticValue, HtmlSourceMediaContext, HtmlSourceMediaDecision, HtmlTemplateDocumentRole,
-    HtmlThemeColorMediaUniqueness,
+    HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCaptureTemplateCacheInput,
+    HtmlCapturedIsValue, HtmlCapturedShadowProperties, HtmlDocumentClass, HtmlMediaAttributeInput,
+    HtmlMediaAttributeReadback, HtmlMediaCondition, HtmlMediaContextRevision,
+    HtmlMediaExternalCapability, HtmlMediaFact, HtmlMediaFacts, HtmlMediaFactsError,
+    HtmlMediaFactsLimits, HtmlMediaGrammarAttestation, HtmlMediaGrammarEvidence,
+    HtmlMediaGrammarOutcome, HtmlMediaMatchAttestation, HtmlMediaMatchOutcome, HtmlMediaProcessing,
+    HtmlMediaProducerId, HtmlMetaMediaProcessing, HtmlPictureSourceRequirement,
+    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextError,
+    HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
+    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
+    HtmlSemanticSession, HtmlSemanticUnsupported, HtmlSemanticValue, HtmlSourceMediaContext,
+    HtmlSourceMediaDecision, HtmlTemplateDocumentRole, HtmlThemeColorMediaUniqueness,
 };
 use surgeist_html_semantics::{HtmlMediaEnvironmentRevision, HtmlMediaGrammarRevision};
 
@@ -27,17 +27,7 @@ fn attrs(fields: &[(&str, &str)]) -> OrderedAttributes {
     OrderedAttributes::new(fields.iter().map(|(n, v)| attr(n, v))).unwrap()
 }
 fn builder(class: HtmlDocumentClass) -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(1000, 100000, 1000, 1000000, 1000, 10, 10, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
-    let d = b
-        .add_document(
-            HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Unavailable,
-            HtmlCaptureRegistryInput::Null,
-        )
-        .unwrap();
+    let (mut b, d) = builder_with(capture_limits());
     if class != HtmlDocumentClass::Unavailable {
         b.establish_document_template_facts(
             &d,
@@ -88,9 +78,6 @@ fn cx(c: &HtmlCapture) -> HtmlSemanticContext {
         0,
     )
     .unwrap()
-}
-fn limits() -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(20000000, 100, 1000, 0, 1000000, 100000)
 }
 fn request(id: &HtmlCaptureSubjectId) -> HtmlSemanticRequest {
     HtmlSemanticRequest::new(id.clone(), HtmlSemanticQuery::MediaAttributeRules)

@@ -1,3 +1,4 @@
+use crate::semantics::support::{dimension_semantic_limits as limits, session};
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
@@ -11,7 +12,7 @@ use surgeist_html_semantics::{
     HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextError,
     HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
     HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticValue,
+    HtmlSemanticResource, HtmlSemanticValue,
 };
 
 fn integer(s: &str) -> HtmlNonNegativeInteger {
@@ -62,9 +63,6 @@ fn fixture(local: &str, attrs: &[(&str, &str)]) -> (HtmlCapture, HtmlCaptureSubj
 }
 fn fact_limits() -> HtmlNaturalDimensionLimits {
     HtmlNaturalDimensionLimits::new(1000, 10000000, 100000)
-}
-fn limits() -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(10000000, 100, 10000, 10000, 10000000, 100)
 }
 fn context(
     c: &HtmlCapture,
@@ -117,15 +115,6 @@ fn request(id: &HtmlCaptureSubjectId) -> HtmlSemanticRequest {
         id.clone(),
         HtmlSemanticQuery::EmbeddedDimensionAuthorConformance,
     )
-}
-fn session<'a>(
-    c: &'a HtmlCapture,
-    cx: &'a HtmlSemanticContext,
-    l: HtmlSemanticLimits,
-    raw: usize,
-    cancellation: HtmlSemanticCancellation,
-) -> HtmlSemanticSession<'a> {
-    HtmlSemanticSession::new(c, cx, HtmlValueInterpreter::new(raw), l, cancellation).unwrap()
 }
 fn run(c: &HtmlCapture, cx: &HtmlSemanticContext, id: &HtmlCaptureSubjectId) -> HtmlSemanticReport {
     session(c, cx, limits(), 10000, HtmlSemanticCancellation::new())

@@ -1,6 +1,5 @@
-use crate::semantics::support::session;
+use crate::semantics::support::{COLLECTION_RESOURCES, builder_with, cap_resources, session};
 use surgeist_html::*;
-use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits,
     HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedNodeKind,
@@ -8,28 +7,19 @@ use surgeist_html_semantics::{
     HtmlControlFactsLimits, HtmlDesignMode, HtmlDocumentDesignModeFact, HtmlFormAssociation,
     HtmlFormAssociationState, HtmlFormOwnerOrigin, HtmlGlobalInheritanceFacts,
     HtmlGlobalInheritanceLimits, HtmlGlobalInheritanceProducerId, HtmlGlobalInheritanceRevision,
-    HtmlOwnAutocapitalizationHint, HtmlScriptingStatus, HtmlSemanticCancellation,
-    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind,
-    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
-    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticUsage, HtmlSemanticValue,
-    HtmlUsedAutocapitalizationBranch, HtmlUsedAutocapitalizationHint, HtmlUsedAutocorrectionState,
+    HtmlOwnAutocapitalizationHint, HtmlSemanticCancellation, HtmlSemanticContext,
+    HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
+    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
+    HtmlSemanticResource, HtmlSemanticUsage, HtmlSemanticValue, HtmlUsedAutocapitalizationBranch,
+    HtmlUsedAutocapitalizationHint, HtmlUsedAutocorrectionState,
 };
 
 // Literal expectations follow HTML 877d's four distinct algorithms and the
 // selected execCommand 85de9ff4 editing-host-of definition, not browser helpers.
 fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(2000, 100000, 2000, 1000000, 2000, 10, 10, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
-    let d = b
-        .add_document(
-            HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Unavailable,
-            HtmlCaptureRegistryInput::Null,
-        )
-        .unwrap();
-    (b, d)
+    builder_with(HtmlCaptureLimits::new(
+        2000, 100000, 2000, 1000000, 2000, 10, 10, 16_777_216,
+    ))
 }
 fn expanded(
     b: &mut HtmlCaptureBuilder,
@@ -1214,35 +1204,7 @@ fn foreign_and_non_element_getter_targets_are_inapplicable() {
 }
 
 fn capped(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLimits {
-    let l = limits();
-    HtmlSemanticLimits::new(
-        if resource == HtmlSemanticResource::Work {
-            cap
-        } else {
-            l.work()
-        },
-        if resource == HtmlSemanticResource::OutputRecords {
-            cap
-        } else {
-            l.output_records()
-        },
-        if resource == HtmlSemanticResource::ScratchRecords {
-            cap
-        } else {
-            l.scratch_records()
-        },
-        l.integer_digits(),
-        if resource == HtmlSemanticResource::AllocatedBytes {
-            cap
-        } else {
-            l.allocated_bytes()
-        },
-        if resource == HtmlSemanticResource::NestedOutputRecords {
-            cap
-        } else {
-            l.nested_output_records()
-        },
-    )
+    cap_resources(limits(), COLLECTION_RESOURCES, resource, cap)
 }
 fn resource_value(usage: HtmlSemanticUsage, resource: HtmlSemanticResource) -> usize {
     match resource {

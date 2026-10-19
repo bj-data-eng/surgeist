@@ -1,13 +1,14 @@
-use crate::semantics::support::builder;
-use crate::semantics::support::session;
+use crate::semantics::support::{
+    builder, collection_limits as resource_limits, semantic_limits as limits, session,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlControlFacts, HtmlControlFactsLimits,
     HtmlControlFlag, HtmlOptionControlState, HtmlSemanticCancellation, HtmlSemanticContext,
     HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind,
-    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
-    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
+    HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn element(
@@ -76,9 +77,6 @@ fn context(
         0,
     )
     .unwrap()
-}
-fn limits() -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(20000000, 100, 1000, 0, 1000000, 100000)
 }
 
 fn request(id: &HtmlCaptureSubjectId) -> HtmlSemanticRequest {
@@ -584,37 +582,6 @@ fn changed_current_state_at_one_capture_recomputes_with_distinct_context_identit
         rb.results()[0].request().query().source_clause(),
         HtmlSemanticQuery::SelectValueMissing.source_clause()
     );
-}
-
-fn resource_limits(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(
-        if resource == HtmlSemanticResource::Work {
-            cap
-        } else {
-            limits().work()
-        },
-        if resource == HtmlSemanticResource::OutputRecords {
-            cap
-        } else {
-            100
-        },
-        if resource == HtmlSemanticResource::ScratchRecords {
-            cap
-        } else {
-            1000
-        },
-        0,
-        if resource == HtmlSemanticResource::AllocatedBytes {
-            cap
-        } else {
-            1000000
-        },
-        if resource == HtmlSemanticResource::NestedOutputRecords {
-            cap
-        } else {
-            100000
-        },
-    )
 }
 
 #[test]

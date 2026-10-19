@@ -1,31 +1,21 @@
+use crate::semantics::support::{
+    compact_builder_without_registries as builder,
+    small_semantic_limits_with_integer_digits as limits,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
-    HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
+    HtmlCaptureRegistryInput, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
     HtmlControlCurrentValue, HtmlDirectionality, HtmlDocumentLanguageFallback, HtmlLanguage,
     HtmlLanguageDirectionError, HtmlLanguageDirectionFacts, HtmlLanguageDirectionLimits,
-    HtmlLanguageOrigin, HtmlPragmaLanguage, HtmlProtocolLanguage, HtmlScriptingStatus,
-    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact,
-    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
-    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession,
-    HtmlSemanticValue, HtmlSlotAssignedNodes,
+    HtmlLanguageOrigin, HtmlPragmaLanguage, HtmlProtocolLanguage, HtmlSemanticCancellation,
+    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
+    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticValue,
+    HtmlSlotAssignedNodes,
 };
 
-fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(1000, 10000, 1000, 100000, 1000, 0, 0, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
-    let d = b
-        .add_document(
-            HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Unavailable,
-            HtmlCaptureRegistryInput::Null,
-        )
-        .unwrap();
-    (b, d)
-}
 fn element(
     b: &mut HtmlCaptureBuilder,
     d: &HtmlCaptureBuilderSubject,
@@ -83,9 +73,6 @@ fn context(c: &HtmlCapture, facts: Option<HtmlLanguageDirectionFacts>) -> HtmlSe
         input = input.with_language_direction(facts);
     }
     HtmlSemanticContext::new(c, c.host_facts_revision().clone(), input, 0).unwrap()
-}
-fn limits() -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(1000000, 100, 1000, 1000, 1000000, 1000)
 }
 fn query(
     c: &HtmlCapture,

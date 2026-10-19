@@ -1,12 +1,16 @@
+use crate::semantics::support::{
+    compact_builder_without_registries as builder,
+    small_semantic_limits_with_integer_digits as limits,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
-    HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue,
+    HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue,
     HtmlCapturedShadowProperties, HtmlControlFacts, HtmlControlFactsError, HtmlControlFactsLimits,
     HtmlControlFlag, HtmlCustomControlClassification, HtmlFormAssociation,
     HtmlFormAssociationState, HtmlFormOwner, HtmlFormOwnerOrigin, HtmlInputControlState,
-    HtmlOptionControlState, HtmlScriptingStatus, HtmlSemanticCancellation, HtmlSemanticContext,
+    HtmlOptionControlState, HtmlSemanticCancellation, HtmlSemanticContext,
     HtmlSemanticContextError, HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind,
     HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
     HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUnsupported,
@@ -88,20 +92,6 @@ fn context_rejects_false_custom_association_but_preserves_native_membership() {
     );
 }
 
-fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(1000, 10000, 1000, 100000, 1000, 0, 0, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
-    let d = b
-        .add_document(
-            HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Unavailable,
-            HtmlCaptureRegistryInput::Null,
-        )
-        .unwrap();
-    (b, d)
-}
 fn element(
     b: &mut HtmlCaptureBuilder,
     d: &HtmlCaptureBuilderSubject,
@@ -181,9 +171,6 @@ fn context(
         input = input.with_controls(controls);
     }
     HtmlSemanticContext::new(c, c.host_facts_revision().clone(), input, max).unwrap()
-}
-fn limits() -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(1000000, 100, 1000, 1000, 1000000, 1000)
 }
 fn query(
     c: &HtmlCapture,

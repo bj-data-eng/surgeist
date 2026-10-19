@@ -1,6 +1,4 @@
-use crate::semantics::support::builder;
-use crate::semantics::support::context;
-use crate::semantics::support::session;
+use crate::semantics::support::{ALL_RESOURCES, builder, cap_resources, context, session};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
@@ -731,38 +729,7 @@ fn irrelevant_competitor_content_and_foreign_meta_do_not_influence() {
     );
 }
 fn capped(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(
-        if resource == HtmlSemanticResource::Work {
-            cap
-        } else {
-            20000000
-        },
-        if resource == HtmlSemanticResource::OutputRecords {
-            cap
-        } else {
-            100
-        },
-        if resource == HtmlSemanticResource::ScratchRecords {
-            cap
-        } else {
-            1000
-        },
-        if resource == HtmlSemanticResource::IntegerDigits {
-            cap
-        } else {
-            10000
-        },
-        if resource == HtmlSemanticResource::AllocatedBytes {
-            cap
-        } else {
-            1000000
-        },
-        if resource == HtmlSemanticResource::NestedOutputRecords {
-            cap
-        } else {
-            100000
-        },
-    )
+    cap_resources(limits(), ALL_RESOURCES, resource, cap)
 }
 #[test]
 fn refresh_exact_resources_and_one_short_caps_are_sticky_and_cleanup_scratch() {

@@ -1,5 +1,7 @@
-use crate::semantics::support::builder;
-use crate::semantics::support::session;
+use crate::semantics::support::{
+    SCALAR_AND_SCRATCH_RESOURCES, builder, cap_resources,
+    semantic_limits_with_integer_digits as limits, session,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
@@ -89,9 +91,6 @@ fn association(
         id.clone(),
         HtmlFormAssociationState::EstablishedCurrent(owner.cloned()),
     )
-}
-fn limits() -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(20000000, 100, 1000, 1000000, 1000000, 100000)
 }
 
 fn request(id: &HtmlCaptureSubjectId) -> HtmlSemanticRequest {
@@ -521,29 +520,11 @@ fn noncheckable_roles_default_type_and_foreign_names_remain_distinct() {
 }
 
 fn resource_limits(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(
-        if resource == HtmlSemanticResource::Work {
-            cap
-        } else {
-            20000000
-        },
-        if resource == HtmlSemanticResource::OutputRecords {
-            cap
-        } else {
-            100
-        },
-        if resource == HtmlSemanticResource::ScratchRecords {
-            cap
-        } else {
-            1000
-        },
-        1000000,
-        if resource == HtmlSemanticResource::AllocatedBytes {
-            cap
-        } else {
-            1000000
-        },
-        0,
+    cap_resources(
+        HtmlSemanticLimits::new(20000000, 100, 1000, 1000000, 1000000, 0),
+        SCALAR_AND_SCRATCH_RESOURCES,
+        resource,
+        cap,
     )
 }
 #[test]

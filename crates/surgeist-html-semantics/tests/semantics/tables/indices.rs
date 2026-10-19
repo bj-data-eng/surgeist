@@ -1,13 +1,14 @@
-use crate::semantics::support::builder;
-use crate::semantics::support::context;
+use crate::semantics::support::{
+    builder, context, scalar_limits as resource_limits, scalar_semantic_limits as limits,
+    session_without_raw_values as session,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
     HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticDependencies, HtmlSemanticFact,
-    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
-    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession,
-    HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlSemanticFailureKind, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
+    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn element(
@@ -41,17 +42,6 @@ fn children(
     b.establish_children(p, cs).unwrap();
 }
 
-fn limits() -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(20000000, 100, 0, 0, 1000000, 0)
-}
-fn session<'a>(
-    c: &'a HtmlCapture,
-    cx: &'a HtmlSemanticContext,
-    l: HtmlSemanticLimits,
-    cancel: HtmlSemanticCancellation,
-) -> HtmlSemanticSession<'a> {
-    HtmlSemanticSession::new(c, cx, HtmlValueInterpreter::new(0), l, cancel).unwrap()
-}
 fn request(id: &HtmlCaptureSubjectId, q: HtmlSemanticQuery) -> HtmlSemanticRequest {
     HtmlSemanticRequest::new(id.clone(), q)
 }
@@ -433,28 +423,6 @@ fn ignored_attributes_spans_text_and_member_descendants_need_no_raw_or_nested_bu
     assert_eq!(value(&report), &HtmlSemanticValue::Known(Some(0)));
     assert_eq!(report.usage().nested_output_records(), 0);
     assert_eq!(report.usage().peak_scratch_records(), 0);
-}
-fn resource_limits(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(
-        if resource == HtmlSemanticResource::Work {
-            cap
-        } else {
-            limits().work()
-        },
-        if resource == HtmlSemanticResource::OutputRecords {
-            cap
-        } else {
-            100
-        },
-        0,
-        0,
-        if resource == HtmlSemanticResource::AllocatedBytes {
-            cap
-        } else {
-            1000000
-        },
-        0,
-    )
 }
 #[test]
 fn exact_one_short_work_output_and_physical_batch_bytes_stop_stickily_without_interim_snapshot() {

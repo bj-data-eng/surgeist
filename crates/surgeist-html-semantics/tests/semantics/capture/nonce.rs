@@ -1,9 +1,8 @@
+use crate::semantics::support::builder_with;
 use surgeist_html::*;
-use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError, HtmlCaptureLimits,
     HtmlCaptureRegistryInput, HtmlCaptureResource, HtmlCapturedIsValue, HtmlCapturedNodeKind,
-    HtmlScriptingStatus,
 };
 
 fn name(ns: Namespace, local: &str) -> QualifiedName {
@@ -93,18 +92,9 @@ fn nonce_insertion_conjunction_preserves_unknown_and_false_independently() {
     );
 }
 fn builder(units: usize) -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(10, 10, 10, units, 10, 0, 0, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
-    let d = b
-        .add_document(
-            HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Unavailable,
-            HtmlCaptureRegistryInput::Null,
-        )
-        .unwrap();
-    (b, d)
+    builder_with(HtmlCaptureLimits::new(
+        10, 10, 10, units, 10, 0, 0, 16_777_216,
+    ))
 }
 #[test]
 fn captured_slot_is_one_shot_independent_and_unit_capped() {

@@ -1,30 +1,16 @@
-use crate::semantics::support::session;
+use crate::semantics::support::{builder_without_registries as builder, session};
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits,
-    HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlControlCurrentValue,
-    HtmlLanguageDirectionError, HtmlLanguageDirectionFacts, HtmlLanguageDirectionLimits,
-    HtmlScriptingStatus, HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput,
-    HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing,
-    HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource,
-    HtmlSemanticSession, HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
+    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlControlCurrentValue, HtmlLanguageDirectionError,
+    HtmlLanguageDirectionFacts, HtmlLanguageDirectionLimits, HtmlSemanticCancellation,
+    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
+    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUnsupported,
+    HtmlSemanticValue,
 };
 
-fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(1000, 100000, 1000, 1000000, 1000, 0, 0, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
-    let d = b
-        .add_document(
-            HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Unavailable,
-            HtmlCaptureRegistryInput::Null,
-        )
-        .unwrap();
-    (b, d)
-}
 fn element(
     b: &mut HtmlCaptureBuilder,
     d: &HtmlCaptureBuilderSubject,

@@ -1,34 +1,20 @@
+use crate::semantics::support::compact_builder_without_registries as builder;
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
-    HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCapturedIsValue, HtmlCapturedNodeKind,
+    HtmlCaptureRegistryInput, HtmlCapturedIsValue, HtmlCapturedNodeKind,
     HtmlCapturedShadowProperties, HtmlDesignMode, HtmlDocumentDesignModeFact,
     HtmlGlobalInheritanceError, HtmlGlobalInheritanceFacts, HtmlGlobalInheritanceLimits,
-    HtmlGlobalInheritanceProducerId, HtmlGlobalInheritanceRevision, HtmlScriptingStatus,
-    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact,
-    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
-    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUnsupported,
-    HtmlSemanticValue, HtmlSpellcheckDefaultBehavior, HtmlSpellcheckDefaultFact,
-    HtmlTranslationMode,
+    HtmlGlobalInheritanceProducerId, HtmlGlobalInheritanceRevision, HtmlSemanticCancellation,
+    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticRequest,
+    HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlSpellcheckDefaultBehavior, HtmlSpellcheckDefaultFact, HtmlTranslationMode,
 };
 
 // Expected predicates follow HTML 877d6146487f and ONLY the delegated
 // editable definition at w3c/editing 85de9ff4a981; no browser oracle helpers.
-fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(1000, 10000, 1000, 100000, 1000, 0, 0, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
-    let d = b
-        .add_document(
-            HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Unavailable,
-            HtmlCaptureRegistryInput::Null,
-        )
-        .unwrap();
-    (b, d)
-}
 fn expanded(
     b: &mut HtmlCaptureBuilder,
     d: &HtmlCaptureBuilderSubject,

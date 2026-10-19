@@ -1,5 +1,4 @@
-use crate::semantics::support::builder;
-use crate::semantics::support::context;
+use crate::semantics::support::{builder, context};
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlCaptureDocumentId;
 use surgeist_html_semantics::{

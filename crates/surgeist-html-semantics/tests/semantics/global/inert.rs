@@ -1,34 +1,23 @@
+use crate::semantics::support::{
+    compact_builder_without_registries as builder,
+    small_semantic_limits_with_integer_digits as limits,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits,
-    HtmlCaptureRegistryInput, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
-    HtmlDocumentFlatTreeRelation, HtmlDocumentModalBlocking, HtmlDocumentModalFact,
-    HtmlFlatTreeProducerId, HtmlFlatTreeRevision, HtmlInertFactError, HtmlInertFactLimits,
-    HtmlInertFacts, HtmlInertNodeFact, HtmlScriptingStatus, HtmlSemanticCancellation,
-    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact,
-    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
-    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession,
-    HtmlSemanticValue,
+    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
+    HtmlCapturedIsValue, HtmlCapturedShadowProperties, HtmlDocumentFlatTreeRelation,
+    HtmlDocumentModalBlocking, HtmlDocumentModalFact, HtmlFlatTreeProducerId, HtmlFlatTreeRevision,
+    HtmlInertFactError, HtmlInertFactLimits, HtmlInertFacts, HtmlInertNodeFact,
+    HtmlScriptingStatus, HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput,
+    HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
+    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
+    HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticValue,
 };
 
 // Expectations follow HTML 877d6146487f §6.3.1–2 and the selected CSS Shadow
 // 50337328484f §4.1 relation producer contract. These tests supply actual captured
 // records; HTML consumes the supplied relations and never computes flattening.
-fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(1000, 10000, 1000, 100000, 1000, 0, 0, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
-    let d = b
-        .add_document(
-            HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Unavailable,
-            HtmlCaptureRegistryInput::Null,
-        )
-        .unwrap();
-    (b, d)
-}
 fn expanded(
     b: &mut HtmlCaptureBuilder,
     d: &HtmlCaptureBuilderSubject,
@@ -121,9 +110,6 @@ fn context(c: &HtmlCapture, facts: Option<HtmlInertFacts>) -> HtmlSemanticContex
         0,
     )
     .unwrap()
-}
-fn limits() -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(1000000, 100, 1000, 1000, 1000000, 1000)
 }
 fn requests(c: &HtmlCapture, nodes: &[&HtmlCaptureBuilderSubject]) -> Vec<HtmlSemanticRequest> {
     nodes

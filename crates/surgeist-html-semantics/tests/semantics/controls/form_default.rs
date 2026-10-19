@@ -1,11 +1,10 @@
+use crate::semantics::support::small_builder_without_registries as builder;
 use surgeist_html::*;
-use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits,
-    HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue,
-    HtmlCapturedShadowProperties, HtmlControlFacts, HtmlControlFactsLimits, HtmlDefaultButton,
-    HtmlFormAssociation, HtmlFormAssociationState, HtmlFormOwnerOrigin,
-    HtmlImplicitSubmissionBlockingFields, HtmlImplicitSubmissionCondition, HtmlScriptingStatus,
+    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
+    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedShadowProperties, HtmlControlFacts,
+    HtmlControlFactsLimits, HtmlDefaultButton, HtmlFormAssociation, HtmlFormAssociationState,
+    HtmlFormOwnerOrigin, HtmlImplicitSubmissionBlockingFields, HtmlImplicitSubmissionCondition,
     HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput,
     HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
     HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
@@ -19,20 +18,6 @@ fn attributes(values: &[(&str, &str)]) -> OrderedAttributes {
             .map(|(n, v)| Attribute::new(QualifiedName::new(Namespace::none(), None, *n), *v)),
     )
     .unwrap()
-}
-fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 1000, 100, 100000, 100, 0, 0, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
-    let d = b
-        .add_document(
-            HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Unavailable,
-            HtmlCaptureRegistryInput::Null,
-        )
-        .unwrap();
-    (b, d)
 }
 fn element(
     b: &mut HtmlCaptureBuilder,

@@ -1,21 +1,20 @@
+use crate::semantics::support::small_builder_with_short_text as builder;
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
-    HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCapturedIsValue, HtmlRelAssociation,
-    HtmlRelBlobEntry, HtmlRelBookmarkSection, HtmlRelContextReadback, HtmlRelDefinition,
-    HtmlRelDefinitionId, HtmlRelDefinitionKey, HtmlRelExpectedRevisions, HtmlRelExtensionEffect,
-    HtmlRelFacts, HtmlRelFactsError, HtmlRelFactsInput, HtmlRelFactsLimits, HtmlRelGrammarInput,
+    HtmlCaptureRegistryInput, HtmlCapturedIsValue, HtmlRelAssociation, HtmlRelBlobEntry,
+    HtmlRelBookmarkSection, HtmlRelContextReadback, HtmlRelDefinition, HtmlRelDefinitionId,
+    HtmlRelDefinitionKey, HtmlRelExpectedRevisions, HtmlRelExtensionEffect, HtmlRelFacts,
+    HtmlRelFactsError, HtmlRelFactsInput, HtmlRelFactsLimits, HtmlRelGrammarInput,
     HtmlRelMissingFact, HtmlRelNoopenerInput, HtmlRelProducerId, HtmlRelRegistryOccurrence,
     HtmlRelRegistryStatus, HtmlRelRevision, HtmlRelSameSiteObservation, HtmlRelSectionId,
     HtmlRelSupportedTokens, HtmlRelUrlGrammar, HtmlRelUrlKey, HtmlRelUrlObservation,
-    HtmlScriptingStatus, HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput,
-    HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing,
-    HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource,
-    HtmlSemanticSession, HtmlSemanticValue,
+    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact,
+    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
+    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession,
+    HtmlSemanticValue,
 };
-use surgeist_html_semantics::{
-    HtmlHostFactsRevision, HtmlRelOriginId, HtmlRelSettingsId, HtmlRelUrlId,
-};
+use surgeist_html_semantics::{HtmlRelOriginId, HtmlRelSettingsId, HtmlRelUrlId};
 
 fn attrs(values: &[(&str, &str)]) -> OrderedAttributes {
     OrderedAttributes::new(
@@ -24,20 +23,6 @@ fn attrs(values: &[(&str, &str)]) -> OrderedAttributes {
             .map(|(n, v)| Attribute::new(QualifiedName::new(Namespace::none(), None, *n), *v)),
     )
     .unwrap()
-}
-fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 1000, 100, 10000, 100, 0, 0, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
-    let d = b
-        .add_document(
-            HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Unavailable,
-            HtmlCaptureRegistryInput::Null,
-        )
-        .unwrap();
-    (b, d)
 }
 fn element(
     b: &mut HtmlCaptureBuilder,

@@ -1,30 +1,18 @@
-use crate::semantics::support::context;
+use crate::semantics::support::{
+    builder_without_registries as builder, context, small_semantic_limits as limits,
+};
+// Text getters do not consume raw attributes; zero is intentional.
+use crate::semantics::support::session_without_raw_values as session;
 use surgeist_html::*;
-use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits,
-    HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue,
-    HtmlCapturedShadowProperties, HtmlDocumentTitle, HtmlScriptingStatus, HtmlSemanticCancellation,
-    HtmlSemanticContext, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
-    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticSession, HtmlSemanticUnsupported,
-    HtmlSemanticValue,
+    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
+    HtmlDocumentTitle, HtmlSemanticCancellation, HtmlSemanticFact, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
+    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticSession,
+    HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
-fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(1000, 100000, 1000, 1000000, 1000, 0, 0, 16_777_216),
-        HtmlHostFactsRevision::fresh(),
-    );
-    let d = b
-        .add_document(
-            HtmlDocumentMode::NoQuirks,
-            HtmlScriptingStatus::Unavailable,
-            HtmlCaptureRegistryInput::Null,
-        )
-        .unwrap();
-    (b, d)
-}
 fn expanded(
     b: &mut HtmlCaptureBuilder,
     d: &HtmlCaptureBuilderSubject,
@@ -63,18 +51,6 @@ fn children(
     b.establish_children(p, list).unwrap();
 }
 
-fn limits() -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(1000000, 100, 1000, 0, 1000000, 10000)
-}
-fn session<'a>(
-    c: &'a HtmlCapture,
-    cx: &'a HtmlSemanticContext,
-    l: HtmlSemanticLimits,
-    cancel: HtmlSemanticCancellation,
-) -> HtmlSemanticSession<'a> {
-    // Text getters do not consume raw attributes; zero is intentional.
-    HtmlSemanticSession::new(c, cx, HtmlValueInterpreter::new(0), l, cancel).unwrap()
-}
 fn req(id: &HtmlCaptureSubjectId, q: HtmlSemanticQuery) -> HtmlSemanticRequest {
     HtmlSemanticRequest::new(id.clone(), q)
 }

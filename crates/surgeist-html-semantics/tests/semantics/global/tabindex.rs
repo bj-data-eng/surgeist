@@ -1,14 +1,15 @@
-use crate::semantics::support::builder;
-use crate::semantics::support::context;
-use crate::semantics::support::session;
+use crate::semantics::support::{
+    builder, context, scalar_limits as capped, semantic_limits_with_integer_digits as limits,
+    session,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
     HtmlSemanticCancellation, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind,
-    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
-    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
-    HtmlTabIndexOrigin, HtmlTabIndexReadback,
+    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
+    HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue, HtmlTabIndexOrigin,
+    HtmlTabIndexReadback,
 };
 
 fn element(
@@ -52,10 +53,6 @@ fn children(
     cs: &[HtmlCaptureBuilderSubject],
 ) {
     b.establish_children(p, cs).unwrap();
-}
-
-fn limits() -> HtmlSemanticLimits {
-    HtmlSemanticLimits::new(20000000, 100, 1000, 1000000, 1000000, 100000)
 }
 
 fn request(id: &HtmlCaptureSubjectId, q: HtmlSemanticQuery) -> HtmlSemanticRequest {
@@ -296,29 +293,6 @@ fn exact_utf16_prefix_recovery_retains_surrogates_and_admits_ignored_suffix() {
         readback(&get(&c, &id, 2)).origin(),
         HtmlTabIndexOrigin::ParseFailureDefault
     );
-}
-fn capped(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLimits {
-    let l = limits();
-    HtmlSemanticLimits::new(
-        if resource == HtmlSemanticResource::Work {
-            cap
-        } else {
-            l.work()
-        },
-        if resource == HtmlSemanticResource::OutputRecords {
-            cap
-        } else {
-            l.output_records()
-        },
-        0,
-        0,
-        if resource == HtmlSemanticResource::AllocatedBytes {
-            cap
-        } else {
-            l.allocated_bytes()
-        },
-        0,
-    )
 }
 #[test]
 fn fixed_numeric_projection_ignores_digit_and_scratch_caps_including_huge_inputs() {

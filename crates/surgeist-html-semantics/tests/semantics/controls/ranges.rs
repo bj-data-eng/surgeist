@@ -1,12 +1,12 @@
+use crate::semantics::support::context;
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlProgressState, HtmlScriptingStatus,
-    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact,
-    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticQuery, HtmlSemanticReport,
-    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticSession,
-    HtmlSemanticValue,
+    HtmlSemanticCancellation, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
+    HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource,
+    HtmlSemanticResult, HtmlSemanticSession, HtmlSemanticValue,
 };
 
 fn capture(
@@ -48,15 +48,6 @@ fn attributes(values: &[(&'static str, &str)]) -> Vec<(&'static str, DocumentStr
 }
 fn limits() -> HtmlSemanticLimits {
     HtmlSemanticLimits::new(1_000_000, 100, 0, 0, 1_000_000, 0)
-}
-fn context(capture: &HtmlCapture) -> HtmlSemanticContext {
-    HtmlSemanticContext::new(
-        capture,
-        capture.host_facts_revision().clone(),
-        HtmlSemanticContextInput::new(vec![]),
-        0,
-    )
-    .unwrap()
 }
 fn run(
     local: &str,
