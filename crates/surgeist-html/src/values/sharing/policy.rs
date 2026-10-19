@@ -1102,16 +1102,28 @@ impl<T: Value> Operation<'_, T> {
         }
         match action.phase {
             Phase::Hash => {
+                #[cfg(test)]
+                if !self.left.started {
+                    tests::observe_execution_eligibility_check();
+                }
                 if !self.left.started && !self.input.eligible() {
+                    #[cfg(test)]
+                    tests::observe_execution_eligibility_bypass();
                     self.bypass();
                     return Ok(HtmlValuePoolProgress::Finished);
                 }
                 for _ in 0..action.reads {
+                    #[cfg(test)]
+                    let unit = self.left.units;
                     let read = self.input.read(&mut self.left)?;
+                    #[cfg(test)]
+                    tests::observe_execution_hash(unit);
                     self.payload = self.payload.add(read.payload)?;
                     if self.payload.utf16_units > MAX_UNITS
                         || self.payload.bytes > MAX_PAYLOAD_BYTES
                     {
+                        #[cfg(test)]
+                        tests::observe_execution_payload_bypass();
                         self.bypass();
                         return Ok(HtmlValuePoolProgress::Finished);
                     }
@@ -1131,12 +1143,23 @@ impl<T: Value> Operation<'_, T> {
                 // Execute the entire length-qualified prepaid run, including
                 // its suffix after a mismatch: inspected-byte work is literal.
                 for _ in 0..action.reads {
+                    #[cfg(test)]
+                    let left_unit = self.left.units;
                     let left = self.input.read(&mut self.left)?;
+                    #[cfg(test)]
+                    tests::observe_execution_compare_input(left_unit);
+                    #[cfg(test)]
+                    let right_unit = self.right.units;
                     let right = self
                         .candidate
                         .as_ref()
                         .expect("admitted candidate")
                         .read(&mut self.right)?;
+                    #[cfg(test)]
+                    {
+                        tests::observe_execution_compare_candidate(right_unit);
+                        tests::observe_execution_compare_pair(left_unit, right_unit);
+                    }
                     equal &= left.word == right.word;
                 }
                 if !equal {
