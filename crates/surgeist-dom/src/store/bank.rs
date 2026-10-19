@@ -954,6 +954,20 @@ enum WeakCustody {
     Record(Weak<RecordCustody>),
 }
 
+impl WeakCustody {
+    /// The target body stays allocated until this Weak is destroyed, even
+    /// after its value/destructor has reached strong zero.
+    fn backing_usage(&self) -> Usage {
+        Usage::new(
+            match self {
+                Self::Page(_) => size_of::<PageCustody>(),
+                Self::Record(_) => size_of::<RecordCustody>(),
+            },
+            0,
+        )
+    }
+}
+
 enum LiveCustody {
     Page(Arc<PageCustody>),
     Record(Arc<RecordCustody>),
@@ -962,9 +976,6 @@ enum LiveCustody {
 struct RegistryEntry {
     nonce: u64,
     custody: WeakCustody,
-    // Weak target bodies remain allocated after their value/destructor dies.
-    // The Weak handle's inline size is in the registry leaf capacity already.
-    _backing: Debit,
 }
 
 enum RegistryNode {
@@ -1623,18 +1634,30 @@ fn commit_registration(
     backing: Debit,
     nonce: u64,
 ) {
+    // Navigation and private invariant checks keep the incoming Weak paired
+    // with its own admitted target allowance, including while unwinding.
+    let incoming = Held::new(RegistryEntry { nonce, custody }, backing);
+    assert_eq!(
+        incoming.debit().usage(),
+        incoming.value().custody.backing_usage()
+    );
     let root = state.root_mut(kind);
     attach_registry_path(root, identity.key(), ID_SHIFT, path);
-    let entry = registry_entry_mut(root, identity.key(), ID_SHIFT);
+    let (entry, leaf_debit) = registry_entry_mut(root, identity.key(), ID_SHIFT);
     assert!(
         entry.is_none(),
         "new custody identity has no active registry entry"
     );
-    *entry = Some(RegistryEntry {
-        nonce,
-        custody,
-        _backing: backing,
-    });
+    let (value, backing) = incoming.into_parts();
+    match leaf_debit.absorb(backing) {
+        Ok(()) => *entry = Some(value),
+        Err(backing) => {
+            // A foreign domain is an invariant violation, but it must still
+            // destroy the Weak before returning its original target credit.
+            drop(Held::new(value, backing));
+            panic!("registry leaf and weak target use the same ledger");
+        }
+    }
 }
 
 fn registry_entry(
@@ -1660,14 +1683,16 @@ fn registry_entry_mut(
     root: &mut Option<Box<RegistryNode>>,
     key: u64,
     shift: u32,
-) -> &mut Option<RegistryEntry> {
+) -> (&mut Option<RegistryEntry>, &mut Debit) {
     #[cfg(test)]
     metric(Event::BankPageVisited);
     match root
         .as_deref_mut()
         .expect("prepared registry path is attached")
     {
-        RegistryNode::Leaf { entries, .. } => &mut entries[(key & MASK as u64) as usize],
+        RegistryNode::Leaf { entries, _debit } => {
+            (&mut entries[(key & MASK as u64) as usize], _debit)
+        }
         RegistryNode::Branch { children, .. } => registry_entry_mut(
             &mut children[((key >> shift) & MASK as u64) as usize],
             key,
@@ -1789,10 +1814,19 @@ fn remove_registry_entry(root: &mut Option<Box<RegistryNode>>, key: u64, shift: 
     #[cfg(test)]
     metric(Event::BankPageVisited);
     let empty = match node {
-        RegistryNode::Leaf { entries, .. } => {
+        RegistryNode::Leaf { entries, _debit } => {
             let entry = &mut entries[(key & MASK as u64) as usize];
             if entry.as_ref().is_some_and(|entry| entry.nonce == nonce) {
-                *entry = None;
+                let removed = entry.take().expect("matching registry entry");
+                let backing = removed.custody.backing_usage();
+                drop(removed);
+                // The exact Weak is gone before its fixed target allowance is
+                // released. Stale nonces neither remove nor debit a new entry.
+                drop(
+                    _debit
+                        .split(backing)
+                        .expect("leaf owns each weak target allowance"),
+                );
             }
             entries.iter().all(Option::is_none)
         }
@@ -4574,6 +4608,152 @@ mod controlled_tests {
         assert_union(&registry, &[(&next, &next_custody)]);
         assert_eq!(ledger.total(), CustodyRegistry::administration_usage());
         assert_eq!(external.value().marker, 7);
+    }
+
+    #[test]
+    fn occupied_registry_entry_unwind_keeps_incoming_weak_and_credit_together() {
+        let (ledger, registry) = new_registry();
+        let value = value(41);
+        let usage = supplied_usage(&value);
+        let record = ControlledRecord::new(value, usage, &registry, unlimited).unwrap();
+        // Move the actual exclusively owned registry state out of its mutex;
+        // this intentionally invalid private commit must not poison a mutex
+        // or invoke unrelated lock-unwind behavior in the ownership witness.
+        let Ok(state) = Arc::try_unwrap(registry.state) else {
+            panic!("one actual registry owner")
+        };
+        let mut state = state.into_inner().unwrap();
+        let RecordRetention::Registered(custody) = &record.custody else {
+            panic!("actual controlled record")
+        };
+        let identity = record.record.identity;
+        let before_weak = Arc::weak_count(custody);
+        let before = ledger.total();
+        let plan = state
+            .plan(RegistryKind::Record, record.record.identity)
+            .unwrap();
+        assert!(plan.missing.is_none());
+        let backing = ledger
+            .retain(Usage::new(size_of::<RecordCustody>(), 0), unlimited)
+            .unwrap();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            commit_registration(
+                &mut state,
+                RegistryKind::Record,
+                record.record.identity,
+                WeakCustody::Record(Arc::downgrade(custody)),
+                None,
+                backing,
+                plan.nonce,
+            );
+        }));
+        assert!(result.is_err());
+        assert_eq!(Arc::weak_count(custody), before_weak);
+        assert_eq!(ledger.total(), before);
+        assert_eq!(record.value().marker, 41);
+        assert_eq!(record.value().text.as_slice(), &[41]);
+        drop(record);
+        assert!(state.live(RegistryKind::Record, identity).is_none());
+        drop(state);
+        assert_eq!(ledger.total(), Usage::ZERO);
+    }
+
+    #[test]
+    fn mixed_page_and_record_weak_allowances_survive_strong_zero_until_exact_cleanup() {
+        fn credits(node: &RegistryNode) -> (usize, usize, usize) {
+            match node {
+                RegistryNode::Branch { children, _debit } => {
+                    assert_eq!(
+                        _debit.usage(),
+                        Usage::new(
+                            size_of::<RegistryNode>()
+                                + children.capacity() * size_of::<Option<Box<RegistryNode>>>(),
+                            0
+                        ),
+                    );
+                    children
+                        .iter()
+                        .flatten()
+                        .map(|child| credits(child))
+                        .fold((0, 0, 0), |sum, next| {
+                            (sum.0 + next.0, sum.1 + next.1, sum.2 + next.2)
+                        })
+                }
+                RegistryNode::Leaf { entries, _debit } => {
+                    let mut raw = size_of::<RegistryNode>()
+                        + entries.capacity() * size_of::<Option<RegistryEntry>>();
+                    let mut counts = (0, 0, 0);
+                    for entry in entries.iter().flatten() {
+                        match &entry.custody {
+                            WeakCustody::Page(value) => {
+                                raw += size_of::<PageCustody>();
+                                counts.0 += 1;
+                                counts.2 += usize::from(value.strong_count() == 0);
+                            }
+                            WeakCustody::Record(value) => {
+                                raw += size_of::<RecordCustody>();
+                                counts.1 += 1;
+                                counts.2 += usize::from(value.strong_count() == 0);
+                            }
+                        }
+                    }
+                    assert_eq!(_debit.usage(), Usage::new(raw, 0));
+                    counts
+                }
+            }
+        }
+        fn all_credits(registry: &CustodyRegistry) -> (usize, usize, usize) {
+            let state = registry.lock();
+            let pages = credits(state.pages.as_deref().unwrap());
+            let records = credits(state.records.as_deref().unwrap());
+            (
+                pages.0 + records.0,
+                pages.1 + records.1,
+                pages.2 + records.2,
+            )
+        }
+        let (ledger, registry) = new_registry();
+        let mut historical = Bank::default();
+        for (index, marker) in [(0, 17), (WIDTH + 1, 29)] {
+            let value = value(marker);
+            let totals = describe(&value).unwrap();
+            historical.set(index, value, false, totals).unwrap();
+        }
+        let control = historical
+            .adopt_controlled(&registry, |value| Ok(supplied_usage(value)), unlimited)
+            .unwrap();
+        let alias = control.clone();
+        assert_eq!(all_credits(&registry), (3, 2, 0));
+        assert_union(&registry, &[(&historical, &control), (&historical, &alias)]);
+        let retained = ledger.total();
+        drop(control);
+        registry.reconcile_releases();
+        assert_eq!(ledger.total(), retained);
+        assert_eq!(all_credits(&registry), (3, 2, 0));
+        drop(alias);
+        // Actual custodians have died, but their queued release tickets have
+        // not yet removed the five Weak occurrences from the registry leaves.
+        assert_eq!(all_credits(&registry), (3, 2, 5));
+        assert_eq!(ledger.total(), registry.inspect_storage());
+        assert_eq!(historical.get(0).unwrap().marker, 17);
+        assert_eq!(historical.get(WIDTH + 1).unwrap().marker, 29);
+        registry.reconcile_releases();
+        assert_eq!(ledger.total(), CustodyRegistry::administration_usage());
+        {
+            let state = registry.lock();
+            assert!(state.pages.is_none() && state.records.is_none() && state.released.is_none());
+        }
+        let readopted = historical
+            .adopt_controlled(&registry, |value| Ok(supplied_usage(value)), unlimited)
+            .unwrap();
+        assert_eq!(all_credits(&registry), (3, 2, 0));
+        assert_union(&registry, &[(&historical, &readopted)]);
+        assert_eq!(historical.get(0).unwrap().text.as_slice(), &[17]);
+        assert_eq!(historical.get(WIDTH + 1).unwrap().text.as_slice(), &[29]);
+        drop(historical);
+        drop(readopted);
+        registry.reconcile_releases();
+        assert_eq!(ledger.total(), CustodyRegistry::administration_usage());
     }
 
     #[test]
