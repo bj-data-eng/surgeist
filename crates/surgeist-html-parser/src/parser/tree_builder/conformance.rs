@@ -6405,6 +6405,50 @@ mod comment_diagnostic_corpus {
         }
 
         #[test]
+        fn select_context_fragment_reports_each_ignored_input_and_select() {
+            // The same rule's "parse error" is the recoverable unexpected-token
+            // diagnostic for exactly the ignored tags; the control has none.
+            for (input, ignored_inputs, ignored_selects) in [
+                ("<option>a", 0, 0),
+                ("<option>a<input>b", 1, 0),
+                ("x<select>y", 0, 1),
+                ("<input><select><input>", 2, 1),
+            ] {
+                for utf16 in [false, true] {
+                    let report = html_context_request("select", input, utf16)
+                        .parse()
+                        .unwrap();
+                    let diagnostics = report.diagnostics();
+                    let mut counts = (0, 0);
+                    for index in 0..diagnostics.len() {
+                        let (record, _) = diagnostics.retained_record(index).unwrap();
+                        let branch = record.rule().branch();
+                        if branch.ends_with("/select-fragment-context") {
+                            assert_eq!(
+                                record.kind(),
+                                crate::HtmlParseDiagnosticKind::Tree(
+                                    crate::HtmlTreeDiagnostic::UnexpectedBodyToken
+                                ),
+                                "{input:?}"
+                            );
+                            assert_eq!(record.rule().anchor(), "parsing-main-inbody");
+                            match branch {
+                                "input-start/select-fragment-context" => counts.0 += 1,
+                                "select-start/select-fragment-context" => counts.1 += 1,
+                                other => panic!("{input:?}: unexpected branch {other}"),
+                            }
+                        }
+                    }
+                    assert_eq!(
+                        counts,
+                        (ignored_inputs, ignored_selects),
+                        "{input:?} utf16={utf16}"
+                    );
+                }
+            }
+        }
+
+        #[test]
         fn non_select_context_fragment_still_inserts_input_and_select() {
             for (input, raw) in [(
                 "<input>x<select>y",
