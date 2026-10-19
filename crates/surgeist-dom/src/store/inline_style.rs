@@ -1,5 +1,6 @@
 //! Exclusive inline owner and sparse exact-generation operational membership.
 use super::*;
+pub(crate) mod feedback;
 pub(in crate::store) mod recording;
 #[cfg(test)]
 mod tests;
@@ -92,6 +93,7 @@ pub(super) struct Owner {
     pub(super) index: Index,
     objects: Vec<CssStyleProperties>,
     issuer: Option<Arc<recording::InputIssuer>>,
+    feedback: Option<custody::Held<Box<feedback::Resident>>>,
     object_debit: custody::Debit,
     _header: custody::Debit,
 }
@@ -654,6 +656,7 @@ impl Dom {
             index: Index::default(),
             objects: Vec::new(),
             issuer: None,
+            feedback: None,
             object_debit: self
                 .custody_registry
                 .ledger()
@@ -754,6 +757,7 @@ impl Dom {
             }
             return Ok(owner.objects[binding.ordinal].clone());
         }
+        owner.require_no_feedback()?;
         admit(
             owner
                 .index
@@ -949,6 +953,9 @@ impl Dom {
         else {
             return Ok(None);
         };
+        if owner.feedback_target() == Some(element) {
+            return Err(DomInlineStyleError::OperationPending { element });
+        }
         let dom = self.snapshot();
         let scope = dom.node(element)?.tree_scope();
         let properties = owner.objects[binding.ordinal]
@@ -1040,7 +1047,14 @@ impl Dom {
                         .node(self.owner, *id)?
                         .element()
                         .ok_or(DomError::WrongNodeKind)?;
-                    if !same_optional_text(style_value(a, &p)?, style_value(b, &p)?, &p)?
+                    let matching_echo = match &prepared.inline_echo {
+                        Some(echo) if echo.element == *id => {
+                            same_optional_text(Some(&echo.value), style_value(b, &p)?, &p)?
+                        }
+                        _ => false,
+                    };
+                    if !matching_echo
+                        && !same_optional_text(style_value(a, &p)?, style_value(b, &p)?, &p)?
                         && !prepared
                             .inline_recording
                             .as_ref()
@@ -1061,6 +1075,11 @@ impl Dom {
             let Key::Existing(id) = key else {
                 unreachable!("published binding identity");
             };
+            if owner.feedback_target() == Some(*id)
+                && !same_context(&self.state, &prepared.state, self.owner, *id, &p)?
+            {
+                return Err(DomError::InlineStyleOperationPending { element: *id });
+            }
             if !same_context(&self.state, &prepared.state, self.owner, *id, &p)?
                 && !prepared
                     .inline_recording

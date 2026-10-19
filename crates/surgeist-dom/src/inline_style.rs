@@ -2,14 +2,14 @@
 //!
 //! Bindings initialize declarations from the current canonical attribute.
 //! Context-bearing ordinary batches synchronize real ordered DOM inputs atomically.
-//! Context-free edits refuse reached bound changes; CSSOM owner feedback
-//! and bound retirement remain separate capabilities.
+//! Context-free edits refuse reached bound changes. CSSOM-origin edits retain
+//! their actual owner-write obligation until canonical feedback completes.
 use crate::{
     DomBatch, DomCommit, DomDocumentStamp, DomError, DomSnapshot, DomStamp, DomTreeScope, NodeId,
     NodeOperand,
 };
 use std::sync::Arc;
-use surgeist_css::{CssParserContext, CssUtf16InputLimits};
+use surgeist_css::{CssParserContext, CssUtf16InputError, CssUtf16InputLimits};
 use surgeist_cssom::{
     CssStyleProperties, CssomCapture, CssomDeclarationRequestLimits, CssomDeclarationSupport,
     CssomError, CssomInputRole, CssomInputVersion, CssomLimits, CssomStyleAttributeError,
@@ -121,6 +121,15 @@ impl DomInlineStyleSourceContext {
 pub struct DomInlineStyleSourcePublication {
     pub(crate) dom: crate::DomChanges,
     pub(crate) inline: surgeist_cssom::CssomCommit,
+}
+impl std::fmt::Debug for DomInlineStyleSourcePublication {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DomInlineStyleSourcePublication")
+            .field("dom", &self.dom)
+            .field("inline_publication", self.inline.publication())
+            .field("owner_effects", &self.inline.owner_effects())
+            .finish_non_exhaustive()
+    }
 }
 impl DomInlineStyleSourcePublication {
     /// Exact canonical segment paired with this inline publication.
@@ -273,8 +282,9 @@ pub enum DomInlineStyleChange {
     Retirement,
 }
 
-/// Binding, observation or synchronization refusal. The refused segment does
-/// not publish; successful preceding Source prefixes remain canonical.
+/// Binding, observation or synchronization refusal. The refused canonical DOM
+/// segment does not publish; successful preceding Source prefixes remain
+/// canonical. An Incomplete mutation carries a refusal after CSSOM has committed.
 #[derive(Debug)]
 pub enum DomInlineStyleError {
     /// The canonical owner rejected input or admission.
@@ -282,7 +292,7 @@ pub enum DomInlineStyleError {
     /// The declaration producer rejected the operation.
     Cssom(CssomError),
     /// Original CSS input preparation or its DOM poll failed.
-    Input(CssomStyleAttributeError<DomError>),
+    Input(CssUtf16InputError<DomError>),
     /// No finite inline policy has been installed.
     Unconfigured,
     /// An existing owner already has its fixed policy.
@@ -297,6 +307,14 @@ pub enum DomInlineStyleError {
     InvalidSupportRole,
     /// A bound block already exists with different explicit external inputs.
     ContextUpdateRequired,
+    /// The Element has no allocated same-object inline declaration block.
+    Unbound,
+    /// Another actual inline owner-write outcome is still resident.
+    OperationPending { element: NodeId },
+    /// This effect is terminal and cannot be retried as a Pending write.
+    TerminalEffect {
+        status: surgeist_cssom::CssomOwnerEffectStatus,
+    },
 }
 impl From<DomError> for DomInlineStyleError {
     fn from(value: DomError) -> Self {
@@ -310,7 +328,10 @@ impl From<CssomError> for DomInlineStyleError {
 }
 impl From<CssomStyleAttributeError<DomError>> for DomInlineStyleError {
     fn from(value: CssomStyleAttributeError<DomError>) -> Self {
-        Self::Input(value)
+        match value {
+            CssomStyleAttributeError::Cssom(error) => Self::Cssom(error),
+            CssomStyleAttributeError::Input(error) => Self::Input(error),
+        }
     }
 }
 impl std::fmt::Display for DomInlineStyleError {
@@ -346,4 +367,124 @@ impl DomInlineStyleCapture {
     pub fn properties(&self) -> &CssomCapture<CssStyleProperties> {
         &self.properties
     }
+}
+
+/// DOM-owned envelope for one CSSOM-origin feedback operation. CSSOM keeps its
+/// independent declaration, diagnostic, publication and owner-effect quotas.
+/// Work is cumulative across feedback refusal, parking and retry. Storage uses
+/// the original DOM custody ledger, including canonical replacement overlap.
+#[derive(Clone, Copy, Debug)]
+pub struct DomInlineStyleFeedbackLimits {
+    pub(crate) retained_bytes: usize,
+    pub(crate) retained_units: usize,
+    pub(crate) work: u64,
+    pub(crate) outputs: usize,
+}
+impl DomInlineStyleFeedbackLimits {
+    /// Configure finite DOM feedback admission before the standard mutation.
+    pub const fn new(
+        retained_bytes: usize,
+        retained_units: usize,
+        work: u64,
+        outputs: usize,
+    ) -> Self {
+        Self {
+            retained_bytes,
+            retained_units,
+            work,
+            outputs,
+        }
+    }
+}
+/// Independent producer request limits and the DOM-owned feedback envelope.
+#[derive(Clone, Copy, Debug)]
+pub struct DomInlineStyleMutationLimits {
+    /// Actual standard declaration executor's producer limits.
+    pub declaration: CssomDeclarationRequestLimits,
+    /// Original DOM wrapper, preparation and continuation admission.
+    pub feedback: DomInlineStyleFeedbackLimits,
+}
+/// Arguments of the standard setProperty operation. Priority None is the
+/// producer's standard empty-priority input.
+#[derive(Clone, Copy, Debug)]
+pub struct DomInlineStyleProperty<'a> {
+    /// Exact property spelling passed to CSSOM.
+    pub name: &'a str,
+    /// Exact value passed to CSSOM.
+    pub value: &'a str,
+    /// Standard optional priority spelling.
+    pub priority: Option<&'a str>,
+}
+/// Original standard return value, moved from the actual producer outcome.
+#[derive(Debug)]
+pub enum DomInlineStyleReturn {
+    /// setCssText and setProperty return no value.
+    Unit,
+    /// removeProperty returns the original serialized removed value.
+    Removed(String),
+}
+/// The standard operation's original components and its canonical feedback.
+/// An effect-free producer no-op needs no DOM publication.
+pub struct DomInlineStyleCompletion {
+    pub(crate) value: DomInlineStyleReturn,
+    pub(crate) publication: surgeist_cssom::CssomPublication,
+    pub(crate) diagnostics: Vec<surgeist_css::CssRecoveryDiagnostic>,
+    pub(crate) effects: Vec<surgeist_cssom::CssomOwnerEffect>,
+    pub(crate) dom: Option<DomCommit>,
+    pub(crate) _custody: crate::store::custody::Debit,
+}
+impl DomInlineStyleCompletion {
+    /// Original standard result.
+    pub fn value(&self) -> &DomInlineStyleReturn {
+        &self.value
+    }
+    /// Original CSSOM publication, never synthesized from DOM changes.
+    pub fn publication(&self) -> &surgeist_cssom::CssomPublication {
+        &self.publication
+    }
+    /// Original recovery diagnostics.
+    pub fn diagnostics(&self) -> &[surgeist_css::CssRecoveryDiagnostic] {
+        &self.diagnostics
+    }
+    /// Original effects, with their actual terminal application states.
+    pub fn owner_effects(&self) -> &[surgeist_cssom::CssomOwnerEffect] {
+        &self.effects
+    }
+    /// Canonical feedback publication, absent for an effect-free operation.
+    pub fn dom(&self) -> Option<&DomCommit> {
+        self.dom.as_ref()
+    }
+    /// Move every original component exactly once.
+    pub fn into_parts(
+        self,
+    ) -> (
+        DomInlineStyleReturn,
+        surgeist_cssom::CssomPublication,
+        Vec<surgeist_css::CssRecoveryDiagnostic>,
+        Vec<surgeist_cssom::CssomOwnerEffect>,
+        Option<DomCommit>,
+    ) {
+        (
+            self.value,
+            self.publication,
+            self.diagnostics,
+            self.effects,
+            self.dom,
+        )
+    }
+}
+/// A committed standard operation either completed its canonical feedback or
+/// remains owned by the same DOM. The latter is not a prepublication error.
+#[must_use = "complete or retain the original inline feedback obligation"]
+pub enum DomInlineStyleMutation<'a> {
+    /// Both owners are coherent and the actual components transfer to caller.
+    Complete(DomInlineStyleCompletion),
+    /// CSSOM committed; DOM feedback refused and the original operation parks
+    /// on lease drop. Its original error describes this attempt only.
+    Incomplete {
+        /// Exclusive access to the retained operation; Drop parks it.
+        operation: crate::DomInlineStyleOperation<'a>,
+        /// The exact postpublication refusal.
+        reason: DomInlineStyleError,
+    },
 }

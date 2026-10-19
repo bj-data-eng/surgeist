@@ -1835,7 +1835,7 @@ impl DomSourceLease<'_> {
     ) -> Result<DomSourceProgress, AdvanceError> {
         // A genuine observer may create the first binding after this Source
         // began. Refresh operational membership before any resumed mutation.
-        op.refresh_inline_execution(self.dom, execution.resolver.is_some());
+        op.refresh_inline_execution(self.dom, execution.resolver.is_some())?;
         if !op.event_exposed
             && let OperationRoot::DialogTask(task) = op.commands
         {

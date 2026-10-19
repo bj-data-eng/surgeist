@@ -676,6 +676,7 @@ impl Draft {
         let semantic_changed = !changes.is_empty();
         Ok((
             Prepared {
+                inline_echo: self.inline_echo.clone(),
                 sharing: None,
                 inline_recording: self.inline_recording.clone(),
                 inline_positions: self

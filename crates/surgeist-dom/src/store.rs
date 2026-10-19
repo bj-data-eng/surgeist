@@ -47,6 +47,7 @@ use history::HistoryEntry;
 mod image;
 mod import;
 mod inline_style;
+pub use inline_style::feedback::DomInlineStyleOperation;
 mod input;
 mod input_processing;
 mod installation;
@@ -181,6 +182,10 @@ pub enum DomError {
     InlineStyleContextRequired {
         element: NodeId,
         change: crate::DomInlineStyleChange,
+    },
+    /// An original inline feedback effect must complete before affected work.
+    InlineStyleOperationPending {
+        element: NodeId,
     },
     StaleFullscreenExit,
     FullscreenExitHandoffRequired,
@@ -1548,7 +1553,7 @@ impl Dom {
         } else {
             Draft::new(self, batch.owner, cancelled)?
         };
-        draft.inline_recording = recording;
+        draft.inline_recording = self.blocked_inline_recording().or(recording);
         for command in batch.commands {
             check_cancel(cancelled)?;
             if let Err(error) = draft.apply(&command, self.limits, cancelled) {
@@ -1618,6 +1623,7 @@ impl Dom {
         )?;
         let changed = guarded.value.changed_from(&self.state);
         let Prepared {
+            inline_echo: _,
             sharing,
             inline_positions: _,
             inline_recording,
@@ -1798,6 +1804,55 @@ impl Dom {
         &mut self,
         publication: PreparedPublication,
     ) -> CommittedPublication {
+        PublicationFields {
+            state: &mut self.state,
+            state_custody: &mut self.state_custody,
+            style_cssom_roots: &mut self.style_cssom_roots,
+            revision: &mut self.revision,
+            history: &mut self.history,
+            active_task: &mut self.active_task,
+            inline_index: self.inline_styles.as_mut().map(|owner| &mut owner.index),
+        }
+        .publish(publication)
+    }
+    fn trim_history(&mut self) {
+        self.history.trim(self.limits);
+    }
+    /// Complete chronological change records, or an explicit recompute result.
+    pub fn changes_since(&self, baseline: DomStamp) -> Result<DomChanges, DomHistoryError> {
+        if baseline.owner != self.owner {
+            return Err(DomHistoryError::ForeignOwner);
+        }
+        if baseline.revision > self.revision {
+            return Err(DomHistoryError::FutureRevision);
+        }
+        let changes = self
+            .history
+            .changes_since(baseline.revision, self.revision)?;
+        Ok(DomChanges {
+            from: baseline,
+            to: DomStamp {
+                owner: self.owner,
+                revision: self.revision,
+            },
+            changes,
+        })
+    }
+}
+
+// One borrowed view of the existing infallible publication body. Feedback can
+// borrow the independent producer and its affine effect at the same fence.
+struct PublicationFields<'a> {
+    state: &'a mut Arc<State>,
+    state_custody: &'a mut transaction::StateCustody,
+    style_cssom_roots: &'a mut style_custody::Bank,
+    revision: &'a mut DomRevision,
+    history: &'a mut history::History,
+    active_task: &'a mut std::sync::Weak<crate::select::Authorization>,
+    inline_index: Option<&'a mut inline_style::Index>,
+}
+impl PublicationFields<'_> {
+    fn publish(mut self, publication: PreparedPublication) -> CommittedPublication {
         let PreparedPublication {
             sharing,
             name_promotions,
@@ -1842,24 +1897,24 @@ impl Dom {
             if scale_metrics::ENABLED {
                 scale_metrics::record(scale_metrics::Event::PublishedRoot);
             }
-            self.state = state;
-            self.state_custody = state_custody;
+            *self.state = state;
+            *self.state_custody = state_custody;
             if let Some(index) = inline_index {
-                self.inline_styles
-                    .as_mut()
-                    .expect("prepared live inline owner")
-                    .index = index;
+                *self
+                    .inline_index
+                    .as_deref_mut()
+                    .expect("prepared live inline owner") = index;
             }
             if let Some(style_custody) = style_custody {
-                self.style_cssom_roots = style_custody;
+                *self.style_cssom_roots = style_custody;
             }
-            self.revision = revision;
+            *self.revision = revision;
             self.history.commit(history_plan);
         }
         retirement_publication.publish();
         if let Some(auth) = retired_authority {
             auth.destroy_if_pending();
-            self.active_task = std::sync::Weak::new();
+            *self.active_task = std::sync::Weak::new();
         }
         CommittedPublication {
             committed: transaction::PublicationCommitted::at_fence(),
@@ -1873,29 +1928,6 @@ impl Dom {
                 changes: DomChanges { from, to, changes },
             },
         }
-    }
-    fn trim_history(&mut self) {
-        self.history.trim(self.limits);
-    }
-    /// Complete chronological change records, or an explicit recompute result.
-    pub fn changes_since(&self, baseline: DomStamp) -> Result<DomChanges, DomHistoryError> {
-        if baseline.owner != self.owner {
-            return Err(DomHistoryError::ForeignOwner);
-        }
-        if baseline.revision > self.revision {
-            return Err(DomHistoryError::FutureRevision);
-        }
-        let changes = self
-            .history
-            .changes_since(baseline.revision, self.revision)?;
-        Ok(DomChanges {
-            from: baseline,
-            to: DomStamp {
-                owner: self.owner,
-                revision: self.revision,
-            },
-            changes,
-        })
     }
 }
 
@@ -1942,6 +1974,7 @@ struct Draft {
     base: Arc<State>,
     event_recipients: Option<Arc<event::Owner>>,
     inline_membership: Option<inline_style::Membership>,
+    inline_echo: Option<inline_style::feedback::Echo>,
     inline_recording: Option<inline_style::recording::Recording>,
     dom_limits: DomLimits,
     base_custody: transaction::StateCustody,
@@ -2082,6 +2115,7 @@ pub(crate) struct PreparedPublication {
     sharing: Option<SharingPublication>,
 }
 struct Prepared {
+    inline_echo: Option<inline_style::feedback::Echo>,
     state: State,
     inline_positions: Option<transaction::slot_index::PositionChanges>,
     inline_recording: Option<inline_style::recording::Recording>,
@@ -2461,7 +2495,8 @@ impl Draft {
             base: dom.state.clone(),
             event_recipients: dom.event_recipients.clone(),
             inline_membership: dom.inline_membership(),
-            inline_recording: None,
+            inline_recording: dom.blocked_inline_recording(),
+            inline_echo: None,
             dom_limits: dom.limits,
             base_custody: dom.state_custody.clone(),
             input_captures: bank::Bank::default(),

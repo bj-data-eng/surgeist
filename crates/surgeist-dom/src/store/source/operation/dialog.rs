@@ -209,6 +209,10 @@ impl Operation {
     pub(in crate::store) fn id(&self) -> DomSourceOperationId {
         self.id
     }
+    pub(in crate::store) fn inline_feedback_observation(&self) -> Option<crate::DomSourceEventId> {
+        self.observation()
+            .map(|observation| observation.request.identity())
+    }
     pub(in crate::store) fn is_observing_event(&self) -> bool {
         matches!(self.draft, OperationDraft::Observed(_))
     }
@@ -1497,6 +1501,11 @@ impl DomSourceLease<'_> {
             return Ok(DomSourceProgress::Request(DomSourceRequest::Event(
                 observation.request.clone(),
             )));
+        }
+        if let Some((element, identity)) = self.dom.inline_feedback_observation()
+            && identity == observation.request.identity()
+        {
+            return Err(DomError::InlineStyleOperationPending { element }.into());
         }
         // Feed the authenticated event outcome to the original language owner.
         // Replay only this pure local transition on admission retry; the actual

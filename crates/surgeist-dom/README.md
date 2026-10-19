@@ -91,20 +91,41 @@ formation. The single CSSOM commit precedes infallible DOM publication, and the
 advance returns the original `DomChanges`/`CssomCommit` pair once at that boundary.
 Drop/resume preserves the original invocation, profiles, cumulative work and
 mandatory tails. An authenticated callback can create the first binding without
-replacing the original Source capability. A fullscreen handoff service has no
-inline resolver and refuses a preceding recorded inline context change before
-publishing that prefix; the original invocation remains retained. DOM admits wrapper and continuation
-custody; CSSOM receipts retain their independent producer output contract, with
-no composed physical-memory bound.
+replacing the original Source capability. The context-bearing fullscreen handoff
+service joins an admitted scheduling job with the original paired publication;
+the context-free service refuses reached inline inputs before publishing that
+prefix. DOM admits wrapper and continuation custody; CSSOM receipts retain their
+independent producer output contract, with no composed physical-memory bound.
 
 A context-free ordinary or Source operation that reaches a bound style
 notification, a relevant context change or retirement returns
 `InlineStyleContextRequired` before that publication. Same-value style setters
 still reach the notification barrier; missing removals and unrelated attributes
 retain their ordinary behavior. Same-scope moves maintain sparse membership.
-Bound retirement and CSSOM owner feedback are unavailable. Inline formation has explicit original DOM
-custody/work limits alongside CSSOM's independent logical/source quotas;
-neither is a process memory measurement.
+The standard `set_inline_style_css_text`, `set_inline_style_property` and
+`remove_inline_style_property` fronts operate on the same bound Properties
+object with its checked current inputs. They run CSSOM's actual standard
+executor, then synchronously prepare and publish canonical feedback. A refusal
+after CSSOM commits returns `DomInlineStyleMutation::Incomplete`, retaining the
+original return value, publication, diagnostics, effect and cumulative feedback
+work. Dropping the operation parks it; `resume_inline_style_feedback` retries
+only the owner write. Its consuming `complete` returns either the original
+completed components or the same incomplete operation. Effect-free standard
+no-ops complete without a DOM publication or changing raw attribute spelling.
+
+Pending feedback serializes inline-store commits and refuses reached bound
+context/attribute changes before a Source request can escape. Unrelated DOM and
+root stylesheet work remain independent, and other bindings can still be
+captured. If feedback originated in a genuine Source callback, its exact dormant
+observation can finish that retained owner write after dispatch scope ends; that
+observation's mandatory tail cannot advance until its feedback drains. This
+does not grant general caller reentry. Only an exactly classified echo skips
+inline ingestion; other native hooks still execute. Historical captures remain
+readable, while the incomplete binding refuses a latest coupled capture.
+Terminal owner effects remain terminal and retained; reconciliation and bound
+retirement are unavailable. Inline formation has explicit original DOM custody
+and work limits alongside CSSOM's independent logical/source quotas; neither is
+a process memory measurement.
 
 For contribution routing and focused verification commands, read the
 [crate guide](AGENTS.md). The [source](src/lib.rs) and [tests](tests/) establish

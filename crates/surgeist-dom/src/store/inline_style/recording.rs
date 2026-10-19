@@ -199,8 +199,16 @@ struct Log {
     len: usize,
 }
 #[derive(Clone)]
+enum Authority {
+    Inputs(Arc<Profiles>),
+    Blocked {
+        target: NodeId,
+        policy: Arc<custody::Held<DomInlineStyleLimits>>,
+    },
+}
+#[derive(Clone)]
 pub(in crate::store) struct Recording {
-    profiles: Arc<Profiles>,
+    authority: Authority,
     index: Index,
     log: Log,
 }
@@ -275,11 +283,40 @@ impl Index {
 }
 impl Recording {
     pub(in crate::store) fn profiles(&self) -> Arc<Profiles> {
-        self.profiles.clone()
+        self.inputs().clone()
+    }
+    fn inputs(&self) -> &Arc<Profiles> {
+        match &self.authority {
+            Authority::Inputs(profiles) => profiles,
+            Authority::Blocked { .. } => {
+                unreachable!("blocked authority cannot ingest producer inputs")
+            }
+        }
+    }
+    pub(in crate::store) fn require_unblocked(&self) -> Result<(), DomError> {
+        if let Authority::Blocked { target, .. } = &self.authority {
+            Err(DomError::InlineStyleOperationPending { element: *target })
+        } else {
+            Ok(())
+        }
+    }
+    pub(in crate::store) fn is_blocked(&self) -> bool {
+        matches!(self.authority, Authority::Blocked { .. })
+    }
+    pub(super) fn blocked(
+        index: &super::Index,
+        target: NodeId,
+        policy: Arc<custody::Held<DomInlineStyleLimits>>,
+    ) -> Self {
+        Self {
+            authority: Authority::Blocked { target, policy },
+            index: index.clone(),
+            log: Log::default(),
+        }
     }
     pub(in crate::store) fn from_profiles(profiles: Arc<Profiles>, index: &super::Index) -> Self {
         Self {
-            profiles,
+            authority: Authority::Inputs(profiles),
             index: index.clone(),
             log: Log::default(),
         }
@@ -310,7 +347,7 @@ impl Recording {
     }
     pub(in crate::store) fn restarted(&self, index: &super::Index) -> Self {
         Self {
-            profiles: self.profiles.clone(),
+            authority: self.authority.clone(),
             index: index.clone(),
             log: Log::default(),
         }
@@ -321,11 +358,17 @@ impl Recording {
         cancel: &'a AtomicBool,
     ) -> Processing<'a> {
         Processing {
-            limits: &self.profiles.limits,
+            limits: match &self.authority {
+                Authority::Inputs(p) => &p.limits,
+                Authority::Blocked { policy, .. } => policy.value(),
+            },
             formation,
             cancel,
             spent: Cell::new(0),
-            shared: Some(&self.profiles.spent),
+            shared: match &self.authority {
+                Authority::Inputs(p) => Some(&p.spent),
+                Authority::Blocked { .. } => None,
+            },
         }
     }
 
@@ -344,7 +387,7 @@ impl Recording {
                 .map(|key| draft.live_key(*key)),
         };
         let mut found = None;
-        for (index, row) in self.profiles.context.profiles.iter().enumerate() {
+        for (index, row) in self.inputs().context.profiles.iter().enumerate() {
             p.step()?;
             if operand(&row.element) == Some(Key::Existing(element))
                 && operand(&row.document) == Some(document)
@@ -376,6 +419,7 @@ impl Recording {
                 return Ok(());
             }
         }
+        self.require_unblocked()?;
         let profile = self.profile(draft, element, next.document, p)?;
         let mut usage = next
             .usage()?
@@ -390,7 +434,7 @@ impl Recording {
             element,
             facts: next.owned(),
             profile,
-            serial: self.profiles.issuer.issue(self.profiles.revision)?,
+            serial: self.inputs().issuer.issue(self.inputs().revision)?,
             input: match input {
                 None => Input::Context,
                 Some(value) => Input::Attribute(value.cloned()),
@@ -662,6 +706,24 @@ impl Draft {
         let Key::Existing(id) = self.live_key(key) else {
             return Ok(());
         };
+        if let Some(echo) = &self.inline_echo
+            && echo.element == id
+            && let Some(value) = value
+        {
+            let mut same = value.len() == echo.value.len();
+            if same {
+                for (a, b) in value.code_units().iter().zip(echo.value.code_units()) {
+                    self.source_step(cancel)?;
+                    if a != b {
+                        same = false;
+                        break;
+                    }
+                }
+            }
+            if same {
+                return Ok(());
+            }
+        }
         if !membership
             .bindings
             .get_with(id.slot, &mut || self.source_step(cancel))?
@@ -828,7 +890,7 @@ impl Dom {
         }
         profiles.spent.store(p.spent.get(), Ordering::Relaxed);
         let recording = Recording {
-            profiles: Arc::new(profiles),
+            authority: Authority::Inputs(Arc::new(profiles)),
             index: owner.index.clone(),
             log: Log::default(),
         };
@@ -886,6 +948,7 @@ impl Dom {
             return Ok(None);
         };
         let owner = self.inline_styles.as_ref().expect("recorded live owner");
+        owner.require_no_feedback()?;
         let store = owner.store.as_ref().expect("bound store");
         let mut batch = store.batch(CssomEditGuard::from_snapshot(&store.snapshot()))?;
         let p = recording.processing(publication._formation.as_ref(), cancel);
@@ -896,7 +959,7 @@ impl Dom {
                 .entries
                 .get_with(index, &mut || p.step())?
                 .expect("ordered recorded occurrence");
-            let profile = &recording.profiles.context.profiles[event.profile];
+            let profile = &recording.inputs().context.profiles[event.profile];
             let document = match event.facts.document {
                 Key::Existing(id) => id,
                 Key::Created(index) => publication
@@ -1230,12 +1293,12 @@ mod tests {
             .unwrap();
         let recording = draft.inline_recording.as_ref().unwrap();
         assert!(recording.log.len >= 3);
-        let spent = recording.profiles.spent.load(Ordering::Relaxed);
+        let spent = recording.inputs().spent.load(Ordering::Relaxed);
         let serial = recording.log.entries.get(0).unwrap().serial;
         checkpoint.restore(&mut draft);
         let recording = draft.inline_recording.as_ref().unwrap();
         assert_eq!(recording.log.len, 0);
-        assert_eq!(recording.profiles.spent.load(Ordering::Relaxed), spent);
+        assert_eq!(recording.inputs().spent.load(Ordering::Relaxed), spent);
         assert_eq!(
             draft.node(Key::Existing(first)).unwrap().document(),
             Key::Existing(a.node())

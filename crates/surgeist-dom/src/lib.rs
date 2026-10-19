@@ -145,10 +145,13 @@ mod inline_style;
 mod input;
 pub use inline_style::{
     DomInlineStyleBatchContext, DomInlineStyleCapture, DomInlineStyleChange, DomInlineStyleCommit,
-    DomInlineStyleError, DomInlineStyleInputs, DomInlineStyleLimits, DomInlineStyleProfile,
-    DomInlineStyleRequestLimits, DomInlineStyleSourceContext, DomInlineStyleSourceProgress,
-    DomInlineStyleSourcePublication,
+    DomInlineStyleCompletion, DomInlineStyleError, DomInlineStyleFeedbackLimits,
+    DomInlineStyleInputs, DomInlineStyleLimits, DomInlineStyleMutation,
+    DomInlineStyleMutationLimits, DomInlineStyleProfile, DomInlineStyleProperty,
+    DomInlineStyleRequestLimits, DomInlineStyleReturn, DomInlineStyleSourceContext,
+    DomInlineStyleSourceProgress, DomInlineStyleSourcePublication,
 };
+pub use store::DomInlineStyleOperation;
 mod installation;
 mod meta;
 mod name;

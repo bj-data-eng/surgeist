@@ -121,20 +121,57 @@ impl DomSourceLease<'_> {
 }
 
 impl Operation {
+    pub(super) fn inline_request_limits(&self) -> Option<DomInlineStyleRequestLimits> {
+        self.inline_source.as_ref().map(|source| source.limits)
+    }
+
     pub(super) fn prepare_rebased_inline(&self, dom: &Dom, draft: &mut Draft) {
         // Authenticated callback reentry discarded the previous Draft. The new
         // canonical basis has no speculative log, so current membership/order
         // can be installed without truncating an uncommitted same-lease retry.
         draft.inline_membership = dom.inline_membership();
-        draft.inline_recording = self.inline_source.as_ref().map(|source| {
-            Recording::from_profiles(
-                source.profiles.clone(),
-                &dom.inline_styles.as_ref().expect("configured owner").index,
-            )
+        draft.inline_recording = dom.blocked_inline_recording().or_else(|| {
+            self.inline_source.as_ref().map(|source| {
+                Recording::from_profiles(
+                    source.profiles.clone(),
+                    &dom.inline_styles.as_ref().expect("configured owner").index,
+                )
+            })
         });
     }
-    pub(super) fn refresh_inline_execution(&mut self, dom: &Dom, enabled: bool) {
+    pub(super) fn refresh_inline_execution(
+        &mut self,
+        dom: &Dom,
+        enabled: bool,
+    ) -> Result<(), DomError> {
         self.draft.inline_membership = dom.inline_membership();
+        if let Some(blocked) = dom.blocked_inline_recording() {
+            if self
+                .draft
+                .inline_recording
+                .as_ref()
+                .is_some_and(|r| r.has_inputs())
+            {
+                blocked.require_unblocked()?;
+            }
+            if !self
+                .draft
+                .inline_recording
+                .as_ref()
+                .is_some_and(|r| r.is_blocked())
+            {
+                self.draft.inline_recording = Some(blocked);
+            }
+            return Ok(());
+        }
+        if self
+            .draft
+            .inline_recording
+            .as_ref()
+            .is_some_and(|r| r.is_blocked())
+        {
+            self.draft.inline_recording = None;
+        }
         if !enabled {
             self.draft.inline_recording = None;
         } else if self.draft.inline_recording.is_none() {
@@ -145,6 +182,7 @@ impl Operation {
                 )
             });
         }
+        Ok(())
     }
 
     pub(super) fn publication_inline(

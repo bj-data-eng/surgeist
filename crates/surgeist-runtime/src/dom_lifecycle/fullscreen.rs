@@ -248,6 +248,30 @@ impl HostedState {
     }
 }
 
+// The unissued row is affine scheduling custody. A refusal or unwind releases
+// only this reservation; admitted spare backing remains with the actual bank.
+struct ReservedRow<'a> {
+    jobs: &'a mut Jobs,
+    index: usize,
+    installed: bool,
+}
+impl ReservedRow<'_> {
+    fn install(mut self, permission: DomFullscreenExitJob) {
+        let row = &mut self.jobs.rows[self.index];
+        row.permission = Some(permission);
+        row.ready = true;
+        self.installed = true;
+    }
+}
+impl Drop for ReservedRow<'_> {
+    fn drop(&mut self) {
+        if !self.installed {
+            debug_assert_eq!(self.index + 1, self.jobs.rows.len());
+            self.jobs.rows.truncate(self.index);
+        }
+    }
+}
+
 impl HostedRuntime {
     pub(crate) fn service_fullscreen_exit_handoff(
         &self,
@@ -255,53 +279,90 @@ impl HostedRuntime {
         request: &DomSourceFullscreenExitHandoffRequest,
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedRuntimeError> {
-        let owner = self.state()?;
+        self.service_fullscreen_handoff(lease, request, cancel, |lease, source| {
+            let permission = lease
+                .prepare_fullscreen_exit_handoff(request, source, cancel)
+                .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?
+                .publish();
+            Ok((permission, ()))
+        })
+    }
+
+    pub(crate) fn service_fullscreen_exit_handoff_with_inline_styles(
+        &self,
+        lease: &mut DomSourceLease<'_>,
+        request: &DomSourceFullscreenExitHandoffRequest,
+        resolver: &mut crate::dom_source::InlineResolver<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<
+        Option<surgeist_dom::DomInlineStyleSourcePublication>,
+        crate::dom_source::DomSourceRuntimeError,
+    > {
+        self.service_fullscreen_handoff(lease, request, cancel, |lease, source| {
+            lease
+                .commit_fullscreen_exit_handoff_with_inline_styles(
+                    request, source, resolver, cancel,
+                )
+                .map_err(crate::dom_source::DomSourceRuntimeError::Inline)
+        })
+    }
+
+    fn service_fullscreen_handoff<T, E>(
+        &self,
+        lease: &mut DomSourceLease<'_>,
+        request: &DomSourceFullscreenExitHandoffRequest,
+        cancel: &AtomicBool,
+        commit: impl FnOnce(
+            &mut DomSourceLease<'_>,
+            &surgeist_dom::DomHostedSource,
+        ) -> Result<(DomFullscreenExitJob, T), E>,
+    ) -> Result<T, E>
+    where
+        E: From<DomHostedRuntimeError>,
+    {
+        let owner = self.state().map_err(E::from)?;
         let mut state = owner
             .try_borrow_mut()
-            .map_err(|_| DomHostedRuntimeError::Busy)?;
+            .map_err(|_| E::from(DomHostedRuntimeError::Busy))?;
         if state.dom != lease.snapshot().owner() {
-            return Err(DomHostedRuntimeError::Binding);
+            return Err(DomHostedRuntimeError::Binding.into());
         }
-        let (h, t, c, g) =
-            state.find_global(request.global(), cancel, || source_work(lease, cancel))?;
+        let (h, t, c, g) = state
+            .find_global(request.global(), cancel, || source_work(lease, cancel))
+            .map_err(E::from)?;
         let group = state.hosts[h].top_levels[t]
             .group
             .as_ref()
-            .ok_or(DomHostedRuntimeError::Protocol)?;
+            .ok_or(DomHostedRuntimeError::Protocol)
+            .map_err(E::from)?;
         let global = &group.clusters[c].agent.globals[g];
         if state.hosts[h].id != request.host()
             || group.traversal.traversable != Some(request.traversable())
             || global.settings.document != Some(request.document())
             || !global.settings.ready
         {
-            return Err(DomHostedRuntimeError::Binding);
+            return Err(DomHostedRuntimeError::Binding.into());
         }
-        state.step(cancel)?;
-        source_work(lease, cancel)?;
-        let index = state.reserve_fullscreen_row(h, t, lease, request, cancel)?;
+        state.step(cancel).map_err(E::from)?;
+        source_work(lease, cancel).map_err(E::from)?;
+        let index = state
+            .reserve_fullscreen_row(h, t, lease, request, cancel)
+            .map_err(E::from)?;
         let HostedState { source, hosts, .. } = &mut *state;
         let jobs = &mut hosts[h].top_levels[t]
             .group
             .as_mut()
-            .ok_or(DomHostedRuntimeError::Protocol)?
+            .expect("qualified original group")
             .fullscreen;
-        let permission = match lease.prepare_fullscreen_exit_handoff(request, source, cancel) {
-            Ok(publication) => publication.publish(),
-            Err(error) => {
-                // No canonical prefix was committed. Release this unissued
-                // last-row reservation; the real spare backing stays priced.
-                debug_assert_eq!(index + 1, jobs.rows.len());
-                jobs.rows.pop();
-                return Err(DomHostedRuntimeError::Dom(error.into()));
-            }
+        let reservation = ReservedRow {
+            jobs,
+            index,
+            installed: false,
         };
-        // The exclusive prepared fence publishes canonical step 7 and the one
-        // invocation before this reserved row becomes runnable. No allocation,
-        // callback, cancellation poll or fallible work occurs in this transfer.
-        let row = &mut jobs.rows[index];
-        row.permission = Some(permission);
-        row.ready = true;
-        Ok(())
+        let (permission, output) = commit(lease, source)?;
+        // All three owners now join without allocation, callbacks or cancellation.
+        reservation.install(permission);
+        Ok(output)
     }
 }
 

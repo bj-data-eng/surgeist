@@ -94,6 +94,16 @@ refusal cannot undo an already published phase. Resuming uses the same operation
 and retained resources. Current CSSOM disabled observations come from the actual
 store and its revision, independently of an older association receipt.
 
+For bound inline declarations, `apply_with_inline_styles` takes a
+`DomSourceInlineStyleEdit` and a borrowed admission resolver;
+`resume_with_inline_styles` continues the original operation. Both return each
+actual paired DOM/CSSOM publication before further service. `InlineSource`
+preserves the original request or completion; `InlineFullscreenHandoff` reports
+an already queued fullscreen exit whose Source continuation can resume. The
+fullscreen queue reserves its real slot before publication and releases an
+unissued reservation on refusal or unwind. Context-free entry points retain
+their precise refusal when reached inline work needs explicit inputs.
+
 `DomSourceRuntime::complete_select` validates the original Session owners before
 consuming a canonical Select task. Retirement returns
 `DomSelectCompletionProgress::Skipped` without requiring live Style services or
