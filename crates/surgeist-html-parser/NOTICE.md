@@ -92,7 +92,7 @@ parser dependency and do not supply browser event-loop execution.
 
 ## html5lib-tests fixtures
 
-The selected tree-construction fixture subset comes from
+The selected tree-construction and tokenizer fixture subset comes from
 [html5lib-tests](https://github.com/html5lib/html5lib-tests), revision
 [`f994590f528ac8b6073665791ddb1ed85c66dfb2`](https://github.com/html5lib/html5lib-tests/tree/f994590f528ac8b6073665791ddb1ed85c66dfb2).
 The bundled files retain their exact upstream bytes; no upstream harness,
@@ -101,21 +101,33 @@ parser implementation or new runtime dependency is included.
 * License: [complete upstream MIT license](tests/fixtures/html5lib-f994590f/LICENSE)
 * Credits: [complete upstream AUTHORS.rst](tests/fixtures/html5lib-f994590f/AUTHORS.rst)
 * Format: [upstream tree-construction README](tests/fixtures/html5lib-f994590f/tree-construction/README.md)
+  and [upstream tokenizer README](tests/fixtures/html5lib-f994590f/tokenizer/README.md)
 
 The license's original notice is Copyright (c) 2006-2013 James Graham,
 Geoffrey Sneddon, and other contributors. Its copyright, permission notice and
 disclaimer remain unchanged in the bundled LICENSE. Preserve LICENSE and
 AUTHORS.rst with redistributed copies or substantial portions.
 
-The eight complete data files are adoption02.dat, namespace-sensitivity.dat,
-quirks01.dat, tests14.dat, tests24.dat, tables01.dat, comments01.dat and template.dat
-under tests/fixtures/html5lib-f994590f/tree-construction/. Together with its
-README, LICENSE and AUTHORS.rst, this subset contains 46,382 upstream bytes and
-169 cases. Retaining those cases does not mean all cases were executed or passed.
+The 40 complete tree-construction data files under
+tests/fixtures/html5lib-f994590f/tree-construction/ are adoption01.dat,
+adoption02.dat, comments01.dat, entities01.dat, entities02.dat,
+foreign-fragment.dat, namespace-sensitivity.dat, noscript01.dat, quirks01.dat,
+ruby.dat, tables01.dat, template.dat, tests1.dat–tests12.dat,
+tests14.dat–tests26.dat, tests_innerHTML_1.dat, webkit01.dat and webkit02.dat;
+with their README they contain 386,921 bytes and 1,495 cases. The 13 complete
+tokenizer files under tests/fixtures/html5lib-f994590f/tokenizer/ are
+contentModelFlags.test, domjs.test, entities.test, escapeFlag.test,
+namedEntities.test, numericEntities.test, pendingSpecChanges.test,
+test1.test–test4.test, unicodeChars.test and unicodeCharsProblematic.test;
+with their README they contain 1,649,095 bytes and 6,806 cases. Upstream
+xmlViolation.test is not bundled. Together with LICENSE and AUTHORS.rst, the
+57 files contain 2,037,579 upstream bytes, each matching its upstream git blob
+SHA-1 at the pinned revision. Retaining those cases does not mean all cases
+were executed or passed.
 The [crate overview](../../docs/reference/html-operations.md#private-conformance-observation) identifies the
 actual structural replay boundary and pending error-metadata comparison.
-Surgeist's private checked native observer and structural adapter are separately
-authored; they do not change this project's own license.
+Surgeist's private checked native observer, structural adapter and tokenizer
+replay are separately authored; they do not change this project's own license.
 
 ## Dependencies
 

@@ -103,8 +103,8 @@ are recorded separately from the Parley excerpts.
 
 ### html5lib-tests fixtures
 
-The HTML crate bundles selected tree-construction test data and its upstream
-format, license and credits from html5lib-tests revision
+The HTML crate bundles selected tree-construction and tokenizer test data and
+their upstream formats, license and credits from html5lib-tests revision
 `f994590f528ac8b6073665791ddb1ed85c66dfb2`. This is test-only material, not an
 upstream parser implementation or runtime dependency.
 
