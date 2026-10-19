@@ -65,6 +65,20 @@ provenance independently of formatting, resource execution or Arc strong counts.
 Source storage admission is separate from input parsing admission and caller-owned
 historical captures.
 
+`CssParserContext::parse_declaration_block_contents_utf16_with_limits` admits
+original UTF16 through that same preprocessing boundary and the existing raw
+declaration-block grammar. Its sealed `CssDeclarationBlockParseReport` retains
+the complete root source even for empty or wholly recovered input. Values and
+diagnostics share that source, with byte coordinates in normalized UTF8 and a
+separate original-unit map. No surrounding sheet or CSSOM winner selection is
+introduced. Preparation has finite input/output/backing/work limits and polls;
+the declaration arena separately admits the entire normalized input under its
+cumulative component, depth and byte limits, including text after a root `}`.
+General grammar execution remains opaque between pre/post polls. These limits
+do not promise per-action grammar work or live-allocation accounting. Consumers
+admit retained sources independently; a source receipt is not a complete report
+or checked-value storage receipt.
+
 `CssParserContext::parse_color_scheme_utf16_with_limits` supplies the independent
 bounded authored `color-scheme` value front. It preserves the shared original
 UTF16 and its preprocessed source through the existing component and property

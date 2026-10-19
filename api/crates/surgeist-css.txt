@@ -8690,6 +8690,12 @@ pub fn surgeist_css::CssDeclarationBlockError::source(&self) -> core::option::Op
 impl core::fmt::Display for surgeist_css::CssDeclarationBlockError
 pub fn surgeist_css::CssDeclarationBlockError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl surgeist_css::CssRetainedSources for surgeist_css::CssDeclarationBlockError
+pub struct surgeist_css::CssDeclarationBlockParseReport
+impl surgeist_css::CssDeclarationBlockParseReport
+pub fn surgeist_css::CssDeclarationBlockParseReport::into_parts(self) -> (surgeist_css::CssParseSource, surgeist_css::CssParseReport<surgeist_css::CssDeclarationList>)
+pub const fn surgeist_css::CssDeclarationBlockParseReport::report(&self) -> &surgeist_css::CssParseReport<surgeist_css::CssDeclarationList>
+pub const fn surgeist_css::CssDeclarationBlockParseReport::source(&self) -> &surgeist_css::CssParseSource
+impl surgeist_css::CssRetainedSources for surgeist_css::CssDeclarationBlockParseReport
 pub struct surgeist_css::CssDeclarationList
 impl surgeist_css::CssDeclarationList
 pub fn surgeist_css::CssDeclarationList::as_slice(&self) -> &[surgeist_css::CssDeclaration]
@@ -11500,6 +11506,8 @@ pub const fn surgeist_css::CssParserContext::with_svg_glyph_orientation_vertical
 impl surgeist_css::CssParserContext
 pub fn surgeist_css::CssParserContext::parse_color_scheme_utf16_with_limits<E>(self, original: alloc::sync::Arc<alloc::vec::Vec<u16>>, limits: surgeist_css::CssUtf16PropertyValueLimits, admit: impl core::ops::function::FnMut(surgeist_css::CssUtf16ValueAdmission) -> core::result::Result<(), E>, release: impl core::ops::function::FnMut(surgeist_css::CssUtf16ValueStorage)) -> core::result::Result<surgeist_css::CssColorSchemeParseReport, surgeist_css::CssUtf16InputError<E>>
 impl surgeist_css::CssParserContext
+pub fn surgeist_css::CssParserContext::parse_declaration_block_contents_utf16_with_limits<E>(self, original: alloc::sync::Arc<alloc::vec::Vec<u16>>, input_limits: surgeist_css::CssUtf16InputLimits, component_limits: surgeist_css::CssComponentValueLimits, poll: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_css::CssDeclarationBlockParseReport, surgeist_css::CssUtf16InputError<E>>
+impl surgeist_css::CssParserContext
 pub fn surgeist_css::CssParserContext::parse_keyframe_rule(self, source: &str) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::CssParsedKeyframeRule>>
 impl surgeist_css::CssParserContext
 pub fn surgeist_css::CssParserContext::parse_media_query_list(self, source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssMediaQueryList>
@@ -13971,6 +13979,7 @@ impl surgeist_css::CssRetainedSources for surgeist_css::CssCounterStyleRule
 impl surgeist_css::CssRetainedSources for surgeist_css::CssCustomMediaRule
 impl surgeist_css::CssRetainedSources for surgeist_css::CssDeclaration
 impl surgeist_css::CssRetainedSources for surgeist_css::CssDeclarationBlockError
+impl surgeist_css::CssRetainedSources for surgeist_css::CssDeclarationBlockParseReport
 impl surgeist_css::CssRetainedSources for surgeist_css::CssDeclarationList
 impl surgeist_css::CssRetainedSources for surgeist_css::CssElseRule
 impl surgeist_css::CssRetainedSources for surgeist_css::CssFontFaceDeclarationBlockError
