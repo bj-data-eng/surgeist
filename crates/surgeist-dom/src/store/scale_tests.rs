@@ -30,6 +30,8 @@ use crate::{
 mod memory;
 
 const SIZES: [usize; 3] = [10_000, 100_000, 1_000_000];
+const VACANT_SIZES: [usize; 3] = [10_000, 100_000, 800_000];
+const MAX_VACANT_CONSTRUCTION: usize = 1_000_000;
 const CHUNK: usize = 8192;
 const WARMUPS: usize = 1;
 const SAMPLES: usize = 3;
@@ -49,26 +51,91 @@ fn require_release() {
     );
 }
 
-/// A finite pilot selection is explicit in the receipt; the default retains the
-/// complete geometric qualification through one million nodes. A 1k pilot
-/// measures actual host resource use and never establishes scale acceptance.
-fn selected_sizes() -> Vec<usize> {
-    let Some(value) = std::env::var_os("SURGEIST_SCALE_SIZES") else {
-        return SIZES.to_vec();
-    };
-    let mut sizes = Vec::new();
-    for item in value.to_str().expect("UTF-8 size selection").split(',') {
-        let size: usize = item.parse().expect("comma-separated managed-node counts");
-        assert!(
-            size == 1000 || SIZES.contains(&size),
-            "unsupported size {size}"
-        );
-        assert!(!sizes.contains(&size), "duplicate size {size}");
-        sizes.push(size);
+#[derive(Debug, PartialEq, Eq)]
+enum SizeError {
+    Malformed,
+    Unsupported(usize),
+    Duplicate(usize),
+    VacantOverflow,
+    VacantPeak(usize),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct VacantExtent {
+    retired: usize,
+    peak_managed: usize,
+}
+
+/// Historical vacancies are all published before retirement. This is an actual
+/// setup population ceiling, separate from selected bulk-operation headroom.
+fn vacant_extent(managed: usize) -> Result<VacantExtent, SizeError> {
+    let retired = managed / 4;
+    let peak_managed = managed
+        .checked_add(retired)
+        .ok_or(SizeError::VacantOverflow)?;
+    if peak_managed > MAX_VACANT_CONSTRUCTION {
+        return Err(SizeError::VacantPeak(peak_managed));
     }
-    assert!(!sizes.is_empty());
-    eprintln!("scale explicit_selected_sizes={sizes:?} full_default={SIZES:?}");
+    Ok(VacantExtent {
+        retired,
+        peak_managed,
+    })
+}
+
+fn size_ladder(context: Context) -> &'static [usize] {
+    if matches!(context, Context::Vacant) {
+        &VACANT_SIZES
+    } else {
+        &SIZES
+    }
+}
+
+/// Pure selection validates every requested cell before any fixture can start.
+/// The 1k pilot remains selectable without establishing scale qualification.
+fn checked_selected_sizes(context: Context, value: Option<&str>) -> Result<Vec<usize>, SizeError> {
+    let defaults = size_ladder(context);
+    let sizes = match value {
+        Some(value) => value
+            .split(',')
+            .map(|item| item.parse().map_err(|_| SizeError::Malformed))
+            .collect::<Result<Vec<usize>, _>>()?,
+        None => defaults.to_vec(),
+    };
+    for (index, &size) in sizes.iter().enumerate() {
+        if matches!(context, Context::Vacant) {
+            vacant_extent(size)?;
+        }
+        if size != 1000 && !defaults.contains(&size) {
+            return Err(SizeError::Unsupported(size));
+        }
+        if sizes[..index].contains(&size) {
+            return Err(SizeError::Duplicate(size));
+        }
+    }
+    Ok(sizes)
+}
+
+fn selected_context_sizes(context: Context) -> Vec<usize> {
+    let value = std::env::var_os("SURGEIST_SCALE_SIZES");
+    let selected = value
+        .as_ref()
+        .map(|value| value.to_str().expect("UTF-8 size selection"));
+    let sizes = checked_selected_sizes(context, selected).unwrap_or_else(|error| {
+        panic!("scale size selection context={context:?} value={value:?}: {error:?}")
+    });
+    if value.is_some() {
+        eprintln!(
+            "scale explicit_selected_sizes={sizes:?} full_default={:?} size_selection_context={context:?}",
+            size_ladder(context)
+        );
+    }
     sizes
+}
+
+/// Ordinary and bulk companions retain their original size ladder. Contextual
+/// runs additionally select the bounded historical-vacancy ladder when needed.
+fn selected_sizes() -> Vec<usize> {
+    selected_context_sizes(Context::Detached)
 }
 
 // Default finite fixture allowance for the one-million-node stress ceiling plus
@@ -246,12 +313,15 @@ fn fixture(managed: usize, context: Context) -> Fixture {
 
 fn fixture_with_capacity(managed: usize, context: Context, extra: usize) -> Fixture {
     let started = Instant::now();
-    let retired = if matches!(context, Context::Vacant) {
-        managed / 4
+    // Guard direct Vacant callers as well as the size selector, before any DOM
+    // is allocated. Extra capacity and non-Vacant bulk headroom remain separate.
+    let (retired, node_limit) = if matches!(context, Context::Vacant) {
+        let extent = vacant_extent(managed)
+            .unwrap_or_else(|error| panic!("Vacant setup managed={managed}: {error:?}"));
+        (extent.retired, extent.peak_managed)
     } else {
-        0
+        (0, managed)
     };
-    let node_limit = managed.checked_add(retired).unwrap();
     let capacity = node_limit.checked_add(extra).unwrap();
     let unit_limit = capacity.checked_mul(128).unwrap();
     let ranges = if matches!(context, Context::Ranges) {
@@ -881,7 +951,7 @@ fn run(context: Context) {
         scale_metrics::ENABLED,
         option_env!("SURGEIST_DOM_STORAGE_COUNTERS")
     );
-    for managed in selected_sizes() {
+    for managed in selected_context_sizes(context) {
         if matches!(context, Context::LargeChildren) && managed < LARGE_CHILDREN + 5 {
             continue;
         }
@@ -3977,6 +4047,93 @@ fn diagnostic_source_import_completed_geometry() {
             input.children.len(),
             begin.as_nanos(),
             elapsed.as_nanos(),
+        );
+    }
+}
+
+#[cfg(test)]
+mod vacant_selection_tests {
+    use super::{Context, SizeError, VacantExtent, checked_selected_sizes, vacant_extent};
+
+    #[test]
+    fn vacant_ladder_limits_construction_while_ordinary_ladder_is_unchanged() {
+        assert_eq!(
+            checked_selected_sizes(Context::Vacant, None).unwrap(),
+            [10_000, 100_000, 800_000]
+        );
+        assert_eq!(
+            checked_selected_sizes(Context::Detached, None).unwrap(),
+            [10_000, 100_000, 1_000_000]
+        );
+        assert_eq!(
+            checked_selected_sizes(Context::Vacant, Some("1000,800000")).unwrap(),
+            [1000, 800_000]
+        );
+        assert_eq!(
+            checked_selected_sizes(Context::Detached, Some("1000000")).unwrap(),
+            [1_000_000]
+        );
+        assert_eq!(
+            checked_selected_sizes(Context::Vacant, Some("1000000")),
+            Err(SizeError::VacantPeak(1_250_000))
+        );
+        assert_eq!(
+            checked_selected_sizes(Context::Detached, Some("800000")),
+            Err(SizeError::Unsupported(800_000))
+        );
+    }
+
+    #[test]
+    fn vacant_extent_counts_real_retirement_peak_and_rejects_overflow() {
+        for (managed, retired, peak_managed) in [
+            (1000, 250, 1250),
+            (10_000, 2500, 12_500),
+            (100_000, 25_000, 125_000),
+            (800_000, 200_000, 1_000_000),
+        ] {
+            assert_eq!(
+                vacant_extent(managed).unwrap(),
+                VacantExtent {
+                    retired,
+                    peak_managed
+                }
+            );
+        }
+        assert_eq!(
+            vacant_extent(800_001),
+            Err(SizeError::VacantPeak(1_000_001))
+        );
+        assert_eq!(
+            vacant_extent(1_000_000),
+            Err(SizeError::VacantPeak(1_250_000))
+        );
+        assert_eq!(vacant_extent(usize::MAX), Err(SizeError::VacantOverflow));
+    }
+
+    #[test]
+    fn pure_selection_rejects_malformed_duplicate_and_overflowing_cells() {
+        for value in ["", "1000,", ",1000", "no", "-1", "10.0", " 1000"] {
+            assert_eq!(
+                checked_selected_sizes(Context::Vacant, Some(value)),
+                Err(SizeError::Malformed)
+            );
+        }
+        assert_eq!(
+            checked_selected_sizes(Context::Vacant, Some("1000,1000")),
+            Err(SizeError::Duplicate(1000))
+        );
+        assert_eq!(
+            checked_selected_sizes(Context::Vacant, Some("0")),
+            Err(SizeError::Unsupported(0))
+        );
+        assert_eq!(
+            checked_selected_sizes(Context::Vacant, Some(&usize::MAX.to_string())),
+            Err(SizeError::VacantOverflow)
+        );
+        let beyond_usize = format!("{}0", usize::MAX);
+        assert_eq!(
+            checked_selected_sizes(Context::Vacant, Some(&beyond_usize)),
+            Err(SizeError::Malformed)
         );
     }
 }
