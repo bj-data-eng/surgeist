@@ -1810,6 +1810,9 @@ impl DomSourceLease<'_> {
         op: &mut Operation,
         cancel: &AtomicBool,
     ) -> Result<DomSourceProgress, DomError> {
+        // A genuine observer may create the first binding after this Source
+        // began. Refresh operational membership before any resumed mutation.
+        op.draft.inline_membership = self.dom.inline_membership();
         if !op.event_exposed
             && let OperationRoot::DialogTask(task) = op.commands
         {

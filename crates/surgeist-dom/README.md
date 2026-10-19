@@ -65,6 +65,26 @@ original continuations and mandatory tails across publication and retry.
 Each topic keeps its exact supported paths, limits and failure behavior beside
 the relevant API.
 
+Inline-style identity is an explicit lazy capability. After installing
+`DomInlineStyleLimits`, `Dom::inline_style` binds a live HTML, SVG or MathML
+Element to the actual same-object `CssStyleProperties` in this DOM owner's
+private CSSOM store. DOM checks the current Document observation and parser
+mode, derives canonical owner/base facts, and supplies the untouched UTF-16
+attribute to CSSOM. The caller supplies explicit support/profile inputs and any
+required declaration decisions. `capture_inline_style` couples immutable DOM
+and declaration observations, which remain readable after owner destruction.
+
+Binding initializes declarations; subsequent inline edits require a
+synchronizing front. A context-free ordinary or Source operation that reaches a
+bound style notification, a relevant context change or retirement returns
+`InlineStyleContextRequired` before that publication. Same-value style setters
+still reach the notification barrier; missing removals and unrelated attributes
+retain their ordinary behavior. Same-scope moves maintain sparse membership.
+Ordered DOM-to-CSSOM updates and CSSOM owner-feedback operations are not
+currently supported. Inline formation has explicit original DOM custody/work
+limits alongside CSSOM's independent logical/source quotas; neither is a process
+memory measurement.
+
 For contribution routing and focused verification commands, read the
 [crate guide](AGENTS.md). The [source](src/lib.rs) and [tests](tests/) establish
 current behavior; [source editions](../../references/SOURCE-EDITIONS.md) and the

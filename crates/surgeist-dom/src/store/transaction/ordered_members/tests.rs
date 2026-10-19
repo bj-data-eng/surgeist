@@ -42,6 +42,69 @@ struct Pair {
     value: Members,
     custody: MembersCustody,
 }
+
+#[test]
+fn identity_group_enumerates_disconnected_roots_and_preserves_old_members_on_refusal() {
+    let (mut dom, _, keys) = fixture();
+    let cancel = AtomicBool::new(false);
+    let mut b = DomBatch::new();
+    for key in keys {
+        let Key::Existing(id) = key else {
+            unreachable!()
+        };
+        b.detach(id);
+    }
+    dom.apply(b, &cancel).unwrap();
+    let registry = &dom.custody_registry;
+    let mut pair = Pair {
+        value: Members::default(),
+        custody: MembersCustody::default(),
+    };
+    let mut root = RootHeader::default();
+    for key in [keys[2], keys[0], keys[1]] {
+        let changed = pair
+            .value
+            .change_identity(
+                &pair.custody,
+                root,
+                Membership::Insert(key),
+                Edit {
+                    registry,
+                    admit: &mut |_| Ok(()),
+                    step: &mut || Ok(()),
+                },
+            )
+            .unwrap();
+        pair.value = changed.members;
+        pair.custody = changed.custody;
+        root = changed.root;
+    }
+    assert_eq!(pair.value.inspect_group(root).unwrap(), keys);
+    let mut read = Vec::new();
+    let mut key = pair.value.first(root, &mut || Ok(())).unwrap();
+    while let Some(current) = key {
+        read.push(current);
+        key = pair
+            .value
+            .after_identity(root, current, &mut || Ok(()))
+            .unwrap();
+    }
+    assert_eq!(read, keys);
+    assert!(matches!(
+        pair.value.change_identity(
+            &pair.custody,
+            root,
+            Membership::Remove(keys[1]),
+            Edit {
+                registry,
+                admit: &mut |_| Ok(()),
+                step: &mut || Err(DomError::Cancelled)
+            }
+        ),
+        Err(DomError::Cancelled)
+    ));
+    assert_eq!(pair.value.inspect_group(root).unwrap(), keys);
+}
 impl Pair {
     fn change(
         &mut self,

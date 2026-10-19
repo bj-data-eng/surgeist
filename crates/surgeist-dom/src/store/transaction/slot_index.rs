@@ -64,6 +64,12 @@ pub(in crate::store) struct Slots {
     current: Version,
     base_custody: SlotCustody,
 }
+/// An alias of actual relation-barrier position evidence and its original
+/// custody. Capturing it neither copies records nor creates another touch log.
+pub(in crate::store) struct PositionChanges {
+    pub keys: Map<Key>,
+    _custody: MapCustody<Key>,
+}
 pub(in crate::store) struct Finished {
     pub value: SlotIndex,
     pub custody: SlotCustody,
@@ -436,6 +442,12 @@ impl Slots {
     }
     pub fn position(&self, key: Key) -> Option<ChildPosition> {
         self.current.index.position(key)
+    }
+    pub fn capture_position_changes(&self) -> PositionChanges {
+        PositionChanges {
+            keys: self.current.dirty_positions.clone(),
+            _custody: self.current.dirty_positions_custody.clone(),
+        }
     }
     pub fn first(
         &self,

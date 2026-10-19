@@ -677,6 +677,10 @@ impl Draft {
         Ok((
             Prepared {
                 sharing: None,
+                inline_positions: self
+                    .inline_membership
+                    .as_ref()
+                    .map(|_| self.slot_index.capture_position_changes()),
                 name_promotions,
                 created_ranges,
                 retirements,

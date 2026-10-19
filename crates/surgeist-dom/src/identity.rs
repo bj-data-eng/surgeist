@@ -9,6 +9,10 @@ static NEXT_OWNER: AtomicU64 = AtomicU64::new(1);
 pub struct DomOwnerId(u64);
 
 impl DomOwnerId {
+    pub(crate) fn get(self) -> u64 {
+        self.0
+    }
+
     pub(crate) fn allocate() -> Result<Self, DomError> {
         Self::allocate_from(&NEXT_OWNER)
     }

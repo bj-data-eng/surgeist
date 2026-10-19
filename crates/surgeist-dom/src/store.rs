@@ -46,6 +46,7 @@ mod hyperlink;
 use history::HistoryEntry;
 mod image;
 mod import;
+mod inline_style;
 mod input;
 mod input_processing;
 mod installation;
@@ -140,6 +141,14 @@ pub enum DomResource {
     EventRecipientScratch,
     /// Recipient admission and reached topology/index query work.
     EventRecipientWork,
+    /// Maximum inline binding count.
+    InlineStyleBindings,
+    /// Original DOM custody union during inline formation.
+    InlineStyleStorage,
+    /// Temporary inline membership/preparation storage.
+    InlineStyleScratch,
+    /// Inline operation and sparse qualification work.
+    InlineStyleWork,
     SourceRetainedBytes,
     SourceRetainedUnits,
     /// Directly owned name records, index capacity and operation receipts.
@@ -160,6 +169,11 @@ pub enum DomResource {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum DomError {
+    /// A reached bound change needs an inline synchronization operation.
+    InlineStyleContextRequired {
+        element: NodeId,
+        change: crate::DomInlineStyleChange,
+    },
     StaleFullscreenExit,
     FullscreenExitHandoffRequired,
     FullscreenExitAssertionFailed {
@@ -1158,6 +1172,7 @@ pub struct Dom {
     next_source_operation: u64,
     pub(in crate::store) source_parents: Vec<Box<source::operation::Operation>>,
     source_event_executor: Option<std::sync::Weak<crate::source::event::ExecutorBinding>>,
+    inline_styles: Option<Box<inline_style::Owner>>,
     style_cssom_roots: style_custody::Bank,
     hosted_source: Option<crate::hosted::SourceObservation>,
     next_hosted_source: u64,
@@ -1235,6 +1250,7 @@ impl Dom {
             next_fullscreen_exit: 1,
             dispatch_custody: dispatch::CustodyBank::default(),
             event_recipients: None,
+            inline_styles: None,
             element_tasks: None,
             owner,
             names,
@@ -1555,6 +1571,7 @@ impl Dom {
         cancelled: &AtomicBool,
     ) -> Result<PreparedPublication, DomError> {
         check_cancel(cancelled)?;
+        let inline_index = self.prepare_inline_publication(&prepared, cancelled)?;
         let usage = prepared.state.root_usage()?;
         transaction::nodes::resize_debit(&mut prepared.root_debit, usage, |usage| match &prepared
             .formation
@@ -1585,6 +1602,7 @@ impl Dom {
         let changed = guarded.value.changed_from(&self.state);
         let Prepared {
             sharing,
+            inline_positions: _,
             name_promotions,
             formation,
             state_frontiers: _,
@@ -1741,6 +1759,7 @@ impl Dom {
             history_plan,
             retirement_publication,
             style_custody,
+            inline_index,
             retired_authority,
             owner,
             created,
@@ -1777,6 +1796,7 @@ impl Dom {
             history_plan,
             retirement_publication,
             style_custody,
+            inline_index,
             retired_authority,
             owner,
             created,
@@ -1804,6 +1824,12 @@ impl Dom {
             }
             self.state = state;
             self.state_custody = state_custody;
+            if let Some(index) = inline_index {
+                self.inline_styles
+                    .as_mut()
+                    .expect("prepared live inline owner")
+                    .index = index;
+            }
             if let Some(style_custody) = style_custody {
                 self.style_cssom_roots = style_custody;
             }
@@ -1895,6 +1921,7 @@ use transaction::staged::DraftNode;
 struct Draft {
     base: Arc<State>,
     event_recipients: Option<Arc<event::Owner>>,
+    inline_membership: Option<inline_style::Membership>,
     dom_limits: DomLimits,
     base_custody: transaction::StateCustody,
     input_captures: bank::Bank<source::input::InputEntry>,
@@ -2009,6 +2036,7 @@ pub(crate) struct PreparedPublication {
     history_plan: history::Plan,
     retirement_publication: dispatch::PublicationPlan,
     style_custody: Option<style_custody::Bank>,
+    inline_index: Option<inline_style::Index>,
     retired_authority: Option<Arc<crate::select::Authorization>>,
     owner: Arc<BatchIdentity>,
     created: Vec<Option<NodeId>>,
@@ -2033,6 +2061,7 @@ pub(crate) struct PreparedPublication {
 }
 struct Prepared {
     state: State,
+    inline_positions: Option<transaction::slot_index::PositionChanges>,
     created_ranges: Vec<Option<crate::DomRangeId>>,
     retirements: Vec<dispatch::Retirement>,
     owner: Arc<BatchIdentity>,
@@ -2408,6 +2437,7 @@ impl Draft {
         Ok(Self {
             base: dom.state.clone(),
             event_recipients: dom.event_recipients.clone(),
+            inline_membership: dom.inline_membership(),
             dom_limits: dom.limits,
             base_custody: dom.state_custody.clone(),
             input_captures: bank::Bank::default(),

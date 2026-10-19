@@ -141,7 +141,12 @@ mod hosted;
 mod hyperlink;
 mod identity;
 mod image;
+mod inline_style;
 mod input;
+pub use inline_style::{
+    DomInlineStyleCapture, DomInlineStyleChange, DomInlineStyleError, DomInlineStyleInputs,
+    DomInlineStyleLimits, DomInlineStyleRequestLimits,
+};
 mod installation;
 mod meta;
 mod name;
