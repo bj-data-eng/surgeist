@@ -1,15 +1,8 @@
+use crate::html::support::{input_element as input, input_state_forbids_attribute as forbidden};
 use surgeist_html::*;
 
-fn input() -> QualifiedName {
-    KnownHtmlElement::Input.qualified_name()
-}
 fn raw(value: impl Into<DocumentString>) -> Attribute {
     Attribute::new(KnownHtmlAttribute::Colorspace.qualified_name(), value)
-}
-fn forbidden() -> HtmlAttributeContextAuthorState {
-    HtmlAttributeContextAuthorState::Nonconforming(
-        HtmlAttributeContextConformanceError::InputStateForbidsAttribute,
-    )
 }
 
 #[test]

@@ -1,5 +1,6 @@
 //! Literal oracles from HTML877d's normative definitions/interface dispatch and
 //! common initial slots. DOM validity, live identity and family hooks are later.
+use crate::html::support::initialize_native_element as initialize;
 use std::convert::Infallible;
 use surgeist_html::bounded::{
     HtmlElementNameRead as Read, element_classification_with, is_nonce_element,
@@ -10,10 +11,6 @@ use surgeist_html::{
     HtmlNativeFormAssociationKind as F, HtmlNativeFreshNonce, HtmlNativeInitialization,
     KnownHtmlElement as K, Namespace, QualifiedName,
 };
-
-fn initialize(name: &QualifiedName) -> HtmlNativeInitialization {
-    native_element_initialization_with(name, |_| Ok::<_, Infallible>(())).unwrap()
-}
 
 fn html(local: &str) -> HtmlNativeInitialization {
     initialize(&QualifiedName::new(Namespace::html(), None, local))

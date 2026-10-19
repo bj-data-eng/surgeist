@@ -1,5 +1,6 @@
 //! Literal oracles from HTML877d #images-processing-model,
 //! #reacting-to-dom-mutations and Img/Source HTML element tree hooks.
+use crate::html::support::known_text_attribute as raw;
 use std::cmp::Ordering;
 use surgeist_html::*;
 
@@ -129,9 +130,6 @@ fn only_an_equal_value_src_set_carries_the_explicit_animation_restart() {
     );
 }
 
-fn raw(attr: KnownHtmlAttribute, value: &str) -> Attribute {
-    Attribute::new(attr.qualified_name(), value)
-}
 #[test]
 fn semantic_attribute_aliases_and_invalid_defaults_do_not_restart_images() {
     let interpreter = HtmlValueInterpreter::new(64);

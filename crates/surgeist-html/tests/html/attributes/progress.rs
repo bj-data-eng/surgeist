@@ -1,10 +1,8 @@
 //! Literal requirements from HTML #the-progress-element; captured effective
 //! quantities have their independent existing tests in semantics_ranges.
+use crate::html::support::known_attribute as attr;
 use surgeist_html::*;
 
-fn attr(kind: KnownHtmlAttribute, text: impl Into<DocumentString>) -> Attribute {
-    Attribute::new(kind.qualified_name(), text)
-}
 fn read(value: Option<&str>, maximum: Option<&str>) -> HtmlProgressAttributeReport {
     let value = value.map(|s| attr(KnownHtmlAttribute::Value, s));
     let maximum = maximum.map(|s| attr(KnownHtmlAttribute::Max, s));

@@ -1,11 +1,9 @@
+use crate::html::support::{input_element as input, input_state_forbids_attribute as forbidden};
 use surgeist_html::*;
 
 const BASE: &str =
     "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#";
 
-fn input() -> QualifiedName {
-    KnownHtmlElement::Input.qualified_name()
-}
 fn textarea() -> QualifiedName {
     KnownHtmlElement::Textarea.qualified_name()
 }
@@ -14,11 +12,6 @@ fn dirname(value: impl Into<DocumentString>) -> Attribute {
 }
 fn placeholder(value: impl Into<DocumentString>) -> Attribute {
     Attribute::new(KnownHtmlAttribute::Placeholder.qualified_name(), value)
-}
-fn forbidden() -> HtmlAttributeContextAuthorState {
-    HtmlAttributeContextAuthorState::Nonconforming(
-        HtmlAttributeContextConformanceError::InputStateForbidsAttribute,
-    )
 }
 fn newline_error(offset: usize) -> HtmlAttributeConformanceError {
     HtmlAttributeConformanceError::InputPlaceholderContainsNewline {

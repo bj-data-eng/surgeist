@@ -1,4 +1,5 @@
 //! Independent literal expectations from HTML §4.5.14 and its §2.3.5 grammars.
+use crate::html::support::year;
 use surgeist_html::*;
 
 fn read(text: &str) -> HtmlValueReport<HtmlTimeElementValue, HtmlMachineReadableTime> {
@@ -15,10 +16,6 @@ fn recovered(
         HtmlValueRecoveryState::Value(value) => value,
         other => panic!("expected machine-readable equivalent, got {other:?}"),
     }
-}
-
-fn year(value: u64) -> HtmlYear {
-    HtmlYear::new(value).unwrap()
 }
 
 #[test]

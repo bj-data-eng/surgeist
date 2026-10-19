@@ -1,11 +1,8 @@
 //! Actual owned primitive capacity, independently of logical decimal length.
 #![forbid(unsafe_code)]
 
+use crate::html::support::non_negative_integer as integer;
 use surgeist_html::{DocumentString, HtmlNonNegativeInteger};
-
-fn integer(raw: &str) -> HtmlNonNegativeInteger {
-    HtmlNonNegativeInteger::from_decimal_digits(&DocumentString::from(raw)).unwrap()
-}
 
 #[test]
 fn public_integer_construction_keeps_canonical_values_and_observes_owned_buffers() {

@@ -1,12 +1,9 @@
+use crate::html::support::html_element as element;
 use surgeist_html::{
     Attribute, HtmlAttributeAuthorState as Author, HtmlAttributeConformanceError as Conformance,
     HtmlAttributeObservation as Observation, HtmlAttributeRecognition as Recognition,
-    HtmlReferrerPolicy, HtmlValueInterpreter, KnownHtmlAttribute, Namespace, QualifiedName,
+    HtmlReferrerPolicy, HtmlValueInterpreter, KnownHtmlAttribute,
 };
-
-fn element(local: &str) -> QualifiedName {
-    QualifiedName::new(Namespace::html(), None, local)
-}
 
 #[test]
 fn absent_href_evidence_does_not_erase_the_missing_policy_default() {

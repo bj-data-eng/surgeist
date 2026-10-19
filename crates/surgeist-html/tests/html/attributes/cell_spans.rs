@@ -1,13 +1,15 @@
+use crate::html::support::{
+    SpanReport, assert_span_quantity as quantity, assert_span_unapplied as unapplied,
+    known_text_attribute as attr,
+};
 use surgeist_html::{
     Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeObservation,
     HtmlNonNegativeInteger, HtmlNumericAttributeAuthorState, HtmlNumericAttributeConformanceError,
-    HtmlNumericAttributeReport, HtmlNumericAttributeValueOrigin, HtmlValueAdmissionError,
-    HtmlValueAuthorState, HtmlValueFailure, HtmlValueInterpreter, HtmlValueRecoveryState,
-    HtmlValueSyntax, HtmlValueSyntaxError, KnownHtmlAttribute, KnownHtmlElement, Namespace,
-    QualifiedName,
+    HtmlNumericAttributeValueOrigin, HtmlValueAdmissionError, HtmlValueAuthorState,
+    HtmlValueFailure, HtmlValueInterpreter, HtmlValueRecoveryState, HtmlValueSyntax,
+    HtmlValueSyntaxError, KnownHtmlAttribute, KnownHtmlElement, Namespace, QualifiedName,
 };
 
-type SpanReport = HtmlNumericAttributeReport<HtmlNonNegativeInteger, u16>;
 type SpanOperation = fn(
     &HtmlValueInterpreter,
     &QualifiedName,
@@ -29,10 +31,6 @@ const SPANS: [(SpanOperation, KnownHtmlAttribute, u16, &str); 2] = [
     ),
 ];
 
-fn attr(kind: KnownHtmlAttribute, value: &str) -> Attribute {
-    Attribute::new(kind.qualified_name(), value)
-}
-
 fn read(kind: KnownHtmlAttribute, value: Option<&str>, element: KnownHtmlElement) -> SpanReport {
     let raw = value.map(|value| attr(kind, value));
     let interpreter = HtmlValueInterpreter::new(4096);
@@ -43,11 +41,6 @@ fn read(kind: KnownHtmlAttribute, value: Option<&str>, element: KnownHtmlElement
         _ => unreachable!("fixture selects only these two source rules"),
     }
     .unwrap()
-}
-
-fn quantity(report: &SpanReport, value: u16, origin: HtmlNumericAttributeValueOrigin) {
-    assert_eq!(report.intrinsic(), Some(&value));
-    assert_eq!(report.origin(), Some(origin));
 }
 
 fn recovered(report: &SpanReport, digits: &str) {
@@ -322,17 +315,6 @@ fn exact_expanded_names_preserve_prefixes_and_source_qualified_raw_records() {
             quantity(&report, 2, HtmlNumericAttributeValueOrigin::Recovered);
         }
     }
-}
-
-fn unapplied(report: &SpanReport) {
-    assert_ne!(
-        report.applicability(),
-        HtmlAttributeApplicability::Applicable
-    );
-    assert_eq!(report.author(), HtmlNumericAttributeAuthorState::Unapplied);
-    assert!(report.common().is_none());
-    assert!(report.intrinsic().is_none());
-    assert!(report.origin().is_none());
 }
 
 #[test]

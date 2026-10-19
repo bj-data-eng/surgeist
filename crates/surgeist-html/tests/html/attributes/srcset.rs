@@ -1,11 +1,6 @@
+use crate::html::support::{html_element as element, unqualified_attribute as attr};
 use surgeist_html::*;
 
-fn element(name: &str) -> QualifiedName {
-    QualifiedName::new(Namespace::html(), None, name)
-}
-fn attr(name: &str, value: impl Into<DocumentString>) -> Attribute {
-    Attribute::new(QualifiedName::new(Namespace::none(), None, name), value)
-}
 fn attributes(values: &[(&str, &str)]) -> OrderedAttributes {
     OrderedAttributes::new(values.iter().map(|&(name, value)| attr(name, value))).unwrap()
 }

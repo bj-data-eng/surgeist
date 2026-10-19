@@ -1,10 +1,8 @@
 //! Literal source oracles: HTML 877d #attr-select-size/#concept-select-size,
 //! #attr-select-multiple, §2.3.2 and §2.3.4.2. Display size is not size IDL.
+use crate::html::support::known_attribute as attr;
 use surgeist_html::*;
 
-fn attr(name: KnownHtmlAttribute, value: impl Into<DocumentString>) -> Attribute {
-    Attribute::new(name.qualified_name(), value)
-}
 fn read(size: Option<&str>, multiple: Option<&str>) -> HtmlSelectSizeReport {
     let size = size.map(|v| attr(KnownHtmlAttribute::Size, v));
     let multiple = multiple.map(|v| attr(KnownHtmlAttribute::Multiple, v));

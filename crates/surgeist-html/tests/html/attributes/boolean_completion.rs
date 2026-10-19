@@ -1,3 +1,4 @@
+use crate::html::support::html_element as element;
 use surgeist_html::{
     Attribute, DocumentString, HtmlAttributeApplicability as Applicability,
     HtmlAttributeAuthorState as Author, HtmlAttributeConformanceError as Conformance,
@@ -10,10 +11,6 @@ use surgeist_html::{
     HtmlScriptAttributeContext as Script, HtmlValueInterpreter, KnownHtmlAttribute, Namespace,
     QualifiedName,
 };
-
-fn element(local: &str) -> QualifiedName {
-    QualifiedName::new(Namespace::html(), None, local)
-}
 
 #[test]
 fn image_map_presence_survives_a_missing_qualifying_ancestor_and_invalid_spelling() {

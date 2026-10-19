@@ -1,13 +1,10 @@
+use crate::html::support::html_element as element;
 use surgeist_html::{
     Attribute, HtmlAttributeAuthorState as Author, HtmlAttributeConformanceError as Conformance,
     HtmlAttributeObservation as Observation, HtmlAttributeRecognition as Recognition,
     HtmlBooleanAttribute as Boolean, HtmlButtonSubmitterContext as Button, HtmlInputType as Input,
-    HtmlScriptAttributeContext as Script, HtmlValueInterpreter, Namespace, QualifiedName,
+    HtmlScriptAttributeContext as Script, HtmlValueInterpreter,
 };
-
-fn element(local: &str) -> QualifiedName {
-    QualifiedName::new(Namespace::html(), None, local)
-}
 
 #[test]
 fn prohibited_input_states_preserve_present_boolean_content_and_lexical_observation() {

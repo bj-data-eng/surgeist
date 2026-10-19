@@ -1,10 +1,8 @@
 //! Actual media operands, phased observations and guarded report publication.
 #![forbid(unsafe_code)]
+use crate::html::support::unqualified_text_attribute as attr;
 use surgeist_html::{bounded::*, *};
 type Error = HtmlMediaInterpretationError;
-fn attr(name: &str, value: &str) -> Attribute {
-    Attribute::new(QualifiedName::new(Namespace::none(), None, name), value)
-}
 fn matched<'a>(a: &'a Attribute, field: HtmlMediaField) -> HtmlMediaFieldMatch<'a, Attribute> {
     match_media_field(a, field, |_| Ok::<_, ()>(()))
         .unwrap()

@@ -1,16 +1,10 @@
+use crate::html::support::{
+    known_attribute as attr, ordered_attributes as attrs, value_interpreter as interpreter,
+};
 use surgeist_html::*;
 
 fn link() -> QualifiedName {
     KnownHtmlElement::Link.qualified_name()
-}
-fn attr(name: KnownHtmlAttribute, value: impl Into<DocumentString>) -> Attribute {
-    Attribute::new(name.qualified_name(), value)
-}
-fn attrs(values: impl IntoIterator<Item = Attribute>) -> OrderedAttributes {
-    OrderedAttributes::new(values).unwrap()
-}
-fn interpreter() -> HtmlValueInterpreter {
-    HtmlValueInterpreter::new(4096)
 }
 fn context_error(error: HtmlLinkDestinationContextError) -> HtmlLinkDestinationContextAuthorState {
     HtmlLinkDestinationContextAuthorState::Nonconforming(error)

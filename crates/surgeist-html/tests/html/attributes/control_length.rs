@@ -1,3 +1,4 @@
+use crate::html::support::known_text_attribute as raw;
 use surgeist_html::{
     Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeContextAuthorState,
     HtmlAttributeContextConformanceError, HtmlAttributeObservation,
@@ -8,10 +9,6 @@ use surgeist_html::{
     HtmlValueInterpreter, HtmlValueRecoveryState, KnownHtmlAttribute as A, KnownHtmlElement as E,
     Namespace, QualifiedName,
 };
-
-fn raw(attribute: A, value: &str) -> Attribute {
-    Attribute::new(attribute.qualified_name(), value)
-}
 
 fn length_report(
     min: Option<&Attribute>,

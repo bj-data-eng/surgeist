@@ -1,3 +1,4 @@
+use crate::html::support::{html_element as element, unqualified_text_attribute as attr};
 use surgeist_html::HtmlCustomControlAttributeContext;
 use surgeist_html::{
     Attribute, DocumentString, HtmlAttributeApplicability as Applicability,
@@ -17,13 +18,6 @@ use surgeist_html::{
     HtmlCrossOrigin, HtmlCrossOriginState, HtmlFetchPriority, HtmlScriptAttributeContext,
 };
 use surgeist_html::{HtmlHyperlinkAttributeContext, HtmlReferrerPolicy};
-
-fn element(local: &str) -> QualifiedName {
-    QualifiedName::new(Namespace::html(), None, local)
-}
-fn attr(local: &str, value: &str) -> Attribute {
-    Attribute::new(QualifiedName::new(Namespace::none(), None, local), value)
-}
 
 #[test]
 fn disabled_local_presence_uses_each_standard_elements_defining_clause() {

@@ -1,4 +1,4 @@
-use surgeist_html::HtmlInputValueSanitization;
+use crate::html::support::string_sanitization as string_policy;
 use surgeist_html::{
     DocumentString, HtmlInputEmailMode, HtmlInputFlags, HtmlInputSanitizationCursor,
     HtmlInputTemporalFormat, HtmlInputType, HtmlInputValueMode,
@@ -187,15 +187,6 @@ fn temporal_empty_null_and_isolated_surrogates_are_not_trimmed_or_repaired() {
     ] {
         for input in [&[][..], &[0][..], &[0xd800][..], &[0xdc00][..], &[0x20][..]] {
             assert!(sanitized(kind, input).is_empty());
-        }
-    }
-}
-
-fn string_policy(policy: HtmlInputValueSanitization) -> surgeist_html::HtmlInputSanitization {
-    match policy {
-        HtmlInputValueSanitization::String(policy) => policy,
-        HtmlInputValueSanitization::Range | HtmlInputValueSanitization::Color => {
-            panic!("these literal cases require the string operation")
         }
     }
 }

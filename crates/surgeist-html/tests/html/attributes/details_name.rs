@@ -1,13 +1,10 @@
+use crate::html::support::name_attribute as raw;
 use surgeist_html::{
     Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeAuthorState,
     HtmlAttributeConformanceError, HtmlAttributeContextAuthorState, HtmlAttributeObservation,
     HtmlAttributeRecognition, HtmlAttributeReport, HtmlBooleanAttribute, HtmlDetailsName,
     HtmlValueInterpreter, KnownHtmlAttribute, KnownHtmlElement, Namespace, QualifiedName,
 };
-
-fn raw(value: impl Into<DocumentString>) -> Attribute {
-    Attribute::new(KnownHtmlAttribute::Name.qualified_name(), value)
-}
 
 fn read(raw: Option<&Attribute>) -> HtmlAttributeReport<HtmlDetailsName> {
     HtmlValueInterpreter::new(4096)

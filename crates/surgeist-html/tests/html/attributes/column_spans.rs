@@ -1,13 +1,14 @@
+use crate::html::support::{
+    SpanReport, assert_span_quantity as quantity, assert_span_unapplied as unapplied,
+};
 use surgeist_html::{
     Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeObservation,
     HtmlNonNegativeInteger, HtmlNumericAttributeAuthorState, HtmlNumericAttributeConformanceError,
-    HtmlNumericAttributeReport, HtmlNumericAttributeValueOrigin, HtmlValueAdmissionError,
-    HtmlValueAuthorState, HtmlValueFailure, HtmlValueInterpreter, HtmlValueRecoveryState,
-    HtmlValueSyntax, HtmlValueSyntaxError, KnownHtmlAttribute, KnownHtmlElement, Namespace,
-    QualifiedName,
+    HtmlNumericAttributeValueOrigin, HtmlValueAdmissionError, HtmlValueAuthorState,
+    HtmlValueFailure, HtmlValueInterpreter, HtmlValueRecoveryState, HtmlValueSyntax,
+    HtmlValueSyntaxError, KnownHtmlAttribute, KnownHtmlElement, Namespace, QualifiedName,
 };
 
-type SpanReport = HtmlNumericAttributeReport<HtmlNonNegativeInteger, u16>;
 type SpanOperation = fn(
     &HtmlValueInterpreter,
     &QualifiedName,
@@ -29,11 +30,6 @@ const SPANS: [(SpanOperation, KnownHtmlElement, &str); 2] = [
 
 fn attr(value: &str) -> Attribute {
     Attribute::new(KnownHtmlAttribute::Span.qualified_name(), value)
-}
-
-fn quantity(report: &SpanReport, value: u16, origin: HtmlNumericAttributeValueOrigin) {
-    assert_eq!(report.intrinsic(), Some(&value));
-    assert_eq!(report.origin(), Some(origin));
 }
 
 fn invalid_author(report: &SpanReport) {
@@ -319,17 +315,6 @@ fn exact_names_and_source_rows_are_distinct_for_col_and_colgroup_content() {
         );
         quantity(&report, 2, HtmlNumericAttributeValueOrigin::Recovered);
     }
-}
-
-fn unapplied(report: &SpanReport) {
-    assert_ne!(
-        report.applicability(),
-        HtmlAttributeApplicability::Applicable
-    );
-    assert_eq!(report.author(), HtmlNumericAttributeAuthorState::Unapplied);
-    assert!(report.common().is_none());
-    assert!(report.intrinsic().is_none());
-    assert!(report.origin().is_none());
 }
 
 #[test]

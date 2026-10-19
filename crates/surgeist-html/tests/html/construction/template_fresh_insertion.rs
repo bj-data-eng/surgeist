@@ -1,15 +1,9 @@
 #![forbid(unsafe_code)]
 
-use std::convert::Infallible;
-use surgeist_html::bounded::native_element_initialization_with;
+use crate::html::support::initialize_native_element as initialize;
 use surgeist_html::{
-    HtmlElementClass, HtmlNativeInitialization, HtmlTemplateFreshInsertionState, KnownHtmlElement,
-    Namespace, QualifiedName,
+    HtmlElementClass, HtmlTemplateFreshInsertionState, KnownHtmlElement, Namespace, QualifiedName,
 };
-
-fn initialize(name: &QualifiedName) -> HtmlNativeInitialization {
-    native_element_initialization_with(name, |_| Ok::<_, Infallible>(())).unwrap()
-}
 
 // HTML877d raw48464–48470: the actual template's insertion target, start marker
 // and end marker are initially null. This does not create its contents object.

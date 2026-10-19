@@ -1,5 +1,6 @@
 //! Literal coordinate expectations from HTML 877d's five temporal input states.
 //! These native producers do not implement the raw input-constraints adapter.
+use crate::html::support::year;
 use surgeist_html::{
     DocumentString, HtmlDate, HtmlFloatingPointNumber, HtmlInputTemporalCoordinate,
     HtmlInputTemporalCoordinateUnit, HtmlInputTemporalStepError, HtmlInputType, HtmlInteger,
@@ -8,9 +9,6 @@ use surgeist_html::{
     HtmlValueInterpreter, HtmlValueRecoveryState, HtmlWeek, HtmlYear,
 };
 
-fn year(value: u64) -> HtmlYear {
-    HtmlYear::new(value).unwrap()
-}
 fn date(y: u64, m: u8, d: u8) -> HtmlDate {
     HtmlDate::new(year(y), m, d).unwrap()
 }

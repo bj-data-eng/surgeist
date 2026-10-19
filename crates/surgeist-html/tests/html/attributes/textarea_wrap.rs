@@ -1,3 +1,4 @@
+use crate::html::support::known_attribute as raw;
 use surgeist_html::{
     Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeAuthorState,
     HtmlAttributeConformanceError, HtmlAttributeContextAuthorState,
@@ -10,9 +11,6 @@ use surgeist_html::{
 
 const SOURCE: &str = "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-textarea-wrap";
 
-fn raw(name: Attr, value: impl Into<DocumentString>) -> Attribute {
-    Attribute::new(name.qualified_name(), value)
-}
 fn attributes(values: Vec<Attribute>) -> OrderedAttributes {
     OrderedAttributes::new(values).unwrap()
 }

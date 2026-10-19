@@ -1,14 +1,9 @@
+use crate::html::support::{known_attribute as raw, known_element as element};
 use surgeist_html::*;
 
 const BASE: &str =
     "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#";
 
-fn element(name: KnownHtmlElement) -> QualifiedName {
-    name.qualified_name()
-}
-fn raw(name: KnownHtmlAttribute, value: impl Into<DocumentString>) -> Attribute {
-    Attribute::new(name.qualified_name(), value)
-}
 fn input_forbidden() -> HtmlAttributeContextAuthorState {
     HtmlAttributeContextAuthorState::Nonconforming(
         HtmlAttributeContextConformanceError::InputStateForbidsAttribute,

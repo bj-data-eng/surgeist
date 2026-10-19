@@ -1,22 +1,14 @@
+use crate::html::support::{
+    known_attribute as attr, known_element as element, ordered_attributes as attrs,
+    value_interpreter as interpreter,
+};
 use surgeist_html::*;
 
-fn interpreter() -> HtmlValueInterpreter {
-    HtmlValueInterpreter::new(4096)
-}
-fn element(name: KnownHtmlElement) -> QualifiedName {
-    name.qualified_name()
-}
-fn attr(name: KnownHtmlAttribute, value: impl Into<DocumentString>) -> Attribute {
-    Attribute::new(name.qualified_name(), value)
-}
 fn token(value: impl Into<DocumentString>) -> HtmlSpaceToken {
     HtmlSpaceToken::new(value).unwrap()
 }
 fn nn(value: &str) -> HtmlNonNegativeInteger {
     HtmlNonNegativeInteger::from_decimal_digits(&value.into()).unwrap()
-}
-fn attrs(values: impl IntoIterator<Item = Attribute>) -> OrderedAttributes {
-    OrderedAttributes::new(values).unwrap()
 }
 fn keys(value: impl Into<DocumentString>) -> HtmlAccessKeyReport {
     interpreter()

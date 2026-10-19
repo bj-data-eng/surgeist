@@ -1,5 +1,7 @@
 //! Integration tests grouped by the HTML language domain they exercise.
 
+mod support;
+
 mod attributes;
 mod bounded;
 mod color;

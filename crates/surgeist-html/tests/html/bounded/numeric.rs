@@ -1,13 +1,8 @@
 #![forbid(unsafe_code)]
 
+use crate::html::support::non_negative_integer as integer;
 use std::{cmp::Ordering, num::NonZeroU32};
-use surgeist_html::{
-    DocumentString, HtmlInteger, HtmlNonNegativeInteger, HtmlNonNegativeRational, bounded::*,
-};
-
-fn integer(value: &str) -> HtmlNonNegativeInteger {
-    HtmlNonNegativeInteger::from_decimal_digits(&DocumentString::from(value)).unwrap()
-}
+use surgeist_html::{DocumentString, HtmlInteger, HtmlNonNegativeRational, bounded::*};
 
 #[test]
 fn recovery_and_unit_steps_preserve_arbitrary_digits_and_report_capacity() {

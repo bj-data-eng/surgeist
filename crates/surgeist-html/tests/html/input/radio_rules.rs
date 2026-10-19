@@ -1,3 +1,4 @@
+use crate::html::support::string_sanitization as string_policy;
 use surgeist_html::*;
 
 #[test]
@@ -67,13 +68,4 @@ fn checkbox_to_radio_type_change_has_real_state_signal_and_preserving_sanitizati
     );
     let mut same = HtmlInputTypeChange::new(HtmlInputType::Radio, HtmlInputType::Radio, 4);
     assert_eq!(same.next_effect(), None);
-}
-
-fn string_policy(policy: HtmlInputValueSanitization) -> HtmlInputSanitization {
-    match policy {
-        HtmlInputValueSanitization::String(policy) => policy,
-        HtmlInputValueSanitization::Range | HtmlInputValueSanitization::Color => {
-            panic!("these literal cases require the string operation")
-        }
-    }
 }

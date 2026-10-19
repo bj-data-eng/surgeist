@@ -1,10 +1,8 @@
 //! Literal oracles from HTML #attr-area-shape/#attr-area-coords and
 //! #image-map-processing-model, plus exact authored number meaning in §2.3.4.3.
+use crate::html::support::known_attribute as attr;
 use surgeist_html::*;
 
-fn attr(name: KnownHtmlAttribute, value: impl Into<DocumentString>) -> Attribute {
-    Attribute::new(name.qualified_name(), value)
-}
 fn read(shape: Option<&str>, coords: Option<&str>) -> HtmlAreaCoordinatesReport {
     let shape = shape.map(|value| attr(KnownHtmlAttribute::Shape, value));
     let coords = coords.map(|value| attr(KnownHtmlAttribute::Coords, value));

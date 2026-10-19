@@ -1,3 +1,4 @@
+use crate::html::support::known_text_attribute as raw;
 use surgeist_html::{
     Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeAuthorState,
     HtmlAttributeContextAuthorState, HtmlAttributeContextConformanceError,
@@ -8,10 +9,6 @@ use surgeist_html::{
     HtmlValueAdmissionError, HtmlValueAuthorState, HtmlValueInterpreter, HtmlValueRecoveryState,
     KnownHtmlAttribute, KnownHtmlElement, Namespace, QualifiedName,
 };
-
-fn raw(attribute: KnownHtmlAttribute, value: &str) -> Attribute {
-    Attribute::new(attribute.qualified_name(), value)
-}
 
 type NonnegativeOperation = fn(
     &HtmlValueInterpreter,

@@ -1,3 +1,4 @@
+use crate::html::support::known_text_attribute as raw;
 use surgeist_html::{
     Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeContextAuthorState,
     HtmlAttributeContextConformanceError, HtmlAttributeObservation, HtmlFloatingPointNumber,
@@ -92,9 +93,6 @@ fn step_any_observes_only_the_selected_ascii_keyword_position() {
     assert!(!Step::any_keyword_unit_matches(usize::MAX, 121));
 }
 
-fn raw(role: A, value: &str) -> Attribute {
-    Attribute::new(role.qualified_name(), value)
-}
 fn observe(
     state: State,
     min: Option<&str>,

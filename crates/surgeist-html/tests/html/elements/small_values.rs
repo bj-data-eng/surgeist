@@ -1,12 +1,9 @@
+use crate::html::support::non_negative_integer as integer;
 use surgeist_html::{
-    Attribute, DocumentString, HtmlCanvasBitmapDimension, HtmlCanvasNoneState, HtmlMarqueeState,
+    Attribute, HtmlCanvasBitmapDimension, HtmlCanvasNoneState, HtmlMarqueeState,
     HtmlNonNegativeInteger, HtmlValueInterpreter, HtmlValueRecoveryState, KnownHtmlAttribute,
     KnownHtmlElement,
 };
-
-fn integer(value: &str) -> HtmlNonNegativeInteger {
-    HtmlNonNegativeInteger::from_decimal_digits(&DocumentString::from(value)).unwrap()
-}
 
 fn dimensions(state: &HtmlCanvasNoneState) -> (String, String) {
     fn digits(value: HtmlCanvasBitmapDimension<'_>) -> String {

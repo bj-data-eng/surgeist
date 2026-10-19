@@ -1,3 +1,4 @@
+use crate::html::support::string_sanitization as string_policy;
 use surgeist_html::*;
 
 // HTML877d Checkbox/default-on, common reset/type-change/clone/checked rules.
@@ -226,13 +227,4 @@ fn checkbox_value_finish_never_requests_text_cursor_effects() {
         ),
         HtmlTextControlValueSetterFinish::NoAdditionalEffect
     );
-}
-
-fn string_policy(policy: HtmlInputValueSanitization) -> HtmlInputSanitization {
-    match policy {
-        HtmlInputValueSanitization::String(policy) => policy,
-        HtmlInputValueSanitization::Range | HtmlInputValueSanitization::Color => {
-            panic!("these literal cases require the string operation")
-        }
-    }
 }

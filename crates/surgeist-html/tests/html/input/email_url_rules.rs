@@ -1,3 +1,4 @@
+use crate::html::support::string_sanitization as string_policy;
 use surgeist_html::HtmlInputValueSanitization;
 use surgeist_html::{
     HtmlInputEmailMode, HtmlInputRuleWork, HtmlInputSanitization, HtmlInputSanitizationCursor,
@@ -162,13 +163,4 @@ fn a_cursor_has_no_final_email_count_before_its_real_completion() {
     assert_eq!(cursor.email_value_count(), Some(2));
     assert_eq!(cursor.advance(), None);
     assert_eq!(cursor.required_work(), None);
-}
-
-fn string_policy(policy: HtmlInputValueSanitization) -> HtmlInputSanitization {
-    match policy {
-        HtmlInputValueSanitization::String(policy) => policy,
-        HtmlInputValueSanitization::Range | HtmlInputValueSanitization::Color => {
-            panic!("these literal cases require the string operation")
-        }
-    }
 }
