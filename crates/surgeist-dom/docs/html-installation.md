@@ -52,6 +52,9 @@ the actual current target and materializes a detached fragment in that Document.
 It applies the report's ordered Template-cache and shadow-attachment effects;
 it does not implicitly append the fragment to its context. Retained auxiliary
 parser Documents remain distinct from the captured target and template owners.
+ShadowRoot captures also preserve the root's actual node Document separately
+from its host's Document. Installation resolves both through their qualified
+bindings and materializes the fragment in the target Document.
 `DomParsedHtmlInstallation` keeps the report, installed snapshot, changes and
 separate construction-subject and captured-subject bindings as historical data.
 Subsequent edits cannot extend or rewrite those bindings.

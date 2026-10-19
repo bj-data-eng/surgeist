@@ -3,6 +3,8 @@
 mod canonical_binding_changes;
 #[path = "parsed_ordinary_installation/contextual_controls.rs"]
 mod contextual_controls;
+#[path = "parsed_ordinary_installation/noncontrol_state.rs"]
+mod noncontrol_state;
 
 use std::sync::{Arc, atomic::AtomicBool};
 use surgeist_dom::*;

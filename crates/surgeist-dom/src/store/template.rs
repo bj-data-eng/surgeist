@@ -192,6 +192,9 @@ impl Draft {
 }
 
 #[cfg(test)]
+mod patch_retirement_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::atomic::Ordering;
