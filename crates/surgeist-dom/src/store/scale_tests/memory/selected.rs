@@ -2,10 +2,11 @@
 //! single-stage gate lends no DOM authority and never owns a semantic holder.
 //! The runner owns its fresh directory and any external measurement process.
 
-use super::gate::{self, Gate, Identity, Sample, optional, required};
+use super::selection::{Identity, Sample, checkpoint_config, optional, required};
 use super::{
     HolderStage, Population, construction_peak, require_release, run_sample, scale_metrics,
 };
+use surgeist_test::checkpoint::{Config, Gate};
 
 const SIZES: [usize; 5] = [1000, 10_000, 100_000, 800_000, 1_000_000];
 
@@ -64,7 +65,7 @@ fn stage(value: &str) -> Result<HolderStage, &'static str> {
 #[derive(Debug)]
 struct GateConfig {
     stage: HolderStage,
-    transport: gate::Config,
+    transport: Config,
 }
 
 impl GateConfig {
@@ -73,13 +74,14 @@ impl GateConfig {
         directory: Option<&str>,
         token: Option<&str>,
         timeout: Option<&str>,
-    ) -> Result<Option<Self>, &'static str> {
+    ) -> std::io::Result<Option<Self>> {
         if hold == "none" {
-            gate::Config::parse(false, directory, token, timeout)?;
+            checkpoint_config(false, directory, token, timeout)?;
             return Ok(None);
         }
-        let stage = stage(hold)?;
-        let transport = gate::Config::parse(true, directory, token, timeout)?
+        let stage = stage(hold)
+            .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidInput, message))?;
+        let transport = checkpoint_config(true, directory, token, timeout)?
             .expect("enabled gate configuration");
         Ok(Some(Self { stage, transport }))
     }

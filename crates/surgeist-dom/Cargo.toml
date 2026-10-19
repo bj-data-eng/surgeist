@@ -15,3 +15,6 @@ surgeist-cssom = { path = "../surgeist-cssom", version = "=0.1.0" }
 surgeist-html = { path = "../surgeist-html", version = "=0.1.0" }
 surgeist-html-parser = { path = "../surgeist-html-parser", version = "=0.1.0" }
 surgeist-html-semantics = { path = "../surgeist-html-semantics", version = "=0.1.0" }
+
+[dev-dependencies]
+surgeist-test = { path = "../surgeist-test", version = "=0.1.0" }

@@ -2,10 +2,11 @@
 //! checkpoints expose scalar identity only; the runner owns external tools.
 
 use super::super::{
-    gate::{Config, Gate, Identity, Sample, optional, required},
     require_release, scale_metrics,
+    selection::{Identity, Sample, checkpoint_config, optional, required},
 };
 use super::{CELLS, COLUMNS, HolderStage, MANAGED_NODES, PARSED_NODES, ROWS, run_sample};
+use surgeist_test::checkpoint::{Config, Gate};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Selection {
@@ -95,7 +96,7 @@ fn configuration() -> (Selection, Vec<HolderStage>, Option<Config>) {
     let directory = optional("SURGEIST_MEMORY_STAGE_DIR");
     let token = optional("SURGEIST_MEMORY_TOKEN");
     let timeout = optional("SURGEIST_MEMORY_ACK_TIMEOUT_SECONDS");
-    let config = Config::parse(
+    let config = checkpoint_config(
         !stages.is_empty(),
         directory.as_deref(),
         token.as_deref(),

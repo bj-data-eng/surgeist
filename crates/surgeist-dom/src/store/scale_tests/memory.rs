@@ -8,9 +8,9 @@ use super::{
 };
 use crate::{DocumentString, DomBatch, DomChange, DomNodeKind, DomSnapshot, NodeId};
 
-mod gate;
 mod parsed;
 mod selected;
+mod selection;
 mod sharing;
 
 const MANAGED: usize = 1000;

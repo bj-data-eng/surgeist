@@ -1,5 +1,8 @@
-//! Bounded runner acknowledgements for scalar fixture checkpoints. This module
-//! owns no DOM, report, snapshot, diagnostic graph or measurement process.
+//! Bounded file acknowledgements for test-fixture checkpoints.
+//!
+//! The caller owns fixture selection, scalar identity records, the fresh stage
+//! directory and any measurement tools. This transport holds no fixture value
+//! or process authority. It leaves ready/acknowledgement files for the runner.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
@@ -9,177 +12,62 @@ use std::time::{Duration, Instant};
 const MAX_ACK_BYTES: usize = 512;
 const MAX_CHECKPOINTS: usize = 16;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Sample {
-    Warmup,
-    First,
-    Second,
-    Third,
-}
-
-impl Sample {
-    pub(super) fn parse(value: &str) -> Result<Self, &'static str> {
-        match value {
-            "warmup" => Ok(Self::Warmup),
-            "0" => Ok(Self::First),
-            "1" => Ok(Self::Second),
-            "2" => Ok(Self::Third),
-            _ => Err("invalid SURGEIST_MEMORY_SAMPLE"),
-        }
-    }
-
-    pub(super) fn name(self) -> &'static str {
-        match self {
-            Self::Warmup => "warmup",
-            Self::First => "0",
-            Self::Second => "1",
-            Self::Third => "2",
-        }
-    }
-
-    pub(super) fn ordinal(self) -> usize {
-        match self {
-            Self::Warmup | Self::First => 0,
-            Self::Second => 1,
-            Self::Third => 2,
-        }
-    }
-}
-
-/// Closed fixture identities, containing only scalar counts and static labels.
-#[derive(Clone, Copy, Debug)]
-pub(super) enum Identity {
-    Native {
-        population: &'static str,
-        managed: usize,
-        sample: Sample,
-    },
-    Parsed {
-        rows: usize,
-        columns: usize,
-        cells: usize,
-        parsed_nodes: usize,
-        managed: usize,
-        sample: Sample,
-    },
-    Layered {
-        mode: &'static str,
-        ids: &'static str,
-        rows: usize,
-        columns: usize,
-        cells: usize,
-        managed: usize,
-        sample: Sample,
-    },
-}
-
-impl Identity {
-    fn record(self, token: &str, pid: u32, stage: &str, ordinal: Option<usize>) -> String {
-        match self {
-            Self::Native {
-                population,
-                managed,
-                sample,
-            } => {
-                // Preserve the existing single-stage native runner protocol.
-                let mut record = format!(
-                    "token={token}\npid={pid}\npopulation={population}\nmanaged={managed}\nsample={}\nstage={stage}\n",
-                    sample.name()
-                );
-                if let Some(ordinal) = ordinal {
-                    record.push_str(&format!("checkpoint={ordinal}\n"));
-                }
-                record
-            }
-            Self::Parsed {
-                rows,
-                columns,
-                cells,
-                parsed_nodes,
-                managed,
-                sample,
-            } => format!(
-                "token={token}\npid={pid}\nfixture=parsed-table\nrows={rows}\ncolumns={columns}\ncells={cells}\nparsed_nodes={parsed_nodes}\nmanaged={managed}\nsample={}\nstage={stage}\ncheckpoint={}\n",
-                sample.name(),
-                ordinal.unwrap_or(0)
-            ),
-            Self::Layered {
-                mode,
-                ids,
-                rows,
-                columns,
-                cells,
-                managed,
-                sample,
-            } => format!(
-                "token={token}\npid={pid}\nfixture=native-layered\nmode={mode}\nids={ids}\nrows={rows}\ncolumns={columns}\ncells={cells}\nmanaged={managed}\nsample={}\nstage={stage}\ncheckpoint={}\n",
-                sample.name(),
-                ordinal.unwrap_or(0)
-            ),
-        }
-    }
-}
-
+/// Validated transport configuration; construction performs no filesystem I/O.
 #[derive(Debug)]
-pub(super) struct Config {
+pub struct Config {
     directory: PathBuf,
     token: String,
     timeout: Duration,
 }
 
 impl Config {
-    /// Selection/stage validation belongs to the fixture and precedes this IO.
-    pub(super) fn parse(
-        enabled: bool,
-        directory: Option<&str>,
-        token: Option<&str>,
-        timeout: Option<&str>,
-    ) -> Result<Option<Self>, &'static str> {
-        if !enabled {
-            if directory.is_some() || token.is_some() || timeout.is_some() {
-                return Err("hold=none forbids inherited acknowledgement configuration");
-            }
-            return Ok(None);
+    /// Select a runner-owned directory, a nonempty token of at most 64 ASCII
+    /// letters/digits/hyphens/underscores, and a timeout from 1 through 300 seconds.
+    ///
+    /// Invalid configuration returns [`io::ErrorKind::InvalidInput`]. The
+    /// directory must already exist and be empty when [`Gate::open`] runs.
+    pub fn new(directory: PathBuf, token: String, timeout: Duration) -> io::Result<Self> {
+        if directory.as_os_str().is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "checkpoint directory must be nonempty",
+            ));
         }
-        let directory = directory
-            .filter(|value| !value.is_empty())
-            .ok_or("missing SURGEIST_MEMORY_STAGE_DIR")?;
-        let token = token.ok_or("missing SURGEIST_MEMORY_TOKEN")?;
         if token.is_empty()
             || token.len() > 64
             || !token
                 .bytes()
                 .all(|value| value.is_ascii_alphanumeric() || value == b'-' || value == b'_')
         {
-            return Err(
-                "SURGEIST_MEMORY_TOKEN requires 1..64 ASCII letters/digits/hyphens/underscores",
-            );
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "checkpoint token requires 1..64 ASCII letters/digits/hyphens/underscores",
+            ));
         }
-        let seconds: u64 = timeout
-            .ok_or("missing SURGEIST_MEMORY_ACK_TIMEOUT_SECONDS")?
-            .parse()
-            .map_err(|_| "invalid acknowledgement timeout")?;
-        if !(1..=300).contains(&seconds) {
-            return Err("acknowledgement timeout must be 1..300 seconds");
+        if !(Duration::from_secs(1)..=Duration::from_secs(300)).contains(&timeout) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "acknowledgement timeout must be 1..300 seconds",
+            ));
         }
-        Ok(Some(Self {
-            directory: directory.into(),
-            token: token.into(),
-            timeout: Duration::from_secs(seconds),
-        }))
+        Ok(Self {
+            directory,
+            token,
+            timeout,
+        })
     }
 }
 
-pub(super) fn required(name: &str) -> String {
-    std::env::var(name).unwrap_or_else(|_| panic!("explicit UTF-8 {name} is required"))
-}
-
-pub(super) fn optional(name: &str) -> Option<String> {
-    match std::env::var(name) {
-        Ok(value) => Some(value),
-        Err(std::env::VarError::NotPresent) => None,
-        Err(std::env::VarError::NotUnicode(_)) => panic!("{name} must be UTF-8"),
-    }
+/// A consumer-owned scalar fixture identity.
+///
+/// Implement this on a closed `Copy` record containing counts and static labels,
+/// not borrowed semantic values. The record must bind all supplied arguments and
+/// the complete fixture selection in at most 512 UTF-8 bytes. `ordinal` is `None`
+/// for a single-stage plan. Serialization belongs to the fixture, so existing
+/// runner wire formats can remain exact. The gate never retains the identity.
+pub trait Identity: Copy {
+    /// Serialize the complete record that the runner must acknowledge verbatim.
+    fn record(self, token: &str, pid: u32, stage: &str, ordinal: Option<usize>) -> String;
 }
 
 fn empty_directory(directory: &Path) -> io::Result<()> {
@@ -193,14 +81,25 @@ fn empty_directory(directory: &Path) -> io::Result<()> {
     Ok(())
 }
 
-pub(super) struct Gate {
+/// An ordered plan of at most 16 distinct checkpoint names.
+///
+/// A selected stage advances only after an exact acknowledgement. Stages absent
+/// from the plan are inert. This type owns only transport configuration and
+/// progress; it neither retains fixture identities nor removes runner files.
+pub struct Gate {
     config: Config,
     checkpoints: Vec<&'static str>,
     completed: usize,
 }
 
 impl Gate {
-    pub(super) fn open(config: Config, checkpoints: Vec<&'static str>) -> io::Result<Self> {
+    /// Validate the plan and require a fresh, empty existing directory. Names
+    /// must be nonempty ASCII lowercase letters/hyphens. Multi-stage locations
+    /// are created before this returns, allowing setup before a fixture baseline.
+    ///
+    /// Invalid plans return [`io::ErrorKind::InvalidInput`]; a populated directory
+    /// returns [`io::ErrorKind::AlreadyExists`]. Filesystem errors pass through.
+    pub fn open(config: Config, checkpoints: Vec<&'static str>) -> io::Result<Self> {
         if checkpoints.is_empty()
             || checkpoints.len() > MAX_CHECKPOINTS
             || checkpoints.iter().enumerate().any(|(index, name)| {
@@ -218,8 +117,6 @@ impl Gate {
         }
         empty_directory(&config.directory)?;
         if checkpoints.len() > 1 {
-            // Allocate every fresh location before the fixture baseline. The
-            // runner retains these files; neither side reuses a prior ack.
             for (ordinal, stage) in checkpoints.iter().enumerate() {
                 fs::create_dir(config.directory.join(format!("{ordinal:02}-{stage}")))?;
             }
@@ -231,9 +128,16 @@ impl Gate {
         })
     }
 
-    pub(super) fn checkpoint(
+    /// Publish a selected ready record and wait for its exact acknowledgement.
+    ///
+    /// Repeated or skipped selected stages return [`io::ErrorKind::InvalidInput`].
+    /// A mismatched, oversized or nonregular acknowledgement returns
+    /// [`io::ErrorKind::InvalidData`]; an expired wait returns
+    /// [`io::ErrorKind::TimedOut`]. Failures leave progress unchanged and retain
+    /// runner artifacts. Unselected stages perform no filesystem I/O.
+    pub fn checkpoint(
         &mut self,
-        identity: Identity,
+        identity: impl Identity,
         pid: u32,
         stage: &'static str,
     ) -> io::Result<()> {
@@ -261,7 +165,8 @@ impl Gate {
         Ok(())
     }
 
-    pub(super) fn is_complete(&self) -> bool {
+    /// Whether every selected checkpoint has been acknowledged in order.
+    pub fn is_complete(&self) -> bool {
         self.completed == self.checkpoints.len()
     }
 }
@@ -274,7 +179,7 @@ struct PendingAck {
 
 impl PendingAck {
     fn publish(directory: &Path, expected: String, timeout: Duration) -> io::Result<Self> {
-        // Reject pre-acks again at actual readiness, not only at configuration.
+        // Reject pre-acks at actual readiness, not only at gate construction.
         empty_directory(directory)?;
         if expected.len() > MAX_ACK_BYTES {
             return Err(io::Error::new(
@@ -323,7 +228,7 @@ impl PendingAck {
         if bytes != self.expected.as_bytes() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                "acknowledgement must match the complete token/PID/selection/stage/checkpoint record exactly",
+                "acknowledgement must match the complete identity record exactly",
             ));
         }
         Ok(true)
