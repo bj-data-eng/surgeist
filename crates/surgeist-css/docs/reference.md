@@ -2034,7 +2034,7 @@ reject any multi-item transition-property or transition shorthand list containin
 and case retain their original identity and list indices. Invalid values recover
 as a whole declaration while preserving the following declaration and original
 responsible token position. See the
-[identifier admission tests](../tests/custom_ident_domain_admission.rs).
+[identifier admission tests](../tests/css/values/identifiers/custom_ident_domain_admission.rs).
 
 Raw time literals, values and calculation trees compare original token spelling
 and provenance. Duration wrappers, timing lists and transition/animation
@@ -2102,8 +2102,8 @@ while every contribution retains the original source occurrence and importance.
 A failed replacement leaves the handle reusable. Normalization counts four
 terminal contributions for a shorthand regardless of its list lengths; specified
 serialization separately charges the lists and each retained or synthesized child.
-See the [expansion contract](../tests/transition_expansion_contract.rs) and
-[typed lifecycle tests](../tests/transition_expansion_lifecycle.rs).
+See the [expansion contract](../tests/css/properties/animation/transition_expansion_contract.rs) and
+[typed lifecycle tests](../tests/css/properties/animation/transition_expansion_lifecycle.rs).
 
 The selected Transitions 1 family applies to all elements and is not animatable.
 Its computed property value is `none` or an identifier list, its duration and delay
@@ -2150,10 +2150,10 @@ original declaration occurrence and importance. Failed grammar or resource
 reentry leaves the pending handle reusable. Normalization counts eight terminal
 contributions regardless of list length and preserves report diagnostics;
 specified output separately shares cumulative list and child budgets. See the
-[expansion contract](../tests/animation_expansion_contract.rs),
-[closure contract](../tests/animation_component_closure_contract.rs),
-[typed lifecycle tests](../tests/animation_expansion_lifecycle.rs) and
-[support catalog contract](../tests/animation_support_catalog_contract.rs).
+[expansion contract](../tests/css/properties/animation/animation_expansion_contract.rs),
+[closure contract](../tests/css/properties/animation/animation_component_closure_contract.rs),
+[typed lifecycle tests](../tests/css/properties/animation/animation_expansion_lifecycle.rs) and
+[support catalog contract](../tests/css/properties/animation/animation_support_catalog_contract.rs).
 
 All nine selected Animations 1 property productions have complete authored support.
 They apply to all elements, are noninherited and are not animatable. Computed-form
@@ -5464,7 +5464,7 @@ rules through ordinary recovery.
 Symbol identifiers retain their case and decoded content without predefined-name
 normalization; `none`, `auto` and `span` are valid symbol identifiers. Admission
 and recovery evidence is in
-[`counter_style_identifier_admission.rs`](../tests/counter_style_identifier_admission.rs).
+[`counter_style_identifier_admission.rs`](../tests/css/rules/counter_style/counter_style_identifier_admission.rs).
 
 `CssCounterSymbol` carries a checked string, identifier or `CssImage`. Image
 symbols reuse the selected shared image grammar: URLs, the four Images 3
@@ -5477,7 +5477,7 @@ Unknown image functions invalidate their entire descriptor. The
 [Counter Styles symbol grammar](https://www.w3.org/TR/2021/CR-css-counter-styles-3-20210727/#counter-style-symbols)
 permits mixed string, image and identifier symbols. Its at-risk annotation
 does not remove the selected grammar. Image admission evidence is in
-[`counter_style_image_admission.rs`](../tests/counter_style_image_admission.rs).
+[`counter_style_image_admission.rs`](../tests/css/rules/counter_style/counter_style_image_admission.rs).
 
 Parsed rule names expose their genuine token origin through `parsed_name()`.
 Counter descriptor occurrences expose `parsed_name()`, `parsed_value()` and
@@ -5488,7 +5488,7 @@ invents source metadata. Effective accessors, ordered occurrences and immutable
 normalization preserve the complete payload. Numeric tokens retain their
 existing exact coefficient and origin owners. Counter Style parsing populates
 the lexical record for every retained descriptor. Evidence is in
-[`counter_style_provenance.rs`](../tests/counter_style_provenance.rs).
+[`counter_style_provenance.rs`](../tests/css/rules/counter_style/counter_style_provenance.rs).
 
 Omitted descriptors remain absent in authored getters and output. The ordinary
 specification initials are `symbolic` system, `"-"` negative, empty prefix,
@@ -5501,7 +5501,7 @@ inheritance describe downstream resolution, without forged authored occurrences.
 checked suffix symbol, preserving their order and second-symbol omission.
 Descriptor admission, duplicate recovery, unresolved references and checked
 construction are exercised in
-[`counter_style_lifecycle.rs`](../tests/counter_style_lifecycle.rs).
+[`counter_style_lifecycle.rs`](../tests/css/rules/counter_style/counter_style_lifecycle.rs).
 
 The optional `fixed` starting value is `Option<CssIntegerValue>`, preserving
 omission separately from explicit literals and calculations. Finite range bounds,
@@ -5531,8 +5531,8 @@ The frozen [WebKit counter parser](https://github.com/WebKit/WebKit/blob/73aa6c8
 resolves integer values before comparing range bounds and additive weights; that
 combined browser phase does not supply an authored calculation evaluator here.
 Evidence is in
-[`counter_style_integer_math_contract.rs`](../tests/counter_style_integer_math_contract.rs)
-and [`counter_style_integer_math_lifecycle.rs`](../tests/counter_style_integer_math_lifecycle.rs).
+[`counter_style_integer_math_contract.rs`](../tests/css/rules/counter_style/counter_style_integer_math_contract.rs)
+and [`counter_style_integer_math_lifecycle.rs`](../tests/css/rules/counter_style/counter_style_integer_math_lifecycle.rs).
 [Bounded rule and descriptor output](#counter-style-specified-output-and-descriptor-getters)
 reuses these retained values.
 
@@ -5550,7 +5550,7 @@ and `RequiresResolution`; symbolic additive weight ordering stays unresolved.
 start values or extends target names. No counter representation or registration
 is performed, and authored name grammar remains unchanged.
 Evidence is in
-[`counter_style_rule_validity.rs`](../tests/counter_style_rule_validity.rs).
+[`counter_style_rule_validity.rs`](../tests/css/rules/counter_style/counter_style_rule_validity.rs).
 Counter-style rules are
 block rules admitted at stylesheet level, in ordinary conditional and layer rule
 lists, and in ordinary scopes. Malformed preludes, statement forms and placement
@@ -6870,7 +6870,7 @@ Lexical and specified output use the existing condition provider: the retained
 function and components are charged once, and typed views add no synthetic tokens
 or graph charges. The authored capability records are `ext.supports.font-tech`,
 `ext.supports.font-format` and `ext.supports.at-rule`. The
-[classification tests](../tests/supports_predicate_classification.rs) exercise
+[classification tests](../tests/css/supports/supports_predicate_classification.rs) exercise
 both checked and stylesheet fronts.
 
 #### Named supports conditions
@@ -7562,8 +7562,8 @@ validation uses the same grammar. Source metadata identifies `S-SPEECH1` and the
 individual `#propdef-*` production. Speech execution, strength duration
 selection, pause collapse, additive rest behavior, synthesis and root-owned
 style lowering remain downstream. Behavioral evidence is in
-[`speech_pause_rest_lifecycle.rs`](../tests/speech_pause_rest_lifecycle.rs) and
-[`speech_pause_rest_models.rs`](../tests/speech_pause_rest_models.rs).
+[`speech_pause_rest_lifecycle.rs`](../tests/css/properties/speech/speech_pause_rest_lifecycle.rs) and
+[`speech_pause_rest_models.rs`](../tests/css/properties/speech/speech_pause_rest_models.rs).
 
 
 ## Qualified selector names
@@ -7629,11 +7629,11 @@ belongs downstream, as recorded in
 does not widen that host grammar or change property admission.
 
 Behavioral evidence is in
-[`qualified_name_authored_prefixes.rs`](../tests/qualified_name_authored_prefixes.rs),
-[`qualified_name_construction.rs`](../tests/qualified_name_construction.rs),
-[`qualified_name_decoded_identifiers.rs`](../tests/qualified_name_decoded_identifiers.rs),
-[`namespace_specified_serialization.rs`](../tests/namespace_specified_serialization.rs), and
-[`namespace_rule_construction_serialization.rs`](../tests/namespace_rule_construction_serialization.rs).
+[`qualified_name_authored_prefixes.rs`](../tests/css/values/identifiers/qualified_name_authored_prefixes.rs),
+[`qualified_name_construction.rs`](../tests/css/values/identifiers/qualified_name_construction.rs),
+[`qualified_name_decoded_identifiers.rs`](../tests/css/values/identifiers/qualified_name_decoded_identifiers.rs),
+[`namespace_specified_serialization.rs`](../tests/css/rules/namespaces/namespace_specified_serialization.rs), and
+[`namespace_rule_construction_serialization.rs`](../tests/css/rules/namespaces/namespace_rule_construction_serialization.rs).
 
 
 ## Authored Speech voices
@@ -7673,8 +7673,8 @@ Whole-value CSS-wide keywords, substitution reentry, intrinsic terminal expansio
 and property support metadata use the common property lifecycle.
 
 Behavioral evidence is in
-[`speech_voice_family_stress_lifecycle.rs`](../tests/speech_voice_family_stress_lifecycle.rs)
-and [`speech_voice_family_stress_models.rs`](../tests/speech_voice_family_stress_models.rs).
+[`speech_voice_family_stress_lifecycle.rs`](../tests/css/properties/speech/speech_voice_family_stress_lifecycle.rs)
+and [`speech_voice_family_stress_models.rs`](../tests/css/properties/speech/speech_voice_family_stress_models.rs).
 
 ## Authored Speech cues
 
@@ -7733,8 +7733,8 @@ work. Failure returns no partial output and leaves models unchanged.
 Property metadata identifies `S-SPEECH1` and each `#propdef-*` production as
 complete authored grammar support. Loading, fallback sounds, voice-volume
 resolution and audio rendering remain downstream. Behavioral evidence is in
-[`speech_cue_lifecycle.rs`](../tests/speech_cue_lifecycle.rs) and
-[`speech_cue_models.rs`](../tests/speech_cue_models.rs).
+[`speech_cue_lifecycle.rs`](../tests/css/properties/speech/speech_cue_lifecycle.rs) and
+[`speech_cue_models.rs`](../tests/css/properties/speech/speech_cue_models.rs).
 
 
 ## Authored Speech prosody
@@ -7819,8 +7819,8 @@ can retain such calculations with diagnostics. The shared property lifecycle own
 whole-value CSS-wide keywords, checked component admission, substitution reentry,
 intrinsic terminal expansion, recovery provenance and pinned support metadata.
 Behavioral evidence is in
-[`speech_prosody_lifecycle.rs`](../tests/speech_prosody_lifecycle.rs) and
-[`speech_prosody_models.rs`](../tests/speech_prosody_models.rs).
+[`speech_prosody_lifecycle.rs`](../tests/css/properties/speech/speech_prosody_lifecycle.rs) and
+[`speech_prosody_models.rs`](../tests/css/properties/speech/speech_prosody_models.rs).
 
 ## Authored Speech mixing
 
@@ -7871,8 +7871,8 @@ expansion, substitution reentry and diagnostic provenance lifecycle and identify
 their `S-SPEECH1` productions as complete authored grammar support.
 Inherited offset addition, calibrated loudness levels, computed balance clamping
 and sound-system behavior remain downstream. Evidence is in
-[`speech_balance_volume_lifecycle.rs`](../tests/speech_balance_volume_lifecycle.rs)
-and [`speech_balance_volume_models.rs`](../tests/speech_balance_volume_models.rs).
+[`speech_balance_volume_lifecycle.rs`](../tests/css/properties/speech/speech_balance_volume_lifecycle.rs)
+and [`speech_balance_volume_models.rs`](../tests/css/properties/speech/speech_balance_volume_models.rs).
 
 ## CSSOM media-query text
 
@@ -7927,7 +7927,7 @@ The operation consumes the selected
 [CSSOM MediaList algorithms](../../../references/cssom-1--editor-capture-20261009--d42e145ec395.md#the-medialist-interface),
 without changing the historical feature-value formatting policy below.
 Public evidence is in
-[`cssom_media_member_capture.rs`](../tests/cssom_media_member_capture.rs).
+[`cssom_media_member_capture.rs`](../tests/css/cssom/cssom_media_member_capture.rs).
 
 The [pinned CSSOM1 feature table](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serializing-media-feature-values)
 defines orientation and scan value spellings and leaves eleven cells as explicit
@@ -7957,10 +7957,10 @@ The upstream ellipses remain genuine source limits. This policy covers the
 represented authored features; it does not claim a missing normative algorithm
 or a custom format for every unknown or vendor feature. Numeric/value phase
 limitations remain with their existing owners. Focused public evidence is in
-[`cssom_media_queries_lifecycle.rs`](../tests/cssom_media_queries_lifecycle.rs)
-and [`cssom_media_projection_contract.rs`](../tests/cssom_media_projection_contract.rs),
+[`cssom_media_queries_lifecycle.rs`](../tests/css/cssom/cssom_media_queries_lifecycle.rs)
+and [`cssom_media_projection_contract.rs`](../tests/css/cssom/cssom_media_projection_contract.rs),
 with direct feature-policy coverage in
-[`cssom_media_feature_values.rs`](../tests/cssom_media_feature_values.rs).
+[`cssom_media_feature_values.rs`](../tests/css/cssom/cssom_media_feature_values.rs).
 
 
 ## Checked Fonts rule composition
@@ -8128,7 +8128,7 @@ selection, normalization, shorthand coalescing, all-rule traversal and styleshee
 encoding policy retain their respective owners and remaining acceptance work.
 
 Behavioral evidence is in
-[`selector_specified_serialization.rs`](../tests/selector_specified_serialization.rs)
+[`selector_specified_serialization.rs`](../tests/css/selectors/selector_specified_serialization.rs)
 and the crate-private `specified_provider_composition_tests` module, alongside
 the existing owning providers' public serialization suites.
 
@@ -8177,9 +8177,9 @@ one node per emitted keyword. CSSOM inversion reconstructs exact typed roles
 and preserves metric arity, using normal for the none/auto pair.
 
 Behavioral evidence is in
-[`text_box_authored_contract.rs`](../tests/text_box_authored_contract.rs) and
-[`text_box_models.rs`](../tests/text_box_models.rs). The shared handwritten
-[property records](../tests/common/property_expectations/records.rs) provide
+[`text_box_authored_contract.rs`](../tests/css/properties/text/text_box_authored_contract.rs) and
+[`text_box_models.rs`](../tests/css/properties/text/text_box_models.rs). The shared handwritten
+[property records](../tests/css/support/property_expectations/records.rs) provide
 the three catalog, metadata, wrapper and inverse expectations.
 
 ## Authored wrapping and whitespace
@@ -8246,8 +8246,8 @@ exact and one-short failures remain atomic and values reusable. Normalization
 independently counts two/three/one terminals and one pending occurrence.
 
 Behavioral evidence is in
-[`text_wrap_whitespace_authored_contract.rs`](../tests/text_wrap_whitespace_authored_contract.rs),
-[`text_wrap_whitespace_lifecycle.rs`](../tests/text_wrap_whitespace_lifecycle.rs)
+[`text_wrap_whitespace_authored_contract.rs`](../tests/css/properties/text/text_wrap_whitespace_authored_contract.rs),
+[`text_wrap_whitespace_lifecycle.rs`](../tests/css/properties/text/text_wrap_whitespace_lifecycle.rs)
 and the owning private specified-provider composition tests.
 
 ## Authored text transformations, break preferences and tabs
@@ -8449,9 +8449,9 @@ Chars visits only its authored slots. Quotes, spaces and punctuation count
 final UTF-8 bytes; declarations and names add their existing two visits.
 Suppressed children and sibling output share one cumulative writer. Resource
 failures return no partial CSS and leave values reusable. Behavioral contracts
-are in [hyphenation](../tests/hyphenation_authored_contract.rs),
-[justification](../tests/justification_authored_contract.rs) and
-[spacing](../tests/text_spacing_authored_contract.rs).
+are in [hyphenation](../tests/css/properties/text/hyphenation_authored_contract.rs),
+[justification](../tests/css/properties/text/justification_authored_contract.rs) and
+[spacing](../tests/css/properties/text/text_spacing_authored_contract.rs).
 
 ## Represented keyword specified output
 
@@ -8827,9 +8827,9 @@ Failure returns no partial CSS and preserves optional thickness presence and
 original components. Outline delegates directly to this provider.
 
 Functional typed-API and exact budget examples are exercised in
-[`ui_remaining_typed_values.rs`](../tests/ui_remaining_typed_values.rs); the
+[`ui_remaining_typed_values.rs`](../tests/css/properties/ui/ui_remaining_typed_values.rs); the
 existing authored front-door lifecycle suite is
-[`ui_remaining_authored_contract.rs`](../tests/ui_remaining_authored_contract.rs).
+[`ui_remaining_authored_contract.rs`](../tests/css/properties/ui/ui_remaining_authored_contract.rs).
 
 ## Authored Motion Path
 
@@ -9135,7 +9135,7 @@ logical rule node. This is authored occurrence output; CSSOM block selection and
 shorthand coalescing remain separate work. The public declaration and rule
 methods return no partial text on error and leave source values and origins
 unchanged. Evidence is in
-[`declaration_value_serialization.rs`](../tests/declaration_value_serialization.rs)
+[`declaration_value_serialization.rs`](../tests/css/serialization/declaration_value_serialization.rs)
 and the existing detached nested-declaration rule contract.
 
 ## Counter-style specified output and descriptor getters
@@ -9166,7 +9166,7 @@ of the requested field; a missing field costs no nodes or bytes. A name getter
 costs one identifier node. `CssRule::CounterStyle` reuses the same complete-rule
 provider. Serialization neither executes counters nor generates markers.
 Evidence is in
-[`counter_style_rule_serialization.rs`](../tests/counter_style_rule_serialization.rs)
+[`counter_style_rule_serialization.rs`](../tests/css/rules/counter_style/counter_style_rule_serialization.rs)
 and its private shared-writer checks.
 
 ## Authored rule and stylesheet specified output
@@ -9229,10 +9229,10 @@ Resource and value errors retain the enclosing top-level rule index and a typed
 provider source. Media causes retain their original origin and remain available
 through `std::error::Error::source`. A public failure returns no partial string
 and leaves the entire input available for retry. Evidence is in
-[`specified_rule_variant_contract.rs`](../tests/specified_rule_variant_contract.rs),
-[`specified_rule_graph_contract.rs`](../tests/specified_rule_graph_contract.rs),
-[`specified_rule_provider_closure.rs`](../tests/specified_rule_provider_closure.rs)
-and [`specified_graph_composition_edges.rs`](../tests/specified_graph_composition_edges.rs).
+[`specified_rule_variant_contract.rs`](../tests/css/rules/graph/specified_rule_variant_contract.rs),
+[`specified_rule_graph_contract.rs`](../tests/css/rules/graph/specified_rule_graph_contract.rs),
+[`specified_rule_provider_closure.rs`](../tests/css/rules/graph/specified_rule_provider_closure.rs)
+and [`specified_graph_composition_edges.rs`](../tests/css/rules/graph/specified_graph_composition_edges.rs).
 
 Selector output applies intrinsic grammar restrictions as part of its iterative
 traversal. Public logical lists cannot emit pseudo-element members; `:not()` and
@@ -9247,8 +9247,8 @@ Class syntax requires an adjacent identifier token after `.`, allowing comments
 but excluding the five CSS whitespace characters. The `Column` combinator emits
 ` || ` between compounds and `|| ` at an admitted relative boundary, retaining
 symbolic parent and scope bindings. Focused evidence is in
-[`selector_structural_logical_contract.rs`](../tests/selector_structural_logical_contract.rs)
-and [`selector_column_lifecycle.rs`](../tests/selector_column_lifecycle.rs).
+[`selector_structural_logical_contract.rs`](../tests/css/selectors/selector_structural_logical_contract.rs)
+and [`selector_column_lifecycle.rs`](../tests/css/selectors/selector_column_lifecycle.rs).
 
 
 ## Authored literal CSSOM rule and sheet output
@@ -9289,8 +9289,8 @@ Condition semantics follow the selected
 [Conditional3 contract](../../../references/css-conditional-3--CRD-css-conditional-3-20240815--672eb79c78c5.md#the-csssupportsrule-interface).
 This does not select literal formats for named-support, Container, Scope,
 When/Else or other wrappers. See the independent
-[wrapper contract tests](../tests/cssom_supports_wrapper_contract.rs) and
-[composition tests](../tests/cssom_supports_composition.rs).
+[wrapper contract tests](../tests/css/cssom/cssom_supports_wrapper_contract.rs) and
+[composition tests](../tests/css/cssom/cssom_supports_composition.rs).
 
 Ordinary Style selectors omit an unqualified universal before a retained class,
 ID or attribute when the effective namespace is Any or Default and the compound
@@ -9359,7 +9359,7 @@ end relatives bind to the introduced scope. Whole Scope formatting can still
 report its existing `FormatUnavailable(Scope)` independently of these bound
 operations. All present lists/bounds use one cumulative input/projection/byte
 context and return no partial text on failure. See the independent
-[context-formatting tests](../tests/cssom_selector_context_formatting.rs).
+[context-formatting tests](../tests/css/cssom/cssom_selector_context_formatting.rs).
 
 The pinned CSSOM source has no normative Page wrapper; the selected Page/margin
 consumer uses the bounded adopted Blink format described above. The adopted
@@ -9381,11 +9381,11 @@ The sheet operation joins selected rule strings with one newline and no final
 newline as an authored aggregate contract; live CSSOM sheet identity remains
 with its downstream owner.
 
-Evidence is in [`cssom_literal_rules.rs`](../tests/cssom_literal_rules.rs),
+Evidence is in [`cssom_literal_rules.rs`](../tests/css/cssom/cssom_literal_rules.rs),
 which exercises literal formats, parse recovery, retained declaration runs,
 selector scope, typed capabilities, original error causes and cumulative limits.
 The adopted conditional profile is also covered by
-[`when_else_public_contract.rs`](../tests/when_else_public_contract.rs).
+[`when_else_public_contract.rs`](../tests/css/rules/conditional/when_else_public_contract.rs).
 
 The compact `to_specified_css` operations preserve authored duplicates and their
 existing rule/provider behavior. The literal operation's selected formats and
@@ -9424,7 +9424,7 @@ share the same work meter; each identifier is escaped and dots are punctuation.
 Empty or reserved names remain excluded by the checked type. Import absence and
 anonymous-layer decisions belong to the consumer.
 
-The public [graph input tests](../tests/cssom_rule_graph_input.rs) exercise exact
+The public [graph input tests](../tests/css/cssom/cssom_rule_graph_input.rs) exercise exact
 aggregate exhaustion, later-child paths, unchanged retries, current survivors,
 empty members, retained provenance, namespace facts and inherited Style context.
 

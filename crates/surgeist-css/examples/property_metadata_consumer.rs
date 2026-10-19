@@ -22,7 +22,7 @@
 //! their exact inherited initials and two/three-member shorthand projections.
 //! Text 4 §§2–9 defines transformation, separator, tab, breaking and indent
 //! longhands; CSS2 §10.8.1 defines the noninherited baseline vertical alignment.
-#[path = "../tests/common/property_expectations.rs"]
+#[path = "../tests/css/support/property_expectations.rs"]
 mod property_expectations;
 use property_expectations::{CASES, InitialExpectation, MetadataExpectation};
 

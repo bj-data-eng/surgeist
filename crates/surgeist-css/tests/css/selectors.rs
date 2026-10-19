@@ -1,0 +1,27 @@
+//! Selector grammar, construction and serialization.
+
+mod pseudo;
+
+mod an_plus_b_boundaries;
+mod an_plus_b_signless_controls;
+mod contextual_style_selector_input;
+mod forgiving_selector_syntax_gate;
+mod nested_namespace_selectors;
+mod relative_selector_list_fragments;
+mod selector_attribute_matcher_comments;
+mod selector_checked_parts_construction;
+mod selector_column_diagnostic_provenance;
+mod selector_column_lifecycle;
+mod selector_complex_checked_admission;
+mod selector_fragment_positions;
+mod selector_function_origins;
+mod selector_invalid_nesting_items;
+mod selector_invalid_nesting_state;
+mod selector_list_checked_admission;
+mod selector_list_construction_lifecycle;
+mod selector_namespace_grammars;
+mod selector_query_fragment_contract;
+mod selector_snapshot_named_states;
+mod selector_specified_serialization;
+mod selector_structural_logical_contract;
+mod selector_universal_namespace;

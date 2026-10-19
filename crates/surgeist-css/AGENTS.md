@@ -30,9 +30,9 @@ CSS/Color integration.
 | Authored syntax, source coordinates, and property schema | [src/syntax.rs](src/syntax.rs), [src/source.rs](src/source.rs), and [src/properties.rs](src/properties.rs) |
 | Specification provenance, support, and exclusions | [src/conformance.rs](src/conformance.rs) |
 | Verification and public-contract evidence | Tracked test modules in [src/](src/), rustdoc examples, and [tests/](tests/) |
-| Shared handwritten property inventories and their consumers | [tests/common/property_expectations/README.md](tests/common/property_expectations/README.md) and `records.rs` in that directory |
+| Shared handwritten property inventories and their consumers | [tests/css/support/property_expectations/README.md](tests/css/support/property_expectations/README.md) and `records.rs` in that directory |
 | Corpus provenance, generated set, and maintenance owner | [tests/corpus/csstree/README.md](tests/corpus/csstree/README.md) and [tests/corpus/csstree/corpus.toml](tests/corpus/csstree/corpus.toml) |
-| CSS-owned expectation and oracle contracts | [tests/csstree/](tests/csstree/), [tests/support/csstree.rs](tests/support/csstree.rs), and [tests/support/csstree_adapters.rs](tests/support/csstree_adapters.rs) |
+| CSS-owned expectation and oracle contracts | [tests/csstree/](tests/csstree/), [tests/css/support/csstree.rs](tests/css/support/csstree.rs), and [tests/css/support/csstree_adapters.rs](tests/css/support/csstree_adapters.rs) |
 
 [README.md](README.md) links usage, contract and attribution documentation.
 
@@ -46,7 +46,8 @@ parser probes. The [corpus guide](tests/corpus/csstree/README.md) owns maintenan
 with the local `surgeist-generator` CLI; do not hand-edit its generated set.
 `tests/csstree/expected-classes.json` is CSS-owned expectation data; `oracle.json`
 is separately captured by the ignored environment-gated test in
-`tests/csstree_baseline.rs`. Capture is a writing operation, not a routine check.
+`tests/css/corpora/csstree/csstree_baseline.rs`. Capture is a writing
+operation, not a routine check.
 
 ```sh
 cargo check -j 1 --offline -p surgeist-css
