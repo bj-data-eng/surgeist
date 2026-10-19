@@ -635,7 +635,7 @@ mod tests {
     #[test]
     fn actual_lexer_digits_reach_exact_finite_and_overflow_outcomes() {
         for (input, expected) in [
-            ("-0", DecimalOutcome::Finite(-0.0)),
+            ("-0", DecimalOutcome::Finite(0.0)),
             (".5", DecimalOutcome::Finite(0.5)),
             ("1e-9999", DecimalOutcome::Finite(0.0)),
             ("1e9999", DecimalOutcome::Overflow { negative: false }),
@@ -754,7 +754,7 @@ mod tests {
             ("0.19e309grad", 1.71e308),
             ("0001.9000e308grad", 1.71e308),
             ("1.997436816513684e308grad", 1.7976931348623156e308),
-            ("-0e999999grad", -0.0),
+            ("-0e999999grad", 0.0),
             ("10grad", 9.0),
             (".5grad", 0.45),
         ] {

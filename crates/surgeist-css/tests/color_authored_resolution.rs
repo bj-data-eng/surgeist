@@ -572,7 +572,9 @@ fn actual_expression_observations_use_original_ordinals_and_stale_views_refuse()
 }
 
 #[test]
-fn original_programmatic_and_parsed_scalars_keep_exact_signed_zero_and_spelling() {
+fn original_programmatic_and_parsed_scalars_keep_spelling_and_resolve_unsigned_zero() {
+    // Values 4 (WD-20240312): signed zeros cannot be written in CSS; 0, +0 and -0
+    // all produce the unsigned zero. The authored spelling is still retained.
     let facts = facts();
     let number = |text: &str| {
         CssColorComponent::Number(
@@ -592,7 +594,7 @@ fn original_programmatic_and_parsed_scalars_keep_exact_signed_zero_and_spelling(
     let CssAuthoredColorOutcome::Used(value) = result.outcome() else {
         panic!("used")
     };
-    assert_eq!(value.channels()[1].unwrap().to_bits(), (-0.0f64).to_bits());
+    assert_eq!(value.channels()[1].unwrap().to_bits(), 0.0f64.to_bits());
     assert_eq!(value.channels()[2], Some(0.0));
     let root = color("lab(50 -0 1e-999)");
     let CssColorComponent::Number(a) = root.lab_value().unwrap().a() else {
@@ -606,7 +608,7 @@ fn original_programmatic_and_parsed_scalars_keep_exact_signed_zero_and_spelling(
     let CssAuthoredColorOutcome::Used(value) = result.outcome() else {
         panic!("used")
     };
-    assert_eq!(value.channels()[1].unwrap().to_bits(), (-0.0f64).to_bits());
+    assert_eq!(value.channels()[1].unwrap().to_bits(), 0.0f64.to_bits());
     assert_eq!(a.numeric().representation(), "-0");
 }
 
