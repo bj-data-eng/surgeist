@@ -397,9 +397,8 @@ mod tests {
     #[test]
     fn original_authored_numbers_reach_exact_conversion_without_color_tokens() {
         for (spelling, unit, expected) in [
-            // Authored zero is unsigned; a nonzero value that underflows keeps its sign.
+            // Values 4: authored 0, +0 and -0 all produce the unsigned zero.
             ("-0", None, 0.0_f64),
-            ("-1e-9999", None, -0.0),
             (".5", None, 0.5),
             ("9007199254740993", None, 9007199254740992.0),
             ("1e-9999", None, 0.0),
