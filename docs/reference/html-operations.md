@@ -2872,7 +2872,11 @@ associations do not join ordinary trees. Values follow the element-specific
 content, src/href/data, value, datetime and text rules; an itemscope property
 supplies the actual nested item. Type context follows receiving item-value
 relationships, preserving independent type paths rather than guessing a nearest
-ancestor or merging incompatible vocabularies.
+ancestor or merging incompatible vocabularies. Each immediate receiving item
+(each item for which the subject is a property's value) yields its own paths;
+above a receiver, each typed ancestor is reported once through its first route
+in edge order, because further routes are that receiver's own context. Work is
+therefore bounded by the item graph per receiver rather than by route count.
 
 Missing coverage and positive witnesses are separate report fields. For example,
 an item A containing a proved nested item B and an unavailable subtree may leave
