@@ -13,5 +13,7 @@
 mod controls;
 #[path = "canonical_retired_document/foundation.rs"]
 mod foundation;
+#[path = "canonical_retired_document/installation.rs"]
+mod installation;
 #[path = "canonical_retired_document/support.rs"]
 mod support;
