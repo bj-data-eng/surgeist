@@ -4,6 +4,7 @@
 use std::{
     mem::size_of,
     sync::{Arc, atomic::AtomicBool},
+    time::{Duration, Instant},
 };
 
 use crate::{
@@ -91,6 +92,32 @@ fn observe(observer: &mut Option<&mut dyn FnMut(HolderStage)>, at: HolderStage) 
     if let Some(observer) = observer {
         observer(at);
     }
+}
+
+/// Exact call intervals in this fixture, not an exhaustive setup or process
+/// total. In particular, setup includes the real origin-Document batch and
+/// environment construction; assertions between calls remain outside timers.
+#[derive(Debug, Default)]
+struct Timings {
+    parse: Duration,
+    owner_environment_setup: Duration,
+    installation: Duration,
+    initial_snapshot_clone: Duration,
+    final_snapshot: Duration,
+    text_edit: Duration,
+    class_edit: Duration,
+    style_edit: Duration,
+    installation_result_drop: Duration,
+    owner_drop: Duration,
+    current_snapshot_drop: Duration,
+    old_snapshot_drop: Duration,
+    report_drop: Duration,
+    report_weak_drop: Duration,
+}
+
+fn elapsed(start: Option<Instant>) -> Duration {
+    // A disabled clock performs neither Instant::now nor Instant::elapsed.
+    start.map_or(Duration::ZERO, |start| start.elapsed())
 }
 
 fn markup() -> String {
@@ -399,18 +426,37 @@ fn check_dom(
 /// all oracle/array temporaries have gone before a holder-stage observation.
 /// Before/after-edit observations bracket the real batch construction/apply;
 /// they do not by themselves qualify a process high-water mark as an edit peak.
-fn run_sample(inventories: bool, mut observer: Option<&mut dyn FnMut(HolderStage)>) {
+fn run_sample(
+    inventories: bool,
+    mut observer: Option<&mut dyn FnMut(HolderStage)>,
+    timing: bool,
+) -> Option<Timings> {
+    assert!(
+        !timing || (!inventories && observer.is_none()),
+        "operation timings require an ungated fixture without inventories"
+    );
+    let clock = timing && !super::scale_metrics::ENABLED;
+    let mut times = clock.then(Timings::default);
     observe(&mut observer, HolderStage::HarnessOnly);
     let source = markup();
-    let report = Arc::new(
-        HtmlDocumentParseRequest::offline(HtmlSource::utf8(source.clone()), parse_limits())
-            .parse()
-            .unwrap(),
-    );
+    let request =
+        HtmlDocumentParseRequest::offline(HtmlSource::utf8(source.clone()), parse_limits());
+    let started = clock.then(Instant::now);
+    let parsed = request.parse();
+    let parse_time = elapsed(started);
+    let report = Arc::new(parsed.unwrap());
+    if let Some(times) = &mut times {
+        times.parse = parse_time;
+    }
     let report_ids = check_report(&report, &source);
     let report_liveness = Arc::downgrade(&report);
     observe(&mut observer, HolderStage::ParsedReport);
+    let started = clock.then(Instant::now);
     let (mut dom, environment) = setup();
+    let setup_time = elapsed(started);
+    if let Some(times) = &mut times {
+        times.owner_environment_setup = setup_time;
+    }
     assert_eq!(dom.usage().managed_nodes(), 1);
     let before = dom.snapshot().stamp();
     let measurement = if super::scale_metrics::ENABLED {
@@ -418,15 +464,22 @@ fn run_sample(inventories: bool, mut observer: Option<&mut dyn FnMut(HolderStage
     } else {
         None
     };
-    let installed = dom
-        .install_parsed_html_document(
-            before,
-            report.clone(),
-            environment,
-            DomParsedHtmlInstallLimits::new(1024, 10_000_000, 16_000_000, 100_000_000),
-            &AtomicBool::new(false),
-        )
-        .unwrap();
+    let incoming_report = report.clone();
+    let install_limits = DomParsedHtmlInstallLimits::new(1024, 10_000_000, 16_000_000, 100_000_000);
+    let cancelled = AtomicBool::new(false);
+    let started = clock.then(Instant::now);
+    let installation = dom.install_parsed_html_document(
+        before,
+        incoming_report,
+        environment,
+        install_limits,
+        &cancelled,
+    );
+    let install_time = elapsed(started);
+    let installed = installation.unwrap();
+    if let Some(times) = &mut times {
+        times.installation = install_time;
+    }
     if let Some(measurement) = measurement {
         let counters = measurement
             .finish(super::scale_metrics::Hooks::default())
@@ -448,7 +501,12 @@ fn run_sample(inventories: bool, mut observer: Option<&mut dyn FnMut(HolderStage
     assert!(std::ptr::eq(installed.report(), report.as_ref()));
     assert_eq!(installed.bindings().len(), PARSED_NODES);
     let document = installed.document();
+    let started = clock.then(Instant::now);
     let old = installed.snapshot().clone();
+    let snapshot_time = elapsed(started);
+    if let Some(times) = &mut times {
+        times.initial_snapshot_clone = snapshot_time;
+    }
     assert_eq!(old.revision().get(), before.revision().get() + 1);
     assert_eq!(installed.node_for(&report_ids[0]), Some(document.node()));
     for source_id in &report_ids {
@@ -465,7 +523,12 @@ fn run_sample(inventories: bool, mut observer: Option<&mut dyn FnMut(HolderStage
     let (cells, text) = check_dom(&old, document, Stage::Original);
     // The installation owns both a snapshot and the same report Arc. Dispose
     // it now so the explicit holders below determine the later release order.
+    let started = clock.then(Instant::now);
     drop(installed);
+    let drop_time = elapsed(started);
+    if let Some(times) = &mut times {
+        times.installation_result_drop = drop_time;
+    }
     observe(&mut observer, HolderStage::Populated);
     for stage in [Stage::Text, Stage::Class, Stage::Style] {
         observe(&mut observer, stage.before());
@@ -486,7 +549,19 @@ fn run_sample(inventories: bool, mut observer: Option<&mut dyn FnMut(HolderStage
             }
             Stage::Original => unreachable!(),
         };
-        let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+        let cancelled = AtomicBool::new(false);
+        let started = clock.then(Instant::now);
+        let applied = dom.apply(batch, &cancelled);
+        let edit_time = elapsed(started);
+        let commit = applied.unwrap();
+        if let Some(times) = &mut times {
+            match stage {
+                Stage::Text => times.text_edit = edit_time,
+                Stage::Class => times.class_edit = edit_time,
+                Stage::Style => times.style_edit = edit_time,
+                Stage::Original => unreachable!(),
+            }
+        }
         assert_eq!(commit.changes().changes(), [expected]);
         drop(commit);
         assert_eq!(dom.revision().get(), revision.get() + 1);
@@ -514,14 +589,21 @@ fn run_sample(inventories: bool, mut observer: Option<&mut dyn FnMut(HolderStage
         );
         assert_eq!(check_report(&report, &source), report_ids);
     }
+    let started = clock.then(Instant::now);
     let current = dom.snapshot();
+    let snapshot_time = elapsed(started);
+    if let Some(times) = &mut times {
+        times.final_snapshot = snapshot_time;
+    }
     let managed_nodes = dom.usage().managed_nodes();
     assert_eq!(managed_nodes, MANAGED_NODES);
-    eprintln!(
-        "memory_parsed rows={ROWS} columns={COLUMNS} cells={} parsed_nodes={} managed_nodes={managed_nodes} origin_documents=1 phase=owner_report_old_current_held physical_measurement=false",
-        cells.len(),
-        report_ids.len()
-    );
+    if !timing {
+        eprintln!(
+            "memory_parsed rows={ROWS} columns={COLUMNS} cells={} parsed_nodes={} managed_nodes={managed_nodes} origin_documents=1 phase=owner_report_old_current_held physical_measurement=false",
+            cells.len(),
+            report_ids.len()
+        );
+    }
     if inventories {
         arrays::report(
             "owner_report_old_current",
@@ -531,7 +613,12 @@ fn run_sample(inventories: bool, mut observer: Option<&mut dyn FnMut(HolderStage
         );
     }
     observe(&mut observer, HolderStage::Edited);
+    let started = clock.then(Instant::now);
     drop(dom);
+    let drop_time = elapsed(started);
+    if let Some(times) = &mut times {
+        times.owner_drop = drop_time;
+    }
     assert_eq!(
         check_dom(&current, document, Stage::Style),
         (cells.clone(), text.clone())
@@ -550,14 +637,24 @@ fn run_sample(inventories: bool, mut observer: Option<&mut dyn FnMut(HolderStage
         );
     }
     observe(&mut observer, HolderStage::OwnerDropped);
+    let started = clock.then(Instant::now);
     drop(current);
+    let drop_time = elapsed(started);
+    if let Some(times) = &mut times {
+        times.current_snapshot_drop = drop_time;
+    }
     if inventories {
         arrays::report("report_old", Some(&report), &report_ids, &[&old]);
     }
     assert_eq!(check_dom(&old, document, Stage::Original), (cells, text));
     assert_eq!(check_report(&report, &source), report_ids);
     observe(&mut observer, HolderStage::OldOnly);
+    let started = clock.then(Instant::now);
     drop(old);
+    let drop_time = elapsed(started);
+    if let Some(times) = &mut times {
+        times.old_snapshot_drop = drop_time;
+    }
     if inventories {
         arrays::report("report_only", Some(&report), &report_ids, &[]);
     }
@@ -567,21 +664,32 @@ fn run_sample(inventories: bool, mut observer: Option<&mut dyn FnMut(HolderStage
     drop(report_ids);
     drop(source);
     observe(&mut observer, HolderStage::ReportOnly);
+    let started = clock.then(Instant::now);
     drop(report);
+    let drop_time = elapsed(started);
+    if let Some(times) = &mut times {
+        times.report_drop = drop_time;
+    }
     assert!(report_liveness.upgrade().is_none());
     // This proves wrapper liveness, not reclamation of every nested shared
     // allocation or allocator/Weak control block. Drop the observer last.
+    let started = clock.then(Instant::now);
     drop(report_liveness);
+    let drop_time = elapsed(started);
+    if let Some(times) = &mut times {
+        times.report_weak_drop = drop_time;
+    }
     if inventories {
         arrays::report("no_strong_fixture_arrays", None, &[], &[]);
     }
     observe(&mut observer, HolderStage::Released);
+    times
 }
 
 #[test]
 fn parsed_table_report_and_snapshots_survive_isolated_edits_and_ordered_release() {
     let mut stages = Vec::new();
-    run_sample(true, Some(&mut |stage| stages.push(stage)));
+    assert!(run_sample(true, Some(&mut |stage| stages.push(stage)), false).is_none());
     assert_eq!(
         stages,
         [
@@ -601,4 +709,12 @@ fn parsed_table_report_and_snapshots_survive_isolated_edits_and_ordered_release(
             HolderStage::Released,
         ]
     );
+}
+
+#[test]
+fn parsed_operation_clock_preserves_the_real_lifecycle_and_respects_counter_mode() {
+    let times = run_sample(false, None, true);
+    assert_eq!(times.is_some(), !super::scale_metrics::ENABLED);
+    // Clock resolution may legitimately produce zero; timings have no numeric
+    // pass threshold and never claim allocator reclamation or an edit peak.
 }

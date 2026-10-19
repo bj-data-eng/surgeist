@@ -177,7 +177,7 @@ fn parsed_selected_report_holder_stages() {
                 .unwrap_or_else(|error| panic!("parsed stage {} failed: {error}", at.name()));
         }
     };
-    run_sample(false, Some(&mut observe));
+    assert!(run_sample(false, Some(&mut observe), false).is_none());
     if let Some(gate) = gate {
         assert!(
             gate.is_complete(),
@@ -187,6 +187,50 @@ fn parsed_selected_report_holder_stages() {
     eprintln!(
         "memory_parsed_selected_complete pid={pid} sample={} physical_total_not_inferred=true",
         selected.sample.name()
+    );
+}
+
+#[test]
+#[ignore = "explicit fresh-process release timing fixture; fixed parsed table/sample, hold=none and counters disabled"]
+fn parsed_selected_operation_timings() {
+    require_release();
+    assert!(
+        scale_metrics::require_enabled().is_err(),
+        "operation timings require a build without storage counters"
+    );
+    let (selected, stages, config) = configuration();
+    assert!(
+        stages.is_empty() && config.is_none(),
+        "operation timings require SURGEIST_MEMORY_HOLD_STAGE=none and no gate transport"
+    );
+    drop(stages);
+    drop(config);
+    // One fixed lifecycle, no observer or array inventory. All output below
+    // follows the actual owner, snapshot, report and report-Weak disposal.
+    let times = run_sample(false, None, true).expect("normal-build operation clock");
+    let pid = std::process::id();
+    eprintln!(
+        "memory_parsed_operation_timings profile=release pid={pid} population=parsed-table rows={ROWS} columns={COLUMNS} cells={CELLS} parsed_nodes={PARSED_NODES} managed={MANAGED_NODES} sample={} revision={} toolchain={} machine={} os={} arch={} units=ns parse={} owner_environment_setup={} installation={} initial_snapshot_clone={} final_snapshot={} text_edit={} class_edit={} style_edit={} installation_result_drop={} owner_drop={} current_snapshot_drop={} old_snapshot_drop={} report_drop={} report_weak_drop={} counters_enabled=false gates=false array_inventory=false output_after_release=true setup_includes_origin_batch_and_environment=true request_construction_and_report_Arc_wrapping_timed=false edit_batch_formation_and_commit_disposal_timed=false interoperation_oracles_present=true zero_readings_preserved=true clock_overhead_subtracted=false timing_thresholds=false unperturbed_or_physical_total_claim=false",
+        selected.sample.name(),
+        optional("SURGEIST_SCALE_REVISION").unwrap_or_else(|| "unknown".into()),
+        optional("SURGEIST_SCALE_TOOLCHAIN").unwrap_or_else(|| "unknown".into()),
+        optional("SURGEIST_SCALE_MACHINE").unwrap_or_else(|| "unknown".into()),
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        times.parse.as_nanos(),
+        times.owner_environment_setup.as_nanos(),
+        times.installation.as_nanos(),
+        times.initial_snapshot_clone.as_nanos(),
+        times.final_snapshot.as_nanos(),
+        times.text_edit.as_nanos(),
+        times.class_edit.as_nanos(),
+        times.style_edit.as_nanos(),
+        times.installation_result_drop.as_nanos(),
+        times.owner_drop.as_nanos(),
+        times.current_snapshot_drop.as_nanos(),
+        times.old_snapshot_drop.as_nanos(),
+        times.report_drop.as_nanos(),
+        times.report_weak_drop.as_nanos(),
     );
 }
 
@@ -237,7 +281,7 @@ mod tests {
     #[test]
     fn external_inventory_disabled_path_still_checks_the_complete_real_lifecycle() {
         let mut stages = Vec::new();
-        run_sample(false, Some(&mut |stage| stages.push(stage)));
+        assert!(run_sample(false, Some(&mut |stage| stages.push(stage)), false).is_none());
         assert_eq!(
             stages,
             [
