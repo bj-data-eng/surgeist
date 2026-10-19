@@ -12,6 +12,12 @@ use crate::request::ValueSharingMode;
 use crate::*;
 use std::sync::Arc;
 
+const EQUAL_BANKS: &str =
+    "<table><tbody><tr><td class=k title=v>A</td><td class=k title=v>B</td></tr></tbody></table>";
+const DISTINCT_BANKS_TEXT: &str = "<p id=a class=k>X</p><p id=b class=k>&#88;</p>";
+
+mod selected;
+
 const MODES: [ValueSharingMode; 3] = [
     ValueSharingMode::Off,
     ValueSharingMode::BankOnly,
@@ -170,60 +176,130 @@ fn origin(
     assert_eq!(actual, [(0, 1, start, end, kind)]);
 }
 
+fn check_equal_banks(
+    report: &ImmutableParseReport,
+    mode: ValueSharingMode,
+) -> Arc<Vec<surgeist_html::Attribute>> {
+    let cells = elements(report, "td");
+    assert_eq!(cells.len(), 2);
+    assert_ne!(cells[0], cells[1]);
+    let values = [&cells[0], &cells[1]].map(|id| element(report, id));
+    for (index, value) in values.iter().enumerate() {
+        let attributes = value.attributes();
+        assert_eq!(attributes.len(), 2);
+        for (ordinal, (name, literal)) in [("class", "k"), ("title", "v")].into_iter().enumerate() {
+            let attribute = &attributes.as_slice()[ordinal];
+            assert_eq!(attribute.name().namespace(), &Namespace::none());
+            assert!(attribute.name().prefix().is_none());
+            assert_eq!(attribute.name().local_name(), &DocumentString::from(name));
+            assert_eq!(attribute.value(), &DocumentString::from(literal));
+            let authored = report.source().as_utf8().unwrap();
+            let offset = authored
+                .match_indices(&format!("{name}={literal}"))
+                .nth(index)
+                .unwrap()
+                .0
+                + name.len()
+                + 1;
+            origin(
+                report,
+                &cells[index],
+                HtmlParseField::AttributeValue(ordinal),
+                offset,
+                offset + 1,
+                HtmlParseOriginKind::Literal,
+            );
+        }
+        assert_eq!(
+            text(report, &cells[index]).1,
+            &DocumentString::from(if index == 0 { "A" } else { "B" })
+        );
+    }
+    assert_eq!(
+        Arc::ptr_eq(
+            values[0].attributes().shared_attributes(),
+            values[1].attributes().shared_attributes()
+        ),
+        mode != ValueSharingMode::Off
+    );
+    values[0].attributes().shared_attributes().clone()
+}
+
+fn check_distinct_banks_text(
+    report: &ImmutableParseReport,
+    mode: ValueSharingMode,
+) -> Arc<Vec<surgeist_html::Attribute>> {
+    let paragraphs = elements(report, "p");
+    assert_eq!(paragraphs.len(), 2);
+    assert_ne!(paragraphs[0], paragraphs[1]);
+    let values = [&paragraphs[0], &paragraphs[1]].map(|id| element(report, id));
+    for (index, value) in values.iter().enumerate() {
+        let attributes = value.attributes();
+        assert_eq!(attributes.len(), 2);
+        for (ordinal, name) in ["id", "class"].into_iter().enumerate() {
+            assert_eq!(
+                attributes.as_slice()[ordinal].name().local_name(),
+                &DocumentString::from(name)
+            );
+        }
+        assert_eq!(
+            attributes.as_slice()[0].value(),
+            &DocumentString::from(if index == 0 { "a" } else { "b" })
+        );
+        assert_eq!(attributes.as_slice()[1].value(), &DocumentString::from("k"));
+    }
+    assert!(!Arc::ptr_eq(
+        values[0].attributes().shared_attributes(),
+        values[1].attributes().shared_attributes()
+    ));
+    assert_eq!(
+        Arc::ptr_eq(
+            values[0].attributes().as_slice()[1]
+                .value()
+                .shared_code_units(),
+            values[1].attributes().as_slice()[1]
+                .value()
+                .shared_code_units()
+        ),
+        mode == ValueSharingMode::Combined
+    );
+    let first = text(report, &paragraphs[0]);
+    let second = text(report, &paragraphs[1]);
+    assert_ne!(first.0, second.0);
+    assert_eq!(first.1.code_units(), &[88]);
+    assert_eq!(second.1.code_units(), &[88]);
+    let authored = report.source().as_utf8().unwrap();
+    let literal = authored.find(">X<").unwrap() + 1;
+    let reference = authored.find("&#88;").unwrap();
+    origin(
+        report,
+        &first.0,
+        HtmlParseField::Text,
+        literal,
+        literal + 1,
+        HtmlParseOriginKind::Literal,
+    );
+    origin(
+        report,
+        &second.0,
+        HtmlParseField::Text,
+        reference,
+        reference + 5,
+        HtmlParseOriginKind::CharacterReference,
+    );
+    assert_eq!(
+        Arc::ptr_eq(first.1.shared_code_units(), second.1.shared_code_units()),
+        mode == ValueSharingMode::Combined
+    );
+    values[0].attributes().shared_attributes().clone()
+}
+
 #[test]
 fn layer_selection_preserves_real_document_and_fragment_banks_and_report_lifetime() {
     for fragment in [false, true] {
         for mode in MODES {
-            let report = parse(
-                fragment,
-                mode,
-                "<table><tbody><tr><td class=k title=v>A</td><td class=k title=v>B</td></tr></tbody></table>",
-            );
-            let cells = elements(&report, "td");
-            assert_eq!(cells.len(), 2);
-            assert_ne!(cells[0], cells[1]);
-            let values = [&cells[0], &cells[1]].map(|id| element(&report, id));
-            for (index, value) in values.iter().enumerate() {
-                let attributes = value.attributes();
-                assert_eq!(attributes.len(), 2);
-                for (ordinal, (name, literal)) in
-                    [("class", "k"), ("title", "v")].into_iter().enumerate()
-                {
-                    let attribute = &attributes.as_slice()[ordinal];
-                    assert_eq!(attribute.name().namespace(), &Namespace::none());
-                    assert!(attribute.name().prefix().is_none());
-                    assert_eq!(attribute.name().local_name(), &DocumentString::from(name));
-                    assert_eq!(attribute.value(), &DocumentString::from(literal));
-                    let authored = report.source().as_utf8().unwrap();
-                    let offset = authored
-                        .match_indices(&format!("{name}={literal}"))
-                        .nth(index)
-                        .unwrap()
-                        .0
-                        + name.len()
-                        + 1;
-                    origin(
-                        &report,
-                        &cells[index],
-                        HtmlParseField::AttributeValue(ordinal),
-                        offset,
-                        offset + 1,
-                        HtmlParseOriginKind::Literal,
-                    );
-                }
-                assert_eq!(
-                    text(&report, &cells[index]).1,
-                    &DocumentString::from(if index == 0 { "A" } else { "B" })
-                );
-            }
-            assert_eq!(
-                Arc::ptr_eq(
-                    values[0].attributes().shared_attributes(),
-                    values[1].attributes().shared_attributes()
-                ),
-                mode != ValueSharingMode::Off
-            );
-            let held = values[0].attributes().shared_attributes().clone();
+            let report = parse(fragment, mode, EQUAL_BANKS);
+            let held = check_equal_banks(&report, mode);
             let weak = Arc::downgrade(&held);
             let usage = report.usage().clone();
             assert_eq!(report.usage(), &usage);
@@ -243,73 +319,8 @@ fn layer_selection_preserves_real_document_and_fragment_banks_and_report_lifetim
 fn only_combined_reuses_strings_across_distinct_banks_and_independent_text() {
     for fragment in [false, true] {
         for mode in MODES {
-            let report = parse(
-                fragment,
-                mode,
-                "<p id=a class=k>X</p><p id=b class=k>&#88;</p>",
-            );
-            let paragraphs = elements(&report, "p");
-            assert_eq!(paragraphs.len(), 2);
-            assert_ne!(paragraphs[0], paragraphs[1]);
-            let values = [&paragraphs[0], &paragraphs[1]].map(|id| element(&report, id));
-            for (index, value) in values.iter().enumerate() {
-                let attributes = value.attributes();
-                assert_eq!(attributes.len(), 2);
-                for (ordinal, name) in ["id", "class"].into_iter().enumerate() {
-                    assert_eq!(
-                        attributes.as_slice()[ordinal].name().local_name(),
-                        &DocumentString::from(name)
-                    );
-                }
-                assert_eq!(
-                    attributes.as_slice()[0].value(),
-                    &DocumentString::from(if index == 0 { "a" } else { "b" })
-                );
-                assert_eq!(attributes.as_slice()[1].value(), &DocumentString::from("k"));
-            }
-            assert!(!Arc::ptr_eq(
-                values[0].attributes().shared_attributes(),
-                values[1].attributes().shared_attributes()
-            ));
-            assert_eq!(
-                Arc::ptr_eq(
-                    values[0].attributes().as_slice()[1]
-                        .value()
-                        .shared_code_units(),
-                    values[1].attributes().as_slice()[1]
-                        .value()
-                        .shared_code_units()
-                ),
-                mode == ValueSharingMode::Combined
-            );
-            let first = text(&report, &paragraphs[0]);
-            let second = text(&report, &paragraphs[1]);
-            assert_ne!(first.0, second.0);
-            assert_eq!(first.1.code_units(), &[88]);
-            assert_eq!(second.1.code_units(), &[88]);
-            let authored = report.source().as_utf8().unwrap();
-            let literal = authored.find(">X<").unwrap() + 1;
-            let reference = authored.find("&#88;").unwrap();
-            origin(
-                &report,
-                &first.0,
-                HtmlParseField::Text,
-                literal,
-                literal + 1,
-                HtmlParseOriginKind::Literal,
-            );
-            origin(
-                &report,
-                &second.0,
-                HtmlParseField::Text,
-                reference,
-                reference + 5,
-                HtmlParseOriginKind::CharacterReference,
-            );
-            assert_eq!(
-                Arc::ptr_eq(first.1.shared_code_units(), second.1.shared_code_units()),
-                mode == ValueSharingMode::Combined
-            );
+            let report = parse(fragment, mode, DISTINCT_BANKS_TEXT);
+            drop(check_distinct_banks_text(&report, mode));
         }
     }
 }

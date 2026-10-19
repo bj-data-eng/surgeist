@@ -3898,6 +3898,7 @@ dependencies = [
  "surgeist-css",
  "surgeist-html",
  "surgeist-html-semantics",
+ "surgeist-test",
 ]
 
 [[package]]
