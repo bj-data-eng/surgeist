@@ -1,15 +1,16 @@
-//! One fixed native layered workload per process, using the same ordinary
+//! One supported native layered geometry per process, using the same ordinary
 //! construction, literal, topology, backing and isolated-edit checks.
 
 use super::super::{
     require_release, scale_metrics,
     selection::{Identity, Sample, checkpoint_config, optional, required},
 };
-use super::{CELLS, COLUMNS, HolderStage, Mode, NODES, ROWS, Unique, run_sample};
+use super::{Geometry, HolderStage, Mode, Unique, run_sample};
 use surgeist_test::checkpoint::{Config, Gate};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Selection {
+    geometry: Geometry,
     mode: Mode,
     unique: Unique,
     sample: Sample,
@@ -35,11 +36,11 @@ impl Selection {
         let managed: usize = managed
             .parse()
             .map_err(|_| "invalid SURGEIST_MEMORY_MANAGED")?;
-        if (rows, columns, managed) != (ROWS, COLUMNS, NODES) {
-            return Err(
-                "the layered fixture requires exactly 2 rows, 3 columns and 16 managed nodes",
-            );
-        }
+        let geometry = match (rows, columns, managed) {
+            (2, 3, 16) => Geometry::Tiny,
+            (8, 32, 522) => Geometry::Representative,
+            _ => return Err("the layered fixture requires 2x3/16 nodes or 8x32/522 nodes"),
+        };
         let mode = match mode {
             "independent" => Mode::Independent,
             "caller-shared" => Mode::CallerShared,
@@ -54,6 +55,7 @@ impl Selection {
             _ => return Err("invalid SURGEIST_MEMORY_IDS"),
         };
         Ok(Self {
+            geometry,
             mode,
             unique,
             sample: Sample::parse(sample)?,
@@ -64,10 +66,10 @@ impl Selection {
         Identity::Layered {
             mode: self.mode.name(),
             ids: self.unique.name(),
-            rows: ROWS,
-            columns: COLUMNS,
-            cells: CELLS,
-            managed: NODES,
+            rows: self.geometry.rows(),
+            columns: self.geometry.columns(),
+            cells: self.geometry.cells(),
+            managed: self.geometry.nodes(),
             sample: self.sample,
         }
     }
@@ -109,7 +111,7 @@ fn configuration() -> (Selection, Vec<HolderStage>, Option<Config>) {
     if let Some(existing) = optional("SURGEIST_SCALE_SIZES") {
         assert_eq!(
             existing,
-            NODES.to_string(),
+            selection.geometry.nodes().to_string(),
             "conflicting inherited scale size selection"
         );
     }
@@ -159,7 +161,7 @@ fn holders(stage: HolderStage) -> Holders {
 }
 
 #[test]
-#[ignore = "explicit fresh-process release fixture; select one fixed 2x3 layered mode/ID pattern/sample and optional checkpoints"]
+#[ignore = "explicit fresh-process release fixture; select a 2x3 or 8x32 layered geometry/mode/ID pattern/sample and optional checkpoints"]
 fn native_layered_selected_holder_stages() {
     require_release();
     // Every selector and the full checkpoint plan is checked before any DOM
@@ -173,8 +175,13 @@ fn native_layered_selected_holder_stages() {
         .expect("fresh runner-owned stage directory");
     let stage_gate = gate.is_some();
     let pid = std::process::id();
+    let rows = selection.geometry.rows();
+    let columns = selection.geometry.columns();
+    let cells = selection.geometry.cells();
+    let managed = selection.geometry.nodes();
+    let authored_attributes = selection.geometry.attributes(selection.unique);
     eprintln!(
-        "memory_layered_selected profile=release pid={pid} population=native-layered rows={ROWS} columns={COLUMNS} cells={CELLS} managed={NODES} mode={} ids={} sample={} counters_enabled={} counters_build_value={:?} revision={} toolchain={} machine={} os={} arch={} stage_gate_enabled={stage_gate} pointer_inventory=false physical_backend=external_not_run_by_fixture timings_exclude_callbacks=true setup_includes_inputs_batch_apply_identity_lookup=true setup_excludes_oracles=true edit_intervals_include_batch_apply=true edit_intervals_exclude_oracles_commit_drop=true tool_inspected_runs_are_perturbed=true mutation_peak_not_established=true",
+        "memory_layered_selected profile=release pid={pid} population=native-layered rows={rows} columns={columns} cells={cells} managed={managed} authored_attributes={authored_attributes} mode={} ids={} sample={} counters_enabled={} counters_build_value={:?} revision={} toolchain={} machine={} os={} arch={} stage_gate_enabled={stage_gate} pointer_inventory=false physical_backend=external_not_run_by_fixture timings_exclude_callbacks=true setup_includes_inputs_batch_apply_identity_lookup=true setup_excludes_oracles=true edit_intervals_include_batch_apply=true edit_intervals_exclude_oracles_commit_drop=true tool_inspected_runs_are_perturbed=true mutation_peak_not_established=true",
         selection.mode.name(),
         selection.unique.name(),
         selection.sample.name(),
@@ -189,7 +196,7 @@ fn native_layered_selected_holder_stages() {
     let mut observe = |at| {
         let held = holders(at);
         eprintln!(
-            "memory_layered_selected_stage pid={pid} population=native-layered rows={ROWS} columns={COLUMNS} cells={CELLS} managed={NODES} mode={} ids={} sample={} stage={} owner_live={} old_snapshot_live={} current_snapshot_live={} caller_inputs_live={} control_weak_live={} creation_commit_live=false edit_commit_live=false id_scratch_live={} instrumentation_storage_not_subtracted=true allocator_reclamation_not_observed=true",
+            "memory_layered_selected_stage pid={pid} population=native-layered rows={rows} columns={columns} cells={cells} managed={managed} authored_attributes={authored_attributes} mode={} ids={} sample={} stage={} owner_live={} old_snapshot_live={} current_snapshot_live={} caller_inputs_live={} control_weak_live={} creation_commit_live=false edit_commit_live=false id_scratch_live={} instrumentation_storage_not_subtracted=true allocator_reclamation_not_observed=true",
             selection.mode.name(),
             selection.unique.name(),
             selection.sample.name(),
@@ -206,7 +213,12 @@ fn native_layered_selected_holder_stages() {
                 .unwrap_or_else(|error| panic!("layered stage {} failed: {error}", at.name()));
         }
     };
-    let times = run_sample(selection.mode, selection.unique, Some(&mut observe));
+    let times = run_sample(
+        selection.geometry,
+        selection.mode,
+        selection.unique,
+        Some(&mut observe),
+    );
     if let Some(gate) = gate {
         assert!(
             gate.is_complete(),
@@ -215,7 +227,7 @@ fn native_layered_selected_holder_stages() {
     }
     if let Some(times) = times {
         eprintln!(
-            "memory_layered_times pid={pid} mode={} ids={} sample={} counters_enabled=false stage_gate_enabled={stage_gate} setup_ns={} old_snapshot_ns={} caller_inputs_drop_ns={} attribute_edit_ns={} text_edit_ns={} current_snapshot_ns={} grid_and_backing_checks_ns={} owner_drop_ns={} current_drop_ns={} last_snapshot_drop_ns={} callback_waits_excluded=true tool_inspected_runs_are_perturbed=true unperturbed_execution_not_established=true",
+            "memory_layered_times pid={pid} rows={rows} columns={columns} cells={cells} managed={managed} mode={} ids={} sample={} counters_enabled=false stage_gate_enabled={stage_gate} setup_ns={} old_snapshot_ns={} caller_inputs_drop_ns={} attribute_edit_ns={} text_edit_ns={} current_snapshot_ns={} grid_and_backing_checks_ns={} owner_drop_ns={} current_drop_ns={} last_snapshot_drop_ns={} callback_waits_excluded=true tool_inspected_runs_are_perturbed=true unperturbed_execution_not_established=true",
             selection.mode.name(),
             selection.unique.name(),
             selection.sample.name(),
@@ -231,10 +243,12 @@ fn native_layered_selected_holder_stages() {
             times.last_snapshot_drop.as_nanos()
         );
     } else {
-        eprintln!("memory_layered_times pid={pid} omitted=compiled_counters_enabled");
+        eprintln!(
+            "memory_layered_times pid={pid} rows={rows} columns={columns} managed={managed} omitted=compiled_counters_enabled"
+        );
     }
     eprintln!(
-        "memory_layered_selected_complete pid={pid} mode={} ids={} sample={} physical_total_not_inferred=true",
+        "memory_layered_selected_complete pid={pid} rows={rows} columns={columns} cells={cells} managed={managed} mode={} ids={} sample={} physical_total_not_inferred=true",
         selection.mode.name(),
         selection.unique.name(),
         selection.sample.name()
@@ -246,27 +260,41 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fixed_layered_selection_accepts_only_the_twelve_named_cases() {
-        for (mode_name, mode) in [
-            ("independent", Mode::Independent),
-            ("caller-shared", Mode::CallerShared),
-            ("banks-only", Mode::BanksOnly),
-            ("combined", Mode::Combined),
+    fn layered_selection_accepts_twelve_cases_per_supported_geometry() {
+        for (rows, columns, managed, geometry) in [
+            ("2", "3", "16", Geometry::Tiny),
+            ("8", "32", "522", Geometry::Representative),
         ] {
-            for (ids, unique) in [
-                ("repeated", Unique::None),
-                ("row-ids", Unique::Rows),
-                ("cell-ids", Unique::Cells),
+            for (mode_name, mode) in [
+                ("independent", Mode::Independent),
+                ("caller-shared", Mode::CallerShared),
+                ("banks-only", Mode::BanksOnly),
+                ("combined", Mode::Combined),
             ] {
-                assert_eq!(
-                    Selection::parse("native-layered", "2", "3", "16", mode_name, ids, "0")
+                for (ids, unique) in [
+                    ("repeated", Unique::None),
+                    ("row-ids", Unique::Rows),
+                    ("cell-ids", Unique::Cells),
+                ] {
+                    assert_eq!(
+                        Selection::parse(
+                            "native-layered",
+                            rows,
+                            columns,
+                            managed,
+                            mode_name,
+                            ids,
+                            "0"
+                        )
                         .unwrap(),
-                    Selection {
-                        mode,
-                        unique,
-                        sample: Sample::First
-                    }
-                );
+                        Selection {
+                            geometry,
+                            mode,
+                            unique,
+                            sample: Sample::First
+                        }
+                    );
+                }
             }
         }
         for values in [
@@ -300,6 +328,42 @@ mod tests {
             ],
             ["native-layered", "2", "3", "16", "all", "repeated", "0"],
             ["native-layered", "2", "3", "16", "combined", "all", "0"],
+            [
+                "native-layered",
+                "8",
+                "32",
+                "16",
+                "combined",
+                "repeated",
+                "0",
+            ],
+            [
+                "native-layered",
+                "8",
+                "32",
+                "523",
+                "combined",
+                "repeated",
+                "0",
+            ],
+            [
+                "native-layered",
+                "8",
+                "33",
+                "522",
+                "combined",
+                "repeated",
+                "0",
+            ],
+            [
+                "native-layered",
+                "32",
+                "32",
+                "2082",
+                "combined",
+                "repeated",
+                "0",
+            ],
             [
                 "native-layered",
                 "2",
@@ -344,8 +408,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn all_layer_modes_and_id_patterns_preserve_literals_and_release_stages() {
+    fn check_all_modes_and_id_patterns(geometry: Geometry) {
         for mode in [
             Mode::Independent,
             Mode::CallerShared,
@@ -353,8 +416,23 @@ mod tests {
             Mode::Combined,
         ] {
             for unique in [Unique::None, Unique::Rows, Unique::Cells] {
+                eprintln!(
+                    "memory_layered_characterization rows={} columns={} cells={} managed={} mode={} ids={} counters_enabled={}",
+                    geometry.rows(),
+                    geometry.columns(),
+                    geometry.cells(),
+                    geometry.nodes(),
+                    mode.name(),
+                    unique.name(),
+                    scale_metrics::ENABLED
+                );
                 let mut stages = Vec::new();
-                let times = run_sample(mode, unique, Some(&mut |stage| stages.push(stage)));
+                let times = run_sample(
+                    geometry,
+                    mode,
+                    unique,
+                    Some(&mut |stage| stages.push(stage)),
+                );
                 assert_eq!(times.is_some(), !scale_metrics::ENABLED);
                 assert_eq!(
                     stages,
@@ -375,5 +453,70 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn all_layer_modes_and_id_patterns_preserve_literals_and_release_stages() {
+        check_all_modes_and_id_patterns(Geometry::Tiny);
+    }
+
+    #[test]
+    fn representative_layer_modes_and_id_patterns_preserve_literals_and_release_stages() {
+        let geometry = Geometry::Representative;
+        assert_eq!(
+            (
+                geometry.rows(),
+                geometry.columns(),
+                geometry.cells(),
+                geometry.nodes()
+            ),
+            (8, 32, 256, 522)
+        );
+        assert_eq!(
+            (
+                geometry.attributes(Unique::None),
+                geometry.attributes(Unique::Rows),
+                geometry.attributes(Unique::Cells)
+            ),
+            (512, 520, 768)
+        );
+        check_all_modes_and_id_patterns(geometry);
+    }
+
+    #[test]
+    fn representative_id_oracle_requires_prefix_canonical_decimal_and_exact_ordinal() {
+        use super::super::representative_id_matches;
+        use crate::DocumentString;
+        for (literal, prefix, ordinal) in [("r0", b'r', 0), ("r7", b'r', 7), ("c255", b'c', 255)] {
+            assert!(representative_id_matches(
+                &DocumentString::from(literal),
+                u16::from(prefix),
+                ordinal
+            ));
+        }
+        for (literal, prefix, ordinal) in [
+            ("", b'r', 0),
+            ("r", b'r', 0),
+            ("r00", b'r', 0),
+            ("c0255", b'c', 255),
+            ("c256", b'c', 255),
+            ("x1", b'c', 1),
+            ("r-1", b'r', 1),
+            ("r+1", b'r', 1),
+            ("r1x", b'r', 1),
+            ("r١", b'r', 1),
+            ("c99999999999999999999999999999999999999", b'c', 0),
+        ] {
+            assert!(!representative_id_matches(
+                &DocumentString::from(literal),
+                u16::from(prefix),
+                ordinal
+            ));
+        }
+        assert!(!representative_id_matches(
+            &DocumentString::from_utf16(vec![u16::from(b'c'), 0xd800]),
+            u16::from(b'c'),
+            0
+        ));
     }
 }
