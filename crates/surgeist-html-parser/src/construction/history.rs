@@ -231,11 +231,16 @@ impl<'a> PreparedHistory<'a> {
     pub(super) fn share_values<'c>(
         &mut self,
         c: &'c mut ParseControl,
+        #[cfg(test)] mode: crate::request::ValueSharingMode,
     ) -> Result<super::value_sharing::Sharing<'c>, SessionError> {
         self.input
             .as_mut()
             .ok_or(SessionError::Consumed)?
-            .share_values(c)
+            .share_values(
+                c,
+                #[cfg(test)]
+                mode,
+            )
     }
     pub(crate) fn prepare(
         input: &'a mut Option<FrozenArena>,

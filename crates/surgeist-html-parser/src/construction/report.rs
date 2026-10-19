@@ -31,8 +31,13 @@ impl<'a> PreparedReportStorage<'a> {
     pub(crate) fn share_values<'c>(
         mut self,
         c: &'c mut ParseControl,
+        #[cfg(test)] mode: crate::request::ValueSharingMode,
     ) -> Result<SharedReportStorage<'a, 'c>, SessionError> {
-        let sharing = self.history.share_values(c)?;
+        let sharing = self.history.share_values(
+            c,
+            #[cfg(test)]
+            mode,
+        )?;
         Ok(SharedReportStorage {
             storage: self,
             sharing,

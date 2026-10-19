@@ -58,7 +58,11 @@ impl ImmutableParseReport {
             sealed.request.base_facts(),
             sealed.request.is_offline(),
         )?;
-        let mut storage = storage.share_values(c)?;
+        let mut storage = storage.share_values(
+            c,
+            #[cfg(test)]
+            sealed.request.value_sharing(),
+        )?;
         let c = storage.control();
         super::write(
             size_of::<Self>()
@@ -101,7 +105,11 @@ impl ImmutableParseReport {
         let c = &mut sealed.parts.control;
         crate::construction::read::prepare_public_readers(&sealed.parts.arena, c)?;
         let storage = PreparedReportStorage::prepare(&mut sealed.parts.arena, c, None, true)?;
-        let mut storage = storage.share_values(c)?;
+        let mut storage = storage.share_values(
+            c,
+            #[cfg(test)]
+            sealed.request.value_sharing(),
+        )?;
         let c = storage.control();
         super::write(
             size_of::<Self>()
@@ -253,6 +261,9 @@ impl std::fmt::Debug for ImmutableParseReport {
             .finish()
     }
 }
+
+#[cfg(test)]
+mod value_sharing_layers;
 
 #[cfg(test)]
 mod tests {
@@ -862,7 +873,7 @@ mod tests {
             // qualification. Deny new finalization custody, without re-forming it.
             c.test_limit(HtmlParseResource::ManagedCapacityBytes, 0);
             assert!(matches!(
-                prepared.share_values(c),
+                prepared.share_values(c, crate::request::ValueSharingMode::Combined),
                 Err(SessionError::Stop(ParseStop::LimitExceeded {
                     resource: HtmlParseResource::ManagedCapacityBytes,
                     limit: 0,
@@ -899,7 +910,9 @@ mod tests {
             crate::construction::read::prepare_public_readers(&sealed.parts.arena, c).unwrap();
             let prepared =
                 PreparedReportStorage::prepare(&mut sealed.parts.arena, c, None, true).unwrap();
-            prepared.share_values(c).unwrap();
+            prepared
+                .share_values(c, crate::request::ValueSharingMode::Combined)
+                .unwrap();
         }
         sealed.request.cancellation().cancel();
         assert!(matches!(

@@ -1,5 +1,7 @@
 //! Terminal report promotion. No mutable parser session can acquire these pools.
 use super::*;
+#[cfg(test)]
+use crate::request::ValueSharingMode;
 use surgeist_html::bounded::{
     HtmlAttributePool, HtmlAttributePoolOperation, HtmlAttributePoolResult, HtmlStringPool,
     HtmlStringPoolOperation, HtmlStringPoolResult, HtmlValuePoolActionKind, HtmlValuePoolError,
@@ -120,8 +122,15 @@ pub(super) struct Sharing<'c> {
     control: &'c mut ParseControl,
 }
 impl<'c> Sharing<'c> {
-    fn new(control: &'c mut ParseControl) -> Result<Self, SessionError> {
-        let pools = Pools::new(control)?;
+    fn new(
+        control: &'c mut ParseControl,
+        #[cfg(test)] mode: ValueSharingMode,
+    ) -> Result<Self, SessionError> {
+        let pools = Pools::new(
+            control,
+            #[cfg(test)]
+            mode,
+        )?;
         let mut result = Self {
             pools: Some(pools),
             control,
@@ -160,6 +169,8 @@ struct Pools {
     attributes_usage: Usage,
     strings_root: Authority,
     attributes_root: Authority,
+    #[cfg(test)]
+    mode: ValueSharingMode,
     #[cfg(test)]
     string_insertions: usize,
     #[cfg(test)]
@@ -258,7 +269,10 @@ impl Temporary for AttributeOperation<'_> {
     }
 }
 impl Pools {
-    fn new(c: &mut ParseControl) -> Result<Self, SessionError> {
+    fn new(
+        c: &mut ParseControl,
+        #[cfg(test)] mode: ValueSharingMode,
+    ) -> Result<Self, SessionError> {
         // This fixed producer envelope covers final destruction even if a
         // later admission refuses. No terminal cleanup callback is required.
         work(c, HtmlStringPool::disposal_work())?;
@@ -275,6 +289,8 @@ impl Pools {
             attributes_usage: Usage::default(),
             strings_root: Authority::Closed,
             attributes_root: Authority::Closed,
+            #[cfg(test)]
+            mode,
             #[cfg(test)]
             string_insertions: 0,
             #[cfg(test)]
@@ -306,7 +322,7 @@ impl Pools {
         input: &DocumentString,
         c: &mut ParseControl,
     ) -> Result<Option<Selected<DocumentString>>, SessionError> {
-        if !self.enabled() {
+        if !self.strings_enabled() {
             return Ok(None);
         }
         if let Some(hit) = self.drive_string(input, false, c)? {
@@ -319,7 +335,7 @@ impl Pools {
         input: &OrderedAttributes,
         c: &mut ParseControl,
     ) -> Result<(), SessionError> {
-        if !self.enabled() {
+        if !self.attributes_enabled() {
             return Ok(());
         }
         if let Some(hit) = self.drive_attributes(input, true, c)? {
@@ -330,6 +346,20 @@ impl Pools {
     fn enabled(&self) -> bool {
         matches!(self.strings_root, Authority::Open(_))
             && matches!(self.attributes_root, Authority::Open(_))
+    }
+    fn strings_enabled(&self) -> bool {
+        #[cfg(test)]
+        if self.mode != ValueSharingMode::Combined {
+            return false;
+        }
+        self.enabled()
+    }
+    fn attributes_enabled(&self) -> bool {
+        #[cfg(test)]
+        if self.mode == ValueSharingMode::Off {
+            return false;
+        }
+        self.enabled()
     }
     fn open(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
         work(c, HtmlStringPool::root_work())?;
@@ -759,7 +789,7 @@ impl Finalizing {
             return Ok(());
         };
         let element = *element;
-        if let Some(selected) = if pools.enabled() {
+        if let Some(selected) = if pools.attributes_enabled() {
             pools.drive_attributes(original, false, c)?
         } else {
             None
@@ -1264,6 +1294,7 @@ impl FrozenArena {
     pub(super) fn share_values<'c>(
         &mut self,
         c: &'c mut ParseControl,
+        #[cfg(test)] mode: ValueSharingMode,
     ) -> Result<Sharing<'c>, SessionError> {
         if self.sharing_started || self.finalizing.is_some() {
             return Err(SessionError::Consumed);
@@ -1329,7 +1360,11 @@ impl FrozenArena {
             .unwrap()
             .construction
             .recovered(c, recovery)?;
-        let mut sharing = Sharing::new(c)?;
+        let mut sharing = Sharing::new(
+            c,
+            #[cfg(test)]
+            mode,
+        )?;
         self.finalizing
             .as_mut()
             .unwrap()
@@ -1388,7 +1423,7 @@ mod tests {
         )])
         .unwrap();
         {
-            let mut sharing = Sharing::new(&mut c).unwrap();
+            let mut sharing = Sharing::new(&mut c, ValueSharingMode::Combined).unwrap();
             let pools = sharing.pools.as_mut().unwrap();
             assert!(pools.string(&text, sharing.control).unwrap().is_none());
             pools.offer_attributes(&bank, sharing.control).unwrap();
