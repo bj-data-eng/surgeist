@@ -29,6 +29,69 @@ const PARSED_NODES: usize = 2 + 5 + ROWS + 2 * CELLS;
 const MANAGED_NODES: usize = PARSED_NODES + 1; // Actual origin-source Document.
 
 mod arrays;
+mod selected;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HolderStage {
+    HarnessOnly,
+    ParsedReport,
+    Populated,
+    BeforeTextEdit,
+    TextEdited,
+    BeforeClassEdit,
+    ClassEdited,
+    BeforeStyleEdit,
+    StyleEdited,
+    Edited,
+    OwnerDropped,
+    OldOnly,
+    ReportOnly,
+    Released,
+}
+
+impl HolderStage {
+    const ALL: [Self; 14] = [
+        Self::HarnessOnly,
+        Self::ParsedReport,
+        Self::Populated,
+        Self::BeforeTextEdit,
+        Self::TextEdited,
+        Self::BeforeClassEdit,
+        Self::ClassEdited,
+        Self::BeforeStyleEdit,
+        Self::StyleEdited,
+        Self::Edited,
+        Self::OwnerDropped,
+        Self::OldOnly,
+        Self::ReportOnly,
+        Self::Released,
+    ];
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::HarnessOnly => "harness-only",
+            Self::ParsedReport => "parsed-report",
+            Self::Populated => "populated",
+            Self::BeforeTextEdit => "before-text-edit",
+            Self::TextEdited => "text-edited",
+            Self::BeforeClassEdit => "before-class-edit",
+            Self::ClassEdited => "class-edited",
+            Self::BeforeStyleEdit => "before-style-edit",
+            Self::StyleEdited => "style-edited",
+            Self::Edited => "edited",
+            Self::OwnerDropped => "owner-dropped",
+            Self::OldOnly => "old-only",
+            Self::ReportOnly => "report-only",
+            Self::Released => "released",
+        }
+    }
+}
+
+fn observe(observer: &mut Option<&mut dyn FnMut(HolderStage)>, at: HolderStage) {
+    if let Some(observer) = observer {
+        observer(at);
+    }
+}
 
 fn markup() -> String {
     let mut source = String::from("<!doctype html><html><head></head><body><table><tbody>");
@@ -209,6 +272,26 @@ enum Stage {
     Style,
 }
 
+impl Stage {
+    fn before(self) -> HolderStage {
+        match self {
+            Self::Text => HolderStage::BeforeTextEdit,
+            Self::Class => HolderStage::BeforeClassEdit,
+            Self::Style => HolderStage::BeforeStyleEdit,
+            Self::Original => unreachable!("the original report is not an edit"),
+        }
+    }
+
+    fn after(self) -> HolderStage {
+        match self {
+            Self::Text => HolderStage::TextEdited,
+            Self::Class => HolderStage::ClassEdited,
+            Self::Style => HolderStage::StyleEdited,
+            Self::Original => unreachable!("the original report is not an edit"),
+        }
+    }
+}
+
 fn element<'a>(snapshot: &'a DomSnapshot, id: NodeId, local: &str) -> &'a DomElement {
     let value = snapshot.node(id).unwrap().as_element().unwrap();
     assert_eq!(value.name().namespace_uri(), Namespace::html().uri());
@@ -312,8 +395,12 @@ fn check_dom(
     (cell_ids, text_ids)
 }
 
-#[test]
-fn parsed_table_report_and_snapshots_survive_isolated_edits_and_ordered_release() {
+/// One actual parse/install/edit/release path. Observers receive only the stage;
+/// all oracle/array temporaries have gone before a holder-stage observation.
+/// Before/after-edit observations bracket the real batch construction/apply;
+/// they do not by themselves qualify a process high-water mark as an edit peak.
+fn run_sample(inventories: bool, mut observer: Option<&mut dyn FnMut(HolderStage)>) {
+    observe(&mut observer, HolderStage::HarnessOnly);
     let source = markup();
     let report = Arc::new(
         HtmlDocumentParseRequest::offline(HtmlSource::utf8(source.clone()), parse_limits())
@@ -322,6 +409,7 @@ fn parsed_table_report_and_snapshots_survive_isolated_edits_and_ordered_release(
     );
     let report_ids = check_report(&report, &source);
     let report_liveness = Arc::downgrade(&report);
+    observe(&mut observer, HolderStage::ParsedReport);
     let (mut dom, environment) = setup();
     assert_eq!(dom.usage().managed_nodes(), 1);
     let before = dom.snapshot().stamp();
@@ -378,7 +466,9 @@ fn parsed_table_report_and_snapshots_survive_isolated_edits_and_ordered_release(
     // The installation owns both a snapshot and the same report Arc. Dispose
     // it now so the explicit holders below determine the later release order.
     drop(installed);
+    observe(&mut observer, HolderStage::Populated);
     for stage in [Stage::Text, Stage::Class, Stage::Style] {
+        observe(&mut observer, stage.before());
         let revision = dom.revision();
         let mut batch = DomBatch::new();
         let expected = match stage {
@@ -400,6 +490,8 @@ fn parsed_table_report_and_snapshots_survive_isolated_edits_and_ordered_release(
         assert_eq!(commit.changes().changes(), [expected]);
         drop(commit);
         assert_eq!(dom.revision().get(), revision.get() + 1);
+        // No current-snapshot clone or full oracle runs inside this bracket.
+        observe(&mut observer, stage.after());
         let current = dom.snapshot();
         assert_eq!(
             check_dom(&current, document, stage),
@@ -430,12 +522,15 @@ fn parsed_table_report_and_snapshots_survive_isolated_edits_and_ordered_release(
         cells.len(),
         report_ids.len()
     );
-    arrays::report(
-        "owner_report_old_current",
-        Some(&report),
-        &report_ids,
-        &[&old, &current],
-    );
+    if inventories {
+        arrays::report(
+            "owner_report_old_current",
+            Some(&report),
+            &report_ids,
+            &[&old, &current],
+        );
+    }
+    observe(&mut observer, HolderStage::Edited);
     drop(dom);
     assert_eq!(
         check_dom(&current, document, Stage::Style),
@@ -446,23 +541,64 @@ fn parsed_table_report_and_snapshots_survive_isolated_edits_and_ordered_release(
         (cells.clone(), text.clone())
     );
     assert_eq!(check_report(&report, &source), report_ids);
-    arrays::report(
-        "report_old_current",
-        Some(&report),
-        &report_ids,
-        &[&old, &current],
-    );
+    if inventories {
+        arrays::report(
+            "report_old_current",
+            Some(&report),
+            &report_ids,
+            &[&old, &current],
+        );
+    }
+    observe(&mut observer, HolderStage::OwnerDropped);
     drop(current);
-    arrays::report("report_old", Some(&report), &report_ids, &[&old]);
+    if inventories {
+        arrays::report("report_old", Some(&report), &report_ids, &[&old]);
+    }
     assert_eq!(check_dom(&old, document, Stage::Original), (cells, text));
     assert_eq!(check_report(&report, &source), report_ids);
+    observe(&mut observer, HolderStage::OldOnly);
     drop(old);
-    arrays::report("report_only", Some(&report), &report_ids, &[]);
+    if inventories {
+        arrays::report("report_only", Some(&report), &report_ids, &[]);
+    }
     assert_eq!(check_report(&report, &source), report_ids);
+    // HtmlNodeId holds the construction identity, and source is a separate
+    // authored String. Neither is needed after the final independent oracle.
+    drop(report_ids);
+    drop(source);
+    observe(&mut observer, HolderStage::ReportOnly);
     drop(report);
     assert!(report_liveness.upgrade().is_none());
     // This proves wrapper liveness, not reclamation of every nested shared
     // allocation or allocator/Weak control block. Drop the observer last.
     drop(report_liveness);
-    arrays::report("no_strong_fixture_arrays", None, &report_ids, &[]);
+    if inventories {
+        arrays::report("no_strong_fixture_arrays", None, &[], &[]);
+    }
+    observe(&mut observer, HolderStage::Released);
+}
+
+#[test]
+fn parsed_table_report_and_snapshots_survive_isolated_edits_and_ordered_release() {
+    let mut stages = Vec::new();
+    run_sample(true, Some(&mut |stage| stages.push(stage)));
+    assert_eq!(
+        stages,
+        [
+            HolderStage::HarnessOnly,
+            HolderStage::ParsedReport,
+            HolderStage::Populated,
+            HolderStage::BeforeTextEdit,
+            HolderStage::TextEdited,
+            HolderStage::BeforeClassEdit,
+            HolderStage::ClassEdited,
+            HolderStage::BeforeStyleEdit,
+            HolderStage::StyleEdited,
+            HolderStage::Edited,
+            HolderStage::OwnerDropped,
+            HolderStage::OldOnly,
+            HolderStage::ReportOnly,
+            HolderStage::Released,
+        ]
+    );
 }
