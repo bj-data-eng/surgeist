@@ -12,7 +12,7 @@ use surgeist_html::{
 // CSS Color 4 CRD 2026-09-08, original snapshot SHA-256:
 // bada647312a73c4cd4484dc177d67d22cf70df6c451b0e8c5dd5efc29c3415ba.
 const COLOR4: &str =
-    include_str!("../../../references/css-color-4--CRD-css-color-4-20260908--bada647312a7.md");
+    include_str!("../../../../references/css-color-4--CRD-css-color-4-20260908--bada647312a7.md");
 
 fn named_color_oracle() -> Vec<(&'static str, [u8; 3])> {
     let section = COLOR4

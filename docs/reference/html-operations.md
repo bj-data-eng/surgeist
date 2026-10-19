@@ -328,7 +328,7 @@ each comparison/trim read follows admission, without allocating a synthetic
 language string. Public `HtmlScriptKind` describes current classification and
 remains distinct from saved private preparation metadata. No saved metadata,
 preparation effects, resource loading or execution is produced by these reports.
-The [source-derived tests](../../crates/surgeist-html/tests/attributes_script_type.rs) cover both meanings,
+The [source-derived tests](../../crates/surgeist-html/tests/html/attributes/script_type.rs) cover both meanings,
 exact slots, raw preservation and admission boundaries.
 
 Numeric attribute reports cover canvas width/height, textarea cols/rows and
@@ -976,12 +976,12 @@ canonical current values and identities and apply HTML's requirements within its
 atomic edits. Constructing flags retains supplied intrinsic slot values; it does
 not establish subject identity, mutation history or capture qualification.
 [Input tests](../../crates/surgeist-html-parser/tests/input_rules.rs),
-[Checkbox tests](../../crates/surgeist-html/tests/input_checkbox_rules.rs),
-[Radio tests](../../crates/surgeist-html/tests/input_radio_rules.rs),
-[Email/URL tests](../../crates/surgeist-html/tests/input_email_url_rules.rs),
-[temporal input tests](../../crates/surgeist-html/tests/input_temporal_rules.rs),
-[File/Image tests](../../crates/surgeist-html/tests/input_file_image_rules.rs) and
-[family tests](../../crates/surgeist-html/tests/control_values.rs) cover the pure rules. Parser tests cover
+[Checkbox tests](../../crates/surgeist-html/tests/html/input/checkbox_rules.rs),
+[Radio tests](../../crates/surgeist-html/tests/html/input/radio_rules.rs),
+[Email/URL tests](../../crates/surgeist-html/tests/html/input/email_url_rules.rs),
+[temporal input tests](../../crates/surgeist-html/tests/html/input/temporal_rules.rs),
+[File/Image tests](../../crates/surgeist-html/tests/html/input/file_image_rules.rs) and
+[family tests](../../crates/surgeist-html/tests/html/forms/control_values.rs) cover the pure rules. Parser tests cover
 their actual controlled consumers. Other input families, tree-dependent effects,
 full textarea setters/normalization and runtime events require their respective
 owners; these APIs do not certify a complete parse report or live transaction.
@@ -1449,7 +1449,7 @@ capture and fixed shared-wrapper allocation limits remain, with no complete
 allocator/RSS or linear-work promise.
 
 The [pragma clauses](../../references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md#pragma-directives)
-and [local](../../crates/surgeist-html/tests/attributes_meta_pragma.rs) and [captured literal tests](../../crates/surgeist-html-semantics/tests/semantics_meta_pragma.rs)
+and [local](../../crates/surgeist-html/tests/html/attributes/meta_pragma.rs) and [captured literal tests](../../crates/surgeist-html-semantics/tests/semantics_meta_pragma.rs)
 define this static boundary. Insertion history, processing timing, pragma-set
 language, encoding/document-class/serialization requirements, stylesheet
 mutation, refresh history/timers/navigation and CSP execution remain separate.
@@ -1536,7 +1536,7 @@ wrappers are not charged as new backing allocation. Current scratch is released;
 cumulative allocation, retained-output and peak usage remain charged after
 discarded results. Terminal raw, work, allocation, representation or cancellation
 failures stay sticky and discard the whole batch; a later duplicate cannot mask
-them. [Local](../../crates/surgeist-html/tests/attributes_map_name.rs) and
+them. [Local](../../crates/surgeist-html/tests/html/attributes/map_name.rs) and
 [captured tests](../../crates/surgeist-html-semantics/tests/semantics_map_name.rs) cover these boundaries.
 Map processing/selection, URLs, geometry, activation and live collections remain
 separate operations.
@@ -2763,7 +2763,7 @@ the same ordering. Unavailable examination remains Missing; stale, mismatched or
 reused examinations cannot silently remove a candidate. These operations do not
 fetch feeds, install manifests, decode resources or display icons.
 
-[Local cases](../../crates/surgeist-html/tests/rel_native.rs), [captured cases](../../crates/surgeist-html-semantics/tests/semantics_rel.rs) and
+[Local cases](../../crates/surgeist-html/tests/html/hyperlinks/rel_native.rs), [captured cases](../../crates/surgeist-html-semantics/tests/semantics_rel.rs) and
 [parse-history cases](../../crates/surgeist-html-parser/tests/rel_parse_history.rs), together with
 [document selector cases](../../crates/surgeist-html-semantics/tests/semantics_rel_selectors.rs), describe these boundaries.
 Facts and request formation have finite admission; controlled readback shares
@@ -2894,7 +2894,7 @@ semantic session's controlled execution.
 
 The [semantic owner](../../crates/surgeist-html-semantics/src/semantics/microdata.rs) reuses the shared space-token
 cursor and actual session admission, work, scratch, nested output, cancellation
-and atomic first-stop publication. [Local tests](../../crates/surgeist-html/tests/attributes_microdata.rs)
+and atomic first-stop publication. [Local tests](../../crates/surgeist-html/tests/html/attributes/microdata.rs)
 and [captured tests](../../crates/surgeist-html-semantics/tests/semantics_microdata.rs) use literal trees, values,
 receivers and qualified external observations. These are immutable HTML results;
 URL/vocabulary producers and live DOM collections retain their own boundaries.
