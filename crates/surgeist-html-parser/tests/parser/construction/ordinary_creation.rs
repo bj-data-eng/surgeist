@@ -1,35 +1,10 @@
-#![forbid(unsafe_code)]
+use crate::parser::support::limits;
 
 use surgeist_html::{DocumentString, HtmlCustomElementState, HtmlNodeId, HtmlNodeKind};
 use surgeist_html_parser::{
-    HtmlDocumentParseRequest, HtmlParseCompletion, HtmlParseLimits, HtmlParseMetadataStep,
-    HtmlParseReport, HtmlSource,
+    HtmlDocumentParseRequest, HtmlParseCompletion, HtmlParseMetadataStep, HtmlParseReport,
+    HtmlSource,
 };
-
-fn limits() -> HtmlParseLimits {
-    HtmlParseLimits::builder()
-        .source_units(100_000)
-        .buffered_utf16_units(100_000)
-        .token_attributes(10_000)
-        .auxiliary_entries(1_000_000)
-        .managed_nodes(100_000)
-        .managed_edges(100_000)
-        .managed_attributes(100_000)
-        .managed_utf16_units(100_000)
-        .source_map_entries(100_000)
-        .source_map_payload_units(100_000)
-        .diagnostics(100_000)
-        .diagnostic_payload_units(100_000)
-        .context_effects(100_000)
-        .open_elements(100)
-        .tree_depth(100_000)
-        .managed_capacity_bytes(100_000_000)
-        .peak_transient_bytes(100_000_000)
-        .atomic_layout_bytes(100_000_000)
-        .work_credits(100_000_000)
-        .finish()
-        .unwrap()
-}
 
 fn completed_document(source: &str) -> HtmlParseReport {
     let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits())

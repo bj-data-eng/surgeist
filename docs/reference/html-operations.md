@@ -975,7 +975,7 @@ The private parser stores and consumes these same values. DOM will store its
 canonical current values and identities and apply HTML's requirements within its
 atomic edits. Constructing flags retains supplied intrinsic slot values; it does
 not establish subject identity, mutation history or capture qualification.
-[Input tests](../../crates/surgeist-html-parser/tests/input_rules.rs),
+[Input tests](../../crates/surgeist-html-parser/tests/parser/construction/input/rules.rs),
 [Checkbox tests](../../crates/surgeist-html/tests/input_checkbox_rules.rs),
 [Radio tests](../../crates/surgeist-html/tests/input_radio_rules.rs),
 [Email/URL tests](../../crates/surgeist-html/tests/input_email_url_rules.rs),
@@ -2204,7 +2204,7 @@ allocation policies. Parser limits measure admitted logical storage, known
 layouts, work and retained capacities, not process RSS, elapsed time or allocator
 preemption. Existing scans, copies and topology walks may be quadratic; finite
 input and budgets do not promise successful completion or universal linearity.
-[Public entry tests](../../crates/surgeist-html-parser/tests/public_parse.rs) exercise this boundary. Internal-owner
+[Public entry tests](../../crates/surgeist-html-parser/tests/parser/parse/reports.rs) exercise this boundary. Internal-owner
 descriptions below retain their existing link anchors.
 
 <a id="private-context-fragments"></a>
@@ -2538,7 +2538,7 @@ the original value group or absence, alpha/colorspace operand groups, selected
 standard failure and qualified CSS fact-policy identity.
 `HtmlParseCause::color_computation()` lends those decisions; generated units
 do not invent literal or character-reference source atoms.
-[Public Color tests](../../crates/surgeist-html-parser/tests/color_input_construction.rs) cover distinct defaults,
+[Public Color tests](../../crates/surgeist-html-parser/tests/parser/construction/input/color.rs) cover distinct defaults,
 current values, source-ordered alpha/colorspace decisions and typed unavailability.
 These construction operations do not supply style resolution, a live DOM,
 interactive wells, live setters or browser events.
@@ -2557,7 +2557,7 @@ Actual Image `src` changes and reentry into Image compare the registered source
 history; changes while in another state do not replace it. Reset preserves that
 history and coordinate, while cloning initializes them in the target creation
 environment before transferring common fields. No activation or resource loading
-is performed. [Public File/Image tests](../../crates/surgeist-html-parser/tests/public_file_image.rs) cover these
+is performed. [Public File/Image tests](../../crates/surgeist-html-parser/tests/parser/construction/input/file_image.rs) cover these
 immutable observations, admission and policy refusals.
 
 `HtmlImageSupport` distinguishes Unavailable, Disabled and Enabled policy from
@@ -2764,7 +2764,7 @@ reused examinations cannot silently remove a candidate. These operations do not
 fetch feeds, install manifests, decode resources or display icons.
 
 [Local cases](../../crates/surgeist-html/tests/rel_native.rs), [captured cases](../../crates/surgeist-html-semantics/tests/semantics_rel.rs) and
-[parse-history cases](../../crates/surgeist-html-parser/tests/rel_parse_history.rs), together with
+[parse-history cases](../../crates/surgeist-html-parser/tests/parser/construction/link_history.rs), together with
 [document selector cases](../../crates/surgeist-html-semantics/tests/semantics_rel_selectors.rs), describe these boundaries.
 Facts and request formation have finite admission; controlled readback shares
 the original semantic session's work, nested output and scratch cleanup owner.
@@ -2808,7 +2808,7 @@ state. The owned parser's response domain excludes external browser recipients;
 it supplies no live navigation, URL parser or CSP enforcement engine.
 
 The [pinned base clauses](../../references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md#the-base-element),
-[public base/target cases](../../crates/surgeist-html-parser/tests/base_target.rs), [captured cases](../../crates/surgeist-html-semantics/tests/semantics_base.rs)
+[public base/target cases](../../crates/surgeist-html-parser/tests/parser/construction/base_target.rs), [captured cases](../../crates/surgeist-html-semantics/tests/semantics_base.rs)
 and native owner tests describe the independent first selections, fallback,
 missing facts, actual mutation, nonce-only append, original cancellation and
 cleanup boundaries.
@@ -2846,7 +2846,7 @@ with its existing source/history associations.
 The native hooks use canonical registered backing, construction effects,
 provenance and the original admission/cancellation/cleanup owner. The
 [decision/capture tests](../../crates/surgeist-html-semantics/tests/nonce.rs), [semantic tests](../../crates/surgeist-html-semantics/tests/semantics_nonce.rs)
-and [public parse tests](../../crates/surgeist-html-parser/tests/public_nonce.rs) cover content/slot divergence,
+and [public parse tests](../../crates/surgeist-html-parser/tests/parser/construction/nonce.rs) cover content/slot divergence,
 clone, actual context, shadow insertion and finite refusal. Private tests exercise
 real slot writes and cancellation after saving and empty-content mutation.
 These immutable operations do not parse or enforce CSP or supply a live DOM
@@ -3195,7 +3195,7 @@ the attribute exception. Both UTF-8 and UTF-16 inputs run whole, at every two-pa
 cut and unit at a time against independent typed records and output intervals.
 Supplementary and two-code-point replacements retain exact overlapping source
 maps; attribute literals also check retained lexical quotes. A
-[public reader witness](../../crates/surgeist-html-parser/tests/public_parse.rs) checks the same source identities,
+[public reader witness](../../crates/surgeist-html-parser/tests/parser/parse/reports.rs) checks the same source identities,
 chronology and all-overlap current-text reverse mapping after cancellation.
 Diagnostic one-short admission, cancellation between real steps and fixed
 completed-map row work boundaries retain the original first stop and reclaimable
@@ -3210,7 +3210,7 @@ and abandoned drafts with no native PI at EOF. UTF-8 and UTF-16 cases run whole,
 at every two-part cut and one unit at a time; paired and isolated-surrogate data
 and CRLF retain separate original-source and output intervals. Lexical target,
 data, opening/closing syntax, whitespace and EOF anchors remain available with
-all applicable reverse results. A [public witness](../../crates/surgeist-html-parser/tests/public_parse.rs) checks
+all applicable reverse results. A [public witness](../../crates/surgeist-html-parser/tests/parser/parse/reports.rs) checks
 chronological recovery records and abandoned-target/data history after parse
 cancellation. This selected evidence does not certify every tokenizer/tree
 condition, XML or template-for-patch effects, or public incremental feeding.

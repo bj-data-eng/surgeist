@@ -1,77 +1,7 @@
-#![forbid(unsafe_code)]
+use crate::parser::support::{bank, environment, limits, record};
 use surgeist_html::{DocumentString, HtmlReferrerPolicy};
 use surgeist_html_parser::*;
 use surgeist_html_semantics::*;
-
-fn limits() -> HtmlParseLimits {
-    HtmlParseLimits::builder()
-        .source_units(100_000)
-        .buffered_utf16_units(100_000)
-        .token_attributes(10_000)
-        .auxiliary_entries(1_000_000)
-        .managed_nodes(100_000)
-        .managed_edges(100_000)
-        .managed_attributes(100_000)
-        .managed_utf16_units(100_000)
-        .source_map_entries(100_000)
-        .source_map_payload_units(100_000)
-        .diagnostics(100_000)
-        .diagnostic_payload_units(100_000)
-        .context_effects(100_000)
-        .open_elements(100)
-        .tree_depth(100_000)
-        .managed_capacity_bytes(100_000_000)
-        .peak_transient_bytes(100_000_000)
-        .atomic_layout_bytes(100_000_000)
-        .work_credits(100_000_000)
-        .finish()
-        .unwrap()
-}
-
-fn record(
-    revision: &HtmlBaseFactsRevision,
-    url: &str,
-    blank: bool,
-    fragment: Option<usize>,
-) -> HtmlBaseUrlRecord {
-    HtmlBaseUrlRecord::observed(
-        revision.clone(),
-        url.into(),
-        HtmlBaseUrlScheme::Other,
-        blank,
-        fragment,
-    )
-    .unwrap()
-}
-fn environment(base: &HtmlBaseUrlRecord, encoding: &HtmlBaseEncoding) -> HtmlParseBaseFacts {
-    HtmlParseBaseFacts::new(
-        HtmlBaseDocumentFacts::new(
-            base.revision().clone(),
-            Some(base.clone()),
-            HtmlAboutBaseUrl::KnownNull,
-            false,
-            Some(encoding.clone()),
-        )
-        .unwrap(),
-        vec![],
-        HtmlBaseFactsLimits::new(20, 10_000, 100_000),
-    )
-    .unwrap()
-}
-fn bank(
-    base: &HtmlBaseUrlRecord,
-    encoding: &HtmlBaseEncoding,
-    observations: Vec<HtmlEncodingUrlParseObservation>,
-) -> HtmlEncodingUrlParseFacts {
-    HtmlEncodingUrlParseFacts::new(
-        base.clone(),
-        encoding.clone(),
-        base.revision().clone(),
-        observations,
-        HtmlBaseFactsLimits::new(20, 10_000, 100_000),
-    )
-    .unwrap()
-}
 
 fn rows(report: &HtmlParseReport) -> Vec<HtmlParseDocumentMeta<'_>> {
     let mut result = Vec::new();

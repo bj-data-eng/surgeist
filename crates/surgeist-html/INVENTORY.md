@@ -833,7 +833,7 @@ lend the resulting metadata and associations. Ordinary content/quantity recovery
 constraint validation, stepping, live setters and UI remain separate domains.
 [The overview](../../docs/reference/html-operations.md#shared-intrinsic-control-rules) explains trigger order,
 bounded recognition/comparison and adapter responsibilities;
-[input tests](../surgeist-html-parser/tests/input_rules.rs), [Checkbox tests](tests/input_checkbox_rules.rs),
+[input tests](../surgeist-html-parser/tests/parser/construction/input/rules.rs), [Checkbox tests](tests/input_checkbox_rules.rs),
 [Radio tests](tests/input_radio_rules.rs), [Email/URL tests](tests/input_email_url_rules.rs),
 [temporal input tests](tests/input_temporal_rules.rs) and [family tests](tests/control_values.rs)
 verify literal local decisions. Strings, selection, form/tree references,
@@ -1143,7 +1143,7 @@ conversion and serialization to `surgeist-css` under the original parse
 controller, retaining raw defaults independently from generated current values.
 Its admission, cancellation and generated-value provenance belong to that
 controlled adapter, rather than this ordinary attribute interpreter.
-[Public Color construction tests](../surgeist-html-parser/tests/color_input_construction.rs) exercise
+[Public Color construction tests](../surgeist-html-parser/tests/parser/construction/input/color.rs) exercise
 that integration separately. Mutable well updates and live reflection remain
 external operations.
 
@@ -1779,7 +1779,7 @@ the content-attribute input cap; completed parse metadata lends its registered
 raw backing/history through `cryptographic_nonce`. Existing control, effects,
 provenance, cleanup and atomic publication remain authoritative. The
 [overview](../../docs/reference/html-operations.md#nonce-slot-and-content), [local/capture tests](../surgeist-html-semantics/tests/nonce.rs),
-[semantic tests](../surgeist-html-semantics/tests/semantics_nonce.rs) and [public parse tests](../surgeist-html-parser/tests/public_nonce.rs)
+[semantic tests](../surgeist-html-semantics/tests/semantics_nonce.rs) and [public parse tests](../surgeist-html-parser/tests/parser/construction/nonce.rs)
 describe the boundaries. CSP parsing/enforcement and live DOM setters remain
 with their consuming owners; content storage alone does not prove slot state.
 
@@ -1832,7 +1832,7 @@ pending stopped responses cannot publish. Completed metadata retains actual
 frozen state. Formation and semantic/native execution keep their respective
 finite admission and original-stop/cleanup owners. Source labels are not URLs;
 URL parsing, CSP enforcement, live browser response and navigation remain external.
-The [overview](../../docs/reference/html-operations.md#document-base-and-target), [public tests](../surgeist-html-parser/tests/base_target.rs)
+The [overview](../../docs/reference/html-operations.md#document-base-and-target), [public tests](../surgeist-html-parser/tests/parser/construction/base_target.rs)
 and [captured tests](../surgeist-html-semantics/tests/semantics_base.rs) qualify the current producer.
 
 ### Custom element names
