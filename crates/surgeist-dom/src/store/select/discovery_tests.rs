@@ -8,7 +8,7 @@ fn policy() -> DomLimits {
         .with_select_processing(128, 8_000_000, 10_000_000)
         .unwrap()
         .with_select_value_queries(
-            HtmlCaptureLimits::new(512, 2048, 2048, 131072, 512, 0, 0),
+            HtmlCaptureLimits::new(512, 2048, 2048, 131072, 512, 0, 0, 16_777_216),
             HtmlSemanticLimits::new(10_000_000, 1, 2048, 128, 8_000_000, 2048),
         )
 }

@@ -15,7 +15,7 @@ use surgeist_html_semantics::{
 
 fn builder() -> HtmlCaptureBuilder {
     HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(8, 128, 0, 256, 16, 0, 0),
+        HtmlCaptureLimits::new(8, 128, 0, 256, 16, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     )
 }

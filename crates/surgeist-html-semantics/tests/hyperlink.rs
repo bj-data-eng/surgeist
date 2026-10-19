@@ -328,7 +328,7 @@ fn each_lookup_charge_is_interruptible_and_first_error_is_preserved() {
 }
 
 fn capture_limits(units: usize, relationships: usize) -> HtmlCaptureLimits {
-    HtmlCaptureLimits::new(10, relationships, 10, units, 10, 0, 0)
+    HtmlCaptureLimits::new(10, relationships, 10, units, 10, 0, 0, 16_777_216)
 }
 fn document(b: &mut HtmlCaptureBuilder) -> HtmlCaptureBuilderSubject {
     b.add_document(

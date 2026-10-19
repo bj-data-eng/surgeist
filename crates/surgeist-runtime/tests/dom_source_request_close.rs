@@ -538,7 +538,7 @@ fn mutation_registry(
                         document,
                         None,
                         surgeist_html_semantics::HtmlCaptureLimits::new(
-                            128, 512, 512, 100_000, 128, 32, 32
+                            128, 512, 512, 100_000, 128, 32, 32, 16_777_216
                         ),
                         DomHtmlCaptureLimits::new(128, 1_000_000),
                         &cancel()

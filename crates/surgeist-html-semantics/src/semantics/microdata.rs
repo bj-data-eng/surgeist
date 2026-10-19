@@ -39,7 +39,7 @@ mod tests {
     fn original_cancellation_after_token_and_item_edge_commit_is_atomic_and_reclaims_scratch() {
         for stage in [CancellationStage::Token, CancellationStage::Edge] {
             let mut b = HtmlCaptureBuilder::new(
-                HtmlCaptureLimits::new(10, 100, 10, 1000, 10, 0, 0),
+                HtmlCaptureLimits::new(10, 100, 10, 1000, 10, 0, 0, 16_777_216),
                 HtmlHostFactsRevision::fresh(),
             );
             let d = b
@@ -131,7 +131,7 @@ mod tests {
     #[test]
     fn canonical_token_step_exact_work_and_one_short_preserve_first_stop() {
         let mut b = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(10, 100, 10, 1000, 10, 0, 0),
+            HtmlCaptureLimits::new(10, 100, 10, 1000, 10, 0, 0, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let d = b

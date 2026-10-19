@@ -575,7 +575,7 @@ mod tests {
             HtmlImageSupport::Enabled,
         ] {
             let mut builder = HtmlCaptureBuilder::new(
-                HtmlCaptureLimits::new(100, 100, 100, 1000, 100, 100, 100),
+                HtmlCaptureLimits::new(100, 100, 100, 1000, 100, 100, 100, 16_777_216),
                 HtmlHostFactsRevision::fresh(),
             );
             let entry = builder

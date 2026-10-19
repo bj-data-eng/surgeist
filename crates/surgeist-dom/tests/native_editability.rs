@@ -36,7 +36,7 @@ fn native_fresh_document_design_mode_disables_implicit_editing_host() {
         .html_capture(
             document,
             None,
-            HtmlCaptureLimits::new(8, 64, 16, 4096, 8, 0, 0),
+            HtmlCaptureLimits::new(8, 64, 16, 4096, 8, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(8, 10000),
             &cancel,
         )
@@ -73,7 +73,7 @@ fn capture(snapshot: &DomSnapshot, document: DocumentId) -> DomHtmlCapture {
         .html_capture(
             document,
             None,
-            HtmlCaptureLimits::new(512, 8192, 1024, 200_000, 512, 0, 0),
+            HtmlCaptureLimits::new(512, 8192, 1024, 200_000, 512, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(512, 1_000_000),
             &AtomicBool::new(false),
         )
@@ -515,7 +515,7 @@ fn failed_or_cancelled_capture_does_not_mutate_canonical_state_and_good_limits_r
     let snapshot = dom.snapshot();
     let stamp = snapshot.stamp();
     let usage = dom.usage();
-    let limits = HtmlCaptureLimits::new(512, 8192, 1024, 200_000, 512, 0, 0);
+    let limits = HtmlCaptureLimits::new(512, 8192, 1024, 200_000, 512, 0, 0, 16_777_216);
     assert!(matches!(
         snapshot.html_capture(
             d,

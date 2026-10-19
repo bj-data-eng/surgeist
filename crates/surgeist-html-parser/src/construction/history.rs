@@ -1456,7 +1456,7 @@ mod tests {
     fn immutable_history_captured_namespace_keeps_context_qualification_without_lexical_origins() {
         use crate::*;
         let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(10, 10, 10, 1000, 10, 10, 10),
+            HtmlCaptureLimits::new(10, 10, 10, 1000, 10, 10, 10, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let document = builder

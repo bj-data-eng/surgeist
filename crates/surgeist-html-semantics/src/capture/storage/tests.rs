@@ -3,7 +3,7 @@ use std::convert::Infallible;
 
 fn builder() -> HtmlCaptureBuilder {
     HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 1000, 100, 10000, 100, 100, 100),
+        HtmlCaptureLimits::new(100, 1000, 100, 10000, 100, 100, 100, 16 * 1024 * 1024),
         HtmlHostFactsRevision::fresh(),
     )
 }

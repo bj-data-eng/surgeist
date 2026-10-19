@@ -554,15 +554,16 @@ fn native_authoring_installation_parses_real_copied_href_and_captures_nullable_h
         .html_capture(
             doc,
             None,
-            HtmlCaptureLimits::new(128, 512, 128, 65536, 128, 0, 0),
+            HtmlCaptureLimits::new(128, 512, 128, 65536, 128, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(128, 1_000_000),
             &cancel(),
         )
         .unwrap();
     let usage = capture.capture().usage();
     let snapshot = dom.snapshot();
-    let producer =
-        |units, relationships| HtmlCaptureLimits::new(128, relationships, 128, units, 128, 0, 0);
+    let producer = |units, relationships| {
+        HtmlCaptureLimits::new(128, relationships, 128, units, 128, 0, 0, 16_777_216)
+    };
     snapshot
         .html_capture(
             doc,

@@ -3434,7 +3434,7 @@ fn tokenizer_next_input_position_is_nonconsuming_and_uses_real_utf8_crlf_and_utf
 #[test]
 fn standalone_constructor_rejects_real_captured_initialization_before_source_or_tree_effects() {
     let mut builder = crate::HtmlCaptureBuilder::new(
-        crate::HtmlCaptureLimits::new(10, 10, 0, 0, 10, 0, 0),
+        crate::HtmlCaptureLimits::new(10, 10, 0, 0, 10, 0, 0, 16_777_216),
         crate::HtmlHostFactsRevision::fresh(),
     );
     let document = builder

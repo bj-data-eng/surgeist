@@ -37,7 +37,7 @@ fn null_definition_custom_element_is_excluded_from_actual_fieldset_controls() {
         .html_capture(
             document,
             None,
-            HtmlCaptureLimits::new(16, 4096, 16, 4096, 16, 0, 0),
+            HtmlCaptureLimits::new(16, 4096, 16, 4096, 16, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(16, 100000),
             &cancel,
         )

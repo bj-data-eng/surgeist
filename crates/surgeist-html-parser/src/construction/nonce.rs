@@ -1040,7 +1040,7 @@ mod tests {
     fn connected_request() -> crate::HtmlFragmentParseRequest {
         use crate::*;
         let mut b = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let document = b

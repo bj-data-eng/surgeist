@@ -139,7 +139,9 @@ impl Control {
                     .ok_or(HtmlEmptyGlobalRegistryError::RepresentationExhausted)?;
                 self.admit(replacement_peak)
             }
-            preflight::Action::StorageTransfer { .. } => Ok(()),
+            preflight::Action::StorageTransfer { .. } | preflight::Action::ElementValues { .. } => {
+                Ok(())
+            }
         }
     }
 }
@@ -198,7 +200,7 @@ impl HtmlCapture {
         control.admit(fixed)?;
         let mut workspace = Workspace {
             builder: Some(HtmlCaptureBuilder::new(
-                HtmlCaptureLimits::new(0, 0, 0, 0, 0, 1, 0),
+                HtmlCaptureLimits::new(0, 0, 0, 0, 0, 1, 0, 16 * 1024 * 1024),
                 host_revision,
             )),
             scratch: preflight::DepthScratch::new(),

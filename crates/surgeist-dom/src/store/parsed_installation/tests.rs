@@ -222,7 +222,7 @@ fn fragment_parser_constructor_preserves_one_source_origin_and_selects_only_dest
         .html_capture(
             document,
             None,
-            HtmlCaptureLimits::new(256, 1024, 1024, 65536, 256, 0, 0),
+            HtmlCaptureLimits::new(256, 1024, 1024, 65536, 256, 0, 0, 16_777_216),
             crate::DomHtmlCaptureLimits::new(256, 1_000_000),
             &cancel,
         )
@@ -588,7 +588,7 @@ fn contextual_prepared_effects_and_complete_admission_never_publish_on_final_sto
         .html_capture(
             document,
             None,
-            HtmlCaptureLimits::new(256, 1024, 1024, 65536, 256, 0, 0),
+            HtmlCaptureLimits::new(256, 1024, 1024, 65536, 256, 0, 0, 16_777_216),
             crate::DomHtmlCaptureLimits::new(256, 1_000_000),
             &cancel,
         )
@@ -753,7 +753,7 @@ fn captured_url_join_preserves_first_work_stop_at_every_read_and_exact_lookup_un
         .html_capture(
             document,
             None,
-            HtmlCaptureLimits::new(4096, 8192, 4096, 1_000_000, 4096, 0, 0),
+            HtmlCaptureLimits::new(4096, 8192, 4096, 1_000_000, 4096, 0, 0, 16_777_216),
             crate::DomHtmlCaptureLimits::new(4096, 10_000_000)
                 .with_base_facts(4096, 65536, 10_000_000),
             &cancel,

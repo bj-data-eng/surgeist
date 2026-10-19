@@ -28,7 +28,7 @@ fn attrs(fields: &[(&str, &str)]) -> OrderedAttributes {
 }
 fn builder(class: HtmlDocumentClass) -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
     let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(1000, 100000, 1000, 1000000, 1000, 10, 10),
+        HtmlCaptureLimits::new(1000, 100000, 1000, 1000000, 1000, 10, 10, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let d = b

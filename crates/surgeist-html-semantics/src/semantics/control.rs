@@ -1632,7 +1632,7 @@ mod exact_comparison_tests {
     #[test]
     fn exact_borrowed_and_shared_string_comparison_preserve_literal_action_costs() {
         let mut builder = crate::HtmlCaptureBuilder::new(
-            crate::HtmlCaptureLimits::new(10, 100, 10, 10000, 10, 1, 1),
+            crate::HtmlCaptureLimits::new(10, 100, 10, 10000, 10, 1, 1, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         builder

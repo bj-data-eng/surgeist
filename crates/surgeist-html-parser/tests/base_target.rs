@@ -144,7 +144,7 @@ fn ordinary_request_rejects_srcdoc_facts_and_failure_keeps_original_facts() {
 #[test]
 fn fragment_base_is_not_an_attachment_to_the_captured_document_and_keeps_actual_facts() {
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 1000, 100, 100000, 1000, 100, 1000),
+        HtmlCaptureLimits::new(100, 1000, 100, 100000, 1000, 100, 1000, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let document = builder

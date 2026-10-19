@@ -829,7 +829,7 @@ fn capture_rejects_differing_actual_document_revisions_in_the_producer_single_re
         before.html_capture(
             doc,
             None,
-            HtmlCaptureLimits::new(256, 1024, 256, 65536, 256, 0, 0),
+            HtmlCaptureLimits::new(256, 1024, 256, 65536, 256, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(256, 1_000_000).with_base_facts(256, 65536, 1_000_000),
             &cancel()
         ),
@@ -877,7 +877,7 @@ fn csp_blocked_frozen_base_does_not_replace_the_independent_semantic_href_parse(
         .html_capture(
             doc,
             None,
-            HtmlCaptureLimits::new(128, 512, 128, 65536, 128, 0, 0),
+            HtmlCaptureLimits::new(128, 512, 128, 65536, 128, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(128, 1_000_000).with_base_facts(128, 65536, 1_000_000),
             &cancel(),
         )

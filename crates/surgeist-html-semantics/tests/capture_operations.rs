@@ -10,7 +10,7 @@ use surgeist_html_semantics::{
 
 fn builder() -> HtmlCaptureBuilder {
     HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(16, 32, 16, 512, 16, 4, 8),
+        HtmlCaptureLimits::new(16, 32, 16, 512, 16, 4, 8, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     )
 }

@@ -57,7 +57,11 @@ exactly the public value's size before adding the receipt's backing.
 
 `HtmlControlledOptionValueCapture` is a narrow ordinary-tree capture and one
 OptionValue query under an additional caller envelope. Borrowed add operations
-admit retained names, attributes and strings before cloning. The same capture
+admit retained names, attributes and strings before cloning. Element inputs form
+one private destination array and use the controlled expanded-name validator;
+the envelope covers its header and actual capacity, pending value storage and
+the complete old/new record-bank overlap. The element-value byte limit remains
+an independent capture policy. The same capture
 validation and OptionValue interpreter remain authoritative. Documents use the
 existing query-local Disabled scripting and Null registry profile; this does not
 certify parser construction or a live Document environment. The controlled
@@ -123,6 +127,27 @@ separately; allocator and Arc bookkeeping are excluded. The cache is formed
 within existing bounded construction/resolution and does not change logical
 formation limits or semantic equality. A selected snapshot counts its chosen
 observation, not the original observation bank.
+
+`HtmlCaptureLimits::element_value_bytes` is a required finite allowance for
+initial element names, attributes and saved-is values. It counts retained string
+headers and actual UTF-16 capacities and the attribute Vec header and actual
+capacity, conservatively per occurrence, across all added elements. Pending
+formation and validation must fit beside previously committed values. It is not
+a total capture-heap ceiling: record and relationship banks, later nonce and
+hyperlink observations, opaque Arc control blocks and allocator bookkeeping stay
+outside this particular allowance. Work and logical count/unit limits remain
+separate policies. The owned `add_element` route checks existing certified
+`OrderedAttributes` storage without repeating expanded-name validation.
+
+`HtmlCaptureBuilder::add_element_from_inputs` accepts open borrowed name and
+attribute inputs before an adapter constructs an owned array. It admits counts,
+units and destination layout, checks actual capacity, forms unpublished HTML
+storage, and uses the existing controlled expanded-name validator. Neither an
+input count nor its content asserts validity. A callback admits actual reads,
+growth and comparisons; its first error is returned unchanged as `Interrupted`.
+The builder commits the new subject and value receipt only after final storage
+and logical checks. Refused formation leaves its previous subjects and usage
+unchanged.
 
 `HtmlCapture::retained_storage_usage_with` observes the complete immutable
 capture's actual retained bytes and UTF-16 capacities without allocation or a

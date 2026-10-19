@@ -970,7 +970,7 @@ mod tests {
     fn fragment_cancel_after_selected_admission_keeps_original_bank_and_reclaims_prefix() {
         use surgeist_html_semantics::*;
         let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(20, 100, 10, 1000, 10, 0, 0),
+            HtmlCaptureLimits::new(20, 100, 10, 1000, 10, 0, 0, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let document = builder

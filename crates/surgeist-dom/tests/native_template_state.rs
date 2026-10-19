@@ -41,7 +41,7 @@ fn capture(s: &DomSnapshot, d: DocumentId) -> DomHtmlCapture {
     s.html_capture(
         d,
         None,
-        HtmlCaptureLimits::new(512, 8192, 512, 65536, 512, 0, 0),
+        HtmlCaptureLimits::new(512, 8192, 512, 65536, 512, 0, 0, 16_777_216),
         DomHtmlCaptureLimits::new(512, 1000000),
         &cancel(),
     )

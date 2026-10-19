@@ -35,7 +35,7 @@ fn revision(n: u64) -> HtmlRelRevision {
 }
 fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
     let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(200, 1000, 100, 10000, 200, 0, 0),
+        HtmlCaptureLimits::new(200, 1000, 100, 10000, 200, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let d = b

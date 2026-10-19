@@ -19,10 +19,13 @@ use std::{
 };
 
 mod construction;
+mod element_input;
 pub(crate) mod preflight;
 mod registry;
 pub(crate) mod storage;
 pub use construction::*;
+pub(crate) use element_input::FormFailure;
+pub use element_input::HtmlCaptureElementError;
 pub use registry::*;
 pub use storage::{HtmlCaptureRetainedStorageUsage, HtmlCaptureStorageError};
 
@@ -333,8 +336,13 @@ pub struct HtmlCaptureLimits {
     depth: usize,
     registries: usize,
     definitions: usize,
+    element_value_bytes: usize,
 }
 impl HtmlCaptureLimits {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Each argument is a required independent finite capture policy; no implicit or default storage allowance is supplied."
+    )]
     pub fn new(
         subjects: usize,
         relationships: usize,
@@ -343,6 +351,7 @@ impl HtmlCaptureLimits {
         depth: usize,
         registries: usize,
         definitions: usize,
+        element_value_bytes: usize,
     ) -> Self {
         Self {
             subjects,
@@ -352,6 +361,7 @@ impl HtmlCaptureLimits {
             depth,
             registries,
             definitions,
+            element_value_bytes,
         }
     }
     pub fn subjects(self) -> usize {
@@ -375,6 +385,11 @@ impl HtmlCaptureLimits {
     pub fn definitions(self) -> usize {
         self.definitions
     }
+    /// Cumulative element name, attribute and saved-is storage, including pending
+    /// formation. This is not a ceiling for the complete capture heap.
+    pub fn element_value_bytes(self) -> usize {
+        self.element_value_bytes
+    }
 }
 /// Admitted capture retention, independent of future parser-work accounting.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -386,6 +401,7 @@ pub struct HtmlCaptureUsage {
     depth: usize,
     registries: usize,
     definitions: usize,
+    element_value_bytes: usize,
 }
 impl HtmlCaptureUsage {
     pub fn subjects(self) -> usize {
@@ -409,6 +425,10 @@ impl HtmlCaptureUsage {
     pub fn definitions(self) -> usize {
         self.definitions
     }
+    /// Retained element-value storage, conservatively counted per occurrence.
+    pub fn element_value_bytes(self) -> usize {
+        self.element_value_bytes
+    }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlCaptureResource {
@@ -419,6 +439,7 @@ pub enum HtmlCaptureResource {
     Depth,
     Registries,
     Definitions,
+    ElementValueBytes,
 }
 /// Required producer fact that has not been established.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -926,6 +947,14 @@ impl HtmlCaptureBuilder {
     pub(crate) fn controlled_data_header_bytes() -> usize {
         std::mem::size_of::<CaptureData>()
     }
+    #[cfg(test)]
+    pub(crate) fn inspect_controlled_records(&self) -> (usize, usize, usize) {
+        (
+            self.data.records.len(),
+            self.data.records.capacity(),
+            std::mem::size_of::<Record>(),
+        )
+    }
     pub(crate) fn validate_controlled_document(
         &self,
         subject: &HtmlCaptureBuilderSubject,
@@ -982,6 +1011,7 @@ impl HtmlCaptureBuilder {
             depth: old.depth,
             registries: add(old.registries, registries)?,
             definitions: add(old.definitions, definitions)?,
+            element_value_bytes: old.element_value_bytes,
         };
         for (resource, required, limit) in [
             (
@@ -1313,7 +1343,7 @@ impl HtmlCaptureBuilder {
         if let HtmlCapturedIsValue::Value(v) = &is_value {
             units = add(units, v.len())?;
         }
-        let usage = self.admit(
+        let mut usage = self.admit(
             1,
             1 + usize::from(matches!(registry, Registry::Index(_))),
             attributes.len(),
@@ -1321,6 +1351,20 @@ impl HtmlCaptureBuilder {
             0,
             0,
         )?;
+        let saved_is = match &is_value {
+            HtmlCapturedIsValue::Value(value) => Some(value),
+            HtmlCapturedIsValue::Absent | HtmlCapturedIsValue::Unavailable => None,
+        };
+        let retained = storage::option_value_element(&name, &attributes, saved_is, &mut || {
+            preflight::work(admit, 1)
+        })
+        .map_err(|error| match error {
+            HtmlCaptureStorageError::RepresentationExhausted => {
+                preflight::Failure::Capture(HtmlCaptureError::RepresentationExhausted)
+            }
+            HtmlCaptureStorageError::Interrupted(error) => error,
+        })?;
+        usage.element_value_bytes = self.admit_element_value_bytes(retained.retained_bytes())?;
         preflight::work(admit, add(name_units(&name)?, 16)?)?;
         let template = if html(&name, "template") {
             TemplateAssociation::Unavailable
@@ -2918,7 +2962,7 @@ mod definition_cursor_tests {
         definitions: Vec<HtmlCustomElementDefinition>,
     ) -> (HtmlCapture, HtmlCapturedRegistry) {
         let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(0, 0, 0, 1000, 0, 1, 10),
+            HtmlCaptureLimits::new(0, 0, 0, 1000, 0, 1, 10, 16 * 1024 * 1024),
             HtmlHostFactsRevision::fresh(),
         );
         let r = builder.add_registry(Some(definitions)).unwrap();

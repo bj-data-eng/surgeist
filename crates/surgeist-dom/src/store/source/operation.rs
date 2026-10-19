@@ -4866,7 +4866,9 @@ pub(in crate::store) mod accounting_tests {
             .with_select_processing(256, 1_000_000, 1_000_000)
             .unwrap()
             .with_select_value_queries(
-                surgeist_html_semantics::HtmlCaptureLimits::new(256, 512, 256, 100_000, 256, 0, 0),
+                surgeist_html_semantics::HtmlCaptureLimits::new(
+                    256, 512, 256, 100_000, 256, 0, 0, 16_777_216,
+                ),
                 surgeist_html_semantics::HtmlSemanticLimits::new(
                     1_000_000, 1, 256, 256, 1_000_000, 256,
                 ),
@@ -5362,7 +5364,7 @@ pub(in crate::store) mod accounting_tests {
             .with_select_processing(16, 1_000_000, 1_000_000)
             .unwrap()
             .with_select_value_queries(
-                HtmlCaptureLimits::new(32, 64, 32, 100_000, 32, 0, 0),
+                HtmlCaptureLimits::new(32, 64, 32, 100_000, 32, 0, 0, 16_777_216),
                 HtmlSemanticLimits::new(1, 1, 128, 0, 1_000_000, 128),
             );
         let mut dom = Dom::new(domain).unwrap();

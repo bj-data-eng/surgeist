@@ -465,7 +465,7 @@ fn semantic_blocker_is_last_actual_raw_dialog_independent_of_pending_open_and_mo
         .html_capture(
             document,
             None,
-            HtmlCaptureLimits::new(64, 1024, 128, 16384, 64, 0, 0),
+            HtmlCaptureLimits::new(64, 1024, 128, 16384, 64, 0, 0, 16_777_216),
             crate::DomHtmlCaptureLimits::new(64, 1000000),
             &cancel(),
         )
@@ -516,7 +516,7 @@ fn semantic_blocker_is_last_actual_raw_dialog_independent_of_pending_open_and_mo
         .html_capture(
             document,
             None,
-            HtmlCaptureLimits::new(64, 1024, 128, 16384, 64, 0, 0),
+            HtmlCaptureLimits::new(64, 1024, 128, 16384, 64, 0, 0, 16_777_216),
             crate::DomHtmlCaptureLimits::new(64, 1000000),
             &cancel(),
         )

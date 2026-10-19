@@ -55,7 +55,7 @@ fn capture(fixture: &Fixture) -> DomHtmlCapture {
         .html_capture(
             fixture.document,
             None,
-            HtmlCaptureLimits::new(64, 4096, 128, 32768, 64, 0, 0),
+            HtmlCaptureLimits::new(64, 4096, 128, 32768, 64, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(64, 1000000),
             &cancel(),
         )

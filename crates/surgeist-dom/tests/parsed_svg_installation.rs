@@ -61,7 +61,7 @@ fn completed_disabled_contextual_svg_script_keeps_processed_parser_state_and_tar
         .html_capture(
             document,
             None,
-            HtmlCaptureLimits::new(1024, 4096, 4096, 1_000_000, 1024, 0, 0),
+            HtmlCaptureLimits::new(1024, 4096, 4096, 1_000_000, 1024, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(1024, 1_000_000),
             &cancel,
         )
@@ -217,7 +217,7 @@ fn contextual_fixture(
         .html_capture(
             document,
             None,
-            HtmlCaptureLimits::new(1024, 4096, 4096, 1_000_000, 1024, 0, 0),
+            HtmlCaptureLimits::new(1024, 4096, 4096, 1_000_000, 1024, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(1024, 1_000_000),
             &cancel,
         )

@@ -302,7 +302,7 @@ mod tests {
 
     fn capture() -> HtmlCapture {
         crate::HtmlCaptureBuilder::new(
-            crate::HtmlCaptureLimits::new(0, 0, 0, 0, 0, 0, 0),
+            crate::HtmlCaptureLimits::new(0, 0, 0, 0, 0, 0, 0, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         )
         .finish()

@@ -36,7 +36,7 @@ fn fixture(local: &str, attrs: Vec<Attribute>) -> (HtmlCapture, HtmlCaptureSubje
 }
 fn fixture_name(name: QualifiedName, attrs: Vec<Attribute>) -> (HtmlCapture, HtmlCaptureSubjectId) {
     let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 100000, 1000, 1000000, 1000, 10, 10),
+        HtmlCaptureLimits::new(100, 100000, 1000, 1000000, 1000, 10, 10, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let d = b
@@ -1431,7 +1431,7 @@ fn incoming_measurement_digit_storage_is_admitted_in_addition_to_record_backing(
 #[test]
 fn non_element_subjects_do_not_require_rendering_or_resource_facts() {
     let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10),
+        HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let d = b

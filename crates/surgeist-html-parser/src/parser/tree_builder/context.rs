@@ -757,7 +757,7 @@ mod tests {
         scripting: HtmlScriptingStatus,
     ) -> HtmlFragmentParseRequest {
         let mut capture = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let document = capture
@@ -804,7 +804,7 @@ mod tests {
         scripting: HtmlScriptingStatus,
     ) -> HtmlFragmentContext {
         let mut capture = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let document = capture
@@ -1866,7 +1866,7 @@ mod tests {
     }
     pub(super) fn template_request(source: &str, known: bool) -> HtmlFragmentParseRequest {
         let mut capture = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let document = capture
@@ -1992,7 +1992,7 @@ mod tests {
         known_absent: bool,
     ) -> HtmlFragmentParseRequest {
         let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let document = builder
@@ -2445,7 +2445,7 @@ mod tests {
 
     fn namespace_request(source: &str, namespace: Namespace) -> HtmlFragmentParseRequest {
         let mut capture = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let document = capture
@@ -2490,8 +2490,11 @@ mod tests {
         local: &str,
         attributes: OrderedAttributes,
     ) -> HtmlFragmentParseRequest {
+        // The laziness cases retain ten million UTF-16 units, including spare
+        // backing capacity. Admit that fixture independently of the parser's
+        // unchanged one-million-credit inspection allowance below.
         let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(100, 1000, 100, 20_000_000, 1000, 100, 1000),
+            HtmlCaptureLimits::new(100, 1000, 100, 20_000_000, 1000, 100, 1000, 67_108_864),
             HtmlHostFactsRevision::fresh(),
         );
         let document = builder
@@ -2886,7 +2889,7 @@ mod tests {
             ),
         ] {
             let mut builder = HtmlCaptureBuilder::new(
-                HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+                HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
                 HtmlHostFactsRevision::fresh(),
             );
             let document = builder
@@ -3015,7 +3018,7 @@ mod tests {
     #[test]
     fn captured_nearest_form_controls_parser_rows_without_fabricated_parser_association() {
         let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let document = builder
@@ -3269,7 +3272,7 @@ mod tests {
     #[test]
     fn ready_attachment_registry_follows_actual_shadow_host_adoption_from_inert_contents() {
         let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let global = builder.add_registry(Some(Vec::new())).unwrap();
@@ -3478,7 +3481,7 @@ mod tests {
             ),
         ] {
             let mut builder = HtmlCaptureBuilder::new(
-                HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+                HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
                 HtmlHostFactsRevision::fresh(),
             );
             let registry = builder.add_registry(definitions).unwrap();
@@ -3564,7 +3567,7 @@ mod tests {
     fn adopted_local_host_uses_current_registry_disable_shadow_before_attachment() {
         use crate::parser::tokenizer::token::{Event, TokenKind};
         let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let registry = builder
@@ -3718,7 +3721,7 @@ mod tests {
     #[test]
     fn cloning_adopted_custom_host_refuses_actual_new_upgrade_reaction_domain() {
         let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let registry = builder

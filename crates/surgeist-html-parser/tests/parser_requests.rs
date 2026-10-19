@@ -233,7 +233,7 @@ fn capture(
     scripting: HtmlScriptingStatus,
 ) -> (HtmlCapture, HtmlCaptureDocumentId, HtmlCaptureSubjectId) {
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(20, 100, 20, 1000, 20, 20, 20),
+        HtmlCaptureLimits::new(20, 100, 20, 1000, 20, 20, 20, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let document = builder
@@ -434,7 +434,7 @@ fn fragment_mode_matrix_preserves_requested_effective_and_exact_missing_fact() {
 #[test]
 fn hosted_fragment_retains_distinct_target_and_context_documents_and_source() {
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(20, 100, 20, 1000, 20, 20, 20),
+        HtmlCaptureLimits::new(20, 100, 20, 1000, 20, 20, 20, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let normal = builder

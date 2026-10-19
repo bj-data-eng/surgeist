@@ -51,7 +51,7 @@ fn source(case: &UnicodeCase) -> HtmlSource {
 }
 fn context(missing: bool) -> Result<HtmlFragmentContext> {
     let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(2, 4, 0, 128, 8, 0, 0),
+        HtmlCaptureLimits::new(2, 4, 0, 128, 8, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let d = b

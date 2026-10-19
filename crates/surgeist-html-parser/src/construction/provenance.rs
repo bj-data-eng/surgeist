@@ -3180,7 +3180,7 @@ mod captured_tests {
     fn captured_namespace_and_bootstrap_keep_actual_subject_revision_and_nonlexical_origin() {
         let revision = HtmlHostFactsRevision::fresh();
         let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(2, 4, 0, 1000, 10, 0, 0),
+            HtmlCaptureLimits::new(2, 4, 0, 1000, 10, 0, 0, 16_777_216),
             revision.clone(),
         );
         let document = builder

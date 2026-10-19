@@ -282,6 +282,7 @@ pub enum DomError {
     SelectProtocol,
     SelectValueQueriesUnconfigured,
     SelectCapture(surgeist_html_semantics::HtmlCaptureError),
+    SelectElementValues(surgeist_html_semantics::HtmlCaptureElementError<std::convert::Infallible>),
     SelectSemantic(surgeist_html_semantics::HtmlSemanticFailure),
     InvalidSelectSemanticLimit {
         resource: surgeist_html_semantics::HtmlSemanticResource,

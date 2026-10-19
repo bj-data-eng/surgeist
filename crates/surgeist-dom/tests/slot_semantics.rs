@@ -28,7 +28,7 @@ fn capture(s: &DomSnapshot, d: DocumentId) -> DomHtmlCapture {
     s.html_capture(
         d,
         None,
-        HtmlCaptureLimits::new(128, 4096, 256, 32768, 128, 0, 0),
+        HtmlCaptureLimits::new(128, 4096, 256, 32768, 128, 0, 0, 16_777_216),
         DomHtmlCaptureLimits::new(128, 1000000),
         &cancel(),
     )
@@ -232,7 +232,7 @@ fn semantic_composition_is_cancelled_or_bounded_without_partial_capture() {
         .html_capture(
             c.document(&d).unwrap(),
             None,
-            HtmlCaptureLimits::new(64, 4096, 128, 16384, 64, 0, 0),
+            HtmlCaptureLimits::new(64, 4096, 128, 16384, 64, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(64, 1000000),
             &cancel(),
         )

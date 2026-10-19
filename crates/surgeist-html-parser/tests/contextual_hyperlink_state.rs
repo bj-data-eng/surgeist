@@ -68,7 +68,7 @@ fn fixture(
     HtmlCaptureDocumentId,
 ) {
     let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 1000, 100, 100000, 100, 0, 0),
+        HtmlCaptureLimits::new(100, 1000, 100, 100000, 100, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let doc = b
@@ -651,7 +651,7 @@ fn selected_execution_spare_capacity_is_released_and_failure_returns_originals()
 #[test]
 fn historical_first_base_uses_current_independent_revision_after_detached_meta() {
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 1000, 100, 100000, 100, 0, 0),
+        HtmlCaptureLimits::new(100, 1000, 100, 100000, 100, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let document = builder

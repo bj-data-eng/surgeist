@@ -21,7 +21,7 @@ fn apply(dom: &mut Dom, batch: DomBatch) -> surgeist_dom::DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
 }
 fn limits() -> HtmlCaptureLimits {
-    HtmlCaptureLimits::new(128, 2048, 128, 16384, 128, 0, 0)
+    HtmlCaptureLimits::new(128, 2048, 128, 16384, 128, 0, 0, 16_777_216)
 }
 fn capture(snapshot: &DomSnapshot, document: DocumentId) -> DomHtmlCapture {
     snapshot
@@ -375,7 +375,7 @@ fn supplemental_closure_has_exact_subject_admission_and_cancelled_capture_is_rea
             .html_capture(
                 f.b,
                 None,
-                HtmlCaptureLimits::new(8, 2048, 128, 16384, 128, 0, 0),
+                HtmlCaptureLimits::new(8, 2048, 128, 16384, 128, 0, 0, 16_777_216),
                 DomHtmlCaptureLimits::new(8, 100000),
                 &AtomicBool::new(false)
             )
@@ -385,7 +385,7 @@ fn supplemental_closure_has_exact_subject_admission_and_cancelled_capture_is_rea
         snapshot.html_capture(
             f.b,
             None,
-            HtmlCaptureLimits::new(7, 2048, 128, 16384, 128, 0, 0),
+            HtmlCaptureLimits::new(7, 2048, 128, 16384, 128, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(8, 100000),
             &AtomicBool::new(false)
         ),

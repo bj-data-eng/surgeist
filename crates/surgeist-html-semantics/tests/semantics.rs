@@ -34,7 +34,7 @@ fn attributes(values: &[(&str, &str)]) -> OrderedAttributes {
 }
 fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
     let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 1000, 100, 10000, 100, 0, 0),
+        HtmlCaptureLimits::new(100, 1000, 100, 10000, 100, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let d = b
@@ -767,7 +767,7 @@ fn retained_cancellation_identifies_exact_capture_context_host_and_configuration
 
     // A distinct capture at the same producer host revision remains distinct.
     let mut same_host = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(1, 0, 0, 0, 0, 0, 0),
+        HtmlCaptureLimits::new(1, 0, 0, 0, 0, 0, 0, 16_777_216),
         c.host_facts_revision().clone(),
     );
     same_host

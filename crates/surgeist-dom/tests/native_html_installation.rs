@@ -736,7 +736,9 @@ fn installed_families_run_actual_attribute_and_control_hooks_then_remain_live() 
         .html_capture(
             d,
             None,
-            surgeist_html_semantics::HtmlCaptureLimits::new(256, 4096, 256, 32768, 256, 0, 0),
+            surgeist_html_semantics::HtmlCaptureLimits::new(
+                256, 4096, 256, 32768, 256, 0, 0, 16_777_216,
+            ),
             DomHtmlCaptureLimits::new(256, 1000000),
             &AtomicBool::new(false),
         )

@@ -15,7 +15,7 @@ use surgeist_html::*;
 
 fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(1000, 100000, 1000, 1000000, 1000, 10, 10),
+        HtmlCaptureLimits::new(1000, 100000, 1000, 1000000, 1000, 10, 10, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let document = builder

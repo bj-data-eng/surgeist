@@ -90,7 +90,7 @@ fn shadow_fragment_refusals_preserve_builder_and_validate_document_before_regist
     let foreign_document = document(&mut foreign, HtmlScriptingStatus::Disabled);
     let foreign_registry = foreign.add_registry(None).unwrap();
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(4, 1, 0, 0, 0, 0, 0),
+        HtmlCaptureLimits::new(4, 1, 0, 0, 0, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let doc = document(&mut builder, HtmlScriptingStatus::Disabled);
@@ -151,7 +151,7 @@ fn shadow_fragment_refusals_preserve_builder_and_validate_document_before_regist
 #[test]
 fn shadow_reference_cycles_do_not_become_owning_edges_or_depth() {
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(5, 12, 0, 128, 1, 0, 0),
+        HtmlCaptureLimits::new(5, 12, 0, 128, 1, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let doc = document(&mut builder, HtmlScriptingStatus::Disabled);
@@ -463,7 +463,7 @@ fn shadow_root_document_independence_preserves_exact_admission_and_ordinary_edge
         (4, 5, 0, HtmlCaptureResource::Depth, 0, 1),
     ] {
         let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(subjects, relationships, 0, 256, depth, 0, 0),
+            HtmlCaptureLimits::new(subjects, relationships, 0, 256, depth, 0, 0, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let host_document = document(&mut builder, HtmlScriptingStatus::Enabled);
@@ -495,7 +495,7 @@ fn shadow_root_document_independence_preserves_exact_admission_and_ordinary_edge
         );
     }
     let mut exact = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(4, 5, 0, 256, 1, 0, 0),
+        HtmlCaptureLimits::new(4, 5, 0, 256, 1, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let host_document = document(&mut exact, HtmlScriptingStatus::Enabled);
@@ -573,7 +573,7 @@ fn shadow_reference_foreign_kind_target_and_budget_refusals_are_atomic() {
     let foreign_doc = document(&mut foreign, HtmlScriptingStatus::Disabled);
     let foreign_fragment = foreign.add_fragment(&foreign_doc).unwrap();
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(5, 4, 0, 128, 2, 0, 0),
+        HtmlCaptureLimits::new(5, 4, 0, 128, 2, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let doc = document(&mut builder, HtmlScriptingStatus::Disabled);
@@ -733,7 +733,7 @@ fn template_cache_rejects_foreign_ordinary_and_one_short_relationship_before_com
     let mut foreign = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh());
     let foreign_document = document(&mut foreign, HtmlScriptingStatus::Disabled);
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(3, 0, 0, 0, 0, 0, 0),
+        HtmlCaptureLimits::new(3, 0, 0, 0, 0, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let ordinary = document(&mut builder, HtmlScriptingStatus::Disabled);
@@ -819,7 +819,9 @@ fn registry_scope_is_independent_of_definition_completeness_and_capture_identity
 }
 
 fn limits() -> HtmlCaptureLimits {
-    HtmlCaptureLimits::new(10_000, 100_000, 1_000, 1_000_000, 10_000, 100, 1_000)
+    HtmlCaptureLimits::new(
+        10_000, 100_000, 1_000, 1_000_000, 10_000, 100, 1_000, 16_777_216,
+    )
 }
 fn name(namespace: Namespace, local: &str) -> QualifiedName {
     QualifiedName::new(namespace, None, DocumentString::from(local))
@@ -884,7 +886,7 @@ fn children(c: &HtmlCapture, id: &HtmlCaptureSubjectId) -> Vec<HtmlCaptureSubjec
 #[test]
 fn exact_slots_order_and_all_retained_reference_budgets() {
     let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(6, 22, 1, 25, 2, 1, 1),
+        HtmlCaptureLimits::new(6, 22, 1, 25, 2, 1, 1, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let registry = b
@@ -1823,7 +1825,7 @@ fn association_cycles_and_non_html_template_are_checked() {
 
 #[test]
 fn each_capture_resource_has_a_typed_atomic_limit() {
-    let zero = HtmlCaptureLimits::new(0, 0, 0, 0, 0, 0, 0);
+    let zero = HtmlCaptureLimits::new(0, 0, 0, 0, 0, 0, 0, 16_777_216);
     let mut b = HtmlCaptureBuilder::new(zero, HtmlHostFactsRevision::fresh());
     assert!(matches!(
         b.add_document(
@@ -1846,15 +1848,15 @@ fn each_capture_resource_has_a_typed_atomic_limit() {
     assert_eq!(b.usage(), HtmlCaptureUsage::default());
     for (selected, resource) in [
         (
-            HtmlCaptureLimits::new(3, 0, 1, 1000, 5, 1, 1),
+            HtmlCaptureLimits::new(3, 0, 1, 1000, 5, 1, 1, 16_777_216),
             HtmlCaptureResource::Relationships,
         ),
         (
-            HtmlCaptureLimits::new(3, 20, 0, 1000, 5, 1, 1),
+            HtmlCaptureLimits::new(3, 20, 0, 1000, 5, 1, 1, 16_777_216),
             HtmlCaptureResource::Attributes,
         ),
         (
-            HtmlCaptureLimits::new(3, 20, 1, 0, 5, 1, 1),
+            HtmlCaptureLimits::new(3, 20, 1, 0, 5, 1, 1, 16_777_216),
             HtmlCaptureResource::Utf16Units,
         ),
     ] {
@@ -1869,7 +1871,7 @@ fn each_capture_resource_has_a_typed_atomic_limit() {
         assert_eq!(b.finish().unwrap().usage().subjects(), 1);
     }
     let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(3, 20, 0, 1000, 0, 1, 0),
+        HtmlCaptureLimits::new(3, 20, 0, 1000, 0, 1, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let before = b.usage();
@@ -1902,7 +1904,7 @@ fn each_capture_resource_has_a_typed_atomic_limit() {
 #[test]
 fn association_and_descendant_depth_admission_preserves_failed_relations() {
     let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(5, 100, 0, 1000, 1, 0, 0),
+        HtmlCaptureLimits::new(5, 100, 0, 1000, 1, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let d = document(&mut b, HtmlScriptingStatus::Disabled);
@@ -2004,7 +2006,7 @@ fn deep_capture_validation_and_cleanup_use_no_recursive_tree_drop() {
         .stack_size(64 * 1024)
         .spawn(|| {
             let mut b = HtmlCaptureBuilder::new(
-                HtmlCaptureLimits::new(20_001, 100_000, 0, 1_000_000, 20_000, 0, 0),
+                HtmlCaptureLimits::new(20_001, 100_000, 0, 1_000_000, 20_000, 0, 0, 16_777_216),
                 HtmlHostFactsRevision::fresh(),
             );
             let d = document(&mut b, HtmlScriptingStatus::Disabled);

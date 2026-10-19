@@ -30,7 +30,7 @@ fn key() -> HtmlNaturalResourceKey {
 }
 fn fixture(local: &str, attrs: &[(&str, &str)]) -> (HtmlCapture, HtmlCaptureSubjectId) {
     let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 100000, 1000, 1000000, 1000, 10, 10),
+        HtmlCaptureLimits::new(100, 100000, 1000, 1000000, 1000, 10, 10, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let d = b
@@ -724,7 +724,7 @@ fn source_uses_actual_picture_parent_foreign_name_and_unavailable_parent_are_dis
         ),
     ] {
         let mut b = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10),
+            HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let d = b
@@ -781,7 +781,7 @@ fn source_uses_actual_picture_parent_foreign_name_and_unavailable_parent_are_dis
 #[test]
 fn established_foreign_subject_and_namespaced_dimension_are_not_html_geometry() {
     let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10),
+        HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let d = b
@@ -830,7 +830,7 @@ fn established_foreign_subject_and_namespaced_dimension_are_not_html_geometry() 
 #[test]
 fn isolated_surrogate_author_value_is_preserved_invalid_and_cannot_supply_a_prefix() {
     let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10),
+        HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let d = b

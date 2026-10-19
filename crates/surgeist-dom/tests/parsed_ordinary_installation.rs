@@ -215,7 +215,7 @@ fn contextual_href_observation_requires_the_actual_canonical_bound_inputs() {
         .html_capture(
             document,
             None,
-            HtmlCaptureLimits::new(4096, 8192, 4096, 1_000_000, 4096, 0, 0),
+            HtmlCaptureLimits::new(4096, 8192, 4096, 1_000_000, 4096, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(4096, 10_000_000).with_base_facts(4096, 65536, 10_000_000),
             &cancel,
         )
@@ -635,7 +635,7 @@ fn contextual_current_revision_is_independent_of_the_older_frozen_base_record() 
         .html_capture(
             document,
             None,
-            HtmlCaptureLimits::new(4096, 8192, 4096, 1_000_000, 4096, 0, 0),
+            HtmlCaptureLimits::new(4096, 8192, 4096, 1_000_000, 4096, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(4096, 10_000_000).with_base_facts(4096, 65536, 10_000_000),
             &cancel,
         )
@@ -969,7 +969,7 @@ fn fragment_fixture(local: &str) -> (Dom, DomHtmlCapture, DocumentId, NodeId) {
         .html_capture(
             document,
             None,
-            HtmlCaptureLimits::new(1024, 4096, 4096, 1_000_000, 1024, 0, 0),
+            HtmlCaptureLimits::new(1024, 4096, 4096, 1_000_000, 1024, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(1024, 1_000_000),
             &AtomicBool::new(false),
         )
@@ -1277,7 +1277,7 @@ fn contextual_foreign_stale_cancelled_and_missing_intrinsic_inputs_are_atomic() 
                         capture.basis().document(),
                         None,
                         surgeist_html_semantics::HtmlCaptureLimits::new(
-                            1024, 4096, 4096, 1_000_000, 1024, 0, 0,
+                            1024, 4096, 4096, 1_000_000, 1024, 0, 0, 16_777_216,
                         ),
                         DomHtmlCaptureLimits::new(1024, 1_000_000),
                         &AtomicBool::new(false),
@@ -1572,7 +1572,7 @@ fn contextual_all_modes_and_current_target_platform_remain_distinct_from_new_aux
             .html_capture(
                 document,
                 None,
-                HtmlCaptureLimits::new(1024, 4096, 4096, 1_000_000, 1024, 0, 0),
+                HtmlCaptureLimits::new(1024, 4096, 4096, 1_000_000, 1024, 0, 0, 16_777_216),
                 DomHtmlCaptureLimits::new(1024, 1_000_000),
                 &AtomicBool::new(false),
             )
@@ -1860,7 +1860,7 @@ fn contextual_complete_capture_backing_has_exact_and_one_short_historical_admiss
             .html_capture(
                 document,
                 None,
-                HtmlCaptureLimits::new(1024, 4096, 4096, 1_000_000, 1024, 0, 0),
+                HtmlCaptureLimits::new(1024, 4096, 4096, 1_000_000, 1024, 0, 0, 16_777_216),
                 DomHtmlCaptureLimits::new(1024, 1_000_000),
                 &AtomicBool::new(false),
             )
@@ -1947,7 +1947,7 @@ fn declarative_template_reference_does_not_own_adopted_destroyed_or_cloned_conte
                 document,
                 None,
                 surgeist_html_semantics::HtmlCaptureLimits::new(
-                    1024, 4096, 4096, 1_000_000, 1024, 0, 0,
+                    1024, 4096, 4096, 1_000_000, 1024, 0, 0, 16_777_216,
                 ),
                 DomHtmlCaptureLimits::new(1024, 1_000_000),
                 &AtomicBool::new(false),
@@ -2784,7 +2784,7 @@ fn parsed_select_cache_textarea_raw_and_output_null_continue_through_canonical_s
             .with_select_processing(128, 4_000_000, 10_000_000)
             .unwrap()
             .with_select_value_queries(
-                HtmlCaptureLimits::new(1024, 4096, 1024, 1_000_000, 1024, 0, 0),
+                HtmlCaptureLimits::new(1024, 4096, 1024, 1_000_000, 1024, 0, 0, 16_777_216),
                 HtmlSemanticLimits::new(1_000_000, 32, 4096, 1024, 4_000_000, 4096),
             ),
     )
@@ -4058,7 +4058,7 @@ fn captured_fragment_dialogs_keep_target_state_and_auxiliary_identity_through_la
             document,
             None,
             surgeist_html_semantics::HtmlCaptureLimits::new(
-                1024, 4096, 4096, 1_000_000, 1024, 0, 0,
+                1024, 4096, 4096, 1_000_000, 1024, 0, 0, 16_777_216,
             ),
             DomHtmlCaptureLimits::new(1024, 1_000_000),
             &AtomicBool::new(false),

@@ -63,7 +63,7 @@ fn runtime_select_completion_preserves_a_real_handoff_retirement_skip() {
                 .unwrap()
                 .with_select_value_queries(
                     surgeist_html_semantics::HtmlCaptureLimits::new(
-                        128, 512, 512, 32768, 128, 0, 0,
+                        128, 512, 512, 32768, 128, 0, 0, 16_777_216,
                     ),
                     surgeist_html_semantics::HtmlSemanticLimits::new(
                         10_000_000, 1, 512, 0, 4_000_000, 512,

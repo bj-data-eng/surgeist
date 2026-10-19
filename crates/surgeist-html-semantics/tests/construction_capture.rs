@@ -18,7 +18,7 @@ fn construction_limits() -> HtmlConstructionLimits {
     HtmlConstructionLimits::new(100, 200, 100, 10_000, 100)
 }
 fn capture_limits() -> HtmlCaptureLimits {
-    HtmlCaptureLimits::new(200, 2000, 200, 100_000, 200, 10, 10)
+    HtmlCaptureLimits::new(200, 2000, 200, 100_000, 200, 10, 10, 16_777_216)
 }
 fn adapter_limits() -> HtmlConstructionCaptureLimits {
     HtmlConstructionCaptureLimits::new(200, 20_000, 1_000_000)

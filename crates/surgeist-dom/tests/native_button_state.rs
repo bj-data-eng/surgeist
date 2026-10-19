@@ -29,7 +29,7 @@ fn capture(s: &DomSnapshot, d: DocumentId) -> DomHtmlCapture {
     s.html_capture(
         d,
         None,
-        HtmlCaptureLimits::new(256, 4096, 256, 32768, 256, 0, 0),
+        HtmlCaptureLimits::new(256, 4096, 256, 32768, 256, 0, 0, 16_777_216),
         DomHtmlCaptureLimits::new(256, 1000000),
         &cancel(),
     )
@@ -503,7 +503,7 @@ fn weak_target_capture_closure_is_bounded_and_refusal_preserves_the_canonical_ow
         s.html_capture(
             a,
             None,
-            HtmlCaptureLimits::new(256, 4096, 256, 32768, 256, 0, 0),
+            HtmlCaptureLimits::new(256, 4096, 256, 32768, 256, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(2, 1000000),
             &cancel()
         ),
@@ -516,7 +516,7 @@ fn weak_target_capture_closure_is_bounded_and_refusal_preserves_the_canonical_ow
         s.html_capture(
             a,
             None,
-            HtmlCaptureLimits::new(256, 4096, 256, 32768, 256, 0, 0),
+            HtmlCaptureLimits::new(256, 4096, 256, 32768, 256, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(256, 1),
             &cancel()
         ),

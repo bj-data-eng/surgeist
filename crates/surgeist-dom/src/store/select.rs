@@ -1917,7 +1917,7 @@ mod tests {
             .with_select_processing(16, 100000, 100000)
             .unwrap()
             .with_select_value_queries(
-                HtmlCaptureLimits::new(32, 64, 32, 4096, 32, 0, 0),
+                HtmlCaptureLimits::new(32, 64, 32, 4096, 32, 0, 0, 16_777_216),
                 HtmlSemanticLimits::new(work, 1, 128, 0, bytes, 128),
             )
     }
@@ -2004,7 +2004,7 @@ mod tests {
         );
         assert_eq!(dom.snapshot().stamp(), before.stamp());
         dom.set_limits(base.with_select_value_queries(
-            HtmlCaptureLimits::new(1, 64, 32, 4096, 32, 0, 0),
+            HtmlCaptureLimits::new(1, 64, 32, 4096, 32, 0, 0, 16_777_216),
             HtmlSemanticLimits::new(100000, 1, 128, 0, 100000, 128),
         ))
         .unwrap();

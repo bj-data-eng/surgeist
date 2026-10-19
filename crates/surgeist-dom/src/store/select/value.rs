@@ -170,6 +170,9 @@ impl Draft {
                 self.option_value_control_error(error)
             }
             HtmlControlledOptionValueError::Capture(error) => DomError::SelectCapture(error),
+            HtmlControlledOptionValueError::ElementValues(error) => {
+                DomError::SelectElementValues(error)
+            }
             HtmlControlledOptionValueError::Semantic(error) => {
                 if let HtmlSemanticFailureKind::ControlledOptionValue(parent) = error.kind() {
                     self.option_value_control_error(parent.clone())
@@ -442,7 +445,7 @@ mod tests {
             .with_select_processing(64, 1_000_000, 1_000_000)
             .unwrap()
             .with_select_value_queries(
-                HtmlCaptureLimits::new(64, 128, 64, 1_000_000, 64, 0, 0),
+                HtmlCaptureLimits::new(64, 128, 64, 1_000_000, 64, 0, 0, 16_777_216),
                 HtmlSemanticLimits::new(1_000_000, 1, 128, 128, 1_000_000, 128),
             );
         let mut dom = Dom::new(limits).unwrap();
@@ -585,9 +588,13 @@ mod tests {
         ));
         let mut spent = before;
         for _ in 0..3 {
-            let error = Producer::new(&draft, HtmlCaptureLimits::new(4, 0, 0, 0, 0, 0, 0), &cancel)
-                .err()
-                .expect("header refused");
+            let error = Producer::new(
+                &draft,
+                HtmlCaptureLimits::new(4, 0, 0, 0, 0, 0, 0, 16_777_216),
+                &cancel,
+            )
+            .err()
+            .expect("header refused");
             assert_eq!(
                 error,
                 DomError::ResourceLimit {
@@ -606,7 +613,12 @@ mod tests {
         }
         draft.source_limits.as_mut().unwrap().work = spent;
         assert_eq!(
-            Producer::new(&draft, HtmlCaptureLimits::new(4, 0, 0, 0, 0, 0, 0), &cancel).err(),
+            Producer::new(
+                &draft,
+                HtmlCaptureLimits::new(4, 0, 0, 0, 0, 0, 0, 16_777_216),
+                &cancel
+            )
+            .err(),
             Some(DomError::SourceWorkLimit { limit: spent })
         );
         assert_eq!(draft.source_work.load(Ordering::Relaxed), spent);

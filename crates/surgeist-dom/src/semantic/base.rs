@@ -205,7 +205,7 @@ mod tests {
         dom.snapshot().html_capture(
             doc,
             None,
-            HtmlCaptureLimits::new(64, 256, 64, 32768, 64, 0, 0),
+            HtmlCaptureLimits::new(64, 256, 64, 32768, 64, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(64, 1_000_000).with_base_facts(records, units, work),
             &AtomicBool::new(false),
         )

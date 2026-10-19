@@ -30,7 +30,7 @@ fn capture() -> (
     Vec<HtmlCaptureSubjectId>,
 ) {
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10),
+        HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let mut documents = Vec::new();

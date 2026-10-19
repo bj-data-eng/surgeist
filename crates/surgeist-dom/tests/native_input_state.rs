@@ -830,7 +830,9 @@ fn capture(s: &DomSnapshot, d: DocumentId) -> DomHtmlCapture {
     s.html_capture(
         d,
         None,
-        surgeist_html_semantics::HtmlCaptureLimits::new(512, 2048, 512, 131072, 512, 0, 0),
+        surgeist_html_semantics::HtmlCaptureLimits::new(
+            512, 2048, 512, 131072, 512, 0, 0, 16_777_216,
+        ),
         DomHtmlCaptureLimits::new(512, 10000000),
         &AtomicBool::new(false),
     )
@@ -954,7 +956,7 @@ fn capture_admits_both_association_and_input_records_for_every_detached_input() 
         .html_capture(
             d,
             None,
-            HtmlCaptureLimits::new(3, 8, 0, 1024, 8, 0, 0),
+            HtmlCaptureLimits::new(3, 8, 0, 1024, 8, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(3, 1000000),
             &AtomicBool::new(false),
         )

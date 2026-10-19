@@ -17,7 +17,7 @@ use surgeist_html::*;
 
 fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
     let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 1000, 100, 100000, 100, 10, 100),
+        HtmlCaptureLimits::new(100, 1000, 100, 100000, 100, 10, 100, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let d = b
@@ -1018,7 +1018,7 @@ fn actual_output_layout_is_admitted_before_query_and_cancellation_remains_sticky
 #[test]
 fn partial_definition_count_limit_rejection_is_atomic() {
     let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(10, 10, 10, 1000, 10, 1, 1),
+        HtmlCaptureLimits::new(10, 10, 10, 1000, 10, 1, 1, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let r = b.add_registry(None).unwrap();
@@ -1039,7 +1039,7 @@ fn partial_definition_count_limit_rejection_is_atomic() {
 #[test]
 fn partial_record_utf16_retention_limit_is_atomic() {
     let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(10, 10, 10, 11, 10, 1, 5),
+        HtmlCaptureLimits::new(10, 10, 10, 11, 10, 1, 5, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let r = b.add_registry(None).unwrap();
@@ -1226,7 +1226,7 @@ fn foreign_request_and_changed_context_keys_never_reuse_a_retained_observation()
 #[test]
 fn association_relationship_limit_rejects_before_context_establishment() {
     let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(10, 1, 10, 1000, 10, 1, 1),
+        HtmlCaptureLimits::new(10, 1, 10, 1000, 10, 1, 1, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let r = b

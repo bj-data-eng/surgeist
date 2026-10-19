@@ -1543,7 +1543,7 @@ fn captured_effect_owner() -> (
     crate::HtmlCaptureDocumentId,
 ) {
     let mut builder = crate::HtmlCaptureBuilder::new(
-        crate::HtmlCaptureLimits::new(10, 100, 10, 1000, 10, 10, 10),
+        crate::HtmlCaptureLimits::new(10, 100, 10, 1000, 10, 10, 10, 16_777_216),
         crate::HtmlHostFactsRevision::fresh(),
     );
     let document = builder

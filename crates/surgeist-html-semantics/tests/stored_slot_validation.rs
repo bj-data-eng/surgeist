@@ -8,7 +8,7 @@ use surgeist_html_semantics::{
 
 fn element(namespace: Namespace, name: &str) -> (HtmlCapture, HtmlCaptureSubjectId) {
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(2, 16, 0, 128, 2, 0, 0),
+        HtmlCaptureLimits::new(2, 16, 0, 128, 2, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let document = builder

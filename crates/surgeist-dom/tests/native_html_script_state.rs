@@ -395,7 +395,7 @@ fn adoption_retains_preparation_document_and_capture_closes_that_real_history() 
         .html_capture(
             d2,
             None,
-            HtmlCaptureLimits::new(64, 1024, 128, 16384, 64, 0, 0),
+            HtmlCaptureLimits::new(64, 1024, 128, 16384, 64, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(64, 10000),
             &AtomicBool::new(false),
         )

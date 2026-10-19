@@ -36,7 +36,7 @@ mod tests {
 
     fn capture() -> (HtmlCapture, HtmlCaptureSubjectId) {
         let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(2, 1, 1, 100, 0, 0, 0),
+            HtmlCaptureLimits::new(2, 1, 1, 100, 0, 0, 0, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let document = builder

@@ -14,7 +14,7 @@ use surgeist_html_semantics::{
 
 fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
     let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(1000, 10000, 1000, 100000, 1000, 0, 0),
+        HtmlCaptureLimits::new(1000, 10000, 1000, 100000, 1000, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let d = b

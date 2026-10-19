@@ -2526,7 +2526,7 @@ mod tests {
     #[test]
     fn context_freeze_selects_actual_nonzero_output_and_preserves_it_on_alias_retry() {
         let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(10, 10, 10, 1000, 10, 10, 10),
+            HtmlCaptureLimits::new(10, 10, 10, 1000, 10, 10, 10, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let document = builder
@@ -2620,7 +2620,7 @@ mod tests {
     #[test]
     fn registry_adoption_observes_detached_root_before_scoped_destination_attachment() {
         let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let global = builder.add_registry(Some(Vec::new())).unwrap();
@@ -2765,7 +2765,7 @@ mod tests {
         ] {
             for inert in [false, true] {
                 let mut builder = HtmlCaptureBuilder::new(
-                    HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+                    HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
                     HtmlHostFactsRevision::fresh(),
                 );
                 let document = builder
@@ -2937,7 +2937,7 @@ mod tests {
     #[test]
     fn fragment_bootstrap_actual_three_node_bound_preserves_cleanup_and_foreign_source_refusal() {
         let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(10, 10, 10, 1000, 10, 10, 10),
+            HtmlCaptureLimits::new(10, 10, 10, 1000, 10, 10, 10, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let document = builder
@@ -3055,7 +3055,7 @@ mod tests {
     #[test]
     fn frozen_creation_facts_keep_independent_saved_is_and_lexical_maps() {
         let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let document = builder
@@ -3162,7 +3162,7 @@ mod tests {
             (1000, 71, HtmlParseResource::ManagedUtf16Units, true, true),
         ] {
             let mut builder = HtmlCaptureBuilder::new(
-                HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+                HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
                 HtmlHostFactsRevision::fresh(),
             );
             let document = builder
@@ -3281,7 +3281,7 @@ mod tests {
     #[test]
     fn every_saved_is_creation_work_cut_keeps_original_or_registered_backing_cleanup_owned() {
         let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let document = builder
@@ -3417,7 +3417,7 @@ mod tests {
     #[test]
     fn creation_registry_preparation_admits_actual_prepared_receiver_and_one_payload_slot() {
         let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let document = builder
@@ -3508,7 +3508,7 @@ mod fragment_origin_tests {
     #[test]
     fn source_created_fragment_origin_retires_with_original_owner_after_cancellation() {
         let mut capture = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(10, 100, 10, 1_000, 10, 10, 10),
+            HtmlCaptureLimits::new(10, 100, 10, 1_000, 10, 10, 10, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let document = capture

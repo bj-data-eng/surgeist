@@ -21,7 +21,7 @@ use surgeist_html::*;
 // selected execCommand 85de9ff4 editing-host-of definition, not browser helpers.
 fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
     let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(2000, 100000, 2000, 1000000, 2000, 10, 10),
+        HtmlCaptureLimits::new(2000, 100000, 2000, 1000000, 2000, 10, 10, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let d = b

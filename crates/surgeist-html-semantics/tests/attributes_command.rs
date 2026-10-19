@@ -719,7 +719,7 @@ fn present_empty_or_unknown_command_still_excludes_auto_submitter_branch() {
         ("commandfor", ""),
     ] {
         let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(10, 1000, 100, 100000, 10, 0, 0),
+            HtmlCaptureLimits::new(10, 1000, 100, 100000, 10, 0, 0, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let document = builder

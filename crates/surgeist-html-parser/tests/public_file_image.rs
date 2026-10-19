@@ -42,7 +42,7 @@ fn fragment_context(support: HtmlImageSupport) -> HtmlFragmentContext {
 }
 fn fragment_context_scope(support: HtmlImageSupport, creation_scope: bool) -> HtmlFragmentContext {
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+        HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let document = builder
@@ -250,7 +250,7 @@ fn fragment_image_policy_is_explicit_conditional_and_capture_qualified() {
 #[test]
 fn image_support_is_not_scripting_and_builder_qualification_rejects_foreign_subjects() {
     let mut a = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 100, 100, 1000, 100, 100, 100),
+        HtmlCaptureLimits::new(100, 100, 100, 1000, 100, 100, 100, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let document = a
@@ -269,7 +269,7 @@ fn image_support_is_not_scripting_and_builder_qualification_rejects_foreign_subj
         Err(HtmlCaptureError::DocumentFactsAlreadyEstablished)
     );
     let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 100, 100, 1000, 100, 100, 100),
+        HtmlCaptureLimits::new(100, 100, 100, 1000, 100, 100, 100, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     assert_eq!(

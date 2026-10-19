@@ -473,7 +473,7 @@ fn long_names_and_old_reports_survive_later_invalid_input_without_truncation() {
 #[test]
 fn capture_definition_admission_preserves_the_shared_name_predicate_and_atomic_usage() {
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 100, 100, 1000, 100, 100, 100),
+        HtmlCaptureLimits::new(100, 100, 100, 1000, 100, 100, 100, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     for text in [

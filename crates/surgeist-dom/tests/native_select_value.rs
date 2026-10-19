@@ -12,7 +12,7 @@ fn limits() -> DomLimits {
         .with_select_processing(128, 4_000_000, 10_000_000)
         .unwrap()
         .with_select_value_queries(
-            HtmlCaptureLimits::new(512, 4096, 512, 32768, 512, 0, 0),
+            HtmlCaptureLimits::new(512, 4096, 512, 32768, 512, 0, 0, 16_777_216),
             HtmlSemanticLimits::new(1_000_000, 16, 2048, 512, 4_000_000, 2048),
         )
 }

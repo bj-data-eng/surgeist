@@ -13,7 +13,7 @@ fn envelope() -> HtmlOptionValueEnvelope {
 }
 
 fn limits() -> HtmlCaptureLimits {
-    HtmlCaptureLimits::new(64, 256, 64, 100_000, 64, 0, 0)
+    HtmlCaptureLimits::new(64, 256, 64, 100_000, 64, 0, 0, 16_777_216)
 }
 
 fn semantic_limits() -> HtmlSemanticLimits {
@@ -336,7 +336,7 @@ fn controlled_children_preserve_foreign_duplicate_conflict_and_depth_failures() 
     ));
 
     let mut shallow = HtmlControlledOptionValueCapture::new(
-        HtmlCaptureLimits::new(4, 16, 0, 100, 0, 0, 0),
+        HtmlCaptureLimits::new(4, 16, 0, 100, 0, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
         envelope(),
         &cancel,

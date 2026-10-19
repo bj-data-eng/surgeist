@@ -94,7 +94,7 @@ fn nonce_insertion_conjunction_preserves_unknown_and_false_independently() {
 }
 fn builder(units: usize) -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
     let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(10, 10, 10, units, 10, 0, 0),
+        HtmlCaptureLimits::new(10, 10, 10, units, 10, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let d = b

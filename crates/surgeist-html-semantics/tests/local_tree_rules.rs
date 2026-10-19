@@ -70,7 +70,7 @@ fn ordinary_fragment_decisions_use_only_their_actual_inputs() {
 #[test]
 fn capture_insertion_does_not_require_unavailable_scripting() {
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(2, 10, 0, 1000, 1, 0, 0),
+        HtmlCaptureLimits::new(2, 10, 0, 1000, 1, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let document = builder

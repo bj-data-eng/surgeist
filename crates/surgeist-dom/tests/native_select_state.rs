@@ -11,7 +11,9 @@ fn limits() -> DomLimits {
         .with_select_processing(128, 4_000_000, 10_000_000)
         .unwrap()
         .with_select_value_queries(
-            surgeist_html_semantics::HtmlCaptureLimits::new(512, 2048, 2048, 32768, 512, 0, 0),
+            surgeist_html_semantics::HtmlCaptureLimits::new(
+                512, 2048, 2048, 32768, 512, 0, 0, 16_777_216,
+            ),
             surgeist_html_semantics::HtmlSemanticLimits::new(
                 10_000_000, 1, 2048, 0, 4_000_000, 2048,
             ),
@@ -808,7 +810,7 @@ fn initial_and_slot_capture_keep_actual_option_flags_and_select_form_association
         s.html_capture(
             d,
             None,
-            HtmlCaptureLimits::new(512, 2048, 2048, 32768, 512, 0, 0),
+            HtmlCaptureLimits::new(512, 2048, 2048, 32768, 512, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(512, 1_000_000),
             &cancel(),
         )

@@ -14,7 +14,7 @@ use surgeist_html_semantics::{
 
 fn complete_ordinary_slot(detached: bool) -> (HtmlCapture, HtmlCaptureSubjectId) {
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(3, 32, 1, 64, 4, 0, 0),
+        HtmlCaptureLimits::new(3, 32, 1, 64, 4, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let document = builder

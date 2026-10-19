@@ -32,7 +32,7 @@ fn capture(s: &DomSnapshot, d: DocumentId) -> DomHtmlCapture {
     s.html_capture(
         d,
         None,
-        HtmlCaptureLimits::new(256, 1024, 256, 65536, 256, 0, 0),
+        HtmlCaptureLimits::new(256, 1024, 256, 65536, 256, 0, 0, 16_777_216),
         DomHtmlCaptureLimits::new(256, 1000000),
         &AtomicBool::new(false),
     )
@@ -677,7 +677,7 @@ fn actual_override_units_have_their_own_capture_admission_and_query_work_is_fini
         s.html_capture(
             d,
             None,
-            HtmlCaptureLimits::new(256, 1024, 256, 1024, 256, 0, 0),
+            HtmlCaptureLimits::new(256, 1024, 256, 1024, 256, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(256, 1000000),
             &AtomicBool::new(false)
         ),
@@ -706,7 +706,7 @@ fn actual_override_units_have_their_own_capture_admission_and_query_work_is_fini
         s.html_capture(
             d,
             None,
-            HtmlCaptureLimits::new(256, 1024, 256, 65536, 256, 0, 0),
+            HtmlCaptureLimits::new(256, 1024, 256, 65536, 256, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(256, 1000000),
             &AtomicBool::new(true)
         ),

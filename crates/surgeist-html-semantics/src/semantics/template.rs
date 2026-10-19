@@ -26,7 +26,7 @@ mod tests {
     use crate::*;
     fn fixture(point: CancellationPoint) -> (HtmlCapture, HtmlCaptureSubjectId) {
         let mut b = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10),
+            HtmlCaptureLimits::new(100, 10000, 100, 100000, 100, 10, 10, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let d = b
@@ -148,7 +148,7 @@ mod tests {
     #[test]
     fn known_start_with_unavailable_siblings_keeps_the_real_dependency() {
         let mut b = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(10, 100, 10, 1000, 10, 0, 0),
+            HtmlCaptureLimits::new(10, 100, 10, 1000, 10, 0, 0, 16_777_216),
             HtmlHostFactsRevision::fresh(),
         );
         let d = b

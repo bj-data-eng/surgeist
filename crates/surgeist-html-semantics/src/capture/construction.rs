@@ -274,7 +274,8 @@ impl Control {
             preflight::Action::Reserve { entries, .. } => self.scratch(entries),
             preflight::Action::StorageBefore { .. }
             | preflight::Action::StorageAfter { .. }
-            | preflight::Action::StorageTransfer { .. } => Ok(()),
+            | preflight::Action::StorageTransfer { .. }
+            | preflight::Action::ElementValues { .. } => Ok(()),
         }
     }
     fn reserve<T>(
@@ -1033,7 +1034,7 @@ mod tests {
         let make = |work| {
             let revision = HtmlHostFactsRevision::fresh();
             let mut builder = HtmlCaptureBuilder::new(
-                HtmlCaptureLimits::new(20, 100, 0, 100, 20, 0, 0),
+                HtmlCaptureLimits::new(20, 100, 0, 100, 20, 0, 0, 16 * 1024 * 1024),
                 revision.clone(),
             );
             let document = builder

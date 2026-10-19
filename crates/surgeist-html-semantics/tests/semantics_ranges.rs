@@ -15,7 +15,7 @@ fn capture(
     attributes: Vec<(&str, DocumentString)>,
 ) -> (HtmlCapture, HtmlCaptureSubjectId, HtmlCaptureSubjectId) {
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(10, 10, 20, 100_000, 10, 0, 0),
+        HtmlCaptureLimits::new(10, 10, 20, 100_000, 10, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let document = builder

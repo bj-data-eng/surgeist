@@ -6182,7 +6182,7 @@ mod comment_diagnostic_corpus {
 
         fn template_request(input: &str, utf16: bool) -> HtmlFragmentParseRequest {
             let mut builder = HtmlCaptureBuilder::new(
-                HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+                HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
                 HtmlHostFactsRevision::fresh(),
             );
             let document = builder

@@ -1649,7 +1649,7 @@ mod tests {
     fn frozen_effect_registry_rows_are_actual_borrowed_capture_qualifications_after_cancel() {
         use crate::construction::context::FrozenFragmentRegistry;
         let mut builder = crate::HtmlCaptureBuilder::new(
-            crate::HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+            crate::HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
             crate::HtmlHostFactsRevision::fresh(),
         );
         let registry = builder.add_registry(Some(Vec::new())).unwrap();

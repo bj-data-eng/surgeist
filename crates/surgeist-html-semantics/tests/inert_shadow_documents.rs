@@ -18,7 +18,7 @@ use surgeist_html_semantics::{
 #[test]
 fn actual_cross_document_shadow_child_inherits_inert_from_its_flat_host() {
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(5, 64, 1, 128, 8, 0, 0),
+        HtmlCaptureLimits::new(5, 64, 1, 128, 8, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let host_document = builder

@@ -472,7 +472,9 @@ fn capture(s: &DomSnapshot, d: DocumentId) -> DomHtmlCapture {
     s.html_capture(
         d,
         None,
-        surgeist_html_semantics::HtmlCaptureLimits::new(256, 1024, 256, 65536, 256, 0, 0),
+        surgeist_html_semantics::HtmlCaptureLimits::new(
+            256, 1024, 256, 65536, 256, 0, 0, 16_777_216,
+        ),
         DomHtmlCaptureLimits::new(256, 1000000),
         &AtomicBool::new(false),
     )

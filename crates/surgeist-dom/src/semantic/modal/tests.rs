@@ -27,7 +27,7 @@ fn capture(source: &DomSnapshot, document: DocumentId) -> DomHtmlCapture {
         .html_capture(
             document,
             None,
-            HtmlCaptureLimits::new(64, 1024, 128, 16384, 64, 0, 0),
+            HtmlCaptureLimits::new(64, 1024, 128, 16384, 64, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(64, 1000000),
             &AtomicBool::new(false),
         )
@@ -141,7 +141,7 @@ fn partial_document_coverage_uses_actual_lists_and_original_qualification() {
     // Deliberately partial, but real, Document-only producer coverage. Omitting
     // the second Document's member does not qualify its raw list as empty.
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(8, 8, 0, 4096, 8, 0, 0),
+        HtmlCaptureLimits::new(8, 8, 0, 4096, 8, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let mut staged = Vec::new();

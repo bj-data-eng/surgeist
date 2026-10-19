@@ -210,7 +210,7 @@ fn cloning_is_fresh_creation_adoption_preserves_and_import_reads_retained_source
         .html_capture(
             d,
             None,
-            HtmlCaptureLimits::new(64, 1024, 128, 16384, 64, 0, 0),
+            HtmlCaptureLimits::new(64, 1024, 128, 16384, 64, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(64, 10000),
             &AtomicBool::new(false),
         )

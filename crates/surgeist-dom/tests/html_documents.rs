@@ -698,7 +698,7 @@ fn semantic_capture_preserves_html_class_and_independent_document_environment_pr
         .html_capture(
             html,
             None,
-            HtmlCaptureLimits::new(32, 256, 64, 8192, 32, 0, 0),
+            HtmlCaptureLimits::new(32, 256, 64, 8192, 32, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(32, 100000),
             &AtomicBool::new(false),
         )

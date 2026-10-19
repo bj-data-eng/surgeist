@@ -29,7 +29,7 @@ fn capture(snapshot: &DomSnapshot, document: DocumentId) -> DomHtmlCapture {
         .html_capture(
             document,
             None,
-            HtmlCaptureLimits::new(128, 2048, 256, 32768, 128, 0, 0),
+            HtmlCaptureLimits::new(128, 2048, 256, 32768, 128, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(128, 1_000_000),
             &AtomicBool::new(false),
         )
@@ -385,7 +385,7 @@ fn table_capture_and_query_refusals_leave_canonical_state_and_prior_result_intac
         .html_capture(
             g.document,
             None,
-            HtmlCaptureLimits::new(128, 2048, 256, 32768, 128, 0, 0),
+            HtmlCaptureLimits::new(128, 2048, 256, 32768, 128, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(0, 1_000_000),
             &AtomicBool::new(false),
         )
@@ -401,7 +401,7 @@ fn table_capture_and_query_refusals_leave_canonical_state_and_prior_result_intac
         snapshot.html_capture(
             g.document,
             None,
-            HtmlCaptureLimits::new(128, 2048, 256, 32768, 128, 0, 0),
+            HtmlCaptureLimits::new(128, 2048, 256, 32768, 128, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(128, 1_000_000),
             &AtomicBool::new(true),
         ),
@@ -491,7 +491,7 @@ fn stale_optional_host_basis_is_rejected_before_a_table_capture_is_published() {
         current.html_capture(
             g.document,
             Some(publication.capture()),
-            HtmlCaptureLimits::new(128, 2048, 256, 32768, 128, 0, 0),
+            HtmlCaptureLimits::new(128, 2048, 256, 32768, 128, 0, 0, 16_777_216),
             DomHtmlCaptureLimits::new(128, 1_000_000),
             &AtomicBool::new(false),
         ),

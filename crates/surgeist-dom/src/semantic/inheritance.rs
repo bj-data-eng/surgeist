@@ -66,8 +66,10 @@ mod tests {
         // Each captured Document comes from its actual canonical view and is
         // mapped back to that real NodeId; no surrogate identifiers participate.
         let revision = HtmlHostFactsRevision::fresh();
-        let mut builder =
-            HtmlCaptureBuilder::new(HtmlCaptureLimits::new(32, 32, 0, 4096, 32, 0, 0), revision);
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(32, 32, 0, 4096, 32, 0, 0, 16_777_216),
+            revision,
+        );
         let mut staged = Vec::new();
         for ticket in &tickets {
             let document = source.document(commit.document(ticket).unwrap()).unwrap();

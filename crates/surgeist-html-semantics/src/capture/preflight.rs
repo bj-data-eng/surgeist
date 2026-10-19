@@ -23,6 +23,13 @@ pub(crate) enum Action {
     StorageTransfer {
         bytes: usize,
     },
+    /// Complete prospective element-value payload, including its destination
+    /// bank. This is an admission observation, not another retained receipt.
+    ElementValues {
+        bytes: usize,
+        units: usize,
+        observed: bool,
+    },
 }
 
 #[derive(Debug)]
@@ -49,7 +56,8 @@ pub(super) fn ordinary(action: Action) -> Result<(), Infallible> {
         } => {}
         Action::StorageBefore { .. }
         | Action::StorageAfter { .. }
-        | Action::StorageTransfer { .. } => {}
+        | Action::StorageTransfer { .. }
+        | Action::ElementValues { .. } => {}
     }
     Ok(())
 }
@@ -259,7 +267,7 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let generous = HtmlOptionValueEnvelope::new(1_000_000, 0, 100_000);
         let mut owner = HtmlControlledOptionValueCapture::new(
-            HtmlCaptureLimits::new(4, 0, 0, 0, 0, 0, 0),
+            HtmlCaptureLimits::new(4, 0, 0, 0, 0, 0, 0, 16 * 1024 * 1024),
             HtmlHostFactsRevision::fresh(),
             generous,
             &cancel,
@@ -303,7 +311,7 @@ mod tests {
     #[test]
     fn every_borrowed_finish_refusal_retains_original_builder_and_facts() {
         let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(4, 8, 0, 10, 4, 0, 0),
+            HtmlCaptureLimits::new(4, 8, 0, 10, 4, 0, 0, 16 * 1024 * 1024),
             HtmlHostFactsRevision::fresh(),
         );
         let document = builder

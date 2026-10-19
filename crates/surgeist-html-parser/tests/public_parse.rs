@@ -600,7 +600,7 @@ fn completed_owner_transfer_work_stop_remains_a_public_failure() {
 
 fn fragment_context() -> HtmlFragmentContext {
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+        HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let document = builder
@@ -969,7 +969,7 @@ fn retained_source_and_capture_aliases_do_not_alias_terminal_parser_backing() {
 #[test]
 fn captured_document_rejection_retains_actual_request_context_without_execution_facts() {
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(10, 100, 10, 1000, 100, 10, 100),
+        HtmlCaptureLimits::new(10, 100, 10, 1000, 100, 10, 100, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let input = builder
@@ -1026,7 +1026,7 @@ fn captured_document_rejection_retains_actual_request_context_without_execution_
 #[test]
 fn fragment_template_missing_fact_is_conditional_and_returns_original_context_options() {
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(10, 100, 10, 1000, 100, 10, 100),
+        HtmlCaptureLimits::new(10, 100, 10, 1000, 100, 10, 100, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let document = builder

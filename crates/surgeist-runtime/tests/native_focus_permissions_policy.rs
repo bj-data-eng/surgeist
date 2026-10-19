@@ -283,7 +283,7 @@ fn document_inert(snapshot: &DomSnapshot, document: DocumentId) -> HtmlSemanticF
         .html_capture(
             document,
             None,
-            HtmlCaptureLimits::new(128, 4096, 256, 32768, 128, 1, 0),
+            HtmlCaptureLimits::new(128, 4096, 256, 32768, 128, 1, 0, 16_777_216),
             DomHtmlCaptureLimits::new(128, 1_000_000),
             &cancel(),
         )

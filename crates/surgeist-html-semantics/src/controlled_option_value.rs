@@ -61,6 +61,7 @@ pub enum HtmlOptionValueControlError {
 pub enum HtmlControlledOptionValueError {
     Control(HtmlOptionValueControlError),
     Capture(HtmlCaptureError),
+    ElementValues(HtmlCaptureElementError<std::convert::Infallible>),
     Context(HtmlSemanticContextError),
     Semantic(HtmlSemanticFailure),
     AllocationFailed,
@@ -598,6 +599,20 @@ impl Control {
                 self.transfer(HtmlOptionValueStorageUsage { bytes, units: 0 });
                 Ok(())
             }
+            Action::ElementValues {
+                bytes,
+                units,
+                observed,
+            } => {
+                let payload = HtmlOptionValueStorageUsage { bytes, units };
+                let result = self.poll(cancel).and_then(|()| self.admit(payload));
+                if observed {
+                    // An actual destination capacity remains peak evidence even
+                    // when it immediately exceeds the prospective allowance.
+                    self.observed(payload)?;
+                }
+                result
+            }
         }
     }
     fn transfer(&self, value: HtmlOptionValueStorageUsage) {
@@ -782,8 +797,8 @@ impl HtmlControlledOptionValueCapture {
     pub fn add_element(
         &mut self,
         document: &HtmlCaptureBuilderSubject,
-        name: &QualifiedName,
-        attributes: &OrderedAttributes,
+        name: &(impl HtmlNameInput + ?Sized),
+        attributes: &(impl HtmlAttributesInput + ?Sized),
         saved_is: Option<&DocumentString>,
         envelope: HtmlOptionValueEnvelope,
         cancel: &AtomicBool,
@@ -794,29 +809,51 @@ impl HtmlControlledOptionValueCapture {
                 .control
                 .failure(HtmlControlledOptionValueError::InvalidPhase));
         };
-        self.control.step(1, cancel).map_err(|e| {
-            self.control
-                .failure(HtmlControlledOptionValueError::Control(e))
-        })?;
-        builder
-            .validate_controlled_document(document)
-            .map_err(|e| {
-                self.control
-                    .failure(HtmlControlledOptionValueError::Capture(e))
+        let formed = builder
+            .form_element_inputs_controlled(
+                document,
+                name,
+                attributes,
+                saved_is,
+                HtmlCaptureRegistryInput::Null,
+                &mut |action| self.control.action(action, cancel),
+            )
+            .map_err(|error| {
+                // The failed helper has already dropped its unpublished storage.
+                // Only the original capture banks remain retained by this owner.
+                self.control.clear_temporaries();
+                self.control.failure(match error {
+                    crate::capture::FormFailure::AllocationFailed => {
+                        HtmlControlledOptionValueError::AllocationFailed
+                    }
+                    crate::capture::FormFailure::Input(error) => match error {
+                        HtmlCaptureElementError::Capture(error) => {
+                            HtmlControlledOptionValueError::Capture(error)
+                        }
+                        HtmlCaptureElementError::Interrupted(error) => {
+                            HtmlControlledOptionValueError::Control(error)
+                        }
+                        HtmlCaptureElementError::Attributes(error) => {
+                            HtmlControlledOptionValueError::ElementValues(
+                                HtmlCaptureElementError::Attributes(error),
+                            )
+                        }
+                        HtmlCaptureElementError::InconsistentAttributes { index } => {
+                            HtmlControlledOptionValueError::ElementValues(
+                                HtmlCaptureElementError::InconsistentAttributes { index },
+                            )
+                        }
+                    },
+                })
             })?;
-        let usage =
-            crate::capture::storage::option_value_element(name, attributes, saved_is, &mut || {
-                self.control.step(1, cancel)
-            })
-            .map_err(|e| self.payload_failure(e))?;
-        let payload = self.add_payload(usage)?;
+        let payload = self.add_payload(formed.usage)?;
         let Phase::Building(builder) = &mut self.phase else {
             unreachable!()
         };
         let result = builder.add_element_controlled(
             document,
-            name.clone(),
-            attributes.clone(),
+            formed.name,
+            formed.attributes,
             saved_is.map_or(HtmlCapturedIsValue::Absent, |value| {
                 HtmlCapturedIsValue::Value(value.clone())
             }),
@@ -1291,5 +1328,7 @@ impl HtmlControlledOptionValueCapture {
     }
 }
 
+#[cfg(test)]
+mod borrowed_tests;
 #[cfg(test)]
 mod tests;

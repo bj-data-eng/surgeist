@@ -127,7 +127,7 @@ fn later_html_body_merge_installs_nonce_without_recopying_ignored_existing_field
 
 fn connected_shadow_context(policy: HtmlHeaderDeliveredCsp) -> HtmlFragmentContext {
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+        HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let document = builder

@@ -12,7 +12,7 @@ use surgeist_html::*;
 
 fn fixture(ns: Namespace, value: Option<DocumentString>) -> (HtmlCapture, HtmlCaptureSubjectId) {
     let mut b = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(10, 10, 10, 10000, 10, 0, 0),
+        HtmlCaptureLimits::new(10, 10, 10, 10000, 10, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let d = b

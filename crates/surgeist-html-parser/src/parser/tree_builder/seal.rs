@@ -698,7 +698,7 @@ mod tests {
     #[test]
     fn captured_owned_request_is_rejected_without_control_or_usage_and_preserves_context() {
         let mut builder = crate::HtmlCaptureBuilder::new(
-            crate::HtmlCaptureLimits::new(10, 10, 0, 0, 10, 0, 0),
+            crate::HtmlCaptureLimits::new(10, 10, 0, 0, 10, 0, 0, 16_777_216),
             crate::HtmlHostFactsRevision::fresh(),
         );
         let document = builder

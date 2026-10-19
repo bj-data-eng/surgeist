@@ -29,7 +29,7 @@ fn fixture(
     HtmlBaseUrlRecord,
 ) {
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 100, 100, 100_000, 100, 0, 0),
+        HtmlCaptureLimits::new(100, 100, 100, 100_000, 100, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let document = builder

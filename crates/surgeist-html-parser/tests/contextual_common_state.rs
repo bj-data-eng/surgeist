@@ -30,7 +30,7 @@ fn limits() -> HtmlParseLimits {
 
 fn fragment_context() -> HtmlFragmentContext {
     let mut builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000),
+        HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let document = builder

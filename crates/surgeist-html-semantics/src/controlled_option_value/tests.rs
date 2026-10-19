@@ -10,7 +10,7 @@ fn build() -> (
 ) {
     let cancel = AtomicBool::new(false);
     let mut owner = HtmlControlledOptionValueCapture::new(
-        HtmlCaptureLimits::new(64, 256, 64, 100_000, 64, 0, 0),
+        HtmlCaptureLimits::new(64, 256, 64, 100_000, 64, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
         envelope(),
         &cancel,
@@ -43,7 +43,7 @@ fn semantic() -> HtmlSemanticLimits {
 fn setup_is_admitted_before_owner_formation_and_failure_keeps_spent_work() {
     let cancel = AtomicBool::new(false);
     let result = HtmlControlledOptionValueCapture::new(
-        HtmlCaptureLimits::new(1, 0, 0, 0, 0, 0, 0),
+        HtmlCaptureLimits::new(1, 0, 0, 0, 0, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
         HtmlOptionValueEnvelope::new(size_of::<HtmlControlledOptionValueCapture>() - 1, 0, 10),
         &cancel,
@@ -311,7 +311,7 @@ fn late_parent_query_stop_keeps_the_completed_child_usage_and_cannot_restart_it(
     // First establish the original child's independently controlled work on the
     // same public capture: the expected late stop is after child completion.
     let mut ordinary = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(4, 16, 2, 1000, 4, 0, 0),
+        HtmlCaptureLimits::new(4, 16, 2, 1000, 4, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
     );
     let doc = ordinary
@@ -361,7 +361,7 @@ fn late_parent_query_stop_keeps_the_completed_child_usage_and_cannot_restart_it(
         .unwrap();
     let child = session.usage();
     let mut owner = HtmlControlledOptionValueCapture::new(
-        HtmlCaptureLimits::new(4, 16, 2, 1000, 4, 0, 0),
+        HtmlCaptureLimits::new(4, 16, 2, 1000, 4, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
         envelope(),
         &cancel,

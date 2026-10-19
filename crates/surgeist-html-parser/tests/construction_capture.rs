@@ -36,7 +36,7 @@ fn parsed_document_enters_the_same_adapter_with_original_result_identity() {
     let source = HtmlConstructionResult::Document(document);
     let revision = HtmlHostFactsRevision::fresh();
     let builder = HtmlCaptureBuilder::new(
-        HtmlCaptureLimits::new(200, 2000, 200, 100_000, 200, 10, 10),
+        HtmlCaptureLimits::new(200, 2000, 200, 100_000, 200, 10, 10, 16_777_216),
         revision.clone(),
     );
     let mut pending = vec![id.clone()];
