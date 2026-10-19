@@ -22,6 +22,14 @@ mod capture;
 pub(crate) use capture::capture_csstree_oracle_from_public_parser;
 use capture::validate_replacement_bindings;
 
+#[path = "csstree/canonical.rs"]
+mod canonical;
+pub(crate) use canonical::{
+    CanonicalExceptionKind, CanonicalExclusion, CanonicalSummary,
+    EXCEPTIONS as CANONICAL_EXCEPTIONS, compare_csstree_canonical_forms,
+    normalize as normalize_canonical_css,
+};
+
 use adapters::{
     Adapter, EntryPoint, Extractor as RegistryExtractor, OptionsProfile, PropertyOrDescriptor,
     REGISTRY, RegistryEntry, UnsupportedPolicy as RegistryUnsupportedPolicy,
@@ -69,6 +77,18 @@ pub(crate) fn validate_shared_support_surface() -> bool {
     let _ = validate_csstree_oracle_contract as fn(&[u8]) -> Result<(), Vec<OracleContractFailure>>;
     let _ = regenerate_csstree_oracle as fn() -> Result<Vec<u8>, Vec<BaselineFailure>>;
     let _ = capture_csstree_oracle_from_public_parser as fn() -> Result<(), String>;
+    let _ = compare_csstree_canonical_forms as fn() -> Result<CanonicalSummary, Vec<String>>;
+    let _ = normalize_canonical_css as fn(&str) -> String;
+    let _ = CANONICAL_EXCEPTIONS;
+    let _ = CanonicalExclusion::name as fn(CanonicalExclusion) -> &'static str;
+    // Defects are listed only while a known product defect remains open.
+    let _ = CanonicalExceptionKind::Defect.name();
+    let _ =
+        CanonicalSummary::compared as fn(&CanonicalSummary) -> Vec<(&'static str, usize, usize)>;
+    let _ = CanonicalSummary::excluded
+        as fn(&CanonicalSummary) -> Vec<(&'static str, &'static str, usize)>;
+    let _ = CanonicalSummary::exceptions
+        as fn(&CanonicalSummary, CanonicalExceptionKind) -> &[&'static str];
     let _ = validate_csstree_expected_classes_contract
         as fn(&[u8]) -> Result<ExpectedClassSummary, String>;
     // Each integration-test binary compiles this shared module independently.
@@ -209,8 +229,8 @@ struct ValidatedCase {
     context: Context,
     _label: Option<String>,
     input: String,
-    _upstream_outcome: UpstreamOutcome,
-    _canonical_css: Option<String>,
+    upstream_outcome: UpstreamOutcome,
+    canonical_css: Option<String>,
     options: Options,
     expected_class: Option<ExpectedClass>,
 }
@@ -519,8 +539,8 @@ fn validate_neutral_artifact_set(
                 context: raw_case.context,
                 _label: raw_case.label,
                 input: raw_case.input,
-                _upstream_outcome: raw_case.upstream_outcome,
-                _canonical_css: raw_case.canonical_css,
+                upstream_outcome: raw_case.upstream_outcome,
+                canonical_css: raw_case.canonical_css,
                 options: raw_case.options.unwrap_or_default(),
                 expected_class: None,
             });
@@ -2583,8 +2603,8 @@ mod tests {
             context,
             _label: None,
             input: source.into(),
-            _upstream_outcome: UpstreamOutcome::Parsed,
-            _canonical_css: None,
+            upstream_outcome: UpstreamOutcome::Parsed,
+            canonical_css: None,
             options: serde_json::from_str("{}").unwrap(),
             expected_class: None,
         };
@@ -4047,8 +4067,8 @@ mod tests {
             context: Context::AtrulePrelude,
             _label: None,
             input: source.into(),
-            _upstream_outcome: UpstreamOutcome::Parsed,
-            _canonical_css: None,
+            upstream_outcome: UpstreamOutcome::Parsed,
+            canonical_css: None,
             options: serde_json::from_value(options).unwrap(),
             expected_class: Some(serde_json::from_value(class).unwrap()),
         }
