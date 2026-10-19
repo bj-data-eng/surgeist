@@ -75,6 +75,16 @@ the ordered construction effects. Missing or changed required facts receive
 original roles. An optional unused whole captured Base bank remains fully charged
 historical request data; it does not override the current canonical bindings.
 
+## Meta Document history
+
+Installation transfers qualified per-Document language, referrer, refresh,
+theme-color and authored color-scheme history. The original parser selects CSS
+values under its own finite admission; installation retains the sealed result
+without parsing CSS or replaying native Meta hooks. Selected color-scheme backing
+also consumes the canonical retained-report allowance. Untouched Template-owner
+Documents retain their own known absence. Reached unavailable media/CSS facts,
+preferred-style or CSP processing still refuse the entire installation.
+
 ## Control state and form associations
 
 Installation transfers the report's current values, dirty/checked/selected flags,

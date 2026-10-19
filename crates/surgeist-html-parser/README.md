@@ -93,9 +93,11 @@ The closed offline profile chooses Do nothing after a successful refresh; it
 performs no navigation or timer work. Shared encoding-URL observation banks serve
 A/Area and Meta with exact source-time base, encoding and independent full revision.
 Missing URL facts leave refresh explicitly unavailable, and an unknown prior flag
-cannot be treated as false. Reached CSSOM preferred-set, CSP, theme CSS/media and
-color-scheme requirements remain distinct unavailable dispositions; structural
-parse success does not certify their execution. Language and referrer updates
+cannot be treated as false. Theme-color and authored color-scheme selection use
+the CSS owner under the original parser's finite admission and retain immutable
+per-Document results. Missing media/CSS facts and reached CSSOM preferred-set or
+CSP requirements remain explicit; structural parse success does not certify those
+obligations. Language and referrer updates
 continue where their own inputs are qualified. `document_meta()` lends these
 actual Document-qualified values and the first missing operation without replay.
 A reached unavailable CSP invalidates later required policy-dependent URL/Base

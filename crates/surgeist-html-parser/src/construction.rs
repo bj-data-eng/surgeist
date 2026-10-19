@@ -49,6 +49,7 @@ use construction_owner::{ConstructionOwner, ConstructionView, prepare_attribute_
 pub(crate) mod associated;
 mod base;
 mod clone;
+mod css_color;
 mod input_color;
 mod input_image;
 pub(crate) mod meta;
@@ -895,6 +896,12 @@ impl PayloadStorage {
             if let Some(usage) = associated_usage {
                 drop(payload);
                 usage.release(control, owner);
+                continue;
+            }
+            if let RetainedPayload::Document { mut meta, .. } = payload {
+                if let Some(scheme) = meta.scheme.take() {
+                    scheme.release(control);
+                }
                 continue;
             }
             if let RetainedPayload::PiAttributes { values, .. } = payload {

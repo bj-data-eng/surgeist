@@ -622,12 +622,16 @@ impl DomDocumentMetadata {
         language: Option<DocumentString>,
         referrer: surgeist_html::HtmlReferrerPolicy,
         will_declaratively_refresh: bool,
+        theme_color: Option<surgeist_color::Color>,
+        color_scheme: Option<crate::meta::SelectedColorScheme>,
     ) {
         self.meta = Some(crate::DomMetaDocumentState {
             pragma_language: language,
             will_declaratively_refresh,
         });
         self.policy.referrer = Some(referrer);
+        self.meta_theme_color = crate::DomMetaThemeColorState::Known(theme_color);
+        self.meta_color_scheme = Some(color_scheme);
     }
     pub(crate) fn meta_state_mut(&mut self) -> Option<&mut crate::DomMetaDocumentState> {
         self.meta.as_mut()

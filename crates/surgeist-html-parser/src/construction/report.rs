@@ -469,6 +469,26 @@ impl<'a> PreparedReportStorage<'a> {
                     if let Some(raw) = meta.language {
                         checked_raw(storage, raw, c)?;
                     }
+                    if let Some(scheme) = &meta.scheme {
+                        scheme.require(c)?;
+                        let Some(HtmlNodeKind::Document(mode)) =
+                            arena.node_at(document).map(|node| node.kind())
+                        else {
+                            return Err(SessionError::WrongToken);
+                        };
+                        let expected = surgeist_css::CssParserContext::new(
+                            if *mode == HtmlDocumentMode::Quirks {
+                                surgeist_css::CssParserMode::Quirks
+                            } else {
+                                surgeist_css::CssParserMode::Standards
+                            },
+                        );
+                        if scheme.report().result().is_err()
+                            || scheme.report().source().context() != expected
+                        {
+                            return Err(SessionError::WrongToken);
+                        }
+                    }
                     let mut earliest = None;
                     for domain in meta::MetaDomain::ALL {
                         c.charge(WorkCategory::RecordVisit, 1)?;
@@ -983,6 +1003,20 @@ impl<'a> MetadataDocumentMeta<'a> {
             };
             value
         })
+    }
+    /// Last completed original-controller selection, or its reached missing dependency.
+    pub fn theme_color(&self) -> Result<Option<surgeist_color::Color>, MetadataMetaMissing<'a>> {
+        match self.meta.gaps[meta::MetaDomain::ThemeColor.index()] {
+            Some(slot) => Err(self.missing(slot)),
+            None => Ok(self.meta.theme),
+        }
+    }
+    /// The original immutable CSS report and context, without reparsing authored attributes.
+    pub fn color_scheme(&self) -> Option<&'a Arc<surgeist_css::CssColorSchemeParseReport>> {
+        self.meta
+            .scheme
+            .as_ref()
+            .map(crate::parser::control::CssSchemeValue::report)
     }
     pub fn referrer_policy(&self) -> HtmlReferrerPolicy {
         self.meta.referrer

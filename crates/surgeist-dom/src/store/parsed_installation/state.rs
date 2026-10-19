@@ -90,7 +90,27 @@ pub(super) fn transfer_document_meta<'a>(
     if let Some(language) = language {
         c.string(language)?;
     }
-    metadata.establish_parsed_meta_history(language.cloned(), view.referrer_policy(), refresh);
+    c.step(1)?;
+    let theme_color = view.theme_color().map_err(missing_meta)?;
+    c.step(1)?;
+    let color_scheme = view.color_scheme().map(|report| {
+        // The producer seals the authored CSS result and its exact backing
+        // receipt. Canonical metadata retains that graph without reparsing;
+        // normal Document payload/count admission prices it before publish.
+        let usage = report.retained_storage();
+        crate::meta::SelectedColorScheme {
+            report: report.clone(),
+            bytes: usage.bytes(),
+            units: usage.utf16_units(),
+        }
+    });
+    metadata.establish_parsed_meta_history(
+        language.cloned(),
+        view.referrer_policy(),
+        refresh,
+        theme_color,
+        color_scheme,
+    );
     Ok(())
 }
 

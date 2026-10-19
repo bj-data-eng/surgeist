@@ -159,14 +159,6 @@ fn independent_intrinsics_continue_after_missing_external_domains_and_keep_first
             HtmlParseMetaMissingKind::PreferredStyle,
         ),
         (HtmlParseMetaDomain::Csp, HtmlParseMetaMissingKind::Csp),
-        (
-            HtmlParseMetaDomain::ThemeColor,
-            HtmlParseMetaMissingKind::ThemeColor,
-        ),
-        (
-            HtmlParseMetaDomain::ColorScheme,
-            HtmlParseMetaMissingKind::ColorScheme,
-        ),
     ] {
         let HtmlParseMetaDisposition::Unavailable(missing) = state.disposition(domain) else {
             panic!("actual reached external operation")
@@ -174,6 +166,16 @@ fn independent_intrinsics_continue_after_missing_external_domains_and_keep_first
         assert_eq!(missing.kind(), &kind);
         assert_eq!(missing.document().id(), state.document().id());
     }
+    assert!(matches!(
+        state.disposition(HtmlParseMetaDomain::ThemeColor),
+        HtmlParseMetaDisposition::Complete
+    ));
+    assert!(matches!(
+        state.disposition(HtmlParseMetaDomain::ColorScheme),
+        HtmlParseMetaDisposition::Complete
+    ));
+    assert!(matches!(state.theme_color(), Ok(Some(_))));
+    assert!(state.color_scheme().is_some());
 }
 #[test]
 fn known_true_refresh_returns_before_later_missing_url_observation() {
@@ -528,4 +530,120 @@ fn real_selectedcontent_clone_processes_meta_again_against_current_document_base
     }
     assert_eq!(subjects.len(), 2);
     assert_ne!(subjects[0], subjects[1]);
+}
+
+fn theme(state: &HtmlParseDocumentMeta<'_>) -> Option<surgeist_color::Color> {
+    state
+        .theme_color()
+        .unwrap_or_else(|missing| panic!("unexpected missing theme: {:?}", missing.kind()))
+}
+fn scheme<'a>(
+    state: &HtmlParseDocumentMeta<'a>,
+) -> Option<&'a std::sync::Arc<surgeist_css::CssColorSchemeParseReport>> {
+    state.color_scheme()
+}
+
+#[test]
+fn intrinsic_css_selects_first_valid_candidate_in_tree_order_without_input_fallback() {
+    let report = parse(
+        "<!doctype html><meta name=theme-color content=not-a-color><meta name=ThEmE-CoLoR content=' \t#3699\r\n' media=' \t\n'><meta name=theme-color content=red><meta name=color-scheme content='dark !!!'><meta name=color-scheme content='only dark'><meta name=color-scheme content=light>",
+    );
+    let states = rows(&report);
+    let state = &states[0];
+    assert_eq!(
+        theme(state),
+        Some(surgeist_color::Color::from_srgba8([51, 102, 153, 153]))
+    );
+    let selected = scheme(state).unwrap();
+    assert!(selected.result().is_ok());
+    assert_eq!(
+        selected
+            .source()
+            .source()
+            .original_utf16()
+            .unwrap()
+            .as_slice(),
+        &"only dark".encode_utf16().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        selected.source().context(),
+        surgeist_css::CssParserContext::new(surgeist_css::CssParserMode::Standards)
+    );
+    assert!(state.first_missing().is_none());
+
+    let invalid = parse(
+        "<!doctype html><meta name=theme-color content=not-a-color><meta name=color-scheme content='dark !!!'>",
+    );
+    let states = rows(&invalid);
+    assert_eq!(theme(&states[0]), None);
+    assert!(scheme(&states[0]).is_none());
+}
+
+#[test]
+fn intrinsic_css_keeps_symbolic_scheme_and_actual_document_mode() {
+    for (doctype, expected) in [
+        ("<!doctype html>", surgeist_css::CssParserMode::Standards),
+        ("", surgeist_css::CssParserMode::Quirks),
+    ] {
+        let report = parse(&format!(
+            "{doctype}<meta name=color-scheme content='var(--choice)'>"
+        ));
+        let states = rows(&report);
+        let selected = scheme(&states[0]).unwrap();
+        assert!(selected.result().is_ok());
+        assert_eq!(
+            selected.source().context(),
+            surgeist_css::CssParserContext::new(expected)
+        );
+        assert_eq!(
+            selected
+                .source()
+                .source()
+                .original_utf16()
+                .unwrap()
+                .as_slice(),
+            &"var(--choice)".encode_utf16().collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn template_meta_css_never_supplies_the_ordinary_or_inert_document_selection() {
+    let report = parse(
+        "<!doctype html><template><meta name=theme-color content=red><meta name=color-scheme content=dark></template>",
+    );
+    let states = rows(&report);
+    assert_eq!(states.len(), 2);
+    for state in states {
+        assert_eq!(theme(&state), None);
+        assert!(scheme(&state).is_none());
+        assert!(state.first_missing().is_none());
+    }
+}
+
+#[test]
+fn media_and_css_fact_absence_are_missing_operations_and_independent_fields_continue() {
+    for (content, media, processing) in [("red", " media=screen", false), ("Canvas", "", true)] {
+        let report = parse(&format!(
+            "<!doctype html><meta name=theme-color content={content}{media}><meta name=color-scheme content=dark><meta http-equiv=content-language content=fr>"
+        ));
+        let states = rows(&report);
+        let state = &states[0];
+        let missing = match state.theme_color() {
+            Err(value) => value,
+            Ok(_) => panic!("actual dependency remains unavailable"),
+        };
+        if processing {
+            assert!(matches!(
+                missing.kind(),
+                HtmlParseMetaMissingKind::ThemeColorProcessing(
+                    HtmlColorProcessingError::Unavailable(_)
+                )
+            ));
+        } else {
+            assert_eq!(missing.kind(), &HtmlParseMetaMissingKind::ThemeColor);
+        }
+        assert_eq!(state.pragma_language(), Some(&"fr".into()));
+        assert!(scheme(state).unwrap().result().is_ok());
+    }
 }

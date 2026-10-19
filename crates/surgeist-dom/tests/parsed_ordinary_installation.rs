@@ -3669,10 +3669,9 @@ fn every_unavailable_meta_domain_refuses_after_independent_history_without_publi
             "<meta http-equiv=Content-Security-Policy content=default-src-none>",
             Missing::Csp,
         ),
-        ("<meta name=theme-color content=red>", Missing::ThemeColor),
         (
-            "<meta name=color-scheme content=dark>",
-            Missing::ColorScheme,
+            "<meta name=theme-color media=screen content=red>",
+            Missing::ThemeColor,
         ),
     ] {
         let input = format!(
