@@ -598,15 +598,17 @@ fn unique_repeated_and_mixed_streams_report_bounded_actual_owner_overhead() {
             }
             {
                 let state = lock(&f.pool.0);
-                let (bank_bytes, weak, live, saved) = state.banks.inspect();
+                let (bank_bytes, weak, current_entries, saved_entries) = state.banks.inspect();
                 let strings = state.strings.heap_usage();
                 assert!(bank_bytes <= 256 * 1024);
                 assert!(strings.bytes() <= 256 * 1024);
                 // These are actual controlled occurrence receipts, not a
                 // physical-dedup or total-DOM-memory measurement. Input bank
                 // and string ownership is outside this private pool fixture.
+                // Current and saved entries retain Weak occurrences; either
+                // may already refer to a value whose last strong holder died.
                 eprintln!(
-                    "value-sharing-overhead mode={mode} count={count} bank_raw_bytes={bank_bytes} bank_live={live} bank_saved={saved} weak_occurrences={weak} string_receipt_bytes={} pair_receipt_bytes={} authority_bytes={} prospective_ledger_peak={peak} stream_work={steps}",
+                    "value-sharing-overhead mode={mode} count={count} bank_raw_bytes={bank_bytes} bank_current_weak_entries={current_entries} bank_saved_weak_entries={saved_entries} weak_occurrences={weak} string_receipt_bytes={} pair_receipt_bytes={} authority_bytes={} prospective_ledger_peak={peak} stream_work={steps}",
                     strings.bytes(),
                     state.storage.usage().bytes(),
                     size_of::<Mutex<State>>()
