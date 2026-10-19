@@ -1,0 +1,611 @@
+//! Small native XML layered-sharing fixtures. Backing observations describe only
+//! the required immutable reuse, never allocation totals or physical memory.
+use std::sync::{Arc, atomic::AtomicBool};
+
+use crate::store::value_sharing::fixture::{Layers, control};
+use crate::{
+    DocumentId, DocumentString, Dom, DomBatch, DomChange, DomCommit, DomLimits, DomNameLimits,
+    DomNodeKind, DomSnapshot, NodeId,
+};
+
+const ROWS: usize = 2;
+const COLUMNS: usize = 3;
+const CELLS: usize = ROWS * COLUMNS;
+const NODES: usize = 2 + ROWS + 2 * CELLS;
+const RAW: &[u16] = &[65, 0xd800, 0, 0xdc00];
+const NEXT: &[u16] = &[110, 101, 120, 116];
+const ROW_IDS: [&str; ROWS] = ["r0", "r1"];
+const CELL_IDS: [&str; CELLS] = ["c0", "c1", "c2", "c3", "c4", "c5"];
+
+#[derive(Clone, Copy, Debug)]
+struct Mode {
+    layers: Layers,
+    caller_shared: bool,
+}
+const MODES: [Mode; 4] = [
+    Mode {
+        layers: Layers::CallerOnly,
+        caller_shared: false,
+    },
+    Mode {
+        layers: Layers::CallerOnly,
+        caller_shared: true,
+    },
+    Mode {
+        layers: Layers::BanksOnly,
+        caller_shared: false,
+    },
+    Mode {
+        layers: Layers::Combined,
+        caller_shared: false,
+    },
+];
+#[derive(Clone, Copy, Debug)]
+enum Unique {
+    None,
+    Rows,
+    Cells,
+}
+struct Grid {
+    document: DocumentId,
+    table: NodeId,
+    rows: Vec<NodeId>,
+    cells: Vec<NodeId>,
+    texts: Vec<NodeId>,
+    // Keep independently authored inputs observable, so an allocator cannot
+    // recycle their addresses and imitate a sharing observation.
+    inputs: Vec<[DocumentString; 3]>,
+    _creation: DomCommit,
+}
+fn owner() -> Dom {
+    Dom::new(
+        DomLimits::new(
+            64,
+            1_000_000,
+            256,
+            0,
+            0,
+            16,
+            4_000_000,
+            DomNameLimits::new(16_777_216, 4096, 4_000_000, 4_000_000).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
+}
+fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
+    dom.apply(batch, &AtomicBool::new(false)).unwrap()
+}
+fn raw() -> DocumentString {
+    DocumentString::from_utf16(RAW.to_vec())
+}
+fn construct(dom: &mut Dom, mode: Mode, unique: Unique) -> Grid {
+    let caller = raw();
+    let inputs: Vec<_> = (0..CELLS)
+        .map(|_| {
+            std::array::from_fn(|_| {
+                if mode.caller_shared {
+                    caller.clone()
+                } else {
+                    raw()
+                }
+            })
+        })
+        .collect();
+    if !mode.caller_shared {
+        assert!(!Arc::ptr_eq(
+            inputs[0][0].shared_code_units(),
+            inputs[1][0].shared_code_units()
+        ));
+        assert!(!Arc::ptr_eq(
+            inputs[0][0].shared_code_units(),
+            inputs[0][2].shared_code_units()
+        ));
+    }
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let table = batch.create_element(&document, "table");
+    batch.insert_before(&table, &document, None);
+    let mut rows = Vec::new();
+    let mut cells = Vec::new();
+    let mut texts = Vec::new();
+    for (row, row_id) in ROW_IDS.iter().enumerate() {
+        let parent = batch.create_element(&document, "row");
+        if matches!(unique, Unique::Rows) {
+            batch.set_attribute(&parent, "id", *row_id);
+        }
+        batch.insert_before(&parent, &table, None);
+        for column in 0..COLUMNS {
+            let index = row * COLUMNS + column;
+            let cell = batch.create_element(&document, "cell");
+            batch.set_attribute(&cell, "data-a", inputs[index][0].clone());
+            batch.set_attribute(&cell, "data-b", inputs[index][1].clone());
+            if matches!(unique, Unique::Cells) {
+                batch.set_attribute(&cell, "id", CELL_IDS[index]);
+            }
+            let text = batch.create_text(&document, inputs[index][2].clone());
+            batch.insert_before(&text, &cell, None);
+            batch.insert_before(&cell, &parent, None);
+            cells.push(cell);
+            texts.push(text);
+        }
+        rows.push(parent);
+    }
+    let creation = apply(dom, batch);
+    Grid {
+        document: creation.document(&document).unwrap(),
+        table: creation.created(&table).unwrap().unwrap(),
+        rows: rows
+            .iter()
+            .map(|id| creation.created(id).unwrap().unwrap())
+            .collect(),
+        cells: cells
+            .iter()
+            .map(|id| creation.created(id).unwrap().unwrap())
+            .collect(),
+        texts: texts
+            .iter()
+            .map(|id| creation.created(id).unwrap().unwrap())
+            .collect(),
+        inputs,
+        _creation: creation,
+    }
+}
+fn attributes(snapshot: &DomSnapshot, id: NodeId) -> &[crate::DomAttribute] {
+    snapshot
+        .node(id)
+        .unwrap()
+        .as_element()
+        .unwrap()
+        .attributes()
+}
+fn text(snapshot: &DomSnapshot, id: NodeId) -> &DocumentString {
+    snapshot.node(id).unwrap().data().unwrap()
+}
+fn check_grid(
+    snapshot: &DomSnapshot,
+    grid: &Grid,
+    unique: Unique,
+    attr_changed: bool,
+    text_changed: bool,
+) {
+    assert_eq!(snapshot.nodes().count(), NODES);
+    assert_eq!(
+        snapshot.node(grid.document.node()).unwrap().children(),
+        [grid.table]
+    );
+    assert_eq!(snapshot.node(grid.table).unwrap().children(), grid.rows);
+    assert_eq!(
+        snapshot.node(grid.table).unwrap().parent(),
+        Some(grid.document.node())
+    );
+    assert_eq!(
+        snapshot.node(grid.table).unwrap().owner_document(),
+        Some(grid.document)
+    );
+    assert_eq!(
+        snapshot
+            .node(grid.table)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .name()
+            .local_name()
+            .code_units(),
+        [116, 97, 98, 108, 101]
+    );
+    for (row, id) in grid.rows.iter().copied().enumerate() {
+        let node = snapshot.node(id).unwrap();
+        assert_eq!(node.parent(), Some(grid.table));
+        assert_eq!(node.owner_document(), Some(grid.document));
+        assert_eq!(
+            node.children(),
+            &grid.cells[row * COLUMNS..(row + 1) * COLUMNS]
+        );
+        let values = attributes(snapshot, id);
+        if matches!(unique, Unique::Rows) {
+            assert_eq!(values.len(), 1);
+            assert_eq!(values[0].name().local_name().code_units(), [105, 100]);
+            assert!(
+                values[0]
+                    .value()
+                    .code_units()
+                    .iter()
+                    .copied()
+                    .eq(ROW_IDS[row].encode_utf16())
+            );
+        } else {
+            assert!(values.is_empty());
+        }
+    }
+    for (index, cell_id) in CELL_IDS.iter().enumerate() {
+        let cell = snapshot.node(grid.cells[index]).unwrap();
+        assert_eq!(cell.parent(), Some(grid.rows[index / COLUMNS]));
+        assert_eq!(cell.owner_document(), Some(grid.document));
+        assert_eq!(cell.children(), [grid.texts[index]]);
+        assert_eq!(
+            cell.as_element().unwrap().name().local_name().code_units(),
+            [99, 101, 108, 108]
+        );
+        let values = attributes(snapshot, grid.cells[index]);
+        assert_eq!(
+            values.len(),
+            if matches!(unique, Unique::Cells) {
+                3
+            } else {
+                2
+            }
+        );
+        for (offset, suffix) in [97, 98].into_iter().enumerate() {
+            assert!(values[offset].name().namespace_uri().is_none());
+            assert!(values[offset].name().prefix().is_none());
+            assert_eq!(
+                values[offset].name().local_name().code_units(),
+                [100, 97, 116, 97, 45, suffix]
+            );
+            assert_eq!(
+                values[offset].value().code_units(),
+                if attr_changed && index == 0 && offset == 0 {
+                    NEXT
+                } else {
+                    RAW
+                }
+            );
+        }
+        if matches!(unique, Unique::Cells) {
+            assert_eq!(values[2].name().local_name().code_units(), [105, 100]);
+            assert!(
+                values[2]
+                    .value()
+                    .code_units()
+                    .iter()
+                    .copied()
+                    .eq(cell_id.encode_utf16())
+            );
+        }
+        let node = snapshot.node(grid.texts[index]).unwrap();
+        assert!(matches!(node.kind(), DomNodeKind::Text(_)));
+        assert_eq!(node.parent(), Some(grid.cells[index]));
+        assert_eq!(node.owner_document(), Some(grid.document));
+        assert_eq!(
+            node.data().unwrap().code_units(),
+            if text_changed && index == 0 {
+                NEXT
+            } else {
+                RAW
+            }
+        );
+    }
+}
+fn check_topology(before: &DomSnapshot, after: &DomSnapshot) {
+    assert!(after.nodes().eq(before.nodes()));
+    for id in before.nodes() {
+        let old = before.node(id).unwrap();
+        let new = after.node(id).unwrap();
+        assert_eq!(new.parent(), old.parent());
+        assert_eq!(new.children(), old.children());
+        assert_eq!(new.owner_document(), old.owner_document());
+    }
+}
+fn same_bank(snapshot: &DomSnapshot, first: NodeId, second: NodeId) -> bool {
+    let first = attributes(snapshot, first);
+    let second = attributes(snapshot, second);
+    assert!(!first.is_empty() && !second.is_empty());
+    std::ptr::eq(first.as_ptr(), second.as_ptr())
+}
+
+#[test]
+fn ordinary_layers_preserve_equal_banks_text_and_isolated_edits() {
+    for mode in MODES {
+        let mut dom = owner();
+        let guard = control(&dom.value_sharing, mode.layers);
+        let grid = construct(&mut dom, mode, Unique::None);
+        let old = dom.snapshot();
+        check_grid(&old, &grid, Unique::None, false, false);
+        let banks = mode.layers != Layers::CallerOnly;
+        let strings = mode.layers == Layers::Combined || mode.caller_shared;
+        for index in 1..CELLS {
+            assert_eq!(
+                same_bank(&old, grid.cells[0], grid.cells[index]),
+                banks,
+                "{mode:?}"
+            );
+            assert_eq!(
+                Arc::ptr_eq(
+                    text(&old, grid.texts[0]).shared_code_units(),
+                    text(&old, grid.texts[index]).shared_code_units()
+                ),
+                strings,
+                "{mode:?}"
+            );
+        }
+        let first = attributes(&old, grid.cells[0]);
+        assert_eq!(
+            Arc::ptr_eq(
+                first[0].value().shared_code_units(),
+                first[1].value().shared_code_units()
+            ),
+            strings,
+            "{mode:?}"
+        );
+        assert_eq!(
+            Arc::ptr_eq(
+                first[0].value().shared_code_units(),
+                text(&old, grid.texts[0]).shared_code_units()
+            ),
+            strings,
+            "{mode:?}"
+        );
+        if mode.layers == Layers::CallerOnly {
+            for index in 0..CELLS {
+                for offset in 0..2 {
+                    assert!(Arc::ptr_eq(
+                        attributes(&old, grid.cells[index])[offset]
+                            .value()
+                            .shared_code_units(),
+                        grid.inputs[index][offset].shared_code_units()
+                    ));
+                }
+                assert!(Arc::ptr_eq(
+                    text(&old, grid.texts[index]).shared_code_units(),
+                    grid.inputs[index][2].shared_code_units()
+                ));
+            }
+        }
+        let mut batch = DomBatch::new();
+        batch.set_attribute(
+            grid.cells[0],
+            "data-a",
+            DocumentString::from_utf16(NEXT.to_vec()),
+        );
+        let attr_commit = apply(&mut dom, batch);
+        assert_eq!(
+            attr_commit.changes().changes(),
+            [DomChange::Attributes(grid.cells[0])]
+        );
+        assert_eq!(dom.revision().get(), old.revision().get() + 1);
+        let mut batch = DomBatch::new();
+        batch.replace_data(
+            grid.texts[0],
+            0,
+            usize::MAX,
+            DocumentString::from_utf16(NEXT.to_vec()),
+        );
+        let text_commit = apply(&mut dom, batch);
+        assert_eq!(
+            text_commit.changes().changes(),
+            [DomChange::Data(grid.texts[0])]
+        );
+        let current = dom.snapshot();
+        assert_eq!(current.revision().get(), old.revision().get() + 2);
+        check_topology(&old, &current);
+        check_grid(&current, &grid, Unique::None, true, true);
+        check_grid(&old, &grid, Unique::None, false, false);
+        for index in 1..CELLS {
+            assert!(std::ptr::eq(
+                attributes(&current, grid.cells[index]).as_ptr(),
+                attributes(&old, grid.cells[index]).as_ptr()
+            ));
+            assert!(Arc::ptr_eq(
+                text(&current, grid.texts[index]).shared_code_units(),
+                text(&old, grid.texts[index]).shared_code_units()
+            ));
+        }
+        assert!(!std::ptr::eq(
+            attributes(&current, grid.cells[0]).as_ptr(),
+            attributes(&old, grid.cells[0]).as_ptr()
+        ));
+        assert!(!Arc::ptr_eq(
+            text(&current, grid.texts[0]).shared_code_units(),
+            text(&old, grid.texts[0]).shared_code_units()
+        ));
+        drop(guard);
+        drop(attr_commit);
+        drop(text_commit);
+        drop(dom);
+        check_grid(&current, &grid, Unique::None, true, true);
+        check_grid(&old, &grid, Unique::None, false, false);
+        drop(grid);
+        drop(current);
+        assert_eq!(old.nodes().count(), NODES);
+        drop(old);
+    }
+}
+
+#[test]
+fn unique_row_ids_preserve_cell_bank_reuse_while_unique_cell_ids_keep_banks_distinct() {
+    for layers in [Layers::BanksOnly, Layers::Combined] {
+        for unique in [Unique::Rows, Unique::Cells] {
+            let mode = Mode {
+                layers,
+                caller_shared: false,
+            };
+            let mut dom = owner();
+            let guard = control(&dom.value_sharing, layers);
+            let grid = construct(&mut dom, mode, unique);
+            let old = dom.snapshot();
+            check_grid(&old, &grid, unique, false, false);
+            for index in 1..CELLS {
+                assert_eq!(
+                    same_bank(&old, grid.cells[0], grid.cells[index]),
+                    matches!(unique, Unique::Rows)
+                );
+            }
+            let mut batch = DomBatch::new();
+            for (index, id) in grid.texts.iter().copied().enumerate() {
+                batch.replace_data(id, 0, usize::MAX, CELL_IDS[index]);
+            }
+            let commit = apply(&mut dom, batch);
+            assert_eq!(
+                commit.changes().changes(),
+                grid.texts
+                    .iter()
+                    .copied()
+                    .map(DomChange::Data)
+                    .collect::<Vec<_>>()
+            );
+            let current = dom.snapshot();
+            assert_eq!(current.revision().get(), old.revision().get() + 1);
+            check_topology(&old, &current);
+            for (index, cell_id) in CELL_IDS.iter().enumerate() {
+                assert!(
+                    text(&current, grid.texts[index])
+                        .code_units()
+                        .iter()
+                        .copied()
+                        .eq(cell_id.encode_utf16())
+                );
+                assert_eq!(text(&old, grid.texts[index]).code_units(), RAW);
+                assert_eq!(
+                    current.node(grid.texts[index]).unwrap().parent(),
+                    Some(grid.cells[index])
+                );
+                assert_eq!(
+                    current.node(grid.cells[index]).unwrap().children(),
+                    [grid.texts[index]]
+                );
+                assert!(std::ptr::eq(
+                    attributes(&current, grid.cells[index]).as_ptr(),
+                    attributes(&old, grid.cells[index]).as_ptr()
+                ));
+            }
+            drop(guard);
+            drop(commit);
+            drop(dom);
+            assert_eq!(current.nodes().count(), NODES);
+            check_grid(&old, &grid, unique, false, false);
+            drop(grid);
+            drop(current);
+            drop(old);
+        }
+    }
+}
+
+#[test]
+fn caller_held_long_and_empty_values_keep_literals_and_noop_backings() {
+    for layers in [Layers::CallerOnly, Layers::Combined] {
+        let mut dom = owner();
+        let guard = control(&dom.value_sharing, layers);
+        let reserved_units = Vec::with_capacity(73);
+        assert!(reserved_units.capacity() >= 73);
+        let reserved = DocumentString::from_utf16(reserved_units);
+        let long = DocumentString::from_utf16([76, 0xd800, 0, 0xdc00].repeat(2048));
+        assert_eq!(long.len(), 8192);
+        let capacity = long.shared_code_units().capacity();
+        let mut batch = DomBatch::new();
+        let document = batch.create_document();
+        let element = batch.create_element(&document, "plain");
+        batch.set_attribute(
+            &element,
+            "data-empty",
+            DocumentString::from_utf16(Vec::new()),
+        );
+        batch.set_attribute(&element, "data-long", long.clone());
+        let empty = batch.create_text(&document, reserved.clone());
+        let text_node = batch.create_text(&document, long.clone());
+        batch.insert_before(&element, &document, None);
+        batch.insert_before(&empty, &element, None);
+        batch.insert_before(&text_node, &element, None);
+        let creation = apply(&mut dom, batch);
+        let element = creation.created(&element).unwrap().unwrap();
+        let empty = creation.created(&empty).unwrap().unwrap();
+        let text_node = creation.created(&text_node).unwrap().unwrap();
+        let old = dom.snapshot();
+        assert_eq!(old.nodes().count(), 4);
+        assert_eq!(old.node(element).unwrap().children(), [empty, text_node]);
+        assert_eq!(attributes(&old, element).len(), 2);
+        for (attribute, local) in attributes(&old, element)
+            .iter()
+            .zip(["data-empty", "data-long"])
+        {
+            assert!(attribute.name().namespace_uri().is_none());
+            assert!(attribute.name().prefix().is_none());
+            assert!(
+                attribute
+                    .name()
+                    .local_name()
+                    .code_units()
+                    .iter()
+                    .copied()
+                    .eq(local.encode_utf16())
+            );
+        }
+        assert_eq!(attributes(&old, element)[0].value().code_units(), []);
+        assert_eq!(text(&old, empty).code_units(), []);
+        if layers == Layers::CallerOnly {
+            assert_eq!(
+                text(&old, empty).shared_code_units().capacity(),
+                reserved.shared_code_units().capacity()
+            );
+            assert!(Arc::ptr_eq(
+                text(&old, empty).shared_code_units(),
+                reserved.shared_code_units()
+            ));
+        }
+        for value in [attributes(&old, element)[1].value(), text(&old, text_node)] {
+            assert_eq!(value.len(), 8192);
+            for chunk in value.code_units().chunks_exact(4) {
+                assert_eq!(chunk, [76, 0xd800, 0, 0xdc00]);
+            }
+            assert_eq!(value.shared_code_units().capacity(), capacity);
+            assert!(Arc::ptr_eq(
+                value.shared_code_units(),
+                long.shared_code_units()
+            ));
+        }
+        let mut batch = DomBatch::new();
+        batch.set_attribute(
+            element,
+            "data-empty",
+            DocumentString::from_utf16(Vec::new()),
+        );
+        batch.set_attribute(element, "data-long", long.clone());
+        batch.replace_data(empty, 0, usize::MAX, DocumentString::from_utf16(Vec::new()));
+        let noop = apply(&mut dom, batch);
+        assert!(noop.changes().changes().is_empty());
+        let current = dom.snapshot();
+        assert_eq!(current.stamp(), old.stamp());
+        assert!(dom.changes_since(old.stamp()).unwrap().changes().is_empty());
+        assert!(std::ptr::eq(
+            attributes(&current, element).as_ptr(),
+            attributes(&old, element).as_ptr()
+        ));
+        assert!(Arc::ptr_eq(
+            text(&current, empty).shared_code_units(),
+            text(&old, empty).shared_code_units()
+        ));
+        assert!(Arc::ptr_eq(
+            text(&current, text_node).shared_code_units(),
+            long.shared_code_units()
+        ));
+        let mut batch = DomBatch::new();
+        batch.replace_data(text_node, 0, usize::MAX, "cut");
+        let edit = apply(&mut dom, batch);
+        assert_eq!(edit.changes().changes(), [DomChange::Data(text_node)]);
+        let changed = dom.snapshot();
+        assert_eq!(changed.revision().get(), old.revision().get() + 1);
+        check_topology(&old, &changed);
+        assert_eq!(text(&changed, text_node).code_units(), [99, 117, 116]);
+        assert_eq!(text(&old, text_node).len(), 8192);
+        assert!(std::ptr::eq(
+            attributes(&changed, element).as_ptr(),
+            attributes(&old, element).as_ptr()
+        ));
+        assert!(Arc::ptr_eq(
+            attributes(&changed, element)[1].value().shared_code_units(),
+            long.shared_code_units()
+        ));
+        drop(guard);
+        drop(edit);
+        drop(noop);
+        drop(creation);
+        drop(dom);
+        assert_eq!(current.nodes().count(), 4);
+        assert_eq!(text(&old, empty).code_units(), []);
+        assert_eq!(text(&old, text_node).len(), 8192);
+        assert_eq!(text(&changed, text_node).code_units(), [99, 117, 116]);
+        drop(changed);
+        drop(current);
+        drop(old);
+    }
+}

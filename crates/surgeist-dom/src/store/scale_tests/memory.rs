@@ -8,6 +8,9 @@ use super::{
 };
 use crate::{DocumentString, DomBatch, DomChange, DomNodeKind, DomSnapshot, NodeId};
 
+mod parsed;
+mod sharing;
+
 const MANAGED: usize = 1000;
 const SEED_NODES: usize = 5;
 

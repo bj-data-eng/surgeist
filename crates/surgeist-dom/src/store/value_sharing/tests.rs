@@ -3,6 +3,8 @@ use crate::store::{bank, name_registry, payload};
 use crate::{DomNameLimits, DomOwnerId, DomQualifiedName};
 use std::sync::atomic::AtomicBool;
 
+mod fixture_controls;
+
 fn admitted<T>(f: impl FnOnce(&mut Admission<'_>) -> T) -> T {
     f(&mut Admission {
         global: &mut |_| Ok(()),

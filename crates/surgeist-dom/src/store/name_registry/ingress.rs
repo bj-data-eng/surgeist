@@ -458,6 +458,10 @@ impl Draft {
         let Some(session) = self.sharing_session() else {
             return Ok(());
         };
+        #[cfg(test)]
+        if !session.fixture_strings_enabled() {
+            return Ok(());
+        }
         for index in 0..input.entries.len() {
             self.source_step(cancel)?;
             self.seed_name_atoms(input.entries[index].name(), cancel)?;

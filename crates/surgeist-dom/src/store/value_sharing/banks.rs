@@ -533,6 +533,10 @@ impl Session {
         entries: &[DomAttribute],
         admission: &mut Admission<'_>,
     ) -> Result<BankProbe, DomError> {
+        #[cfg(test)]
+        if super::fixture::layers(self) == super::fixture::Layers::CallerOnly {
+            return Ok(BankProbe::Bypassed);
+        }
         if !self.may_attempt() {
             return Ok(BankProbe::Bypassed);
         }
@@ -610,6 +614,10 @@ impl Session {
         miss: Option<BankMiss>,
         admission: &mut Admission<'_>,
     ) -> Result<(), DomError> {
+        #[cfg(test)]
+        if super::fixture::layers(self) == super::fixture::Layers::CallerOnly {
+            return Ok(());
+        }
         let Some(payload) = value.payload() else {
             return Ok(());
         };

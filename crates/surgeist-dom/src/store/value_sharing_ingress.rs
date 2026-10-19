@@ -58,6 +58,10 @@ impl Draft {
         let Some(session) = self.sharing_session() else {
             return Ok(incoming);
         };
+        #[cfg(test)]
+        if !session.fixture_strings_enabled() {
+            return Ok(incoming);
+        }
         self.seed_name_atoms(incoming.value(), cancel)?;
         let Some(prefix) = incoming.value().prefix() else {
             return Ok(incoming);
@@ -94,6 +98,10 @@ impl Draft {
         let Some(session) = self.sharing_session() else {
             return Ok(());
         };
+        #[cfg(test)]
+        if !session.fixture_strings_enabled() {
+            return Ok(());
+        }
         for atom in name.namespace().into_iter().chain([name.local_name_atom()]) {
             self.with_sharing_admission(cancel, |admission| {
                 session.seed_string(atom.text(), admission)

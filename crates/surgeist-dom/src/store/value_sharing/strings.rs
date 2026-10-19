@@ -46,6 +46,10 @@ impl Session {
         value: &DocumentString,
         admission: &mut Admission<'_>,
     ) -> Result<Option<SelectedString>, DomError> {
+        #[cfg(test)]
+        if !self.fixture_strings_enabled() {
+            return Ok(None);
+        }
         if !self.may_attempt() {
             return Ok(None);
         }

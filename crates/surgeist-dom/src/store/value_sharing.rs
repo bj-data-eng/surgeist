@@ -11,6 +11,8 @@ use surgeist_html::bounded::{
 };
 
 mod banks;
+#[cfg(test)]
+pub(in crate::store) mod fixture;
 mod strings;
 #[cfg(test)]
 mod tests;
@@ -261,6 +263,11 @@ impl Owner {
 }
 
 impl Session {
+    #[cfg(test)]
+    pub(in crate::store) fn fixture_strings_enabled(&self) -> bool {
+        fixture::layers(self) == fixture::Layers::Combined
+    }
+
     fn active_id(&self) -> Option<u64> {
         match *self.phase.lock().expect("session phase") {
             Phase::Active(id) => Some(id),
