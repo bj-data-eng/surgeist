@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Backgrounds 3 (2024-03-11) §2.3: one noninherited `<bg-image>#` longhand,
 //! initially a one-item `none` list.
 //! https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#propdef-background-image
@@ -6,16 +5,8 @@
 //! `mask-image`: `[ none | <image> | <mask-source> ]#`, initially `none`, noninherited.
 //! https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/#propdef-mask-image
 
+use crate::css::support::style_declaration_reporting_source as declaration;
 use surgeist_css::*;
-
-fn declaration(source: &str) -> CssDeclaration {
-    let report = parse_style_attribute(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [value] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    value.clone()
-}
 
 fn authored(source: &CssDeclaration) -> &CssImageValueList {
     match source.known().unwrap().property_value().unwrap() {

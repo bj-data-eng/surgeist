@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Finite authored opacity scalars retain lexical tokens and provenance.
 //! CSS Color 4 section 3.3 admits numbers and percentages; the exact scalar
 //! contract preserves finite decimals beyond tokenizer float range.

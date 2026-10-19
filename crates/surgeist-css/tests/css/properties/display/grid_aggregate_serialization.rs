@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional coverage alongside the new aggregate output APIs. Grid2 §7.4
 //! requires the row/column slash; §7.8 determines auto-flow orientation and
 //! canonical auto-flow/dense order. Existing child numeric/identity contracts

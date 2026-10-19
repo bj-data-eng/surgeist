@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing-boundary regressions for signed authored thickness and unordered indent.
 //!
 //! Selected Text Decoration 4 WD 2022-05-04 §2.4 floors the actual thickness

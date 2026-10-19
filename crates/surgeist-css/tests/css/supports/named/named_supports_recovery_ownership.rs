@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Surgeist #644 selects lowest retained recovery ownership and a body-local
 //! first summary. Historical parser diagnostics keep their original order.
 

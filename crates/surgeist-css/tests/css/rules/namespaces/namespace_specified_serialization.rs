@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing rule/sheet boundaries must serialize retained namespace declarations
 //! using the selected CSSOM namespace-rule spelling, atomically and in order.
 

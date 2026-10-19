@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Conditional 5 §8 permits named supports definitions before imports and
 //! namespaces. Definitions preserve the current prelude phase; they do not
 //! reopen imports after a namespace or imports/namespaces after a body rule.

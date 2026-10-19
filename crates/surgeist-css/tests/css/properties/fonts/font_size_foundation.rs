@@ -1,22 +1,11 @@
-#![forbid(unsafe_code)]
-
 //! Existing-public-API behavior from CSS Fonts 4 WD (2026-09-07) §§2.5, 2.7.
 //! Exact typed payload and serialization contracts follow with the functional model.
 
+use crate::css::support::important_declaration as declaration;
 use surgeist_css::*;
 
 fn grammar() -> CssPropertyGrammar {
     CssPropertyGrammar::from_name("font-size").expect("font-size grammar")
-}
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}");
-    };
-    declaration.clone()
 }
 
 fn checked(value: &str) -> CssDeclaration {

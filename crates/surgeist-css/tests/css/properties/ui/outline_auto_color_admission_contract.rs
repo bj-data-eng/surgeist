@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing callable admission boundaries for selected UI4 WD 2026-01-20
 //! §3.1 and §3.4: outline-color admits auto, and outline combines unordered
 //! width, style and color, including separate auto style/color components.

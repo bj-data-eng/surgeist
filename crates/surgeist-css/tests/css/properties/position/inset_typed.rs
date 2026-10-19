@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use surgeist_css::*;
 
 fn component(text: &str) -> CssComponentValue {

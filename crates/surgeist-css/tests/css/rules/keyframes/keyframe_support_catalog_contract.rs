@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! The selected Animations 1 keyframe production owns authored grammar and recovery.
 //! Its support catalog describes that production independently of execution.
 use surgeist_css::*;

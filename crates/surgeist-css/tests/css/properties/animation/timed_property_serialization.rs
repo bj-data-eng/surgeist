@@ -1,8 +1,8 @@
-#![forbid(unsafe_code)]
 //! New API functional evidence; no executable preimplementation RED exists.
 //! Expected order and disambiguation follow the selected Transitions 1 §2.5
 //! and Animations 1 §3.10 references. Limits follow the provider node policy.
 
+use crate::css::support::style_declaration as declaration;
 use surgeist_css::{
     CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
 };
@@ -34,15 +34,6 @@ fn count(text: &str) -> CssAnimationIterationCount {
         )
         .unwrap(),
     )
-}
-
-fn declaration(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    declaration.clone()
 }
 
 fn animations(css: &str) -> CssAnimationList {

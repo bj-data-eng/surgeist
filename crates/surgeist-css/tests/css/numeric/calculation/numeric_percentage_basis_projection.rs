@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! A percentage keeps its basis while scalar arithmetic distributes over a sum.
 //! CSS Values 4 specifies simplification without resolving an unknown percentage basis:
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-simplification

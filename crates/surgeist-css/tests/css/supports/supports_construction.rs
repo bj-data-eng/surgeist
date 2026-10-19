@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Checked supports retains authored tokens and their original provenance while
 //! applying supports grammar independently of property support or evaluation.
 use surgeist_css::{

@@ -1,10 +1,12 @@
-#![forbid(unsafe_code)]
 //! Transitions 1 WD 2026-01-08 §§2.1–2.5 supplies noninherited initials,
 //! list grammar, first-time duration admission, and shorthand omission defaults.
 //! Cascade 5 CR 2022-01-13 §3.1 supplies shorthand propagation semantics.
 //! Exact raw time-child provenance and contribution order are Surgeist contracts.
 //! These functional tests exercise the four new borrowed longhand variants.
 
+use crate::css::support::{
+    checked_property_grammar_declaration as checked, style_declaration as parsed,
+};
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -14,24 +16,6 @@ const MEMBERS: [P; 4] = [
     P::TransitionTimingFunction,
     P::TransitionDelay,
 ];
-
-fn parsed(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    declaration.clone()
-}
-
-fn checked(property: P, css: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        property.grammar(),
-        parse_component_values(css).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap()
-}
 
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =

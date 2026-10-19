@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Public consumer tests for the selected Surgeist #644 inert-child policy.
 use surgeist_css::{
     CssComponentValueErrorKind, CssComponentValueLimits, CssEditedGroupPreludeRef,

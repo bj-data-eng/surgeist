@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Pure color context is preserved when checked numeric values are composed.
 //!
 //! The selected Values 5 import admits tree-counting in container size queries.

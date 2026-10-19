@@ -1,23 +1,15 @@
-#![forbid(unsafe_code)]
-
 //! Authored integer identity is visible through existing parsed aggregate APIs.
 //! Grid and Steps preserve spelling while ignoring numeric provenance in Eq;
 //! counter integer owners preserve both spelling and provenance. Mathematical
 //! equivalence does not erase these authored distinctions. These tests use no
 //! newly added integer type, constructor or accessor.
 
+use crate::css::support::counted_style_declaration as declaration;
 use crate::css::support::descriptor_phases;
 use descriptor_phases::*;
 
 use std::fmt::Debug;
 use surgeist_css::*;
-
-fn declaration(source: &str) -> CssDeclaration {
-    let report = parse_style_attribute(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 1);
-    report.syntax()[0].clone()
-}
 
 fn counter(source: &str) -> CssCounterStyleRule {
     let report = parse_sheet(source);

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing-API retention expectations from selected Nesting 1 section 3.1:
 //! invalid forgiving items containing an actual ampersand delimiter survive
 //! exactly as authored. Their preservation does not make invalid source clean.

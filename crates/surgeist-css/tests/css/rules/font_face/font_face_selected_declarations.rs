@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent public consumer oracles for #1086; no preimplementation RED.
 use CssFontFaceDescriptorKind as K;
 use CssSpecifiedValueSerializationErrorKind as E;

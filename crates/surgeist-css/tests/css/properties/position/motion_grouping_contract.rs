@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Motion WD20241105 offset imports the whole offset-rotate property.
 //! Values3 §2.2: reorderable combinators are not associative; a || [b || c]
 //! excludes b a c. The modifier and angle cannot straddle the distance.

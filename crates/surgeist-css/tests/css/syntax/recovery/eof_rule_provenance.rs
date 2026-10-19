@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use surgeist_css::{CssKnownProperty, CssRecoveryAction, CssRule, ErrorKind, parse_sheet};
 
 // The public nesting-limit contract identifies the enclosing grammar production.

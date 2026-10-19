@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Variables1 CR20220616 §§2/2.2 supplies every literal intrinsic fact and
 //! the empty-authored-value versus guaranteed-invalid-initial distinction.
 

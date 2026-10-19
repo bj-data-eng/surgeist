@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Values 4 §10.9 retains dimensional percentage hints after powers cancel;
 //! Typed OM §4.3.2 matches such Numbers only where percentages are permitted.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking

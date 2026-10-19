@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Raw values use font-face grammar without inventing a descriptor-name occurrence.
 //! Unicode-range expectations follow CSS Syntax 3 section 7.1.
 

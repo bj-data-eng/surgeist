@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! This outer test executes against the existing public API and requires the
 //! external consumer to compile and complete the independent behavioral cases.
 //! Before the property metadata API exists, its failure is nested consumer

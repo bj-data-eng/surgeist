@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored nesting follows CSS Nesting WD20260122 sections 3.1 and 4, plus
 //! the selected Syntax 3 block-contents definition at revision f971255463f01fb.
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/

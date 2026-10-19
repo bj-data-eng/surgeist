@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Independent expectations: pinned Fonts 4 WD (2026-09-07) §§2.8.1–2.8.5,
 //! especially the four-column shorthand expansion table. Source ownership:
 //! references/css-fonts-4--WD-css-fonts-4-20260907--03626a0c8565.md.

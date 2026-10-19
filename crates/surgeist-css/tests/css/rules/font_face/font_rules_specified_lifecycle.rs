@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Existing-API regression for Fonts 4 sections 4.1, 6.9 and 13.2.
 //! Fixtures use only descriptors and feature-index forms admitted before #759.
 

@@ -1,11 +1,10 @@
-#![forbid(unsafe_code)]
-
 //! CSS Text 4 §§8.1–8.2, selected 2026-08-14 Working Draft:
 //! https://www.w3.org/TR/2026/WD-css-text-4-20260814/#propdef-word-spacing
 //! https://www.w3.org/TR/2026/WD-css-text-4-20260814/#propdef-letter-spacing
 //! Both inherited properties accept `normal | <length-percentage>`; percentage
 //! resolution waits for the used font size of the current element.
 
+use crate::css::support::important_declaration as declaration;
 use surgeist_css::*;
 
 const PROPERTIES: &[(CssKnownProperty, &str, &str)] = &[
@@ -20,16 +19,6 @@ const PROPERTIES: &[(CssKnownProperty, &str, &str)] = &[
         "baseline.property.letter-spacing",
     ),
 ];
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
-}
 
 fn expanded(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
     let CssExpansion::Contributions(CssContributions::Longhands(items)) =

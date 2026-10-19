@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Supplementary public witness for the selected eager NaN-to-zero policy.
 //! At hue zero, normalized whiteness and blackness both zero leave the pure
 //! red vertex: (1, 0, 0) * (1 - 0 - 0) + 0, hence RGB (255, 0, 0).

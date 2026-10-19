@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Selected size-test policy: non-auto width retains effective auto height;
 //! auto/auto collapses to auto. Literal CSSWG resolution 7802 says two axes,
 //! so its auto/auto wording conflict remains explicit in Surgeist issue #895:

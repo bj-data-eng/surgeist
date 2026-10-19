@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Grid3 §4.2 specifies `normal | <length-percentage> | infinite`, with no
 //! nonnegative range restriction. The January 2026 publication also records
 //! the rename from `item-tolerance`; obsolete spellings are not aliases in

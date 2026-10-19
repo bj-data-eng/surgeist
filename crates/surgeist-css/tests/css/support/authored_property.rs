@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Shared execution and assertions for authored-property tests. Grammar cases,
 //! expected serializations, expansion payloads, and resource costs stay with
 //! their owning suites and are never inferred from production metadata.

@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Grid 2 (2025-03-26) §§7.3–7.3.1: decoded template strings define
 //! cell runs, equal-width rows and rectangular named regions.
 //! https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#grid-template-areas-property

@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Existing-public-API admission evidence from CSS Env 1 WD (2025-09-23) §3.
 //! A syntactically valid `env()` defers the entire known descriptor grammar.
 

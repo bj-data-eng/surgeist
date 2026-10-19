@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Easing2 WD 2024-08-29 §§2.1.1–2.1.2 define authored cardinality and
 //! unordered Number/contiguous Percentage-group grammar. These new API tests
 //! preserve authored inputs before contextual creation or computed serialization.

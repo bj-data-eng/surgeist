@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Mechanical shared-angle construction and existing Images 3 serialization.
 //! This retains exact ordinary coefficients, four units, grammar-selected zero, symbolic
 //! Angle-root math, contextual direction omission, and cumulative budgets.

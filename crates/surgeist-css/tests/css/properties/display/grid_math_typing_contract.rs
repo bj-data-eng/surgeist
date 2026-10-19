@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Grid mathematical roots and slot restrictions across authored lifecycle boundaries.
 //! Independent authorities: selected Values4 §10.3/10.5/10.6/10.9/10.12,
 //! Grid2 track-size/inflexible/fit-content grammar, accepted browser tiebreaker.

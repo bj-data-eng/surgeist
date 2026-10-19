@@ -1,35 +1,12 @@
-#![forbid(unsafe_code)]
 //! Authored `attr()` substitution follows the pinned CSS Values 5 grammar.
 //! https://www.w3.org/TR/2024/WD-css-values-5-20241111/#funcdef-attr
 //! https://www.w3.org/TR/2024/WD-css-values-5-20241111/#component-function-commas
 //! https://www.w3.org/TR/2024/WD-css-values-5-20241111/#typedef-syntax
 
+use crate::css::support::{
+    important_pair_declaration as parsed, retained_checked_declaration as checked,
+};
 use surgeist_css::*;
-
-fn parsed(property: &str, text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{property}:{text}!important"));
-    assert!(
-        report.is_clean(),
-        "{property}:{text}: {:?}",
-        report.diagnostics()
-    );
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    declaration.clone()
-}
-
-fn checked(property: CssKnownProperty, text: &str) -> CssDeclaration {
-    let components = parse_component_values(text).unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(property),
-        components.clone(),
-        CssImportance::Important,
-    )
-    .unwrap();
-    assert_eq!(declaration.value_components(), &components);
-    declaration
-}
 
 fn assert_pending(declaration: &CssDeclaration, property: CssKnownProperty, text: &str) {
     let known = declaration.known().unwrap();

@@ -1,10 +1,9 @@
-#![forbid(unsafe_code)]
-
 //! CSS Box Alignment 3, 2026-01-30, §§4.1–4.4 and 5–7:
 //! https://www.w3.org/TR/2026/WD-css-align-3-20260130/
 //! The nine authored properties retain their distinct grammars and expand to
 //! the six specified longhands before any layout-dependent interpretation.
 
+use crate::css::support::important_declaration as parsed;
 use surgeist_css::*;
 
 const CONTENT: &str = "align-content";
@@ -16,16 +15,6 @@ const JUSTIFY_SELF: &str = "justify-self";
 
 fn grammar(name: &str) -> CssPropertyGrammar {
     CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("known property {name}"))
-}
-
-fn parsed(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
 }
 
 fn accepted(name: &str, value: &str) {

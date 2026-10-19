@@ -1,8 +1,8 @@
-#![forbid(unsafe_code)]
 //! New typed Shapes APIs have functional tests alongside implementation, without
 //! preimplementation missing-symbol RED. Independent expectations follow Shapes 1
 //! CRD 2025-06-12 §§4, 6.1–6.3 and the selected authored omission/range contracts.
 
+use crate::css::support::important_checked_components as checked;
 use surgeist_css::{
     CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
 };
@@ -15,15 +15,6 @@ fn parsed(property: CssKnownProperty, text: &str) -> CssDeclaration {
     );
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     report.syntax().as_ref().unwrap().clone()
-}
-
-fn checked(property: CssKnownProperty, components: CssComponentValues) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(property),
-        components,
-        CssImportance::Important,
-    )
-    .unwrap()
 }
 
 fn outside(source: &CssDeclaration) -> &CssShapeOutside {

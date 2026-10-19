@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Backgrounds 3 CRD 2024-03-11 §5.2 and Values 4 WD 2024-03-12 §2.2:
 //! `[ <number [0,∞]> | <percentage [0,∞]> ]{1,4} && fill?` makes the
 //! repeated numeric group one component; fill can precede or follow that group.
@@ -7,23 +5,13 @@
 //! https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#border-image-slice
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#component-combinators
 
+use crate::css::support::check_property_text as checked;
 use surgeist_css::*;
 
 const PROPERTIES: [CssKnownProperty; 2] = [
     CssKnownProperty::BorderImageSlice,
     CssKnownProperty::BorderImage,
 ];
-
-fn checked(
-    property: CssKnownProperty,
-    text: &str,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
-    parse_property_value(
-        CssPropertyNameRef::Known(property),
-        parse_component_values(text).unwrap(),
-        CssImportance::Important,
-    )
-}
 
 fn parsed(property: CssKnownProperty, text: &str) -> CssDeclaration {
     let css = format!("{}: {text} !important;", property.canonical_name());

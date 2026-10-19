@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent authored text-box contract selected by Snapshot 2026 §4.
 //! Pinned Inline3 WD20241218 §6.1–6.3 supplies trim, edge, shorthand and
 //! metadata; §5.2 supplies only the imported <text-edge> grammar (1490–1494).

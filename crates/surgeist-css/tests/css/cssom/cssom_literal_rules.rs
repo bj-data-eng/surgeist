@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent literal CSSOM composition expectations; compact output stays separate.
 use std::error::Error;
 use surgeist_css::{

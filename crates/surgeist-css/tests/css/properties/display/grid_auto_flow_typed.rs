@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Current authored grid-auto-flow model. Grid 2 (2025-03-26) §7.7 supplies
 //! axis/dense ordering; Grid 3 (2026-01-21) §2.3 and the recorded WebKit choice
 //! supply symbolic normal and bare dense without choosing a layout direction.

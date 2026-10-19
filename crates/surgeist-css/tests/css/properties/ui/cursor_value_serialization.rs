@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional coverage for the direct cursor model and its new specified provider.
 //! UI 4 WD 2026-01-20 §5.1.1 owns the complete authored Number pair and fallback.
 //! Images 4 WD 2025-09-30 §§2.4, 8 and Appendix A own URL/string alternatives,

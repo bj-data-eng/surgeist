@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use surgeist_css::{
     CssCalculationExpressionRef, CssCalculationType, CssCalculationValueRef, CssComponentValue,
     CssComponentValueRef, CssFlexCalculation, CssGridAutoRepeat, CssGridAutoRepeatKind,

@@ -1,23 +1,15 @@
-#![forbid(unsafe_code)]
 //! Functional evidence for the new checked Filter Effects 1 §12 image APIs.
 //! String execution interpretation remains undefined by the selected draft.
 //! Independent structural limits and adopted provider tariffs are authored contracts.
 
 use crate::css::support::descriptor_phases;
+use crate::css::support::normal_checked_declaration as declaration;
 use descriptor_phases::*;
 
 use surgeist_css::{
     CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
 };
 
-fn declaration(property: CssKnownProperty, text: &str) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(property),
-        parse_component_values(text).unwrap(),
-        CssImportance::Normal,
-    )
-    .unwrap()
-}
 fn list(text: &str) -> CssFilterFunctionList {
     let source = declaration(CssKnownProperty::Filter, text);
     let CssKnownPropertyValueRef::Filter(value) = source.known().unwrap().property_value().unwrap()

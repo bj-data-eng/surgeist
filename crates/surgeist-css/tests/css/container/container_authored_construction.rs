@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! New checked construction uses pinned Conditional Rules 5 sections 5.4 and
 //! 9.1: grouping and operators are retained without boolean simplification.
 use surgeist_css::*;

@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Existing-public-API composition witnesses, independently authored.
 //! Values4 WD20240312 §§2.2–2.6, 4.2, 5–6, 8.3, 10.11; Syntax3
 //! CRD20211224 §§3.3, 4.3.5; selected Fonts4 WD20260907 §§2.1.1, 2.7;

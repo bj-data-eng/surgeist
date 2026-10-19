@@ -1,24 +1,14 @@
-#![forbid(unsafe_code)]
-
 //! Checked `clip` construction and specified serialization per CSS Masking 1
 //! Appendix A, selected 2021-08-05 Candidate Recommendation Draft:
 //! https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/#propdef-clip
 //! CSS Values 4 §10.13 defines canonical calculation serialization:
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-serialize
 
+use crate::css::support::style_declaration_reporting_source as parsed;
 use surgeist_css::*;
 
 fn edge(value: CssSpecifiedLength) -> CssClipEdge {
     CssClipEdge::Length(value)
-}
-
-fn parsed(source: &str) -> CssDeclaration {
-    let report = parse_style_attribute(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
 }
 
 fn parsed_clip(declaration: &CssDeclaration) -> &CssClip {

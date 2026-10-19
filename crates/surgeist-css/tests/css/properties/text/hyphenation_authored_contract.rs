@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored hyphenation contract through existing public front doors.
 //!
 //! Text4 WD20260814 tables 2734–2957 and clauses 2839–2847, 2908–2914;

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Reexecute one integration test and join its explicitly sized worker before
 //! reporting completion. Workloads and their expectations remain in callers.
 //! Run callers through the repository bounded process wrapper so an abort or

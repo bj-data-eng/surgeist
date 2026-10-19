@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Characterization of the accepted canonical-group selector contract. These
 //! independent goldens retain repetition within each group and do not claim
 //! exact upstream CSSOM conformity for mixed authored category order.

@@ -1,6 +1,5 @@
 //! Original corpus behavior under selected Fonts4 section 6.9.2/frozen WebKit.
 //! The normative section 6.9.1 / 6.9.2 conflict remains unresolved.
-#![forbid(unsafe_code)]
 
 use crate::css::support::descriptor_phases;
 use descriptor_phases::*;

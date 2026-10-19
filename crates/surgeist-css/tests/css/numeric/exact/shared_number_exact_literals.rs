@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Exact authored numeric admission through the existing public parser.
 //!
 //! Exact decimal retention is the adopted Surgeist authored-value contract.

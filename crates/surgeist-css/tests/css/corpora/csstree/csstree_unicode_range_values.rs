@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Original-token Unicode-range expectations from pinned Syntax 3 section 7.1.
 //! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#urange-syntax
 use surgeist_css::{

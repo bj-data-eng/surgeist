@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Strict checked property/grammar admission must reject original recovered
 //! delimiters, including trivia, whole-value globals and pending substitution.
 //! This uses the existing timing_component_closure_contract.rs provenance oracle:

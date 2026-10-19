@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional evidence for the adopted Values 5 symbolic-position contract.
 //! These wholly new models have no executable preimplementation RED. The oracle
 //! is the adopted grammar, checked construction and cumulative resource contract,

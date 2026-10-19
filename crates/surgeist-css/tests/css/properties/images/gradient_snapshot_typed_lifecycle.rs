@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional new-API contracts from Images 4 WD 2025-09-30 §§3.1–3.5,
 //! the specific Values 5 WD 2024-11-11 position import, and shared Color 4/5.
 //! New construction APIs have no executable preimplementation boundary.

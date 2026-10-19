@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent authored selector-provider expectations. Rule traversal is separate.
 use surgeist_css::{
     CssNamespaceContext, CssPseudoClass, CssPseudoSelectorList, CssRule, CssSelector,

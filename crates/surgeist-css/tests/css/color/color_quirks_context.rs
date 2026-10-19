@@ -1,6 +1,6 @@
-#![forbid(unsafe_code)]
 //! Color4 CRD20260908 Appendix B, selected raw-representation disposition.
 //! Functional new-API evidence with implementation; no missing-symbol RED.
+use crate::css::support::{contextual_checked_declaration as checked, known_property as property};
 use surgeist_css::*;
 const QUIRKS: CssParserContext = CssParserContext::new(CssParserMode::Quirks);
 const NAMES: [&str; 7] = [
@@ -26,18 +26,6 @@ const GOLDENS: &[(&str, &str, &str)] = &[
     ("0001FF", "0001FF", "rgb(0, 1, 255)"),
     ("123abc", "123abc", "rgb(18, 58, 188)"),
 ];
-fn property(name: &str) -> CssKnownProperty {
-    CssKnownProperty::from_name(name).unwrap()
-}
-fn checked(context: CssParserContext, name: &str, text: &str) -> CssDeclaration {
-    context
-        .parse_property_value_for_grammar(
-            property(name).grammar(),
-            parse_component_values(text).unwrap(),
-            CssImportance::Important,
-        )
-        .unwrap()
-}
 fn color(source: &CssDeclaration) -> &CssColor {
     match source.known().unwrap().property_value().unwrap() {
         CssKnownPropertyValueRef::Color(v) => v.value(),

@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Independent checked authored-value cases for the selected Overflow 3 controls.
 
 use surgeist_css::*;

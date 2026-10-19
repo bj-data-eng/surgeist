@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 use surgeist_css::{
     CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssRule, parse_page_block, parse_sheet,
 };

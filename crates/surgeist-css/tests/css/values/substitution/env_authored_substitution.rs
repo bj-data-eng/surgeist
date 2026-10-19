@@ -1,22 +1,10 @@
-#![forbid(unsafe_code)]
 //! Env1/Variables1 family-qualified pending values retain authored syntax.
 //! https://www.w3.org/TR/2025/WD-css-env-1-20250923/#env-function
 //! https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#using-variables
 //! https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#syntax
+use crate::css::support::important_pair_declaration as parsed;
 use surgeist_css::*;
 
-fn parsed(property: &str, text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{property}:{text}!important"));
-    assert!(
-        report.is_clean(),
-        "{property}:{text}: {:?}",
-        report.diagnostics()
-    );
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    declaration.clone()
-}
 fn checked(text: &str) -> CssDeclaration {
     let components = parse_component_values(text).unwrap();
     let declaration = parse_property_value(

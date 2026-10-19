@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Values 4 WD 2024-03-12 §5 requires an angle exceeding the supported
 //! implementation range to convert to the nearest supported multiple of 360deg.
 //! Every such finite multiple has cosine 1 and sine 0; these tests do not select

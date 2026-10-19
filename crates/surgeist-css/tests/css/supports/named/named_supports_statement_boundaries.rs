@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Conditional 5 §8 selects modern block contents, including nested at-rule
 //! termination at a real parent close. Checked output may supply a semicolon.
 

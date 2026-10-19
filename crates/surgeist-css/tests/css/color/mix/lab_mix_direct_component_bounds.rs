@@ -1,28 +1,17 @@
-#![forbid(unsafe_code)]
 //! Color4 CRD 2026-09-08 §§9.3/9.4 direct parsed L/C domains, applied to
 //! individual ordinary Mix colors by Color5 WD 2026-09-08 §11.1. Actual
 //! Origin/relative and Values4 WD 2024-03-12 calculated slots retain their
 //! distinct roles. Expectations are exact domain/scale and resource oracles,
 //! not browser output or values copied from the implementation under test.
 
+use crate::css::support::{
+    checked_color_declaration as declaration, component_values as components,
+};
 use surgeist_color::{ColorSpace, HueInterpolation};
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-
-fn components(source: &str) -> CssComponentValues {
-    parse_component_values(source).unwrap()
-}
-
-fn declaration(source: &str) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        components(source),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("{source}: {error:?}"))
-}
 
 fn declared_color(value: &CssDeclaration) -> &CssColor {
     let CssKnownPropertyValueRef::Color(value) = value.known().unwrap().property_value().unwrap()

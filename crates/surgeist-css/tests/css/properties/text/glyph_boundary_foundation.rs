@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Writing Modes 3 §5.1.3 legacy glyph alias boundary. The five listed
 //! terminal mappings are explicit; numeric-terminal spelling and math
 //! applicability remain unresolved under CSSWG issue 8032.

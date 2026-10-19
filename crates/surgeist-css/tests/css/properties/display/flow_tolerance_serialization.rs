@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Grid3 #placement-tolerance specifies signed length-percentage and symbolic
 //! keywords. Canonical scalar outputs follow the shared specified-value contract.
 //! Determinate math keeps a calc wrapper, as independently specified by

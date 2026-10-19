@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional coverage of the new Containment2 Style component and generated
 //! borrowed Contain longhand. The published contain_authored_contract suite
 //! owns existing-callable RED; these typed symbols did not exist there.

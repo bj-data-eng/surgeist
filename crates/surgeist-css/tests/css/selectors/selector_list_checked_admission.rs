@@ -1,8 +1,8 @@
-#![forbid(unsafe_code)]
 //! Intrinsic admission through the existing ordinary, complex-real and general
 //! relative list factories. Literal grammar expectations use selected Selectors 4
 //! and the adopted Shadow compound-context restriction.
 
+use crate::css::support::validated_selector as parsed;
 use surgeist_css::{
     CssCompoundSelectorArgument, CssErrorCode, CssNamespaceContext, CssNthChildPattern,
     CssNthPattern, CssPseudoClass, CssPseudoSelectorList, CssPseudoSelectorListItem,
@@ -10,12 +10,6 @@ use surgeist_css::{
     CssSelectorCombinator, CssSelectorList, CssSpecifiedValueSerializationErrorKind, ErrorKind,
     parse_selector, parse_selector_list,
 };
-
-fn parsed(source: &str) -> CssSelector {
-    let report = parse_selector(source, &CssNamespaceContext::default());
-    assert!(report.is_clean(), "{source:?}: {report:?}");
-    report.into_validation_result().unwrap().unwrap()
-}
 
 fn class() -> CssSelector {
     CssSelector::Class("One".into())

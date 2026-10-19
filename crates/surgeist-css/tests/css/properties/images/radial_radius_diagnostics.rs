@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Rejected radial radii identify the responsible argument, preserving recovery.
 //! The public diagnostic contract uses original UTF-8 offsets and UTF-16 columns.
 

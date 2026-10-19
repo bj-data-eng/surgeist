@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Supplemental public authored-graph composition contracts.
 //! CSS Syntax 3 sections 9.3/10, CSSOM 1 number/percentage serialization,
 //! Animations 1 keyframe endpoint equivalence, MQ4 member-local recovery,

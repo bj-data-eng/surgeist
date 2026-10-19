@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Mode-specific membership uses selected Logical 1 side assignments and the
 //! explicit Surgeist no-complementary-reset policy. It never exposes an eight-
 //! member union or an unqualified default footprint as fixed shorthand metadata.

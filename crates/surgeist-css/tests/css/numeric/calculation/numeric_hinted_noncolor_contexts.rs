@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing percentage-permitting consumers must accept Number results with
 //! unresolved hints without evaluating the percentage basis.
 //! Transforms 2 WD 2021-11-09 §§5/12.1/12.2 admit percentages in all

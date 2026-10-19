@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Values4 Appendix C: retained Number tokens have a distinct pixel interpretation.
 use surgeist_css::*;
 

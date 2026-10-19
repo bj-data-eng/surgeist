@@ -1,10 +1,12 @@
-#![forbid(unsafe_code)]
 //! Animations 1 WD 2023-03-02 §§3.2–3.10 supplies list admission, initials,
 //! omission defaults and keyword/time-slot priority; Easing 1 CRD 2023-02-13
 //! supplies easing admission. Cascade 5 CR 2022-01-13 §3.1 supplies shorthand
 //! propagation. Exact child provenance, ordered intrinsic contributions and
 //! bounded atomic failures are Surgeist contracts, before contextual execution.
 
+use crate::css::support::{
+    checked_property_grammar_declaration as checked, style_declaration as parsed,
+};
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -20,22 +22,6 @@ const MEMBERS: [P; 8] = [
 ];
 const INITIALS: [&str; 8] = ["0s", "ease", "0s", "1", "normal", "none", "running", "none"];
 
-fn parsed(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    source.clone()
-}
-fn checked(property: P, css: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        property.grammar(),
-        parse_component_values(css).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap()
-}
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
         expand_declaration(source).unwrap()

@@ -1,23 +1,14 @@
-#![forbid(unsafe_code)]
 //! Functional Backgrounds 3 list lifecycle and specified serialization.
 //! https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/
 //! CSSOM 1 §6.7.2 requires shorter equivalents subject to property-specific exceptions.
 //! https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-value
 //! Size height exception: https://github.com/w3c/csswg-drafts/issues/7802#issuecomment-2770612154
 
+use crate::css::support::style_declaration as declaration;
 use surgeist_css::{
     CssBackgroundRepeatStyle as R, CssSpecifiedValueSerializationErrorKind as E,
     CssSpecifiedValueSerializationLimits as L, *,
 };
-
-fn declaration(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    source.clone()
-}
 
 fn size(css: &str) -> CssBackgroundSizeList {
     let source = declaration(&format!("background-size:{css}"));

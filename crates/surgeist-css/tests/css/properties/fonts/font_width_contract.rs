@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Exact authored font-width contracts from CSS Fonts 4 WD 2026-09-07 §§2.3, 2.7.
 
 use surgeist_css::*;

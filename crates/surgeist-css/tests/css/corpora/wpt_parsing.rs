@@ -1,8 +1,6 @@
 //! Reviewed literal WPT adaptations at the ordinary recovering parser boundary.
 //! Source-only CSSOM and execution assertions remain explicitly deferred data.
 
-#![forbid(unsafe_code)]
-
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;

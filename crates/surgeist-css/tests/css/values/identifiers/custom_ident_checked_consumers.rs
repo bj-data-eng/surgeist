@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Checked name owners separate Values 4 identifier validity from the extra
 //! exclusions in Animations 1, Transitions 1, and Grid 1.
 

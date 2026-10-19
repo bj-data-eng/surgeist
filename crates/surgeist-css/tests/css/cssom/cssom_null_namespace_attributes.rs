@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Test-only runtime checkpoint for #1020. Selected CSSOM20261009
 //! #serialize-a-simple-selector attribute step2 emits a namespace separator
 //! only for a nonnull namespace. Wildcard spelling and compact authored output

@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! CSS Env 1 WD 2025-09-23 §3 assumes the entire descriptor grammar valid
 //! when its env functions are syntactically valid. Syntax 3 CRD 2021-12-24 §8.2
 //! permits matched blocks in declaration-value, while excluding unmatched

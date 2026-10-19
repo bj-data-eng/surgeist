@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Values 4 (2024-03-12) §§4.5–4.5.3: URL modifiers are identifiers or
 //! functional notation; their unknown arguments remain authored syntax.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#url-modifiers

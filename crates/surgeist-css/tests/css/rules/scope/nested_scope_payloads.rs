@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored scoped runs preserve declarations and nearest-style identity without
 //! retargeting that style's selectors to newly entered scopes.
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nested-declarations-rule

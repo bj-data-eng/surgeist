@@ -1,8 +1,10 @@
-#![forbid(unsafe_code)]
-
 //! Authored sizing values from Sizing 3 (2026-09-04) §§3.1–3.2, Sizing 4
 //! (2026-09-04) §3.2, and its Values 5 (2024-11-11) §10 dependency.
 
+use crate::css::support::{
+    checked_grammar_declaration as checked, important_declaration as declaration,
+    selected_grammar as grammar,
+};
 use surgeist_css::*;
 
 const PREFERRED: &[&str] = &["width", "height", "inline-size", "block-size"];
@@ -21,29 +23,6 @@ const MAXIMUM: &[&str] = &[
 
 fn names() -> impl Iterator<Item = &'static str> {
     PREFERRED.iter().chain(MINIMUM).chain(MAXIMUM).copied()
-}
-
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("selected property: {name}"))
-}
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
-}
-
-fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"))
 }
 
 fn accepted(name: &str, value: &str) {

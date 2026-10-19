@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! New-operation evidence: CSSOM WD 2021-08-26 §§6.5–6.7, Variables 1
 //! §3.2/§4, Cascade 5 §3, Logical 1 §4, and the adopted intrinsic tariff.
 //! Expected bytes and counts are authored from those contracts, not captured.

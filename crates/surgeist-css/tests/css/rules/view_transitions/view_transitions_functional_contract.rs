@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent new-API functional contract. VT1 CRD20240328 §§2.1,3.1,3.2,
 //! Values4 custom-ident and selected Selectors4 attachment/context contracts.
 //! New typed APIs establish functional behavior without absent-symbol RED.

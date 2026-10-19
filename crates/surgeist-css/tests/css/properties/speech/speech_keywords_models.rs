@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! New authored models and specified serialization from Speech 1 §§7.1–7.2.
 //! These tests accompany functional new APIs; preimplementation parser RED is
 //! retained separately in speech_keywords_lifecycle.rs.

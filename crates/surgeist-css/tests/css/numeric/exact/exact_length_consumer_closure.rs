@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! The selected property grammars retain exact scalar owners and authored shape.
 //! Ordinary signedness and dimensional requirements follow the pinned Values 4
 //! numeric definitions and the existing CSS2, Images 3, Transforms 2, Filter

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Syntax 3 exact-one admission, with CSS-owned typed grammar and inner recovery.
 use surgeist_css::{
     CssErrorCode, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssRecoveryAction,

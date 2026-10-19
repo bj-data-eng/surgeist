@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Ordinary authored Lab/LCH/Oklab/Oklch from Color 4 CRD 2026-09-08 §§9.3–9.4,
 //! with selected specified projection contracts from §§16.3–16.4 and the
 //! repository's css-color-4-lab-ok-calculated-range-phase disposition.
@@ -8,6 +7,7 @@
 //! Explicit numeric oracles use Lab scales 100/125/150 and OK scales 1/0.4,
 //! degree conversion and the selected direct bounds, never captured output.
 
+use crate::css::support::parsed_color as parsed;
 use surgeist_css::*;
 
 const FAMILIES: [&str; 4] = ["lab", "lch", "oklab", "oklch"];
@@ -99,26 +99,6 @@ fn constructed(family: &str, channels: [&str; 3], alpha: Option<&str>) -> CssCol
         }
         _ => panic!("unknown test family {family}"),
     }
-}
-
-fn parsed(text: &str) -> CssColor {
-    let source = format!("color:{text}");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 1, "{source}");
-    assert_eq!(validate_style_attribute(&source).unwrap(), *report.syntax());
-    let declaration = &report.syntax()[0];
-    let CssValueOrigin::Parsed(origin) = declaration.value_components().items()[0].origin() else {
-        panic!("parsed function origin: {source}");
-    };
-    assert_eq!(origin.source().as_str(), source);
-    assert_eq!(origin.span().start().byte_offset().value(), 6);
-    let CssKnownPropertyValueRef::Color(value) =
-        declaration.known().unwrap().property_value().unwrap()
-    else {
-        panic!("typed color: {source}");
-    };
-    value.value().clone()
 }
 
 fn assert_origin(origin: &CssValueOrigin, text: &str) {

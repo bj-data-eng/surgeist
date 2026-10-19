@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use surgeist_css::*;
 
 fn parsed_color(text: &str) -> CssColor {

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Public recovery and round-trip contracts from CSS Syntax 3 §§3,9–10.
 use surgeist_css::{
     CssComponentValue, CssComponentValueRef, CssComponentValues, CssCustomPropertyName,

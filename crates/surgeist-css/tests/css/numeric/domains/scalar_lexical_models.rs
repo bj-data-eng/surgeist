@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Ordinary authored scalar transport preserves checked tokens at every magnitude.
 use surgeist_css::*;
 

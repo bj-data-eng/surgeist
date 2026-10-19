@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use surgeist_css::{
     CssBoxSideKind, CssComponentValue, CssComponentValueRef, CssLengthPercentageCalculation,
     CssMarginPair, CssMarginShorthand, CssMarginValue, CssPaddingPair, CssPaddingShorthand,

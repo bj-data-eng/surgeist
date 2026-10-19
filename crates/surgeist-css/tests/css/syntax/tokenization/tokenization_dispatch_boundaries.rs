@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! CSS Syntax 3 CRD (2021-12-24), §§3.3, 4.3.1, 4.3.3 and 4.3.9:
 //! a hyphen followed by backslash-newline does not start an identifier. The
 //! at-keyword and dimension dispatch branches must leave that hyphen for the

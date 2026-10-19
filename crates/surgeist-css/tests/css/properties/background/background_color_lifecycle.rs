@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Backgrounds 3 (2024-03-11), §2.2: background-color is a noninherited
 //! <color> longhand with transparent initial. This suite exercises existing
 //! lifecycle boundaries for the currently supported checked color grammar.
@@ -6,16 +5,8 @@
 //! Typed initial and new borrowed contribution variants are supplementary
 //! functional tests after implementation, not compilation-failure RED.
 
+use crate::css::support::style_declaration as declaration;
 use surgeist_css::*;
-
-fn declaration(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    source.clone()
-}
 
 fn color(source: &CssDeclaration) -> &CssColor {
     let CssKnownPropertyValueRef::BackgroundColor(value) =

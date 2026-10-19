@@ -1,7 +1,6 @@
-#![forbid(unsafe_code)]
-
 //! Public authored font-variant contracts from CSS Fonts 4 WD 2026-09-07 §§6.4–6.11.
 
+use crate::css::support::important_declaration as parsed;
 use surgeist_css::*;
 
 const LONGHANDS: [&str; 7] = [
@@ -16,16 +15,6 @@ const LONGHANDS: [&str; 7] = [
 
 fn grammar(name: &str) -> CssPropertyGrammar {
     CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("known grammar: {name}"))
-}
-
-fn parsed(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
 }
 
 fn checked(name: &str, value: &str) -> CssDeclaration {

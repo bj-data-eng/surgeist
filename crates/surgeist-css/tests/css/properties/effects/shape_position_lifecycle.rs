@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Shapes 1 CRD 2025-06-12 §3.1 imports Values 5 WD 2024-11-11
 //! §4.2/4.2.1: https://www.w3.org/TR/2024/WD-css-values-5-20241111/#position
 //! The independent grammar oracle admits Cartesian and named-flow one/two/four

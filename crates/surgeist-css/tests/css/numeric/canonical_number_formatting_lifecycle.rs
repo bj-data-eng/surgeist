@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Ordinary CSSOM number text has at most six fractional places (CSSOM
 //! WD 2021-08-26, component serialization). Decimal halfway direction is the
 //! selected frozen WebKit FIXED policy: nearest, ties away from zero.

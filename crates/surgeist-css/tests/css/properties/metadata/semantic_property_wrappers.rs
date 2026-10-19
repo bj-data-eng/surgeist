@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Public semantic accessors preserve authored identity and symbolic branches.
 use surgeist_css::*;
 

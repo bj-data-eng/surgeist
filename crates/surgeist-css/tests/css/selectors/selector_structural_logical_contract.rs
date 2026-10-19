@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored Selectors 4 grammar through existing public parse, checked-name,
 //! checked-compound and specified-output boundaries. Literal expectations follow
 //! the selected 2026-01-22 grammar and Syntax 3, not captured provider output.

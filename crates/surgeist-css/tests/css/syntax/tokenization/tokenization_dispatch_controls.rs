@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Positive dispatch characterization from the pinned CSS Syntax 3 CRD
 //! (2021-12-24), §§4.3.1–4.3.2 and §5.4.8. Comments are consumed before
 //! dispatch; a contiguous whitespace run yields one token; punctuation has

@@ -1,14 +1,7 @@
-#![forbid(unsafe_code)]
 //! Public authored contracts from Color5 color-mix and Values4 calc-range.
+use crate::css::support::color_declaration as parsed;
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 use surgeist_css::*;
-
-fn parsed(text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("color:{text}"));
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 1);
-    report.syntax()[0].clone()
-}
 
 fn checked_components(values: CssComponentValues) -> CssDeclaration {
     let declaration = parse_property_value(

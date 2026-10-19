@@ -1,8 +1,7 @@
-#![forbid(unsafe_code)]
-
 //! Authored font reset dependencies from pinned CSS Fonts 4 WD 2026-09-07,
 //! §§2.6, 4.6, 6.3, 6.12, 6.13, 8.1 and 8.2.
 
+use crate::css::support::important_declaration as declaration;
 use surgeist_css::*;
 
 const PROPERTIES: [(&str, &str); 6] = [
@@ -16,16 +15,6 @@ const PROPERTIES: [(&str, &str); 6] = [
 
 fn grammar(name: &str) -> CssPropertyGrammar {
     CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("known grammar: {name}"))
-}
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
 }
 
 fn one_contribution(source: &CssDeclaration) -> CssLonghandValue {

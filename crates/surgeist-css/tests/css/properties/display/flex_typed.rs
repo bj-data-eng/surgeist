@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Public checked flex construction and intrinsic specified-value behavior.
 
 use surgeist_css::*;

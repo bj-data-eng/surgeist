@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional expectations for the new general relative-list front door.
 //! Selected Selectors 4 sections 3.4, 16 and 17.2 define relations, grammar and
 //! atomic contextual rejection. Has attachment retains its narrower context.

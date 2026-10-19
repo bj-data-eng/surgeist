@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent exact fixtures for the 19 ordinary / 17 scoped variants at
 //! 31dd36b7. Scope boundary grammar is covered by scope_complete_lifecycle.
 use surgeist_css::{CssRule, parse_sheet};

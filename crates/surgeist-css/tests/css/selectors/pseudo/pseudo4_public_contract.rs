@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Additive API functional draft; run only after the selected identities exist.
 //! Pseudo4 WD20250627 §§2.2/3.1/4/5/7.1, referenced Values4 custom-ident and
 //! Selectors4 suffix restrictions own these symbolic authored expectations.

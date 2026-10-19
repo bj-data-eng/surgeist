@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! CSS Fonts 4 WD (2026-09-07) §2.7: `font` sets seven longhands and resets
 //! twelve others. These expectations follow the pinned specification's two
 //! named groups, not the current shorthand implementation.

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Text4 2026-08-14: mode/style 1530-1538/1744-1752, text-wrap 1910-1932;
 //! collapse/trim 803-811/912-920, white-space 653-702, word-break 1986-1994.
 //! The source determines membership, keyword sets, inheritance and initials.

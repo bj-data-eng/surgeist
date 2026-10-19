@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Selected Syntax 3, Variables 1 and Filter Effects 1 declaration admission.
 //! Expectations derive from the original input, independently of the corpus oracle.
 use surgeist_css::{CssErrorCode, CssRecoveryAction, parse_declaration};

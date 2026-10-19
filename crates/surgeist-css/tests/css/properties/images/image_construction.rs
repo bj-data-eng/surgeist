@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Checked construction for Images 3 §3 and Values 4 generic `<position>`.
 //! https://www.w3.org/TR/2023/CRD-css-images-3-20231218/#gradients
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#position

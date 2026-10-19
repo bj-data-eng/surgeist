@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Text4 WD20260814 #propdef-text-transform and Values4 §2.2 supply grammar,
 //! none initial and inheritance. Canonical case/width/kana order and transparent
 //! emitted-keyword pricing are explicit product selections, not normative

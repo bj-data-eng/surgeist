@@ -1,27 +1,16 @@
-#![forbid(unsafe_code)]
 //! Color 4 CRD 2026-09-08 §16.2.2 chooses a missing-preserving sRGB form
 //! for any missing component, including alpha. Explicit values below use exact
 //! no-tie scales; grammar reentry is additional evidence, not the text oracle.
 //! Color 5 WD 2026-09-08 keeps direct origins in their authored domains, while
 //! ordinary mix children still use ordinary specified serialization.
 
+use crate::css::support::{
+    checked_color_declaration as declaration, component_values as components,
+};
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-
-fn components(source: &str) -> CssComponentValues {
-    parse_component_values(source).unwrap()
-}
-
-fn declaration(source: &str) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        components(source),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("{source}: {error:?}"))
-}
 
 fn declared_color(value: &CssDeclaration) -> &CssColor {
     let CssKnownPropertyValueRef::Color(value) = value.known().unwrap().property_value().unwrap()

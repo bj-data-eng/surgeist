@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Conditional Rules 5 §8 definition placement and Syntax block-context admission.
 
 use surgeist_css::{

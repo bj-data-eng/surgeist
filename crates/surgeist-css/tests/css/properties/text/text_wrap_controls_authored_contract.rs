@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing-public-API authored wrapping control contract.
 //! Text4 WD20260814 #propdef-wrap-inside (1602–1622), #propdef-wrap-before /
 //! #propdef-wrap-after (1680–1736), #propdef-line-break (2486–2521) supply
@@ -14,6 +13,10 @@
 //! Nested breaking, flex/forced propagation, language and white-space execution
 //! remain contextual. This group neither changes nor certifies #53 constituents.
 
+use crate::css::support::{
+    authored_checked_declaration as checked, authored_parsed_declaration as parsed,
+    authored_property_named as property,
+};
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -39,21 +42,12 @@ fn keywords(name: &str) -> &'static [&'static str] {
         _ => panic!("selected finite grammar"),
     }
 }
-fn property(name: &str) -> P {
-    P::from_name(name).unwrap_or_else(|| panic!("authored property unavailable: {name}"))
-}
-fn parsed(name: &str, value: &str) -> CssDeclaration {
-    authored_property::parsed(property(name), value)
-}
 fn checked_components(
     name: &str,
     value: CssComponentValues,
     grammar: bool,
 ) -> Result<CssDeclaration, CssPropertyValueParseError> {
     authored_property::checked_components(property(name), value, grammar, CssImportance::Important)
-}
-fn checked(name: &str, value: &str, grammar: bool) -> CssDeclaration {
-    authored_property::checked(property(name), value, grammar)
 }
 fn fronts(name: &str, text: &str) -> [CssDeclaration; 5] {
     authored_property::fronts(property(name), text)

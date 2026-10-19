@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional new-API checks from Values 5 WD 2024-11-11 §4.1.1.
 //! https://www.w3.org/TR/2024/WD-css-values-5-20241111/#request-url-modifiers
 //! The constructor and inspection API retain authored request syntax, without

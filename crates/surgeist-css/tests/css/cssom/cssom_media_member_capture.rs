@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Ordered captures for the selected CSSOM MediaList byte-comparison algorithm.
 use surgeist_css::{
     CssMediaCssomSerializationError, CssSerializedOrigin,

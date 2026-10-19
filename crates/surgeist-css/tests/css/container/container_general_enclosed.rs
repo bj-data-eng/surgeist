@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Conditional 5 section 5.4 admits general-enclosed query operands. MQ4
 //! section 3 permits empty any-value contents; unknown syntax stays symbolic.
 use surgeist_css::{

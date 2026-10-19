@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Pure length consumers re-admit authored math in their own percentage context.
 //! Values 4 numeric typing permits percentage units to cancel without a basis.
 use surgeist_css::*;

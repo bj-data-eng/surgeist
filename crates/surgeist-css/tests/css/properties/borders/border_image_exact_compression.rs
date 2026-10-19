@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! CSSOM WD 2021-08-26 §6.7.2 selects shorter component lists before
 //! component serialization; its number clause allows six fractional places.
 //! Backgrounds 3 CRD 2024-03-11 §§5.2–5.4 defines quad expansion.

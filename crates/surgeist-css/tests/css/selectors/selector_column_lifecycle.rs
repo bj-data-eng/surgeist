@@ -1,13 +1,7 @@
-#![forbid(unsafe_code)]
 //! Literal selected Selectors 4 grammar expectations for the new Column model,
 //! its existing authored providers and cumulative specified-output boundary.
+use crate::css::support::validated_selector_in as parsed;
 use surgeist_css::*;
-
-fn parsed(source: &str, namespaces: &CssNamespaceContext) -> CssSelector {
-    let report = parse_selector(source, namespaces);
-    assert!(report.is_clean(), "{source:?}: {report:?}");
-    report.into_validation_result().unwrap().unwrap()
-}
 
 fn complex(selector: &CssSelector) -> &CssComplexSelector {
     let CssSelector::Complex(value) = selector else {

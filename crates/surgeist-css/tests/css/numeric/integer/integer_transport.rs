@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Display3 2026-06-05 §3 defines order:<integer>, initial 0, noninherited.
 //! Values4 2024-03-12 §§5/5.2 define integer spelling; finite implementation
 //! ranges are permitted. Exact ordinary transport and lexical provenance

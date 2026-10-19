@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Fonts 4 (2026-09-07) §§4.9.1, 6.9.1 and 6.9.2, with the selected exact
 //! integer/cardinality policy. Literal payload/origin assertions are primary.
 

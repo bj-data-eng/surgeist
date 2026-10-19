@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing public boundaries for Speech 1 §§6.1–6.2 and Values 4 Number math.
 //! https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/#mixing-props
 //! Authored values remain distinct from computed clamping and audio calibration.

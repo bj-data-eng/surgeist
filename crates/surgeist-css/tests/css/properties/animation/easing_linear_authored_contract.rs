@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Transitions 1 WD 2026-01-08 imports Easing 2 WD 2024-08-29 §2.1.1:
 //! Number && Percentage{1,2}?, with at least two authored stops (§2.1.2).
 //! These specified-value contracts preserve omissions and symbolic inputs;

@@ -1,18 +1,9 @@
-#![forbid(unsafe_code)]
 //! Specified opacity transport preserves symbolic values and declaration identity.
 //! Oracle: catalog-pinned Color 4 (2026-09-08), §§3.2–3.3; existing intrinsic
 //! expansion/normalization contracts. Values below are specified, not computed.
 //! Raw authored text assertions do not claim canonical serialization (§17).
+use crate::css::support::style_declaration as declaration;
 use surgeist_css::*;
-
-fn declaration(source: &str) -> CssDeclaration {
-    let report = parse_style_attribute(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [value] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    value.clone()
-}
 
 fn ordinary(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =

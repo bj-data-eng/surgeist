@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Grid track-size admission through the public property boundary.
 //! Grid 2 (2025-03-26): https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#typedef-track-size
 //! Grid 2 SHA256: 05aa64853c4428146973943b35caf121e44c1076bdf5b8c29f8896dba9b778e2

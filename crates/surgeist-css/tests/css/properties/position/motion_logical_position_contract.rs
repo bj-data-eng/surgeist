@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Motion WD2024-11-05 imports Values5 WD2024-09-17 §4.2 directly at
 //! offset-position, offset-anchor and ray's at-position. These tests exercise
 //! existing public callers, with independent one/two/four-component oracles.

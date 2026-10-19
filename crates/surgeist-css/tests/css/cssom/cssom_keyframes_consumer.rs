@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Literal expectations from CSSOM's selected 2026 CSSKeyframesRule branch.
 
 use surgeist_css::{

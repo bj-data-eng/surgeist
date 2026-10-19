@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Supplemental public contracts for source-only property values. Expectations
 //! follow the supplied grammar, explicit importance and original source coordinates.
 use surgeist_css::{

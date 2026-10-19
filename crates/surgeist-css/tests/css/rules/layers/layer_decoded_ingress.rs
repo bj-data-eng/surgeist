@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 use surgeist_css::{
     CssImportLayer, CssLayerName, CssNamespaceContext, CssRule, CssValueOrigin, parse_rule,
     parse_sheet,

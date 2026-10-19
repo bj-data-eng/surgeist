@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Counter Styles3 §§3.1.2/3.5/3.6/3.8 and imported Values4 (2021-07-15)
 //! §§11.9/11.12: specified Number-result graphs precede integer computation.
 //! Literal order checks remain intrinsic; symbolic comparisons are downstream.

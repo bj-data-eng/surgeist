@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Color 5 alpha and authored absolute-eligibility contracts.
 use surgeist_css::*;
 

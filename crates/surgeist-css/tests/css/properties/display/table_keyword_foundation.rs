@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Intrinsic longhand contracts for four CSS2.1 table keyword properties.
 //! Source: https://www.w3.org/TR/2011/REC-CSS2-20110607/tables.html
 //! Property tables: border-collapse, caption-side, empty-cells, table-layout.

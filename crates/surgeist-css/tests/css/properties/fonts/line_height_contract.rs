@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Typed CSS 2.1 line-height and shared font slash contracts.
 
 use surgeist_css::{

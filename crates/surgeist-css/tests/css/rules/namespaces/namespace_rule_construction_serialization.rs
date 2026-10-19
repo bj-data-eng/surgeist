@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! The standalone namespace API shares the rule/sheet CSSOM writer; construction
 //! keeps literal names and absent source positions independently of output.
 

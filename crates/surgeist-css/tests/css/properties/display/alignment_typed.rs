@@ -1,9 +1,8 @@
-#![forbid(unsafe_code)]
-
 //! Functional authored-value construction and bounded specified serialization
 //! for CSS Box Alignment 3, 2026-01-30, §§4–7.
 //! https://www.w3.org/TR/2026/WD-css-align-3-20260130/
 
+use crate::css::support::style_declaration_reporting_source as declaration;
 use surgeist_css::*;
 
 fn normal(overflow: Option<CssOverflowPosition>) -> CssAlignmentValue {
@@ -15,15 +14,6 @@ fn position(
     position: CssAlignmentPosition,
 ) -> CssAlignmentValue {
     CssAlignmentValue::Position { overflow, position }
-}
-
-fn declaration(source: &str) -> CssDeclaration {
-    let report = parse_style_attribute(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
 }
 
 #[test]

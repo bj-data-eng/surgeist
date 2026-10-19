@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Checked font-face component provenance and strict reentry contracts.
 
 use surgeist_css::{

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Supplied CSSOM custom names use exact semantic strings, independently of CSS spelling.
 
 use std::collections::HashSet;

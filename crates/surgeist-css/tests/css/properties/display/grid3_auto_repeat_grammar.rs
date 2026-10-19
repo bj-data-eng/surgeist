@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Grid3 replaces only the auto-repeat body with nonrecursive <track-size>.
 //! https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#intrinsic-auto-repeat
 //! Grid3 source SHA256:

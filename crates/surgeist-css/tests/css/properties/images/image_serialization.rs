@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Images 3 specified serialization: https://www.w3.org/TR/2023/CRD-css-images-3-20231218/#serialization
 
 use surgeist_css::*;

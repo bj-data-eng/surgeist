@@ -2,7 +2,6 @@
 //! Grammar retention, public recovery policy, and registry classification are
 //! separate assertions. Exact diagnostic predictions come from a second static
 //! source-contract audit, never parser output or the captured corpus oracle.
-#![forbid(unsafe_code)]
 
 use std::{collections::BTreeSet, fs, path::Path};
 

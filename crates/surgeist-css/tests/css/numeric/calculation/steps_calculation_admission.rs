@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Checked step counts distinguish bare integer roots from genuine math functions.
 //! Ordinary counts are positive, and jump-none requires more than one step.
 //! Genuine math remains symbolic; these assertions never evaluate a function.

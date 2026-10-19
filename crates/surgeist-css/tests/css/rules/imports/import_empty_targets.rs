@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Cascade 5 #at-import admits string/URL targets independently of loading.
 //! Values 4 (2024-03-12) #urls and #empty-urls recognize empty URL values;
 //! Syntax 3 (2021-12-24) #consume-url-token distinguishes them from bad URLs.

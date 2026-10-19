@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing admission boundaries, before aggregate output APIs.
 //! Independent authority: selected Grid2 2025-03-26 §7.4 (required row/column
 //! slash), §7.8 (both auto-flow orientations and unordered dense), and §7.2

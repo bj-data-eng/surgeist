@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored grammar: Color 5 WD 2026-09-08 §6 (#device-cmyk).
 //! Direct alpha: Color 4 CRD 2026-09-08 §4.2 (#alpha-syntax).
 //! Declared text uses the selected ordinary Standalone/Mix/Origin contract:
@@ -8,19 +7,12 @@
 //! Resource oracles use the shared cumulative specified-value contract. Missing
 //! components need one input and projection each, without scalar arithmetic.
 
+use crate::css::support::style_declaration_reporting_source as declaration;
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
-fn declaration(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let [value] = report.syntax().as_slice() else {
-        panic!("one declaration: {css}")
-    };
-    value.clone()
-}
 fn color(css: &str) -> CssColor {
     let source = declaration(&format!("color:{css}"));
     let CssKnownPropertyValueRef::Color(value) = source.known().unwrap().property_value().unwrap()

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! CSSOM WD20210826 §2.1 URL/string escaping and §6.4 CSSImportRule text.
 //! Locations remain decoded authored values; resolution and loading are external.
 

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored recognition, independently specified by Conditional 5 §§5.4/6.1,
 //! MQ5 §§2.4/3, Values4 §§5.7/6/10, Variables1 §3, and the narrowly imported
 //! Values5 §9 tree-counting definitions. Opaque fallback is valid query syntax.

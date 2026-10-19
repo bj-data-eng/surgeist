@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Containment2 authored checked/reentry fronts must retain original EOF failures.
 //! Browser recovery remains available and does not turn a recovered report clean.
 use surgeist_css::*;

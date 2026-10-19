@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Syntax 3 §§5.4.1/5.4.3 keep a rule-list semicolon in the qualified prelude.
 use surgeist_css::{
     CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSelector, CssSheet,

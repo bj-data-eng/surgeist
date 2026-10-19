@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Color5 WD 2026-09-08 §11.1 omits the default shorter hue method.
 //! Expectations come from that serialization clause, independently of the writer.
 

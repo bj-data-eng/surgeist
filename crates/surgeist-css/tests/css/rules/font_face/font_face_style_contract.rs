@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Ordinary Fonts 4 font-face style descriptor and checked range contracts.
 
 use surgeist_css::{

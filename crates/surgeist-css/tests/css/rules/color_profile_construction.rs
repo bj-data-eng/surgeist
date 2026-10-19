@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Color 5 WD 2026-09-08 §5.3 and Env 1 WD 2025-09-23 §3.
 //! Construction checks the same authored grammar; callers supply replacements.
 use surgeist_css::{

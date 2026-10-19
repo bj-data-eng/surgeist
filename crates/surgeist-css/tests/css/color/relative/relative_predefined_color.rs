@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Relative predefined color() syntax, CSS Color 5 WD 2026-09-08 §§5–5.1, 11.3.
 //! https://www.w3.org/TR/2026/WD-css-color-5-20260908/#relative-color-function
 //! Source SHA-256: f749cb75ec1c0faca7d2443546c88be4e22750526dd45f9fefcfcdd079ed3c09

@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Grid2 permits optional line names before and after repeated track sizes.
 //! A length-valued calculation is a fixed breadth, so these cases already fit
 //! both integer and automatic repetition without the Grid3 grammar extension.

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional new API expectations from Content 3 WD 2025-12-04's selected
 //! property tables and the bounded named-string disposition recorded in #680.
 

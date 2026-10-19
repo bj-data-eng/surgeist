@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Component composition promises to preserve token identity and lexical numbers.
 //! The leading `--` in a CDC must not be consumed by its preceding token.
 

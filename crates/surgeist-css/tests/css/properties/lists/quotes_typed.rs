@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Functional authored `quotes` API for CSS Generated Content 3 §2.4.1:
 //! https://www.w3.org/TR/2025/WD-css-content-3-20251204/#propdef-quotes
 //! Locale selection for `auto` and parent resolution for `match-parent` occur later.

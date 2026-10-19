@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Exceptional authored hue calculations under the selected Color 4 phases.
 //! Color 4 CRD 2026-09-08 §§4.3, 15.1–15.3:
 //! https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#hue-syntax
@@ -12,27 +11,8 @@
 //! so HSL(0,100%,50%) and HWB(0,0%,0%) independently yield opaque sRGB red.
 //! This characterizes Standalone/Mix projection, not computed LCH/OKLCH hue.
 
+use crate::css::support::parsed_color as parsed;
 use surgeist_css::*;
-
-fn parsed(text: &str) -> CssColor {
-    let source = format!("color:{text}");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 1, "{source}");
-    assert_eq!(validate_style_attribute(&source).unwrap(), *report.syntax());
-    let declaration = &report.syntax()[0];
-    let CssValueOrigin::Parsed(origin) = declaration.value_components().items()[0].origin() else {
-        panic!("parsed function origin: {source}");
-    };
-    assert_eq!(origin.source().as_str(), source);
-    assert_eq!(origin.span().start().byte_offset().value(), 6);
-    let CssKnownPropertyValueRef::Color(value) =
-        declaration.known().unwrap().property_value().unwrap()
-    else {
-        panic!("typed color: {source}");
-    };
-    value.value().clone()
-}
 
 fn literal(text: &str) -> CssColorComponent {
     let values = parse_component_values(text).unwrap();

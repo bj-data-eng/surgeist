@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Values 4 §5 converts finite Angle results outside supported range to a
 //! supported multiple of 360deg. This applies to Angle-valued functions,
 //! preserving their specified nonfinite argument exceptions.

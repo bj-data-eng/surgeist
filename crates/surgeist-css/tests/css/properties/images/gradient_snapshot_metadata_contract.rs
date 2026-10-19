@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 // Snapshot 2026 section 4 selects conic gradients and gradient interpolation;
 // the selected Images 4 stop-list grammar is their bounded shared dependency.
 use surgeist_css::{CssSpecificationTier, feature_metadata};

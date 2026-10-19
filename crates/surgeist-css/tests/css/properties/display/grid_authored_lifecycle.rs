@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional new-API coverage alongside the authored Grid implementation.
 //! Grid 2 §7.2/§7.4/§7.8 owns subgrid/name-repeat, area defaults and six-member
 //! projections. Values 4 owns symbolic Integer math and deferred range/rounding.

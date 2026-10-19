@@ -1,23 +1,9 @@
-#![forbid(unsafe_code)]
-
 //! Functional expectations from Color Adjustment 1 CR 2025-12-16 §§2.1, 3.2, 4.1–4.2
 //! and the shared CSSOM identifier serialization contract. Contextual execution
 //! remains outside these authored models.
 
+use crate::css::support::important_pair_declaration as declaration;
 use surgeist_css::*;
-
-fn declaration(name: &str, text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{name}:{text}!important"));
-    assert!(
-        report.is_clean(),
-        "{name}:{text}: {:?}",
-        report.diagnostics()
-    );
-    let [source] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    source.clone()
-}
 
 fn scheme(source: &CssDeclaration) -> &CssColorScheme {
     let CssKnownPropertyValueRef::ColorScheme(value) =

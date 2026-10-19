@@ -1,21 +1,15 @@
-#![forbid(unsafe_code)]
 //! Independent CSS Syntax 3 CRD 2021-12-24 §§6, 6.2 and 10.1 expectations.
 //! Coefficients and canonical strings below are derived from those clauses.
 //! The index oracle interprets the public symbolic pair; it is not a production
 //! selector matcher. Endpoint cases require only representable final i32 pairs.
 //! <https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/>
 
+use crate::css::support::admitted_selector as parsed;
 use surgeist_css::{
     CssComponentValueRef, CssNamespaceContext, CssNthAnPlusB, CssNthPattern, CssNumericTokenKind,
     CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction, CssRule, CssSelector,
     CssStyleSelector, CssValueTokenRef, parse_component_values, parse_selector, parse_sheet,
 };
-
-fn parsed(source: &str) -> CssSelector {
-    let report = parse_selector(source, &CssNamespaceContext::default());
-    assert!(report.is_clean(), "{source}: {report:?}");
-    report.syntax().as_ref().expect("admitted selector").clone()
-}
 
 fn pattern(selector: &CssSelector) -> CssNthPattern {
     match selector {

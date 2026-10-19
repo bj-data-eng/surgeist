@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 use surgeist_css::{
     CssSelector, CssSpecifiedValueSerializationErrorKind as Kind,
     CssSpecifiedValueSerializationLimits as Limits,

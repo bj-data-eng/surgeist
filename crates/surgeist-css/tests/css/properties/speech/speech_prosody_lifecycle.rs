@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Executable RED for Speech 1 CRD-20230214 §§11.2–11.4 and §12.1.
 //! Expectations come from the retained property grammars and prose, not another
 //! Surgeist serializer. Values 4 WD-20240312 §5.6 permits relative frequency/%
@@ -8,25 +7,11 @@
 //! literals are rejected, while calculations retain their specified phase.
 //! Raw component serialization is lexical; new typed canonical model APIs get
 //! functional tests with implementation, rather than compile-failing stubs.
+use crate::css::support::{
+    important_speech_declaration as declaration, speech_property as property,
+};
 use surgeist_css::*;
 const PROPERTIES: [&str; 4] = ["voice-duration", "voice-pitch", "voice-range", "voice-rate"];
-
-fn property(name: &str) -> CssKnownProperty {
-    CssKnownProperty::from_name(name)
-        .unwrap_or_else(|| panic!("Speech 1 property `{name}` must be recognized"))
-}
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one complete declaration: {source}")
-    };
-    assert_eq!(declaration.known().unwrap().property(), property(name));
-    assert_eq!(declaration.importance(), CssImportance::Important);
-    declaration.clone()
-}
 
 fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =

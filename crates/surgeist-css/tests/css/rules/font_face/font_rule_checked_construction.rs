@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional construction contract from selected parser placement and Fonts4 §4.1/13.2.
 use surgeist_css::*;
 

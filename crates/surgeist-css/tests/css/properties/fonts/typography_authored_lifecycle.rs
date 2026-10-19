@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional tests for new typed typography models and intrinsic borrowed views.
 //! Independent authorities: pinned Text4 WD20260814 property productions/initials,
 //! selected CSS2 vertical-align; Values4 typed roots and deferred math range.

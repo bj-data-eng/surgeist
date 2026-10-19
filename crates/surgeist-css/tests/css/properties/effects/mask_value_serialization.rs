@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Retained original Masking 1 §7.9 image/position/size/repeat provider contracts.
 //! https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/#the-mask
 

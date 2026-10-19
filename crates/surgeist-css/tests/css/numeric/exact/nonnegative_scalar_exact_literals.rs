@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Exact nonnegative authored scalars through existing public parsing boundaries.
 //!
 //! Exact decimal retention is Surgeist's selected authored-value contract.

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Pinned Selectors 4 (2026-01-22), sections 7.1 and 7.2:
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#the-dir-pseudo
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#the-lang-pseudo

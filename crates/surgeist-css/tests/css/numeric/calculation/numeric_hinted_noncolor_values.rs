@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional checked-payload evidence for percentage-permitting numeric slots.
 //! Source matching rules and selected grammars are cited in the unchanged
 //! numeric_hinted_noncolor_contexts target. No percentage basis is supplied.

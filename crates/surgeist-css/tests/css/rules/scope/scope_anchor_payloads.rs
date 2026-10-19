@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Counted authored anchors preserve the distinct Nesting 1 root and Cascade 6
 //! limit/body categories, including functional members and detached payloads.
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nested-scope-rules

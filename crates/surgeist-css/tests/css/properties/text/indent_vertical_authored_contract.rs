@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing-public-API contract for the authored indent/alignment lifecycle.
 //!
 //! Independent sources: Text4 WD2026-08-14 §9.1 supplies text-indent's signed

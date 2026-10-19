@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional evidence for new APIs, without preimplementation executable API RED.
 //! Independent expectations follow pinned Shapes 1 §§3.1–3.3 and the adopted
 //! authored serialization resource contract. No contextual geometry is inferred.

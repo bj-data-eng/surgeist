@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Nesting 1 section 4: parentless & matches scope with zero anchor specificity.
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nest-selector
 use surgeist_css::{

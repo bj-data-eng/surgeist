@@ -1,9 +1,11 @@
-#![forbid(unsafe_code)]
-
 //! Box 3 REC (2024-04-11) §§3–4 and Logical 1 WD (2025-12-04)
 //! §§4.2, 4.4, 4.7. Logical 1 issue 3030 leaves the complete reset
 //! footprint of the four-side shorthands unsettled.
 
+use crate::css::support::{
+    checked_grammar_declaration as checked, important_declaration as declaration,
+    selected_grammar as grammar,
+};
 use surgeist_css::*;
 
 fn assert_four_expansion(result: Result<CssExpansion, CssExpansionError>) {
@@ -30,29 +32,6 @@ const SIDES: [&str; 8] = [
     "inline-end",
 ];
 const FAMILIES: [&str; 2] = ["margin", "padding"];
-
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("selected property: {name}"))
-}
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
-}
-
-fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"))
-}
 
 fn accepted(name: &str, value: &str) {
     let property = grammar(name).target_property();

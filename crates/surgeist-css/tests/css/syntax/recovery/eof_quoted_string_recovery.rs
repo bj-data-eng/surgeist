@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! CSS Syntax 3 §4.3.5 returns a string and reports a parse error at EOF.
 //! Retained recovery must not change decoded payloads or consume block depth.
 

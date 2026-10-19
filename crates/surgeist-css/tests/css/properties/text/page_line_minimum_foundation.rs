@@ -1,24 +1,13 @@
-#![forbid(unsafe_code)]
-
 //! Authored line minima from Fragmentation 3 CR (2018-12-04) §3.3 and
 //! lexical integers from Values 4 §5.2.
 
+use crate::css::support::important_declaration as declaration;
 use surgeist_css::*;
 
 const NAMES: [&str; 2] = ["orphans", "widows"];
 
 fn grammar(name: &str) -> CssPropertyGrammar {
     CssPropertyGrammar::from_name(name).unwrap()
-}
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
 }
 
 fn checked(name: &str, value: &str) -> CssDeclaration {

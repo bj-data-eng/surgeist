@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent raw-list oracles: selected CSS Syntax 3 CRD20211224 §§5.3.8,
 //! 5.4.2 and 5.4.5, followed by the ordinary property consumer contract.
 //! This wholly new front has functional tests alongside implementation;

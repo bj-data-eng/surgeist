@@ -1,21 +1,11 @@
-#![forbid(unsafe_code)]
-
 //! Public construction and bounded specified serialization for Flexbox 1
 //! §§5.1–5.3. The direction and wrap keywords stay symbolic until layout.
 
+use crate::css::support::style_declaration_reporting_source as declaration;
 use surgeist_css::*;
 
 const PROGRAMMATIC_FLOW: CssFlexFlow =
     CssFlexFlow::new(CssFlexDirection::ColumnReverse, CssFlexWrap::Wrap);
-
-fn declaration(source: &str) -> CssDeclaration {
-    let report = parse_style_attribute(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
-}
 
 #[test]
 fn all_direction_keywords_serialize_as_their_specified_identifiers() {

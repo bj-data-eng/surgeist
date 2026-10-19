@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Singular declaration contracts follow CSS Syntax 3 section 5.3.6 and
 //! declaration-value restrictions in section 8.2, with typed property validation.
 use surgeist_css::{

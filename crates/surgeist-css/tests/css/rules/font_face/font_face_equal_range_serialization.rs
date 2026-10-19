@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Fonts 4 section 13.2: equal retained endpoints use the shorter form.
 //! Rounding two different retained numbers to the same text is not equality.
 

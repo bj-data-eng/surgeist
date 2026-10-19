@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Existing-API runtime RED, independent of the new fragment consumer.
 //!
 //! Selectors 4 (2026-01-22), section 3.9, rejects an unknown pseudo name:

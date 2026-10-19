@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Public characterization. Fullscreen snapshot
 //! 7c38d773117aa1e6bfa13754afe77483f40c908f §5.1 names the nonfunctional
 //! :fullscreen pseudo-class; tree/top-layer matching is downstream.

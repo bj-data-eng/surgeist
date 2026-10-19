@@ -1,22 +1,13 @@
-#![forbid(unsafe_code)]
 //! Functional evidence for the adopted authored shadow serialization contract.
 //! The newly added serializers have no executable preimplementation RED.
 //! Grammar and intrinsic initials follow Backgrounds 3 CRD 2024-03-11 §6.1
 //! and Filter Effects 1 WD 2018-12-18 §6.1; canonical ordering and cumulative
 //! resource charges are Surgeist's specified-value contract, not computed CSS.
 
+use crate::css::support::style_declaration as declaration;
 use surgeist_css::{
     CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
 };
-
-fn declaration(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let [value] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    value.clone()
-}
 
 #[test]
 fn resumed_lengths_report_the_responsible_token_and_utf16_column() {

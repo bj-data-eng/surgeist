@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Public-consumer expectations from the adopted Blink Page/margin witness.
 use surgeist_css::{CssRule, parse_sheet};
 

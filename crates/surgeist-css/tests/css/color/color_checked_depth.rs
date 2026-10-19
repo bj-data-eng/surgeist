@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Checked property construction must handle an already valid component graph at
 //! the same public 256-level ceiling as authored parsing, on the default stack.
 use surgeist_css::*;

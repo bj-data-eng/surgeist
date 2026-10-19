@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored equality distinguishes the keyword and string format productions.
 //! This is Surgeist's authored-model contract, separate from resource recognition.
 //! Selected grammar: https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-format-values

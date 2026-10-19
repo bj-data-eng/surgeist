@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Narrow exact-authored fidelity regression; does not settle the legacy math grammar.
 use surgeist_css::*;
 

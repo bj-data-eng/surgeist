@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent Syntax 3 (2021-12-24) and Nesting 1 (2026-01-22) block cases.
 //! All real outer blocks survive; unknown inner grammar recovers locally.
 use surgeist_css::{CssErrorCode, CssNamespaceContext, CssRecoveryAction, parse_style_block};

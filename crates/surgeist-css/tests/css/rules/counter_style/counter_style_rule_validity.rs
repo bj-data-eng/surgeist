@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Counter Styles 3 §§3.1 and 3.8 distinguish valid at-rules from definitions
 //! with enough symbols to produce a counter style. Insufficient symbols do not
 //! invalidate the authored at-rule. §3.1.7 separately invalidates extends rules

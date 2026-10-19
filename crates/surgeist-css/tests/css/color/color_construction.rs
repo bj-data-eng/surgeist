@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Public authored-color construction contracts from CSS Color 4 and the
 //! 2026-09-08 CSS Color 5 relative-color and color-mix definitions.
 

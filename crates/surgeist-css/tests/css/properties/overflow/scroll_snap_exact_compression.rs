@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! CSSOM WD 2021-08-26 §6.7.2 selects shorter lists before serializing
 //! components. Its six-place number rule can give different exact values the
 //! same text. CSS Scroll Snap 1 CR 2021-03-11 §§4.2, 5.1 and Appendix A,

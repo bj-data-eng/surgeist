@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Fonts 4 (7 September 2026) §2.1.1/§2.1.2 retain authored family forms;
 //! §13 delegates escaping to CSSOM. These expectations distinguish specified
 //! identifier tokens from the computed joined family name. Descriptor/feature

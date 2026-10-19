@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! New rotate output API: Transforms2 §5/§5.1/§12.2, Values3 angles, and the
 //! existing six-place numeric contract. No preimplementation callable output API
 //! existed; these are functional tests alongside the new API, not regression RED.

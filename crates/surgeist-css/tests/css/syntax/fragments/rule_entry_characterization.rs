@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Pinned Syntax 3 (2021-12-24) §§5, 5.3.5, 5.4.1–5.4.3.
 //! Existing string fronts only; supplied token/component consumers are separate.
 use surgeist_css::{

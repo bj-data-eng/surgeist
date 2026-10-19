@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use surgeist_css::*;
 
 fn length(number: &str, unit: &str) -> CssBorderWidth {

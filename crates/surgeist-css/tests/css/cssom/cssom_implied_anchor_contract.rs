@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Test-only runtime checkpoint for #1078. Selected Nesting20260122 §6
 //! absolutizes relative nested selectors; §3.1 preserves selectors containing
 //! an ampersand, including retained invalid forgiving members. Compact authored

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Public consumer composition: checked CSS payloads without semantic text round trips.
 
 use surgeist_css::{

@@ -1,20 +1,14 @@
-#![forbid(unsafe_code)]
 //! Supplemental public An+B controls from CSS Syntax 3 CRD 2021-12-24 §6.2.
 //! Literal pairs use the full signless integer before applying the separate '-'.
 //! Canonical text follows §10.1. The final test separately characterizes the
 //! established bounded-provider behavior outside the public i32 coefficient model.
 //! <https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/>
 
+use crate::css::support::admitted_selector as parsed;
 use surgeist_css::{
     CssNamespaceContext, CssNthPattern, CssPseudoClass, CssPseudoSelectorListItem,
     CssRecoveryAction, CssSelector, parse_selector,
 };
-
-fn parsed(source: &str) -> CssSelector {
-    let report = parse_selector(source, &CssNamespaceContext::default());
-    assert!(report.is_clean(), "{source}: {report:?}");
-    report.syntax().as_ref().expect("admitted selector").clone()
-}
 
 fn coefficients(pattern: CssNthPattern) -> (i32, i32) {
     match pattern {

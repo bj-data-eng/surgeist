@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Fonts 4 2026-09-07 §12.2 requires one or more literal families.
 //! Pinned WebKit 73aa6c89 CSSFontFeatureValuesRule.cpp setter requires complete
 //! native nongeneric prelude consumption; its getter uses comma-space joining.

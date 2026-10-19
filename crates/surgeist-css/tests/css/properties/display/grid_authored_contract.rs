@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored Grid contract through existing public APIs.
 //!
 //! Independent oracles: pinned Grid2 2025-03-26 reference lines 1520-1524,

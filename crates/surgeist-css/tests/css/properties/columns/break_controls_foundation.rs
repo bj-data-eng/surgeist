@@ -1,8 +1,7 @@
-#![forbid(unsafe_code)]
-
 //! Authored break controls from Fragmentation 3 CR (2018-12-04) §§3.1, 3.2, 3.4,
 //! including the flow-relative page classifications of Logical 1 WD (2025-12-04) §3.
 
+use crate::css::support::important_declaration as declaration;
 use surgeist_css::*;
 
 const MODERN: [&str; 3] = ["break-before", "break-after", "break-inside"];
@@ -33,16 +32,6 @@ const LEGACY_BEFORE_AFTER: [&str; 7] =
 
 fn grammar(name: &str) -> CssPropertyGrammar {
     CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("selected grammar: {name}"))
-}
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
 }
 
 fn checked(name: &str, value: &str) -> CssDeclaration {

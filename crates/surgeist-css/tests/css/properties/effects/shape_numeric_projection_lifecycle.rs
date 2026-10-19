@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Shapes 1 CRD 2025-06-12 §3.3 specifies grammar order and punctuation;
 //! computed defaults and geometry belong to separate phases.
 //! Numeric expectations follow Values 4 WD 2024-03-12 §§5, 10.4, 10.5,

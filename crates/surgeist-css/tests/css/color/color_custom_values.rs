@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Color 5 custom-profile contracts, checked without serialization as an oracle.
 use surgeist_css::*;
 

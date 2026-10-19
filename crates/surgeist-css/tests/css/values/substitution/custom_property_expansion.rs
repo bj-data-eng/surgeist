@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use surgeist_css::{CssExpansion, expand_declaration, parse_style_attribute};
 
 // Intrinsic expansion retains authored custom properties, before cascade and

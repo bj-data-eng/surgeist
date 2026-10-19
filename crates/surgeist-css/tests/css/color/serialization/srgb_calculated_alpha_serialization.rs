@@ -1,27 +1,16 @@
-#![forbid(unsafe_code)]
 //! Ordinary RGB/HSL/HWB alpha follows the accepted Color 4 §15.1 phase
 //! disposition: finalize a noncontextual scalar independently of its siblings.
 //! Color 4 §16.1.2 and Color 5 Origin retention still govern protected roles.
 //! Binary64 values are clamped before six-place, positive-tie formatting;
 //! exact unity is tested before rounding. Graph and scratch work precede omission.
 
+use crate::css::support::{
+    checked_color_declaration as declaration, component_values as components,
+};
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-
-fn components(source: &str) -> CssComponentValues {
-    parse_component_values(source).unwrap()
-}
-
-fn declaration(source: &str) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        components(source),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("{source}: {error:?}"))
-}
 
 fn declared_color(value: &CssDeclaration) -> &CssColor {
     let CssKnownPropertyValueRef::Color(value) = value.known().unwrap().property_value().unwrap()

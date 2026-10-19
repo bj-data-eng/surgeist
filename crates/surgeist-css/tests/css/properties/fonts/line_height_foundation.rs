@@ -1,22 +1,11 @@
-#![forbid(unsafe_code)]
-
 //! Existing-public-API behavior from CSS 2.1 line-height and Fonts 4 §2.7.
 //! Exact typed payload contracts follow with the functional model.
 
+use crate::css::support::important_retained_declaration as declaration;
 use surgeist_css::*;
 
 fn grammar(name: &str) -> CssPropertyGrammar {
     CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("known grammar: {name}"))
-}
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one retained declaration: {source}");
-    };
-    declaration.clone()
 }
 
 fn checked(name: &str, value: &str) -> CssDeclaration {

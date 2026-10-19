@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Same-unit abs/hypot coefficient identities require a nonnegative unit basis.
 //! Values 4 defines line-height and viewport-relative lengths by sizes, and
 //! Containment 3 defines container-relative lengths by container dimensions:

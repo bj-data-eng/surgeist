@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Keyframe literals select binary64 conversion before inclusive range checking.
 //! Percentage functions retain Values 4 authored math and defer range clamping.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types

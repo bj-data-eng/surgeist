@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Authored `content-visibility` from CSS Containment 2 WD (2022-09-17) §4.
 //! Skipping, user relevance, and used containment require downstream context.
 

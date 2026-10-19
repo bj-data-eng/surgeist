@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Positive public-consumer compilation and runtime contract.
 //!
 //! This harness itself compiles before the new API exists. Its RED is the

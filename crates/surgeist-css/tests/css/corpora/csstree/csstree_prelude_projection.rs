@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! CSS-owned prelude classification follows the explicit rule-name option.
 
 #[test]

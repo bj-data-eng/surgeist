@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent authority: pinned Compositing 1 (2024-03-21), §§3.1, 3.4.2,
 //! 3.4.3: sixteen blend keywords, isolation auto/isolate, three noninherited
 //! longhands, normal/auto/normal initials, ordered background blend lists, and
@@ -15,6 +14,9 @@
 //! Source-defined initials are compared with explicitly authored values through
 //! existing property wrapper accessors.
 
+use crate::css::support::{
+    checked_property_grammar_declaration as checked, style_declaration as parsed,
+};
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -59,22 +61,6 @@ const MODES: [(&str, CssBlendMode); 16] = [
     ("luminosity", CssBlendMode::Luminosity),
 ];
 
-fn parsed(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    source.clone()
-}
-fn checked(property: P, css: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        property.grammar(),
-        parse_component_values(css).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap()
-}
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
         expand_declaration(source).expect("intrinsic terminal contributions")

@@ -1,8 +1,8 @@
-#![forbid(unsafe_code)]
 //! Text 3 §§6.1–6.3 and Text 4 §§1.4, 7.1–7.4 (2026-08-14), with the
 //! selected one-extended-grapheme-cluster reconciliation of UAX29 revision 47.
 //! Exact current-value payloads require the later functional typed-API tests.
 
+use crate::css::support::important_retained_declaration as parsed;
 use surgeist_css::*;
 
 const SHORTHAND: &str = "text-align";
@@ -11,16 +11,6 @@ const LAST: &str = "text-align-last";
 
 fn grammar(name: &str) -> CssPropertyGrammar {
     CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("selected property: {name}"))
-}
-
-fn parsed(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one retained declaration: {source}")
-    };
-    declaration.clone()
 }
 
 fn checked(name: &str, value: &str) -> CssDeclaration {

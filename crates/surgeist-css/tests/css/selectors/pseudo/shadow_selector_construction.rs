@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Checked authored shadow syntax; expectations follow the pinned sources cited
 //! in shadow_selector_grammar.rs. These are new API tests without stub RED.
 use surgeist_css::*;

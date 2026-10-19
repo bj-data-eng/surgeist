@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Checked named-definition construction preserves extension names and applies
 //! one aggregate resource budget to its rule shell and generic test body.
 

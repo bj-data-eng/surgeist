@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Cascade 5 CR 2022-01-13 §§6.4.2 and 6.4.4 retain relative layer names
 //! and ordered nesting. Public normalization preserves authored occurrences
 //! and their immediate parents without assigning effective cascade identities.

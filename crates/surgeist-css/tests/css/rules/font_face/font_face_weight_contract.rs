@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Ordinary font-face weight descriptor contract from Fonts 4 §4.4.
 
 use surgeist_css::{

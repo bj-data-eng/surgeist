@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! CSS Color 4 CRD 2026-09-08 sections 5.2 and 16.2.2 require implicit unit
 //! alpha and the rgb() name for opaque hexadecimal colors. Color 5 origin
 //! serialization retains the separate modern punctuation contract.

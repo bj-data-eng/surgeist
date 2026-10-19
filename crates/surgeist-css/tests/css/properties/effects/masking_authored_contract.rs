@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Masking 1 CRD20210805 authored grammar and composed lifecycle contracts.
 //! Property-specific productions govern geometry, trailing fill and optional width.
 //! Grammar/canonical/budget oracles are independently authored. Generic property

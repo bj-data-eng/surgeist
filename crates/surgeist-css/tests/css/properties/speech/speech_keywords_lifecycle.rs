@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored Speech 1 keyword properties through existing public boundaries.
 //! Independent grammar authority: retained CRD-css-speech-1-20230214,
 //! sections 3.1, 7.1 and 7.2. Speech rendering and contextual `auto` resolution

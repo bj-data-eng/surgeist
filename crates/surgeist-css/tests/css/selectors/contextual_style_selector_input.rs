@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! New public raw-input boundary: CSSOM selectorText consumes retained syntax,
 //! not clean-report validation. Expectations follow CSSOM's complete-input
 //! selector algorithm, Nesting 1 anchors and Cascade 6 scope-body anchor meaning.

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional contracts for parser-owned invalid nesting items. Selected Nesting
 //! 1 §3.1, Selectors §16.1 and Syntax §5.3.11 own retention and token detection.
 use surgeist_css::*;

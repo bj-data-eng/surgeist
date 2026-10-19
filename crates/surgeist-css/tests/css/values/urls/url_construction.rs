@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Values 4 (2024-03-12) §4.5 keeps `url()` and `src()` distinct authored
 //! `<url>` forms, including empty targets and ordered quoted-form modifiers.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#urls

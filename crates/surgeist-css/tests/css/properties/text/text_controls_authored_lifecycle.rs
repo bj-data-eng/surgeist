@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional typed API evidence for the selected Text4 authored contracts.
 //! The existing test-only suites own preimplementation RED. These new tests
 //! exercise checked constructors, preserved origins, omission views, exact typed

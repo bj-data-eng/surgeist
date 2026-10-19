@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Numeric token boundaries through the public checked component interface.
 //!
 //! Independent expectations: CSS Syntax 3 CRD 2021-12-24 §§4.3.3,

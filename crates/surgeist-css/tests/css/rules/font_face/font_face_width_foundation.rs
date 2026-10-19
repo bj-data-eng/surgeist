@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Existing-public-API @font-face width contracts from CSS Fonts 4 WD
 //! (2026-09-07) §§4.4 and 4.4.1. Exact typed ranges follow with the model.
 

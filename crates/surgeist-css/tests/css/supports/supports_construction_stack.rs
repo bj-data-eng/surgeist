@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Public construction, projection and owned-tree operations at supported depth.
 use crate::css::support::isolated_stack;
 

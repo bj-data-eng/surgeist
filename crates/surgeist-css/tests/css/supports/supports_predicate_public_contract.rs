@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional qualification of the additive authored predicate payloads, beyond
 //! the existing-callable classification regression checkpoint. Independent
 //! oracles: Conditional 5 WD20251030 §2 and Fonts 4 WD20260907 §4.3 vocabularies.

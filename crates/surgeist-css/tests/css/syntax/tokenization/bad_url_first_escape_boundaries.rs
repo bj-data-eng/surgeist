@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! CSS Syntax 3 §4.3.6 leaves the first non-whitespace input for the bad-URL
 //! remnants algorithm. Section 4.3.14 consumes valid escapes before recognizing
 //! an unescaped closing parenthesis; the first escape cannot be discarded.

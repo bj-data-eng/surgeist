@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Syntax block-contents flushes the current declaration run when an at-rule is
 //! consumed or a complete qualified-rule boundary is reached, even if that
 //! candidate is later rejected. Failed declaration text alone has no such rule

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Public expectations from CSSOM current fields, Nesting and the existing
 //! native projection tariffs. Node composition is a new callable API, not RED.
 use CssEditedGroupPreludeRef as Prelude;

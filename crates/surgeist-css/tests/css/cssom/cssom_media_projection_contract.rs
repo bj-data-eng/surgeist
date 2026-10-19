@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional evidence for the CSSOM media boundary: pinned CSSOM1 section 4,
 //! selected MQ5 grammar/recovery, and the shared specified resource policy.
 

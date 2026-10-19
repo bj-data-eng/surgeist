@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Functional tests for ordered authored-list operations.
 //! Style Attributes REC 2013-11-07 §3 supplies unbraced declaration syntax;
 //! the adopted list contract and owning specified-value contracts supply exact

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent expectations: selected Conditional5 2025-10-30 §§5.1–5.3
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-type
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-name

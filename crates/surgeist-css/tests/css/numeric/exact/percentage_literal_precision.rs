@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Percentage tokens retain exact authored numeric spelling in checked lengths.
 //! Bounded scalar consumers retain their directly authored percentage magnitude.
 

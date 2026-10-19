@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Scope lifecycle: Cascade6 2024-09-06 §2.5.2/2.5.4/2.5.5 and Nesting1 2026-01-22 §3.2/3.3.
 //! https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-scope
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#syntax-examples

@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! CSS Generated Content 3 §2.4.1, selected 2025-12-04 Working Draft:
 //! https://www.w3.org/TR/2025/WD-css-content-3-20251204/#propdef-quotes
 //! `quotes` accepts `auto | none | match-parent | [<string> <string>]+`.

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored admission is distinct from definition validity in Counter Styles 2026.
 use surgeist_css::{CssRule, parse_sheet};
 

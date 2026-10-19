@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Literal expectations follow the pinned CSS Syntax 3 CRD (2021-12-24):
 //! §§3.3, 4.3.1, 4.3.3–4.3.11 and 4.3.14. Token values and hash flags are
 //! public component contracts; lexical parse errors must also make an authored

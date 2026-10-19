@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Selected Color4 CRD 2026-09-08 #the-hsl-notation and #funcdef-hwb:
 //! modern saturation/lightness/whiteness/blackness admit numbers or percentages.
 //! Existing public APIs only; no canonical or exact-scalar completion claim.

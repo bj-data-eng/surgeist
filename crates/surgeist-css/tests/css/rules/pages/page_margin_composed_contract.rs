@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Selected Page3 property applicability composes with Cascade5 globals and Values3/4
 //! authored lengths. Page-local custom declarations use the approved bounded
 //! WebKit witness; variable lookup, fallback selection and cascade stay downstream.

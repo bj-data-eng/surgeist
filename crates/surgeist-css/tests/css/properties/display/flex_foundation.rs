@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Flexbox 1 §7.1–7.2 defines three noninherited flex terminals; Sizing 3/4
 //! supplies the referenced width grammar. Values 5 §10 and the pinned WPT
 //! calc-size parsing cases make `content` a flex-basis-only calc-size basis.

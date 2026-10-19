@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Values 4 (2024-03-12) §8.3.2, specified generic `<position>` serialization.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#position-serialization
 

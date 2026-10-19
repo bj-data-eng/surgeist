@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independently authored Images 4 WD 2025-09-30 §§3.1, 3.2.1, 3.3.1, 3.5.1
 //! contract, selected by Snapshot 2026 and owning issue #1023.
 //! https://www.w3.org/TR/2025/WD-css-images-4-20250930/#linear-gradients

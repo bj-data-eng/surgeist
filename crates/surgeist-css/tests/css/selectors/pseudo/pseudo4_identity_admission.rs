@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing-callable authored admission contracts from Pseudo4 WD20250627.
 //! These selectors remain symbolic: admission does not assert live matching.
 use surgeist_css::*;

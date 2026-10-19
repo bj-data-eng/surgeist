@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Conditional 5 defines authored named supports conditions and a bare named
 //! reference in `@import supports()`. Their test bodies have no rendering effect.
 //! Conditional 3 and Nesting 1 permit definitions in ordinary rule-list contexts.

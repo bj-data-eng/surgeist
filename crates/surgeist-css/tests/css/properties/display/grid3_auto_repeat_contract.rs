@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! The outer test compiles against the existing public API and launches the
 //! external consumer. Before the auto-repeat content return type is widened,
 //! its failure is nested consumer compilation RED, not an executed behavioral

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Counter Styles 3 (2021-07-27) §§3.1.5, 3.5, 3.6, and 3.8 import
 //! Values4 (2021-07-15) §11.9 Number-result math into integer slots.
 //! Values4 §11.12 and §5.2.1 defer integer rounding (half toward +infinity)

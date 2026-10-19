@@ -1,5 +1,4 @@
 //! Actual moved String capacity is distinct from logical decoded-name length.
-#![forbid(unsafe_code)]
 
 use surgeist_css::{CssCustomIdent, CssViewTransitionIdent, CssViewTransitionName};
 

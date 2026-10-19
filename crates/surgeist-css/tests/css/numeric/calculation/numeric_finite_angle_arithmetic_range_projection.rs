@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Values 4 §5 distinguishes finite values outside the supported numeric range
 //! from §10.9.1's defined infinities. An unrepresentable finite angle converts
 //! to the nearest supported multiple of 360deg; sin/tan of that angle is zero

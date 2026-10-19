@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional evidence for the intentional finite Text models and borrowed views.
 //! Oracles: Text4 2026-08-14 property tables/special-form mapping; Values4 §2.2
 //! preserves the contiguous quoted trim group. Selected product output visits

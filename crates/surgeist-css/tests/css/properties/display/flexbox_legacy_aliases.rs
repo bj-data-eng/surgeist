@@ -1,9 +1,8 @@
-#![forbid(unsafe_code)]
-
 //! Flexbox 1 Appendix B (normative), 2025-10-14: exactly twelve `-webkit-`
 //! legacy property names alias their standard names, without new value grammars.
 //! https://www.w3.org/TR/2025/CRD-css-flexbox-1-20251014/#webkit-aliases
 
+use crate::css::support::important_declaration as declaration;
 use surgeist_css::*;
 
 const CASES: &[(&str, &str, &str, CssKnownProperty)] = &[
@@ -70,16 +69,6 @@ const CASES: &[(&str, &str, &str, CssKnownProperty)] = &[
     ),
     ("-webkit-order", "order", "-2", CssKnownProperty::Order),
 ];
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
-}
 
 fn checked(name: &str, value: &str) -> CssDeclaration {
     parse_property_value_for_grammar(

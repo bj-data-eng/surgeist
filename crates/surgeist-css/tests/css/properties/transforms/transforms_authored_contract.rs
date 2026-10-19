@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored transform admission, lifecycle, provenance and resource contracts.
 //! Normative basis: selected Transforms1 §§4–6/9, Transforms2 §§5/7–10/12,
 //! Values3 §6.1, Values4 §§8.3/10.13; #564 preserves the WebKit tie-break.

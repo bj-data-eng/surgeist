@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Supports wrapper expectations derive from retained WebKit revision
 //! 73aa6c89e2cb77c46184a81aec944e4ab99d114d: CSSSupportsRule::cssText and
 //! CSSGroupingRule::cssTextForRules/appendCSSTextForItemsInternal. Conditional3

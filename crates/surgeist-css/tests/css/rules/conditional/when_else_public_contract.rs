@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional new-API evidence for #642 and the adopted #647 grammar profile.
 //! Diagnostics and compact output follow the adopted CSS-owned model contract;
 //! matching, truth and literal browser when/else output are not inferred.

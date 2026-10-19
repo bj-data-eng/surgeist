@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Values5 WD2024-11-11 §10.1 requires specified simplification of each
 //! calc-sum independently. Interpolation basis rewriting is a later operation.
 //! Shared strict reentry retains the original occurrence and replacement origins.

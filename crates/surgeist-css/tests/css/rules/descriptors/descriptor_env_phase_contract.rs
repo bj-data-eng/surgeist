@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Independent functional new-capability draft for the adopted descriptor env
 //! phase contract. Env1 WD20250923 §3; Syntax3 CRD20211224 §§8.2/9.2;
 //! selected Counter Styles3 §3 and Fonts4 §6.9 with adopted completed-index

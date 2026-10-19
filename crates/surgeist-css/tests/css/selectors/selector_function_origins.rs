@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Responsible-token positions follow Error::position and CssRecoveryDiagnostic::error.
 //! Unknown function names are invalid under pinned Selectors 4 section 3.9:
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid

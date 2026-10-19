@@ -1,8 +1,10 @@
-#![forbid(unsafe_code)]
-
 //! Authored overflow controls from CSS Overflow 3 WD (2025-10-07) §§3.2, 3.4, 4.2, 5.1.
 //! The clip margin's visual boxes use CSS Box 4 WD (2024-08-04) §2.3.
 
+use crate::css::support::{
+    checked_grammar_declaration as checked, important_declaration as declaration,
+    selected_grammar as grammar,
+};
 use surgeist_css::*;
 
 const NAMES: [&str; 4] = [
@@ -11,29 +13,6 @@ const NAMES: [&str; 4] = [
     "scrollbar-gutter",
     "text-overflow",
 ];
-
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("selected property: {name}"))
-}
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
-}
-
-fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"))
-}
 
 fn accepted(name: &str, value: &str) {
     for source in [declaration(name, value), checked(name, value)] {

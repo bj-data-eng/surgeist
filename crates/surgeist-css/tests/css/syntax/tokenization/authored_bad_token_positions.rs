@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Bad declaration-value tokens identify their first responsible authored byte.
 //!
 //! `Error::position`, `CssRecoveryDiagnostic::error`, and `CssTokenSummary::authored`

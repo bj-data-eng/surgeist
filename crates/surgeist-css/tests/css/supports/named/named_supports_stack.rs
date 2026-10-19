@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Deep generic test bodies retain their authored payload on an ordinary caller stack.
 
 use surgeist_css::{

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Ordinary authored RGB/hex contracts from Color 4 CRD 2026-09-08 §§5.1/5.2,
 //! §4.2 and §§16.1/16.2.2, independently of implementation output.
 //! https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#rgb-functions

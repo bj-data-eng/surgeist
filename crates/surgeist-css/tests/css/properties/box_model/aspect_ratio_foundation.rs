@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! CSS Sizing 4 §4.1: `auto || <ratio>`; CSS Values 4 §5.7: a ratio is
 //! `<number [0,∞]> [ / <number [0,∞]> ]?` and serializes both components.
 //! The expected spellings below come from those grammars, not parser output.

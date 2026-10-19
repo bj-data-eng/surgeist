@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Intrinsic Namespaces 3 construction uses checked decoded identifiers and
 //! literal strings. Authored coordinates exist only for parsed declarations.
 

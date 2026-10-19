@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Selected Color4 CRD2026-09-08 §13.2 requires gamma-sRGB for legacy colors
 //! by default; an explicit interpolation method opts into a different space.
 //! https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#interpolation-space

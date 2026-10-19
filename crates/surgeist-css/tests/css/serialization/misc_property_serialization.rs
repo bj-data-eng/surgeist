@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent specified-value expectations from UI3 caret-color, Containment 1
 //! grammar order and Compositing 1's ordered background-blend-mode list.
 

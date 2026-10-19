@@ -1,27 +1,16 @@
-#![forbid(unsafe_code)]
 //! Declared relative calculations: Color 5 WD 2026-09-08 §11.3, CSSOM WD
 //! 2021-08-26 component numbers, and Values 4 WD 2024-03-12 calculation trees.
 //! Six fractional places apply to actual binary64 coefficients, retaining
 //! references. Halfway ties away from zero are the adopted operational WebKit
 //! FIXED policy, not a claim that CSSOM normatively resolves halfway direction.
 
+use crate::css::support::{
+    checked_color_declaration as declaration, component_values as components,
+};
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-
-fn components(source: &str) -> CssComponentValues {
-    parse_component_values(source).unwrap()
-}
-
-fn declaration(source: &str) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        components(source),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("{source}: {error:?}"))
-}
 
 fn declaration_color(value: &CssDeclaration) -> &CssColor {
     let CssKnownPropertyValueRef::Color(value) = value.known().unwrap().property_value().unwrap()

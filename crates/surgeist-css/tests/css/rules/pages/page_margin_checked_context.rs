@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional new-API evidence for detached Page declaration construction.
 //! The existing-callable composed Page RED remains unchanged in its own harness.
 use surgeist_css::*;

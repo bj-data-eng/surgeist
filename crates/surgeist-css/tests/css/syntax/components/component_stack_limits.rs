@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! The public 256-level component limit must fit an ordinary 2 MiB stack.
 //! Run through the repository's bounded process wrapper: an abort stays in the
 //! child, and the wrapper's deadline covers its inherited process group.

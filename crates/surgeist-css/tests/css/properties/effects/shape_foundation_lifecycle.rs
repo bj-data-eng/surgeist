@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored shape() grammar: Shapes 1 CRD 2025-06-12 §3.1–3.3 and
 //! Values 5 WD 2024-11-11 §4.2. The required first comma is the individually
 //! adopted exception to SH1's printed outer production, corroborated by its

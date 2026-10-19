@@ -1,19 +1,10 @@
-#![forbid(unsafe_code)]
 //! Functional Speech 1 §§6.1–6.2 authored mixing models. Computed clamping,
 //! inherited adjustments, user calibration and synthesis stay downstream.
 //! Existing-public RED is preserved in speech_balance_volume_lifecycle.rs.
 
+use crate::css::support::first_important_declaration as declaration;
 use surgeist_css::*;
 
-fn declaration(name: &str, text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{name}:{text}!important"));
-    assert!(
-        report.is_clean(),
-        "{name}:{text}: {:?}",
-        report.diagnostics()
-    );
-    report.syntax()[0].clone()
-}
 fn balance(source: &CssDeclaration) -> &CssVoiceBalance {
     let CssKnownPropertyValueRef::VoiceBalance(value) =
         source.known().unwrap().property_value().unwrap()

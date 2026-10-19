@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Color4 CRD2026-09-08 §13.2 enumerates RGB/HSL/HWB legacy formats,
 //! independently of comma-vs-modern syntax (§4.1.2); it has no missing-channel
 //! exemption. §16.2.2 serializes missing RGB as color(srgb), a nonlegacy format.

@@ -1,8 +1,8 @@
-#![forbid(unsafe_code)]
 //! Functional new-API witnesses for Speech 1 §§10.1/10.3 and CSSOM optional
 //! component omission. Existing-public preimplementation RED is in
 //! speech_cue_lifecycle.rs; resources stay authored and are never loaded.
 
+use crate::css::support::first_important_declaration as declaration;
 use surgeist_css::*;
 
 fn audio(target: &str, offset: Option<&str>) -> CssCue {
@@ -13,16 +13,6 @@ fn audio(target: &str, offset: Option<&str>) -> CssCue {
         )
         .unwrap(),
     )
-}
-
-fn declaration(name: &str, text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{name}:{text}!important"));
-    assert!(
-        report.is_clean(),
-        "{name}:{text}: {:?}",
-        report.diagnostics()
-    );
-    report.syntax()[0].clone()
 }
 
 fn cue(source: &CssDeclaration) -> &CssCue {

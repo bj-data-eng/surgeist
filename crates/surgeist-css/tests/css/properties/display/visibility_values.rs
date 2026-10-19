@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Display3 visibility is inherited, initially visible, with three keywords.
 use surgeist_css::*;
 

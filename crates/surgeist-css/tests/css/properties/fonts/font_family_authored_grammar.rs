@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Authored font-family grammar from the selected published standards:
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-family-name-syntax
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#generic-family-name-syntax

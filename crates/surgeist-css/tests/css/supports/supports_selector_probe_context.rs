@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Source-owned Supports selector probes preserve the outer lexical contract.
 use surgeist_css::*;
 

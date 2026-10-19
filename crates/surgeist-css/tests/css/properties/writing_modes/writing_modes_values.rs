@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Selected Writing Modes keyword values and intrinsic, context-free transport.
 use surgeist_css::*;
 

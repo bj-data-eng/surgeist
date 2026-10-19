@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Variables 1 CR20220616 §§3.2/4/4.1 defines pending-member serialization,
 //! custom case and authored token fidelity. The public Rust requested-value
 //! contract preserves absence/nonrepresentability as None, distinct from a

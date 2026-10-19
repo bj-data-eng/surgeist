@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent Syntax 3 An+B and Selectors 4 child-indexed expectations.
 //! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#anb-type
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#nth-child-pseudo

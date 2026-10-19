@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Exact authored font-weight property and common scalar contracts (Fonts 4 §2.2).
 
 use surgeist_css::{

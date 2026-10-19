@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional new API evidence, without a claimed preimplementation API RED.
 //! SVG 1.1 §8.3.9, adopted Appendix F.6.2 admission, and the path resource
 //! contract independently define these expectations; geometry stays unresolved.

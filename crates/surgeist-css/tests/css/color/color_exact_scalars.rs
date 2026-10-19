@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Exact authored color scalars under the selected Color4/Color5 grammars.
 use surgeist_color::PredefinedColorSpace;
 use surgeist_css::*;

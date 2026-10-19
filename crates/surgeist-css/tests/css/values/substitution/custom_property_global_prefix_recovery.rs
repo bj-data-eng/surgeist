@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! CSS Variables 1 §2.1 (2022-06-16): custom properties admit declaration-value
 //! tokens; a CSS-wide keyword is special only when it is the whole value.
 //! https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#syntax

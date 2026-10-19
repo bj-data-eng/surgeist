@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! CSS2 REC 2011-06-07 §9.9.1 supplies auto and exact signed integers,
 //! initial auto, noninheritance. Values4 specified math and the shared bounded
 //! writer are existing product contracts; computed integer rounding is downstream.

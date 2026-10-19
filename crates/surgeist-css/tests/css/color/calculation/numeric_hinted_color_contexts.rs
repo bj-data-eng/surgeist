@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Contextual Number matching retains its unresolved percentage hint.
 //! Color 5 WD 2026-09-08 §§4–5 admits Number or Percentage in non-hue
 //! relative slots, custom-profile slots, and alpha; §6 legacy CMYK is Number-only.

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Animations 1 WD 2023-03-02 §§3.2–3.10 defines eight noninherited
 //! initials, per-item shorthand defaults, time-slot and keyword-slot priority.
 //! Easing 1 CRD 2023-02-13 supplies the selected easing grammar.
@@ -9,6 +8,7 @@
 //! Existing generic owned-payload equality compares retained structure without
 //! time/count origins. Original/replacement provenance is asserted separately.
 
+use crate::css::support::checked_property_grammar_declaration as checked;
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -48,14 +48,6 @@ fn parsed(css: &str) -> CssDeclaration {
         panic!("one retained declaration")
     };
     source.clone()
-}
-fn checked(property: P, css: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        property.grammar(),
-        parse_component_values(css).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap()
 }
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =

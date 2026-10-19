@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Namespaces 3 §4 and Selectors 4 §16: qualified attribute local names are
 //! decoded identifiers, including values whose CSS spelling needs escapes.
 //! https://www.w3.org/TR/2014/REC-css-namespaces-3-20140320/#css-qnames

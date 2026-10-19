@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Functional current-value checks for Lists 3 and Counter Styles 3. Expected
 //! canonical text follows CSSOM's meaning-preserving shorthand rule and the
 //! pinned list-style parsing cases, including keyword/custom-name ambiguity.

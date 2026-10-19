@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Literal authored expectations from Selectors 4, 2026-01-22, sections 3.5,
 //! 5.4, 8.1, 10, 11.1, 11.5, 12.2.1 and 12.3.4. Matching is downstream.
 //! Existing public boundaries keep these tests executable before new enum arms.

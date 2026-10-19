@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Composed authored Text value conventions through existing public APIs.
 //!
 //! Text4 WD20260814 §1.2 / Text3 CRD20260814 §1.2 import value syntax/types

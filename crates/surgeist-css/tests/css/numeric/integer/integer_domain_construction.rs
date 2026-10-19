@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Checked integer owners preserve exact authored tokens. Independent ordering
 //! expectations follow mathematical signed integers; positive repeat/step counts,
 //! inclusive counter bounds and descending additive weights follow their selected

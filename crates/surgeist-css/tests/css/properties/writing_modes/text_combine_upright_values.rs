@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Specified text-combine counts retain omission and defer computed math semantics.
 use surgeist_css::*;
 

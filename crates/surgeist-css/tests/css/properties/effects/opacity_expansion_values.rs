@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Color 4 (2026-09-08), section 3.3: opacity initially equals one and is
 //! noninherited. Specified values retain numbers, percentages and calculations;
 //! computed clamping is downstream. These are typed transport assertions, not

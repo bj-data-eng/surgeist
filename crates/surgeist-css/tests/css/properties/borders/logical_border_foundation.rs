@@ -1,9 +1,11 @@
-#![forbid(unsafe_code)]
-
 //! CSS Logical 1 WD (2025-12-04) §4.5.4: one exact width/style/color
 //! triple sets one flow-relative side or both sides of a flow-relative axis.
 //! Source: https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#border-shorthands
 
+use crate::css::support::{
+    checked_grammar_declaration as checked, important_declaration as declaration,
+    selected_grammar as grammar,
+};
 use surgeist_css::*;
 
 const SIDES: [&str; 4] = [
@@ -20,29 +22,6 @@ const NAMES: [&str; 6] = [
     "border-block",
     "border-inline",
 ];
-
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("selected property: {name}"))
-}
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}");
-    };
-    declaration.clone()
-}
-
-fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"))
-}
 
 fn accepted(name: &str, value: &str) {
     for source in [declaration(name, value), checked(name, value)] {

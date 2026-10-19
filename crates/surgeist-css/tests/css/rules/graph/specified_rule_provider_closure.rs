@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Wrapper consumption of provider owners #621 and #553/#555. These tests get
 //! behavior RED through existing CssSheet emission, not through missing leaf APIs.
 //! Their initial UnsupportedRule failure does not prove direct leaf-provider RED.

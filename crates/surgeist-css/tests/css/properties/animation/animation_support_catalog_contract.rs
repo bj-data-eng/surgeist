@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Animations 1 WD 2023-03-02 §§3.2–3.10 defines the selected authored
 //! property/list productions. Easing 1 CRD 2023-02-13 owns easing syntax.
 //! Catalog completeness concerns authored grammar, without contextual animation

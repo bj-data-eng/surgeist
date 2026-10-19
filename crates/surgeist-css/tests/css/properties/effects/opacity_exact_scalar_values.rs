@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Exact decimal transport is independent of the tokenizer's binary32 cache.
 //! Dyadic goldens below follow directly from powers of two, not parser output.
 

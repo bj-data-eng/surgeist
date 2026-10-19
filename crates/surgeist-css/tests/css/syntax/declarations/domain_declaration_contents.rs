@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Consumer oracles for exact unbraced CSSOM replacement inputs (#1084).
 //! These are new public boundaries; no preimplementation RED is claimed.
 use surgeist_css::*;

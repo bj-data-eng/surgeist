@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Grid line indices preserve integer token spelling and ignore diagnostic
 //! origins when comparing values, as specified by `CssGridLineIndex`'s contract.
 

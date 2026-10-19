@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Page payloads keep page semantics inside an ordinary group under scope.
 //! https://www.w3.org/TR/2011/REC-CSS2-20110607/page.html#page-box
 //! https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/

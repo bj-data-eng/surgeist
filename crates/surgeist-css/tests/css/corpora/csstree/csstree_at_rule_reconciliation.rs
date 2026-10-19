@@ -2,7 +2,6 @@
 //! specifications and the public single-rule recovery contract. The numeric
 //! diagnostic tuples characterize API behavior by static source derivation;
 //! they are not coordinate requirements imposed by CSS publications.
-#![forbid(unsafe_code)]
 
 use std::{collections::BTreeSet, fs, path::Path};
 

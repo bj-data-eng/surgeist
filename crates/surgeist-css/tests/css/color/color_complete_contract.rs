@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Public authored Color lifecycle and standards-mode admission contract.
 //! Color4 CRD20260908 #propdef-color; full accepted Color/Color5/profile/device
 //! owners; Syntax3 original EOF boundaries; Cascade5/Variables1; CSSOM.

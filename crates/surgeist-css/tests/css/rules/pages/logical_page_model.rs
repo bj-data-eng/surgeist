@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional evidence for new page classifications and page specificity APIs.
 //! Logical 1 WD20251204 §3 equates logical and physical side specificity;
 //! CSS2 §13.2.2 orders unqualified pages below side pages below first pages.

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Selectors 4 (2026-01-22), sections 7.1–7.2: checked authored arguments.
 use surgeist_css::{
     CssComponentValueErrorKind, CssDirectionality, CssEmptyLanguageRangeList, CssLanguageRange,

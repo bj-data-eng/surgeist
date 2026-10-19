@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Logical1 WD20251204 §§2–3; source-authored page selector goldens.
 //! Authored page selectors retain their logical classification until progression is known.
 use surgeist_css::*;

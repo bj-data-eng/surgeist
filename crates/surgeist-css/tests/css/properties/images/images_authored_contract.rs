@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing-callable authored Images 3 contracts for object-position,
 //! image-orientation, image-rendering and object-fit. Authority: selected Images 3
 //! CRD 2023-12-18 §§4.5–5.2 (including deprecated UA-accepted rendering syntax),

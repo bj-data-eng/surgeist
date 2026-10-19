@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored environment substitution preserves token identity and boundary policy.
 use surgeist_css::*;
 

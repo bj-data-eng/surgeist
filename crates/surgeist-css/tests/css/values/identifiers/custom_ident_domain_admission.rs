@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Values 4 §4.2: custom identifiers preserve decoded case and exclude CSS-wide
 //! keywords and default. Consumer exclusions are defined by Grid 1 §7.2.2,
 //! Animations 1 §3, and Transitions 1 §§2.1 and 2.5.

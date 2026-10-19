@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Characterization of existing interpolation grammar and checked wrapper behavior.
 //! Color4 CRD 2026-09-08 §13.2 supplies the spaces and polar-only hue grammar;
 //! §13.5 supplies the shorter baseline. Color5 WD 2026-09-08 §9.1 adds custom

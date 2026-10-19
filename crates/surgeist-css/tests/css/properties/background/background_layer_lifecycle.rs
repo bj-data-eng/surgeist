@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Backgrounds 3 (2024-03-11), §§2.4, 2.5, 2.7, 2.8 and 2.9.
 //! https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/
 //! These noninherited list-valued longhands retain authored layer order.
@@ -7,6 +6,7 @@
 //! Exact typed initials/new contribution variants/serializers are supplementary
 //! functional tests once those APIs exist, rather than compile-failure RED.
 
+use crate::css::support::style_declaration as declaration;
 use surgeist_css::*;
 
 struct Case {
@@ -54,15 +54,6 @@ const CASES: &[Case] = &[
         invalid: &["fixed scroll", "local,"],
     },
 ];
-
-fn declaration(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    source.clone()
-}
 
 fn authored(case: &Case) -> CssDeclaration {
     declaration(&format!(

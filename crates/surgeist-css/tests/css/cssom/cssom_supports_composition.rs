@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Selected WebKit Supports frames compose the existing CSS-owned providers.
 //! Work tariffs below derive from the retained component and rule contracts;
 //! punctuation contributes bytes and no fabricated semantic nodes.

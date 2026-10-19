@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! New-model functional expectations from selected UI4 WD 2026-01-20 §3.1–3.4.
 //! Canonical order is width/style/color; ambiguous lone auto sets both slots.
 //! These tests cover the represented Auto/shared-Color subset, not image-1D.

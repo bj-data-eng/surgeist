@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Cascade6 §2.5.4/2.5.5 and Nesting1 §3.2 contextual boundary contracts.
 //! https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-scope
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#syntax-examples

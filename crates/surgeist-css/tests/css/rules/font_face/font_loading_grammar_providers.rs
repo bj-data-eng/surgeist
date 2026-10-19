@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Shared authored providers for the selected Font Loading adapter boundary.
 //! Loading 3 (2023-04-06) requires whole font grammar and CSS-wide rejection.
 //! Ordinary-only and clean-report loading admission are explicit integration

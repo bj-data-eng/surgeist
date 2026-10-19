@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Typed authored gap construction and specified serialization, from Box Alignment 3 §8.
 
 use surgeist_css::*;

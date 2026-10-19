@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use surgeist_css::{
     CssGridTemplateAreaCell as Cell, CssGridTemplateAreaError as AreaError,
     CssGridTemplateAreaName as Name, CssGridTemplateAreaRow as Row, CssGridTemplateAreas as Areas,

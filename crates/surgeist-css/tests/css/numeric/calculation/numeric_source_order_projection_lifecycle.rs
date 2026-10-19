@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Values 4 WD 2024-03-12 §10.10.1 combines same-unit Sum children.
 //! Frozen WebKit 73aa6c89e2cb77c46184a81aec944e4ab99d114d
 //! CSSCalcTree+Simplification.cpp iterates children from first to last and

@@ -1,16 +1,10 @@
-#![forbid(unsafe_code)]
 //! Functional public-model evidence paired with implementation. Expectations use
 //! selected Decoration 4 §§2.1, 2.7–2.10, 3 and 4 and adopted CSSOM omissions.
+use crate::css::support::counted_style_declaration as declaration;
 use CssSpecifiedValueSerializationErrorKind as K;
 use CssSpecifiedValueSerializationLimits as L;
 use surgeist_css::*;
 
-fn declaration(text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(text);
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 1);
-    report.syntax()[0].clone()
-}
 fn length(text: &str) -> CssSpecifiedLength {
     CssSpecifiedLength::try_from_component(CssComponentValue::try_token(text).unwrap()).unwrap()
 }

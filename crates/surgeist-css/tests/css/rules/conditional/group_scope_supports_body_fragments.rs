@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional new body-front expectations, independently derived from the adopted
 //! genuine-source contract, selected Syntax/Nesting/Cascade/Conditional sources,
 //! and existing authored/context/partition contracts.

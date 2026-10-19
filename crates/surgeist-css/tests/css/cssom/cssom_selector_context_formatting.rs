@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent CSSOM/Nesting/Namespaces expectations for pure formatting.
 use surgeist_css::{
     CssAdmittedStyleSelectors, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix,

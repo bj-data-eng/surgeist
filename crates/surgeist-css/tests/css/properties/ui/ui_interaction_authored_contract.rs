@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored UI 4 grammar, lifecycle and canonical provider contracts.
 //! UI4 WD20260120 tables 389/529/985/1490/1778, cursor production 598,
 //! limited URL-set 614 and required alias 1760 independently define this scope.

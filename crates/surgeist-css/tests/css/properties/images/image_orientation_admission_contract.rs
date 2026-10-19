@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing public admission boundaries for Images 3 image-orientation.
 //! Independent authority: selected Images 3 CRD 2023-12-18 §5.1,
 //! references/css-images-3--CRD-css-images-3-20231218--74eb4b475aa0.md:

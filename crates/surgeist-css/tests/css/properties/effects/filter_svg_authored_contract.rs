@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored Filter1 SVG property contracts through existing public fronts.
 //! Source: Filter Effects 1 WD20181218 §§3,9.13.1–2,10,11.5;
 //! selected Color4 and complete shared Color owner, Values4, Cascade5,

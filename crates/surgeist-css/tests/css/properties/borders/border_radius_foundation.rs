@@ -1,8 +1,10 @@
-#![forbid(unsafe_code)]
-
 //! Backgrounds 3 CRD (2024-03-11) §4.1 and Logical 1 WD (2025-12-04) §4.6:
 //! authored physical and flow-relative corner radii, before box-size resolution.
 
+use crate::css::support::{
+    checked_grammar_declaration as checked, important_declaration as declaration,
+    selected_grammar as grammar,
+};
 use surgeist_css::*;
 
 const PHYSICAL: [&str; 4] = [
@@ -21,29 +23,6 @@ const SHORTHAND: &str = "border-radius";
 
 fn names() -> impl Iterator<Item = &'static str> {
     PHYSICAL.into_iter().chain(LOGICAL).chain([SHORTHAND])
-}
-
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("selected property: {name}"))
-}
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
-}
-
-fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"))
 }
 
 fn accepted(name: &str, value: &str) {

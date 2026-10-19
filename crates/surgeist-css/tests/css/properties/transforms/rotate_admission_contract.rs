@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing public boundaries for the authored rotate grammar.
 //! Independent authority: selected Transforms2 2021-11-09 §5 (rotate grammar),
 //! Values3 2024-03-22 §6.1 (angle units; bare zero is not generally an angle),

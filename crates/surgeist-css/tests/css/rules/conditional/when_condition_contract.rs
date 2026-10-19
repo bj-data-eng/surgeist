@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional new-API qualification for the adopted #647 authored profile and
 //! #642's immutable lexical model. No missing-symbol or stub RED is claimed.
 //! https://github.com/bj-data-eng/surgeist/issues/647

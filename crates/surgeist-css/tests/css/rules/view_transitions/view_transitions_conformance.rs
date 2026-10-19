@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use surgeist_css::*;
 
 // The selected VT1 CRD20240328 and CSS Snapshot 2026 stable-module

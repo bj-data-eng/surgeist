@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Conditional 5 section 8 keeps structurally formed, unknown feature tests.
 //! Syntax 3's declaration-first block partition governs ambiguous curly input.
 

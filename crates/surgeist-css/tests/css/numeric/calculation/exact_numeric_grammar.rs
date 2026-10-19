@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Authored grammar expectations from the pinned Values 4 sections 10.1–10.9.
 //! Numeric execution, integer rounding and range clamping belong to resolution.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#math

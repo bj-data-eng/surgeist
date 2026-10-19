@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing checked aggregate fronts must not certify browser-recovered children.
 use surgeist_css::*;
 

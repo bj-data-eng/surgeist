@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing-callable admission oracles from Selectors4 WD20260122 §3.10 and
 //! normative Appendix B. Unknown nonfunctional -webkit- pseudo-elements are
 //! valid authored selectors; their match-nothing meaning is downstream.

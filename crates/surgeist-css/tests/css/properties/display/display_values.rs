@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent specified-value tables from Display 3 §2 and Grid 3 §2.2.
 //! Legacy spellings remain distinct from modern outside/inside pairs (§2.6).
 use surgeist_css::*;

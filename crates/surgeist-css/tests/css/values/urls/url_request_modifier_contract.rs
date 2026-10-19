@@ -1,10 +1,10 @@
-#![forbid(unsafe_code)]
 //! Values 5 WD 2024-11-11 §4.1.1 defines the three request-modifier
 //! productions, independently of Values 4's open identifier/function carrier.
 //! https://www.w3.org/TR/2024/WD-css-values-5-20241111/#request-url-modifiers
 //! These assertions concern authored admission, provenance and immutable output;
 //! Fetch execution, CORS policy and resource resolution belong downstream.
 
+use crate::css::support::check_property_text as checked;
 use surgeist_css::*;
 
 const REFERRER_POLICIES: [&str; 8] = [
@@ -74,17 +74,6 @@ fn consumer_value(property: CssKnownProperty, url: &str) -> String {
     } else {
         url.to_owned()
     }
-}
-
-fn checked(
-    property: CssKnownProperty,
-    text: &str,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
-    parse_property_value(
-        CssPropertyNameRef::Known(property),
-        parse_component_values(text).unwrap(),
-        CssImportance::Important,
-    )
 }
 
 fn background_url(declaration: &CssDeclaration) -> &CssUrl {

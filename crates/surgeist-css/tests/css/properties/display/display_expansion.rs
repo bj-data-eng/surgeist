@@ -1,12 +1,6 @@
-#![forbid(unsafe_code)]
 //! Display 3 longhand transport through shared expansion and normalization.
+use crate::css::support::first_style_declaration as declaration;
 use surgeist_css::*;
-
-fn declaration(source: &str) -> CssDeclaration {
-    let report = parse_style_attribute(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    report.syntax()[0].clone()
-}
 
 #[test]
 fn display_globals_transport_the_same_single_terminal_without_cascade() {

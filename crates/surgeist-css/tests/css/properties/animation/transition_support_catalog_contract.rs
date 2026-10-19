@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! The selected Transitions 1 §§2.1–2.5 define the property/list production
 //! independently of contextual matching and execution. The support catalog
 //! describes that authored production; Easing owns easing-function syntax.

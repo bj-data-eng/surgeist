@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Shapes 1 CRD 2025-06-12 path() imports SVG 1.1 Second Edition
 //! (2011-08-16) paths §8.3.9 and Appendix F.5/F.6.2. These cases assert
 //! authored syntax and full consumption, not drawing-prefix recovery or geometry.

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Characterization of the dated CSSOM media-feature cells under the adopted
 //! authored-value policy. MQ5 supplies the domains; Values4 supplies both ratio
 //! operands; numeric lexemes and slash spacing remain the selected media policy.

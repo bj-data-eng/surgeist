@@ -1,23 +1,12 @@
-#![forbid(unsafe_code)]
-
 //! CSS Text 4 Working Draft (2026-08-14) §6.4 behavior and the selected
 //! CSS Text 3 Candidate Recommendation Draft (2026-08-14) support source.
 //! Exact typed payloads belong to later API tests.
 
+use crate::css::support::important_declaration as declaration;
 use surgeist_css::*;
 
 fn grammar(name: &str) -> CssPropertyGrammar {
     CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("selected grammar: {name}"))
-}
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
 }
 
 fn checked(name: &str, value: &str) -> CssDeclaration {

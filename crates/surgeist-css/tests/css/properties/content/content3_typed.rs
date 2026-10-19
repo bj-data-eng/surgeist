@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional checked-value expectations from Content 3 (2025-12-04), Counter
 //! Styles 3 (2021-07-27), and CSSOM §6.7.2's specified default omissions.
 

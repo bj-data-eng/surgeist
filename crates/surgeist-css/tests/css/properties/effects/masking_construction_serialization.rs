@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional public-model contracts accompanying full authored Masking support.
 //! Expected strings come from the selected grammar and documented shared numeric
 //! policy. Work formulas visit retained semantic nodes, including shortened edges.

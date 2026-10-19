@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Syntax 3 closes open functions at actual EOF, but Selectors 4 forgiving
 //! recovery discards malformed members. Retention diagnostics describe only
 //! functions surviving that recovery, not all lexically open functions.

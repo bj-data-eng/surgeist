@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Selected basic shapes retain symbolic calculations in the sole authored graph.
 
 use surgeist_css::*;

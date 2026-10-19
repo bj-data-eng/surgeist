@@ -1,9 +1,9 @@
-#![forbid(unsafe_code)]
 //! Functional tests for four new represented-value APIs, with no artificial
 //! preimplementation RED. Transforms 1 §§4.1/5/9 and Transforms 2 §§5.1/12
 //! govern order and equivalent defaults. Values 4 §10.13 and the shared numeric
 //! owner govern specified math; parser/model grammar gaps remain separate.
 
+use crate::css::support::style_declaration as declaration;
 use surgeist_css::{
     CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
 };
@@ -22,14 +22,6 @@ fn angle(text: &str, unit: CssAngleUnit) -> CssAngleOrZero {
     CssAngleOrZero::Angle(CssAngleValue::from_literal(
         CssAngleLiteral::try_new(text, unit).unwrap(),
     ))
-}
-fn declaration(text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(text);
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    let [value] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    value.clone()
 }
 macro_rules! parsed {
     ($source:expr, TransformOrigin) => {

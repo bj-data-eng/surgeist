@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Existing-API expectations from CSS Lists 3 (2020-11-17) §3.7:
 //! https://www.w3.org/TR/2020/WD-css-lists-3-20201117/#propdef-marker-side
 //! The two specified keywords remain symbolic; marker placement is downstream.

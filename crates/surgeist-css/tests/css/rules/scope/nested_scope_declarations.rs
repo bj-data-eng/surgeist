@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Style-nested scopes retain declaration runs and inherited selector identity.
 //! Oracle: Nesting1 2026-01-22 §§3.3, 3.3.1, 5 and Cascade6 2024-09-06
 //! §§2.5.2–2.5.5. Direct runs inherit the nearest style's entire selector

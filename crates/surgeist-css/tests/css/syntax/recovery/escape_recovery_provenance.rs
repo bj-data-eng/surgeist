@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! CSS Syntax 3 §§4.3.1 and 4.3.7 require escape parse errors while preserving
 //! delimiter/replacement recovery. Literal coordinates below independently
 //! specify original UTF-8 bytes, zero-based lines and UTF-16 columns.

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent authored contract: Text4 WD20260814 #propdef-line-padding,
 //! #typedef-autospace, #typedef-spacing-trim, #propdef-text-spacing,
 //! #propdef-hanging-punctuation; Values3/4 §2.2 requires both grouping barriers.
@@ -8,6 +7,10 @@
 //! mode presence/effective semantics, primitive-provider and private suppression
 //! tests accompany functional implementation. No contextual glyph computation.
 
+use crate::css::support::{
+    authored_checked_declaration as checked, authored_parsed_declaration as parsed,
+    authored_property_named as property,
+};
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -21,21 +24,12 @@ const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
     ("revert", CssGlobalKeyword::Revert),
     ("revert-layer", CssGlobalKeyword::RevertLayer),
 ];
-fn property(name: &str) -> P {
-    P::from_name(name).unwrap_or_else(|| panic!("authored property unavailable: {name}"))
-}
-fn parsed(name: &str, value: &str) -> CssDeclaration {
-    authored_property::parsed(property(name), value)
-}
 fn checked_components(
     name: &str,
     value: CssComponentValues,
     grammar: bool,
 ) -> Result<CssDeclaration, CssPropertyValueParseError> {
     authored_property::checked_components(property(name), value, grammar, CssImportance::Important)
-}
-fn checked(name: &str, value: &str, grammar: bool) -> CssDeclaration {
-    authored_property::checked(property(name), value, grammar)
 }
 fn fronts(name: &str, text: &str) -> [CssDeclaration; 5] {
     authored_property::fronts(property(name), text)

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Intrinsic parsed alpha from Color 4 CRD 2026-09-08 §4.2, separately retaining
 //! authored components and calculations under the selected family/role phases.
 //! https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#alpha-syntax

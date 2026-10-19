@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Existing-API expectations from CSS Lists 3 (2020-11-17) §3.3–3.6:
 //! https://www.w3.org/TR/2020/WD-css-lists-3-20201117/#propdef-list-style
 //! Counter-style names and `symbols()` follow Counter Styles 3 (2021-07-27);

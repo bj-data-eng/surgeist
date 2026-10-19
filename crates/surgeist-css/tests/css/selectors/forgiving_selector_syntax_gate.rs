@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Selectors 4 (2026-01-22) section 16.1 checks <any-value>? before forgiving
 //! selector-member filtering. Syntax 3 (2021-12-24) sections 5.3.1, 5.4.8 and
 //! 8.2 retain an unmatched ')' inside an unclosed '{'; nested bad tokens are

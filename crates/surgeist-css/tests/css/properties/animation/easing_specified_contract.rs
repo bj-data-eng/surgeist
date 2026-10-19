@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Easing 1 §2.4 defines keyword and step-position output; Values 4
 //! §§10.12–10.13 defer math range checks and integer rounding beyond specified values.
 //! https://www.w3.org/TR/2023/CRD-css-easing-1-20230213/#serialization

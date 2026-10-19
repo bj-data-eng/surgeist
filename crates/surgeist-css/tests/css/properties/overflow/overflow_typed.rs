@@ -1,18 +1,7 @@
-#![forbid(unsafe_code)]
-
 //! Authored Overflow 3 keywords and the Cascade 5 overlay alias.
 
+use crate::css::support::first_declaration as parsed;
 use surgeist_css::*;
-
-fn parsed(name: &str, value: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{name}:{value}"));
-    assert!(
-        report.is_clean(),
-        "{name}:{value}: {:?}",
-        report.diagnostics()
-    );
-    report.syntax()[0].clone()
-}
 
 fn ordinary(source: &CssDeclaration) -> Vec<CssLonghandValue> {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =

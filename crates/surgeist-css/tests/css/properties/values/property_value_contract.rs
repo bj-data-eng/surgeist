@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! The outer test compiles before the checked property-value API exists. Its
 //! executed assertion requires the separate public consumer to compile and run.
 //! The nested offline Cargo command shares the outer bounded process group and

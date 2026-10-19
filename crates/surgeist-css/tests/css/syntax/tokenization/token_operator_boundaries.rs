@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Dated CSS Syntax 3 (2021-12-24) section 4.3.1's fallback consumes one
 //! delimiter code point. Thus ~ =, | =, ^ =, $ = and * = are pairs of Delims,
 //! even when their authored code points are adjacent. The public component

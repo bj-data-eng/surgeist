@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Selectors 4 section 5.2: a namespace-qualified universal selector restricts
 //! the elements matched even when another simple selector follows it.
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#universal-selector

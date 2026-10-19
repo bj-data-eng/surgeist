@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Exact authored Fonts 4 font-size and the shared explicit font size component.
 
 use surgeist_css::{

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent pinned Syntax/Selectors/Nesting rule admissions and owned recovery.
 //! Transitions 2 starting-style is outside the selected profile; its parent survives.
 //! Admission sources: Syntax 3 (2021-12-24), Selectors 4 (2026-01-22),

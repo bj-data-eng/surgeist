@@ -1,19 +1,9 @@
-#![forbid(unsafe_code)]
-
 //! Functional authored Scrollbars 1 cases for checked models and explicit writers.
 //! Expectations follow the pinned 2021-12-09 CR §§2–3 and the selected Color 4/5
 //! specified serialization policy; platform scrollbar rendering remains downstream.
 
+use crate::css::support::style_declaration as declaration;
 use surgeist_css::*;
-
-fn declaration(text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(text);
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    let [value] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    value.clone()
-}
 
 fn color(text: &str) -> CssColor {
     let source = declaration(&format!("color:{text}"));

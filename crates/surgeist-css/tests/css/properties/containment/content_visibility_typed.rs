@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Direct typed and bounded specified-value evidence for Containment 2 §4.
 
 use surgeist_css::*;

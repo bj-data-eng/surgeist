@@ -1,12 +1,6 @@
-#![forbid(unsafe_code)]
 //! Display3 Order intrinsic semantics; ordering of layout items is downstream.
+use crate::css::support::first_style_declaration as declaration;
 use surgeist_css::*;
-
-fn declaration(text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(text);
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    report.syntax()[0].clone()
-}
 
 #[test]
 fn order_initial_is_literal_zero_and_ordinary_values_keep_identity() {

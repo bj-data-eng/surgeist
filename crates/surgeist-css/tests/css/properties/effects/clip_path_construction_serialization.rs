@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional evidence for new authored composition, ellipse component and serializer APIs.
 //! These APIs have no executable preimplementation RED. Expectations are specified
 //! independently by Masking 1 §5.1, the adopted Shapes 1 ellipse/polygon decisions,

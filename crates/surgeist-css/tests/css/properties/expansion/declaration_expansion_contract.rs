@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! The outer test compiles before the expansion API exists. Its executed
 //! assertion requires the real public consumer to compile and complete all
 //! independent behavioral cases. The nested offline Cargo process inherits the

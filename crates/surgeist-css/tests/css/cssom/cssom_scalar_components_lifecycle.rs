@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Composed specified-component controls, independently selected from CSSOM
 //! WD20210826 §2.1 and §6.7.2. Color 4's serialization section replaces the
 //! older CSSOM color recipe; Fonts 4 and Speech 1 own family grammar.

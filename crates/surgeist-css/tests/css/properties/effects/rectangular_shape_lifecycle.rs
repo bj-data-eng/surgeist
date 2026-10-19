@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored rectangles from Shapes 1 CRD 2025-06-12 §§3.1–3.3:
 //! https://www.w3.org/TR/2025/CRD-css-shapes-1-20250612/#supported-basic-shapes
 //! Token separation follows Values 4 WD 2024-03-12 §2.5. Expectations retain

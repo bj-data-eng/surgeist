@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Public Unicode-range oracles from CSS Syntax 3 (2021-12-24) §§4.2 and 7.1
 //! and the catalog-selected CSS Fonts 3 (2018-09-20) §4.5.
 //! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#urange-syntax

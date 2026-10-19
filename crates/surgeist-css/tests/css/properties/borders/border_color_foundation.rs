@@ -1,9 +1,11 @@
-#![forbid(unsafe_code)]
-
 //! Backgrounds 3 CRD (2024-03-11) §3.1 and Logical 1 WD (2025-12-04)
 //! §§4.5.3, 4.7. Logical 1 issue 3030 leaves complete four-side reset
 //! membership unsettled, while its authored color grammar and roles are defined.
 
+use crate::css::support::{
+    checked_grammar_declaration as checked, important_declaration as declaration,
+    selected_grammar as grammar,
+};
 use surgeist_css::*;
 
 fn assert_four_expansion(result: Result<CssExpansion, CssExpansionError>) {
@@ -47,29 +49,6 @@ fn names() -> impl Iterator<Item = &'static str> {
         .chain(LOGICAL)
         .chain(PAIRS)
         .chain([FOUR_SIDE])
-}
-
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("selected property: {name}"))
-}
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
-}
-
-fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"))
 }
 
 fn accepted(name: &str, value: &str) {

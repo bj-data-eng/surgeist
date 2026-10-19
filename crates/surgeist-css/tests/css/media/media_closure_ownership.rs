@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! An accepted query prelude is tentative until its owning rule survives.
 //! Syntax 3 requires @media to have a block; EOF closure diagnostics may
 //! describe retained raw queries, import rules, and enclosing rule blocks.

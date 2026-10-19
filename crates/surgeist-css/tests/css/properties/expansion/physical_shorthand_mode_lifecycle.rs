@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Logical 1 WD 2025-12-04 §4.7 supplies logical side assignments; Box 3,
 //! Backgrounds 3, Position 3 and Scroll Snap 1 supply physical assignments.
 //! Complementary reset membership remains source-limited. Surgeist's bounded
@@ -7,6 +5,7 @@
 //! CSS-wide values select physical sides. Frozen WebKit 73aa6c89 corroborates
 //! physical membership, CSS-wide dispatch and quad repetition, not logical mode.
 
+use crate::css::support::important_declaration as declaration;
 use surgeist_css::*;
 
 struct Family {
@@ -157,15 +156,6 @@ const FAMILIES: [Family; 8] = [
 
 fn grammar(name: &str) -> CssPropertyGrammar {
     CssPropertyGrammar::from_name(name).unwrap()
-}
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let text = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&text);
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one declaration: {text}")
-    };
-    source.clone()
 }
 fn checked(name: &str, value: &str) -> CssDeclaration {
     parse_property_value_for_grammar(

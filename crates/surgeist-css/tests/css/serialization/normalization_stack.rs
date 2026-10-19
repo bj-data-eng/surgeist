@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Public normalization must handle parser-valid authored nesting on the
 //! ordinary 2 MiB thread stack while preserving source order and provenance.
 

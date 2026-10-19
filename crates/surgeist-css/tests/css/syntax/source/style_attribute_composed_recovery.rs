@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Attribute-front composition tests. Style Attributes REC20131107
 //! §3 supplies empty slots and the unbraced-root closer rule; selected CSS2
 //! §4.2 supplies malformed-declaration recovery. Existing public original-source,

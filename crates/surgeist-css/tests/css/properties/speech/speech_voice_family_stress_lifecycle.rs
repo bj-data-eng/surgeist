@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Speech 1 voice-family / voice-stress through existing public CSS boundaries.
 //! Independent authority: retained CRD-css-speech-1-20230214 §§11.1 and 11.5.
 //! Reserved-token cases follow Speech's quotation rule and its borrowed
@@ -9,26 +8,12 @@
 //! no voice selection, language preservation or acoustic execution occurs here.
 //! Raw component serialization preserves tokens, not canonical model output.
 
+use crate::css::support::{
+    important_speech_declaration as declaration, speech_property as property,
+};
 use surgeist_css::*;
 
 const PROPERTIES: [&str; 2] = ["voice-family", "voice-stress"];
-
-fn property(name: &str) -> CssKnownProperty {
-    CssKnownProperty::from_name(name)
-        .unwrap_or_else(|| panic!("Speech 1 property `{name}` must be recognized"))
-}
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one complete declaration: {source}")
-    };
-    assert_eq!(declaration.known().unwrap().property(), property(name));
-    assert_eq!(declaration.importance(), CssImportance::Important);
-    declaration.clone()
-}
 
 fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored item-flow grammar and intrinsic declaration lifecycle.
 //!
 //! Independent authorities: selected Grid3 2026-01-21 Appendix A lines

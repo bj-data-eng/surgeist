@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Failed complete rules partition pending declaration lists, while a no-rule
 //! result preserves the list. The first nonempty transfer occupies the leading
 //! slot even when a rejected child leaves no rule in the retained tree.

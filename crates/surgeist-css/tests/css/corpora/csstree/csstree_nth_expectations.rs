@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Declared Nth corpus rejection follows token-level An+B grammar and raw input.
 //! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#anb-type
 #[test]

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional evidence for the newly exposed UI borrowed longhand views and
 //! logical Resize variants. UI4 WD20260120 selects the authored domains; the
 //! shared records own general metadata, initials, provenance and alias inventory.

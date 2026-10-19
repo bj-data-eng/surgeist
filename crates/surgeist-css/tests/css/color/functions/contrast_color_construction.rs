@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Color 5 WD20260908 §8 preserves one input; function nodes compose within 256 levels.
 use surgeist_css::*;
 

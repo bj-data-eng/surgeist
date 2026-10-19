@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Conditional3 section 3 permits unrestricted rules in ordinary conditional lists.
 //! Cascade6 admits global name definitions inside ordinary scope; Nesting1
 //! does not admit descriptor-body definitions beneath style-rule ancestors.

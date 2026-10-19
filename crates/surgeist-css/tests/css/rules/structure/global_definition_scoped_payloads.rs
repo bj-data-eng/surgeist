@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Global definitions retain the same payload inside ordinary scope (Cascade6
 //! §2.5.5); surrounding selectors and authored parents retain their scope context.
 //! https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-nesting

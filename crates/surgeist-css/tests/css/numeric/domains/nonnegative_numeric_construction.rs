@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Shared nonnegative scalar consumers, checked through functional public APIs.
 //! Exact retention and equality are Surgeist contracts. Genuine math stays
 //! symbolic; ordinary nonnegative admission is not deferred range checking.

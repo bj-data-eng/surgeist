@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Transitions 1 (2026-01-08), §§2.1–2.5, defines four noninherited
 //! longhands, their initials, and one list entry per shorthand item.
 //! Cascade 5 (2022-01-13), §3.1, defines omission defaults, CSS-wide
@@ -17,6 +16,7 @@
 //! order follows shorthand slots: property, duration, timing-function, delay.
 //! This intrinsic contribution order is a public contract, not a standard mandate.
 
+use crate::css::support::checked_property_grammar_declaration as checked;
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -49,15 +49,6 @@ fn parsed(css: &str) -> CssDeclaration {
         panic!("one retained declaration for {css}")
     };
     source.clone()
-}
-
-fn checked(property: P, css: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        property.grammar(),
-        parse_component_values(css).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap()
 }
 
 fn retained_recovered(css: &str) -> CssDeclaration {

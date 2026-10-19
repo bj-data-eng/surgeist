@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Display3 2026-06-05 §2 and Grid3 2026-01-21 §2.2 define these
 //! independent grammar expectations: 110 base forms plus two extension values.
 //! https://www.w3.org/TR/2026/CRD-css-display-3-20260605/#the-display-properties

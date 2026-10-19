@@ -1,8 +1,7 @@
-#![forbid(unsafe_code)]
-
 //! Public specified-value contracts from CSS Box Alignment 3 WD 2026-01-30
 //! §§8.1, 8.2, and 8.4.
 
+use crate::css::support::important_declaration as parsed;
 use surgeist_css::*;
 
 fn scalar(text: &str) -> CssSpecifiedNonNegativeLengthPercentage {
@@ -20,16 +19,6 @@ fn scalar(text: &str) -> CssSpecifiedNonNegativeLengthPercentage {
         CssSpecifiedNonNegativeLengthPercentage::try_from_component(component.clone())
             .expect("checked nonnegative scalar")
     }
-}
-
-fn parsed(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
 }
 
 fn checked(name: &str, value: &str) -> CssDeclaration {

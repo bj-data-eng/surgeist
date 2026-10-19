@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Media Queries 4 permits an empty media-query list. Checked construction
 //! must preserve the same authored domain as parsing; evaluation belongs to style.
 //! https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/#mq-list

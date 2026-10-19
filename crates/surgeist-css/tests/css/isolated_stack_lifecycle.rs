@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Real subprocess characterization of the shared stack runner. The worker's
 //! output and destruction, rather than elapsed time, establish completion.
 

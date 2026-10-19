@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Public consumer oracles for the selected current Syntax block-contents witness
 //! and CSSOM staged insertion algorithms. These are new boundaries: no executable
 //! preimplementation RED is claimed. CSSOM exception/state policy stays downstream.

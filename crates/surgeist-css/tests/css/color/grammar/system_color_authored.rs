@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Symbolic system colors from CSS Color 4 CRD 2026-09-08, section 6.2 and Appendix A.
 //!
 //! The explicit keyword table comes from the pinned specification, independently

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Ordinary predefined color() grammar from Color 4 CRD 2026-09-08 §§10.1–10.9,
 //! with canonical projection from §16.5 and the selected authored numeric phases.
 //! https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#color-function
@@ -8,6 +7,7 @@
 //! no channel gamut clipping, and direct alpha clipping to [0, 1]. Calculations
 //! retain their authored graph and the selected specified projection wrappers.
 
+use crate::css::support::parsed_color as parsed;
 use surgeist_color::PredefinedColorSpace;
 use surgeist_css::*;
 
@@ -64,26 +64,6 @@ fn component(text: &str) -> CssColorComponent {
     } else {
         CssColorComponent::Number(CssColorNumberLiteral::try_from_component(token(text)).unwrap())
     }
-}
-
-fn parsed(text: &str) -> CssColor {
-    let source = format!("color:{text}");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 1, "{source}");
-    assert_eq!(validate_style_attribute(&source).unwrap(), *report.syntax());
-    let declaration = &report.syntax()[0];
-    let CssValueOrigin::Parsed(origin) = declaration.value_components().items()[0].origin() else {
-        panic!("parsed function origin: {source}");
-    };
-    assert_eq!(origin.source().as_str(), source);
-    assert_eq!(origin.span().start().byte_offset().value(), 6);
-    let CssKnownPropertyValueRef::Color(value) =
-        declaration.known().unwrap().property_value().unwrap()
-    else {
-        panic!("typed color: {source}");
-    };
-    value.value().clone()
 }
 
 fn assert_origin(origin: &CssValueOrigin, text: &str) {

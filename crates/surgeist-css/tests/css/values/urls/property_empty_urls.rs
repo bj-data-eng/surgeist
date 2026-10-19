@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Values 4 (2024-03-12) §4.5.2: an empty URL is valid authored syntax;
 //! resource resolution later treats it as an invalid resource.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#url-empty

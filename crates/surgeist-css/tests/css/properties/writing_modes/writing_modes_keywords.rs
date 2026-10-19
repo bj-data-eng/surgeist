@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Canonical Writing Modes keyword contracts.
 //! WM3 REC2019-12-10 §§2/3/5 and WM4 CR2019-07-30 §3.2 require these
 //! 16 keywords. No glyph alias grammar or math-substitution assertion is made.

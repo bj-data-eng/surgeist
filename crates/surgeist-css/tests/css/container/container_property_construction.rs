@@ -1,6 +1,6 @@
-#![forbid(unsafe_code)]
 //! Independent ordinary values and construction contracts for Conditional5 §5.1–5.3.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/
+use crate::css::support::important_checked_components as declaration;
 use surgeist_css::*;
 
 fn names(values: &[&str]) -> CssContainerNames {
@@ -13,14 +13,6 @@ fn names(values: &[&str]) -> CssContainerNames {
         )
         .unwrap(),
     )
-}
-fn declaration(property: CssKnownProperty, components: CssComponentValues) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(property),
-        components,
-        CssImportance::Important,
-    )
-    .unwrap()
 }
 fn assert_programmatic(components: &CssComponentValues) {
     assert!(

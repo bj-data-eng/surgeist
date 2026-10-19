@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional additive payload and composed attachment contracts. Oracles are
 //! Selectors4 WD20260122 §§3.6/3.10/Appendix B, Selectors3 legacy colon syntax,
 //! imported Pseudo4 WD20250627 marker/element-backed definitions and the selected

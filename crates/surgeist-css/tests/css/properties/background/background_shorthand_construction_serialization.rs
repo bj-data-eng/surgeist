@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Backgrounds 3 CRD20240311 §2.10 and CSSOM WD20210826 §6.7.2.
 //! Canonical examples include the Backgrounds 3 subset of pinned WebKit WPT
 //! background-shorthand-serialization.html; Backgrounds 4 text/border-area excluded.

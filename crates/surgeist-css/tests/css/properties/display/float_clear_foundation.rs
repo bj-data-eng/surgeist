@@ -1,35 +1,14 @@
-#![forbid(unsafe_code)]
-
 //! CSS2 REC (2011-06-07) §§9.5.1–9.5.2 plus Logical 1 WD (2025-12-04)
 //! §2.2. Flow-relative values remain authored keywords until the containing
 //! block's writing mode is available downstream.
 
+use crate::css::support::{
+    checked_grammar_declaration as checked, important_declaration as declaration,
+    selected_grammar as grammar,
+};
 use surgeist_css::*;
 
 const NAMES: [&str; 2] = ["float", "clear"];
-
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("selected property: {name}"))
-}
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
-}
-
-fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"))
-}
 
 fn authored_value<'a>(source: &'a CssDeclaration, name: &str) -> &'a str {
     let known = source.known().expect("known property");

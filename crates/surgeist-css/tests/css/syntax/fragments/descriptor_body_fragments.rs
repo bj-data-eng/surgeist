@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Fonts 4 (2026-09-07) §§4, 9.2; Counter Styles 3 (2021-07-27) §3;
 //! Color 5 (2026-09-08) §5.3; Syntax 3 (2021) component/declaration recovery.
 

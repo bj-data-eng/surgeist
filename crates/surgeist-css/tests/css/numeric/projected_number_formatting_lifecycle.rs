@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! CSSOM WD 2021-08-26 §6.7.2 and component number serialization require
 //! selection before lossy six-place fixed text. Values 4 WD 2024-03-12
 //! §10.13 retains specified calculation trees and normal numeric leaf text.

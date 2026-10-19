@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional new-model contracts from Motion WD 2024-11-05, Box 3 coord-box
 //! and the imported full position, angle, URL and complete Shapes owners.
 //! These wholly new typed APIs have no executable preimplementation boundary.

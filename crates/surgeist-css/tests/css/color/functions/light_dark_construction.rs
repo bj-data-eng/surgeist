@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Checked construction expectations from Color 5 WD20260908 §7 and the
 //! existing complete structural ceiling: function nodes add one; none adds zero.
 use surgeist_css::*;

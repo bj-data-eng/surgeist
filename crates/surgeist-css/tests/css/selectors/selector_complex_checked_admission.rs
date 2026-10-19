@@ -1,19 +1,12 @@
-#![forbid(unsafe_code)]
 //! Existing complex assembly must apply one default specified-output budget to
 //! the complete graph. Parts come from the real parser; compound conversion uses
 //! the existing checked Shadow argument boundary, without private-field access.
 
+use crate::css::support::validated_selector as parsed;
 use surgeist_css::{
     CssComplexSelector, CssComplexSelectorPart, CssCompoundSelector, CssCompoundSelectorArgument,
-    CssNamespaceContext, CssSelector, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, parse_selector,
+    CssSelector, CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits,
 };
-
-fn parsed(source: &str) -> CssSelector {
-    let report = parse_selector(source, &CssNamespaceContext::default());
-    assert!(report.is_clean(), "{source:?}: {report:?}");
-    report.into_validation_result().unwrap().unwrap()
-}
 
 fn complex(source: &str) -> CssComplexSelector {
     let CssSelector::Complex(value) = parsed(source) else {

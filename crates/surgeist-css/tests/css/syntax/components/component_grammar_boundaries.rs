@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Caller grammar boundaries through existing public parsing interfaces.
 //! Independent authority: Syntax 3 CRD20211224 §§5.3.1–2, 5.4.7–9, 8, 8.2;
 //! selected MQ5 WD20260219 §3, Variables CR20220616 §2,

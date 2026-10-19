@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Preserve the invalid right-hand token's diagnostic while disambiguating `||`
 //! from a descendant whose type selector has an explicit empty namespace.
 //! Column is admitted, but its required right compound cannot begin with `!`;

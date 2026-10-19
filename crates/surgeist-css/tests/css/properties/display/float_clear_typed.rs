@@ -1,18 +1,7 @@
-#![forbid(unsafe_code)]
-
 //! Exact authored float/clear values from CSS2 §§9.5.1–2 and Logical 1 §2.2.
 
+use crate::css::support::first_declaration as parsed;
 use surgeist_css::*;
-
-fn parsed(name: &str, value: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{name}:{value}"));
-    assert!(
-        report.is_clean(),
-        "{name}:{value}: {:?}",
-        report.diagnostics()
-    );
-    report.syntax()[0].clone()
-}
 
 fn ordinary(source: &CssDeclaration) -> CssLonghandValue {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =

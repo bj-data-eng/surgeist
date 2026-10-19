@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing public checked fronts must preserve their responsible token origin
 //! when Values 5 WD 2024-11-11 §4.1.1 rejects a known request modifier.
 //! https://www.w3.org/TR/2024/WD-css-values-5-20241111/#request-url-modifiers

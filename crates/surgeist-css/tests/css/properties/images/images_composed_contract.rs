@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! CSS Images 3 §§3.1.1, 3.2.1, 3.3, 3.4.1 and 7.
 //! https://www.w3.org/TR/2023/CRD-css-images-3-20231218/
 //! Values 4 §4.5 and selected Color 5 §7 retain URL and image-pair identity.

@@ -1,8 +1,8 @@
-#![forbid(unsafe_code)]
 //! Functional typed API evidence added with authored Transforms implementation.
 //! Transforms 1 §§4–6/9, Transforms 2 §§5/7–10/12, and Values 4 §10.13
 //! select these operands and canonical defaults. Generic inventories remain in
 //! common/property_expectations/records.rs. No contextual matrix is evaluated.
+use crate::css::support::counted_style_declaration as declaration;
 use surgeist_css::*;
 type L = CssSpecifiedValueSerializationLimits;
 type K = CssSpecifiedValueSerializationErrorKind;
@@ -48,12 +48,6 @@ fn scale(values: Vec<CssTransformScaleComponent>) -> CssScale {
 }
 fn transform(value: CssTransformFunction) -> CssTransform {
     CssTransform::Functions(CssTransformFunctionList::try_new(vec![value]).unwrap())
-}
-fn declaration(text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(text);
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 1);
-    report.syntax()[0].clone()
 }
 fn budget(
     expected: &str,

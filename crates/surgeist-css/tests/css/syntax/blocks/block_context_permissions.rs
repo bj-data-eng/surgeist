@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Composed context permissions through public parsing interfaces.
 //! Selected Syntax 3 CRD20211224 §§5.3.7–8, 8.1; Nesting WD20260122 §§3–5;
 //! catalog's narrow block-contents import and terminal-run reconciliation;

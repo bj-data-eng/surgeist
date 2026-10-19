@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use surgeist_css::*;
 
 // Ordinary pseudo-class permission includes OnlyChild and generic suffixes;

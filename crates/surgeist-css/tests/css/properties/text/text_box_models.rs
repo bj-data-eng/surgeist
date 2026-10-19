@@ -1,19 +1,10 @@
-#![forbid(unsafe_code)]
 //! Functional new-model evidence alongside implementation, with no prior
 //! compile-failure RED claim. Inline3 WD20241218 §§5.2/6.1–6.3 independently
 //! define finite roles, authored arity, metadata and expansion; corrected
 //! omitted trim follows CSSWG editorial commit 97441f74 / PR12765.
 
+use crate::css::support::normal_checked_declaration as checked;
 use surgeist_css::*;
-
-fn checked(property: CssKnownProperty, text: &str) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(property),
-        parse_component_values(text).unwrap(),
-        CssImportance::Normal,
-    )
-    .unwrap()
-}
 
 fn typed_edge(declaration: &CssDeclaration) -> CssTextBoxEdge {
     let CssKnownPropertyValueRef::TextBoxEdge(value) =

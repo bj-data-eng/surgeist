@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! The adopted Surgeist aggregate contract compares exact numeric syntax while
 //! ignoring numeric provenance only. This is an authored-value product contract,
 //! not a CSSOM semantic-equivalence claim or an evaluation of symbolic math.

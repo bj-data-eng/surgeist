@@ -1,10 +1,13 @@
-#![forbid(unsafe_code)]
 //! Existing-callable Content 3 WD 2025-12-04 authored contract.
 //! Selected string-set table/local prose remains narrow despite #named-strings
 //! contradiction; the source record retains #680 and the bounded disposition.
 //! Published source basis: cfffe14a4e5371a1b09e9a0a37b56dd74cf712e0.
 //! No missing-symbol/constructor RED or execution evidence is claimed.
 
+use crate::css::support::{
+    authored_declaration_through_front as declaration, check_property_components as checked,
+    discoverable_property as property,
+};
 use surgeist_css::{
     CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
 };
@@ -23,95 +26,6 @@ const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
     ("revert", CssGlobalKeyword::Revert),
     ("revert-layer", CssGlobalKeyword::RevertLayer),
 ];
-
-fn property(name: &str) -> CssKnownProperty {
-    let property = CssKnownProperty::from_name(name).unwrap_or_else(|| {
-        panic!("selected authored property {name} must accept public discovery")
-    });
-    assert_eq!(property.canonical_name(), name);
-    assert_eq!(
-        CssKnownProperty::from_name(&name.to_ascii_uppercase()),
-        Some(property)
-    );
-    assert_eq!(
-        CssPropertyGrammar::from_name(name).unwrap(),
-        property.grammar()
-    );
-    property
-}
-
-fn declaration(name: &str, input: &str, front: usize) -> CssDeclaration {
-    let p = property(name);
-    let source = match front {
-        0 => {
-            let css = format!("/*😀*/{name}:{input}!important");
-            let report = parse_style_attribute(&css);
-            assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-            assert_eq!(validate_style_attribute(&css), Ok(report.syntax().clone()));
-            let [source] = report.syntax().as_slice() else {
-                panic!("one authored occurrence")
-            };
-            assert!(source.position().is_some());
-            assert_eq!(source.parsed_name().unwrap().source().as_str(), css);
-            source.clone()
-        }
-        1 | 2 => {
-            let components = parse_component_values(input).unwrap();
-            let before = components.clone();
-            let source = checked(p, components.clone(), front == 2).unwrap();
-            assert_eq!(components, before);
-            assert_eq!(source.value_components(), &components);
-            assert!(source.position().is_none());
-            assert!(source.parsed_value().is_none());
-            source
-        }
-        3 | 4 => {
-            let report = if front == 3 {
-                parse_property_value_text(
-                    input,
-                    CssPropertyNameRef::Known(p),
-                    CssImportance::Important,
-                )
-            } else {
-                parse_property_value_text_for_grammar(input, p.grammar(), CssImportance::Important)
-            };
-            assert!(
-                report.is_clean(),
-                "{name}:{input}: {:?}",
-                report.diagnostics()
-            );
-            let source = report
-                .syntax()
-                .as_ref()
-                .expect("retained direct value")
-                .clone();
-            assert!(source.position().is_none());
-            assert_eq!(source.parsed_value().unwrap().source().as_str(), input);
-            source
-        }
-        _ => unreachable!(),
-    };
-    assert_eq!(source.known().unwrap().property(), p);
-    assert_eq!(source.known().unwrap().grammar(), p.grammar());
-    assert_eq!(source.importance(), CssImportance::Important);
-    source
-}
-
-fn checked(
-    property: CssKnownProperty,
-    components: CssComponentValues,
-    grammar: bool,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
-    if grammar {
-        parse_property_value_for_grammar(property.grammar(), components, CssImportance::Important)
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
-            components,
-            CssImportance::Important,
-        )
-    }
-}
 
 fn accept(name: &str, cases: &[(&str, &str)]) {
     for &(input, expected) in cases {

@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use surgeist_css::{
     CssComponentValue, CssComponentValueRef, CssComponentValues, CssRule, CssSerializedOrigin,
     CssSupportsConditionKind, CssValueOrigin, parse_component_values, parse_sheet,

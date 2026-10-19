@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Conditional Rules 5 section 5.4 admits a nonempty comma-separated list of
 //! entries, each containing a name, a query, or both. Entries remain independent.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-rule

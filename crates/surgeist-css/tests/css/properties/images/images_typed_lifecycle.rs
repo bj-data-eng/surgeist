@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional tests for the Images 3 authored rendering alternatives and borrowed
 //! longhand terminals introduced with their implementation. Independent authority:
 //! selected Images 3 CRD 2023-12-18 §§4.5–5.2, including §5.2 standard legacy

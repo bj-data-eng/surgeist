@@ -1,5 +1,4 @@
 //! Functional bounds and retained-content contracts for the property ingress.
-#![forbid(unsafe_code)]
 
 use std::{cell::Cell, sync::Arc};
 use surgeist_css::*;

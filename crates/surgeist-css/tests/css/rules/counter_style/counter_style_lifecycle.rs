@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Source-derived Counter Styles 3 (2021-07-27) authored lifecycles, §§3–3.9.
 //! Ordinary initials remain implicit; extends omissions stay distinguishable
 //! from explicit values. Definition selection, target lookup, marker generation,

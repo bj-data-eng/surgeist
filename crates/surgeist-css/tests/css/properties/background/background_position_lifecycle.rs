@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Backgrounds 3 (2024-03-11) §2.6: one noninherited `<bg-position>#`
 //! longhand, initially `0% 0%`. Values stay authored and symbolic.
 //! https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#background-position

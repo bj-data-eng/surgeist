@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! CSSOM WD 2021-08-26 §2.1 specifies quoted local() and comma-space lists.
 //! Fonts 4 WD 2026-09-07 §4.3.1 owns the concrete source/hint grammar.
 //! https://www.w3.org/TR/2021/WD-cssom-1-20210826/#common-serializing-idioms

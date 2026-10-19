@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Typed authored contracts for Conditional 5 size features and scoped Values5 §9.
 //! Existing callable-boundary recognition evidence is in container_size_grammar.
 use surgeist_css::*;

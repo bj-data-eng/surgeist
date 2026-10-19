@@ -1,21 +1,7 @@
-#![forbid(unsafe_code)]
-
 //! Typed authored overflow wrapping contracts from CSS Text 4 §6.4 (2026-08-14).
 
+use crate::css::support::important_pair_declaration as parsed;
 use surgeist_css::*;
-
-fn parsed(name: &str, value: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{name}:{value}!important"));
-    assert!(
-        report.is_clean(),
-        "{name}:{value}: {:?}",
-        report.diagnostics()
-    );
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    declaration.clone()
-}
 
 fn checked(name: &str, value: &str) -> CssDeclaration {
     parse_property_value_for_grammar(

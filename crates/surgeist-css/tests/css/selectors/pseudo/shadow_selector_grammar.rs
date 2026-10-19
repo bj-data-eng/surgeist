@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored grammar imported by specs/catalog.json, without shadow-tree matching.
 //! Host signatures: https://www.w3.org/TR/2014/WD-css-scoping-1-20140403/#host-selector
 //! Slotted: https://github.com/w3c/csswg-drafts/blob/d2ed7a98bb7e499f3b04e6688941bb1a9823d396/css-shadow-1/Overview.bs#L522

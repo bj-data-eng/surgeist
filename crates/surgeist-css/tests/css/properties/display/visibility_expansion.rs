@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Selected Display3 2026-06-05 §4 supplies
 //! visible | hidden | collapse, inherited yes, initial visible, one longhand.
 //! New longhand payload and canonical serializer assertions require functional APIs.

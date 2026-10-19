@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Checked typed calculations retain symbolic values across authored consumers.
 //! Checked assembly rejection is covered by typed_sum_construction.
 use surgeist_css::CssCalculationSumOperator as Op;

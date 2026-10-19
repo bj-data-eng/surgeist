@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Fixed keyword expectations from Color 4 CRD 2026-09-08 §§6.1/6.3.
 //!
 //! Table source: https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#named-colors

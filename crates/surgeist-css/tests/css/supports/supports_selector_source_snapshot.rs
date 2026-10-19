@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Clean constructed Supports selectors retain their typed grammar and authored outer origin.
 use surgeist_css::{
     CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem, CssSelector,

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Color 5 WD20260908 §7 supplies exactly two colors or two image/none branches.
 //! Color 4 CRD20260908 serialization and the existing specified-value budgets
 //! supply the independent canonical and resource expectations below. LightDark
@@ -6,16 +5,8 @@
 //! frozen WebKit 73aa6c89 CSSLightDarkColor.cpp:66–72 serializes each stored color.
 //! Masking 1 CRD20210805 §7.1/§7.9 admits images in mask layers.
 
+use crate::css::support::style_declaration_reporting_source as declaration;
 use surgeist_css::*;
-
-fn declaration(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let [value] = report.syntax().as_slice() else {
-        panic!("one declaration: {css}")
-    };
-    value.clone()
-}
 
 fn color(css: &str) -> CssColor {
     let source = declaration(&format!("color:{css}"));

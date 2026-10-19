@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Legacy format strings have the modern meaning listed in Fonts4 section 4.3.1:
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-face-src-parsing
 //! ASCII-insensitive alias recognition is inferred for CSS-defined strings from

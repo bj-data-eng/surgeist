@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Conditional5 style-query structure, lexical ownership and checked boundaries.
 use surgeist_css::*;
 

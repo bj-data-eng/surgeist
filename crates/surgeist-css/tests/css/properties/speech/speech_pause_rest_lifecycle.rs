@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored pause/rest lifecycle through existing public CSS boundaries.
 //! Independent authority: references/css-speech-1--CRD-css-speech-1-20230214--bb7b59c92564.md,
 //! §§8.1–8.2 and 9.1–9.2: nonnegative time or symbolic strength, `none` initial,
@@ -7,6 +6,10 @@
 //! Component serialization below preserves tokens; canonical typed specified
 //! serialization will accompany the functional new model API.
 
+use crate::css::support::{
+    important_speech_components as checked, important_speech_declaration as declaration,
+    speech_property as property,
+};
 use surgeist_css::*;
 
 const LONGHANDS: [&str; 4] = ["pause-before", "pause-after", "rest-before", "rest-after"];
@@ -19,23 +22,6 @@ const ALL: [&str; 6] = [
     "rest",
 ];
 const STRENGTHS: [&str; 6] = ["none", "x-weak", "weak", "medium", "strong", "x-strong"];
-
-fn property(name: &str) -> CssKnownProperty {
-    CssKnownProperty::from_name(name)
-        .unwrap_or_else(|| panic!("Speech 1 property `{name}` must be recognized"))
-}
-
-fn declaration(name: &str, text: &str) -> CssDeclaration {
-    let source = format!("{name}:{text}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [value] = report.syntax().as_slice() else {
-        panic!("one complete declaration: {source}")
-    };
-    assert_eq!(value.known().unwrap().property(), property(name));
-    assert_eq!(value.importance(), CssImportance::Important);
-    value.clone()
-}
 
 fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
@@ -52,15 +38,6 @@ fn ordinary(name: &str, text: &str) -> CssLonghandValue {
         panic!("one terminal")
     };
     value.ordinary_value().unwrap().clone()
-}
-
-fn checked(name: &str, components: CssComponentValues) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(property(name)),
-        components,
-        CssImportance::Important,
-    )
-    .unwrap()
 }
 
 fn assert_admitted(name: &str, text: &str) {

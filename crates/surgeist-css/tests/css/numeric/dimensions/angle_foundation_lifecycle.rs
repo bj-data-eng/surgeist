@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Exact ordinary angle literals: Values 4 WD 2024-03-12 #angles,
 //! #zero-value and #numeric-data-types. Consumer policies come from Transforms
 //! 1 CR 2019-02-14, Transforms 2 WD 2021-11-09, FE1 WD 2018-12-18 and
@@ -8,6 +7,7 @@
 //! Transform/orientation have no public specified serializer at this source
 //! basis: existing aggregate identity expresses their literal fidelity instead.
 
+use crate::css::support::retained_checked_declaration as checked;
 use surgeist_css::*;
 
 fn declaration(property: CssKnownProperty, value: &str) -> CssDeclaration {
@@ -64,18 +64,6 @@ fn direction(source: &CssDeclaration) -> &CssLinearGradientDirection {
     };
     value.direction().unwrap()
 }
-fn checked(property: CssKnownProperty, value: &str) -> CssDeclaration {
-    let components = parse_component_values(value).unwrap();
-    let source = parse_property_value(
-        CssPropertyNameRef::Known(property),
-        components.clone(),
-        CssImportance::Important,
-    )
-    .unwrap();
-    assert_eq!(source.value_components(), &components);
-    source
-}
-
 fn permissive_consumers(angle: &str) -> Vec<(CssKnownProperty, String)> {
     use CssKnownProperty as P;
     let mut values: Vec<_> = [

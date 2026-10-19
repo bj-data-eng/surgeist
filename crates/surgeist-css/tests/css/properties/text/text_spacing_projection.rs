@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! CSS Text 4 §§8.1–8.2 authored percentage context:
 //! https://www.w3.org/TR/2026/WD-css-text-4-20260814/#propdef-word-spacing
 //! https://www.w3.org/TR/2026/WD-css-text-4-20260814/#propdef-letter-spacing

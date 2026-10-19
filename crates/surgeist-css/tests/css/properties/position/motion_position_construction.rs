@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional contracts for the widened Motion CssPosition payloads. The
 //! immutable published parser RED covers preimplementation regression behavior;
 //! these typed calls first become expressible with the full owning payload.

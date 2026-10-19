@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Functional tests accompany the new single-declaration API; no existing
 //! callable boundary could express this complete output before implementation.
 //! Pinned CSSOM1 §6.6 supplies punctuation and importance; each owning property

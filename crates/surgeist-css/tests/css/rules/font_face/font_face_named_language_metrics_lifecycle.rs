@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Fonts 4 WD 2026-09-07 §§4.7, 4.10, 4.11 descriptor grammars.
 //! Env 1 §3 supplies whole-descriptor deferral and strict substituted reentry.
 //! These tests use existing public parsing/lifecycle APIs; a descriptor kind is

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Color4 CRD 2026-09-08 §§9.3/9.4 parsed-value L/C bounds. Color5 WD
 //! 2026-09-08 §§11.1–11.3 preserves distinct Mix/Origin/relative roles.
 //! Direct finite decimal tokens remain exact even beyond binary64 and i128.
@@ -6,23 +5,13 @@
 //! domains; resource oracles count the adopted logical classifier operation.
 //! These public tests do not inspect implementation source or private helpers.
 
+use crate::css::support::{
+    checked_color_declaration as declaration, component_values as components,
+};
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-
-fn components(source: &str) -> CssComponentValues {
-    parse_component_values(source).unwrap()
-}
-
-fn declaration(source: &str) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        components(source),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("{source}: {error:?}"))
-}
 
 fn declared_color(value: &CssDeclaration) -> &CssColor {
     let CssKnownPropertyValueRef::Color(value) = value.known().unwrap().property_value().unwrap()

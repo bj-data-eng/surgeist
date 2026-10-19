@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Checked candidate selection: exact terminal identity, selected priority and
 //! survivor occurrence order. Expectations come from the declaration winner
 //! contract, independently of authored-list construction or serialization.

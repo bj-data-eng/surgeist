@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Independent public draft: Animations 1 (2023-03-02) §3, CSS2 page/box
 //! contexts, Values4 (2024-03-12) Appendix C, original-source Syntax recovery.
 

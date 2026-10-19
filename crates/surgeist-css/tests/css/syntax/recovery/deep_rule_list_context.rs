@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Nested rule-list context remains semantic across bounded structural replay.
 use surgeist_css::{
     CssErrorCode, CssRecoveryAction, CssRule, CssSelector, CssSheet, CssTokenKind, ErrorKind,

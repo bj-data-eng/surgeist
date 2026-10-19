@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! The outer test executes before the normalization public API exists. Its
 //! assertion requires a real external consumer to compile and complete the
 //! independent behavioral cases. A missing API produces nested compilation RED;

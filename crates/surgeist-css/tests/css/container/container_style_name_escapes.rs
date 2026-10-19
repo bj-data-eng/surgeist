@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Conditional 5 section 6.2 admits custom-property style features. CSS Syntax
 //! section 2.1 decodes escapes into the identifier token's value exactly once.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#style-container

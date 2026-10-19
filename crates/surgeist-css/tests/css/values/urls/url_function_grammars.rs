@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Values 4 (2024-03-12) §4.5 defines `<url>` as quoted `url()` or `src()`
 //! (with optional modifiers), or an unquoted URL token.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#urls

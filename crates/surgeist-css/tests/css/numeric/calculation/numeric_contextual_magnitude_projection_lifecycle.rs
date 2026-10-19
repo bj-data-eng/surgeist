@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Values 4 WD 2024-03-12 §10.6 defines abs() on the resolved value.
 //! For a nonnegative unit basis b, abs(a*b) = abs(a)*b, including b=0.
 //! The em/rem definitions refer to computed font size; pinned Fonts 4 WD

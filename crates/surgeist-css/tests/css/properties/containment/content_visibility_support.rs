@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! The pinned Containment 2 §4 authored value production is fully recognized.
 
 use surgeist_css::{CssSupportStatus, property_support_metadata};

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Containment2 WD20220917 §1.2/§2, Values3 §2.2, and the accepted
 //! represented contain provider contract supply this independent oracle.
 //! Specified strict/content remain authored keywords; computed containment,

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional new-API evidence from frozen WebKit73aa6c89 and the adopted
 //! independent SVG contract. No executable preimplementation RED is claimed.
 use surgeist_css::*;

@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! This outer test executes against the current public API. Its assertion
 //! requires a separate consumer to compile and exercise the checked authored
 //! font-family contract, including independent token and generic expectations.

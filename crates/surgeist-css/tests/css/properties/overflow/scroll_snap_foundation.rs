@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! CSS Scroll Snap 1 (2021-03-11) property definitions and Appendix A, with
 //! Logical 1 (2025-12-04) §4.7's authored `logical` four-side syntax.
 //! Four-side shorthand reset membership is unsettled; these tests do not claim

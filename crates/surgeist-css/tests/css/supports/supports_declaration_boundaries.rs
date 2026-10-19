@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Declaration candidates must satisfy declaration grammar before claiming that
 //! supports branch. Semicolons and nonterminal/invalid importance delimiters are
 //! still legal in general-enclosed <any-value>, so this is interpretation rather

@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Existing-API expectations from CSS Lists 3 (2020-11-17) §§4–4.2:
 //! https://www.w3.org/TR/2020/WD-css-lists-3-20201117/#counter-reset
 //! https://www.w3.org/TR/2020/WD-css-lists-3-20201117/#counter-increment

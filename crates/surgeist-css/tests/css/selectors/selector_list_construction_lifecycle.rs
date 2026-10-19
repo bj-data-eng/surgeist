@@ -1,23 +1,17 @@
-#![forbid(unsafe_code)]
 //! Functional expectations for checked list errors, aggregate admission limits,
 //! forgiving-empty construction, and ordinary/general-relative specified output.
 
+use crate::css::support::validated_selector as parsed;
 use surgeist_css::{
-    CssCompoundSelectorArgument, CssNamespaceContext, CssNthChildPattern, CssNthPattern,
-    CssPseudoClass, CssPseudoSelectorList, CssPseudoSelectorListItem, CssRelativeSelector,
-    CssRelativeSelectorList, CssSelector, CssSelectorCombinator, CssSelectorConstructionError,
+    CssCompoundSelectorArgument, CssNthChildPattern, CssNthPattern, CssPseudoClass,
+    CssPseudoSelectorList, CssPseudoSelectorListItem, CssRelativeSelector, CssRelativeSelectorList,
+    CssSelector, CssSelectorCombinator, CssSelectorConstructionError,
     CssSelectorConstructionErrorKind, CssSelectorList, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, parse_selector,
+    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits,
 };
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-
-fn parsed(source: &str) -> CssSelector {
-    let report = parse_selector(source, &CssNamespaceContext::default());
-    assert!(report.is_clean(), "{source:?}: {report:?}");
-    report.into_validation_result().unwrap().unwrap()
-}
 
 fn ordinary_members() -> Vec<CssSelector> {
     vec![

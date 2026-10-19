@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! CSS2 REC 2011-06-07 §9.9.1: auto | <integer>, initial auto, noninherited.
 //! references/css2--visuren.html--3f334c530cf4.md#propdef-z-index
 //! Positioned Layout WD 2025-10-07 §2.2 adds contextual stacking semantics,

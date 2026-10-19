@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Grid 2 track-list and repeat productions allow at most one optional
 //! `<line-names>` block at each track boundary.
 //! https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#typedef-track-list

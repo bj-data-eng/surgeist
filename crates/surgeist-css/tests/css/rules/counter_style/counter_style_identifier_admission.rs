@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Counter Styles 3 (2021-07-27) §3: decoded counter-style names, predefined
 //! identity, and the six rule-definition exclusions. Section 3.8 defines
 //! identifier symbols through Values 4 (2024-03-12) §4.2 `<custom-ident>`.

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing-public-boundary RED witnesses for CSS Speech 1 cue authoring.
 //! Authority: references/css-speech-1--CRD-css-speech-1-20230214--bb7b59c92564.md,
 //! §§10.1 and 10.3: shared URL resource plus optional signed ordinary dB, or none;
@@ -8,27 +7,14 @@
 //! Component serialization witnesses authored spelling. Canonical typed payload
 //! serialization requires the new cue API and belongs in its functional tests.
 
+use crate::css::support::{
+    important_speech_components as checked, important_speech_declaration as declaration,
+    speech_property as property,
+};
 use surgeist_css::*;
 
 const LONGHANDS: [&str; 2] = ["cue-before", "cue-after"];
 const ALL: [&str; 3] = ["cue-before", "cue-after", "cue"];
-
-fn property(name: &str) -> CssKnownProperty {
-    CssKnownProperty::from_name(name)
-        .unwrap_or_else(|| panic!("Speech 1 property `{name}` must be recognized"))
-}
-
-fn declaration(name: &str, text: &str) -> CssDeclaration {
-    let source = format!("{name}:{text}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [value] = report.syntax().as_slice() else {
-        panic!("one complete declaration: {source}")
-    };
-    assert_eq!(value.known().unwrap().property(), property(name));
-    assert_eq!(value.importance(), CssImportance::Important);
-    value.clone()
-}
 
 fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
@@ -37,15 +23,6 @@ fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
         panic!("ordinary/global cue must complete")
     };
     values
-}
-
-fn checked(name: &str, components: CssComponentValues) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(property(name)),
-        components,
-        CssImportance::Important,
-    )
-    .unwrap()
 }
 
 fn assert_admitted(name: &str, text: &str) {

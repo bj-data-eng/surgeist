@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Scope-boundary parentheses participate in the documented shared 256-level
 //! structural ceiling, independently of ampersand admission or its new getter.
 use surgeist_css::*;

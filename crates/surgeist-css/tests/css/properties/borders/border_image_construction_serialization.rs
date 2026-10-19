@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Backgrounds 3 CRD 2024-03-11 §§5.1–5.5, 5.7 and CSSOM WD 2021-08-26
 //! §6.7.2 supply grammar/order/compression oracles. Exact resource formulas and
 //! immutable, branch-preserving checked construction are Surgeist contracts.

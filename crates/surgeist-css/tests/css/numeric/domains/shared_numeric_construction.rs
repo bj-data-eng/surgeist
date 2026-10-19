@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Shared authored numeric domains, exercised through functional public APIs.
 //! Exact retention is the adopted Surgeist contract; ordinary cubic-bezier X
 //! has the Easing 1 inclusive [0,1] range and genuine math remains deferred.

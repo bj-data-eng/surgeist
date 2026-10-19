@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional coverage for the new specified-value API; no missing-symbol RED.
 //! Selected Images 3 CRD 2023-12-18 §5.1 admits none and angle || flip, with
 //! per-grammar canonical order. Quarter-turn rounding belongs to computed values.

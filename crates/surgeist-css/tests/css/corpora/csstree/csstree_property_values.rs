@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Property grammar admissions derive from original CSS inputs and their mapped
 //! Width, Color and BackgroundImage grammars, independently of captured output.
 //! Literal expectations use numeric/color/URL semantics rather than serialization.

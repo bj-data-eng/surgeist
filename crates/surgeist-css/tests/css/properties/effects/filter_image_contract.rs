@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored Filter Effects image grammar through existing checked declaration fronts.
 //! Filter Effects 1 WD20181218 §§5–6,12 supplies the missing image grammar.
 //! Preserve String separately from Image; downstream string interpretation is unresolved.

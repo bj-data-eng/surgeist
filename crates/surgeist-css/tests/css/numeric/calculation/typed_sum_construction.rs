@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Checked sum assembly preserves authored operands and applies ordinary numeric
 //! typing. Root-only unitless-zero admission does not turn zero into a length.
 use surgeist_css::{

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Backgrounds 3 CRD20240311 §2.10 defines per-layer initial-then-explicit
 //! projection into seven lists, followed by one final-layer color.
 //! https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#background

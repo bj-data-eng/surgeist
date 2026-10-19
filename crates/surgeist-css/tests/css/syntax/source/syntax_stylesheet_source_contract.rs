@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! CSS Syntax 3 (2021-12-24), sections 3, 3.2, 5.4.1 and 9.3.
 //! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/
 //! These UTF-8 string fronts do not run the byte-stream fallback algorithm.

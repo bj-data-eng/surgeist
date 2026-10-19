@@ -1,6 +1,6 @@
-#![forbid(unsafe_code)]
 //! Values4 WD20240312 Appendix C. Independent number-token -> px expectations.
 //! Unitless admission composes with the selected named shorthand assignment mode.
+use crate::css::support::{contextual_checked_declaration as checked, known_property as property};
 use surgeist_css::*;
 
 const STANDARDS: CssParserContext = CssParserContext::new(CssParserMode::Standards);
@@ -44,18 +44,6 @@ const ELIGIBLE: &[(&str, &str, &str)] = &[
     ("word-spacing", "7", "7px"),
 ];
 
-fn property(name: &str) -> CssKnownProperty {
-    CssKnownProperty::from_name(name).unwrap()
-}
-fn checked(context: CssParserContext, name: &str, text: &str) -> CssDeclaration {
-    context
-        .parse_property_value_for_grammar(
-            property(name).grammar(),
-            parse_component_values(text).unwrap(),
-            CssImportance::Important,
-        )
-        .unwrap()
-}
 fn rejected(context: CssParserContext, name: &str, text: &str) {
     assert!(
         context

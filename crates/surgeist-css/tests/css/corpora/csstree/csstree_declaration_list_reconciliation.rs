@@ -1,6 +1,5 @@
 //! Independently specified original declaration-list grammar and source-traced
 //! diagnostic contracts. Expected values never come from the runtime or registry.
-#![forbid(unsafe_code)]
 
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, fs, path::Path};

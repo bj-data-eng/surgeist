@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Real-brace style-body parsing retains authored contents and genuine origins.
 use surgeist_css::{
     CssDeclaration, CssKnownProperty, CssKnownPropertyValueRef, CssNamespaceContext,

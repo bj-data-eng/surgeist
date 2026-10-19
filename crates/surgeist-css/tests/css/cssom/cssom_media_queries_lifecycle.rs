@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! CSSOM1 sections 4.2–4.3 define these canonical bytes independently of
 //! authored source spelling. Media Queries 5 remains the grammar owner.
 //!

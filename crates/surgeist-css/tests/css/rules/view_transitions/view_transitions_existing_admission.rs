@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing public string fronts only: VT1 CRD20240328 §§2.1,3.1,3.2;
 //! selected Selectors4 §3.6.4 and the adopted scoped attachment disposition.
 //! Unexecuted behavioral RED candidate; no proposed API symbols appear here.

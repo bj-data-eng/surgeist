@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 use surgeist_color::{Color, ColorSpace, PredefinedColorSpace};
 use surgeist_css::*;
 

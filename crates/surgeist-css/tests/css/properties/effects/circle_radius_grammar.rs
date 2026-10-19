@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! CSS Shapes `circle()` has one nonnegative length-percentage radius.
 //! The selected WebKit Shapes consumer admits the same domain before `at`.
 use surgeist_css::{CssKnownProperty, CssRecoveryAction, parse_style_attribute};

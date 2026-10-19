@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Checked construction retains browser-recovered components for inspection but
 //! must reject their original implicit closure instead of reparsing repaired CSS.
 //! Both checked front doors promise original-component error provenance.

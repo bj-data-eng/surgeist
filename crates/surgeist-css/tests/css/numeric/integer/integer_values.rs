@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Exact authored integer fidelity and Values4 specified math projection.
 use surgeist_css::*;
 

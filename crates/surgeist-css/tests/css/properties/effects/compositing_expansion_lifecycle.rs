@@ -1,10 +1,12 @@
-#![forbid(unsafe_code)]
 //! Compositing 1 CRD 2024-03-21 §§3.1, 3.4.2, 3.4.3 defines the selected
 //! sixteen blend modes, noninherited normal/auto/normal initials and Background's
 //! reset of background-blend-mode. Cascade 5 CR 2022-01-13 §3.1 propagates
 //! CSS-wide values to reset-only members. Provenance, typed borrowed payloads
 //! and cumulative atomic limits are Surgeist authored-layer contracts.
 
+use crate::css::support::{
+    checked_property_grammar_declaration as checked, style_declaration as parsed,
+};
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -50,22 +52,6 @@ const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
     ("revert-layer", CssGlobalKeyword::RevertLayer),
 ];
 
-fn parsed(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    source.clone()
-}
-fn checked(property: P, css: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        property.grammar(),
-        parse_component_values(css).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap()
-}
 fn context(
     item: &CssLonghandContribution,
     source: &CssDeclaration,

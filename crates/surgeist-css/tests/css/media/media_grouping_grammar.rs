@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Focused MQ4/MQ5 grouping/operator correction using existing known MQ3 leaves.
 //! Grammar authority: pinned MQ4 2026-02-19 section 3, mq-syntax.
 //! Balanced enclosures retain their own grammar classification alongside grouping.

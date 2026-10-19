@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Grid repeat counts have range [1, infinity], without a machine-sized maximum:
 //! https://www.w3.org/TR/2025/CRD-css-grid-1-20250326/#funcdef-repeat
 //! Counter additive weights are nonnegative integers in strictly descending order:

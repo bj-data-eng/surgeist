@@ -1,5 +1,4 @@
-#![forbid(unsafe_code)]
-
+use crate::css::support::first_declaration_reporting_diagnostics as parsed;
 use surgeist_css::*;
 
 fn programmatic_size(number: &str, unit: &str) -> CssSizeValue {
@@ -9,12 +8,6 @@ fn programmatic_size(number: &str, unit: &str) -> CssSizeValue {
     .unwrap();
     assert!(matches!(literal.origin(), CssValueOrigin::Programmatic));
     CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(literal))
-}
-
-fn parsed(name: &str, text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{name}:{text}"));
-    assert!(report.is_clean(), "{:?}", report.diagnostics());
-    report.syntax()[0].clone()
 }
 
 #[test]

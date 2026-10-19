@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Exact CSS `<length>` and nonnegative `<length-percentage>` contracts.
 
 use surgeist_css::{

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent expectations: Conditional5 2025-10-30 sections 5.1–5.3;
 //! Values4 2024-03-12 sections 2 and 4.1–4.2; Syntax3 2021-12-24 section 4;
 //! Cascade5 2022-01-13 sections 3 and 7.3; Variables1 2022-06-16 section 3.

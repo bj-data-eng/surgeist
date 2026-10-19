@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Selected Color5 #funcdef-color-mix and Values4 #calc-range.
 //! Complete authored list, interpolation, and weight grammar.
 use surgeist_color::{ColorSpace, PredefinedColorSpace};

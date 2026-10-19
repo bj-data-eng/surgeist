@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent type oracles from Values 4 WD 2024-03-12 §10.9 and
 //! Typed OM WD 2024-03-21 §4.3.2. Percent hints describe type substitution;
 //! they neither supply a numeric basis nor permit mixing Number and Percent.

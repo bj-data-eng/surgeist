@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Checked known properties retain strict original-component closure.
 //! Canonical identities and samples come from independently authored records.
 

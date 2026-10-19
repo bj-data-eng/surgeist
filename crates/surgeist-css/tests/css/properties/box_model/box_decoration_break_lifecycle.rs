@@ -1,9 +1,8 @@
-#![forbid(unsafe_code)]
-
 //! Existing-API RED expectations from CSS Fragmentation 3 CR (2018-12-04), §5.4: https://www.w3.org/TR/2018/CR-css-break-3-20181204/#break-decoration.
 //! Canonical writers and new typed payload accessors are tested with their implementation;
 //! this candidate exercises admission and the already-existing authored lifecycle APIs.
 
+use crate::css::support::validated_important_declaration as declaration;
 use surgeist_css::*;
 
 use crate::css::support::authored_property;
@@ -23,23 +22,6 @@ const CASES: &[PropertyCase] = &[(
     &["slice", "clone", "CLONE", r"sl\69 ce"],
     &["", "auto", "none", "1", "10%", "slice clone", "slice,clone"],
 )];
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let text = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&text);
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    assert!(validate_style_attribute(&text).is_ok(), "{text}");
-    let [source] = report.syntax().as_slice() else {
-        panic!("one admitted declaration: {text}")
-    };
-    assert_eq!(source.known().unwrap().property().canonical_name(), name);
-    assert_eq!(source.importance(), CssImportance::Important);
-    assert_eq!(
-        source.value_components().serialize().unwrap().as_css(),
-        value
-    );
-    source.clone()
-}
 
 fn contribution(source: &CssDeclaration) -> CssLonghandContribution {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =

@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use surgeist_css::{
     CssKnownProperty, CssPropertyNameRef, CssSpecifiedDeclarationBlock, parse_declaration_list_text,
 };

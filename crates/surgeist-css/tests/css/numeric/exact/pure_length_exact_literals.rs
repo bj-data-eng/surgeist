@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Border spacing's ordinary numeric grammar is exact before contextual resolution.
 //!
 //! CSS2 §4.3.2 permits omission of a length unit only for zero, and §17.6.1

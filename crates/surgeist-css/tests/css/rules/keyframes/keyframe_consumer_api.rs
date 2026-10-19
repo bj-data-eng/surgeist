@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Public-only Animations 1 and selected CSSOM detached keyframe contracts.
 
 use surgeist_css::{

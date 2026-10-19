@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 use surgeist_css::{CssParserContext, CssParserMode};
 
 const QUIRKS_SVG: CssParserContext = CssParserContext::new(CssParserMode::Standards)

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent authored requirements, not computed shadow or paint assertions.
 //! Backgrounds 3 CRD 2024-03-11 §6.1: <color>? && [<length>{2}
 //! <length [0,∞]>? <length>?] && inset?; none initial, not inherited.
@@ -7,16 +6,8 @@
 //! https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#funcdef-filter-drop-shadow
 //! && reorders complete groups, not individual tokens inside a group.
 
+use crate::css::support::style_declaration as declaration;
 use surgeist_css::*;
-
-fn declaration(source: &str) -> CssDeclaration {
-    let report = parse_style_attribute(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [value] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    value.clone()
-}
 
 fn reject_interrupted(property: &str, value: &str) {
     let prefix = "/* 🦀 */ ";

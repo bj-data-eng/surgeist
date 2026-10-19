@@ -1,10 +1,10 @@
-#![forbid(unsafe_code)]
 //! Functional evidence for five new represented text-value providers.
 //! New serializer APIs have no executable preimplementation RED. The separate
 //! signed-thickness/unordered-indent admission regressions use existing APIs.
 //! Orders follow selected Text 4 §9.1, Text Decoration 4 §§2.1/2.4/2.6 and
 //! CSS2 vertical-align. Numeric spelling follows its existing specified policy.
 
+use crate::css::support::style_declaration as declaration;
 use surgeist_css::{
     CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
 };
@@ -20,15 +20,6 @@ fn calculation(text: &str) -> CssSpecifiedLengthPercentage {
             .unwrap(),
     )
     .unwrap()
-}
-
-fn declaration(text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(text);
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    let [value] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    value.clone()
 }
 
 macro_rules! parsed {

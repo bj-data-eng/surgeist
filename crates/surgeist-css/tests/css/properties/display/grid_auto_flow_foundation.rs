@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Authored grid-auto-flow contracts from Grid 2 (2025-03-26) §7.7 and
 //! Grid 3 (2026-01-21) §2.3, with the recorded WebKit normal/dense choice.
 //! Canonical serialization of new semantic states needs the future current

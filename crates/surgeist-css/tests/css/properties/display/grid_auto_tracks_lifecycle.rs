@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Grid 2 (2025-03-26) §7.6 specifies both implicit track-size longhands as
 //! noninherited, initially `auto`, repeat-free `<track-size>+` values.
 //! https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#auto-tracks

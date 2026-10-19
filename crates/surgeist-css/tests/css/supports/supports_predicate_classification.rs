@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Known Conditional 5 support predicates have an inspectable feature
 //! classification; balanced unknown functions and invalid leaf arguments keep
 //! the general-enclosed fallback. This observes authored syntax, not host truth.

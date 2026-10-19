@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Complete retained Image graph admission through the public checked constructor.
 //! #328 requires complete composed image structural admission, not only None rejection.
 //! Typed Result admission preserves the published callable graph-rejection expectations.

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! WM4 CR2019-07-30 §9.1: digits <integer>?, literal 2..4, inherited, initial none.
 //! Values4 WD2024-03-12 §§5.2/10.9/10.12: integer-token literals;
 //! number-valued math remains authored valid without computed rounding/clamping.

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Whole-rule checked import contracts: Cascade optional-clause interpretation,
 //! exact component provenance, and strict admission independent of loading.
 use surgeist_css::{

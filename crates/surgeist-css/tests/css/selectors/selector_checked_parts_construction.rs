@@ -1,8 +1,8 @@
-#![forbid(unsafe_code)]
 //! Functional construction contracts for the previously absent attribute, simple,
 //! compound and part front doors, plus complete complex admission. Expectations
 //! use the selected authored grammar and independently computed output tariffs.
 
+use crate::css::support::validated_selector_in as parsed;
 use surgeist_css::{
     CssAttributeCaseSensitivity as Case, CssAttributeMatcher as Matcher, CssAttributeName,
     CssAttributeSelector, CssComplexSelector, CssComplexSelectorPart, CssComponentValueError,
@@ -14,7 +14,7 @@ use surgeist_css::{
     CssSelectorCombinator as Combinator, CssSelectorConstructionError,
     CssSelectorConstructionErrorKind as ConstructionKind, CssSimpleSelector as Simple,
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind as Kind,
-    CssSpecifiedValueSerializationLimits as Limits, CssValueOrigin, parse_selector,
+    CssSpecifiedValueSerializationLimits as Limits, CssValueOrigin,
 };
 
 fn ident(value: &str) -> CssIdent {
@@ -36,12 +36,6 @@ fn name() -> CssQualifiedAttributeName {
         &CssNamespaceContext::default(),
     )
     .unwrap()
-}
-
-fn parsed(source: &str, context: &CssNamespaceContext) -> CssSelector {
-    let report = parse_selector(source, context);
-    assert!(report.is_clean(), "{source:?}: {report:?}");
-    report.into_validation_result().unwrap().unwrap()
 }
 
 fn specified_cause(error: &CssSelectorConstructionError, expected: Kind) {

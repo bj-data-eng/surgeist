@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing admission boundaries for the represented Masking 1 layer fields.
 //! Masking 1 CRD 2021-08-05 §7.9 uses || between image, position[/size]
 //! and repeat; any group order is valid, but slash/size belongs to position.

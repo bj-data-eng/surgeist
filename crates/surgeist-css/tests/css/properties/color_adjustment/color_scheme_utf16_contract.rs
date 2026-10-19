@@ -1,5 +1,4 @@
 //! CSS Syntax preprocessing and Color Adjustment authored-property contracts.
-#![forbid(unsafe_code)]
 
 use std::{cell::Cell, sync::Arc};
 use surgeist_css::*;

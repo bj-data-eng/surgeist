@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Checked authored nonnegative numbers retain exact syntax and provenance.
 
 use surgeist_css::{

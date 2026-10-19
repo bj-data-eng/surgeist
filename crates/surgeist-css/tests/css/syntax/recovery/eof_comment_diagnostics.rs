@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! CSS Syntax 3 §4.3.2 consumes comments without emitting a syntax token, but
 //! reaching EOF before `*/` is a parse error. Recovery therefore preserves the
 //! surrounding grammar while making the report unclean, independently of whether

@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Authored @font-face font-width contracts from CSS Fonts 4 WD 2026-09-07 §4.4.
 
 use surgeist_css::*;

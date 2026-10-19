@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored flow-tolerance grammar and complete intrinsic declaration lifecycle.
 //!
 //! Independent source oracles: pinned Grid3 2026-01-21 #placement-tolerance

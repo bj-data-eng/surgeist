@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Existing public-boundary controls for CSSOM declaration-block work (#831).
 //! Independent authority: the pinned CSSOM 1 WD 2021-08-26, §§6.5, 6.6
 //! (`parse-a-css-declaration-block`) and 6.7.1–6.7.2; Variables 1 §2 supplies

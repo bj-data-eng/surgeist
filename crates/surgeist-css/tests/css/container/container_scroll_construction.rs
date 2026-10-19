@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Typed authored contracts from Conditional5 sections 5.4 and 6.3; no matching.
 use surgeist_css::*;
 

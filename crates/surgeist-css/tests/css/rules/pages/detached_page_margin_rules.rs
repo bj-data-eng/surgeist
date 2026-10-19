@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Complete original-input Page margin insertion provider (#1087).
 use surgeist_css::*;
 

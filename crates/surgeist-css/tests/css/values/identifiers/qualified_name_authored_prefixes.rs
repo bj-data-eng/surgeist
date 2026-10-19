@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Namespaces 3 §4: preserve authored prefix forms independently of their
 //! effective namespace constraints, while each host owns grammar and recovery.
 //! https://www.w3.org/TR/2014/REC-css-namespaces-3-20140320/#css-qnames

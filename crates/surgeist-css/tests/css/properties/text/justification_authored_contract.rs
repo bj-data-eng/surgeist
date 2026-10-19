@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent authored contract: Text4 WD20260814 #propdef-text-justify,
 //! #valdef-text-justify-distribute and #propdef-text-group-align; Values3/4
 //! §2.2 and Text4 §1.2 supply grammar, CSS-wide exclusivity and metadata.

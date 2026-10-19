@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored feature-index policy selected from Fonts 4 WD20260907 §6.9.2
 //! and frozen WebKit 73aa6c89e2cb77c46184a81aec944e4ab99d114d:
 //! Source/WebCore/css/parser/CSSParser.cpp:800–885 (max counts and generic

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Current immutable payload composition. Expected wrappers follow the selected
 //! CSSOM 2026 keyframes branch and adopted Blink Page/margin witness; four-side
 //! terminal values follow CSS2's independent margin assignment rule.

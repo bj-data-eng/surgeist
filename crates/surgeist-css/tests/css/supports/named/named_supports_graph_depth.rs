@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! #644's new graph-depth contract counts every actual native child edge.
 use surgeist_css::{
     CssEditedGroupPreludeRef, CssKeyframeRuleView, CssMarginBox, CssMarginRuleView,

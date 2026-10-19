@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Current import-owned media: CSSOM's selected plain-import URL writer and
 //! #836's adopted WebKit rule-owned media, independent of child-sheet presence.
 //! Modern imports retain the existing CSS qualification, not a new wrapper policy.

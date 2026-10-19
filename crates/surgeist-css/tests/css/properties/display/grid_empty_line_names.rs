@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Grid2's <line-names> uses zero or more custom identifiers.
 //! https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#typedef-line-names
 //! Empty groups are authored components, not absent components or empty tracks.

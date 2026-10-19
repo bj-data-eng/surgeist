@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored scroll-state grammar: Conditional5 (2025-10-30) sections 5.4 and 6.3.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#scroll-state-container
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-rule

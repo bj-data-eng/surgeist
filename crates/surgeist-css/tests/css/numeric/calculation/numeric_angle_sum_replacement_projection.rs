@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Values 4 §10.10 Sum step 8.2 replaces each same-unit set with ONE numeric
 //! value. Supported Angle range conversion belongs to that replacement, not
 //! each binary64 accumulator prefix. Grouped Sums materialize separately.

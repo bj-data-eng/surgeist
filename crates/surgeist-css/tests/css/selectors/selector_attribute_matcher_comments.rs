@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Selected Selectors 4 <attr-matcher> consists of optional ~ | ^ $ * then =.
 //! Its components forbid whitespace; Syntax 3 section 10 makes comments inert.
 

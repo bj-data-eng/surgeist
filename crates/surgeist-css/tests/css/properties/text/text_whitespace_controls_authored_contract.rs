@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing-public-API authored whitespace controls contract.
 //! Text4 WD20260814 #propdef-word-space-transform (374–422) and #propdef-tab-size
 //! (1472–1494), Values4 WD20240312 §2.2, typed math §10 and range §10.12,
@@ -15,6 +14,10 @@
 //! Phrase/language/separator and tab-stop execution remain downstream; #53 owns
 //! white-space-collapse/trim and is outside this two-property contract.
 
+use crate::css::support::{
+    authored_checked_declaration as checked, authored_parsed_declaration as parsed,
+    authored_property_named as property,
+};
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -59,21 +62,12 @@ fn pending_inputs(name: &str) -> Vec<&'static str> {
     }
     inputs
 }
-fn property(name: &str) -> P {
-    P::from_name(name).unwrap_or_else(|| panic!("authored property unavailable: {name}"))
-}
-fn parsed(name: &str, value: &str) -> CssDeclaration {
-    authored_property::parsed(property(name), value)
-}
 fn checked_components(
     name: &str,
     value: CssComponentValues,
     grammar: bool,
 ) -> Result<CssDeclaration, CssPropertyValueParseError> {
     authored_property::checked_components(property(name), value, grammar, CssImportance::Important)
-}
-fn checked(name: &str, value: &str, grammar: bool) -> CssDeclaration {
-    authored_property::checked(property(name), value, grammar)
 }
 fn fronts(name: &str, text: &str) -> [CssDeclaration; 5] {
     authored_property::fronts(property(name), text)

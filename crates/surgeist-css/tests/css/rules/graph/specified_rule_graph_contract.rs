@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored rule composition, cumulative resource and immutable graph contracts.
 //! CSS Syntax 3 §9.3/10 and the specified-output provider contracts.
 use std::error::Error;

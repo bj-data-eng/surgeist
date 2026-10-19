@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Counter symbols use the selected shared image grammar without resolving images.
 //!
 //! Authorities: Counter Styles 3 (2021-07-27) §§3, 3.2–3.8; Images 3

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! New authored prelude API contracts: ordered independent entries from pinned
 //! Conditional Rules 5 section 5.4, and shared component provenance/limits.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-rule

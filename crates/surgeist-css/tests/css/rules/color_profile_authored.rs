@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Independent authored contracts: Color 5 WD 2026-09-08 §5.3,
 //! Env 1 WD 2025-09-23 §3, Variables 1 CR 2022-06-16 §3,
 //! Conditional Rules 3 CRD 2024-08-15 §3 and Nesting 1 WD 2026-01-22 §3.3.

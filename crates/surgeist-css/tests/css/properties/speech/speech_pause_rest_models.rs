@@ -1,10 +1,10 @@
-#![forbid(unsafe_code)]
 //! Functional authored Speech 1 §§8.1–8.2 / 9.1–9.2 model contracts.
 //! CSSOM 1 `serialize-a-css-value` supplies omission of an equivalent optional
 //! second value; the retained authored choice and cumulative visit budget remain.
 //! These tests accompany new APIs; public-boundary preimplementation RED is in
 //! speech_pause_rest_lifecycle.rs.
 
+use crate::css::support::first_important_declaration as parsed;
 use surgeist_css::*;
 
 fn time(number: &str, unit: CssTimeUnit) -> CssSpeechBreak {
@@ -16,16 +16,6 @@ fn time(number: &str, unit: CssTimeUnit) -> CssSpeechBreak {
 
 fn composed(before: CssSpeechBreak, after: Option<CssSpeechBreak>) -> CssSpeechBreakPair {
     CssSpeechBreakPair::try_new(before, after).unwrap()
-}
-
-fn parsed(name: &str, text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{name}:{text}!important"));
-    assert!(
-        report.is_clean(),
-        "{name}:{text}: {:?}",
-        report.diagnostics()
-    );
-    report.syntax()[0].clone()
 }
 
 fn break_value(source: &CssDeclaration) -> &CssSpeechBreak {

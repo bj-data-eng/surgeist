@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored custom color and alpha grammar from the selected Color5 definition.
 //! Profile binding and computed colors belong to later owners.
 use surgeist_css::*;

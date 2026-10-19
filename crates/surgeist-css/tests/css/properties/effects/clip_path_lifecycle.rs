@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored grammar and intrinsic lifecycle, independently specified by:
 //! Masking 1 CRD 2021-08-05 §5.1 and Shapes 1 CRD 2025-06-12 §3.1;
 //! polygon's unrestricted authored length range uses Values 4 WD 2024-03-12 §5.1.

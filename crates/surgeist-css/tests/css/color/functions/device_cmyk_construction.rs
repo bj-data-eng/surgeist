@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional new-API evidence, independent of the preimplementation authored RED.
 //! Color 5 WD20260908 §6 owns grammar/ink identity; the shared structural
 //! ceiling counts every function, including numeric, color and image ancestors.

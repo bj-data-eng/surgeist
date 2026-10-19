@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Public authored `@font-face` environment-value contracts from CSS Env 1 §3.
 
 use surgeist_css::{

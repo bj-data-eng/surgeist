@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored Transforms2 §5 angle/axis construction, identity and provenance.
 //! These tests deliberately exercise no canonical rotate output or matrix execution.
 use surgeist_css::*;

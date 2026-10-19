@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Public authored transform construction and checked operand domains.
 use surgeist_css::*;
 

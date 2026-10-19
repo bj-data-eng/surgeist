@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Conditional 5 §2 and §8 admit symbolic named references in supports tests.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#at-ruledef-supports-condition
 

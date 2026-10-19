@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Conditional Rules 3 method overload grammar, distinct from rule grammar.
 use surgeist_css::*;
 

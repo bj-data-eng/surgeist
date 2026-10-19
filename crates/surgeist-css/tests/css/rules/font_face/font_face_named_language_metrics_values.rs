@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent Fonts 4 descriptor payload expectations, CSSOM string escaping,
 //! and Values 4 specified percentage/range semantics through public APIs.
 

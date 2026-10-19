@@ -1,12 +1,6 @@
-#![forbid(unsafe_code)]
 //! CSS Sizing 3 box-sizing remains a non-inherited terminal longhand.
+use crate::css::support::first_style_declaration as declaration;
 use surgeist_css::*;
-
-fn declaration(source: &str) -> CssDeclaration {
-    let report = parse_style_attribute(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    report.syntax()[0].clone()
-}
 
 #[test]
 fn box_sizing_has_a_non_inherited_content_box_initial() {

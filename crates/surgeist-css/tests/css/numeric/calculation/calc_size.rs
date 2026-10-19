@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use surgeist_css::{
     CssCalcSize, CssCalcSizeBasisRef, CssCalculationExpressionRef, CssComponentValueErrorKind,
     CssComponentValueLimits, CssIntrinsicSizeKeyword, CssLengthPercentageCalculation,

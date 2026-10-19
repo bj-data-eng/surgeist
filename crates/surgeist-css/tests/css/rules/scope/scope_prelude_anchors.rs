@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Nested root & refers to the nearest style, while limit/body & refers to scope.
 //! Parentless & and repeated anchors are authored selectors, not parse errors.
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nested-scope-rules

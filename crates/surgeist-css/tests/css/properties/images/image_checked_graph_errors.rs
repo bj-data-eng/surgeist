@@ -1,8 +1,8 @@
-#![forbid(unsafe_code)]
 //! Checked Image graph failures retain their resource category and authored
 //! opener through image-only consumers, speculative Content alternatives and
 //! reusable pending substitution. The image wrapper contributes zero depth.
 
+use crate::css::support::check_property_components as checked;
 use surgeist_css::*;
 
 fn image_source(light_dark_functions: usize) -> String {
@@ -12,22 +12,6 @@ fn image_source(light_dark_functions: usize) -> String {
         value = format!("light-dark({value}, none)");
     }
     format!("/*😀*/ {value}")
-}
-
-fn checked(
-    property: CssKnownProperty,
-    values: CssComponentValues,
-    grammar: bool,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
-    if grammar {
-        parse_property_value_for_grammar(property.grammar(), values, CssImportance::Important)
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
-            values,
-            CssImportance::Important,
-        )
-    }
 }
 
 #[test]

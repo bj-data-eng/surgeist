@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Functional Lists 3 counter values. The pinned CSSOM 2021 §6.7.2 preserves
 //! compatible value spelling; the selected WebKit parser inserts omitted
 //! reset/set `0` and increment `1`. Values 4 defines exact integer tokens and

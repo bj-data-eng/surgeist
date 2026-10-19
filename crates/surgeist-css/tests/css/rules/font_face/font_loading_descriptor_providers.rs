@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Functional coverage of the shared descriptor providers consumed by loading.
 //! Fonts 4 (2026-09-07) owns the concrete grammars and section 13.2 range
 //! shortening. CSSOM owns strings; shared specified providers own work/byte

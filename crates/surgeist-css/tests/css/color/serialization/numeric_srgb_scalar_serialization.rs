@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Color 4 CRD 2026-09-08: resolving-sRGB-values, css-serialization-of-srgb,
 //! hue-syntax and sRGB-precision supply clipping, domains and positive ties.
 //! Six places is the selected bounded precision. HSL eager saturation/NaN
@@ -7,21 +6,13 @@
 //! 2026-09-08 preserves Origin/relative/alpha/weight roles. Expected strings
 //! below are independent mathematical/grammar oracles, never captured output.
 
+use crate::css::support::{
+    checked_color_declaration as declaration, component_values as components,
+};
 use surgeist_css::*;
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
-fn components(source: &str) -> CssComponentValues {
-    parse_component_values(source).unwrap()
-}
-fn declaration(source: &str) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        components(source),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("{source}: {error:?}"))
-}
 fn declared_color(value: &CssDeclaration) -> &CssColor {
     let CssKnownPropertyValueRef::Color(value) = value.known().unwrap().property_value().unwrap()
     else {

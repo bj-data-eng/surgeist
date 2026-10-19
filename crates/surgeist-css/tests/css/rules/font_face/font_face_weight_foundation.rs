@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Existing-public-API @font-face weight grammar from CSS Fonts 4 WD
 //! (2026-09-07) §4.4. Typed endpoint contracts follow with the model.
 

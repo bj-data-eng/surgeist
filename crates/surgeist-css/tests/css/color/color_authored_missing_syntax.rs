@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Focused ordinary authored syntax and missing identity from Color 4 CRD 2026-09-08
 //! §§4.1.1–4.1.2, 4.4 and 7.1, supplementing the owning family grammar matrices.
 //! https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#color-syntax-modern
@@ -9,6 +8,7 @@
 //! Expected preserving text uses the source's none keyword and selected ordinary
 //! family projections; no computed interpolation or calculated range phase is tested.
 
+use crate::css::support::parsed_color as parsed;
 use surgeist_color::PredefinedColorSpace;
 use surgeist_css::*;
 
@@ -83,26 +83,6 @@ fn hue(text: &str) -> CssColorHue {
     } else {
         CssColorHue::Number(CssColorNumberLiteral::try_from_component(token(text)).unwrap())
     }
-}
-
-fn parsed(text: &str) -> CssColor {
-    let source = format!("color:{text}");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 1, "{source}");
-    assert_eq!(validate_style_attribute(&source).unwrap(), *report.syntax());
-    let declaration = &report.syntax()[0];
-    let CssValueOrigin::Parsed(origin) = declaration.value_components().items()[0].origin() else {
-        panic!("parsed function origin: {source}");
-    };
-    assert_eq!(origin.source().as_str(), source);
-    assert_eq!(origin.span().start().byte_offset().value(), 6);
-    let CssKnownPropertyValueRef::Color(value) =
-        declaration.known().unwrap().property_value().unwrap()
-    else {
-        panic!("typed color: {source}");
-    };
-    value.value().clone()
 }
 
 fn assert_origin(origin: &CssValueOrigin, text: &str) {

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Values 4 WD 2024-03-12 §10.10.1 steps 4–5 distinguish comparable
 //! magnitudes from coefficients whose percentage basis is still unknown:
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-simplification

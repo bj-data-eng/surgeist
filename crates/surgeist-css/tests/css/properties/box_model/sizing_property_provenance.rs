@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Exact authored property provenance from the selected dated Sizing snapshots.
 
 use surgeist_css::{

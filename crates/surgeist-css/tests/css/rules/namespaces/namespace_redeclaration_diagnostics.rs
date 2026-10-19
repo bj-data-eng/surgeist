@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Namespaces 3 §§3.2–3.3: declarations are stylesheet-local; repeated decoded
 //! prefixes/defaults are nonconforming, but the retained last declaration wins.
 //! https://www.w3.org/TR/2014/REC-css-namespaces-3-20140320/#prefixes

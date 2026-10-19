@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Conditional Rules 5 section 9.1 forbids logical simplifications, including
 //! removing unnecessary parentheses from the authored container query.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#the-csscontainerrule-interface

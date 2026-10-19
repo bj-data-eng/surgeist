@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Sizing 3 section 3.2 requires nonnegative literal box sizes; flex-basis
 //! references the width grammar. Calculations remain symbolic for later resolution.
 //! https://www.w3.org/TR/2026/WD-css-sizing-3-20260904/#sizing-values

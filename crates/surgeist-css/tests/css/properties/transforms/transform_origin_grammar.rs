@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! The selected WebKit transform-origin parser rejects a vertical keyword
 //! followed by a length. Values 4 §<position> gives a conflicting example;
 //! this test records the selected browser behavior for the authored grammar.

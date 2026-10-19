@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Existing-API expectations from CSS Generated Content 3 (2025-12-04) §2:
 //! https://www.w3.org/TR/2025/WD-css-content-3-20251204/#propdef-content
 //! Counter-style names and `symbols()` follow Counter Styles 3 (2021-07-27).

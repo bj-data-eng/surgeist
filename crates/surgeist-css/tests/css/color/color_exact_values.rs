@@ -1,6 +1,6 @@
-#![forbid(unsafe_code)]
 //! Exact authored literals follow the product fidelity contract; calculations
 //! retain their separately owned numeric semantics. These tests use public APIs.
+use crate::css::support::color_declaration as parsed;
 use std::error::Error as _;
 
 use surgeist_css::*;
@@ -9,13 +9,6 @@ fn component(text: &str) -> CssComponentValue {
     let values = parse_component_values(text).unwrap();
     assert_eq!(values.items().len(), 1);
     values.items()[0].clone()
-}
-
-fn parsed(text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("color:{text}"));
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 1);
-    report.syntax()[0].clone()
 }
 
 fn checked(text: &str) -> CssDeclaration {

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Counter Styles 3 §§3 and 3.8 retain decoded identity separately from genuine
 //! lexical origins. Parsing, normalization and projection never fabricate a
 //! stylesheet host or resolve counter names/images.

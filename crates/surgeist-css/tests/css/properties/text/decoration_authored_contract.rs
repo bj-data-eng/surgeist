@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Decoration 3 CRD20220505 and 4 WD20220504 authored lifecycle contracts.
 //! Existing callable fronts only. No future typed variants or constructors.
 //! Generic metadata/catalog/alias/dispatch facts belong solely in common records.rs.
@@ -6,6 +5,10 @@
 //! Canonical oracles: accepted bf43 Decoration and shared Color/Number/Shadow
 //! contracts; Values4 math simplification/unit ordering; new Emphasis default
 //! omission is an explicitly documented CSSOM + Decoration4 inference.
+use crate::css::support::{
+    authored_family_property as property, check_named_components as checked_components,
+    detached_checked_declaration as checked,
+};
 use surgeist_css::*;
 
 const COLOR_GOLDENS: &[(&str, &str)] = &[
@@ -53,37 +56,6 @@ const COLOR_GOLDENS: &[(&str, &str)] = &[
     ),
 ];
 
-fn property(name: &str) -> CssKnownProperty {
-    CssKnownProperty::from_name(name).unwrap_or_else(|| panic!("missing authored family: {name}"))
-}
-fn checked_components(
-    name: &str,
-    values: CssComponentValues,
-    grammar: bool,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
-    let p = property(name);
-    if grammar {
-        parse_property_value_for_grammar(p.grammar(), values, CssImportance::Important)
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(p),
-            values,
-            CssImportance::Important,
-        )
-    }
-}
-fn checked(name: &str, text: &str, grammar: bool) -> CssDeclaration {
-    let values = parse_component_values(text).unwrap();
-    let before = values.clone();
-    let source = checked_components(name, values.clone(), grammar).unwrap();
-    assert_eq!(source.value_components(), &values);
-    assert_eq!(values, before);
-    assert!(source.position().is_none());
-    assert!(source.parsed_name().is_none());
-    assert!(source.parsed_value().is_none());
-    assert_eq!(source.importance(), CssImportance::Important);
-    source
-}
 fn fronts(name: &str, value: &str) -> Vec<CssDeclaration> {
     let css = format!("/*😀*/{}:{value}!important", name.to_ascii_uppercase());
     let report = parse_style_attribute(&css);

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Additional authored `attr()` boundary cases from pinned CSS Values 5 §§3.1.1, 3.3, 7.7.
 
 use surgeist_css::*;

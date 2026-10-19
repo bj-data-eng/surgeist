@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! The pinned Syntax 3 block consumer omits its final declaration transfer.
 //! The catalog's terminal-retention reconciliation, controlled by Nesting 1
 //! §§3.3 and 5, retains one nonempty final run at EOF in admitted style and

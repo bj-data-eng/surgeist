@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Counter Styles 3 (2021-07-27) §3; Fonts 4 (2026-09-07) §§4.9.1, 6.9.2,
 //! with the repository's selected exact-integer/cardinality policy.
 

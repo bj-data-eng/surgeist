@@ -1,20 +1,10 @@
-#![forbid(unsafe_code)]
-
 //! CSS Masking 1 Appendix A, selected 2021-08-05 Candidate Recommendation Draft:
 //! https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/#propdef-clip
 //! `clip` is one noninherited longhand, initially `auto`; `rect()` has four
 //! ordered length-or-auto edges and permits signed lengths.
 
+use crate::css::support::style_declaration_reporting_source as declaration;
 use surgeist_css::*;
-
-fn declaration(source: &str) -> CssDeclaration {
-    let report = parse_style_attribute(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
-}
 
 fn clip(source: &CssDeclaration) -> &CssClip {
     let CssKnownPropertyValueRef::Clip(value) = source.known().unwrap().property_value().unwrap()

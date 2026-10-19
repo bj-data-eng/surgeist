@@ -1,7 +1,6 @@
 //! Independent Selectors 4 logical-pseudo expectations for the 45 original
 //! CSSTree records. The fixture cites pinned grammar and diagnostic source
 //! derivations; neither the current parser nor registry supplies its oracle.
-#![forbid(unsafe_code)]
 
 use crate::css::support::digest;
 use serde_json::{Value, json};

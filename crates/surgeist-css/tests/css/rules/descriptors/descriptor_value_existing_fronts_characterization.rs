@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent source-entry characterization for existing palette/profile values.
 //! Fonts4 WD20260907 §9.2 and Color5 WD20260908 §5.3 require their local values;
 //! #504/public source contracts retain original value windows and typed depth256.

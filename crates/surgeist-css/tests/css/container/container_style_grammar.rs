@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored style-query recognition follows Conditional Rules 5 (2025-10-30)
 //! sections 5.4 and 6.2. Values remain syntax, without computed-value evaluation.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#style-container

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Animations ordered matching and adopted WebKit specified-tree math phase.
 
 use surgeist_css::*;

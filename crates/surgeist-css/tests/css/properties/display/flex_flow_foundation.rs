@@ -1,18 +1,8 @@
-#![forbid(unsafe_code)]
-
 //! Flexbox 1 §§5.1–5.3: direction and wrapping are noninherited terminals;
 //! `flex-flow` sets both, including the initial of an omitted component.
 
+use crate::css::support::style_declaration_reporting_source as declaration;
 use surgeist_css::*;
-
-fn declaration(source: &str) -> CssDeclaration {
-    let report = parse_style_attribute(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
-}
 
 fn expanded(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
     let CssExpansion::Contributions(CssContributions::Longhands(items)) =

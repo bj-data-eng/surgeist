@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! All original-component closure, symbolic reset and provenance contract.
 //! Cascade5 CR20220113 #all-shorthand/#propdef-all; Syntax3 original recovery
 //! provenance; Variables1 pending reentry; current public authored contracts.

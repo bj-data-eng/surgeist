@@ -5,8 +5,6 @@
 //! The reserved default identifier is excluded in every ASCII case permutation.
 //! Quoted strings and decoded names retain their distinct construction semantics.
 
-#![forbid(unsafe_code)]
-
 use surgeist_css::{
     CssErrorCode, CssFontFaceFamily, CssFontFaceSource, CssFontFamilyName, CssFontFamilyNameKind,
     CssFontLocalName, CssFontValue, CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction,

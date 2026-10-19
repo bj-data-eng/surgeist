@@ -1,5 +1,4 @@
 //! Independently derived MQ5 and Syntax expectations for original CSSTree inputs.
-#![forbid(unsafe_code)]
 
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, fs, path::Path};

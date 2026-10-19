@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use surgeist_css::*;
 
 fn line_name(value: &str) -> CssGridLineName {

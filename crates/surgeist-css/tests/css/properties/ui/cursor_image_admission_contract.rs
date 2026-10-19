@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing public admission boundaries for UI 4 cursor images.
 //! Independent authority: selected UI 4 WD 2026-01-20 §5.1.1,
 //! references/css-ui-4--WD-css-ui-4-20260120--42d9c51404fb.md:

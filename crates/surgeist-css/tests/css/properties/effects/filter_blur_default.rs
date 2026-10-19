@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Filter Effects 1 section 6.1 defines an omitted blur radius as 0px.
 //! https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#funcdef-filter-blur
 use surgeist_css::*;

@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! CSS Grid 2 (2025-03-26) §§8.3–8.4 placement grammar and intrinsic expansion;
 //! CSS Values 4 (2024-03-12) §4.2 identifier exclusions and math range timing.
 //! Grid 3 (2026-01-21) §4.1 reuses these properties on its grid axis.

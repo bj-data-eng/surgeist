@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Pinned Syntax 3 CRD20211224 §§5.4.1/5.4.3: unmatched root punctuation is
 //! qualified-rule input, not an independently discarded stylesheet separator.
 use surgeist_css::{

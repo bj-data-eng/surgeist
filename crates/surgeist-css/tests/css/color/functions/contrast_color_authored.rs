@@ -1,19 +1,10 @@
-#![forbid(unsafe_code)]
 //! Color 5 WD20260908 §8 defines exactly one symbolic color input.
 //! Ordinary child output follows Color 4 CRD20260908 and the selected Standalone
 //! role, even under Mix/Origin. Frozen WebKit 73aa6c89 CSSContrastColor.cpp:59–64
 //! independently serializes its stored color; contrast evaluation belongs later.
 //! Resource expectations use the existing cumulative specified-value contract.
+use crate::css::support::style_declaration_reporting_source as declaration;
 use surgeist_css::*;
-
-fn declaration(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let [value] = report.syntax().as_slice() else {
-        panic!("one declaration: {css}")
-    };
-    value.clone()
-}
 
 fn color(css: &str) -> CssColor {
     let source = declaration(&format!("color:{css}"));

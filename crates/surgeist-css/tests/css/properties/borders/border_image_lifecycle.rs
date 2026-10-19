@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Backgrounds 3 CRD 2024-03-11 §§5.1–5.5, 5.7: typed authored
 //! components, five-member shorthand, and omitted values reset to initials.
 //! https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#border-image

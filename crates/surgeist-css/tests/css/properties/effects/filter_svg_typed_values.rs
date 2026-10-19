@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional tests for new typed fronts; no executable RED preceded these APIs.
 //! Filter1 WD20181218 §§9.13,10,11.5 supplies identities and intrinsic initials;
 //! Values4/CSSOM and the selected exact Color/opacity owners supply projection.

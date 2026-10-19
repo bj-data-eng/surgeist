@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Ordinary time grammar: Values 4 WD 2024-03-12 #time, #numeric-ranges,
 //! #numbers and #calc-range; Transitions 1 WD 2026-01-08
 //! #propdef-transition-duration, #propdef-transition-delay and #single-transition;

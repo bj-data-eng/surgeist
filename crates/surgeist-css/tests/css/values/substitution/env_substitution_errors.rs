@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Shared substitution diagnostics retain genuine missing-argument boundaries.
 use surgeist_css::*;
 

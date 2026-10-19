@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing-callable Syntax 3 §5.4.2 EOF/semicolon boundaries, with the adopted
 //! UnexpectedEnd + RetainNonconformingRule diagnostic contract.
 use surgeist_css::{

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Conditional Rules 3 section 3 permits page rules in conditional groups.
 //! Syntax 3 section 5.4.1 consumes a rule list: a semicolon starts a qualified
 //! rule prelude rather than being discarded as in a style declaration body.

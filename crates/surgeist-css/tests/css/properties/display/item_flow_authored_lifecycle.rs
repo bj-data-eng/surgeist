@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional evidence for the new typed item-flow APIs. Selected Grid 3
 //! supplies the finite longhands; the adopted product policy supplies full
 //! D/W/P/T output, authored wrap facet preservation and fixed-child costs.

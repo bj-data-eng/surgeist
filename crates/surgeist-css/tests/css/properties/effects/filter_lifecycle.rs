@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored requirements from Filter Effects 1 WD 2018-12-18 §§5, 6.1, 6.3:
 //! https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/
 //! The named backdrop property imports only §2 of the immutable exploring ED:

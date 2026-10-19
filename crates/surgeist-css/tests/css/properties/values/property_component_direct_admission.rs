@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent public contracts for the common property grammar's two inputs.
 //! Property stimuli and typed wrappers are the existing handwritten expectations;
 //! lexical boundaries and failure ordering follow the owning public contracts.

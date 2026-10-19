@@ -1,8 +1,7 @@
-#![forbid(unsafe_code)]
-
 //! Font variant grammar from Fonts 4 (2026-09-07), sections 6.8, 6.11 and 9.3.
 //! Expectations come from the pinned specification, not parser output.
 
+use crate::css::support::important_declaration as declaration;
 use surgeist_css::*;
 
 const MEMBERS: [&str; 7] = [
@@ -17,16 +16,6 @@ const MEMBERS: [&str; 7] = [
 
 fn grammar(name: &str) -> CssPropertyGrammar {
     CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("missing grammar: {name}"))
-}
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
 }
 
 fn checked(name: &str, value: &str) -> CssDeclaration {

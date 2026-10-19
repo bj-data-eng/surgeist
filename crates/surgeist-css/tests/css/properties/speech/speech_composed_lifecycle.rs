@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Passing composed-contract controls for the selected Speech 1 CRD20230214.
 //! Independent expectations come from §3.1, §§6–12 and its 19-name Property
 //! Index (references/css-speech-1--CRD-css-speech-1-20230214--bb7b59c92564.md).

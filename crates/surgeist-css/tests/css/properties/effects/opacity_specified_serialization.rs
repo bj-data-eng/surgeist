@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Color 4 specified opacity formatting; exact dyadic goldens come from
 //! (2^24-1)*2^104 and 5^149*10^-151, independently of the formatter.
 

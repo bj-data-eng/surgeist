@@ -1,20 +1,11 @@
-#![forbid(unsafe_code)]
 //! Functional tests for Backgrounds 3 §2.6 and §2.6.1 and Values 4 §8.3.2.
 //! https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#bg-position-serialization
 
+use crate::css::support::style_declaration as declaration;
 use surgeist_css::{
     CssHorizontalPosition as H, CssSpecifiedValueSerializationErrorKind as E,
     CssSpecifiedValueSerializationLimits as L, CssVerticalPosition as V, *,
 };
-
-fn declaration(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    source.clone()
-}
 
 fn authored(source: &CssDeclaration) -> &CssBackgroundPositionList {
     let CssKnownPropertyValueRef::BackgroundPosition(value) =

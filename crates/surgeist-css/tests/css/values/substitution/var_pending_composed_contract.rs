@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Variables 1 §3 retains everything after the first var fallback comma.
 //! It permits var only in property-value contexts and defers whole valid values.
 //! https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#using-variables

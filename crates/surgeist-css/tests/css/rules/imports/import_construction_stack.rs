@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Checked imports retain usable owned children at the public component depth.
 use surgeist_css::{CssImportRule, CssNamespaceContext, parse_component_values};
 

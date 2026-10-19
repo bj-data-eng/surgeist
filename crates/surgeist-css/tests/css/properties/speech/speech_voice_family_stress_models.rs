@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional Speech 1 §§11.1/11.5 authored models. Independent expectations
 //! come from the pinned Speech grammar, borrowed Fonts family-name syntax and
 //! CSSOM serialization: quoted/identifier form and optional variant identity

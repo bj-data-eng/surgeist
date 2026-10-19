@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! The outer test compiles before the source-hint projection API exists. Its
 //! executed assertion requires the public consumer to compile and run its
 //! independent Fonts4 compatibility and authored-value preservation cases.

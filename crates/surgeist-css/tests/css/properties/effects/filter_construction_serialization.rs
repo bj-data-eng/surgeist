@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional evidence for new specified serializers and the omission wrapper.
 //! Grammar/defaults: Filter Effects 1 WD 2018-12-18 §§5, 6.1, 6.3.
 //! Canonical child projection and exact resource charges follow the adopted

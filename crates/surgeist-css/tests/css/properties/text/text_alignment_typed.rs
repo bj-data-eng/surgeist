@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Functional current-value evidence for Text 4 (2026-08-14) and UAX29 r47.
 
 use surgeist_css::*;

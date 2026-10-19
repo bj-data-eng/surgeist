@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent expected output from CSSOM §2.1, including empty/NUL idioms
 //! that intentionally do not cross strict property identifier/list grammars.
 //! https://www.w3.org/TR/2021/WD-cssom-1-20210826/#common-serializing-idioms

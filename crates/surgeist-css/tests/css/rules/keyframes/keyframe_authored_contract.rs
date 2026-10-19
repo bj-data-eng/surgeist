@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Authored keyframes follow Animations 1 §3 and retain ordered source structure.
 //! https://www.w3.org/TR/2023/WD-css-animations-1-20230302/#keyframes
 //! https://www.w3.org/TR/2023/WD-css-animations-1-20230302/#timing-functions

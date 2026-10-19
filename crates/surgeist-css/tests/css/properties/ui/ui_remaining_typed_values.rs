@@ -1,15 +1,7 @@
-#![forbid(unsafe_code)]
 //! New typed APIs, tested functionally with implementation from UI4/Images4 and CSSOM.
+use crate::css::support::normal_checked_declaration as declaration;
 use surgeist_css::*;
 
-fn declaration(property: CssKnownProperty, text: &str) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(property),
-        parse_component_values(text).unwrap(),
-        CssImportance::Normal,
-    )
-    .unwrap()
-}
 fn caret(text: &str) -> CssCaret {
     let declaration = declaration(CssKnownProperty::Caret, text);
     let CssKnownPropertyValueRef::Caret(value) =

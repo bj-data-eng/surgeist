@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Authored lifecycle oracles: Conditional 5 WD20251030 §6.1 and the imported
 //! Values 5 attribute-substitution WD20241111 §9. The query-container, flat-tree
 //! and ultimate-originating-element evaluation rules remain downstream; these

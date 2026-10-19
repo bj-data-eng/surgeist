@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Conditional Rules 5 §8 retains authored feature tests without rendering them.
 //! The selected Syntax block consumer and the catalog's named-test reconciliation
 //! require local recovery, with recovered input rejected by checked construction.

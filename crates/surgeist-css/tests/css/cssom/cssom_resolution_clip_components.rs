@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! CSSOM WD 2021-08-26 §6.7.2 selects dppx, six-place Number text and
 //! comma-separated legacy rect() edges; Values 4 supplies the unit relations.
 //! https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-component-value

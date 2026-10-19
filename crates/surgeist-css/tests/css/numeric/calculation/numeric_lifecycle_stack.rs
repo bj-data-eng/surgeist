@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! The supported component depth also applies to public owned-value operations,
 //! even when every function contains both a sum and a product expression node.
 use crate::css::support::isolated_stack;

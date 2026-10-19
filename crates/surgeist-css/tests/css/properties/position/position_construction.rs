@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Checked authored position construction for Values 4, Backgrounds 3, and Transforms 1.
 use surgeist_css::*;
 

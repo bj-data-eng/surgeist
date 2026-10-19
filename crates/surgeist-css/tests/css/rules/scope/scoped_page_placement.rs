@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! CSS2 page payloads inside ordinary conditional bodies remain admitted even
 //! when the condition is nested inside a scope. Direct scope children use the
 //! selected Syntax3/Cascade6 content-category interpretation, not an explicit

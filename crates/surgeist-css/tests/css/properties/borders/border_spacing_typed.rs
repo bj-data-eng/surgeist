@@ -1,19 +1,9 @@
-#![forbid(unsafe_code)]
-
 //! Functional checked construction and specified serialization of CSS2 §17.6.1
 //! `border-spacing` (selected 2011-06-07 Recommendation).
 //! https://www.w3.org/TR/2011/REC-CSS2-20110607/tables.html#propdef-border-spacing
 
+use crate::css::support::style_declaration_reporting_source as declaration;
 use surgeist_css::*;
-
-fn declaration(source: &str) -> CssDeclaration {
-    let report = parse_style_attribute(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
-}
 
 fn contribution(source: &CssDeclaration) -> CssLonghandContribution {
     let CssExpansion::Contributions(CssContributions::Longhands(items)) =

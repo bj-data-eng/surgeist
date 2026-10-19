@@ -1,11 +1,10 @@
-#![forbid(unsafe_code)]
-
 //! Existing-API RED expectations from CSS Color Adjustment 1 CR (2025-12-16), §§4.1–4.2.
 //! https://www.w3.org/TR/2025/CR-css-color-adjust-1-20251216/
 //! Contextual adjustment, palettes, output-device policy and used colors are downstream.
 //! Canonical writers and new typed payload accessors are tested with their implementation;
 //! this candidate exercises admission and the already-existing authored lifecycle APIs.
 
+use crate::css::support::validated_important_declaration as declaration;
 use surgeist_css::*;
 
 use crate::css::support::authored_property;
@@ -50,23 +49,6 @@ const CASES: &[PropertyCase] = &[
         ],
     ),
 ];
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let text = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&text);
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    assert!(validate_style_attribute(&text).is_ok(), "{text}");
-    let [source] = report.syntax().as_slice() else {
-        panic!("one admitted declaration: {text}")
-    };
-    assert_eq!(source.known().unwrap().property().canonical_name(), name);
-    assert_eq!(source.importance(), CssImportance::Important);
-    assert_eq!(
-        source.value_components().serialize().unwrap().as_css(),
-        value
-    );
-    source.clone()
-}
 
 fn terminal_name(source: &CssDeclaration) -> &'static str {
     match source.known().unwrap().property().canonical_name() {

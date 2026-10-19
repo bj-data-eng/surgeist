@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! CSS2.1 Page §§13.2.1/13.4 imports the physical margin grammars, including
 //! Box §8.3's authored inherit alternative. Inheritance remains symbolic.
 use surgeist_css::*;

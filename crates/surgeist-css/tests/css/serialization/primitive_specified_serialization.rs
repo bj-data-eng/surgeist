@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent represented-keyword expectations from the selected property grammars:
 //! Text4 2026-08-14 #propdef-text-transform, #propdef-white-space, #propdef-text-wrap, #propdef-word-break;
 //! Images3 2023-12-18 #propdef-object-fit, #propdef-image-rendering;

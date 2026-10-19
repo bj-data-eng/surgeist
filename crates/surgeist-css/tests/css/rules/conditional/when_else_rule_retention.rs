@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Existing-API retention contracts for Conditional 5 WD20251030 sections 3/4
 //! and the adopted complete authored grammar profile in issue 647.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/

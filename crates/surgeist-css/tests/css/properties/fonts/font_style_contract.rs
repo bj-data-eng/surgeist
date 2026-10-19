@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Authored Fonts 4 property, shared angle, and shorthand contracts.
 
 use surgeist_css::{

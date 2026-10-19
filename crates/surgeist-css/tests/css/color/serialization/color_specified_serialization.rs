@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Independent expectations for Unit E canonical specified colors.
 
 use surgeist_color::{Color, SerializationRequest};

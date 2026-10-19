@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Retained specified alpha/weight leaves: CSSOM WD 2021-08-26 component
 //! serialization, Values 4 WD 2024-03-12 calculation serialization, Color 4
 //! CRD 2026-09-08 modern alpha, and Color 5 WD 2026-09-08 color-mix serialization.
@@ -7,23 +6,13 @@
 //! alpha/weight leaves keep specified calculations and dimensions; ordinary
 //! RGB/HSL/HWB scalar alpha finalizes. Authored graphs and resource charges stay.
 
+use crate::css::support::{
+    checked_color_declaration as declaration, component_values as components,
+};
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-
-fn components(source: &str) -> CssComponentValues {
-    parse_component_values(source).unwrap()
-}
-
-fn declaration(source: &str) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        components(source),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("{source}: {error:?}"))
-}
 
 fn declared_color(declaration: &CssDeclaration) -> &CssColor {
     let CssKnownPropertyValueRef::Color(value) =

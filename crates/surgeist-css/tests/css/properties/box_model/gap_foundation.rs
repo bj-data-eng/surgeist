@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Public-boundary regression contracts from CSS Box Alignment 3 (2026-01-30)
 //! §§8.1, 8.2, and 8.4. This RED slice uses only pre-existing APIs.
 

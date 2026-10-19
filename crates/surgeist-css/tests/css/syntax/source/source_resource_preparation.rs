@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Original resource ownership and atomic fragment recovery under the shared 256-level ceiling.
 use surgeist_css::*;
 

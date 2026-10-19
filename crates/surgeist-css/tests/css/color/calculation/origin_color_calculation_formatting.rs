@@ -1,22 +1,13 @@
-#![forbid(unsafe_code)]
 //! Color 5 WD 2026-09-08 origin serialization and CSSOM WD 2021-08-26
 //! component numbers: generic six-place text for calculated ordinary origins.
 //! Halfway away from zero is the adopted operational policy on binary64 bits.
 
+use crate::css::support::{
+    checked_color_declaration as declaration, component_values as components,
+};
 use surgeist_css::*;
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-fn components(source: &str) -> CssComponentValues {
-    parse_component_values(source).unwrap()
-}
-fn declaration(source: &str) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        components(source),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|e| panic!("{source}: {e:?}"))
-}
 fn declaration_color(d: &CssDeclaration) -> &CssColor {
     let CssKnownPropertyValueRef::Color(c) = d.known().unwrap().property_value().unwrap() else {
         panic!("color")

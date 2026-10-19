@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Fonts 4 WD 2026-09-07 §9.1 and the frozen WebKit palette-mix-valid.html
 //! provide independent authored grammar and specified-output expectations.
 //! The shared accepted Color 5 omitted-weight reconciliation also applies.

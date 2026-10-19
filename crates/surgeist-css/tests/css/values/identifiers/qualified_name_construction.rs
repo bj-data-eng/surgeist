@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Namespaces 3 §4: authored prefixes, context-dependent constraints and bounded
 //! name serialization preserve decoded identifier identity.
 

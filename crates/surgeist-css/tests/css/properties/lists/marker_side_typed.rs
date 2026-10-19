@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Functional specified-value expectations from CSS Lists 3 (2020-11-17) §3.7.
 //! The keywords are symbolic; element or parent directionality is selected later.
 

@@ -1,4 +1,3 @@
-#![forbid(unsafe_code)]
 //! Values 4 WD 2024-03-12 §10.6 admits one calculation to sign(), whose
 //! result is Number made consistent with its input. Unlike abs/comparison
 //! results, the input need not itself be a simple CSS numeric domain.

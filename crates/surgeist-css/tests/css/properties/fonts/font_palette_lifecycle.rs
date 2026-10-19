@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Independent authored expectations: Fonts 4 WD 2026-09-07 §§2.2 and 9.1,
 //! references/css-fonts-4--WD-css-fonts-4-20260907--03626a0c8565.md.
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-palette-prop
