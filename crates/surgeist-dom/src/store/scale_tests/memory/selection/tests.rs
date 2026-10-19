@@ -51,10 +51,11 @@ fn parsed_record_binds_complete_geometry_and_ordinal() {
 }
 
 #[test]
-fn layered_record_binds_mode_id_pattern_geometry_and_ordinal() {
+fn layered_record_binds_mode_id_value_patterns_geometry_and_ordinal() {
     let identity = Identity::Layered {
         mode: "combined",
         ids: "row-ids",
+        values: "repeated-short",
         rows: 2,
         columns: 3,
         cells: 6,
@@ -63,10 +64,24 @@ fn layered_record_binds_mode_id_pattern_geometry_and_ordinal() {
     };
     assert_eq!(
         identity.record("unit-token", 42, "edited", Some(1)),
-        "token=unit-token\npid=42\nfixture=native-layered\nmode=combined\nids=row-ids\nrows=2\ncolumns=3\ncells=6\nmanaged=16\nsample=0\nstage=edited\ncheckpoint=1\n"
+        "token=unit-token\npid=42\nfixture=native-layered\nmode=combined\nids=row-ids\nvalues=repeated-short\nrows=2\ncolumns=3\ncells=6\nmanaged=16\nsample=0\nstage=edited\ncheckpoint=1\n"
     );
     assert_eq!(
         identity.record("unit-token", 42, "released", None),
-        "token=unit-token\npid=42\nfixture=native-layered\nmode=combined\nids=row-ids\nrows=2\ncolumns=3\ncells=6\nmanaged=16\nsample=0\nstage=released\ncheckpoint=0\n"
+        "token=unit-token\npid=42\nfixture=native-layered\nmode=combined\nids=row-ids\nvalues=repeated-short\nrows=2\ncolumns=3\ncells=6\nmanaged=16\nsample=0\nstage=released\ncheckpoint=0\n"
+    );
+    let unique = Identity::Layered {
+        mode: "banks-only",
+        ids: "repeated",
+        values: "unique-short",
+        rows: 8,
+        columns: 32,
+        cells: 256,
+        managed: 522,
+        sample: Sample::Second,
+    };
+    assert_eq!(
+        unique.record("other-token", 91, "old-only", Some(9)),
+        "token=other-token\npid=91\nfixture=native-layered\nmode=banks-only\nids=repeated\nvalues=unique-short\nrows=8\ncolumns=32\ncells=256\nmanaged=522\nsample=1\nstage=old-only\ncheckpoint=9\n"
     );
 }

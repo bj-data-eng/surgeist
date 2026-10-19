@@ -59,6 +59,7 @@ pub(super) enum Identity {
     Layered {
         mode: &'static str,
         ids: &'static str,
+        values: &'static str,
         rows: usize,
         columns: usize,
         cells: usize,
@@ -100,13 +101,14 @@ impl surgeist_test::checkpoint::Identity for Identity {
             Self::Layered {
                 mode,
                 ids,
+                values,
                 rows,
                 columns,
                 cells,
                 managed,
                 sample,
             } => format!(
-                "token={token}\npid={pid}\nfixture=native-layered\nmode={mode}\nids={ids}\nrows={rows}\ncolumns={columns}\ncells={cells}\nmanaged={managed}\nsample={}\nstage={stage}\ncheckpoint={}\n",
+                "token={token}\npid={pid}\nfixture=native-layered\nmode={mode}\nids={ids}\nvalues={values}\nrows={rows}\ncolumns={columns}\ncells={cells}\nmanaged={managed}\nsample={}\nstage={stage}\ncheckpoint={}\n",
                 sample.name(),
                 ordinal.unwrap_or(0)
             ),

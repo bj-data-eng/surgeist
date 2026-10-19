@@ -17,6 +17,8 @@ const CELLS: usize = ROWS * COLUMNS;
 const NODES: usize = 2 + ROWS + 2 * CELLS;
 const RAW: &[u16] = &[65, 0xd800, 0, 0xdc00];
 const NEXT: &[u16] = &[110, 101, 120, 116];
+const UNIQUE_ATTRIBUTE_NEXT: &[u16] = &[65, 110, 101, 119];
+const UNIQUE_TEXT_NEXT: &[u16] = &[84, 110, 101, 119];
 const ROW_IDS: [&str; ROWS] = ["r0", "r1"];
 const CELL_IDS: [&str; CELLS] = ["c0", "c1", "c2", "c3", "c4", "c5"];
 
@@ -123,8 +125,43 @@ impl Unique {
         }
     }
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ValuePattern {
+    RepeatedShort,
+    UniqueShort,
+}
+impl ValuePattern {
+    fn name(self) -> &'static str {
+        match self {
+            Self::RepeatedShort => "repeated-short",
+            Self::UniqueShort => "unique-short",
+        }
+    }
+    fn validate(self, mode: Mode, unique: Unique) -> Result<(), &'static str> {
+        if self == Self::UniqueShort {
+            if mode == Mode::CallerShared {
+                return Err("unique-short values cannot use one repeated caller-shared backing");
+            }
+            if unique != Unique::None {
+                return Err("unique-short values require the repeated ID pattern");
+            }
+        }
+        Ok(())
+    }
+    fn input(self, cell: usize, slot: usize) -> DocumentString {
+        match self {
+            Self::RepeatedShort => raw(),
+            // The closed geometry has at most 256 cells: every data-a,
+            // data-b and Text value has its own four-unit v000..v767 spelling.
+            Self::UniqueShort => format!("v{:03}", 3 * cell + slot).into(),
+        }
+    }
+}
+
 struct Grid {
     geometry: Geometry,
+    values: ValuePattern,
     document: DocumentId,
     table: NodeId,
     rows: Vec<NodeId>,
@@ -160,15 +197,21 @@ fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
 fn raw() -> DocumentString {
     DocumentString::from_utf16(RAW.to_vec())
 }
-fn construct(dom: &mut Dom, geometry: Geometry, mode: Mode, unique: Unique) -> Constructed {
+fn construct(
+    dom: &mut Dom,
+    geometry: Geometry,
+    mode: Mode,
+    unique: Unique,
+    values: ValuePattern,
+) -> Constructed {
     let caller = raw();
     let inputs: Vec<_> = (0..geometry.cells())
-        .map(|_| {
-            std::array::from_fn(|_| {
+        .map(|cell| {
+            std::array::from_fn(|slot| {
                 if mode.caller_shared() {
                     caller.clone()
                 } else {
-                    raw()
+                    values.input(cell, slot)
                 }
             })
         })
@@ -205,6 +248,7 @@ fn construct(dom: &mut Dom, geometry: Geometry, mode: Mode, unique: Unique) -> C
     let creation = apply(dom, batch);
     let grid = Grid {
         geometry,
+        values,
         document: creation.document(&document).unwrap(),
         table: creation.created(&table).unwrap().unwrap(),
         rows: rows
@@ -254,6 +298,21 @@ fn representative_id_matches(value: &DocumentString, prefix: u16, ordinal: usize
         number
             .checked_mul(10)?
             .checked_add(usize::from(digit - u16::from(b'0')))
+    });
+    actual == Some(ordinal)
+}
+
+/// Decode the actual four-unit spelling; never call construction's formatter
+/// to manufacture an expected value or retain an expected-value inventory.
+fn unique_value_matches(value: &DocumentString, ordinal: usize) -> bool {
+    let [118, a, b, c] = value.code_units() else {
+        return false;
+    };
+    let actual = [*a, *b, *c].into_iter().try_fold(0usize, |number, digit| {
+        if !(48..=57).contains(&digit) {
+            return None;
+        }
+        Some(number * 10 + usize::from(digit - 48))
     });
     actual == Some(ordinal)
 }
@@ -371,14 +430,22 @@ fn check_grid(
                 values[offset].name().local_name().code_units(),
                 [100, 97, 116, 97, 45, suffix]
             );
-            assert_eq!(
-                values[offset].value().code_units(),
-                if attr_changed && index == 0 && offset == 0 {
-                    NEXT
-                } else {
-                    RAW
+            let changed = attr_changed && index == 0 && offset == 0;
+            match grid.values {
+                ValuePattern::RepeatedShort => assert_eq!(
+                    values[offset].value().code_units(),
+                    if changed { NEXT } else { RAW }
+                ),
+                ValuePattern::UniqueShort if changed => {
+                    assert_eq!(values[offset].value().code_units(), UNIQUE_ATTRIBUTE_NEXT);
                 }
-            );
+                ValuePattern::UniqueShort => {
+                    assert!(unique_value_matches(
+                        values[offset].value(),
+                        index * 3 + offset
+                    ));
+                }
+            }
         }
         if matches!(unique, Unique::Cells) {
             assert_eq!(values[2].name().local_name().code_units(), [105, 100]);
@@ -402,16 +469,57 @@ fn check_grid(
         assert!(matches!(node.kind(), DomNodeKind::Text(_)));
         assert_eq!(node.parent(), Some(id));
         assert_eq!(node.owner_document(), Some(grid.document));
-        assert_eq!(
-            node.data().unwrap().code_units(),
-            if text_changed && index == 0 {
-                NEXT
-            } else {
-                RAW
+        let value = node.data().unwrap();
+        match grid.values {
+            ValuePattern::RepeatedShort => assert_eq!(
+                value.code_units(),
+                if text_changed && index == 0 {
+                    NEXT
+                } else {
+                    RAW
+                }
+            ),
+            ValuePattern::UniqueShort if text_changed && index == 0 => {
+                assert_eq!(value.code_units(), UNIQUE_TEXT_NEXT);
             }
-        );
+            ValuePattern::UniqueShort => assert!(unique_value_matches(value, index * 3 + 2)),
+        }
     }
     assert_eq!(attribute_count, geometry.attributes(unique));
+    if grid.values == ValuePattern::UniqueShort {
+        let first = attributes(snapshot, grid.cells[0]);
+        assert_eq!(
+            first[0].value().code_units(),
+            if attr_changed {
+                UNIQUE_ATTRIBUTE_NEXT
+            } else {
+                &[118, 48, 48, 48]
+            }
+        );
+        assert_eq!(first[1].value().code_units(), [118, 48, 48, 49]);
+        assert_eq!(
+            text(snapshot, grid.texts[0]).code_units(),
+            if text_changed {
+                UNIQUE_TEXT_NEXT
+            } else {
+                &[118, 48, 48, 50]
+            }
+        );
+        let last = attributes(snapshot, *grid.cells.last().unwrap());
+        let last_text = text(snapshot, *grid.texts.last().unwrap());
+        match geometry {
+            Geometry::Tiny => {
+                assert_eq!(last[0].value().code_units(), [118, 48, 49, 53]);
+                assert_eq!(last[1].value().code_units(), [118, 48, 49, 54]);
+                assert_eq!(last_text.code_units(), [118, 48, 49, 55]);
+            }
+            Geometry::Representative => {
+                assert_eq!(last[0].value().code_units(), [118, 55, 54, 53]);
+                assert_eq!(last[1].value().code_units(), [118, 55, 54, 54]);
+                assert_eq!(last_text.code_units(), [118, 55, 54, 55]);
+            }
+        }
+    }
 }
 fn check_topology(before: &DomSnapshot, after: &DomSnapshot) {
     assert!(after.nodes().eq(before.nodes()));
@@ -452,8 +560,9 @@ fn check_reuse(
 ) {
     // The independent inputs remain held throughout every backing comparison.
     check_inputs(inputs, grid.geometry, mode);
-    let banks = mode.layers() != Layers::CallerOnly && unique != Unique::Cells;
-    let strings = mode.layers() == Layers::Combined || mode.caller_shared();
+    let repeated = grid.values == ValuePattern::RepeatedShort;
+    let banks = repeated && mode.layers() != Layers::CallerOnly && unique != Unique::Cells;
+    let strings = repeated && (mode.layers() == Layers::Combined || mode.caller_shared());
     let exact_optional_hits = grid.geometry == Geometry::Tiny;
     for index in 1..grid.geometry.cells() {
         // The representative unique stream can turn over the finite pools.
@@ -592,8 +701,12 @@ fn run_sample(
     geometry: Geometry,
     mode: Mode,
     unique: Unique,
+    values: ValuePattern,
     mut observer: Option<&mut dyn FnMut(HolderStage)>,
 ) -> Option<SampleTimes> {
+    values
+        .validate(mode, unique)
+        .expect("valid layered value selection");
     let timing = !super::scale_metrics::ENABLED;
     observe(&mut observer, HolderStage::HarnessOnly);
     let started = timing.then(Instant::now);
@@ -603,7 +716,7 @@ fn run_sample(
         grid,
         inputs,
         creation,
-    } = construct(&mut dom, geometry, mode, unique);
+    } = construct(&mut dom, geometry, mode, unique, values);
     let setup = elapsed(started);
     let started = timing.then(Instant::now);
     let old = dom.snapshot();
@@ -626,7 +739,13 @@ fn run_sample(
     batch.set_attribute(
         grid.cells[0],
         "data-a",
-        DocumentString::from_utf16(NEXT.to_vec()),
+        DocumentString::from_utf16(
+            match values {
+                ValuePattern::RepeatedShort => NEXT,
+                ValuePattern::UniqueShort => UNIQUE_ATTRIBUTE_NEXT,
+            }
+            .to_vec(),
+        ),
     );
     let attr_commit = apply(&mut dom, batch);
     let attribute_edit = elapsed(started);
@@ -645,7 +764,13 @@ fn run_sample(
         grid.texts[0],
         0,
         usize::MAX,
-        DocumentString::from_utf16(NEXT.to_vec()),
+        DocumentString::from_utf16(
+            match values {
+                ValuePattern::RepeatedShort => NEXT,
+                ValuePattern::UniqueShort => UNIQUE_TEXT_NEXT,
+            }
+            .to_vec(),
+        ),
     );
     let text_commit = apply(&mut dom, batch);
     let text_edit = elapsed(started);
@@ -727,7 +852,13 @@ fn run_sample(
 #[test]
 fn ordinary_layers_preserve_equal_banks_text_and_isolated_edits() {
     for mode in MODES {
-        let _ = run_sample(Geometry::Tiny, mode, Unique::None, None);
+        let _ = run_sample(
+            Geometry::Tiny,
+            mode,
+            Unique::None,
+            ValuePattern::RepeatedShort,
+            None,
+        );
     }
 }
 
@@ -741,7 +872,13 @@ fn unique_row_ids_preserve_cell_bank_reuse_while_unique_cell_ids_keep_banks_dist
                 grid,
                 inputs,
                 creation,
-            } = construct(&mut dom, Geometry::Tiny, mode, unique);
+            } = construct(
+                &mut dom,
+                Geometry::Tiny,
+                mode,
+                unique,
+                ValuePattern::RepeatedShort,
+            );
             check_inputs(&inputs, Geometry::Tiny, mode);
             let old = dom.snapshot();
             check_grid(&old, &grid, unique, false, false);
