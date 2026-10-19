@@ -1,4 +1,7 @@
 //! Literal completed-report transfer through the actual public owners.
+#[path = "parsed_ordinary_installation/canonical_binding_changes.rs"]
+mod canonical_binding_changes;
+
 use std::sync::{Arc, atomic::AtomicBool};
 use surgeist_dom::*;
 use surgeist_html::{HtmlCustomElementState, HtmlDocumentMode};
