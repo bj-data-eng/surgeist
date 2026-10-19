@@ -860,9 +860,13 @@ fn decode(file: &str) -> Result<Vec<Fixture<'_>>, FixtureError> {
         } else {
             block
         };
-        let (input, remainder) = block
-            .split_once("\n#errors\n")
-            .ok_or(FixtureError::ErrorsMarker)?;
+        // Zero data lines (tests_innerHTML_1/81) are an empty input.
+        let (input, remainder) = match block.strip_prefix("#errors\n") {
+            Some(remainder) => ("", remainder),
+            None => block
+                .split_once("\n#errors\n")
+                .ok_or(FixtureError::ErrorsMarker)?,
+        };
         let (metadata, expected) = if let Some(parts) = remainder.split_once("#document\n") {
             parts
         } else if let Some(metadata) = remainder.strip_suffix("#document") {
@@ -938,6 +942,9 @@ struct Attr {
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum Kind {
     Document(HtmlDocumentMode),
+    /// A document whose mode the corpus binding does not carry; its mode is
+    /// not compared (declared in the coverage matrix).
+    DocumentModeNotCarried,
     Fragment,
     Element(Name, Vec<Attr>),
     Text(Vec<u16>),
@@ -1204,9 +1211,16 @@ fn expected(fixture: &Fixture<'_>, mode: HtmlDocumentMode) -> Result<Projection,
             return Err(FixtureError::Indentation);
         }
         let mut record = raw[spaces..].to_owned();
+        // An attribute record is `name="value`; its name may itself begin
+        // with `<` (webkit01/45 `<=""`), but never with `<!`/`<?` or a space.
+        let attribute = record.split_once("=\"").is_some_and(|(name, _)| {
+            !name.starts_with('"')
+                && (!name.starts_with('<')
+                    || !(name.starts_with("<!") || name.starts_with("<?") || name.contains(' ')))
+        });
         let closing = if record.starts_with("<!-- ") {
             Some(" -->")
-        } else if record.starts_with('"') || (!record.starts_with('<') && record.contains("=\"")) {
+        } else if record.starts_with('"') || attribute {
             Some("\"")
         } else {
             None
@@ -1218,9 +1232,7 @@ fn expected(fixture: &Fixture<'_>, mode: HtmlDocumentMode) -> Result<Projection,
             }
         }
         let parent = path[depth];
-        if !record.starts_with(['<', '"'])
-            && let Some((raw_name, value)) = record.split_once("=\"")
-        {
+        if attribute && let Some((raw_name, value)) = record.split_once("=\"") {
             if !result.nodes[parent].children.is_empty() || result.nodes[parent].template.is_some()
             {
                 return Err(FixtureError::Attribute);
@@ -1736,6 +1748,7 @@ impl MeteredProjection {
         c.charge(WorkCategory::RecordVisit, 1)?;
         match (actual, expected) {
             (MeteredKind::Document(a), Kind::Document(e)) => Ok(a == *e),
+            (MeteredKind::Document(_), Kind::DocumentModeNotCarried) => Ok(true),
             (MeteredKind::Fragment, Kind::Fragment) => Ok(true),
             (MeteredKind::Text(a), Kind::Text(e)) | (MeteredKind::Comment(a), Kind::Comment(e)) => {
                 self.equal_units(a, e, c)
@@ -1969,6 +1982,138 @@ const DATA: &[(&str, &str)] = &[
         "template.dat",
         include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/template.dat"),
     ),
+    (
+        "adoption01.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/adoption01.dat"),
+    ),
+    (
+        "tests1.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests1.dat"),
+    ),
+    (
+        "tests2.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests2.dat"),
+    ),
+    (
+        "tests3.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests3.dat"),
+    ),
+    (
+        "tests4.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests4.dat"),
+    ),
+    (
+        "tests5.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests5.dat"),
+    ),
+    (
+        "tests6.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests6.dat"),
+    ),
+    (
+        "tests7.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests7.dat"),
+    ),
+    (
+        "tests8.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests8.dat"),
+    ),
+    (
+        "tests9.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests9.dat"),
+    ),
+    (
+        "tests10.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests10.dat"),
+    ),
+    (
+        "tests11.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests11.dat"),
+    ),
+    (
+        "tests12.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests12.dat"),
+    ),
+    (
+        "tests15.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests15.dat"),
+    ),
+    (
+        "tests16.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests16.dat"),
+    ),
+    (
+        "tests17.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests17.dat"),
+    ),
+    (
+        "tests18.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests18.dat"),
+    ),
+    (
+        "tests19.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests19.dat"),
+    ),
+    (
+        "tests20.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests20.dat"),
+    ),
+    (
+        "tests21.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests21.dat"),
+    ),
+    (
+        "tests22.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests22.dat"),
+    ),
+    (
+        "tests23.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests23.dat"),
+    ),
+    (
+        "tests25.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests25.dat"),
+    ),
+    (
+        "tests26.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tests26.dat"),
+    ),
+    (
+        "webkit01.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/webkit01.dat"),
+    ),
+    (
+        "webkit02.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/webkit02.dat"),
+    ),
+    (
+        "entities01.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/entities01.dat"),
+    ),
+    (
+        "entities02.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/entities02.dat"),
+    ),
+    (
+        "ruby.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/ruby.dat"),
+    ),
+    (
+        "foreign-fragment.dat",
+        include_str!(
+            "../../../tests/fixtures/html5lib-f994590f/tree-construction/foreign-fragment.dat"
+        ),
+    ),
+    (
+        "noscript01.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/noscript01.dat"),
+    ),
+    (
+        "tests_innerHTML_1.dat",
+        include_str!(
+            "../../../tests/fixtures/html5lib-f994590f/tree-construction/tests_innerHTML_1.dat"
+        ),
+    ),
 ];
 
 #[cfg(test)]
@@ -1990,6 +2135,21 @@ mod tests {
         assert_eq!(decoded[0].new_errors.as_ref().unwrap(), &["new detail"]);
         assert_eq!(decoded[0].scripting, FixtureScripting::Disabled);
         assert_eq!(decoded[0].ordinal, 1);
+    }
+
+    #[test]
+    fn decoder_accepts_zero_data_lines_and_attribute_names_beginning_with_less_than() {
+        let f = decode("#data\n#errors\n#document-fragment\nhtml\n#document\n| <head>\n\n#data\n<img <=\"\">\n#errors\n#document\n| <img>\n|   <=\"\"\n|   fail=\"\"\n").unwrap();
+        assert_eq!(f[0].input, "");
+        assert_eq!(f[0].fragment, Some("html"));
+        let p = expected(&f[1], HtmlDocumentMode::Quirks).unwrap();
+        assert_eq!(p.nodes.len(), 2);
+        let Kind::Element(_, attrs) = &p.nodes[1].kind else {
+            panic!("img")
+        };
+        assert_eq!(attrs[0].name.local, units("<"));
+        assert_eq!(attrs[0].value, units(""));
+        assert_eq!(attrs[1].name.local, units("fail"));
     }
 
     #[test]
@@ -2063,7 +2223,7 @@ mod tests {
             }
             total += cases.len();
         }
-        assert_eq!(total, 169);
+        assert_eq!(total, 1495);
     }
 
     #[test]
@@ -2219,84 +2379,6 @@ mod tests {
             crate::HtmlSource::utf8(raw),
             super::super::tests::limits(1_000),
         )
-    }
-
-    #[test]
-    fn selected_pinned_ordinary_disabled_structures_match_after_real_completion() {
-        // These stable ordinals select structural expected data, not full-case
-        // diagnostic conformance. No fragment or Enabled replay is implied.
-        let selected: &[(&str, usize, HtmlDocumentMode)] = &[
-            ("adoption02.dat", 1, HtmlDocumentMode::Quirks),
-            ("namespace-sensitivity.dat", 1, HtmlDocumentMode::Quirks),
-            ("quirks01.dat", 1, HtmlDocumentMode::LimitedQuirks),
-            ("tests14.dat", 1, HtmlDocumentMode::NoQuirks),
-            ("tests14.dat", 6, HtmlDocumentMode::NoQuirks),
-            ("tests24.dat", 7, HtmlDocumentMode::NoQuirks),
-            ("tables01.dat", 1, HtmlDocumentMode::Quirks),
-            ("tables01.dat", 4, HtmlDocumentMode::Quirks),
-            ("comments01.dat", 1, HtmlDocumentMode::Quirks),
-            ("template.dat", 1, HtmlDocumentMode::Quirks),
-            // Complete the four already-bundled lexical/prologue families.
-            // Modes come from HTML877d initial rules, never the actual output.
-            ("tests14.dat", 2, HtmlDocumentMode::NoQuirks),
-            ("tests14.dat", 3, HtmlDocumentMode::NoQuirks),
-            ("tests14.dat", 4, HtmlDocumentMode::NoQuirks),
-            ("tests14.dat", 5, HtmlDocumentMode::NoQuirks),
-            ("tests14.dat", 7, HtmlDocumentMode::NoQuirks),
-            ("tests24.dat", 1, HtmlDocumentMode::NoQuirks),
-            ("tests24.dat", 2, HtmlDocumentMode::NoQuirks),
-            ("tests24.dat", 3, HtmlDocumentMode::NoQuirks),
-            ("tests24.dat", 4, HtmlDocumentMode::NoQuirks),
-            ("tests24.dat", 5, HtmlDocumentMode::NoQuirks),
-            ("tests24.dat", 6, HtmlDocumentMode::NoQuirks),
-            ("tests24.dat", 8, HtmlDocumentMode::NoQuirks),
-            ("comments01.dat", 2, HtmlDocumentMode::Quirks),
-            ("comments01.dat", 3, HtmlDocumentMode::Quirks),
-            ("comments01.dat", 4, HtmlDocumentMode::Quirks),
-            ("comments01.dat", 5, HtmlDocumentMode::Quirks),
-            ("comments01.dat", 6, HtmlDocumentMode::Quirks),
-            ("comments01.dat", 7, HtmlDocumentMode::Quirks),
-            ("comments01.dat", 8, HtmlDocumentMode::Quirks),
-            ("comments01.dat", 9, HtmlDocumentMode::Quirks),
-            ("comments01.dat", 10, HtmlDocumentMode::Quirks),
-            ("comments01.dat", 11, HtmlDocumentMode::Quirks),
-            // Reserved xml is bogus-comment recovery even in the newer PI edition.
-            ("comments01.dat", 12, HtmlDocumentMode::Quirks),
-            ("comments01.dat", 13, HtmlDocumentMode::Quirks),
-            ("comments01.dat", 14, HtmlDocumentMode::Quirks),
-            ("comments01.dat", 15, HtmlDocumentMode::Quirks),
-            ("comments01.dat", 16, HtmlDocumentMode::Quirks),
-            ("quirks01.dat", 2, HtmlDocumentMode::Quirks),
-            ("quirks01.dat", 3, HtmlDocumentMode::Quirks),
-            ("quirks01.dat", 4, HtmlDocumentMode::Quirks),
-            ("tables01.dat", 2, HtmlDocumentMode::Quirks),
-            ("tables01.dat", 3, HtmlDocumentMode::Quirks),
-            ("tables01.dat", 5, HtmlDocumentMode::Quirks),
-            ("tables01.dat", 6, HtmlDocumentMode::Quirks),
-            ("tables01.dat", 7, HtmlDocumentMode::Quirks),
-            ("tables01.dat", 8, HtmlDocumentMode::Quirks),
-            ("tables01.dat", 9, HtmlDocumentMode::Quirks),
-            ("tables01.dat", 10, HtmlDocumentMode::Quirks),
-            ("tables01.dat", 11, HtmlDocumentMode::Quirks),
-            ("tables01.dat", 12, HtmlDocumentMode::Quirks),
-            ("tables01.dat", 13, HtmlDocumentMode::Quirks),
-            ("tables01.dat", 14, HtmlDocumentMode::Quirks),
-            ("tables01.dat", 15, HtmlDocumentMode::Quirks),
-            ("tables01.dat", 16, HtmlDocumentMode::Quirks),
-            ("tables01.dat", 17, HtmlDocumentMode::Quirks),
-            ("tables01.dat", 18, HtmlDocumentMode::Quirks),
-            ("tables01.dat", 19, HtmlDocumentMode::Quirks),
-        ];
-        for (path, ordinal, mode) in selected {
-            let (_, raw) = DATA.iter().find(|(p, _)| p == path).unwrap();
-            let fixtures = decode(raw).unwrap();
-            let fixture = &fixtures[ordinal - 1];
-            assert!(fixture.fragment.is_none());
-            assert_ne!(fixture.scripting, FixtureScripting::Enabled);
-            let expected = parsed_expected(fixture, *mode).unwrap();
-            check(&request(fixture.input), &expected)
-                .unwrap_or_else(|e| panic!("{path}/{ordinal}: {e}"));
-        }
     }
 
     #[test]
@@ -6125,7 +6207,7 @@ mod comment_diagnostic_corpus {
 
     // Template corpus selection is separate from the ordinary comment consumer.
     // Raw f994590f fixtures remain unchanged; HTML877d governs disagreements.
-    mod template_corpus {
+    pub(super) mod template_corpus {
         use super::*;
         use crate::*;
 
@@ -6140,7 +6222,9 @@ mod comment_diagnostic_corpus {
             fixtures
         }
 
-        fn mode(ordinal: usize) -> HtmlDocumentMode {
+        pub(in crate::parser::tree_builder::conformance) fn mode(
+            ordinal: usize,
+        ) -> HtmlDocumentMode {
             // Valid literal HTML doctypes, not observed parser modes.
             if matches!(ordinal, 107 | 110..=112) {
                 HtmlDocumentMode::NoQuirks
@@ -6181,6 +6265,24 @@ mod comment_diagnostic_corpus {
         }
 
         fn template_request(input: &str, utf16: bool) -> HtmlFragmentParseRequest {
+            fragment_request("template", input, utf16).unwrap()
+        }
+
+        /// A NoQuirks, Disabled captured context element named by a corpus
+        /// `#document-fragment` line: `svg name`, `math name` or an HTML name.
+        /// The capture establishes the root element and the template facts its
+        /// document requires; no other ancestry is supplied.
+        pub(in crate::parser::tree_builder::conformance) fn fragment_request(
+            context: &str,
+            input: &str,
+            utf16: bool,
+        ) -> Result<HtmlFragmentParseRequest, String> {
+            let (namespace, local) = match context.split_once(' ') {
+                Some(("svg", local)) => (Namespace::svg(), local),
+                Some(("math", local)) => (Namespace::mathml(), local),
+                Some(_) => return Err(format!("unknown context namespace {context:?}")),
+                None => (Namespace::html(), context),
+            };
             let mut builder = HtmlCaptureBuilder::new(
                 HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
                 HtmlHostFactsRevision::fresh(),
@@ -6200,26 +6302,30 @@ mod comment_diagnostic_corpus {
                     HtmlCaptureTemplateCacheInput::Absent,
                 )
                 .unwrap();
-            let template = builder
+            let element = builder
                 .add_element(
                     &document,
-                    QualifiedName::new(Namespace::html(), None, "template"),
+                    QualifiedName::new(namespace, None, local),
                     OrderedAttributes::default(),
                     HtmlCapturedIsValue::Absent,
                     HtmlCaptureRegistryInput::Null,
                 )
-                .unwrap();
-            builder.establish_root(&template).unwrap();
-            let capture = builder.finish().unwrap();
-            let context =
-                HtmlFragmentContext::element(&capture, &capture.subject_id(&template).unwrap())
-                    .unwrap();
+                .map_err(|e| format!("context element: {e:?}"))?;
+            builder
+                .establish_root(&element)
+                .map_err(|e| format!("context root: {e:?}"))?;
+            let capture = builder.finish().map_err(|e| format!("capture: {e:?}"))?;
+            let subject = capture
+                .subject_id(&element)
+                .map_err(|e| format!("context subject: {e:?}"))?;
+            let context = HtmlFragmentContext::element(&capture, &subject)
+                .map_err(|e| format!("context: {e:?}"))?;
             HtmlFragmentParseRequest::new(
                 source(input, utf16),
                 context,
                 super::super::super::tests::limits(1_000),
             )
-            .unwrap()
+            .map_err(|e| format!("request: {e:?}"))
         }
 
         fn check_fragment(
@@ -6229,7 +6335,7 @@ mod comment_diagnostic_corpus {
             check_fragment_observation(request, expected, None, false)
         }
 
-        fn check_fragment_observation(
+        pub(in crate::parser::tree_builder::conformance) fn check_fragment_observation(
             request: HtmlFragmentParseRequest,
             expected: &Projection,
             remaining_work: Option<u64>,
@@ -6714,3 +6820,6 @@ mod comment_diagnostic_corpus {
 
 #[cfg(test)]
 mod comparative_feed;
+
+#[cfg(test)]
+mod corpus_replay;
