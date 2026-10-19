@@ -8,6 +8,7 @@ use super::{
 };
 use crate::{DocumentString, DomBatch, DomChange, DomNodeKind, DomSnapshot, NodeId};
 
+mod names;
 mod parsed;
 mod selected;
 mod selection;

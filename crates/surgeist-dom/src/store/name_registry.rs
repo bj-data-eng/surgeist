@@ -17,6 +17,11 @@ pub(in crate::store) use ingress::Normalized;
 #[cfg(test)]
 mod tests;
 use index::{Index, Prepared};
+#[cfg(test)]
+pub(in crate::store) use tests::memory_report::{
+    Observation as NameMemoryObservation, Population as MemoryPopulation, Stage as MemoryStage,
+    run_lifecycle as run_memory_lifecycle,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Resource {
