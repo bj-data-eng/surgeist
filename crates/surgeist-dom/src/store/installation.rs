@@ -475,16 +475,17 @@ impl Dom {
                     HtmlNodeKind::Element(element) => {
                         control.name(element.name())?;
                         DomNodeKind::Element(
-                            DomElement::native_components(
-                                element.name(),
-                                draft
-                                    .document_metadata(document)
-                                    .map_err(Error::Target)?
-                                    .document_environment(),
-                                cancelled,
-                                formation.as_ref(),
-                            )
-                            .map_err(|error| source_error(&visit.source, error))?,
+                            draft
+                                .native_element_components(
+                                    element.name(),
+                                    draft
+                                        .document_metadata(document)
+                                        .map_err(Error::Target)?
+                                        .document_environment(),
+                                    formation.as_ref(),
+                                    cancelled,
+                                )
+                                .map_err(|error| source_error(&visit.source, error))?,
                         )
                     }
                     HtmlNodeKind::Text(value) => {
@@ -921,7 +922,20 @@ mod tests {
     use super::*;
 
     fn setup() -> (Dom, crate::DocumentId, NodeId) {
-        let mut dom = Dom::new(DomLimits::new(64, 4096, 128, 64, 64, 8, 65536).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                64,
+                4096,
+                128,
+                64,
+                64,
+                8,
+                65536,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
         let parent = batch.create_element_ns(&document, crate::Namespace::html(), "div");
@@ -960,8 +974,20 @@ mod tests {
 
     fn actual_source_pending_growth(bytes: usize) -> Option<staging_observation::Growth> {
         let cancel = AtomicBool::new(false);
-        let mut dom =
-            Dom::new(DomLimits::new(2048, 100_000, 4096, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                2048,
+                100_000,
+                4096,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let parent = setup.create_element_ns(&document, crate::Namespace::html(), "div");

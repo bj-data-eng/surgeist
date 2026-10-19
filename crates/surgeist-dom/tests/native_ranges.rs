@@ -10,10 +10,19 @@ use surgeist_dom::{
 use surgeist_html::HtmlStyleUpdateAction;
 
 fn limits(ranges: usize) -> DomLimits {
-    DomLimits::new(256, 65_536, 512, 0, 0, 64, 1_000_000)
-        .unwrap()
-        .with_ranges(ranges)
-        .unwrap()
+    DomLimits::new(
+        256,
+        65_536,
+        512,
+        0,
+        0,
+        64,
+        1_000_000,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_ranges(ranges)
+    .unwrap()
 }
 fn dom() -> Dom {
     Dom::new(limits(64)).unwrap()
@@ -890,7 +899,20 @@ fn explicit_retirement_clears_all_matching_documents_and_unassociated_retirement
 
 #[test]
 fn default_disabled_range_allowance_and_source_work_refusal_preserve_original_state() {
-    let mut dom = Dom::new(DomLimits::new(256, 65_536, 512, 0, 0, 64, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            256,
+            65_536,
+            512,
+            0,
+            0,
+            64,
+            1_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let (document, parent) = document_and_parent(&mut dom);
     let before = dom.snapshot();
     let mut batch = DomBatch::new();

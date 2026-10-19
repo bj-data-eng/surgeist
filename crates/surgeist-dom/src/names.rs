@@ -91,19 +91,19 @@ fn valid_prefix_units(
 /// createElementNS operand. Invocation-only xml/xmlns/namespace extraction
 /// conditions do not rewrite or constrain this distinct component entry.
 pub(crate) fn validate_element_components(
-    name: &QualifiedName,
+    name: &(impl surgeist_html::HtmlNameInput + ?Sized),
     read: &mut impl FnMut() -> Result<(), DomError>,
 ) -> Result<(), DomError> {
     validate_components(name, NameContext::Element, read)
 }
 pub(crate) fn validate_attribute_components(
-    name: &QualifiedName,
+    name: &(impl surgeist_html::HtmlNameInput + ?Sized),
     read: &mut impl FnMut() -> Result<(), DomError>,
 ) -> Result<(), DomError> {
     validate_components(name, NameContext::Attribute, read)
 }
 fn validate_components(
-    name: &QualifiedName,
+    name: &(impl surgeist_html::HtmlNameInput + ?Sized),
     context: NameContext,
     read: &mut impl FnMut() -> Result<(), DomError>,
 ) -> Result<(), DomError> {
@@ -258,14 +258,16 @@ fn extracted_name(
     Ok(QualifiedName::new(namespace, prefix, local))
 }
 
-pub(crate) fn name_units(name: &QualifiedName) -> Option<usize> {
+pub(crate) fn name_units(name: &(impl surgeist_html::HtmlNameInput + ?Sized)) -> Option<usize> {
     name.local_name()
         .len()
         .checked_add(name.prefix().map_or(0, DocumentString::len))?
-        .checked_add(name.namespace().uri().map_or(0, DocumentString::len))
+        .checked_add(name.namespace_uri().map_or(0, DocumentString::len))
 }
 
-pub(crate) fn qualified_spelling(name: &QualifiedName) -> DocumentString {
+pub(crate) fn qualified_spelling(
+    name: &(impl surgeist_html::HtmlNameInput + ?Sized),
+) -> DocumentString {
     let Some(prefix) = name.prefix() else {
         return name.local_name().clone();
     };
@@ -275,7 +277,10 @@ pub(crate) fn qualified_spelling(name: &QualifiedName) -> DocumentString {
     DocumentString::from_utf16(units)
 }
 
-pub(crate) fn qualified_equals(name: &QualifiedName, value: &DocumentString) -> bool {
+pub(crate) fn qualified_equals(
+    name: &(impl surgeist_html::HtmlNameInput + ?Sized),
+    value: &DocumentString,
+) -> bool {
     let prefix = name
         .prefix()
         .into_iter()
@@ -310,8 +315,8 @@ pub(crate) fn ascii_lowercase(
     }
     materialize(value.code_units(), true)
 }
-pub(crate) fn in_html_namespace(name: &QualifiedName) -> bool {
-    name.namespace().uri().is_some_and(|uri| {
+pub(crate) fn in_html_namespace(name: &(impl surgeist_html::HtmlNameInput + ?Sized)) -> bool {
+    name.namespace_uri().is_some_and(|uri| {
         uri.code_units()
             .iter()
             .copied()
@@ -320,7 +325,7 @@ pub(crate) fn in_html_namespace(name: &QualifiedName) -> bool {
 }
 /// Lowercase only the requested qualified spelling, never stored attributes.
 pub(crate) fn qualified_equals_lowercase_input(
-    name: &QualifiedName,
+    name: &(impl surgeist_html::HtmlNameInput + ?Sized),
     value: &DocumentString,
 ) -> bool {
     let prefix = name

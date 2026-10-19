@@ -37,16 +37,24 @@ fn hosted_limits(tasks: usize) -> DomHostedRuntimeLimits {
 fn session(exits: usize, events: usize) -> DomSession {
     DomSession::new(
         Dom::new(
-            DomLimits::new(512, 1_000_000, 1024, 1024, 1024, 128, 16_000_000)
-                .unwrap()
-                .with_dispatch_custody(
-                    DomDispatchCustodyLimits::new(64, 4096, 32_000_000, 32_000_000, 8_000_000)
-                        .unwrap(),
-                )
-                .with_fullscreen_exits(exits)
-                .unwrap()
-                .with_fullscreen_events(events)
-                .unwrap(),
+            DomLimits::new(
+                512,
+                1_000_000,
+                1024,
+                1024,
+                1024,
+                128,
+                16_000_000,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap()
+            .with_dispatch_custody(
+                DomDispatchCustodyLimits::new(64, 4096, 32_000_000, 32_000_000, 8_000_000).unwrap(),
+            )
+            .with_fullscreen_exits(exits)
+            .unwrap()
+            .with_fullscreen_events(events)
+            .unwrap(),
         )
         .unwrap(),
         DomSessionLimits {

@@ -4,7 +4,17 @@ fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
 fn limits() -> DomLimits {
-    DomLimits::new(128, 65536, 1024, 0, 0, 16, 16_000_000).unwrap()
+    DomLimits::new(
+        128,
+        65536,
+        1024,
+        0,
+        0,
+        16,
+        16_000_000,
+        crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
 }
 #[test]
 fn actual_null_containers_keep_shadow_order_and_raw_payloads_across_snapshot_moves() {

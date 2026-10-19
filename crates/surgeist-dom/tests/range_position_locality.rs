@@ -19,10 +19,19 @@ fn bounds(snapshot: &DomSnapshot, id: DomRangeId) -> ((NodeId, usize), (NodeId, 
 #[test]
 fn source_range_boundary_changes_and_noops_fit_fixed_work_beside_unrelated_siblings() {
     let cancel = AtomicBool::new(false);
-    let limits = DomLimits::new(8192, 1_000_000, 16_384, 0, 0, 16, 64_000_000)
-        .unwrap()
-        .with_ranges(1)
-        .unwrap();
+    let limits = DomLimits::new(
+        8192,
+        1_000_000,
+        16_384,
+        0,
+        0,
+        16,
+        64_000_000,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_ranges(1)
+    .unwrap();
     let mut dom = Dom::new(limits).unwrap();
     let mut setup = DomBatch::new();
     let document = setup.create_document();

@@ -8,7 +8,20 @@ use surgeist_dom::{
 };
 
 fn fixture() -> (Dom, DocumentId, [NodeId; 2]) {
-    let mut dom = Dom::new(DomLimits::new(64, 4096, 128, 0, 0, 16, 65536).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            64,
+            4096,
+            128,
+            0,
+            0,
+            16,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     // Neither spelling nor an id attribute determines the supplied selection.

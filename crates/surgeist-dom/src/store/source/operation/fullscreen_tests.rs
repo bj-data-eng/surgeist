@@ -10,8 +10,20 @@ fn policy(outputs: usize) -> DomSourceLimits {
 #[test]
 fn local_model_admits_only_its_final_publication_and_preserves_command_after_output_refusal() {
     let cancel = AtomicBool::new(false);
-    let mut dom =
-        Dom::new(DomLimits::new(64, 100_000, 128, 128, 128, 16, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            64,
+            100_000,
+            128,
+            128,
+            128,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let first = batch.create_element_ns(&document, Namespace::none(), "first");

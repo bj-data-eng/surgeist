@@ -3,10 +3,19 @@ use super::*;
 
 fn occupied_ranges() -> (Dom, DocumentId, Vec<DomRangeId>) {
     let cancel = AtomicBool::new(false);
-    let limits = DomLimits::new(4, 4096, 256, 0, 0, 16, 1_000_000)
-        .unwrap()
-        .with_ranges(128)
-        .unwrap();
+    let limits = DomLimits::new(
+        4,
+        4096,
+        256,
+        0,
+        0,
+        16,
+        1_000_000,
+        crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_ranges(128)
+    .unwrap();
     let mut dom = Dom::new(limits).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
@@ -23,10 +32,19 @@ fn occupied_ranges() -> (Dom, DocumentId, Vec<DomRangeId>) {
 #[test]
 fn bulk_range_creation_does_not_revisit_an_occupied_canonical_prefix() {
     let cancel = AtomicBool::new(false);
-    let limits = DomLimits::new(4, 4096, 256, 0, 0, 16, 1_000_000)
-        .unwrap()
-        .with_ranges(128)
-        .unwrap();
+    let limits = DomLimits::new(
+        4,
+        4096,
+        256,
+        0,
+        0,
+        16,
+        1_000_000,
+        crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_ranges(128)
+    .unwrap();
     let mut dom = Dom::new(limits).unwrap();
     let mut setup = DomBatch::new();
     let document = setup.create_document();

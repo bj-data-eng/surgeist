@@ -169,7 +169,7 @@ impl Draft {
         };
         for attr in e.attributes().iter() {
             self.base_step(cancel)?;
-            if attr.name().namespace().uri().is_none()
+            if attr.name().namespace_uri().is_none()
                 && self.base_ascii(attr.name().local_name(), name.local_name(), cancel)?
             {
                 return Ok(Some(attr.value()));
@@ -344,7 +344,7 @@ impl Draft {
     pub(super) fn base_attribute_change(
         &mut self,
         key: Key,
-        name: &crate::QualifiedName,
+        name: &crate::DomQualifiedName,
         old: Option<&DocumentString>,
         new: Option<&DocumentString>,
         limits: DomLimits,
@@ -354,7 +354,7 @@ impl Draft {
         // HTML877d18848 id/anchor-name hooks iterate the actual render-blocking
         // set, not all Links. Actual Style entries are not expect Links; they
         // must not make an unrelated id/anchor-name edit require Link resources.
-        if name.namespace().uri().is_none()
+        if name.namespace_uri().is_none()
             && (name.local_name().code_units() == [105, 100]
                 || (name.local_name().code_units() == [110, 97, 109, 101]
                     && matches!(&self.node(key)?.kind,DomNodeKind::Element(e) if e.common_state().html().is_some() && e.name().local_name().code_units()==[97])))
@@ -381,11 +381,18 @@ impl Draft {
                     .as_mut()
                     .expect("checked Link")
                     .flags
-                    .disabled_attribute_changed(name.namespace(), old, new)
+                    .disabled_attribute_changed(
+                        &name
+                            .namespace_uri()
+                            .cloned()
+                            .map_or_else(crate::Namespace::none, crate::Namespace::from_uri),
+                        old,
+                        new,
+                    )
             })?;
         }
         if self.node(key)?.base.is_some()
-            && name.namespace().uri().is_none()
+            && name.namespace_uri().is_none()
             && name.local_name().code_units() == [104, 114, 101, 102]
         {
             let document = self.node(key)?.document;
@@ -591,10 +598,19 @@ mod tests {
     use crate::Namespace;
     use surgeist_html_semantics::*;
     fn policy(work: u64) -> DomLimits {
-        DomLimits::new(64, 32768, 256, 128, 64, 8, 131072)
-            .unwrap()
-            .with_base_processing(64, work)
-            .unwrap()
+        DomLimits::new(
+            64,
+            32768,
+            256,
+            128,
+            64,
+            8,
+            131072,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_base_processing(64, work)
+        .unwrap()
     }
     fn fixture() -> (Dom, DocumentId, NodeId) {
         let cancel = AtomicBool::new(false);
@@ -733,10 +749,19 @@ mod tests {
         units: usize,
     ) -> Option<source::formation::mutation_observation::Growth> {
         let cancel = AtomicBool::new(false);
-        let domain = DomLimits::new(32, 1_000_000, 64, 0, 0, 8, 100_000)
-            .unwrap()
-            .with_base_processing(32, 1_000_000)
-            .unwrap();
+        let domain = DomLimits::new(
+            32,
+            1_000_000,
+            64,
+            0,
+            0,
+            8,
+            100_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_base_processing(32, 1_000_000)
+        .unwrap();
         let mut dom = Dom::new(domain).unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();

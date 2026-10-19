@@ -752,7 +752,20 @@ mod tests {
     #[test]
     fn each_requested_creation_returns_its_actual_scalar_without_cross_operation_tickets() {
         let cancel = AtomicBool::new(false);
-        let dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let dom = Dom::new(
+            DomLimits::new(
+                32,
+                4096,
+                64,
+                0,
+                0,
+                8,
+                100_000,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut session = DomSession::new(
             dom,
             DomSessionLimits {

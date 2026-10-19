@@ -27,7 +27,20 @@ fn attributes(snapshot: &DomSnapshot, node: NodeId) -> Vec<(String, String)> {
 
 #[test]
 fn native_and_template_edits_share_canonical_identity_and_preserve_old_snapshots() {
-    let mut dom = Dom::new(DomLimits::new(64, 16384, 128, 0, 0, 8, 65536).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            64,
+            16384,
+            128,
+            0,
+            0,
+            8,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut initial = DomBatch::new();
     let document = initial.create_document();
     let root = initial.create_element_ns(&document, Namespace::html(), "div");
@@ -56,8 +69,8 @@ fn native_and_template_edits_share_canonical_identity_and_preserve_old_snapshots
             .as_element()
             .unwrap()
             .name()
-            .namespace(),
-        &Namespace::html()
+            .namespace_uri(),
+        Namespace::html().uri()
     );
     assert_eq!(
         old.node(first).unwrap().data().unwrap().code_units(),
@@ -97,8 +110,8 @@ fn native_and_template_edits_share_canonical_identity_and_preserve_old_snapshots
     assert!(span_node.is_connected());
     assert_eq!(span_node.node_name().to_utf8().unwrap(), "span");
     assert_eq!(
-        span_node.as_element().unwrap().name().namespace(),
-        &Namespace::html()
+        span_node.as_element().unwrap().name().namespace_uri(),
+        Namespace::html().uri()
     );
     assert_eq!(
         attributes(&current, span),

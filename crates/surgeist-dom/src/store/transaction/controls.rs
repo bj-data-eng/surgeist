@@ -776,10 +776,9 @@ fn listed(kind: &DomNodeKind) -> bool {
 }
 fn attributes_same(a: &DomNodeKind, b: &DomNodeKind) -> bool {
     match (a, b) {
-        (DomNodeKind::Element(a), DomNodeKind::Element(b)) => Arc::ptr_eq(
-            a.attributes().shared_attributes(),
-            b.attributes().shared_attributes(),
-        ),
+        (DomNodeKind::Element(a), DomNodeKind::Element(b)) => {
+            a.attributes_backing().same_storage(b.attributes_backing())
+        }
         _ => true,
     }
 }
@@ -807,7 +806,7 @@ impl Draft {
             let mut name = None;
             for attribute in element.attributes().iter() {
                 self.source_step(cancel)?;
-                if attribute.name().namespace().uri().is_some() {
+                if attribute.name().namespace_uri().is_some() {
                     continue;
                 }
                 if self.source_ascii(attribute.name().local_name(), "form", cancel)? {
@@ -1442,7 +1441,17 @@ mod tests {
     }
 
     fn limits() -> DomLimits {
-        DomLimits::new(128, 65536, 256, 0, 0, 8, 2_000_000).unwrap()
+        DomLimits::new(
+            128,
+            65536,
+            256,
+            0,
+            0,
+            8,
+            2_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
     }
     fn source_limits() -> crate::DomSourceLimits {
         crate::DomSourceLimits::new(50_000_000, 1_000_000, 100_000_000, 64, 4096, 4096, 1)

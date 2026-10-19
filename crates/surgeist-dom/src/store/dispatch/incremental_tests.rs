@@ -1,11 +1,20 @@
 use super::*;
 
 fn limits(work: u64) -> DomLimits {
-    DomLimits::new(128, 4096, 1024, 0, 0, 0, 0)
-        .unwrap()
-        .with_dispatch_custody(
-            DomDispatchCustodyLimits::new(64, 128, 4_000_000, 4_000_000, work).unwrap(),
-        )
+    DomLimits::new(
+        128,
+        4096,
+        1024,
+        0,
+        0,
+        0,
+        0,
+        crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_dispatch_custody(
+        DomDispatchCustodyLimits::new(64, 128, 4_000_000, 4_000_000, work).unwrap(),
+    )
 }
 
 /// Independent dispatch-owner enumeration. Bank supplies its own structural

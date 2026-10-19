@@ -12,7 +12,20 @@ fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
 fn owner() -> Dom {
-    Dom::new(DomLimits::new(128, 16384, 256, 256, 128, 16, 65536).unwrap()).unwrap()
+    Dom::new(
+        DomLimits::new(
+            128,
+            16384,
+            256,
+            256,
+            128,
+            16,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
     dom.apply(batch, &cancel()).unwrap()
@@ -172,8 +185,20 @@ fn custom_message_normalizes_exact_units_and_reports_only_stored_state() {
 fn custom_message_limits_inapplicability_cancellation_and_late_failure_are_atomic() {
     let mut dom = owner();
     let (d, f) = setup(&mut dom);
-    dom.set_limits(DomLimits::new(128, 69, 256, 256, 128, 16, 65536).unwrap())
-        .unwrap();
+    dom.set_limits(
+        DomLimits::new(
+            128,
+            69,
+            256,
+            256,
+            128,
+            16,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut b = DomBatch::new();
     b.set_custom_validity(f, "\r\n\r\n");
     apply(&mut dom, b); // 2 retained LF, not 4 raw units.

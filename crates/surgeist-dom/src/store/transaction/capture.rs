@@ -122,6 +122,7 @@ impl StateCustody {
     pub fn adopt(
         state: &Arc<State>,
         registry: &bank::CustodyRegistry,
+        names: Option<&super::super::name_registry::Operation>,
         mut admit: impl FnMut(custody::Usage) -> Result<(), DomError>,
         mut step: impl FnMut() -> Result<(), DomError>,
     ) -> Result<Self, DomError> {
@@ -139,7 +140,7 @@ impl StateCustody {
                     registry,
                     |slot| {
                         step()?;
-                        payload::describe_slot(slot, registry, |next| {
+                        payload::describe_slot(slot, registry, names, |next| {
                             (*slot_admit.borrow_mut())(next)
                         })
                     },
@@ -288,6 +289,7 @@ mod tests {
                 0,
                 32,
                 10_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
             )
             .unwrap(),
         )
@@ -315,6 +317,7 @@ mod tests {
             let captured = StateCustody::adopt(
                 &dom.state,
                 registry,
+                None,
                 |_| Ok(()),
                 || {
                     steps += 1;
@@ -343,6 +346,7 @@ mod tests {
             let captured = StateCustody::adopt(
                 &historical.state,
                 &dom.custody_registry,
+                None,
                 |_| Ok(()),
                 || {
                     steps += 1;
@@ -401,6 +405,7 @@ mod tests {
         let result = StateCustody::adopt(
             &historical.state,
             &dom.custody_registry,
+            None,
             |usage| {
                 admit(
                     usage.bytes(),
@@ -423,6 +428,7 @@ mod tests {
         StateCustody::adopt(
             &historical.state,
             &dom.custody_registry,
+            None,
             |_| Ok(()),
             || {
                 steps += 1;

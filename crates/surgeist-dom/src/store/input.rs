@@ -8,12 +8,12 @@ use surgeist_html::{
 impl Draft {
     fn input_attribute_is(
         &self,
-        name: &crate::QualifiedName,
+        name: &crate::DomQualifiedName,
         expected: A,
         cancel: &AtomicBool,
     ) -> Result<bool, DomError> {
         self.source_step(cancel)?;
-        Ok(name.namespace().uri().is_none()
+        Ok(name.namespace_uri().is_none()
             && self.source_ascii(name.local_name(), expected.local_name(), cancel)?)
     }
     fn input_equal(
@@ -578,7 +578,7 @@ impl Draft {
     pub(super) fn input_attribute_change(
         &mut self,
         key: Key,
-        name: &crate::QualifiedName,
+        name: &crate::DomQualifiedName,
         change: attributes::AttributeChange,
         cause: attributes::AttributeCause,
         limits: DomLimits,
@@ -737,7 +737,20 @@ mod tests {
     use super::*;
     fn source_radio_name(bytes: usize) -> Option<source::formation::mutation_observation::Growth> {
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(16, 1024, 32, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                16,
+                1024,
+                32,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let parent = setup.create_element_ns(&document, crate::Namespace::html(), "div");
@@ -867,7 +880,20 @@ mod tests {
     #[test]
     fn reached_radio_peer_and_current_value_prefix_is_discarded_on_cancel_or_exhaustion() {
         for exhausted in [false, true] {
-            let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 65536).unwrap()).unwrap();
+            let mut dom = Dom::new(
+                DomLimits::new(
+                    32,
+                    4096,
+                    64,
+                    0,
+                    0,
+                    8,
+                    65536,
+                    crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
             let cancel = AtomicBool::new(false);
             let mut b = DomBatch::new();
             let document = b.create_document();
@@ -939,7 +965,18 @@ mod tests {
         for empty in [Empty::Supported, Empty::Unsupported] {
             for none in [NoneDirection::Supported, NoneDirection::Unsupported] {
                 let mut dom = Dom::with_native_input_platform(
-                    DomLimits::new(16, 1024, 32, 0, 0, 4, 65536).unwrap(),
+                    DomLimits::new(
+                        16,
+                        1024,
+                        32,
+                        0,
+                        0,
+                        4,
+                        65536,
+                        crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                            .unwrap(),
+                    )
+                    .unwrap(),
                     crate::DomNativeInputPlatform::new(empty, none),
                 )
                 .unwrap();

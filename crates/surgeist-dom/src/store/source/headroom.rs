@@ -531,12 +531,21 @@ mod tests {
     }
     fn fixture() -> Fixture {
         let mut dom = Dom::new(
-            DomLimits::new(32, 16_384, 64, 0, 0, 16, 1_000_000)
-                .unwrap()
-                .with_select_processing(32, 1_000_000, 1_000_000)
-                .unwrap()
-                .with_details_toggle_intentions(32)
-                .unwrap(),
+            DomLimits::new(
+                32,
+                16_384,
+                64,
+                0,
+                0,
+                16,
+                1_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap()
+            .with_select_processing(32, 1_000_000, 1_000_000)
+            .unwrap()
+            .with_details_toggle_intentions(32)
+            .unwrap(),
         )
         .unwrap();
         let mut batch = DomBatch::new();
@@ -1172,7 +1181,20 @@ mod dialog_occurrence_tests {
     #[test]
     fn source_formed_draft_checks_hook_capacity_without_issuing_or_mutating_state() {
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(16, 4096, 64, 0, 0, 8, 1_000_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                16,
+                4096,
+                64,
+                0,
+                0,
+                8,
+                1_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut create = DomBatch::new();
         let document = create.create_document();
         let dialog = create.create_element_ns(&document, crate::Namespace::html(), "dialog");

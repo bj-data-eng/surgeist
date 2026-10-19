@@ -7,10 +7,19 @@ use surgeist_dom::*;
 
 fn dom() -> Dom {
     Dom::new(
-        DomLimits::new(256, 32768, 1024, 512, 256, 16, 1_000_000)
-            .unwrap()
-            .with_details_toggle_intentions(512)
-            .unwrap(),
+        DomLimits::new(
+            256,
+            32768,
+            1024,
+            512,
+            256,
+            16,
+            1_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_details_toggle_intentions(512)
+        .unwrap(),
     )
     .unwrap()
 }

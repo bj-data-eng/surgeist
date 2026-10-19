@@ -33,7 +33,20 @@ fn assert_dependency(custody: &transaction::StateCustody, expected: &FormPastNam
 }
 
 fn empty_form(reserved: bool) -> (Dom, NodeId) {
-    let mut dom = Dom::new(DomLimits::new(8, 4096, 16, 0, 0, 8, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            8,
+            4096,
+            16,
+            0,
+            0,
+            8,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let form = batch.create_element_ns(&document, crate::Namespace::html(), "form");
@@ -211,7 +224,7 @@ fn refused_slot_dependency_preparation_preserves_the_original_controlled_union()
     let before = dom.custody_registry.total();
     for refusal in 0..2 {
         let mut calls = 0;
-        let result = payload::slot_dependency(slot, &dom.custody_registry, |_| {
+        let result = payload::slot_dependency(slot, &dom.custody_registry, None, |_| {
             let current = calls;
             calls += 1;
             if current == refusal {
@@ -324,7 +337,7 @@ fn final_controlled_release_and_historical_readoption_distinguish_semantic_lifet
     let registry = bank::CustodyRegistry::new(&ledger, |_| Ok(())).unwrap();
     let baseline = ledger.total();
     let captured =
-        transaction::StateCustody::adopt(&snapshot.state, &registry, |_| Ok(()), || Ok(()))
+        transaction::StateCustody::adopt(&snapshot.state, &registry, None, |_| Ok(()), || Ok(()))
             .unwrap();
     let historical = snapshot
         .node(form)

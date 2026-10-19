@@ -5,7 +5,20 @@ use surgeist_html::HtmlIframeInitialState;
 use surgeist_html_semantics::HtmlCaptureLimits;
 
 fn dom() -> Dom {
-    Dom::new(DomLimits::new(128, 16384, 256, 64, 16, 16, 131072).unwrap()).unwrap()
+    Dom::new(
+        DomLimits::new(
+            128,
+            16384,
+            256,
+            64,
+            16,
+            16,
+            131072,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
@@ -377,7 +390,20 @@ fn exact_native_iframe_admission_and_failed_attribute_edit_are_atomic() {
     // XML Document metadata31 + HTML namespace28 + local iframe6 =65.
     // The actual closed family owns no strings, child nodes or external handles.
     for units in [64, 65] {
-        let mut dom = Dom::new(DomLimits::new(2, units, 8, 0, 0, 4, 8192).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                2,
+                units,
+                8,
+                0,
+                0,
+                4,
+                8192,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let before = dom.snapshot();
         let mut b = DomBatch::new();
         let d = b.create_document();
@@ -432,8 +458,20 @@ fn exact_native_iframe_admission_and_failed_attribute_edit_are_atomic() {
 #[test]
 fn failed_and_cancelled_batches_preserve_history_and_native_state() {
     for history in [0, 8] {
-        let mut dom =
-            Dom::new(DomLimits::new(16, 2048, 32, 0, 0, history, 65536).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                16,
+                2048,
+                32,
+                0,
+                0,
+                history,
+                65536,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let (d, iframe) = setup(&mut dom);
         let before = dom.snapshot();
         let usage = dom.usage();

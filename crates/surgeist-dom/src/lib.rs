@@ -53,7 +53,8 @@
 //! use std::sync::atomic::AtomicBool;
 //! use surgeist_dom::{Dom, DomBatch, DomLimits};
 //!
-//! let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 8192)?)?;
+//! let names = surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)?;
+//! let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 8192, names)?)?;
 //! let mut batch = DomBatch::new();
 //! let document = batch.create_document();
 //! let comment = batch.create_comment(&document, "retained");
@@ -68,7 +69,8 @@
 //! ```
 //! use std::sync::atomic::AtomicBool;
 //! use surgeist_dom::{Dom, DomBatch, DomLimits, Namespace};
-//! let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 8192)?)?;
+//! let names = surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)?;
+//! let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 8192, names)?)?;
 //! let mut batch = DomBatch::new();
 //! let document = batch.create_document();
 //! let root = batch.create_element(&document, "Root");
@@ -86,7 +88,8 @@
 //! use std::sync::atomic::AtomicBool;
 //! use surgeist_dom::{Dom, DomBatch, DomLimits, DomSlotQueryLimits, Namespace,
 //!     HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment};
-//! let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 64, 32, 8, 8192)?)?;
+//! let names = surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)?;
+//! let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 64, 32, 8, 8192, names)?)?;
 //! let mut batch = DomBatch::new();
 //! let document = batch.create_document();
 //! let host = batch.create_element_ns(&document, Namespace::html(), "div");
@@ -135,7 +138,11 @@ mod image;
 mod input;
 mod installation;
 mod meta;
+mod name;
+mod name_limits;
 mod names;
+pub use name::{DomAttribute, DomNameAtom, DomQualifiedName};
+pub use name_limits::DomNameLimits;
 mod node_values;
 mod output;
 mod parsed_installation;

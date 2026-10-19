@@ -112,8 +112,20 @@ impl DomStyleCssomRoot {
 mod tests {
     use super::*;
     fn root() -> DomStyleCssomRoot {
-        let mut dom =
-            crate::Dom::new(crate::DomLimits::new(4, 100, 4, 0, 0, 0, 0).unwrap()).unwrap();
+        let mut dom = crate::Dom::new(
+            crate::DomLimits::new(
+                4,
+                100,
+                4,
+                0,
+                0,
+                0,
+                0,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = crate::DomBatch::new();
         let document = batch.create_document();
         let commit = dom

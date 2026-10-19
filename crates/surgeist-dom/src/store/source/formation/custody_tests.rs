@@ -8,7 +8,20 @@ fn formed_utf16_factories_report_completed_prefix_before_original_work_refusal()
         return;
     }
     let cancel = AtomicBool::new(false);
-    let dom = Dom::new(DomLimits::new(8, 10_000, 32, 0, 0, 8, 100_000).unwrap()).unwrap();
+    let dom = Dom::new(
+        DomLimits::new(
+            8,
+            10_000,
+            32,
+            0,
+            0,
+            8,
+            100_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
     draft.source_limits = Some(crate::DomSourceLimits::new(
         16_000_000, 1_000_000, 1_000_000, 32, 128, 128, 1,
@@ -193,7 +206,20 @@ fn pi_factory_same_owner_cursor_peak_is_exact_and_one_short_preserves_inputs() {
     use crate::DomSourceLimits;
     use crate::node_values::{DomProcessingInstruction, source_observation};
     let cancel = AtomicBool::new(false);
-    let dom = Dom::new(DomLimits::new(16, 100_000, 32, 0, 0, 8, 100_000).unwrap()).unwrap();
+    let dom = Dom::new(
+        DomLimits::new(
+            16,
+            100_000,
+            32,
+            0,
+            0,
+            8,
+            100_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
     let target = DocumentString::from("pi");
     let data = DocumentString::from(format!("a='{}' b='literal'", "x".repeat(4096)));
@@ -255,7 +281,20 @@ fn actual_formation_and_unformed_reserves_report_allocated_capacity_and_moved_me
         return;
     }
     let cancel = AtomicBool::new(false);
-    let dom = Dom::new(DomLimits::new(8, 10_000, 32, 0, 0, 8, 10_000).unwrap()).unwrap();
+    let dom = Dom::new(
+        DomLimits::new(
+            8,
+            10_000,
+            32,
+            0,
+            0,
+            8,
+            10_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
     draft.source_limits = Some(crate::DomSourceLimits::new(
         16_000_000, 1_000_000, 1_000_000, 32, 128, 128, 1,
@@ -290,14 +329,31 @@ fn actual_family_targets_count_replacements_and_cow_but_not_unique_mutation() {
     if !scale_metrics::ENABLED {
         return;
     }
-    let native = |name: &str| {
-        crate::DomElement::native_components(
-            &crate::QualifiedName::new(crate::Namespace::html(), None, name),
-            crate::DomDocumentEnvironment::new(crate::DomNativeInputPlatform::headless()),
-            &AtomicBool::new(false),
-            None,
+    let cancel = AtomicBool::new(false);
+    let dom = Dom::new(
+        DomLimits::new(
+            16,
+            4096,
+            64,
+            0,
+            0,
+            0,
+            0,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
         )
-        .unwrap()
+        .unwrap(),
+    )
+    .unwrap();
+    let draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
+    let native = |name: &str| {
+        draft
+            .native_element_components(
+                &crate::QualifiedName::new(crate::Namespace::html(), None, name),
+                crate::DomDocumentEnvironment::new(crate::DomNativeInputPlatform::headless()),
+                None,
+                &cancel,
+            )
+            .unwrap()
     };
     let mut input = native("input");
     let original = input.clone();

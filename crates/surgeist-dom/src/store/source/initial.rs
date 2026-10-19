@@ -10,8 +10,15 @@ pub(in crate::store) struct Initial {
     work: Work,
     ancestors: Option<Arc<crate::source::event::EventWork>>,
     ancestor_custody: Option<Arc<formation::EventWorkCustody>>,
+    names: Option<name_registry::Operation>,
     #[cfg(test)]
     measurement_identity: Cell<Option<usize>>,
+}
+/// Original counters and name reservations of one resumed Source segment.
+pub(in crate::store) struct Replay {
+    pub work: Arc<AtomicU64>,
+    pub identity: formation::SourceWorkIdentity,
+    pub names: Option<name_registry::Operation>,
 }
 enum Work {
     Local(Cell<u64>),
@@ -49,6 +56,7 @@ impl Initial {
             work: Work::Local(Cell::new(0)),
             ancestors: None,
             ancestor_custody: None,
+            names: None,
             #[cfg(test)]
             measurement_identity: Cell::new(None),
         }
@@ -65,9 +73,17 @@ impl Initial {
             work: Work::Shared { work, identity },
             ancestors: None,
             ancestor_custody: None,
+            names: None,
             #[cfg(test)]
             measurement_identity: Cell::new(None),
         }
+    }
+    pub(in crate::store) fn names(&self) -> Option<&name_registry::Operation> {
+        self.names.as_ref()
+    }
+    fn with_names(mut self, names: Option<name_registry::Operation>) -> Self {
+        self.names = names;
+        self
     }
     pub(in crate::store) fn ancestors(&self) -> Option<&Arc<crate::source::event::EventWork>> {
         self.ancestors.as_ref()
@@ -223,14 +239,20 @@ impl Draft {
         owner: Arc<BatchIdentity>,
         commands: CommandStorage<'_>,
         limits: crate::DomSourceLimits,
-        work: Arc<AtomicU64>,
-        work_identity: formation::SourceWorkIdentity,
+        replay: Replay,
         cancel: &AtomicBool,
     ) -> Result<(Self, Payload), DomError> {
-        let initial = Initial::with_work(limits, work.clone(), work_identity).with_ancestors(
-            dom.source_work_ancestors(Some(&work)),
-            dom.source_work_ancestor_custody(Some(&work)),
-        );
+        let Replay {
+            work,
+            identity,
+            names,
+        } = replay;
+        let initial = Initial::with_work(limits, work.clone(), identity)
+            .with_names(names)
+            .with_ancestors(
+                dom.source_work_ancestors(Some(&work)),
+                dom.source_work_ancestor_custody(Some(&work)),
+            );
         let (mut draft, command) =
             Self::new_source_initial(dom, owner, commands, initial, 0, Some(work.clone()), cancel)?;
         draft.source_work = work;

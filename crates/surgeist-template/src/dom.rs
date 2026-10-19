@@ -65,7 +65,8 @@ struct PlannedNode {
 ///     AttributeRule::one(AttributeKind::Static)).unwrap();
 /// let authored = parse_template("<div title=example>hello</div>").unwrap();
 /// let template = validate_template(&authored, &native, &ComponentRegistry::default()).unwrap();
-/// let mut dom = Dom::new(DomLimits::new(16, 4096, 32, 0, 0, 4, 8192).unwrap()).unwrap();
+/// let names = surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap();
+/// let mut dom = Dom::new(DomLimits::new(16, 4096, 32, 0, 0, 4, 8192, names).unwrap()).unwrap();
 /// let mut batch = DomBatch::new();
 /// let document = batch.create_document();
 /// let parent = batch.create_fragment(&document);
@@ -74,7 +75,7 @@ struct PlannedNode {
 /// let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
 /// let snapshot = dom.snapshot();
 /// let root = snapshot.node(commit.created(&roots[0]).unwrap().unwrap()).unwrap();
-/// assert_eq!(root.as_element().unwrap().name().namespace(), &Namespace::html());
+/// assert_eq!(root.as_element().unwrap().name().namespace_uri(), Namespace::html().uri());
 /// assert_eq!(root.children().len(), 1);
 /// ```
 pub fn append_static_html(

@@ -43,6 +43,13 @@ Select and numerical limits remain separate and can be raised through
 OptionValue work and allocated-byte budgets must cover the amounts already
 spent by the retained operation.
 
+Name atoms and index reservations already owned by the continuation survive
+that retry. Fresh containing attribute banks and child-custody capsules still
+require admission under the name-local policy. A refusal preserves the original
+cursor, receipts, spent work and published effects; increasing the relevant
+limit resumes that cursor without repeating acknowledged requests or effects.
+Committing an already prepared segment requires no further name allocation.
+
 ## Mutable CSSOM custody and disabled state
 
 Style processing retains the actual mutable CSSOM store through

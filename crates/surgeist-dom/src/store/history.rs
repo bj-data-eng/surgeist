@@ -391,14 +391,39 @@ mod tests {
     use std::cell::Cell;
 
     fn fixture(retained: usize, maximum: usize) -> (Dom, NodeId) {
-        let mut dom = Dom::new(DomLimits::new(8, 16_384, 8, 0, 0, 0, 0).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                8,
+                16_384,
+                8,
+                0,
+                0,
+                0,
+                0,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
         let comment = batch.create_comment(&document, "a");
         let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
         let comment = commit.created(&comment).unwrap().unwrap();
-        dom.set_limits(DomLimits::new(8, 16_384, 8, 0, 0, maximum, 64_000_000).unwrap())
-            .unwrap();
+        dom.set_limits(
+            DomLimits::new(
+                8,
+                16_384,
+                8,
+                0,
+                0,
+                maximum,
+                64_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         for index in 0..retained {
             let mut batch = DomBatch::new();
             batch.replace_data(comment, 0, 1, if index % 2 == 0 { "b" } else { "a" });
@@ -566,8 +591,20 @@ mod tests {
     fn byte_eviction_plan_and_cancelled_prefix_preserve_the_original_window() {
         let (mut dom, node) = fixture(8, 64);
         let one = size_of::<HistoryEntry>() + size_of::<DomChange>();
-        dom.set_limits(DomLimits::new(8, 16_384, 8, 0, 0, 64, 8 * one).unwrap())
-            .unwrap();
+        dom.set_limits(
+            DomLimits::new(
+                8,
+                16_384,
+                8,
+                0,
+                0,
+                64,
+                8 * one,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let changes: Arc<[DomChange]> = vec![DomChange::Data(node); 5].into();
         let incoming = size_of::<HistoryEntry>() + 5 * size_of::<DomChange>();
         let removed = incoming.div_ceil(one);

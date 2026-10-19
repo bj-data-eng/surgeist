@@ -1,7 +1,20 @@
 use super::*;
 
 pub(in crate::store) fn style_fixture() -> (Dom, DocumentId, NodeId) {
-    let mut dom = Dom::new(DomLimits::new(16, 100_000, 32, 0, 0, 8, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            16,
+            100_000,
+            32,
+            0,
+            0,
+            8,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let style = batch.create_element_ns(&document, crate::Namespace::html(), "style");

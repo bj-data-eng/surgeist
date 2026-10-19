@@ -7,10 +7,19 @@ fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
 fn limits(pending: usize) -> DomLimits {
-    DomLimits::new(128, 8192, 512, 256, 64, 8, 131072)
-        .unwrap()
-        .with_details_toggle_intentions(pending)
-        .unwrap()
+    DomLimits::new(
+        128,
+        8192,
+        512,
+        256,
+        64,
+        8,
+        131072,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_details_toggle_intentions(pending)
+    .unwrap()
 }
 fn apply(dom: &mut Dom, b: DomBatch) -> DomCommit {
     dom.apply(b, &cancel()).unwrap()

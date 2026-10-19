@@ -8,6 +8,7 @@ mod slot;
 pub use slot::DomSlotSemanticLimits;
 
 use std::{
+    convert::Infallible,
     fmt,
     sync::atomic::{AtomicBool, Ordering},
 };
@@ -19,12 +20,13 @@ use surgeist_html::{
 use surgeist_html_semantics::HtmlScriptingStatus;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderRegistry, HtmlCaptureBuilderSubject,
-    HtmlCaptureDefinitionInput, HtmlCaptureError, HtmlCaptureLimits, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCaptureTemplateCacheInput, HtmlCapturedCustomElementState,
-    HtmlCapturedDefinitions, HtmlCapturedIsValue, HtmlCapturedShadowProperties, HtmlDocumentClass,
-    HtmlHostFactsRevision, HtmlRegistryScope, HtmlSemanticCancellation, HtmlSemanticContext,
-    HtmlSemanticContextError, HtmlSemanticContextInput, HtmlSemanticFailure, HtmlSemanticLimits,
-    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticSession, HtmlTemplateDocumentRole,
+    HtmlCaptureDefinitionInput, HtmlCaptureElementError, HtmlCaptureError, HtmlCaptureLimits,
+    HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCaptureTemplateCacheInput,
+    HtmlCapturedCustomElementState, HtmlCapturedDefinitions, HtmlCapturedIsValue,
+    HtmlCapturedShadowProperties, HtmlDocumentClass, HtmlHostFactsRevision, HtmlRegistryScope,
+    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextError,
+    HtmlSemanticContextInput, HtmlSemanticFailure, HtmlSemanticLimits, HtmlSemanticReport,
+    HtmlSemanticRequest, HtmlSemanticSession, HtmlTemplateDocumentRole,
 };
 
 use crate::{
@@ -51,6 +53,10 @@ use crate::{
 /// `work`, without supplying flat-node coverage. Slot supplementation admits the
 /// combined flat-node and Document modal vector capacities through its explicit
 /// `HtmlInertFactLimits`.
+/// Owned element-value export uses the producer's separate cumulative
+/// `HtmlCaptureLimits::element_value_bytes` allowance. It covers initial names,
+/// attributes, saved-is values and pending validation, rather than total capture
+/// heap. Adapter work and cancellation remain independently admitted here.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomHtmlCaptureLimits {
     subjects: usize,
@@ -109,6 +115,7 @@ pub enum DomHtmlCaptureError {
     Source(DomError),
     Host(DomHostError),
     Capture(HtmlCaptureError),
+    ElementValues(HtmlCaptureElementError<Infallible>),
     Context(HtmlSemanticContextError),
     Semantic(HtmlSemanticFailure),
     Language(surgeist_html_semantics::HtmlLanguageDirectionError),
@@ -138,6 +145,7 @@ impl std::error::Error for DomHtmlCaptureError {
             Self::Source(e) => Some(e),
             Self::Host(e) => Some(e),
             Self::Capture(e) => Some(e),
+            Self::ElementValues(e) => Some(e),
             Self::Context(e) => Some(e),
             Self::Semantic(e) => Some(e),
             Self::Language(e) => Some(e),
@@ -163,6 +171,23 @@ impl From<DomError> for DomHtmlCaptureError {
 impl From<HtmlCaptureError> for DomHtmlCaptureError {
     fn from(value: HtmlCaptureError) -> Self {
         Self::Capture(value)
+    }
+}
+
+fn element_capture_error(
+    error: HtmlCaptureElementError<DomHtmlCaptureError>,
+) -> DomHtmlCaptureError {
+    match error {
+        HtmlCaptureElementError::Capture(error) => DomHtmlCaptureError::Capture(error),
+        HtmlCaptureElementError::Interrupted(error) => error,
+        HtmlCaptureElementError::Attributes(error) => {
+            DomHtmlCaptureError::ElementValues(HtmlCaptureElementError::Attributes(error))
+        }
+        HtmlCaptureElementError::InconsistentAttributes { index } => {
+            DomHtmlCaptureError::ElementValues(HtmlCaptureElementError::InconsistentAttributes {
+                index,
+            })
+        }
     }
 }
 
@@ -652,13 +677,20 @@ impl DomSnapshot {
                         &mut registries,
                         &mut control,
                     )?;
-                    let subject = builder.add_element(
-                        &root,
-                        element.name().clone(),
-                        element.attributes().clone(),
-                        saved_is,
-                        registry,
-                    )?;
+                    // The HTML owner admits and materializes its destination
+                    // array while this exact canonical snapshot stays retained.
+                    // No HTML name/bank or duplicate identity sidecar is staged
+                    // in the DOM adapter.
+                    let subject = builder
+                        .add_element_from_inputs(
+                            &root,
+                            element.name(),
+                            element.attributes(),
+                            saved_is,
+                            registry,
+                            || control.charge(1),
+                        )
+                        .map_err(element_capture_error)?;
                     let definition = match element.custom_element_definition() {
                         DomElementDefinition::Null => HtmlCaptureDefinitionInput::Null,
                     };
@@ -915,5 +947,231 @@ impl DomSnapshot {
             base_policy,
             base_work,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{DocumentString, Dom, DomBatch, DomLimits, DomNameLimits, Namespace};
+    use std::{mem::size_of, sync::Arc};
+    use surgeist_html::{Attribute, QualifiedName};
+    use surgeist_html_semantics::{HtmlCaptureResource, HtmlCapturedNodeKind};
+
+    fn fixture() -> (Dom, DomSnapshot, DocumentId, NodeId) {
+        let names = DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap();
+        let mut dom =
+            Dom::new(DomLimits::new(16, 4096, 32, 0, 0, 1, 65536, names).unwrap()).unwrap();
+        let mut batch = DomBatch::new();
+        let document = batch.create_document();
+        let element =
+            batch.create_element_ns(&document, Namespace::from_uri("urn:element"), "p:Root");
+        let mut units = Vec::with_capacity(37);
+        units.extend([0xd800, 65]);
+        batch.set_attribute_ns(
+            &element,
+            Namespace::from_uri("urn:attribute"),
+            "q:data",
+            DocumentString::from_utf16(units),
+        );
+        batch.set_attribute(&element, "empty", "");
+        batch.insert_before(&element, &document, None);
+        let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+        let document = commit.document(&document).unwrap();
+        let element = commit.created(&element).unwrap().unwrap();
+        let snapshot = dom.snapshot();
+        (dom, snapshot, document, element)
+    }
+    fn limits(bytes: usize) -> HtmlCaptureLimits {
+        HtmlCaptureLimits::new(16, 64, 8, 4096, 16, 0, 0, bytes)
+    }
+    fn adapter() -> DomHtmlCaptureLimits {
+        DomHtmlCaptureLimits::new(16, 1_000_000)
+    }
+    fn string_bytes(value: &DocumentString) -> usize {
+        size_of::<Vec<u16>>() + value.shared_code_units().capacity() * size_of::<u16>()
+    }
+    fn name_bytes(name: &crate::DomQualifiedName) -> usize {
+        name.namespace_uri()
+            .into_iter()
+            .chain(name.prefix())
+            .chain([name.local_name()])
+            .map(string_bytes)
+            .sum()
+    }
+    fn assert_name(source: &crate::DomQualifiedName, output: &QualifiedName) {
+        assert_eq!(output.namespace().uri(), source.namespace_uri());
+        assert_eq!(output.prefix(), source.prefix());
+        assert_eq!(output.local_name(), source.local_name());
+        for (left, right) in source
+            .namespace_uri()
+            .into_iter()
+            .chain(source.prefix())
+            .chain([source.local_name()])
+            .zip(
+                output
+                    .namespace()
+                    .uri()
+                    .into_iter()
+                    .chain(output.prefix())
+                    .chain([output.local_name()]),
+            )
+        {
+            assert!(Arc::ptr_eq(
+                left.shared_code_units(),
+                right.shared_code_units()
+            ));
+        }
+    }
+
+    #[test]
+    fn canonical_capture_exports_admitted_html_array_with_shared_text_and_retained_snapshot() {
+        let (dom, snapshot, document, element) = fixture();
+        let stamp = snapshot.stamp();
+        let DomNodeKind::Element(source) = snapshot.node(element).unwrap().kind() else {
+            panic!("literal element")
+        };
+        let captured = snapshot
+            .html_capture(
+                document,
+                None,
+                limits(1_000_000),
+                adapter(),
+                &AtomicBool::new(false),
+            )
+            .unwrap();
+        let subject = captured.subject(element).unwrap();
+        let HtmlCapturedNodeKind::Element(output) =
+            captured.capture().node(&subject).unwrap().kind()
+        else {
+            panic!("exported element")
+        };
+        assert_eq!(captured.node(&subject).unwrap(), element);
+        assert_eq!(
+            captured.basis(),
+            snapshot.document(document).unwrap().stamp()
+        );
+        assert_eq!(captured.source().stamp(), stamp);
+        assert_name(source.name(), output.name());
+        assert_eq!(
+            output.name().namespace().uri(),
+            Some(&DocumentString::from("urn:element"))
+        );
+        assert_eq!(output.name().prefix(), Some(&DocumentString::from("p")));
+        assert_eq!(output.name().local_name(), &DocumentString::from("Root"));
+        assert_eq!(output.attributes().len(), 2);
+        assert!(
+            !std::ptr::eq(
+                source.attributes().as_ptr().cast::<()>(),
+                output.attributes().as_slice().as_ptr().cast::<()>()
+            ),
+            "two simultaneously retained nonempty arrays belong to their separate owners"
+        );
+        for (input, output) in source.attributes().iter().zip(output.attributes().iter()) {
+            assert_name(input.name(), output.name());
+            assert_eq!(input.value(), output.value());
+            assert!(Arc::ptr_eq(
+                input.value().shared_code_units(),
+                output.value().shared_code_units()
+            ));
+        }
+        let first = &output.attributes().as_slice()[0];
+        assert_eq!(
+            first.name().namespace().uri(),
+            Some(&DocumentString::from("urn:attribute"))
+        );
+        assert_eq!(first.name().prefix(), Some(&DocumentString::from("q")));
+        assert_eq!(first.name().local_name(), &DocumentString::from("data"));
+        assert_eq!(first.value().code_units(), &[0xd800, 65]);
+        let second = &output.attributes().as_slice()[1];
+        assert!(second.name().namespace().uri().is_none() && second.name().prefix().is_none());
+        assert_eq!(second.name().local_name(), &DocumentString::from("empty"));
+        assert!(second.value().is_empty());
+        // Compute this coordinate from the actual HTML destination capacity and
+        // the immutable input backing capacities, not a DOM-bank layout or the
+        // producer's cached receipt. Source/snapshot storage stays retained.
+        let bytes = size_of::<Vec<Attribute>>()
+            + output.attributes().shared_attributes().capacity() * size_of::<Attribute>()
+            + name_bytes(source.name())
+            + source
+                .attributes()
+                .iter()
+                .map(|a| name_bytes(a.name()) + string_bytes(a.value()))
+                .sum::<usize>();
+        assert_eq!(captured.capture().usage().element_value_bytes(), bytes);
+        assert!(
+            matches!(snapshot.html_capture(document, None, limits(bytes - 1), adapter(), &AtomicBool::new(false)),
+            Err(DomHtmlCaptureError::Capture(HtmlCaptureError::LimitExceeded { resource: HtmlCaptureResource::ElementValueBytes, limit, required })) if limit == bytes - 1 && required == bytes)
+        );
+        let exact = snapshot
+            .html_capture(
+                document,
+                None,
+                limits(bytes),
+                adapter(),
+                &AtomicBool::new(false),
+            )
+            .unwrap();
+        assert_eq!(exact.capture().usage().element_value_bytes(), bytes);
+        assert_eq!(snapshot.stamp(), stamp);
+        drop(dom);
+        assert_eq!(captured.source().stamp(), stamp);
+        assert_eq!(
+            exact.node(&exact.subject(element).unwrap()).unwrap(),
+            element
+        );
+        assert_eq!(first.value().code_units(), &[0xd800, 65]);
+    }
+
+    #[test]
+    fn borrowed_element_export_preserves_first_adapter_work_and_cancellation_errors() {
+        let (_dom, snapshot, _document, element) = fixture();
+        let DomNodeKind::Element(source) = snapshot.node(element).unwrap().kind() else {
+            panic!("literal element")
+        };
+        for cancelled in [false, true] {
+            let mut builder =
+                HtmlCaptureBuilder::new(limits(1_000_000), HtmlHostFactsRevision::fresh());
+            let document = builder
+                .add_document(
+                    crate::HtmlDocumentMode::NoQuirks,
+                    HtmlScriptingStatus::Disabled,
+                    HtmlCaptureRegistryInput::Null,
+                )
+                .unwrap();
+            let before = builder.usage();
+            let cancellation = AtomicBool::new(cancelled);
+            let mut control = Control {
+                limits: DomHtmlCaptureLimits::new(16, 0),
+                work: 0,
+                cancellation: &cancellation,
+            };
+            let backing = source.attributes()[0].value().shared_code_units();
+            let strong = Arc::strong_count(backing);
+            let result = builder
+                .add_element_from_inputs(
+                    &document,
+                    source.name(),
+                    source.attributes(),
+                    HtmlCapturedIsValue::Absent,
+                    HtmlCaptureRegistryInput::Null,
+                    || control.charge(1),
+                )
+                .map_err(element_capture_error);
+            if cancelled {
+                assert!(matches!(result, Err(DomHtmlCaptureError::Cancelled)));
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(DomHtmlCaptureError::ResourceLimit {
+                        resource: DomHtmlCaptureResource::Work,
+                        limit: 0
+                    })
+                ));
+            }
+            assert_eq!(control.work, 0);
+            assert_eq!(builder.usage(), before);
+            assert_eq!(Arc::strong_count(backing), strong);
+        }
     }
 }

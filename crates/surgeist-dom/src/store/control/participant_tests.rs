@@ -8,7 +8,17 @@ const UNRELATED: usize = 4096;
 const DISCOVERY_WORK: u64 = 4096;
 
 fn limits() -> DomLimits {
-    DomLimits::new(16_384, 1_000_000, 32_768, 0, 0, 8, 64_000_000).unwrap()
+    DomLimits::new(
+        16_384,
+        1_000_000,
+        32_768,
+        0,
+        0,
+        8,
+        64_000_000,
+        crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
 }
 
 fn policy() -> crate::DomSourceLimits {

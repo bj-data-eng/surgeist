@@ -12,7 +12,20 @@ fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
 fn owner() -> Dom {
-    Dom::new(DomLimits::new(64, 16384, 128, 128, 128, 8, 65536).unwrap()).unwrap()
+    Dom::new(
+        DomLimits::new(
+            64,
+            16384,
+            128,
+            128,
+            128,
+            8,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
 }
 fn capture(source: &DomSnapshot, document: DocumentId) -> DomHtmlCapture {
     source

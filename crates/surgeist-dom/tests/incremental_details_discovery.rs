@@ -7,10 +7,19 @@ use surgeist_html::HtmlDetailsState::{Closed, Open};
 fn exact_details_names_stay_root_scoped_and_failed_renaming_restores_the_group() {
     let cancel = AtomicBool::new(false);
     let mut dom = Dom::new(
-        DomLimits::new(128, 32768, 512, 0, 0, 16, 1_000_000)
-            .unwrap()
-            .with_details_toggle_intentions(32)
-            .unwrap(),
+        DomLimits::new(
+            128,
+            32768,
+            512,
+            0,
+            0,
+            16,
+            1_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_details_toggle_intentions(32)
+        .unwrap(),
     )
     .unwrap();
     let raw = DocumentString::from_utf16(vec![0xd800]);

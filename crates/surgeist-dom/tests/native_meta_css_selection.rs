@@ -10,20 +10,29 @@ use surgeist_css::{
 use surgeist_dom::*;
 
 fn limits() -> DomLimits {
-    DomLimits::new(128, 131_072, 512, 128, 64, 16, 1_048_576)
-        .unwrap()
-        .with_meta_processing_work(100_000_000)
-        .with_meta_theme_color_scratch_bytes(2 * 1024 * 1024)
-        .unwrap()
-        .with_meta_color_scheme_limits(CssUtf16PropertyValueLimits {
-            input: CssUtf16InputLimits::default(),
-            syntax: CssComponentValueLimits::default(),
-            max_work: 1_000_000,
-            max_live_bytes: 2 * 1024 * 1024,
-            max_retained_bytes: 2 * 1024 * 1024,
-        })
-        .with_meta_color_scheme_retained_bytes(8 * 1024 * 1024)
-        .unwrap()
+    DomLimits::new(
+        128,
+        131_072,
+        512,
+        128,
+        64,
+        16,
+        1_048_576,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_meta_processing_work(100_000_000)
+    .with_meta_theme_color_scratch_bytes(2 * 1024 * 1024)
+    .unwrap()
+    .with_meta_color_scheme_limits(CssUtf16PropertyValueLimits {
+        input: CssUtf16InputLimits::default(),
+        syntax: CssComponentValueLimits::default(),
+        max_work: 1_000_000,
+        max_live_bytes: 2 * 1024 * 1024,
+        max_retained_bytes: 2 * 1024 * 1024,
+    })
+    .with_meta_color_scheme_retained_bytes(8 * 1024 * 1024)
+    .unwrap()
 }
 
 fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {

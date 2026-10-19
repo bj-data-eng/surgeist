@@ -106,7 +106,7 @@ impl Draft {
     pub(super) fn reflected_attribute_change(
         &mut self,
         node: Key,
-        changed: &crate::QualifiedName,
+        changed: &crate::DomQualifiedName,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.with_node_fields(node, cancel, |fields| {
@@ -161,7 +161,20 @@ mod tests {
     use super::*;
     #[test]
     fn stopping_between_reflected_setter_effects_observes_actual_asymmetric_order() {
-        let mut dom = Dom::new(DomLimits::new(16, 2048, 32, 0, 0, 8, 65536).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                16,
+                2048,
+                32,
+                0,
+                0,
+                8,
+                65536,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let cancel = AtomicBool::new(false);
         let mut b = DomBatch::new();
         let d = b.create_document();

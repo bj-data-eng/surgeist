@@ -548,7 +548,20 @@ mod tests {
 
     #[test]
     fn target_revision_exhaustion_preserves_history_and_allows_dom_only_rebase() {
-        let mut dom = Dom::new(DomLimits::new(8, 512, 16, 0, 0, 2, 4096).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                8,
+                512,
+                16,
+                0,
+                0,
+                2,
+                4096,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
         let element = batch.create_element(&document, "target");
@@ -610,7 +623,20 @@ mod tests {
 
     #[test]
     fn exhausted_host_revision_allows_equal_recapture_and_rejects_changed_facts_atomically() {
-        let mut dom = Dom::new(DomLimits::new(8, 512, 8, 0, 0, 2, 4096).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                8,
+                512,
+                8,
+                0,
+                0,
+                2,
+                4096,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
         let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();

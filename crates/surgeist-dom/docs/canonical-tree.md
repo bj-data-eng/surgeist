@@ -6,8 +6,10 @@ Use this contract when changing tree mutation, exact values, identity, admission
 
 `Dom::new` requires explicit finite `DomLimits` for managed nodes, stored string
 code units, commands per batch, Slot references, raw Slot assignment inputs per
-batch, and retained change-history entries and bytes. The seven constructor
-arguments select those capacities in that order. Profiles with no assignments explicitly select zero Slot capacities.
+batch, and retained change-history entries and bytes. Those seven capacities
+are followed by a required `DomNameLimits` policy for retained name bytes,
+registry entries, operation work and temporary storage. Profiles with no
+assignments explicitly select zero Slot capacities.
 Detached nodes count toward the live limits. Logical string lengths count each
 node's stored units even when immutable backing is shared, including PI targets,
 data and derived pseudo-attribute map fields, all three doctype strings, and
@@ -54,6 +56,23 @@ Ordinary batch mutations do not invoke callbacks, run scripts or perform host
 effects; reached external requirements use the [Source protocol](source-and-style.md).
 
 ## Names and native element initialization
+
+Element names and attribute names use `DomQualifiedName`: owner-qualified
+namespace and local-name atoms, with a separately retained exact prefix.
+`local_name()` and `namespace_uri()` borrow their exact UTF-16 text;
+`local_name_atom()` and `namespace()` expose the strong opaque tokens.
+`DomNameAtom` equality and hashing compare identity. `DomQualifiedName` and
+`DomAttribute` equality and hashing compare exact values across owners, including
+prefixes. `same_expanded_identity` compares namespace/local identity within one
+owner and rejects a foreign owner; prefixes do not participate in that comparison.
+
+`Dom::bind_name` resolves exact text without language validation, case folding,
+node creation, revision advancement or history. Element and attribute ingress
+perform their existing language processing before binding the resulting names.
+The owner keeps a bounded weak index; tokens and snapshots retain their values
+after owner destruction. Same-owner copies reuse tokens, while cross-owner
+imports resolve destination tokens without changing the text. Attribute values,
+prefixes and ordinary text are not mandatory atoms.
 
 PI construction validates the target using the DOM-delegated XML Name
 production and rejects initial data containing `?>`. It does not apply HTML's

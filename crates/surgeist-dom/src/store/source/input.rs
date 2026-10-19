@@ -82,6 +82,7 @@ impl Draft {
         let custody = transaction::StateCustody::adopt(
             state,
             self.custody_registry(),
+            Some(&self.names),
             |usage| self.admit_custody_usage(usage, cancel),
             || self.source_step(cancel),
         )?;

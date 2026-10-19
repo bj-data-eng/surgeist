@@ -577,10 +577,9 @@ impl Names {
                     after: Some(after),
                     ..
                 }) => match (before.kind, after.kind) {
-                    (DomNodeKind::Element(a), DomNodeKind::Element(b)) => Arc::ptr_eq(
-                        a.attributes().shared_attributes(),
-                        b.attributes().shared_attributes(),
-                    ),
+                    (DomNodeKind::Element(a), DomNodeKind::Element(b)) => {
+                        a.attributes_backing().same_storage(b.attributes_backing())
+                    }
                     _ => false,
                 },
                 None => true,

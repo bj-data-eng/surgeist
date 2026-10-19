@@ -287,19 +287,28 @@ fn fixture_with_capacity(managed: usize, context: Context, extra: usize) -> Fixt
     } else {
         0
     };
-    let limits = DomLimits::new(capacity, unit_limit, CHUNK * 4, 0, 0, 32, 4_000_000)
-        .unwrap()
-        .with_ranges(ranges)
-        .unwrap()
-        .with_details_toggle_intentions(details * 2)
-        .unwrap()
-        .with_select_processing(select_tasks, 16_000_000, 10_000_000)
-        .unwrap()
-        .with_dispatch_custody(if dispatch_targets == 0 {
-            DomDispatchCustodyLimits::default()
-        } else {
-            super::dispatch::scale_fresh_limits(dispatch_targets)
-        });
+    let limits = DomLimits::new(
+        capacity,
+        unit_limit,
+        CHUNK * 4,
+        0,
+        0,
+        32,
+        4_000_000,
+        crate::DomNameLimits::new(1_073_741_824, 2_000_000, 64_000_000, 268_435_456).unwrap(),
+    )
+    .unwrap()
+    .with_ranges(ranges)
+    .unwrap()
+    .with_details_toggle_intentions(details * 2)
+    .unwrap()
+    .with_select_processing(select_tasks, 16_000_000, 10_000_000)
+    .unwrap()
+    .with_dispatch_custody(if dispatch_targets == 0 {
+        DomDispatchCustodyLimits::default()
+    } else {
+        super::dispatch::scale_fresh_limits(dispatch_targets)
+    });
     let (mut dom, fullscreen_source, fullscreen_document) = if invocation_count > 0 {
         // Use the original DOM issuer boundary, including native hosted
         // permissions/history. This supplies no Runtime or orientation service.
@@ -1446,9 +1455,20 @@ struct CapturedInput {
 
 fn captured_input(records: usize) -> CapturedInput {
     let started = Instant::now();
-    let mut dom =
-        Dom::new(DomLimits::new(records + 1, records * 128, records * 3, 0, 0, 8, 65_536).unwrap())
-            .unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            records + 1,
+            records * 128,
+            records * 3,
+            0,
+            0,
+            8,
+            65_536,
+            crate::DomNameLimits::new(1_073_741_824, 2_000_000, 64_000_000, 268_435_456).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let root = batch.create_element(&document, "import-root");

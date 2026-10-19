@@ -3,10 +3,19 @@ use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 
 fn limits() -> DomLimits {
-    DomLimits::new(256, 32768, 1024, 256, 128, 16, 1_000_000)
-        .unwrap()
-        .with_select_processing(128, 4_000_000, 10_000_000)
-        .unwrap()
+    DomLimits::new(
+        256,
+        32768,
+        1024,
+        256,
+        128,
+        16,
+        1_000_000,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_select_processing(128, 4_000_000, 10_000_000)
+    .unwrap()
 }
 fn option(
     batch: &mut DomBatch,

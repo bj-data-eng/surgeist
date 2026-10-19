@@ -2492,10 +2492,19 @@ mod tests {
         }
         for unrelated in [0, 64] {
             let cancel = AtomicBool::new(false);
-            let limits = DomLimits::new(16, 4096, 64, 0, 0, 8, 65536)
-                .unwrap()
-                .with_details_toggle_intentions(128)
-                .unwrap();
+            let limits = DomLimits::new(
+                16,
+                4096,
+                64,
+                0,
+                0,
+                8,
+                65536,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap()
+            .with_details_toggle_intentions(128)
+            .unwrap();
             let mut dom = Dom::new(limits).unwrap();
             let mut setup = DomBatch::new();
             let document = setup.create_document();
@@ -2562,10 +2571,19 @@ mod tests {
     #[test]
     fn actual_signal_and_select_obligations_follow_adoption_and_exact_retirement() {
         let cancel = AtomicBool::new(false);
-        let limits = DomLimits::new(32, 4096, 64, 32, 32, 8, 65536)
-            .unwrap()
-            .with_select_processing(16, 1_000_000, 1_000_000)
-            .unwrap();
+        let limits = DomLimits::new(
+            32,
+            4096,
+            64,
+            32,
+            32,
+            8,
+            65536,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_select_processing(16, 1_000_000, 1_000_000)
+        .unwrap();
         let mut dom = Dom::new(limits).unwrap();
         let mut setup = DomBatch::new();
         let first = setup.create_document();
@@ -2645,10 +2663,19 @@ mod tests {
     #[test]
     fn private_target_exposure_updates_obligations_and_invalidates_clean_projection() {
         let cancel = AtomicBool::new(false);
-        let limits = DomLimits::new(32, 4096, 64, 0, 0, 8, 65536)
-            .unwrap()
-            .with_select_processing(16, 1_000_000, 1_000_000)
-            .unwrap();
+        let limits = DomLimits::new(
+            32,
+            4096,
+            64,
+            0,
+            0,
+            8,
+            65536,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_select_processing(16, 1_000_000, 1_000_000)
+        .unwrap();
         let mut dom = Dom::new(limits).unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
@@ -3252,7 +3279,20 @@ mod tests {
     #[test]
     fn produced_capacity_receipt_moves_without_releasing_or_readmitting_the_state_occurrence() {
         let cancel = AtomicBool::new(false);
-        let dom = Dom::new(DomLimits::new(16, 4096, 32, 0, 0, 8, 65536).unwrap()).unwrap();
+        let dom = Dom::new(
+            DomLimits::new(
+                16,
+                4096,
+                32,
+                0,
+                0,
+                8,
+                65536,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
         draft.source_limits = Some(crate::DomSourceLimits::new(
             usize::MAX,

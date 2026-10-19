@@ -56,8 +56,20 @@ mod tests {
     #[test]
     fn actual_document_rows_obey_independent_producer_work_and_adapter_record_bounds() {
         let cancel = AtomicBool::new(false);
-        let mut dom =
-            crate::Dom::new(crate::DomLimits::new(32, 4096, 32, 0, 0, 4, 65536).unwrap()).unwrap();
+        let mut dom = crate::Dom::new(
+            crate::DomLimits::new(
+                32,
+                4096,
+                32,
+                0,
+                0,
+                4,
+                65536,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = crate::DomBatch::new();
         let tickets: Vec<_> = (0..16).map(|_| batch.create_document()).collect();
         let commit = dom.apply(batch, &cancel).unwrap();

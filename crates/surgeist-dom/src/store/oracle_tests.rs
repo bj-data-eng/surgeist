@@ -41,10 +41,10 @@ fn full_document_units(metadata: &crate::DomDocumentMetadata) -> usize {
     }
     units
 }
-fn qualified_units(name: &crate::QualifiedName) -> usize {
+fn qualified_units(name: &(impl surgeist_html::HtmlNameInput + ?Sized)) -> usize {
     name.local_name().len()
         + name.prefix().map_or(0, DocumentString::len)
-        + name.namespace().uri().map_or(0, DocumentString::len)
+        + name.namespace_uri().map_or(0, DocumentString::len)
 }
 fn full_element_units(element: &crate::DomElement) -> usize {
     let mut units = qualified_units(element.name());
@@ -60,6 +60,39 @@ fn full_element_units(element: &crate::DomElement) -> usize {
     }
     units
 }
+
+fn assert_element_value_receipts(element: &crate::DomElement) {
+    let attributes = element.attributes_backing();
+    let mut text = source::storage::Payload::default();
+    let mut units = 0;
+    for attribute in attributes.entries() {
+        text.name(attribute.name()).unwrap();
+        text.string(attribute.value()).unwrap();
+        add(&mut units, qualified_units(attribute.name()));
+        add(&mut units, attribute.value().len());
+    }
+    let cached_text = attributes.text_payload();
+    assert_eq!(
+        (cached_text.bytes, cached_text.units),
+        (text.bytes, text.units)
+    );
+    assert_eq!(attributes.logical_units(), units);
+    let expected = if let Some(payload) = attributes.payload() {
+        assert_eq!(payload.value.entries(), element.attributes());
+        assert_eq!(payload.value.capacity(), attributes.capacity());
+        custody::Usage::new(
+            size_of::<super::payload::Payload<crate::name::AttributeValues>>()
+                + payload.value.capacity() * size_of::<crate::DomAttribute>(),
+            0,
+        )
+    } else {
+        assert!(element.attributes().is_empty());
+        assert_eq!(attributes.capacity(), 0);
+        custody::Usage::ZERO
+    };
+    assert_eq!(attributes.own_usage(), expected);
+}
+
 fn full_kind_payload(kind: &DomNodeKind) -> source::storage::Payload {
     let mut out = source::storage::Payload::default();
     match kind {
@@ -98,9 +131,8 @@ fn full_kind_payload(kind: &DomNodeKind) -> source::storage::Payload {
         }
         DomNodeKind::Element(element) => {
             out.name(element.name()).unwrap();
-            out.add_bytes(size_of::<Vec<crate::Attribute>>()).unwrap();
-            out.bank::<crate::Attribute>(element.attributes().shared_attributes().capacity())
-                .unwrap();
+            // The typed bank target/buffer and NameRecord targets have their
+            // own capsules. The Slot retains these text occurrences only.
             for attribute in element.attributes().iter() {
                 out.name(attribute.name()).unwrap();
                 out.string(attribute.value()).unwrap();
@@ -911,7 +943,7 @@ fn assert_control_index(owner: DomOwnerId, state: &State) {
         let mut form_present = false;
         let mut name = None;
         for attribute in element.attributes().iter() {
-            if attribute.name().namespace().uri().is_some() {
+            if attribute.name().namespace_uri().is_some() {
                 continue;
             }
             match attribute.name().local_name().code_units() {
@@ -1160,7 +1192,7 @@ fn assert_slot_names(owner: DomOwnerId, state: &State) {
             .attributes()
             .iter()
             .find(|value| {
-                value.name().namespace().uri().is_none()
+                value.name().namespace_uri().is_none()
                     && value.name().local_name().code_units() == attribute
             })
             .map(|value| value.value().clone())
@@ -1388,7 +1420,7 @@ fn assert_family_discovery(owner: DomOwnerId, state: &State) {
                     .attributes()
                     .iter()
                     .find(|attribute| {
-                        attribute.name().namespace().uri().is_none()
+                        attribute.name().namespace_uri().is_none()
                             && attribute.name().local_name().code_units() == [110, 97, 109, 101]
                     })
                     .map(|attribute| attribute.value().clone())
@@ -1557,12 +1589,15 @@ fn assert_role_facts(owner: DomOwnerId, state: &State) {
                     occurrence(Role::DocumentElement, source, target);
                 }
                 let name = element.name();
-                if name.namespace() == &crate::Namespace::html()
-                    && matches!(
-                        name.local_name().code_units(),
-                        [98, 111, 100, 121] | [102, 114, 97, 109, 101, 115, 101, 116]
-                    )
-                {
+                if name.namespace_uri().is_some_and(|uri| {
+                    uri.code_units()
+                        .iter()
+                        .copied()
+                        .eq("http://www.w3.org/1999/xhtml".encode_utf16())
+                }) && matches!(
+                    name.local_name().code_units(),
+                    [98, 111, 100, 121] | [102, 114, 97, 109, 101, 115, 101, 116]
+                ) {
                     occurrence(Role::BodyChild, source, target);
                 }
             }
@@ -1837,6 +1872,9 @@ fn validate_full_state(owner: DomOwnerId, state: &State) {
             slot: slot_index,
             generation: slot.generation,
         };
+        if let DomNodeKind::Element(element) = &node.kind {
+            assert_element_value_receipts(element);
+        }
         let payload = full_node_payload(node);
         assert_eq!(
             node.receipts.payload,
@@ -1972,6 +2010,58 @@ fn assert_auxiliary_payloads(dom: &Dom) {
     assert_eq!(union(claimed), union(raw));
 }
 
+// The claimed side enumerates actual held ObjectCustody payload debits. Derive
+// identities and extents independently from canonical name records and arrays;
+// a slot's conservative text occurrences are tested separately above.
+fn assert_name_attribute_custody(dom: &Dom) {
+    fn union(
+        values: impl IntoIterator<Item = (custody::MaterializationId, custody::Usage)>,
+    ) -> BTreeMap<custody::MaterializationId, custody::Usage> {
+        let mut out = BTreeMap::new();
+        for (id, usage) in values {
+            if let Some(previous) = out.insert(id, usage) {
+                assert_eq!(previous, usage, "one materialization has one extent");
+            }
+        }
+        out
+    }
+    let mut raw = Vec::new();
+    for (_, slot) in dom.state.slots.iter() {
+        let Some(node) = &slot.node else { continue };
+        let DomNodeKind::Element(element) = &node.kind else {
+            continue;
+        };
+        if let Some(payload) = element.attributes_backing().payload() {
+            raw.push((
+                payload.identity,
+                custody::Usage::new(
+                    size_of::<super::payload::Payload<crate::name::AttributeValues>>()
+                        + payload.value.capacity() * size_of::<crate::DomAttribute>(),
+                    0,
+                ),
+            ));
+        }
+        for name in std::iter::once(element.name())
+            .chain(element.attributes().iter().map(crate::DomAttribute::name))
+        {
+            for atom in name.namespace().into_iter().chain([name.local_name_atom()]) {
+                let value = atom.text();
+                raw.push((
+                    atom.identity(),
+                    custody::Usage::new(
+                        size_of::<crate::name::NameRecord>()
+                            + size_of::<Vec<u16>>()
+                            + value.shared_code_units().capacity() * size_of::<u16>(),
+                        value.shared_code_units().capacity(),
+                    ),
+                ));
+            }
+        }
+    }
+    let claimed = super::payload::inspect_slot_name_custody(&dom.state_custody.slots);
+    assert_eq!(union(claimed), union(raw));
+}
+
 pub(super) fn assert_full_canonical(dom: &Dom) {
     validate_full_state(dom.owner(), &dom.state);
     assert_eq!(dom.usage(), full_usage(dom));
@@ -2006,6 +2096,7 @@ pub(super) fn assert_full_canonical(dom: &Dom) {
     assert_family_discovery(dom.owner(), &dom.state);
     assert_hosted_containers(dom.owner(), &dom.state);
     assert_auxiliary_payloads(dom);
+    assert_name_attribute_custody(dom);
 }
 
 fn assert_full_delta(dom: &Dom, before: &DomSnapshot, actual: &[DomChange]) {
@@ -2022,10 +2113,19 @@ fn assert_full_delta(dom: &Dom, before: &DomSnapshot, actual: &[DomChange]) {
 
 fn owner() -> Dom {
     Dom::new(
-        DomLimits::new(256, 65_536, 512, 1024, 1024, 32, 1_000_000)
-            .unwrap()
-            .with_ranges(64)
-            .unwrap(),
+        DomLimits::new(
+            256,
+            65_536,
+            512,
+            1024,
+            1024,
+            32,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_ranges(64)
+        .unwrap(),
     )
     .unwrap()
 }
@@ -2205,12 +2305,21 @@ fn source_equal_text_replacement_publishes_the_actual_range_only_change() {
 #[test]
 fn full_oracle_composes_native_relations_template_and_queued_targets() {
     use crate::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment, Namespace};
-    let limits = DomLimits::new(256, 65_536, 512, 1024, 1024, 32, 1_000_000)
-        .unwrap()
-        .with_select_processing(32, 4_000_000, 10_000_000)
-        .unwrap()
-        .with_details_toggle_intentions(32)
-        .unwrap();
+    let limits = DomLimits::new(
+        256,
+        65_536,
+        512,
+        1024,
+        1024,
+        32,
+        1_000_000,
+        crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_select_processing(32, 4_000_000, 10_000_000)
+    .unwrap()
+    .with_details_toggle_intentions(32)
+    .unwrap();
     let mut dom = Dom::new(limits).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
@@ -2450,10 +2559,19 @@ fn full_oracle_tracks_slot_order_across_separate_roots_adoption_and_reuse() {
 
 #[test]
 fn full_oracle_keeps_queued_details_original_document_after_adoption() {
-    let limits = DomLimits::new(256, 100_000, 512, 1024, 1024, 32, 4_000_000)
-        .unwrap()
-        .with_details_toggle_intentions(32)
-        .unwrap();
+    let limits = DomLimits::new(
+        256,
+        100_000,
+        512,
+        1024,
+        1024,
+        32,
+        4_000_000,
+        crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_details_toggle_intentions(32)
+    .unwrap();
     // Reuse the actual DOM issuer/constructor boundary. The live original
     // source validates the association; this asserts no Runtime Window service.
     let (mut dom, _source, original_document, _) =

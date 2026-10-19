@@ -4,15 +4,18 @@ use crate::store::source::{
     formation::Formation,
     storage::{self, Payload},
 };
-use crate::{Attribute, DocumentString, DomError, QualifiedName};
+#[cfg(test)]
+use crate::{Attribute, QualifiedName};
+use crate::{DocumentString, DomError};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use surgeist_html::bounded::{
     IntegerPrefixScanner, IntegerUnitStepError, NumericMaterializationError,
 };
 use surgeist_html::{
-    HtmlCanvasBitmapDimension, HtmlCanvasNoneState, HtmlIframeInitialState, HtmlLoading,
-    HtmlMarqueeState, HtmlNonNegativeInteger, HtmlValueInterpreter, KnownHtmlAttribute,
+    HtmlAttributeInput, HtmlCanvasBitmapDimension, HtmlCanvasNoneState, HtmlIframeInitialState,
+    HtmlLoading, HtmlMarqueeState, HtmlNameInput, HtmlNonNegativeInteger, HtmlValueInterpreter,
+    KnownHtmlAttribute,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -31,11 +34,11 @@ impl IframeState {
     }
 }
 
-pub(super) struct AttributeMutation<'a> {
-    pub element_name: &'a QualifiedName,
-    pub name: &'a QualifiedName,
-    pub previous: &'a [Attribute],
-    pub attributes: &'a [Attribute],
+pub(super) struct AttributeMutation<'a, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> {
+    pub element_name: &'a N,
+    pub name: &'a N,
+    pub previous: &'a [A],
+    pub attributes: &'a [A],
     pub content: Option<surgeist_html::HtmlChildNavigablePresence>,
 }
 
@@ -113,9 +116,9 @@ impl NativeFamily {
         }
     }
 
-    pub(super) fn after_attribute(
+    pub(super) fn after_attribute<N: HtmlNameInput + ?Sized, A: HtmlAttributeInput>(
         &self,
-        change: AttributeMutation<'_>,
+        change: AttributeMutation<'_, N, A>,
         admit: &mut impl FnMut() -> Result<(), DomError>,
         budget: Option<&Formation>,
         cancel: &AtomicBool,
@@ -206,8 +209,8 @@ impl NativeFamily {
     }
     /// Pure owned Canvas dimension interpretation shared with actual retained
     /// materialization; this performs no attribute hooks or bitmap reset.
-    pub(crate) fn canvas_from_attributes(
-        attributes: &[Attribute],
+    pub(crate) fn canvas_from_attributes<A: HtmlAttributeInput>(
+        attributes: &[A],
         admit: &mut impl FnMut() -> Result<(), DomError>,
         budget: Option<&Formation>,
         cancel: &AtomicBool,
@@ -273,7 +276,7 @@ impl NativeFamily {
 }
 
 fn attribute_is(
-    name: &QualifiedName,
+    name: &(impl HtmlNameInput + ?Sized),
     attribute: KnownHtmlAttribute,
     budget: Option<&Formation>,
     cancel: &AtomicBool,
@@ -281,7 +284,7 @@ fn attribute_is(
     if let Some(budget) = budget {
         budget.step(cancel)?;
     }
-    if name.namespace().uri().is_some() {
+    if name.namespace_uri().is_some() {
         return Ok(false);
     }
     let mut expected = attribute.local_name().encode_utf16();
@@ -296,9 +299,9 @@ fn attribute_is(
     Ok(expected.next().is_none())
 }
 
-fn loading_state(
-    element: &QualifiedName,
-    attributes: &[Attribute],
+fn loading_state<N: HtmlNameInput + ?Sized, A: HtmlAttributeInput>(
+    element: &N,
+    attributes: &[A],
     admit: &mut impl FnMut() -> Result<(), DomError>,
     budget: Option<&Formation>,
     cancel: &AtomicBool,
@@ -335,7 +338,7 @@ fn loading_state(
         // it), both namespace comparisons, and both raw keyword comparisons.
         budget.step(cancel)?;
         for _ in 0..2 {
-            for _ in 0..=element.namespace().uri().map_or(0, DocumentString::len) {
+            for _ in 0..=element.namespace_uri().map_or(0, DocumentString::len) {
                 budget.step(cancel)?;
             }
         }
@@ -375,7 +378,7 @@ enum Dimension {
     Height,
 }
 fn dimension(
-    name: &QualifiedName,
+    name: &(impl HtmlNameInput + ?Sized),
     budget: Option<&Formation>,
     cancel: &AtomicBool,
 ) -> Result<Option<Dimension>, DomError> {

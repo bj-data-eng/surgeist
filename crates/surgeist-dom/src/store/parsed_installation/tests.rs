@@ -149,8 +149,20 @@ fn scratch_growth_stops_at_cancellation_copy_work_and_representation_before_muta
 #[test]
 fn scratch_growth_peak_refuses_public_installation_atomically_and_exact_peak_succeeds() {
     let cancel = AtomicBool::new(false);
-    let mut dom =
-        Dom::new(DomLimits::new(256, 65536, 256, 1024, 1024, 16, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            256,
+            65536,
+            256,
+            1024,
+            1024,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let environment = environment(&mut dom);
     let report = report();
     // This literal has seven source subjects and seventeen metadata records.
@@ -208,8 +220,20 @@ fn fragment_parser_constructor_preserves_one_source_origin_and_selects_only_dest
     use surgeist_html_parser::HtmlFragmentParseRequest;
     use surgeist_html_semantics::{HtmlCaptureLimits, HtmlFragmentContext};
     let cancel = AtomicBool::new(false);
-    let mut dom =
-        Dom::new(DomLimits::new(256, 65536, 256, 1024, 1024, 16, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            256,
+            65536,
+            256,
+            1024,
+            1024,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let doc = batch.create_document();
     let host = batch.create_element_ns(&doc, crate::Namespace::html(), "div");
@@ -316,8 +340,20 @@ fn fragment_parser_constructor_preserves_one_source_origin_and_selects_only_dest
 
 #[test]
 fn actual_img_generation_maps_once_and_the_next_native_update_does_not_restart_it() {
-    let mut dom =
-        Dom::new(DomLimits::new(256, 65536, 256, 1024, 1024, 16, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            256,
+            65536,
+            256,
+            1024,
+            1024,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let environment = environment(&mut dom);
     let source = report_for("<!doctype html><img src=x>");
     let mut cursor = source.metadata();
@@ -403,8 +439,20 @@ fn environment(dom: &mut Dom) -> DomParsedDocumentEnvironment {
 #[test]
 fn complete_private_graph_and_final_ids_do_not_escape_cancelled_or_exhausted_publication() {
     for exhausted in [false, true] {
-        let mut dom =
-            Dom::new(DomLimits::new(256, 65536, 256, 1024, 1024, 16, 1_000_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                256,
+                65536,
+                256,
+                1024,
+                1024,
+                16,
+                1_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let environment = environment(&mut dom);
         if exhausted {
             dom.revision = DomRevision(u64::MAX);
@@ -450,8 +498,20 @@ fn complete_private_graph_and_final_ids_do_not_escape_cancelled_or_exhausted_pub
 
 #[test]
 fn actual_staged_meta_history_is_not_published_when_final_cancellation_wins() {
-    let mut dom =
-        Dom::new(DomLimits::new(256, 65536, 256, 1024, 1024, 16, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            256,
+            65536,
+            256,
+            1024,
+            1024,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let environment = environment(&mut dom);
     let before = dom.snapshot();
     let usage = dom.usage();
@@ -499,8 +559,20 @@ fn actual_staged_meta_history_is_not_published_when_final_cancellation_wins() {
 
 #[test]
 fn complete_adapter_work_and_real_subject_closure_admit_exact_and_refuse_one_short_atomically() {
-    let mut dom =
-        Dom::new(DomLimits::new(256, 65536, 256, 1024, 1024, 16, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            256,
+            65536,
+            256,
+            1024,
+            1024,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let environment = environment(&mut dom);
     let source = report();
     let before = dom.snapshot();
@@ -573,8 +645,20 @@ fn contextual_prepared_effects_and_complete_admission_never_publish_on_final_sto
     use surgeist_html_parser::HtmlFragmentParseRequest;
     use surgeist_html_semantics::{HtmlCaptureLimits, HtmlFragmentContext};
     let cancel = AtomicBool::new(false);
-    let mut dom =
-        Dom::new(DomLimits::new(256, 65536, 256, 1024, 1024, 16, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            256,
+            65536,
+            256,
+            1024,
+            1024,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let doc = batch.create_document();
     let host = batch.create_element_ns(&doc, crate::Namespace::html(), "div");
@@ -685,12 +769,21 @@ fn captured_url_join_preserves_first_work_stop_at_every_read_and_exact_lookup_un
     use surgeist_html_semantics::*;
     let cancel = AtomicBool::new(false);
     let mut dom = Dom::new(
-        DomLimits::new(256, 65536, 256, 1024, 1024, 16, 1_000_000)
-            .unwrap()
-            .with_base_processing(256, 10_000_000)
-            .unwrap()
-            .with_encoding_url_processing(256, 10_000_000)
-            .unwrap(),
+        DomLimits::new(
+            256,
+            65536,
+            256,
+            1024,
+            1024,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_base_processing(256, 10_000_000)
+        .unwrap()
+        .with_encoding_url_processing(256, 10_000_000)
+        .unwrap(),
     )
     .unwrap();
     let mut batch = DomBatch::new();
@@ -850,8 +943,20 @@ fn captured_url_join_preserves_first_work_stop_at_every_read_and_exact_lookup_un
 fn parsed_dialog_owned_history_is_prepared_before_publication_and_late_stop_is_atomic() {
     use crate::store::canonical::Interactive as DocumentInteractiveState;
     let cancel = AtomicBool::new(false);
-    let mut dom =
-        Dom::new(DomLimits::new(256, 65536, 256, 1024, 1024, 16, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            256,
+            65536,
+            256,
+            1024,
+            1024,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let environment = environment(&mut dom);
     let report = report_for(
         "<!doctype html><dialog open returnvalue=content></dialog><template><dialog open></dialog></template>",

@@ -337,7 +337,7 @@ fn fact(
                     let mut name = None;
                     for attribute in element.attributes().iter() {
                         step()?;
-                        if attribute.name().namespace().uri().is_none()
+                        if attribute.name().namespace_uri().is_none()
                             && attribute
                                 .name()
                                 .local_name()
@@ -806,11 +806,11 @@ impl Families {
         let unchanged_attributes = match (change.before, change.after) {
             (Some(before), Some(after)) => match (before.kind, after.kind) {
                 (DomNodeKind::Element(before), DomNodeKind::Element(after)) => {
-                    Arc::ptr_eq(
-                        before.attributes().shared_attributes(),
-                        after.attributes().shared_attributes(),
-                    ) && surgeist_html::KnownHtmlElement::from_name(before.name())
-                        == surgeist_html::KnownHtmlElement::from_name(after.name())
+                    before
+                        .attributes_backing()
+                        .same_storage(after.attributes_backing())
+                        && surgeist_html::KnownHtmlElement::from_name(before.name())
+                            == surgeist_html::KnownHtmlElement::from_name(after.name())
                 }
                 _ => false,
             },

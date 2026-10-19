@@ -361,10 +361,12 @@ impl Draft {
         let payload =
             source::storage::canonical_slot(formed.value.value(), || self.source_step(cancel))?;
         let reusable = formed.value.value().node.is_none() && !formed.value.value().retired;
-        let dependency =
-            payload::slot_dependency(formed.value.value(), self.custody_registry(), |next| {
-                self.admit_custody_usage(next, cancel)
-            })?;
+        let dependency = payload::slot_dependency(
+            formed.value.value(),
+            self.custody_registry(),
+            Some(&self.names),
+            |next| self.admit_custody_usage(next, cancel),
+        )?;
         let shared = formed
             .value
             .debit_mut()
@@ -633,6 +635,16 @@ impl Draft {
             ids: allocated_ids,
             slots,
         } = self.finish_node_slots(cancel)?;
+        let name_promotions = name_registry::Promotions::prepare(
+            &self.names,
+            &slots,
+            &touched,
+            &self.base.slots,
+            &mut name_registry::Admission {
+                global: &mut |next| self.admit_custody_usage(next, cancel),
+                step: &mut || self.source_step(cancel),
+            },
+        )?;
         let id = |key| match key {
             Key::Existing(id) => id,
             Key::Created(index) => allocated_ids
@@ -960,6 +972,7 @@ impl Draft {
         let semantic_changed = !changes.is_empty();
         Ok((
             Prepared {
+                name_promotions,
                 created_ranges,
                 retirements,
                 formation,
@@ -1211,7 +1224,20 @@ mod tests {
     use scale_metrics::{Counters, Hooks, Measurement};
 
     fn fixture() -> (Dom, DocumentId, NodeId, NodeId) {
-        let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 32, 16, 8, 65536).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                4096,
+                64,
+                32,
+                16,
+                8,
+                65536,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
         let form = batch.create_element_ns(&document, crate::Namespace::html(), "form");

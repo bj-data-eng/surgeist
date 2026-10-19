@@ -6,7 +6,20 @@ use surgeist_dom::{
 };
 
 fn dom() -> Dom {
-    Dom::new(DomLimits::new(64, 4096, 128, 0, 0, 16, 65536).unwrap()).unwrap()
+    Dom::new(
+        DomLimits::new(
+            64,
+            4096,
+            128,
+            0,
+            0,
+            16,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> surgeist_dom::DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
@@ -36,7 +49,7 @@ fn native_generic_elements_keep_exact_names_and_known_null_creation_state() {
     let element = node.as_element().unwrap();
     assert_eq!(node.node_name(), DocumentString::from("MiXeD:input"));
     assert_eq!(node.tag_name(), Some(DocumentString::from("MiXeD:input")));
-    assert_eq!(element.name().namespace(), &Namespace::none());
+    assert_eq!(element.name().namespace_uri(), Namespace::none().uri());
     assert_eq!(element.name().prefix(), None);
     assert_eq!(
         element.name().local_name(),
@@ -163,10 +176,10 @@ fn attributes_preserve_expanded_identity_prefix_order_and_first_qualified_match(
         ),
         None
     );
-    let attrs = element.attributes().as_slice();
+    let attrs = element.attributes();
     assert_eq!(attrs.len(), 3);
     assert_eq!(attrs[0].name().prefix(), Some(&DocumentString::from("p")));
-    assert_eq!(attrs[1].name().namespace(), &b);
+    assert_eq!(attrs[1].name().namespace_uri(), b.uri());
     assert_eq!(
         old.node(root)
             .unwrap()
@@ -243,16 +256,22 @@ fn namespace_validation_uses_first_colon_and_source_error_precedence() {
         apply(&mut dom, batch);
         let snapshot = dom.snapshot();
         let element = snapshot.node(root).unwrap().as_element().unwrap();
+        let namespace = Namespace::from_uri(namespace);
+        let local = DocumentString::from(local);
         let attr = element
             .attributes()
-            .get(&Namespace::from_uri(namespace), &local.into())
+            .iter()
+            .find(|attribute| {
+                attribute.name().namespace_uri() == namespace.uri()
+                    && attribute.name().local_name() == &local
+            })
             .unwrap();
         // Repeated expanded identity preserves the first installed prefix.
         assert_eq!(
             attr.name().prefix(),
             prefix.map(DocumentString::from).as_ref()
         );
-        assert_eq!(attr.name().local_name(), &DocumentString::from(local));
+        assert_eq!(attr.name().local_name(), &local);
     }
 }
 
@@ -349,7 +368,20 @@ fn element_traversal_filters_character_data_and_preserves_captured_indices() {
 #[test]
 fn exact_attribute_budget_counts_all_stored_name_parts_and_rolls_back_overflow() {
     // 31 Document + 1 Element + 5 URI + 1 prefix + 1 local + 2 value = 41.
-    let mut dom = Dom::new(DomLimits::new(2, 41, 8, 0, 0, 8, 8192).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            2,
+            41,
+            8,
+            0,
+            0,
+            8,
+            8192,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let root = batch.create_element(&document, "R");
@@ -414,7 +446,7 @@ fn attribute_names_namespaces_and_values_preserve_exact_utf16_units() {
     );
     assert_eq!(element.attribute_ns(&namespace, &local), Some(&value));
     assert_eq!(
-        element.attributes().as_slice()[1].name().prefix(),
+        element.attributes()[1].name().prefix(),
         Some(&DocumentString::from("p"))
     );
 }

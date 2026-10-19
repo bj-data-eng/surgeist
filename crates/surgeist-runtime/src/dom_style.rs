@@ -2320,18 +2320,40 @@ mod tests {
         }
     }
     fn dom() -> Dom {
-        Dom::new(DomLimits::new(256, 100_000, 1024, 0, 0, 32, 1_000_000).unwrap()).unwrap()
+        Dom::new(
+            DomLimits::new(
+                256,
+                100_000,
+                1024,
+                0,
+                0,
+                32,
+                1_000_000,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap()
     }
     fn dispatch_dom() -> Dom {
         Dom::new(
-            DomLimits::new(256, 100_000, 1024, 0, 0, 32, 1_000_000)
-                .unwrap()
-                .with_dispatch_custody(
-                    surgeist_dom::DomDispatchCustodyLimits::new(
-                        64, 4096, 16_000_000, 16_000_000, 4_000_000,
-                    )
-                    .unwrap(),
-                ),
+            DomLimits::new(
+                256,
+                100_000,
+                1024,
+                0,
+                0,
+                32,
+                1_000_000,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap()
+            .with_dispatch_custody(
+                surgeist_dom::DomDispatchCustodyLimits::new(
+                    64, 4096, 16_000_000, 16_000_000, 4_000_000,
+                )
+                .unwrap(),
+            ),
         )
         .unwrap()
     }
@@ -5268,22 +5290,43 @@ mod replacement_test {
     fn replacing_the_actual_style_owner_preserves_original_task_and_does_not_replay_event() {
         let cancel = AtomicBool::new(false);
         let mut dom = Dom::new(
-            DomLimits::new(64, 10000, 256, 0, 0, 16, 100000)
-                .unwrap()
-                .with_dispatch_custody(
-                    surgeist_dom::DomDispatchCustodyLimits::new(
-                        64, 4096, 16_000_000, 16_000_000, 4_000_000,
-                    )
-                    .unwrap(),
-                ),
+            DomLimits::new(
+                64,
+                10000,
+                256,
+                0,
+                0,
+                16,
+                100000,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap()
+            .with_dispatch_custody(
+                surgeist_dom::DomDispatchCustodyLimits::new(
+                    64, 4096, 16_000_000, 16_000_000, 4_000_000,
+                )
+                .unwrap(),
+            ),
         )
         .unwrap();
         let mut b = DomBatch::new();
         let document = b.create_document();
         let c = dom.apply(b, &cancel).unwrap();
         let document = c.created(&document).unwrap().unwrap();
-        let other_dom =
-            Dom::new(DomLimits::new(64, 10000, 256, 0, 0, 16, 100000).unwrap()).unwrap();
+        let other_dom = Dom::new(
+            DomLimits::new(
+                64,
+                10000,
+                256,
+                0,
+                0,
+                16,
+                100000,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let other_session = DomSession::new(other_dom, session_limits(limits())).unwrap();
         let mut session = DomSession::new(dom, session_limits(limits())).unwrap();
         let permission = session.style_execution();

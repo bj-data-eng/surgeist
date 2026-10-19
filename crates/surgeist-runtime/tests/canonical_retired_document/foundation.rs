@@ -122,7 +122,7 @@ fn create_ordinary_nodes(fixture: &mut HostedFixture, hosted: bool) {
             .unwrap()
             .as_element()
             .unwrap();
-        assert_eq!(element.name().namespace(), &namespace);
+        assert_eq!(element.name().namespace_uri(), namespace.uri());
         assert_eq!(element.name().prefix(), prefix.as_ref());
         assert_eq!(element.name().local_name(), &DocumentString::from(local));
         assert_eq!(element.custom_element_registry(), registry);
@@ -155,7 +155,20 @@ fn immutable_text_and_element_clones_get_fresh_retired_target_identities() {
     fixture.retire();
     // import_node is the existing public clone algorithm, for both same-owner
     // immutable captures and a capture from a separate canonical owner.
-    let mut foreign = Dom::new(DomLimits::new(32, 4096, 16, 0, 0, 4, 65536).unwrap()).unwrap();
+    let mut foreign = Dom::new(
+        DomLimits::new(
+            32,
+            4096,
+            16,
+            0,
+            0,
+            4,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let foreign_doc = batch.create_document();
     let foreign_text = batch.create_text(&foreign_doc, exact.clone());
@@ -274,7 +287,10 @@ fn xml_creator_reads_retained_origin_and_platform_but_creates_a_fresh_closed_doc
         assert_eq!(metadata.custom_element_registry(), DomRegistryBinding::Null);
         assert_eq!(snapshot.relevant_global(document.node()).unwrap(), None);
         let root = snapshot.node(actual.document_element().unwrap()).unwrap();
-        assert_eq!(root.as_element().unwrap().name().namespace(), &namespace);
+        assert_eq!(
+            root.as_element().unwrap().name().namespace_uri(),
+            namespace.uri()
+        );
         assert_eq!(root.node_name(), DocumentString::from("Root"));
         assert_eq!(root.owner_document(), Some(document));
     }
@@ -429,10 +445,10 @@ fn completed_native_fragment_installs_into_retired_document_with_actual_fresh_ma
         let node = snapshot.node(element).unwrap();
         assert_eq!(node.parent(), Some(fixture.body));
         assert_eq!(node.owner_document(), Some(fixture.top.document()));
-        assert_eq!(
-            node.as_element().unwrap().name(),
-            &QualifiedName::new(Namespace::html(), None, "div")
-        );
+        let name = node.as_element().unwrap().name();
+        assert_eq!(name.namespace_uri(), Namespace::html().uri());
+        assert_eq!(name.prefix(), None);
+        assert_eq!(name.local_name(), &DocumentString::from("div"));
         assert_eq!(
             node.as_element().unwrap().custom_element_registry(),
             fixture.registry
@@ -468,7 +484,20 @@ fn malformed_foreign_stale_cancelled_and_late_failed_edits_leave_retired_documen
     let mut fixture = HostedFixture::retired();
     let before = fixture.session.snapshot();
     let usage = fixture.session.dom().usage();
-    let mut foreign = Dom::new(DomLimits::new(8, 1024, 8, 0, 0, 1, 65536).unwrap()).unwrap();
+    let mut foreign = Dom::new(
+        DomLimits::new(
+            8,
+            1024,
+            8,
+            0,
+            0,
+            1,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let commit = foreign.apply(batch, &cancel()).unwrap();

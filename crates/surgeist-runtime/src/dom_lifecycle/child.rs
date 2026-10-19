@@ -1086,8 +1086,21 @@ mod url_configuration_tests {
     }
     fn fixture() -> DomSession {
         DomSession::new(
-            Dom::new(DomLimits::new(256, 1_000_000, 512, 512, 512, 32, 4_000_000).unwrap())
+            Dom::new(
+                DomLimits::new(
+                    256,
+                    1_000_000,
+                    512,
+                    512,
+                    512,
+                    32,
+                    4_000_000,
+                    surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                        .unwrap(),
+                )
                 .unwrap(),
+            )
+            .unwrap(),
             DomSessionLimits {
                 source_events: crate::DomSourceEventRuntimeLimits {
                     jobs: 0,

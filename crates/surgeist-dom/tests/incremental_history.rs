@@ -12,7 +12,17 @@ const LARGE_HISTORY: usize = 32_768;
 const HISTORY_BYTES: usize = 64_000_000;
 
 fn limits(entries: usize, bytes: usize) -> DomLimits {
-    DomLimits::new(16, 16_384, 16, 0, 0, entries, bytes).unwrap()
+    DomLimits::new(
+        16,
+        16_384,
+        16,
+        0,
+        0,
+        entries,
+        bytes,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
 }
 
 struct Fixture {

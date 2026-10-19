@@ -90,8 +90,20 @@ fn retain_fixture_owner(dom: &mut Dom, owner: &DomStyleCssomRoot) {
 
 fn fixture(unrelated: usize, with_target: bool) -> Fixture {
     let cancel = AtomicBool::new(false);
-    let mut dom =
-        Dom::new(DomLimits::new(1024, 1_000_000, 4096, 0, 0, 8, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            1024,
+            1_000_000,
+            4096,
+            0,
+            0,
+            8,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     // Target identity and topology stay fixed when unrelated roots increase.
     let document = batch.create_document();

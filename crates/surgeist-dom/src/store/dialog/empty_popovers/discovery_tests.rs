@@ -73,14 +73,21 @@ fn actual_show_proves_empty_popover_lists_without_visiting_hidden_raw_members() 
     let cancel = AtomicBool::new(false);
     for unrelated in [0, 256, 4096] {
         let mut dom = Dom::new(
-            DomLimits::new(8192, 1_000_000, 16_384, 128, 128, 16, 1_000_000)
-                .unwrap()
-                .with_dispatch_custody(
-                    crate::DomDispatchCustodyLimits::new(
-                        64, 4096, 16_000_000, 16_000_000, 4_000_000,
-                    )
+            DomLimits::new(
+                8192,
+                1_000_000,
+                16_384,
+                128,
+                128,
+                16,
+                1_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap()
+            .with_dispatch_custody(
+                crate::DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000)
                     .unwrap(),
-                ),
+            ),
         )
         .unwrap();
         let mut batch = DomBatch::new();
@@ -293,8 +300,20 @@ fn actual_show_proves_empty_popover_lists_without_visiting_hidden_raw_members() 
 fn actual_source_adoption_keeps_original_raw_owner_and_current_empty_popover_facts_distinct() {
     let cancel = AtomicBool::new(false);
     for unrelated in [0, 256] {
-        let mut dom =
-            Dom::new(DomLimits::new(1024, 1_000_000, 2048, 0, 0, 16, 1_000_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                1024,
+                1_000_000,
+                2048,
+                0,
+                0,
+                16,
+                1_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = DomBatch::new();
         let first = batch.create_document();
         let second = batch.create_document();

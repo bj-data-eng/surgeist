@@ -24,7 +24,17 @@ use surgeist_dom::{
 };
 
 fn limits() -> DomLimits {
-    DomLimits::new(256, 100_000, 1024, 1024, 1024, 64, 4_000_000).unwrap()
+    DomLimits::new(
+        256,
+        100_000,
+        1024,
+        1024,
+        1024,
+        64,
+        4_000_000,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
 }
 fn owner() -> Dom {
     Dom::new(limits()).unwrap()
@@ -828,7 +838,20 @@ fn late_invalid_command_and_cancelled_batch_do_not_publish_flags_layer_identity_
 
 #[test]
 fn one_short_command_allowance_refuses_the_whole_batch_and_exact_allowance_still_enters_model() {
-    let mut dom = Dom::new(DomLimits::new(8, 4096, 1, 64, 64, 8, 65_536).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            8,
+            4096,
+            1,
+            64,
+            64,
+            8,
+            65_536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let document = document(&mut dom);
     let node = element(&mut dom, document, Namespace::html(), "div");
     let before = dom.snapshot();
@@ -900,7 +923,20 @@ fn source_zero_storage_work_and_cancel_refuse_before_any_model_prefix_and_allow_
 fn wrong_kind_foreign_and_retired_operands_cannot_target_new_generation_or_change_captures() {
     // Capacity is just the Document and one Element: replacement must reuse
     // retired capacity rather than hide stale-handle behavior behind growth.
-    let mut dom = Dom::new(DomLimits::new(2, 4096, 16, 64, 64, 8, 65_536).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            2,
+            4096,
+            16,
+            64,
+            64,
+            8,
+            65_536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let document = document(&mut dom);
     let node = element(&mut dom, document, Namespace::html(), "div");
     fullscreen(&mut dom, node);
@@ -939,8 +975,20 @@ fn wrong_kind_foreign_and_retired_operands_cannot_target_new_generation_or_chang
 #[test]
 fn matching_intermediate_shadow_document_does_not_hide_deeper_adoption_membership() {
     let cancel = AtomicBool::new(false);
-    let mut dom =
-        Dom::new(DomLimits::new(64, 100_000, 256, 256, 256, 32, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            64,
+            100_000,
+            256,
+            256,
+            256,
+            32,
+            1_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let a = batch.create_document();
     let b = batch.create_document();

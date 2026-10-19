@@ -637,7 +637,17 @@ mod tests {
     #[test]
     fn private_references_survive_real_publication_rollback_and_exposure_without_backlog_scan() {
         let cancel = AtomicBool::new(false);
-        let limits = DomLimits::new(256, 65536, 256, 0, 0, 8, 1_000_000).unwrap();
+        let limits = DomLimits::new(
+            256,
+            65536,
+            256,
+            0,
+            0,
+            8,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap();
         let mut dom = Dom::new(limits).unwrap();
         let mut setup = DomBatch::new();
         let first = setup.create_document();

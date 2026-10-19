@@ -9,7 +9,20 @@ fn fixture() -> (
     Draft,
 ) {
     let cancel = AtomicBool::new(false);
-    let mut dom = Dom::new(DomLimits::new(64, 4096, 64, 0, 0, 16, 4_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            64,
+            4096,
+            64,
+            0,
+            0,
+            16,
+            4_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut source = dom
         .register_hosted_source(
             DomHostedLimits::new(

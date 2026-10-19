@@ -731,12 +731,22 @@ mod payload_tests {
         };
         let fixture = |storage_bytes| {
             let mut dom = Dom::new(
-                DomLimits::new(128, 100_000, 256, 128, 128, 32, 4_000_000)
-                    .unwrap()
-                    .with_dispatch_custody(
-                        DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000)
-                            .unwrap(),
-                    ),
+                DomLimits::new(
+                    128,
+                    100_000,
+                    256,
+                    128,
+                    128,
+                    32,
+                    4_000_000,
+                    surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                        .unwrap(),
+                )
+                .unwrap()
+                .with_dispatch_custody(
+                    DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000)
+                        .unwrap(),
+                ),
             )
             .unwrap();
             let mut batch = DomBatch::new();

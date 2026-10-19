@@ -238,7 +238,7 @@ impl Draft {
     pub(super) fn details_attribute_change(
         &mut self,
         target: Key,
-        name: &crate::QualifiedName,
+        name: &crate::DomQualifiedName,
         old: Option<&DocumentString>,
         new: Option<&DocumentString>,
         limits: DomLimits,
@@ -255,7 +255,11 @@ impl Draft {
         } else {
             HtmlDetailsAttribute::Other
         };
-        match surgeist_html::details_attribute_effect(name.namespace(), attribute, old, new) {
+        let namespace = name
+            .namespace_uri()
+            .cloned()
+            .map_or_else(crate::Namespace::none, crate::Namespace::from_uri);
+        match surgeist_html::details_attribute_effect(&namespace, attribute, old, new) {
             HtmlDetailsAttributeEffect::None => Ok(()),
             HtmlDetailsAttributeEffect::CloseGiven => {
                 self.details_exclusivity(target, HtmlDetailsExclusivity::CloseGiven, limits, cancel)
@@ -585,10 +589,19 @@ mod tests {
     use super::*;
     use crate::Namespace;
     fn policy(pending: usize) -> DomLimits {
-        DomLimits::new(32, 4096, 64, 0, 0, 8, 65536)
-            .unwrap()
-            .with_details_toggle_intentions(pending)
-            .unwrap()
+        DomLimits::new(
+            32,
+            4096,
+            64,
+            0,
+            0,
+            8,
+            65536,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_details_toggle_intentions(pending)
+        .unwrap()
     }
     fn fixture() -> (Dom, DocumentId, NodeId, NodeId) {
         let mut dom = Dom::new(policy(8)).unwrap();
@@ -685,8 +698,20 @@ mod tests {
     }
     fn named_draft() -> (Fixture, Key, usize) {
         let (mut dom, _, a, _) = fixture();
-        dom.set_limits(DomLimits::new(32, 100_000, 64, 0, 0, 8, 65536).unwrap())
-            .unwrap();
+        dom.set_limits(
+            DomLimits::new(
+                32,
+                100_000,
+                64,
+                0,
+                0,
+                8,
+                65536,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut units = Vec::with_capacity(4096);
         units.push(u16::from(b'g'));
         let capacity = units.capacity();

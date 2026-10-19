@@ -1563,12 +1563,12 @@ impl Draft {
     pub(super) fn select_attribute(
         &mut self,
         key: Key,
-        name: &crate::QualifiedName,
+        name: &crate::DomQualifiedName,
         change: attributes::AttributeChange,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if name.namespace().uri().is_some() {
+        if name.namespace_uri().is_some() {
             return Ok(());
         }
         let is = |a: Attr| {
@@ -1845,10 +1845,19 @@ mod tests {
         ];
         for &(raw, multiple, expected) in cases {
             let mut dom = Dom::new(
-                DomLimits::new(16, 100_000, 64, 0, 0, 8, 100_000)
-                    .unwrap()
-                    .with_select_processing(64, 1_000_000, 1_000_000)
-                    .unwrap(),
+                DomLimits::new(
+                    16,
+                    100_000,
+                    64,
+                    0,
+                    0,
+                    8,
+                    100_000,
+                    crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                )
+                .unwrap()
+                .with_select_processing(64, 1_000_000, 1_000_000)
+                .unwrap(),
             )
             .unwrap();
             let mut batch = DomBatch::new();
@@ -1880,10 +1889,19 @@ mod tests {
             (DocumentString::from("1"), true, true, false),
         ] {
             let mut dom = Dom::new(
-                DomLimits::new(16, 100_000, 64, 0, 0, 8, 100_000)
-                    .unwrap()
-                    .with_select_processing(64, 1_000_000, 1_000_000)
-                    .unwrap(),
+                DomLimits::new(
+                    16,
+                    100_000,
+                    64,
+                    0,
+                    0,
+                    8,
+                    100_000,
+                    crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                )
+                .unwrap()
+                .with_select_processing(64, 1_000_000, 1_000_000)
+                .unwrap(),
             )
             .unwrap();
             let mut batch = DomBatch::new();
@@ -1912,14 +1930,23 @@ mod tests {
         }
     }
     fn policy(work: usize, bytes: usize) -> DomLimits {
-        DomLimits::new(32, 4096, 64, 0, 0, 8, 65536)
-            .unwrap()
-            .with_select_processing(16, 100000, 100000)
-            .unwrap()
-            .with_select_value_queries(
-                HtmlCaptureLimits::new(32, 64, 32, 4096, 32, 0, 0, 16_777_216),
-                HtmlSemanticLimits::new(work, 1, 128, 0, bytes, 128),
-            )
+        DomLimits::new(
+            32,
+            4096,
+            64,
+            0,
+            0,
+            8,
+            65536,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_select_processing(16, 100000, 100000)
+        .unwrap()
+        .with_select_value_queries(
+            HtmlCaptureLimits::new(32, 64, 32, 4096, 32, 0, 0, 16_777_216),
+            HtmlSemanticLimits::new(work, 1, 128, 0, bytes, 128),
+        )
     }
     fn fixture() -> (Dom, NodeId, NodeId) {
         let cancel = AtomicBool::new(false);
@@ -1987,10 +2014,19 @@ mod tests {
     fn unconfigured_query_and_short_capture_refuse_only_at_reached_value_query() {
         let (mut dom, select, _) = fixture();
         let cancel = AtomicBool::new(false);
-        let base = DomLimits::new(32, 4096, 64, 0, 0, 8, 65536)
-            .unwrap()
-            .with_select_processing(16, 100000, 100000)
-            .unwrap();
+        let base = DomLimits::new(
+            32,
+            4096,
+            64,
+            0,
+            0,
+            8,
+            65536,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_select_processing(16, 100000, 100000)
+        .unwrap();
         dom.set_limits(base).unwrap();
         let mut b = DomBatch::new();
         b.set_select_selected_index(select, -1);
@@ -2354,7 +2390,20 @@ mod effect_scope_tests {
     use super::*;
     fn fixture() -> (Dom, Draft, Key, Key, Key, Key) {
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(32, 4096, 32, 0, 0, 8, 1_000_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                4096,
+                32,
+                0,
+                0,
+                8,
+                1_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
         let root = batch.create_element(&document, "root");

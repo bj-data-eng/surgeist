@@ -134,8 +134,18 @@ fn production_session_local_source_scale() {
     let cancel = AtomicBool::new(false);
     for managed in selected_sizes() {
         let started = Instant::now();
-        let limits =
-            DomLimits::new(managed, managed * 128, CHUNK * 2, 0, 0, 32, 4_000_000).unwrap();
+        let limits = DomLimits::new(
+            managed,
+            managed * 128,
+            CHUNK * 2,
+            0,
+            0,
+            32,
+            4_000_000,
+            surgeist_dom::DomNameLimits::new(1_073_741_824, 2_000_000, 64_000_000, 268_435_456)
+                .unwrap(),
+        )
+        .unwrap();
         let mut dom = Dom::new(limits).unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
@@ -301,11 +311,21 @@ fn production_session_parked_source_reentry_scale() {
     let cancel = AtomicBool::new(false);
     for managed in selected_sizes() {
         let setup = Instant::now();
-        let limits = DomLimits::new(managed + 1, managed * 128, CHUNK * 4, 0, 0, 64, 4_000_000)
-            .unwrap()
-            .with_dispatch_custody(
-                DomDispatchCustodyLimits::new(8, 128, 1_000_000, 1_000_000, 100_000).unwrap(),
-            );
+        let limits = DomLimits::new(
+            managed + 1,
+            managed * 128,
+            CHUNK * 4,
+            0,
+            0,
+            64,
+            4_000_000,
+            surgeist_dom::DomNameLimits::new(1_073_741_824, 2_000_000, 64_000_000, 268_435_456)
+                .unwrap(),
+        )
+        .unwrap()
+        .with_dispatch_custody(
+            DomDispatchCustodyLimits::new(8, 128, 1_000_000, 1_000_000, 100_000).unwrap(),
+        );
         let mut dom = Dom::new(limits).unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();

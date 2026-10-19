@@ -87,8 +87,20 @@ mod tests {
         // Isolate the failure-custody owner. No active Window, watcher receipt
         // or modal language trace is fabricated by this private storage test.
         let cancel = AtomicBool::new(false);
-        let mut dom =
-            Dom::new(DomLimits::new(32, 100_000, 64, 0, 0, 16, 1_000_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                100_000,
+                64,
+                0,
+                0,
+                16,
+                1_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
         let subject = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");

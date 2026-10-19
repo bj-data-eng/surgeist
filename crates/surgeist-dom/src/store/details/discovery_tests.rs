@@ -49,10 +49,19 @@ impl Drop for Probe {
 
 fn case(unrelated: usize, matching_peer: bool) {
     let cancel = AtomicBool::new(false);
-    let limits = DomLimits::new(256, 32768, 512, 0, 0, 8, 1_000_000)
-        .unwrap()
-        .with_details_toggle_intentions(16)
-        .unwrap();
+    let limits = DomLimits::new(
+        256,
+        32768,
+        512,
+        0,
+        0,
+        8,
+        1_000_000,
+        crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_details_toggle_intentions(16)
+    .unwrap();
     let mut dom = Dom::new(limits).unwrap();
     let mut setup = DomBatch::new();
     let document = setup.create_document();

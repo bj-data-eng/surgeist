@@ -36,9 +36,20 @@ fn parse_limits() -> HtmlParseLimits {
 #[test]
 fn completed_disabled_contextual_svg_script_keeps_processed_parser_state_and_target_document() {
     let cancel = AtomicBool::new(false);
-    let mut dom =
-        Dom::new(DomLimits::new(1024, 1_000_000, 1024, 4096, 4096, 32, 1_000_000).unwrap())
-            .unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            1024,
+            1_000_000,
+            1024,
+            4096,
+            4096,
+            32,
+            1_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let host = batch.create_element_ns(&document, Namespace::html(), "div");
@@ -202,9 +213,20 @@ fn contextual_fixture(
     local: &str,
 ) -> (Dom, DomHtmlCapture, DocumentId, NodeId) {
     let cancel = AtomicBool::new(false);
-    let mut dom =
-        Dom::new(DomLimits::new(1024, 1_000_000, 1024, 4096, 4096, 32, 1_000_000).unwrap())
-            .unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            1024,
+            1_000_000,
+            1024,
+            4096,
+            4096,
+            32,
+            1_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let host = batch.create_element_ns(&document, namespace, local);
@@ -299,8 +321,8 @@ fn explicit_end_and_foreign_contexts_preserve_svg_namespace_and_parser_cause() {
         let script = installed.node_for(&scripts[0].0).unwrap();
         let node = installed.snapshot().node(script).unwrap();
         assert_eq!(
-            node.as_element().unwrap().name().namespace(),
-            &Namespace::svg()
+            node.as_element().unwrap().name().namespace_uri(),
+            Namespace::svg().uri()
         );
         assert_eq!(
             node.as_element().unwrap().name().local_name(),

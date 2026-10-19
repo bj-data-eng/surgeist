@@ -279,7 +279,20 @@ mod subset_tests {
     #[test]
     fn dropped_spares_shrink_and_merge_without_admission_or_refunding_work() {
         let cancel = AtomicBool::new(false);
-        let dom = Dom::new(DomLimits::new(8, 4096, 64, 0, 0, 0, 0).unwrap()).unwrap();
+        let dom = Dom::new(
+            DomLimits::new(
+                8,
+                4096,
+                64,
+                0,
+                0,
+                0,
+                0,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let batch = DomBatch::new();
         let mut draft = Draft::new_source(
             &dom,

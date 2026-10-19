@@ -1,7 +1,6 @@
 use super::*;
 use crate::names::{attribute_name, name_units, valid_attribute_local_name};
-use crate::{Attribute, Namespace, OrderedAttributes, QualifiedName};
-use surgeist_html::bounded::{HtmlAttributeStorage, HtmlAttributeValidation};
+use crate::{DomAttribute as Attribute, DomQualifiedName as QualifiedName, Namespace};
 
 /// Actual native edit versus the Input Color cloning step whose current value
 /// will be copied by source overlay, without resolving its default again.
@@ -86,43 +85,6 @@ fn retain_name(
     }
     Ok(value.clone())
 }
-fn publish_attributes(
-    attributes: Vec<Attribute>,
-    budget: Option<&source::formation::Formation>,
-    cancel: &AtomicBool,
-) -> Result<OrderedAttributes, DomError> {
-    if let Some(budget) = budget {
-        budget.retain_bytes(size_of::<Vec<Attribute>>(), cancel)?;
-    }
-    let attributes = Arc::new(attributes);
-    #[cfg(test)]
-    if super::scale_metrics::ENABLED {
-        super::scale_metrics::record(super::scale_metrics::Event::StructuralAllocation {
-            bytes: size_of::<Vec<Attribute>>(),
-        });
-    }
-    let mut validation = HtmlAttributeStorage::from_shared_attributes(attributes).validate();
-    loop {
-        source::formation::step(budget, cancel)?;
-        let Some(action) = validation.next_action().expect("unique expanded names") else {
-            break;
-        };
-        let layout = action.layout();
-        let work = layout
-            .record_visits()
-            .checked_add(layout.inspected_bytes())
-            .ok_or(DomError::RepresentationExhausted)?;
-        for _ in 0..work {
-            source::formation::step(budget, cancel)?;
-        }
-        action
-            .advance()
-            .expect("source attribute identity preserved");
-    }
-    let validated = HtmlAttributeValidation::try_finish(&mut Some(validation))
-        .expect("completed unique attributes");
-    Ok(validated.into_attributes())
-}
 
 impl Draft {
     fn attribute_string_equal(
@@ -135,7 +97,7 @@ impl Draft {
             return Ok(false);
         }
         for (left, right) in left.iter().zip(right) {
-            self.source_step(cancel)?;
+            self.name_step(cancel)?;
             if left != right {
                 return Ok(false);
             }
@@ -144,11 +106,11 @@ impl Draft {
     }
     fn attribute_namespace_equal(
         &self,
-        left: &Namespace,
-        right: &Namespace,
+        left: Option<&DocumentString>,
+        right: Option<&DocumentString>,
         cancel: &AtomicBool,
     ) -> Result<bool, DomError> {
-        match (left.uri(), right.uri()) {
+        match (left, right) {
             (None, None) => Ok(true),
             (Some(left), Some(right)) => {
                 self.attribute_string_equal(left.code_units(), right.code_units(), cancel)
@@ -183,7 +145,7 @@ impl Draft {
             )? {
                 return Ok(false);
             }
-            self.source_step(cancel)?;
+            self.name_step(cancel)?;
             if value.code_units()[prefix.len()] != 0x3a {
                 return Ok(false);
             }
@@ -196,7 +158,7 @@ impl Draft {
     }
     fn attribute_position(
         &self,
-        attributes: &OrderedAttributes,
+        attributes: &[Attribute],
         namespace: Option<&Namespace>,
         name: &DocumentString,
         cancel: &AtomicBool,
@@ -204,12 +166,15 @@ impl Draft {
         for (position, attribute) in attributes.iter().enumerate() {
             self.source_step(cancel)?;
             let matched = if let Some(namespace) = namespace {
-                self.attribute_namespace_equal(attribute.name().namespace(), namespace, cancel)?
-                    && self.attribute_string_equal(
-                        attribute.name().local_name().code_units(),
-                        name.code_units(),
-                        cancel,
-                    )?
+                self.attribute_namespace_equal(
+                    attribute.name().namespace_uri(),
+                    namespace.uri(),
+                    cancel,
+                )? && self.attribute_string_equal(
+                    attribute.name().local_name().code_units(),
+                    name.code_units(),
+                    cancel,
+                )?
             } else {
                 self.attribute_qualified_equal(attribute.name(), name, cancel)?
             };
@@ -256,13 +221,14 @@ impl Draft {
             return Err(DomError::WrongNodeKind);
         };
         let mut name_formation = source::formation::Formation::new(self, cancelled)?;
-        let (position, mut name) = if let Some(namespace) = namespace {
+        let mut normalized = name_registry::Normalized::new(&self.names);
+        let (position, raw_name) = if let Some(namespace) = namespace {
             let name = attribute_name(
                 namespace,
                 name,
-                &mut || self.source_step(cancelled),
+                &mut || self.name_step(cancelled),
                 &mut |input, lower| {
-                    source::formation::units(input, lower, name_formation.as_ref(), cancelled)
+                    normalized.units(input, lower, name_formation.as_ref(), cancelled)
                 },
                 &mut |value| retain_string(value, name_formation.as_ref(), cancelled),
             )?;
@@ -274,15 +240,15 @@ impl Draft {
             )?;
             (position, name)
         } else {
-            if !valid_attribute_local_name(name, &mut || self.source_step(cancelled))? {
+            if !valid_attribute_local_name(name, &mut || self.name_step(cancelled))? {
                 return Err(DomError::InvalidCharacter);
             }
             let name = if self.html_element_in_html_document(node)? {
                 crate::names::ascii_lowercase(
                     name,
-                    &mut || self.source_step(cancelled),
+                    &mut || self.name_step(cancelled),
                     &mut |input, lower| {
-                        source::formation::units(input, lower, name_formation.as_ref(), cancelled)
+                        normalized.units(input, lower, name_formation.as_ref(), cancelled)
                     },
                     &mut |value| retain_string(value, name_formation.as_ref(), cancelled),
                 )?
@@ -290,20 +256,31 @@ impl Draft {
                 retain_string(name, name_formation.as_ref(), cancelled)?
             };
             let position = self.attribute_position(element.attributes(), None, &name, cancelled)?;
-            (position, QualifiedName::new(Namespace::none(), None, name))
+            (
+                position,
+                crate::QualifiedName::new(Namespace::none(), None, name),
+            )
         };
-        // Discard a normalized lookup spelling before retaining the original
-        // existing QName. Set-value preserves its actual prefix and order.
-        if let Some(position) = position {
-            drop(name);
+        // Existing set-value preserves its exact canonical prefix and order.
+        // Discard lookup spelling before admitting the selected occurrence.
+        let name = if let Some(position) = position {
+            drop(raw_name);
             drop(name_formation);
             name_formation = source::formation::Formation::new(self, cancelled)?;
-            name = retain_name(
-                element.attributes().as_slice()[position].name(),
+            self.bind_canonical_name(
+                element.attributes()[position].name(),
                 name_formation.as_ref(),
                 cancelled,
-            )?;
-        }
+            )?
+        } else {
+            let canonical = source::formation::Formation::new(self, cancelled)?;
+            let name = self.bind_name(&raw_name, canonical.as_ref(), cancelled)?;
+            drop(raw_name);
+            drop(name_formation);
+            name_formation = canonical;
+            name
+        };
+        drop(normalized);
         self.write_attribute(
             AttributeWrite {
                 node,
@@ -321,6 +298,32 @@ impl Draft {
     pub(super) fn append_attribute(
         &mut self,
         node: Key,
+        attribute: &crate::Attribute,
+        cause: AttributeCause,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        if !matches!(&self.node(node)?.kind, DomNodeKind::Element(_)) {
+            return Err(DomError::WrongNodeKind);
+        }
+        let name_formation = source::formation::Formation::new(self, cancelled)?;
+        let name = self.bind_name(attribute.name(), name_formation.as_ref(), cancelled)?;
+        self.write_attribute(
+            AttributeWrite {
+                node,
+                position: None,
+                name,
+                value: attribute.value(),
+                cause,
+                name_formation,
+            },
+            limits,
+            cancelled,
+        )
+    }
+    pub(super) fn append_canonical_attribute(
+        &mut self,
+        node: Key,
         attribute: &Attribute,
         cause: AttributeCause,
         limits: DomLimits,
@@ -330,7 +333,8 @@ impl Draft {
             return Err(DomError::WrongNodeKind);
         }
         let name_formation = source::formation::Formation::new(self, cancelled)?;
-        let name = retain_name(attribute.name(), name_formation.as_ref(), cancelled)?;
+        let name =
+            self.bind_canonical_name(attribute.name(), name_formation.as_ref(), cancelled)?;
         self.write_attribute(
             AttributeWrite {
                 node,
@@ -368,9 +372,8 @@ impl Draft {
             cancelled,
         )?;
         let old_units = element.units().ok_or(DomError::RepresentationExhausted)?;
-        let old_attribute = position.map_or(Ok(0), |index| {
-            attribute_units(&element.attributes().as_slice()[index])
-        })?;
+        let old_attribute =
+            position.map_or(Ok(0), |index| attribute_units(&element.attributes()[index]))?;
         let base = self.units
             - old_attribute
             - element.nonce().map_or(0, DocumentString::len)
@@ -401,60 +404,57 @@ impl Draft {
         let old_value = position
             .map(|index| {
                 retain_string(
-                    element.attributes().as_slice()[index].value(),
+                    element.attributes()[index].value(),
                     hook.as_ref(),
                     cancelled,
                 )
             })
             .transpose()?;
         let candidate = source::formation::Formation::new(self, cancelled)?;
-        let replacement = Attribute::new(
+        let replacement = Attribute::from_parts(
             write.name,
             retain_string(value, candidate.as_ref(), cancelled)?,
         );
         let nonce = nonce_after_effect(element, nonce_value, candidate.as_ref(), cancelled)?;
         #[cfg(test)]
         let mut attribute_writes = crate::store::CopyObservation::default();
-        let mut attributes = Vec::new();
-        source::formation::reserve(
-            &mut attributes,
-            element.attributes().as_slice().len(),
-            candidate.as_ref(),
-            cancelled,
-        )?;
+        let capacity = element
+            .attributes()
+            .len()
+            .checked_add(usize::from(position.is_none()))
+            .ok_or(DomError::RepresentationExhausted)?;
+        let mut attributes =
+            self.attribute_input(capacity, candidate.as_ref(), cancelled, |values| {
+                source::formation::reserve(values, capacity, candidate.as_ref(), cancelled)
+            })?;
         for (index, attribute) in element.attributes().iter().enumerate() {
             self.source_step(cancelled)?;
             if Some(index) == position {
                 continue;
             }
-            let copied = Attribute::new(
+            let copied = Attribute::from_parts(
                 retain_name(attribute.name(), candidate.as_ref(), cancelled)?,
                 retain_string(attribute.value(), candidate.as_ref(), cancelled)?,
             );
-            attributes.push(copied);
+            attributes.entries.push(copied);
             #[cfg(test)]
             attribute_writes.pushed::<Attribute>();
         }
         if let Some(position) = position {
-            attributes.insert(position, replacement);
+            attributes.entries.insert(position, replacement);
             #[cfg(test)]
-            attribute_writes.extended::<Attribute>(attributes.len() - position);
+            attribute_writes.extended::<Attribute>(attributes.entries.len() - position);
         } else {
-            source::formation::reserve(&mut attributes, 1, candidate.as_ref(), cancelled)?;
-            attributes.push(replacement);
+            attributes.entries.push(replacement);
             #[cfg(test)]
             attribute_writes.pushed::<Attribute>();
         }
-        let attributes = publish_attributes(attributes, candidate.as_ref(), cancelled)?;
         #[cfg(test)]
-        attribute_copy_observation::copied(
-            copy_boundary,
-            attributes.shared_attributes(),
-            self,
-            cancelled,
-        )?;
+        attribute_copy_observation::copied(copy_boundary, &attributes.entries, self, cancelled)?;
+        let attributes = self.form_attributes(attributes, candidate.as_ref(), cancelled)?;
+        let _attributes_custody = attributes.custody;
         let staged = element.with_attributes_formed(
-            attributes,
+            attributes.value,
             &changed,
             nonce,
             candidate.as_ref(),
@@ -581,12 +581,13 @@ impl Draft {
             return Err(DomError::WrongNodeKind);
         };
         let name_formation = source::formation::Formation::new(self, cancelled)?;
+        let mut normalized = name_registry::Normalized::new(&self.names);
         let name = if namespace.is_none() && self.html_element_in_html_document(node)? {
             crate::names::ascii_lowercase(
                 name,
-                &mut || self.source_step(cancelled),
+                &mut || self.name_step(cancelled),
                 &mut |input, lower| {
-                    source::formation::units(input, lower, name_formation.as_ref(), cancelled)
+                    normalized.units(input, lower, name_formation.as_ref(), cancelled)
                 },
                 &mut |value| retain_string(value, name_formation.as_ref(), cancelled),
             )?
@@ -596,11 +597,12 @@ impl Draft {
         let position =
             self.attribute_position(element.attributes(), namespace, &name, cancelled)?;
         drop(name);
+        drop(normalized);
         drop(name_formation);
         let Some(position) = position else {
             return Ok(());
         };
-        let removed = &element.attributes().as_slice()[position];
+        let removed = &element.attributes()[position];
         #[cfg(test)]
         let copy_boundary =
             attribute_copy_observation::before(self, removed.name(), false, cancelled)?;
@@ -616,35 +618,29 @@ impl Draft {
         let nonce = nonce_after_effect(element, nonce_value, candidate.as_ref(), cancelled)?;
         #[cfg(test)]
         let mut attribute_writes = crate::store::CopyObservation::default();
-        let mut attributes = Vec::new();
-        source::formation::reserve(
-            &mut attributes,
-            element.attributes().as_slice().len(),
-            candidate.as_ref(),
-            cancelled,
-        )?;
+        let capacity = element.attributes().len();
+        let mut attributes =
+            self.attribute_input(capacity, candidate.as_ref(), cancelled, |values| {
+                source::formation::reserve(values, capacity, candidate.as_ref(), cancelled)
+            })?;
         for (index, attribute) in element.attributes().iter().enumerate() {
             self.source_step(cancelled)?;
             if index == position {
                 continue;
             }
-            attributes.push(Attribute::new(
+            attributes.entries.push(Attribute::from_parts(
                 retain_name(attribute.name(), candidate.as_ref(), cancelled)?,
                 retain_string(attribute.value(), candidate.as_ref(), cancelled)?,
             ));
             #[cfg(test)]
             attribute_writes.pushed::<Attribute>();
         }
-        let attributes = publish_attributes(attributes, candidate.as_ref(), cancelled)?;
         #[cfg(test)]
-        attribute_copy_observation::copied(
-            copy_boundary,
-            attributes.shared_attributes(),
-            self,
-            cancelled,
-        )?;
+        attribute_copy_observation::copied(copy_boundary, &attributes.entries, self, cancelled)?;
+        let attributes = self.form_attributes(attributes, candidate.as_ref(), cancelled)?;
+        let _attributes_custody = attributes.custody;
         let staged = element.with_attributes_formed(
-            attributes,
+            attributes.value,
             &changed,
             nonce,
             candidate.as_ref(),
@@ -774,13 +770,9 @@ mod attribute_copy_observation {
         // so remove that registered contribution before adding the whole graph.
         let mut registered_bytes = 0;
         if registered {
-            for string in [
-                name.namespace().uri(),
-                name.prefix(),
-                Some(name.local_name()),
-            ]
-            .into_iter()
-            .flatten()
+            for string in [name.namespace_uri(), name.prefix(), Some(name.local_name())]
+                .into_iter()
+                .flatten()
             {
                 registered_bytes += size_of::<Vec<u16>>()
                     + string.shared_code_units().capacity() * size_of::<u16>();
@@ -805,13 +797,14 @@ mod attribute_copy_observation {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         if let Some(mut boundary) = before {
-            // Actual newly owned bank and every retained string occurrence.
-            // This is a lower bound: unrelated name/hook/family locals are not included.
-            boundary.required +=
-                size_of::<Vec<Attribute>>() + attributes.capacity() * size_of::<Attribute>();
-            for attr in attributes {
+            // The actual completed input buffer and retained occurrences, plus
+            // the target body already reserved before that buffer's allocation.
+            // Sealing the target/child custody follows this raw-copy window.
+            boundary.required += size_of::<payload::Payload<crate::name::AttributeValues>>()
+                + attributes.capacity() * size_of::<Attribute>();
+            for attr in attributes.iter() {
                 for string in [
-                    attr.name().namespace().uri(),
+                    attr.name().namespace_uri(),
                     attr.name().prefix(),
                     Some(attr.name().local_name()),
                     Some(attr.value()),
@@ -845,7 +838,7 @@ mod attribute_copy_observation {
         if let Some(mut boundary) = LAST.get() {
             let mut expected = boundary.base_live;
             for string in [
-                name.namespace().uri(),
+                name.namespace_uri(),
                 name.prefix(),
                 Some(name.local_name()),
                 old,
@@ -885,7 +878,7 @@ mod tests {
         }
         fn name(value: &QualifiedName, bytes: &mut usize, units: &mut usize) {
             for value in [
-                value.namespace().uri(),
+                value.namespace_uri(),
                 value.prefix(),
                 Some(value.local_name()),
             ]
@@ -896,17 +889,18 @@ mod tests {
             }
         }
         let attributes = element.attributes();
-        let last = attributes.as_slice().last().unwrap();
+        let last = attributes.last().unwrap();
         // The replacement requests the existing length; old spare capacity
         // belongs to the already-live bank and is not copied into the new one.
-        let mut bytes = size_of::<Vec<Attribute>>() + std::mem::size_of_val(attributes.as_slice());
+        let mut bytes = size_of::<payload::Payload<crate::name::AttributeValues>>()
+            + std::mem::size_of_val(attributes);
         let mut units = 0;
         // nonce_after_effect retains the existing nonce before copying the
         // bank. Some(empty) still owns one shared Vec target header.
         if let Some(nonce) = element.nonce() {
             string(nonce, &mut bytes, &mut units);
         }
-        for attribute in &attributes.as_slice()[..attributes.as_slice().len() - 1] {
+        for attribute in &attributes[..attributes.len() - 1] {
             name(attribute.name(), &mut bytes, &mut units);
             string(attribute.value(), &mut bytes, &mut units);
         }
@@ -936,8 +930,20 @@ mod tests {
         selected: Option<(DomResource, bool)>,
     ) -> Option<attribute_copy_observation::Boundary> {
         let cancel = AtomicBool::new(false);
-        let mut dom =
-            Dom::new(DomLimits::new(16, 2_000_000, 128, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                16,
+                2_000_000,
+                128,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let element = setup.create_element_ns(&document, Namespace::html(), "div");
@@ -1020,8 +1026,8 @@ mod tests {
             assert_eq!(*restored.state, *before.state);
             let node = restored.node(element).unwrap();
             let attributes = node.as_element().unwrap().attributes();
-            assert_eq!(attributes.as_slice().len(), 32);
-            assert_eq!(attributes.as_slice()[31].value().code_units(), &[0xd800]);
+            assert_eq!(attributes.len(), 32);
+            assert_eq!(attributes[31].value().code_units(), &[0xd800]);
             assert_eq!(
                 node.as_element().unwrap().nonce(),
                 Some(&DocumentString::default())
@@ -1098,7 +1104,20 @@ mod tests {
     #[test]
     fn replacement_preserves_prefix_order_nonce_and_historical_utf16() {
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(16, 100_000, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                16,
+                100_000,
+                64,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let associated = setup.create_document();
         let document = setup.create_html_document(&associated, None);
@@ -1125,17 +1144,14 @@ mod tests {
         let current = dom.snapshot();
         let changed = current.node(element).unwrap().as_element().unwrap();
         assert_eq!(
-            changed.attributes().as_slice()[0].name().prefix(),
+            changed.attributes()[0].name().prefix(),
             Some(&"first".into())
         );
-        assert_eq!(changed.attributes().as_slice()[0].value(), &value);
-        assert_eq!(
-            changed.attributes().as_slice()[1].name().local_name(),
-            &"tail".into()
-        );
+        assert_eq!(changed.attributes()[0].value(), &value);
+        assert_eq!(changed.attributes()[1].name().local_name(), &"tail".into());
         assert_eq!(changed.nonce(), Some(&"new nonce".into()));
         let historical = old.node(element).unwrap().as_element().unwrap();
-        assert_eq!(historical.attributes().as_slice()[0].value(), &"old".into());
+        assert_eq!(historical.attributes()[0].value(), &"old".into());
         assert_eq!(historical.nonce(), Some(&"private".into()));
         let mut remove = DomBatch::new();
         remove.remove_attribute_ns(element, namespace, "item");
@@ -1143,17 +1159,27 @@ mod tests {
         dom.apply(remove, &cancel).unwrap();
         let removed = dom.snapshot();
         let removed = removed.node(element).unwrap().as_element().unwrap();
-        assert_eq!(removed.attributes().as_slice().len(), 1);
-        assert_eq!(
-            removed.attributes().as_slice()[0].name().local_name(),
-            &"tail".into()
-        );
+        assert_eq!(removed.attributes().len(), 1);
+        assert_eq!(removed.attributes()[0].name().local_name(), &"tail".into());
         assert_eq!(removed.nonce(), Some(&"".into()));
     }
     #[test]
     fn name_errors_absent_removal_and_late_failure_preserve_atomic_state() {
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(16, 100_000, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                16,
+                100_000,
+                64,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let element = setup.create_element_ns(&document, Namespace::html(), "div");
@@ -1202,8 +1228,20 @@ mod dialog_tail_tests {
     #[test]
     fn actual_dialog_attribute_tail_preserves_owned_payload_through_checkpoint_and_cancel() {
         let cancel = AtomicBool::new(false);
-        let mut dom =
-            Dom::new(DomLimits::new(32, 16384, 64, 0, 0, 16, 1_000_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                16384,
+                64,
+                0,
+                0,
+                16,
+                1_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
         let dialog = batch.create_element_ns(&document, Namespace::html(), "dialog");
@@ -1217,7 +1255,7 @@ mod dialog_tail_tests {
         let (mut draft, _) =
             Draft::new_source(&dom, batch.owner.clone(), &batch.commands, limits, &cancel).unwrap();
         let key = draft.resolve(dialog.into()).unwrap();
-        let attribute = &draft.element(key).unwrap().attributes().as_slice()[0];
+        let attribute = &draft.element(key).unwrap().attributes()[0];
         let formation = source::formation::Formation::new(&draft, &cancel).unwrap();
         let changed = retain_name(attribute.name(), formation.as_ref(), &cancel).unwrap();
         let new_value = retain_string(attribute.value(), formation.as_ref(), &cancel).unwrap();

@@ -8,7 +8,17 @@ use surgeist_dom::{
 const DOCUMENT_UNITS: usize = 31;
 
 fn limits() -> DomLimits {
-    DomLimits::new(64, 2048, 128, 0, 0, 16, 65536).unwrap()
+    DomLimits::new(
+        64,
+        2048,
+        128,
+        0,
+        0,
+        16,
+        65536,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> surgeist_dom::DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
@@ -271,8 +281,20 @@ fn pi_character_data_replacement_updates_maps_and_preserves_old_snapshots() {
 
 #[test]
 fn pi_replacement_can_remove_old_map_capacity_at_the_exact_live_string_limit() {
-    let mut dom =
-        Dom::new(DomLimits::new(4, DOCUMENT_UNITS + 8, 8, 0, 0, 8, 8192).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            4,
+            DOCUMENT_UNITS + 8,
+            8,
+            0,
+            0,
+            8,
+            8192,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let pi = batch.create_processing_instruction(&document, "t", "a='1'");
@@ -400,8 +422,20 @@ fn document_allows_pi_comments_and_one_doctype_but_fragment_rejects_doctype() {
 
 #[test]
 fn new_node_strings_and_derived_pi_map_are_admitted_atomically() {
-    let mut dom =
-        Dom::new(DomLimits::new(8, DOCUMENT_UNITS + 7, 16, 0, 0, 8, 8192).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            8,
+            DOCUMENT_UNITS + 7,
+            16,
+            0,
+            0,
+            8,
+            8192,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut setup = DomBatch::new();
     let document = setup.create_document();
     let document = apply(&mut dom, setup).document(&document).unwrap();
@@ -463,8 +497,20 @@ fn pi_offsets_count_utf16_units_and_noop_replacement_preserves_revision() {
 
 #[test]
 fn pi_map_growth_over_budget_preserves_prior_data_map_revision_and_history() {
-    let mut dom =
-        Dom::new(DomLimits::new(8, DOCUMENT_UNITS + 7, 16, 0, 0, 8, 8192).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            8,
+            DOCUMENT_UNITS + 7,
+            16,
+            0,
+            0,
+            8,
+            8192,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let pi = batch.create_processing_instruction(&document, "t", "x");
@@ -496,8 +542,20 @@ fn pi_map_growth_over_budget_preserves_prior_data_map_revision_and_history() {
 
 #[test]
 fn destroying_pi_and_doctype_reclaims_all_stored_strings_without_breaking_old_capture() {
-    let mut dom =
-        Dom::new(DomLimits::new(8, DOCUMENT_UNITS + 11, 16, 0, 0, 8, 8192).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            8,
+            DOCUMENT_UNITS + 11,
+            16,
+            0,
+            0,
+            8,
+            8192,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let pi = batch.create_processing_instruction(&document, "t", "a='1'");

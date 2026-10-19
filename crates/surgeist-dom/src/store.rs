@@ -23,6 +23,7 @@ mod children;
 pub(crate) mod compact_tests;
 mod control;
 mod custody;
+pub(crate) use custody::{MaterializationId, Usage as MaterializationUsage};
 mod design_mode;
 mod details;
 mod dialog;
@@ -45,6 +46,7 @@ mod input_processing;
 mod installation;
 mod meta;
 mod method;
+mod name_registry;
 mod navigable;
 #[cfg(test)]
 mod oracle_tests;
@@ -123,6 +125,14 @@ pub enum DomResource {
     DispatchCustodyScratch,
     SourceRetainedBytes,
     SourceRetainedUnits,
+    /// Directly owned name records, index capacity and operation receipts.
+    NameRetainedBytes,
+    /// Committed live/dead and pending distinct name entries.
+    NameEntries,
+    /// Cumulative name work within its ordinary or Source operation.
+    NameWork,
+    /// Simultaneously retained or reserved temporary name storage.
+    NameScratch,
     MetaColorSchemeRetainedBytes,
     MetaThemeColorScratch,
 }
@@ -315,6 +325,11 @@ pub enum DomError {
         resource: DomResource,
         limit: usize,
     },
+    /// A cumulative operation-work allowance, independent of address width.
+    WorkLimit {
+        resource: DomResource,
+        limit: u64,
+    },
     InvalidLimit(DomResource),
     AllocationFailed,
     RepresentationExhausted,
@@ -343,6 +358,7 @@ impl std::error::Error for DomError {}
 /// Explicit finite admission policy. No hidden or unlimited default is selected.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomLimits {
+    names: crate::DomNameLimits,
     fullscreen_exits: usize,
     fullscreen_events: usize,
     ranges: usize,
@@ -434,6 +450,10 @@ impl DomLimits {
     pub fn dispatch_custody(self) -> crate::DomDispatchCustodyLimits {
         self.dispatch_custody
     }
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Every independent owner allowance is explicit at construction; required name admission must not acquire an implicit policy"
+    )]
     pub fn new(
         nodes: usize,
         units: usize,
@@ -442,6 +462,7 @@ impl DomLimits {
         slot_assignment_inputs: usize,
         history_entries: usize,
         history_bytes: usize,
+        names: crate::DomNameLimits,
     ) -> Result<Self, DomError> {
         for (value, resource, width) in [
             (nodes, DomResource::ManagedNodes, size_of::<Slot>()),
@@ -469,6 +490,7 @@ impl DomLimits {
             }
         }
         Ok(Self {
+            names,
             fullscreen_exits: 0,
             fullscreen_events: 0,
             ranges: 0,
@@ -706,6 +728,10 @@ impl DomLimits {
     }
     pub fn view_transition_pseudos(self) -> usize {
         self.pseudos
+    }
+    /// Required persistent and operation admission for exact owner names.
+    pub const fn names(self) -> crate::DomNameLimits {
+        self.names
     }
     pub fn managed_nodes(self) -> usize {
         self.nodes
@@ -1168,6 +1194,7 @@ pub struct Dom {
     state: Arc<State>,
     state_custody: transaction::StateCustody,
     custody_registry: bank::CustodyRegistry,
+    names: name_registry::Registry,
     history: history::History,
     document_environment: crate::DomDocumentEnvironment,
     active_task: std::sync::Weak<crate::select::Authorization>,
@@ -1227,13 +1254,24 @@ impl Dom {
             units: 0,
         };
         let state_custody = transaction::StateCustody::initial(&state, &registry, |_| Ok(()))?;
+        let owner = DomOwnerId::allocate()?;
+        let names = name_registry::Registry::new(
+            owner,
+            &registry,
+            limits.names(),
+            &mut name_registry::Admission {
+                global: &mut |_| Ok(()),
+                step: &mut || Ok(()),
+            },
+        )?;
         Ok(Self {
             style_cssom_roots: style_custody::Bank::new(&registry),
             fullscreen_exits: fullscreen::custody::Invocations::new(&registry),
             next_fullscreen_exit: 1,
             dispatch_custody: dispatch::CustodyBank::default(),
             element_tasks: None,
-            owner: DomOwnerId::allocate()?,
+            owner,
+            names,
             revision: DomRevision(0),
             limits,
             state: Arc::new(state),
@@ -1329,6 +1367,7 @@ impl Dom {
         {
             return Err(DomError::SourceOperationPending);
         }
+        self.names.admit_limits(limits.names())?;
         admit(self.state.ranges.len(), limits.ranges, DomResource::Ranges)?;
         admit(
             self.fullscreen_exits.len(),
@@ -1444,6 +1483,7 @@ impl Dom {
         if let Some(op) = &mut self.source_operation {
             op.update_dom_limits(limits);
         }
+        self.names.replace_limits(limits.names());
         self.limits = limits;
         self.trim_history();
         Ok(())
@@ -1573,6 +1613,7 @@ impl Dom {
         )?;
         let changed = guarded.value.changed_from(&self.state);
         let Prepared {
+            name_promotions,
             formation,
             state_frontiers: _,
             root_debit: _,
@@ -1712,6 +1753,7 @@ impl Dom {
         // callbacks or external effects occur while prepared state is private.
         check_cancel(cancelled)?;
         Ok(PreparedPublication {
+            name_promotions,
             state_custody,
             allocation_ids,
             signal_ack,
@@ -1746,6 +1788,7 @@ impl Dom {
         publication: PreparedPublication,
     ) -> CommittedPublication {
         let PreparedPublication {
+            name_promotions,
             state_custody,
             allocation_ids: _,
             signal_ack: _,
@@ -1772,6 +1815,7 @@ impl Dom {
             _formation,
         } = publication;
         if changed {
+            name_promotions.commit();
             #[cfg(test)]
             if scale_metrics::ENABLED {
                 scale_metrics::record(scale_metrics::Event::PublishedRoot);
@@ -1875,6 +1919,8 @@ struct DraftNode {
     open_dialogs: transaction::Sequence<NodeId, Key>,
     top_layer: transaction::Sequence<NodeId, Key>,
     pending_top_layer_removals: transaction::Sequence<NodeId, Key>,
+    // Staged semantic fields die before the child materialization frontier.
+    element_custody: Option<bank::Dependency>,
 }
 impl std::ops::Deref for DraftNode {
     type Target = transaction::NodeFields;
@@ -1983,6 +2029,7 @@ struct Draft {
     source_work_custody: source::formation::SourceWorkCustody,
     source_mirrors: source::formation::SourceMirrors,
     source_ancestor_custody: Option<Arc<source::formation::EventWorkCustody>>,
+    names: name_registry::Operation,
     _header_custody: custody::Debit,
 }
 pub(crate) struct PreparedPublication {
@@ -2012,6 +2059,7 @@ pub(crate) struct PreparedPublication {
     transition_ack: view_transition::TransitionAck,
     _transition_outputs: custody::Debit,
     _formation: Option<source::formation::Formation>,
+    name_promotions: name_registry::Promotions,
 }
 struct Prepared {
     state: State,
@@ -2035,6 +2083,7 @@ struct Prepared {
     root_debit: custody::Debit,
     _transition_outputs: custody::Debit,
     formation: Option<source::formation::Formation>,
+    name_promotions: name_registry::Promotions,
 }
 
 struct PreparedRoot {
@@ -2219,6 +2268,26 @@ impl Draft {
                 source::formation::SourceWorkCustody::allocate(0, &registry, &mut admit_initial)?
             }
         };
+        // One original operation owns these resources outside semantic Restore.
+        // A resumed Source reuses its existing scope; a genuine nested entry
+        // starts a child constrained by every active name-operation ancestor.
+        let names = match initial.and_then(source::initial::Initial::names) {
+            Some(names) => names.clone(),
+            None => {
+                let parent = dom
+                    .source_operation
+                    .as_ref()
+                    .or_else(|| dom.source_parents.last())
+                    .map(|operation| &operation.names);
+                dom.names.begin(
+                    parent,
+                    &mut name_registry::Admission {
+                        global: &mut admit_initial,
+                        step: &mut || source::initial::step(initial, cancelled),
+                    },
+                )?
+            }
+        };
         let existing = bank::Bank::default();
         let existing_custody = bank::BankCustody::default();
         let records_charge = ledger.retain(custody::Usage::ZERO, &mut admit_initial)?;
@@ -2268,6 +2337,7 @@ impl Draft {
             input_captures: bank::Bank::default(),
             input_captures_custody: bank::BankCustody::default(),
             custody_registry: registry,
+            names,
             journal,
             _header_custody: header,
             ranges,
@@ -2677,10 +2747,13 @@ impl Draft {
             option_select: None,
             form_past_names,
         };
-        let ledger = self.custody_ledger().clone();
-        let node = DraftNode::fresh(fields, incoming, &ledger, |usage| {
-            self.admit_custody_usage(usage, cancel)
-        })?;
+        let node = DraftNode::fresh(
+            fields,
+            incoming,
+            self.custody_registry(),
+            &self.names,
+            |usage| self.admit_custody_usage(usage, cancel),
+        )?;
         let counts =
             self.counts
                 .checked_add(transaction::Counts::node(transaction::NodeRead::staged(
@@ -2992,20 +3065,20 @@ impl Draft {
                         let DomNodeKind::Document(metadata) = &self.node(document)?.kind else {
                             unreachable!("checked Document")
                         };
-                        DomNodeKind::Element(DomElement::native(
+                        DomNodeKind::Element(self.native_element(
                             name,
                             metadata,
-                            cancelled,
                             metadata_formation.as_ref(),
+                            cancelled,
                         )?)
                     }
                     Creation::ElementNs { namespace, name } => {
-                        DomNodeKind::Element(DomElement::native_ns(
+                        DomNodeKind::Element(self.native_element_ns(
                             namespace,
                             name,
                             self.document_metadata(document)?.document_environment(),
-                            cancelled,
                             metadata_formation.as_ref(),
+                            cancelled,
                         )?)
                     }
                     Creation::Text(data) => DomNodeKind::Text(source::formation::share(

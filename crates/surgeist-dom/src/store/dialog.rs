@@ -814,7 +814,7 @@ impl Draft {
     pub(super) fn dialog_attribute_operation(
         &mut self,
         key: Key,
-        name: &crate::QualifiedName,
+        name: &crate::DomQualifiedName,
         old_present: bool,
         new_present: bool,
         cancel: &AtomicBool,
@@ -826,7 +826,7 @@ impl Draft {
         // Generic exact-name comparison consumes the HTML vocabulary's spelling;
         // the shared Dialog rule owns the resulting attribute operation.
         self.source_step(cancel)?;
-        if name.namespace().uri().is_some()
+        if name.namespace_uri().is_some()
             || !self.source_ascii(
                 name.local_name(),
                 KnownHtmlAttribute::Open.local_name(),
@@ -837,7 +837,10 @@ impl Draft {
         }
         self.source_step(cancel)?;
         Ok(surgeist_html::dialog_attribute_operation(
-            name.namespace(),
+            &name
+                .namespace_uri()
+                .cloned()
+                .map_or_else(crate::Namespace::none, crate::Namespace::from_uri),
             KnownHtmlAttribute::Open,
             old_present,
             new_present,
@@ -866,8 +869,20 @@ mod tests {
     use super::*;
 
     fn fixture() -> (Dom, NodeId) {
-        let mut dom =
-            Dom::new(DomLimits::new(32, 16384, 64, 0, 0, 16, 1_000_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                16384,
+                64,
+                0,
+                0,
+                16,
+                1_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
         let dialog = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");
@@ -879,8 +894,20 @@ mod tests {
     fn native_open_list_growth_is_unique_and_one_short_preserves_the_original_bank() {
         let cancel = AtomicBool::new(false);
         for short in [true, false] {
-            let mut dom =
-                Dom::new(DomLimits::new(32, 16384, 64, 0, 0, 16, 1_000_000).unwrap()).unwrap();
+            let mut dom = Dom::new(
+                DomLimits::new(
+                    32,
+                    16384,
+                    64,
+                    0,
+                    0,
+                    16,
+                    1_000_000,
+                    crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
             let mut batch = DomBatch::new();
             let document = batch.create_document();
             let first = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");

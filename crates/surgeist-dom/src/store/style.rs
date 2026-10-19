@@ -401,7 +401,7 @@ impl Draft {
     pub(super) fn style_attribute_change(
         &mut self,
         key: Key,
-        name: &crate::QualifiedName,
+        name: &crate::DomQualifiedName,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
@@ -412,7 +412,7 @@ impl Draft {
         let Some(attribute) = attribute else {
             return Ok(());
         };
-        if name.namespace().uri().is_none()
+        if name.namespace_uri().is_none()
             && attribute == surgeist_html::KnownHtmlAttribute::Blocking
         {
             if !self.style_potentially_render_blocking(key, cancel)? {
@@ -420,8 +420,13 @@ impl Draft {
             }
             return Ok(());
         }
-        if surgeist_html::style_attribute_effect(name.namespace(), attribute)
-            != surgeist_html::HtmlStyleAttributeEffect::OwnerAttributes
+        if surgeist_html::style_attribute_effect(
+            &name
+                .namespace_uri()
+                .cloned()
+                .map_or_else(crate::Namespace::none, crate::Namespace::from_uri),
+            attribute,
+        ) != surgeist_html::HtmlStyleAttributeEffect::OwnerAttributes
         {
             return Ok(());
         }

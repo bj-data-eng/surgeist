@@ -148,9 +148,13 @@ pub(in crate::store) fn dialog_fields(draft: &Draft, key: Key) -> custody::Usage
         *bytes += size_of::<Vec<u16>>() + capacity * size_of::<u16>();
         *units += capacity;
     }
-    fn name(value: &crate::QualifiedName, bytes: &mut usize, units: &mut usize) {
+    fn name(
+        value: &(impl surgeist_html::HtmlNameInput + ?Sized),
+        bytes: &mut usize,
+        units: &mut usize,
+    ) {
         for value in [
-            value.namespace().uri(),
+            value.namespace_uri(),
             value.prefix(),
             Some(value.local_name()),
         ]
@@ -173,10 +177,9 @@ pub(in crate::store) fn dialog_fields(draft: &Draft, key: Key) -> custody::Usage
         panic!("Dialog element")
     };
     let state = element.dialog_state().expect("actual Dialog");
-    let mut bytes = size_of::<transaction::NodeFields>()
-        + size_of::<DomDialogState>()
-        + size_of::<Vec<crate::Attribute>>()
-        + element.attributes().shared_attributes().capacity() * size_of::<crate::Attribute>();
+    // The typed attribute bank and its child frontier have independent
+    // custody, prepared before this selected fields-only observation window.
+    let mut bytes = size_of::<transaction::NodeFields>() + size_of::<DomDialogState>();
     let mut units = 0;
     name(element.name(), &mut bytes, &mut units);
     for attribute in element.attributes().iter() {

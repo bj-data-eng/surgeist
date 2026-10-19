@@ -6,18 +6,25 @@ fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
 fn limits() -> DomLimits {
-    DomLimits::new(512, 32768, 2048, 2048, 256, 16, 1_000_000)
-        .unwrap()
-        .with_select_processing(128, 4_000_000, 10_000_000)
-        .unwrap()
-        .with_select_value_queries(
-            surgeist_html_semantics::HtmlCaptureLimits::new(
-                512, 2048, 2048, 32768, 512, 0, 0, 16_777_216,
-            ),
-            surgeist_html_semantics::HtmlSemanticLimits::new(
-                10_000_000, 1, 2048, 0, 4_000_000, 2048,
-            ),
-        )
+    DomLimits::new(
+        512,
+        32768,
+        2048,
+        2048,
+        256,
+        16,
+        1_000_000,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_select_processing(128, 4_000_000, 10_000_000)
+    .unwrap()
+    .with_select_value_queries(
+        surgeist_html_semantics::HtmlCaptureLimits::new(
+            512, 2048, 2048, 32768, 512, 0, 0, 16_777_216,
+        ),
+        surgeist_html_semantics::HtmlSemanticLimits::new(10_000_000, 1, 2048, 0, 4_000_000, 2048),
+    )
 }
 fn checkpoint() -> DomNativeCheckpointLimits {
     DomNativeCheckpointLimits::new(
@@ -782,10 +789,19 @@ fn reached_node_and_pending_task_limits_refuse_without_changing_canonical_state(
     let count = f.dom.usage().managed_nodes();
     f.dom
         .set_limits(
-            DomLimits::new(count, 32768, 2048, 2048, 256, 16, 1_000_000)
-                .unwrap()
-                .with_select_processing(128, 4_000_000, 10_000_000)
-                .unwrap(),
+            DomLimits::new(
+                count,
+                32768,
+                2048,
+                2048,
+                256,
+                16,
+                1_000_000,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap()
+            .with_select_processing(128, 4_000_000, 10_000_000)
+            .unwrap(),
         )
         .unwrap();
     let mut b = DomBatch::new();

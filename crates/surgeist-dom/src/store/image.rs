@@ -276,11 +276,11 @@ impl Draft {
     }
     fn image_attribute_operand(
         &self,
-        name: &crate::QualifiedName,
+        name: &crate::DomQualifiedName,
         value: Option<&DocumentString>,
         budget: Option<&source::formation::Formation>,
         cancel: &AtomicBool,
-    ) -> Result<Option<crate::Attribute>, DomError> {
+    ) -> Result<Option<crate::DomAttribute>, DomError> {
         value
             .map(|value| {
                 if let Some(budget) = budget {
@@ -290,14 +290,14 @@ impl Draft {
                     payload.string(value)?;
                     budget.retain_payload(payload, cancel)?;
                 }
-                Ok(crate::Attribute::new(name.clone(), value.clone()))
+                Ok(crate::DomAttribute::from_parts(name.clone(), value.clone()))
             })
             .transpose()
     }
     fn image_loading_report_budget(
         &self,
-        element: &crate::QualifiedName,
-        raw: Option<&crate::Attribute>,
+        element: &crate::DomQualifiedName,
+        raw: Option<&crate::DomAttribute>,
         cancel: &AtomicBool,
     ) -> Result<Option<source::formation::Formation>, DomError> {
         let budget = source::formation::Formation::new(self, cancel)?;
@@ -317,7 +317,7 @@ impl Draft {
             budget.step(cancel)?;
             for _ in 0..2 {
                 budget.step(cancel)?;
-                for _ in 0..=element.namespace().uri().map_or(0, DocumentString::len) {
+                for _ in 0..=element.namespace_uri().map_or(0, DocumentString::len) {
                     budget.step(cancel)?;
                 }
             }
@@ -354,7 +354,7 @@ impl Draft {
     pub(super) fn image_attribute_change(
         &mut self,
         key: Key,
-        name: &crate::QualifiedName,
+        name: &crate::DomQualifiedName,
         old: Option<&DocumentString>,
         new: Option<&DocumentString>,
         cancel: &AtomicBool,
@@ -369,8 +369,13 @@ impl Draft {
             return Ok(());
         };
         if tag == KnownHtmlElement::Source {
-            if surgeist_html::image_source_attribute_affects_following(name.namespace(), attribute)
-                && let Some(parent) = self.node(key)?.parent
+            if surgeist_html::image_source_attribute_affects_following(
+                &name
+                    .namespace_uri()
+                    .cloned()
+                    .map_or_else(crate::Namespace::none, crate::Namespace::from_uri),
+                attribute,
+            ) && let Some(parent) = self.node(key)?.parent
                 && self.image_tag(parent)? == Some(KnownHtmlElement::Picture)
             {
                 self.update_picture_images(parent, Some(key), cancel)?;
@@ -403,7 +408,14 @@ impl Draft {
         } else {
             HtmlImageAttributeChange::Removed
         };
-        let effect = surgeist_html::image_attribute_effect(name.namespace(), attribute, change);
+        let effect = surgeist_html::image_attribute_effect(
+            &name
+                .namespace_uri()
+                .cloned()
+                .map_or_else(crate::Namespace::none, crate::Namespace::from_uri),
+            attribute,
+            change,
+        );
         if let HtmlImageAttributeEffect::Update(flags) = effect {
             return self.start_image_update(key, flags, cancel);
         }
@@ -547,18 +559,18 @@ mod source_observation {
     fn string(value: &DocumentString) -> usize {
         size_of::<Vec<u16>>() + value.shared_code_units().capacity() * size_of::<u16>()
     }
-    fn name(value: &crate::QualifiedName) -> usize {
-        value.namespace().uri().map_or(0, string)
+    fn name(value: &(impl surgeist_html::HtmlNameInput + ?Sized)) -> usize {
+        value.namespace_uri().map_or(0, string)
             + value.prefix().map_or(0, string)
             + string(value.local_name())
     }
-    fn attribute(value: &crate::Attribute) -> usize {
+    fn attribute(value: &impl surgeist_html::HtmlAttributeInput) -> usize {
         name(value.name()) + string(value.value())
     }
     pub(super) fn reported<T>(
         draft: &Draft,
-        old: Option<&crate::Attribute>,
-        new: Option<&crate::Attribute>,
+        old: Option<&crate::DomAttribute>,
+        new: Option<&crate::DomAttribute>,
         reports: [&surgeist_html::HtmlAttributeReport<T>; 2],
         registered: bool,
         cancel: &AtomicBool,
@@ -651,7 +663,20 @@ mod tests {
     use super::*;
     fn fixture() -> (Dom, NodeId) {
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(32, 8192, 128, 0, 0, 8, 131072).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                8192,
+                128,
+                0,
+                0,
+                8,
+                131072,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut b = DomBatch::new();
         let doc = b.create_document();
         let img = b.create_element_ns(&doc, crate::Namespace::html(), "img");
@@ -797,10 +822,19 @@ mod tests {
     #[test]
     fn refused_image_cancellation_growth_preserves_prior_evidence_and_original_wait() {
         let cancel = AtomicBool::new(false);
-        let limits = DomLimits::new(32, 8192, 128, 0, 0, 8, 131072)
-            .unwrap()
-            .with_select_processing(16, 1_000_000, 1_000_000)
-            .unwrap();
+        let limits = DomLimits::new(
+            32,
+            8192,
+            128,
+            0,
+            0,
+            8,
+            131072,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_select_processing(16, 1_000_000, 1_000_000)
+        .unwrap();
         let mut dom = Dom::new(limits).unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
@@ -864,8 +898,20 @@ mod tests {
     }
     fn source_report(bytes: usize, require_complete: bool) -> Option<source_observation::Report> {
         let cancel = AtomicBool::new(false);
-        let mut dom =
-            Dom::new(DomLimits::new(32, 1_000_000, 128, 0, 0, 8, 1_000_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                1_000_000,
+                128,
+                0,
+                0,
+                8,
+                1_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let img = setup.create_element_ns(&document, crate::Namespace::html(), "img");
@@ -986,13 +1032,9 @@ mod tests {
             let mut bytes = 0;
             let mut units = 0;
             for name in [element.name(), raw.name()] {
-                for value in [
-                    name.namespace().uri(),
-                    name.prefix(),
-                    Some(name.local_name()),
-                ]
-                .into_iter()
-                .flatten()
+                for value in [name.namespace_uri(), name.prefix(), Some(name.local_name())]
+                    .into_iter()
+                    .flatten()
                 {
                     bytes += size_of::<Vec<u16>>()
                         + value.shared_code_units().capacity() * size_of::<u16>();
@@ -1225,7 +1267,20 @@ mod tests {
     fn destruction_cancels_cleanup_started_wait_and_registers_the_complete_evidence_bank_lifetime()
     {
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(32, 8192, 128, 0, 0, 8, 131072).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                8192,
+                128,
+                0,
+                0,
+                8,
+                131072,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut b = DomBatch::new();
         let doc = b.create_document();
         let picture = b.create_element_ns(&doc, crate::Namespace::html(), "picture");

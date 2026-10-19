@@ -1,8 +1,9 @@
-use crate::names::{name_units, qualified_equals, valid_element_local_name};
+use crate::name::AttributeStorage;
+use crate::names::qualified_equals;
 use crate::store::source::formation::{self, Formation};
 use crate::{
-    DocumentString, DomError, DomRegistryBinding, HtmlCustomElementState, Namespace,
-    OrderedAttributes, QualifiedName,
+    DocumentString, DomAttribute, DomError, DomQualifiedName, DomRegistryBinding,
+    HtmlCustomElementState, Namespace,
 };
 use std::sync::atomic::AtomicBool;
 use surgeist_html::{
@@ -25,9 +26,8 @@ pub enum DomElementDefinition {
 /// Private fields prevent bypassing name validation and native initialization.
 #[derive(Clone, Debug)]
 pub struct DomElement {
-    name: QualifiedName,
-    attributes: OrderedAttributes,
-    attribute_receipt: AttributeReceipt,
+    name: DomQualifiedName,
+    attributes: AttributeStorage,
     registry: DomRegistryBinding,
     definition: DomElementDefinition,
     custom_state: HtmlCustomElementState,
@@ -41,47 +41,6 @@ pub struct DomElement {
     keyboard_lock: bool,
 }
 
-/// Derived from one immutable attribute backing, including its spare capacity.
-/// Overflow stays deferred to the same logical/storage admission boundaries.
-#[derive(Clone, Copy, Debug)]
-struct AttributeReceipt {
-    logical_units: Option<usize>,
-    retained: Option<(usize, usize)>,
-}
-impl AttributeReceipt {
-    fn new(
-        attributes: &OrderedAttributes,
-        mut step: impl FnMut() -> Result<(), DomError>,
-    ) -> Result<Self, DomError> {
-        use crate::store::source::storage::Payload;
-        let mut logical_units = Some(0_usize);
-        let mut payload = Payload::default();
-        let mut retained = payload
-            .add_bytes(std::mem::size_of::<Vec<crate::Attribute>>())
-            .and_then(|()| {
-                payload.bank::<crate::Attribute>(attributes.shared_attributes().capacity())
-            })
-            .ok()
-            .map(|()| payload);
-        for attribute in attributes.iter() {
-            step()?;
-            logical_units = logical_units.and_then(|units| {
-                units
-                    .checked_add(name_units(attribute.name())?)?
-                    .checked_add(attribute.value().len())
-            });
-            retained = retained.and_then(|mut payload| {
-                payload.name(attribute.name()).ok()?;
-                payload.string(attribute.value()).ok()?;
-                Some(payload)
-            });
-        }
-        Ok(Self {
-            logical_units,
-            retained: retained.map(|payload| (payload.bytes, payload.units)),
-        })
-    }
-}
 impl PartialEq for DomElement {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name
@@ -107,14 +66,10 @@ impl DomElement {
         &self,
         graph: &mut crate::store::compact_tests::AllocationGraph,
     ) {
-        graph.name(&self.name);
-        graph.vector(
-            self.attributes.shared_attributes(),
-            "attributes.target",
-            "attributes.buffer",
-        );
+        self.name.inspect_allocations(graph);
+        self.attributes.inspect_allocations(graph);
         for attribute in self.attributes.iter() {
-            graph.name(attribute.name());
+            attribute.name().inspect_allocations(graph);
             graph.string(attribute.value());
         }
         for value in [self.saved_is.as_ref(), self.nonce.as_ref()]
@@ -142,11 +97,7 @@ impl DomElement {
     pub(crate) fn attributes_payload(
         &self,
     ) -> Result<crate::store::source::storage::Payload, DomError> {
-        let (bytes, units) = self
-            .attribute_receipt
-            .retained
-            .ok_or(DomError::RepresentationExhausted)?;
-        Ok(crate::store::source::storage::Payload { bytes, units })
+        Ok(self.attributes.text_payload())
     }
     pub(crate) fn retained_payload(
         &self,
@@ -157,20 +108,17 @@ impl DomElement {
     /// Completed retained materialization. The crate-owned importer proves the
     /// ordinary-report/profile boundary; this does not replay native hooks.
     pub(crate) fn from_parsed(
-        name: QualifiedName,
-        attributes: OrderedAttributes,
+        name: DomQualifiedName,
+        attributes: AttributeStorage,
         custom_state: HtmlCustomElementState,
         saved_is: Option<DocumentString>,
         nonce: Option<DocumentString>,
         family: NativeFamily,
         common: HtmlCommonState<crate::NodeId>,
     ) -> Self {
-        let attribute_receipt = AttributeReceipt::new(&attributes, || Ok(()))
-            .expect("attribute receipt callback is infallible");
         Self {
             name,
             attributes,
-            attribute_receipt,
             registry: DomRegistryBinding::Null,
             definition: DomElementDefinition::Null,
             custom_state,
@@ -184,88 +132,27 @@ impl DomElement {
             keyboard_lock: false,
         }
     }
-    pub(crate) fn native_components(
-        name: &QualifiedName,
-        environment: crate::DomDocumentEnvironment,
-        cancelled: &AtomicBool,
-        budget: Option<&Formation>,
-    ) -> Result<Self, DomError> {
-        crate::names::validate_element_components(name, &mut || {
-            formation::step(budget, cancelled)
-        })?;
-        let name = Self::shared_name(name, budget, cancelled)?;
-        Self::initialize(name, None, environment, cancelled, budget)
-    }
+    /// Initialize an already validated, owner-resolved and admitted name.
+    /// Native ingress owns its original validation and case-processing rules.
     pub(crate) fn native(
-        local_name: &DocumentString,
-        document: &crate::DomDocumentMetadata,
-        cancelled: &AtomicBool,
-        budget: Option<&Formation>,
-    ) -> Result<Self, DomError> {
-        if !valid_element_local_name(local_name, &mut || formation::step(budget, cancelled))? {
-            return Err(DomError::InvalidCharacter);
-        }
-        let html = document.class() == crate::DomDocumentClass::Html;
-        let local_name = if html {
-            crate::names::ascii_lowercase(
-                local_name,
-                &mut || formation::step(budget, cancelled),
-                &mut |input, lower| formation::units(input, lower, budget, cancelled),
-                &mut |value| formation::share(value, budget, cancelled),
-            )?
-        } else {
-            formation::share(local_name, budget, cancelled)?
-        };
-        let namespace = if html
-            || document
-                .content_type()
-                .code_units()
-                .iter()
-                .copied()
-                .eq("application/xhtml+xml".encode_utf16())
-        {
-            Namespace::from_uri(formation::string(
-                "http://www.w3.org/1999/xhtml",
-                budget,
-                cancelled,
-            )?)
-        } else {
-            Namespace::none()
-        };
-        Self::initialize(
-            QualifiedName::new(namespace, None, local_name),
-            None,
-            document.document_environment(),
-            cancelled,
-            budget,
-        )
-    }
-    pub(crate) fn native_ns(
-        namespace: &Namespace,
-        qualified: &DocumentString,
+        name: DomQualifiedName,
         environment: crate::DomDocumentEnvironment,
         cancelled: &AtomicBool,
         budget: Option<&Formation>,
     ) -> Result<Self, DomError> {
-        let name = crate::names::element_name(
-            namespace,
-            qualified,
-            &mut || formation::step(budget, cancelled),
-            &mut |input, lower| formation::units(input, lower, budget, cancelled),
-            &mut |value| formation::share(value, budget, cancelled),
-        )?;
         Self::initialize(name, None, environment, cancelled, budget)
     }
     /// Initialize trusted captured name fields; copied attributes and the
     /// source nonce slot are applied separately in source cloning order.
     pub(crate) fn clone_initialized(
         &self,
+        name: DomQualifiedName,
         environment: crate::DomDocumentEnvironment,
         cancelled: &AtomicBool,
         budget: Option<&Formation>,
     ) -> Result<Self, DomError> {
         Self::initialize(
-            Self::shared_name(&self.name, budget, cancelled)?,
+            name,
             self.saved_is
                 .as_ref()
                 .map(|value| formation::share(value, budget, cancelled))
@@ -276,14 +163,12 @@ impl DomElement {
         )
     }
     fn shared_name(
-        name: &QualifiedName,
+        name: &DomQualifiedName,
         budget: Option<&Formation>,
         cancel: &AtomicBool,
-    ) -> Result<QualifiedName, DomError> {
+    ) -> Result<DomQualifiedName, DomError> {
         if let Some(budget) = budget {
-            let mut payload = crate::store::source::storage::Payload::default();
-            payload.name(name)?;
-            budget.retain_payload(payload, cancel)?;
+            budget.retain_payload(name.retained_payload()?, cancel)?;
         }
         Ok(name.clone())
     }
@@ -292,12 +177,13 @@ impl DomElement {
     /// under the same candidate lease until canonical transfer.
     pub(crate) fn with_attributes_formed(
         &self,
-        attributes: OrderedAttributes,
-        changed: &QualifiedName,
+        attributes: AttributeStorage,
+        changed: &DomQualifiedName,
         nonce: Option<DocumentString>,
         budget: Option<&Formation>,
         cancel: &AtomicBool,
     ) -> Result<Self, DomError> {
+        crate::store::check_cancel(cancel)?;
         let name = Self::shared_name(&self.name, budget, cancel)?;
         let saved_is = self
             .saved_is
@@ -316,12 +202,9 @@ impl DomElement {
             budget,
             cancel,
         )?;
-        let attribute_receipt =
-            AttributeReceipt::new(&attributes, || formation::step(budget, cancel))?;
         Ok(Self {
             name,
             attributes,
-            attribute_receipt,
             registry: self.registry,
             definition: self.definition,
             custom_state: self.custom_state,
@@ -336,7 +219,7 @@ impl DomElement {
         })
     }
     fn initialize(
-        name: QualifiedName,
+        name: DomQualifiedName,
         saved_is: Option<DocumentString>,
         environment: crate::DomDocumentEnvironment,
         cancelled: &AtomicBool,
@@ -394,7 +277,6 @@ impl DomElement {
                 _ => 0,
             };
             budget.retain_bytes(bytes, cancelled)?;
-            budget.retain_bytes(size_of::<Vec<crate::Attribute>>(), cancelled)?;
             if initialization.nonce().is_some() {
                 budget.retain_bytes(string, cancelled)?;
             }
@@ -490,13 +372,10 @@ impl DomElement {
                     |_| formation::step(budget, cancelled),
                 )?
                 .is_ok());
-        let attributes = OrderedAttributes::default();
-        let attribute_receipt = AttributeReceipt::new(&attributes, || Ok(()))
-            .expect("empty attribute receipt callback is infallible");
+        let attributes = AttributeStorage::default();
         Ok(Self {
             name,
             attributes,
-            attribute_receipt,
             registry: DomRegistryBinding::Null,
             definition: DomElementDefinition::Null,
             custom_state: surgeist_html::custom_element_state_without_definition(html, custom_name),
@@ -662,7 +541,7 @@ impl DomElement {
         }
         Some(
             if self.attributes().iter().any(|a| {
-                a.name().namespace().uri().is_none()
+                a.name().namespace_uri().is_none()
                     && a.name().local_name().code_units() == [0x6f, 0x70, 0x65, 0x6e]
             }) {
                 surgeist_html::HtmlDetailsState::Open
@@ -894,10 +773,13 @@ impl DomElement {
             && self.fullscreen == other.fullscreen
             && self.keyboard_lock == other.keyboard_lock
     }
-    pub fn name(&self) -> &QualifiedName {
+    pub fn name(&self) -> &DomQualifiedName {
         &self.name
     }
-    pub fn attributes(&self) -> &OrderedAttributes {
+    pub fn attributes(&self) -> &[DomAttribute] {
+        self.attributes.as_slice()
+    }
+    pub(crate) fn attributes_backing(&self) -> &AttributeStorage {
         &self.attributes
     }
     pub fn custom_element_registry(&self) -> DomRegistryBinding {
@@ -929,18 +811,24 @@ impl DomElement {
         local_name: &DocumentString,
     ) -> Option<&DocumentString> {
         self.attributes
-            .get(namespace, local_name)
+            .iter()
+            .find(|attribute| {
+                attribute.name().namespace_uri() == namespace.uri()
+                    && attribute.name().local_name() == local_name
+            })
             .map(|attribute| attribute.value())
     }
     pub(crate) fn family_units(&self) -> Option<usize> {
         self.family.units()
     }
     pub(crate) fn units(&self) -> Option<usize> {
-        let mut units = name_units(&self.name)?
+        let mut units = self
+            .name
+            .logical_units()?
             .checked_add(self.saved_is.as_ref().map_or(0, DocumentString::len))?
             .checked_add(self.nonce.as_ref().map_or(0, DocumentString::len))?;
         units = units.checked_add(self.family.units()?)?;
-        units = units.checked_add(self.attribute_receipt.logical_units?)?;
+        units = units.checked_add(self.attributes.logical_units())?;
         Some(units)
     }
 }

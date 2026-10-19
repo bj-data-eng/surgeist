@@ -121,7 +121,20 @@ mod tests {
     }
 
     fn cancelled_prepared_navigable(local_name: &str) {
-        let mut dom = Dom::new(DomLimits::new(16, 2048, 32, 0, 0, 8, 8192).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                16,
+                2048,
+                32,
+                0,
+                0,
+                8,
+                8192,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let cancel = AtomicBool::new(false);
         let mut batch = DomBatch::new();
         let document = batch.create_document();

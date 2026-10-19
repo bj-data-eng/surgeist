@@ -2,7 +2,6 @@
 //! Shared immutable backings are conservatively charged per retained occurrence;
 //! allocator metadata and Arc control-block implementation details are excluded.
 use super::super::*;
-use crate::QualifiedName;
 use crate::element::NativeFamily;
 
 #[derive(Clone, Copy, Default)]
@@ -42,8 +41,11 @@ impl Payload {
                 .ok_or(DomError::RepresentationExhausted)?,
         )
     }
-    pub(crate) fn name(&mut self, name: &QualifiedName) -> Result<(), DomError> {
-        if let Some(uri) = name.namespace().uri() {
+    pub(crate) fn name(
+        &mut self,
+        name: &(impl surgeist_html::HtmlNameInput + ?Sized),
+    ) -> Result<(), DomError> {
+        if let Some(uri) = name.namespace_uri() {
             self.string(uri)?;
         }
         if let Some(prefix) = name.prefix() {
@@ -456,7 +458,20 @@ mod tests {
             )
             .unwrap();
         let usage = snapshot.retained_storage_usage();
-        let mut dom = Dom::new(DomLimits::new(8, 4096, 64, 0, 0, 16, 1_000_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                8,
+                4096,
+                64,
+                0,
+                0,
+                16,
+                1_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
         let done = dom.apply(batch, &AtomicBool::new(false)).unwrap();

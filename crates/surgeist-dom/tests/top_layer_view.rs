@@ -10,8 +10,20 @@ fn limits() -> DomSourceLimits {
     DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1)
 }
 fn fixture() -> (Dom, DocumentId, NodeId, NodeId) {
-    let mut dom =
-        Dom::new(DomLimits::new(64, 32768, 128, 128, 128, 16, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            64,
+            32768,
+            128,
+            128,
+            128,
+            16,
+            1_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let root = batch.create_element_ns(&document, Namespace::html(), "div");

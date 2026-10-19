@@ -1046,7 +1046,7 @@ impl Draft {
         let mut content = None;
         for attribute in element.attributes().iter() {
             self.effect_step(cancel)?;
-            if attribute.name().namespace().uri().is_none()
+            if attribute.name().namespace_uri().is_none()
                 && attribute.name().local_name().code_units() == [0x6e, 0x6f, 0x6e, 0x63, 0x65]
             {
                 content = Some(attribute.value());
@@ -1084,7 +1084,20 @@ mod tests {
 
     #[test]
     fn cancellation_during_common_descendant_insertion_keeps_publication_unchanged() {
-        let mut dom = Dom::new(DomLimits::new(16, 2048, 32, 0, 0, 8, 8192).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                16,
+                2048,
+                32,
+                0,
+                0,
+                8,
+                8192,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let cancel = AtomicBool::new(false);
         let mut batch = DomBatch::new();
         let document = batch.create_document();
@@ -1177,10 +1190,19 @@ mod scratch_lifetime_tests {
     use super::*;
     fn attempt(scratch: usize, deep: bool) -> (bool, bool, bool) {
         let cancel = AtomicBool::new(false);
-        let configured = DomLimits::new(2048, 32768, 4096, 4096, 4096, 16, 1_000_000)
-            .unwrap()
-            .with_select_processing(128, 4_000_000, 10_000_000)
-            .unwrap();
+        let configured = DomLimits::new(
+            2048,
+            32768,
+            4096,
+            4096,
+            4096,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_select_processing(128, 4_000_000, 10_000_000)
+        .unwrap();
         let mut dom = Dom::new(configured).unwrap();
         let mut b = DomBatch::new();
         let d = b.create_document();

@@ -22,7 +22,20 @@ struct Fixture {
 }
 
 fn fixture() -> Fixture {
-    let mut dom = Dom::new(DomLimits::new(32, 16384, 64, 64, 64, 8, 65536).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            32,
+            16384,
+            64,
+            64,
+            64,
+            8,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let host = batch.create_element_ns(&document, Namespace::html(), "div");

@@ -324,15 +324,45 @@ impl Dependency {
     pub fn new<T: Any + Send + Sync>(
         value: T,
         ledger: &Ledger,
-        admit: impl FnMut(Usage) -> Result<(), DomError>,
+        mut admit: impl FnMut(Usage) -> Result<(), DomError>,
     ) -> Result<Self, DomError> {
-        let debit = ledger.retain_shared(Usage::new(size_of::<T>(), 0), admit)?;
+        let value = Held::new(
+            value,
+            ledger.retain(Usage::new(size_of::<T>(), 0), &mut admit)?,
+        );
+        Self::from_retained(value, Usage::new(size_of::<T>(), 0), admit)
+    }
+
+    /// Transfer an already admitted dependency body and its actual dynamic
+    /// backing. Data remains ahead of credit through every fallible step.
+    pub fn from_retained<T: Any + Send + Sync>(
+        mut incoming: Held<T>,
+        usage: Usage,
+        mut admit: impl FnMut(Usage) -> Result<(), DomError>,
+    ) -> Result<Self, DomError> {
+        assert!(
+            usage.bytes() >= size_of::<T>(),
+            "dependency includes its body"
+        );
+        let extra = usage.checked_sub(incoming.debit().usage())?;
+        incoming.debit_mut().grow(extra, &mut admit)?;
+        let debit = incoming.debit_mut().share(&mut admit)?;
+        let (value, empty) = incoming.into_parts();
+        drop(empty);
         let value = Arc::new(value);
         #[cfg(test)]
         metric(Event::StructuralAllocation {
             bytes: size_of::<T>(),
         });
         Ok(Self { value, debit })
+    }
+
+    /// Complete an unpublished dependency before any custody alias escapes.
+    pub(in crate::store) fn value_mut<T: Any + Send + Sync>(&mut self) -> &mut T {
+        Arc::get_mut(&mut self.value)
+            .expect("unpublished dependency has one owner")
+            .downcast_mut::<T>()
+            .expect("one owning dependency type")
     }
 
     fn get<T: Any + Send + Sync>(&self) -> Retained<T> {
@@ -623,6 +653,10 @@ struct PreparedAttachment<T> {
 }
 
 impl ObjectCustody {
+    #[cfg(test)]
+    pub(in crate::store) fn inspect_dependency<T: Any + Send + Sync>(&self) -> Option<Retained<T>> {
+        self.0.dependency.as_ref().map(Dependency::get)
+    }
     #[cfg(test)]
     pub(in crate::store) fn inspect_control_graph(&self) -> PhysicalControlGraph {
         let mut graph = PhysicalControlGraph::default();
@@ -1115,6 +1149,20 @@ impl CustodyRegistry {
         &self,
         identity: MaterializationId,
         usage: Usage,
+        admit: impl FnMut(Usage) -> Result<(), DomError>,
+    ) -> Result<ObjectCustody, DomError> {
+        self.adopt_object_with_children(identity, usage, |_| Ok(None), admit)
+    }
+
+    /// Construct a missing object's owned child frontier once. An active
+    /// materialization aliases its original capsule without reading children.
+    pub fn adopt_object_with_children(
+        &self,
+        identity: MaterializationId,
+        usage: Usage,
+        children: impl FnOnce(
+            &mut dyn FnMut(Usage) -> Result<(), DomError>,
+        ) -> Result<Option<Dependency>, DomError>,
         mut admit: impl FnMut(Usage) -> Result<(), DomError>,
     ) -> Result<ObjectCustody, DomError> {
         #[cfg(test)]
@@ -1125,7 +1173,8 @@ impl CustodyRegistry {
         }
         let result = (|| {
             let debit = self.ledger.retain_shared(usage, &mut admit)?;
-            self.register_record(identity, debit, None, &mut admit)
+            let dependency = children(&mut admit)?;
+            self.register_record(identity, debit, dependency, &mut admit)
                 .map(ObjectCustody)
         })();
         self.reconcile_releases();
@@ -1140,6 +1189,16 @@ impl CustodyRegistry {
         &self,
         identity: MaterializationId,
         retained: &SharedDebit,
+        admit: impl FnMut(Usage) -> Result<(), DomError>,
+    ) -> Result<ObjectCustody, DomError> {
+        self.adopt_object_retained_with_children(identity, retained, None, admit)
+    }
+
+    pub fn adopt_object_retained_with_children(
+        &self,
+        identity: MaterializationId,
+        retained: &SharedDebit,
+        dependency: Option<Dependency>,
         mut admit: impl FnMut(Usage) -> Result<(), DomError>,
     ) -> Result<ObjectCustody, DomError> {
         assert!(
@@ -1153,7 +1212,7 @@ impl CustodyRegistry {
                 admit(self.total())?;
                 return Ok(ObjectCustody(existing));
             }
-            self.register_record(identity, retained.clone(), None, &mut admit)
+            self.register_record(identity, retained.clone(), dependency, &mut admit)
                 .map(ObjectCustody)
         })();
         self.reconcile_releases();

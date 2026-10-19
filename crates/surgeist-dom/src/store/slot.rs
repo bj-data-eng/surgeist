@@ -468,13 +468,13 @@ impl Draft {
     pub(super) fn slot_attribute(
         &mut self,
         node: Key,
-        changed: &crate::QualifiedName,
+        changed: &crate::DomQualifiedName,
         old: Option<&DocumentString>,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
-        if changed.namespace().uri().is_some() {
+        if changed.namespace_uri().is_some() {
             return Ok(());
         }
         let attribute = changed.local_name();
@@ -601,7 +601,20 @@ mod tests {
     use super::*;
     use std::sync::atomic::Ordering;
     fn fixture() -> (Dom, NodeId, NodeId) {
-        let mut dom = Dom::new(DomLimits::new(16, 4096, 32, 32, 32, 8, 65536).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                16,
+                4096,
+                32,
+                32,
+                32,
+                8,
+                65536,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut b = DomBatch::new();
         let d = b.create_document();
         let s = b.create_element_ns(&d, crate::Namespace::html(), "slot");
@@ -643,7 +656,17 @@ mod tests {
         assert_eq!(live.load(Ordering::Relaxed), 0);
     }
     fn dom_limits() -> DomLimits {
-        DomLimits::new(16, 4096, 32, 32, 32, 8, 65536).unwrap()
+        DomLimits::new(
+            16,
+            4096,
+            32,
+            32,
+            32,
+            8,
+            65536,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
     }
     #[test]
     fn source_slot_resolution_cannot_run_past_its_spent_work_allowance() {
@@ -673,7 +696,19 @@ mod tests {
     }
     #[test]
     fn source_slot_attribute_hook_admits_work_before_reading_its_name() {
-        let (dom, s, _) = fixture();
+        let (mut dom, s, _) = fixture();
+        let mut setup = DomBatch::new();
+        setup.set_attribute(s, "name", "retained");
+        dom.apply(setup, &AtomicBool::new(false)).unwrap();
+        let name = dom
+            .snapshot()
+            .node(s)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .attributes()[0]
+            .name()
+            .clone();
         let cancel = AtomicBool::new(false);
         let limits = |work| crate::DomSourceLimits::new(1_000_000, 100_000, work, 32, 128, 128, 1);
         let batch = DomBatch::new();
@@ -686,7 +721,6 @@ mod tests {
         )
         .unwrap();
         let key = draft.resolve(s.into()).unwrap();
-        let name = crate::QualifiedName::new(crate::Namespace::none(), None, "name");
         let spent = draft.source_work.load(Ordering::Relaxed);
         draft.source_limits.as_mut().unwrap().work = spent;
         assert_eq!(

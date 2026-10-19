@@ -64,7 +64,7 @@ pub(super) fn with_facts(
             let mut href = None;
             for attr in node.as_element().expect("Base").attributes().iter() {
                 control.charge(1)?;
-                if attr.name().namespace().uri().is_none()
+                if attr.name().namespace_uri().is_none()
                     && attr.name().local_name().code_units() == [104, 114, 101, 102]
                 {
                     href = Some(attr.value().clone());
@@ -136,10 +136,19 @@ mod tests {
     fn fixture() -> (Dom, DocumentId) {
         let cancel = AtomicBool::new(false);
         let mut dom = Dom::new(
-            DomLimits::new(64, 32768, 128, 128, 64, 8, 131072)
-                .unwrap()
-                .with_base_processing(64, 1_000_000)
-                .unwrap(),
+            DomLimits::new(
+                64,
+                32768,
+                128,
+                128,
+                64,
+                8,
+                131072,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap()
+            .with_base_processing(64, 1_000_000)
+            .unwrap(),
         )
         .unwrap();
         let mut b = DomBatch::new();

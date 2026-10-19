@@ -5,10 +5,19 @@ use surgeist_cssom::*;
 use surgeist_dom::*;
 
 fn limits() -> DomLimits {
-    DomLimits::new(64, 4096, 128, 0, 0, 32, 65536)
-        .unwrap()
-        .with_view_transitions(8, 16, 80)
-        .unwrap()
+    DomLimits::new(
+        64,
+        4096,
+        128,
+        0,
+        0,
+        32,
+        65536,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_view_transitions(8, 16, 80)
+    .unwrap()
 }
 fn capture_limits() -> DomViewTransitionCaptureLimits {
     DomViewTransitionCaptureLimits::new(16_384, 1_000_000)
@@ -979,7 +988,17 @@ fn generic_import_resets_the_target_capture_flag_and_preserves_the_captured_sour
 fn finite_feature_limits_names_pseudos_and_stale_basis_fail_without_identity_or_history_changes() {
     let mut f = fixture();
     initialize(&mut f);
-    let base_limits = DomLimits::new(64, 4096, 128, 0, 0, 32, 65536).unwrap();
+    let base_limits = DomLimits::new(
+        64,
+        4096,
+        128,
+        0,
+        0,
+        32,
+        65536,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap();
     f.dom.set_limits(base_limits).unwrap();
     let before = f.dom.snapshot();
     let mut b = DomBatch::new();
@@ -1082,10 +1101,19 @@ fn record_string_and_pseudo_capacity_boundaries_count_retained_state_until_relea
     let initial_units = f.dom.usage().string_code_units();
     f.dom
         .set_limits(
-            DomLimits::new(64, initial_units + 3, 128, 0, 0, 32, 65536)
-                .unwrap()
-                .with_view_transitions(2, 1, 5)
-                .unwrap(),
+            DomLimits::new(
+                64,
+                initial_units + 3,
+                128,
+                0,
+                0,
+                32,
+                65536,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap()
+            .with_view_transitions(2, 1, 5)
+            .unwrap(),
         )
         .unwrap();
     let mut b = DomBatch::new();
@@ -1117,10 +1145,19 @@ fn record_string_and_pseudo_capacity_boundaries_count_retained_state_until_relea
     assert_eq!(f.dom.snapshot().stamp(), before.stamp());
     f.dom
         .set_limits(
-            DomLimits::new(64, initial_units + 3, 128, 0, 0, 32, 65536)
-                .unwrap()
-                .with_view_transitions(2, 1, 8)
-                .unwrap(),
+            DomLimits::new(
+                64,
+                initial_units + 3,
+                128,
+                0,
+                0,
+                32,
+                65536,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap()
+            .with_view_transitions(2, 1, 8)
+            .unwrap(),
         )
         .unwrap();
     let mut b = DomBatch::new();
@@ -1135,10 +1172,19 @@ fn record_string_and_pseudo_capacity_boundaries_count_retained_state_until_relea
     );
     f.dom
         .set_limits(
-            DomLimits::new(64, initial_units + 3, 128, 0, 0, 32, 65536)
-                .unwrap()
-                .with_view_transitions(2, 2, 8)
-                .unwrap(),
+            DomLimits::new(
+                64,
+                initial_units + 3,
+                128,
+                0,
+                0,
+                32,
+                65536,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap()
+            .with_view_transitions(2, 2, 8)
+            .unwrap(),
         )
         .unwrap();
     let mut b = DomBatch::new();

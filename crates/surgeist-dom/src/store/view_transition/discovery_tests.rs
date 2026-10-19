@@ -17,7 +17,7 @@ struct DiscoveryFixture {
 fn discovery_fixture(unrelated: usize) -> DiscoveryFixture {
     let (mut dom, document) = fixture();
     dom.set_limits(
-        DomLimits::new(16, 1_000_000, 4096, 0, 0, 16, 64_000_000)
+        DomLimits::new(16, 1_000_000, 4096, 0, 0, 16, 64_000_000, crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap())
             .unwrap()
             .with_view_transitions(4, 4096, 16_384)
             .unwrap(),

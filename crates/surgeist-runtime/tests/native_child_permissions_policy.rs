@@ -26,7 +26,20 @@ fn cancel() -> AtomicBool {
 
 fn session() -> DomSession {
     DomSession::new(
-        Dom::new(DomLimits::new(512, 1_000_000, 1024, 1024, 1024, 64, 4_000_000).unwrap()).unwrap(),
+        Dom::new(
+            DomLimits::new(
+                512,
+                1_000_000,
+                1024,
+                1024,
+                1024,
+                64,
+                4_000_000,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap(),
         DomSessionLimits {
             source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
                 jobs: 0,

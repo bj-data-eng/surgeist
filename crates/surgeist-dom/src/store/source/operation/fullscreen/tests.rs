@@ -12,12 +12,21 @@ fn policy(outputs: usize) -> DomSourceLimits {
 }
 fn fixture() -> (Dom, crate::DomHostedSource, DocumentId, NodeId) {
     fixture_with_limits(
-        DomLimits::new(64, 100_000, 256, 128, 128, 16, 4_000_000)
-            .unwrap()
-            .with_fullscreen_exits(4)
-            .unwrap()
-            .with_fullscreen_events(4)
-            .unwrap(),
+        DomLimits::new(
+            64,
+            100_000,
+            256,
+            128,
+            128,
+            16,
+            4_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_fullscreen_exits(4)
+        .unwrap()
+        .with_fullscreen_events(4)
+        .unwrap(),
     )
 }
 

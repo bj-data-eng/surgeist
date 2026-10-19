@@ -8,20 +8,29 @@ fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
 fn limits(work: u64) -> DomLimits {
-    DomLimits::new(128, 32768, 512, 128, 64, 8, 262144)
-        .unwrap()
-        .with_meta_processing_work(work)
-        .with_meta_theme_color_scratch_bytes(262144)
-        .unwrap()
-        .with_meta_color_scheme_limits(surgeist_css::CssUtf16PropertyValueLimits {
-            input: surgeist_css::CssUtf16InputLimits::default(),
-            syntax: surgeist_css::CssComponentValueLimits::default(),
-            max_work: 1_000_000,
-            max_live_bytes: 1_000_000,
-            max_retained_bytes: 1_000_000,
-        })
-        .with_meta_color_scheme_retained_bytes(1_000_000)
-        .unwrap()
+    DomLimits::new(
+        128,
+        32768,
+        512,
+        128,
+        64,
+        8,
+        262144,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_meta_processing_work(work)
+    .with_meta_theme_color_scratch_bytes(262144)
+    .unwrap()
+    .with_meta_color_scheme_limits(surgeist_css::CssUtf16PropertyValueLimits {
+        input: surgeist_css::CssUtf16InputLimits::default(),
+        syntax: surgeist_css::CssComponentValueLimits::default(),
+        max_work: 1_000_000,
+        max_live_bytes: 1_000_000,
+        max_retained_bytes: 1_000_000,
+    })
+    .with_meta_color_scheme_retained_bytes(1_000_000)
+    .unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
     dom.apply(batch, &cancel()).unwrap()
@@ -528,9 +537,18 @@ fn language_history_retention_is_independent_from_attribute_units() {
     let before = dom.snapshot();
     let base_units = dom.usage().string_code_units();
     let bounded = |units| {
-        DomLimits::new(128, units, 512, 128, 64, 8, 262144)
-            .unwrap()
-            .with_meta_processing_work(1_000_000)
+        DomLimits::new(
+            128,
+            units,
+            512,
+            128,
+            64,
+            8,
+            262144,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_meta_processing_work(1_000_000)
     };
     dom.set_limits(bounded(base_units + 1)).unwrap();
     let mut batch = DomBatch::new();

@@ -4,7 +4,20 @@ use surgeist_dom::{DocumentString, Dom, DomBatch, DomLimits, Namespace};
 
 #[test]
 fn native_svg_script_creation_publishes_an_actual_element() {
-    let mut dom = Dom::new(DomLimits::new(8, 1024, 16, 0, 0, 4, 4096).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            8,
+            1024,
+            16,
+            0,
+            0,
+            4,
+            4096,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let script = batch.create_element_ns(&document, Namespace::svg(), "script");
@@ -21,7 +34,7 @@ fn native_svg_script_creation_publishes_an_actual_element() {
         Some(commit.document(&document).unwrap())
     );
     assert_eq!(
-        node.as_element().unwrap().name().namespace(),
-        &Namespace::svg()
+        node.as_element().unwrap().name().namespace_uri(),
+        Namespace::svg().uri()
     );
 }

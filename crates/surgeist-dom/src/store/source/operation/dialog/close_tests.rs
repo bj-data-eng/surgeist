@@ -2,6 +2,7 @@
 //! Trusted completion is the canonical owning boundary, not Runtime dispatch evidence.
 use super::tests::{attest, fixture, limits};
 use super::*;
+mod name_closing;
 
 fn result(units: usize) -> DocumentString {
     let mut backing = Vec::new();

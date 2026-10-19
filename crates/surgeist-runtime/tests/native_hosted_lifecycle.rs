@@ -54,16 +54,25 @@ fn limits() -> DomSessionLimits {
 }
 fn session() -> DomSession {
     let dom = Dom::new(
-        DomLimits::new(512, 200_000, 1024, 1024, 1024, 64, 4_000_000)
-            .unwrap()
-            .with_dispatch_custody(
-                surgeist_dom::DomDispatchCustodyLimits::new(
-                    64, 4096, 16_000_000, 16_000_000, 4_000_000,
-                )
-                .unwrap(),
+        DomLimits::new(
+            512,
+            200_000,
+            1024,
+            1024,
+            1024,
+            64,
+            4_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_dispatch_custody(
+            surgeist_dom::DomDispatchCustodyLimits::new(
+                64, 4096, 16_000_000, 16_000_000, 4_000_000,
             )
-            .with_details_toggle_intentions(32)
             .unwrap(),
+        )
+        .with_details_toggle_intentions(32)
+        .unwrap(),
     )
     .unwrap();
     DomSession::new(dom, limits()).unwrap()
@@ -202,8 +211,8 @@ fn initial_blank_has_real_html_tree_registry_and_current_global_settings() {
         &"html".into()
     );
     assert_eq!(
-        html.as_element().unwrap().name().namespace(),
-        &Namespace::html()
+        html.as_element().unwrap().name().namespace_uri(),
+        Namespace::html().uri()
     );
     assert_eq!(html.children().len(), 2);
     for (node, local) in html.children().iter().zip(["head", "body"]) {
@@ -213,8 +222,8 @@ fn initial_blank_has_real_html_tree_registry_and_current_global_settings() {
             &local.into()
         );
         assert_eq!(
-            node.as_element().unwrap().name().namespace(),
-            &Namespace::html()
+            node.as_element().unwrap().name().namespace_uri(),
+            Namespace::html().uri()
         );
         assert!(node.children().is_empty());
     }
@@ -679,14 +688,23 @@ fn cancelled_and_foreign_host_permission_does_not_publish_a_document_then_same_o
 #[test]
 fn zero_host_admission_refuses_before_any_document_or_global_is_published() {
     let dom = Dom::new(
-        DomLimits::new(128, 20_000, 128, 128, 128, 16, 1_000_000)
-            .unwrap()
-            .with_dispatch_custody(
-                surgeist_dom::DomDispatchCustodyLimits::new(
-                    64, 4096, 16_000_000, 16_000_000, 4_000_000,
-                )
-                .unwrap(),
-            ),
+        DomLimits::new(
+            128,
+            20_000,
+            128,
+            128,
+            128,
+            16,
+            1_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_dispatch_custody(
+            surgeist_dom::DomDispatchCustodyLimits::new(
+                64, 4096, 16_000_000, 16_000_000, 4_000_000,
+            )
+            .unwrap(),
+        ),
     )
     .unwrap();
     let mut policy = limits();
@@ -2173,7 +2191,7 @@ fn assert_adopted_plain_subtree(
     assert_eq!(element.parent(), None);
     assert_eq!(element.children(), &[text]);
     let state = element.as_element().unwrap();
-    assert_eq!(state.name().namespace(), &Namespace::html());
+    assert_eq!(state.name().namespace_uri(), Namespace::html().uri());
     assert_eq!(state.name().local_name(), &DocumentString::from("div"));
     assert_eq!(state.custom_element_registry(), binding);
     let child = snapshot.node(text).unwrap();

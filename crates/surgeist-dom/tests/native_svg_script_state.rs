@@ -3,7 +3,17 @@ use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 
 fn limits() -> DomLimits {
-    DomLimits::new(256, 65536, 1024, 256, 256, 32, 1048576).unwrap()
+    DomLimits::new(
+        256,
+        65536,
+        1024,
+        256,
+        256,
+        32,
+        1048576,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
 }
 fn dom() -> Dom {
     Dom::new(limits()).unwrap()
@@ -507,8 +517,20 @@ fn svg_and_html_scripts_preserve_real_slot_intentions_and_distinct_processing_st
 #[test]
 fn exact_node_command_admission_and_state_only_history_fallback_remain_finite() {
     for (nodes, commands) in [(1, 3), (2, 2), (2, 3)] {
-        let mut dom =
-            Dom::new(DomLimits::new(nodes, 63, commands, 0, 0, 4, 8192).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                nodes,
+                63,
+                commands,
+                0,
+                0,
+                4,
+                8192,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let before = dom.snapshot();
         let usage = dom.usage();
         let mut b = DomBatch::new();
@@ -544,7 +566,20 @@ fn exact_node_command_admission_and_state_only_history_fallback_remain_finite() 
             assert_eq!(dom.usage().managed_nodes(), 2);
         }
     }
-    let mut dom = Dom::new(DomLimits::new(3, 94, 4, 0, 0, 0, 0).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            3,
+            94,
+            4,
+            0,
+            0,
+            0,
+            0,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let (d, root) = setup(&mut dom);
     let mut b = DomBatch::new();
     let svg = b.create_element_ns(d, Namespace::svg(), "script");
@@ -566,7 +601,20 @@ fn exact_node_command_admission_and_state_only_history_fallback_remain_finite() 
 #[test]
 fn scalar_state_adds_no_string_cost_and_limits_late_failure_retirement_are_atomic() {
     for cap in [62, 63] {
-        let mut dom = Dom::new(DomLimits::new(2, cap, 8, 0, 0, 4, 8192).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                2,
+                cap,
+                8,
+                0,
+                0,
+                4,
+                8192,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let before = dom.snapshot();
         let usage = dom.usage();
         let mut b = DomBatch::new();

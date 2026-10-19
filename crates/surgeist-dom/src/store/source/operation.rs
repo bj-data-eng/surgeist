@@ -98,6 +98,7 @@ pub(in crate::store) struct Operation {
     custody_bytes: usize,
     custody_units: usize,
     canonical_aux_bytes: usize,
+    pub(in crate::store) names: name_registry::Operation,
     #[cfg(test)]
     _measurement_lifetime: scale_metrics::SourceOwnerLifetime,
 }
@@ -335,6 +336,7 @@ impl Dom {
             id,
             entry_scope,
             limits: original_limits,
+            names: draft.names.clone(),
             draft: dialog::OperationDraft::Segment(draft),
             commands,
             index: 0,
@@ -551,6 +553,7 @@ impl Operation {
         )
     }
     pub(in crate::store) fn admit_dom_limits(&self, limits: DomLimits) -> Result<(), DomError> {
+        self.names.admit_limits(limits.names())?;
         if let Some(observation) = self.observation() {
             return observation.usage.admit_limits(limits);
         }
@@ -617,6 +620,7 @@ impl Operation {
         draft.admit_dom_resources(limits)
     }
     pub(in crate::store) fn update_dom_limits(&mut self, limits: DomLimits) {
+        self.names.replace_limits(limits.names());
         if self.observation().is_some() {
             return;
         }
@@ -3101,6 +3105,7 @@ impl Dom {
                 id,
                 entry_scope,
                 limits: original_limits,
+                names: staged.draft.names.clone(),
                 draft: dialog::OperationDraft::Segment(staged.draft),
                 commands: OperationRoot::NativeInstallation,
                 index: 0,
@@ -3315,7 +3320,20 @@ pub(in crate::store) mod accounting_tests {
     #[test]
     fn completed_method_clear_refusal_keeps_next_command_for_same_operation_retry() {
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(16, 100_000, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                16,
+                100_000,
+                64,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let target = setup.create_element_ns(&document, crate::Namespace::html(), "div");
@@ -3404,7 +3422,20 @@ pub(in crate::store) mod accounting_tests {
     #[test]
     fn xml_creator_source_work_is_cumulative_and_exact_remaining_budget_refuses_without_reissue() {
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(32, 100_000, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                100_000,
+                64,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let associated = setup.create_document();
         let done = dom.apply(setup, &cancel).unwrap();
@@ -3480,8 +3511,20 @@ pub(in crate::store) mod accounting_tests {
     fn xml_style_root_reserves_final_metadata_and_ticket_revision_before_first_exposure() {
         for (remaining, success) in [(6, false), (7, true)] {
             let cancel = AtomicBool::new(false);
-            let mut dom =
-                Dom::new(DomLimits::new(32, 100_000, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
+            let mut dom = Dom::new(
+                DomLimits::new(
+                    32,
+                    100_000,
+                    64,
+                    0,
+                    0,
+                    8,
+                    100_000,
+                    crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
             let mut setup = DomBatch::new();
             let associated = setup.create_document();
             let doctype = setup.create_document_type(&associated, "source", "", "");
@@ -3533,7 +3576,20 @@ pub(in crate::store) mod accounting_tests {
     }
     fn fixture() -> (Dom, DomBatch) {
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(64, 100_000, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                64,
+                100_000,
+                64,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let container = setup.create_element_ns(&document, crate::Namespace::html(), "div");
@@ -3550,7 +3606,20 @@ pub(in crate::store) mod accounting_tests {
     fn source_native_rows_keep_custody_through_abort_parking_cancellation_and_completion() {
         use surgeist_html::{HtmlConstructionLimits, HtmlFragment};
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(32, 100_000, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                100_000,
+                64,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let parent = setup.create_element_ns(&document, crate::Namespace::html(), "div");
@@ -3676,7 +3745,20 @@ pub(in crate::store) mod accounting_tests {
         };
         use surgeist_html::{HtmlConstructionLimits, HtmlFragment};
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(32, 100_000, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                100_000,
+                64,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let parent = setup.create_element_ns(&document, crate::Namespace::html(), "div");
@@ -3819,7 +3901,20 @@ pub(in crate::store) mod accounting_tests {
     fn source_native_partial_closing_bank_survives_cancel_park_and_retry_without_native_recharge() {
         use surgeist_html::{HtmlConstructionLimits, HtmlFragment};
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(32, 100_000, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                100_000,
+                64,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let parent = setup.create_element_ns(&document, crate::Namespace::html(), "div");
@@ -3945,7 +4040,20 @@ pub(in crate::store) mod accounting_tests {
     }
     fn actual_input_alias(bytes: usize) -> Option<formation::mutation_observation::Growth> {
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(16, 100_000, 32, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                16,
+                100_000,
+                32,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let input = setup.create_element_ns(&document, crate::Namespace::html(), "input");
@@ -3984,8 +4092,20 @@ pub(in crate::store) mod accounting_tests {
         bytes: usize,
     ) -> Option<formation::mutation_observation::Growth> {
         let cancel = AtomicBool::new(false);
-        let mut dom =
-            Dom::new(DomLimits::new(16, 1_000_000, 32, 0, 0, 8, 1_000_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                16,
+                1_000_000,
+                32,
+                0,
+                0,
+                8,
+                1_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let text = setup.create_text(&document, "retained".repeat(10_000));
@@ -4024,8 +4144,20 @@ pub(in crate::store) mod accounting_tests {
         validity: bool,
     ) -> Option<formation::mutation_observation::Growth> {
         let cancel = AtomicBool::new(false);
-        let mut dom =
-            Dom::new(DomLimits::new(16, 1_000_000, 32, 0, 0, 8, 1_000_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                16,
+                1_000_000,
+                32,
+                0,
+                0,
+                8,
+                1_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let input = setup.create_element_ns(&document, crate::Namespace::html(), "input");
@@ -4082,8 +4214,20 @@ pub(in crate::store) mod accounting_tests {
     }
     fn actual_children_growth(bytes: usize) -> Option<formation::mutation_observation::Growth> {
         let cancel = AtomicBool::new(false);
-        let mut dom =
-            Dom::new(DomLimits::new(64, 100_000, 128, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                64,
+                100_000,
+                128,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let parent = setup.create_element_ns(&document, crate::Namespace::html(), "div");
@@ -4117,10 +4261,19 @@ pub(in crate::store) mod accounting_tests {
     }
     fn actual_select_task_growth(bytes: usize) -> Option<formation::mutation_observation::Growth> {
         let cancel = AtomicBool::new(false);
-        let domain = DomLimits::new(64, 100_000, 128, 0, 0, 8, 100_000)
-            .unwrap()
-            .with_select_processing(256, 1_000_000, 1_000_000)
-            .unwrap();
+        let domain = DomLimits::new(
+            64,
+            100_000,
+            128,
+            0,
+            0,
+            8,
+            100_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_select_processing(256, 1_000_000, 1_000_000)
+        .unwrap();
         let mut dom = Dom::new(domain).unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
@@ -4159,8 +4312,20 @@ pub(in crate::store) mod accounting_tests {
     }
     fn actual_metadata_creation(bytes: usize) -> Option<formation::mutation_observation::Growth> {
         let cancel = AtomicBool::new(false);
-        let mut dom =
-            Dom::new(DomLimits::new(64, 100_000, 128, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                64,
+                100_000,
+                128,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let before = dom.snapshot();
         let mut batch = DomBatch::new();
         batch.create_document();
@@ -4181,7 +4346,20 @@ pub(in crate::store) mod accounting_tests {
     #[test]
     fn changed_input_field_keeps_unchanged_backing_and_prices_each_materialized_field() {
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(16, 100_000, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                16,
+                100_000,
+                64,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let input = setup.create_element_ns(&document, crate::Namespace::html(), "input");
@@ -4263,7 +4441,20 @@ pub(in crate::store) mod accounting_tests {
     }
     fn actual_output_text_read(bytes: usize) -> Option<formation::mutation_observation::Growth> {
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(32, 100_000, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                100_000,
+                64,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let output = setup.create_element_ns(&document, crate::Namespace::html(), "output");
@@ -4329,8 +4520,20 @@ pub(in crate::store) mod accounting_tests {
     #[test]
     fn final_ticket_output_preserves_an_earlier_published_then_retired_creation() {
         let cancel = AtomicBool::new(false);
-        let mut dom =
-            Dom::new(DomLimits::new(64, 100_000, 128, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                64,
+                100_000,
+                128,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let done = dom.apply(setup, &cancel).unwrap();
@@ -4388,8 +4591,20 @@ pub(in crate::store) mod accounting_tests {
     fn output_frame_payload_stays_admitted_through_checkpoint_parking_and_retry() {
         use surgeist_cssom::CssomEditGuard;
         let cancel = AtomicBool::new(false);
-        let mut dom =
-            Dom::new(DomLimits::new(64, 100_000, 128, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                64,
+                100_000,
+                128,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let output = setup.create_element_ns(&document, crate::Namespace::html(), "output");
@@ -4545,7 +4760,20 @@ pub(in crate::store) mod accounting_tests {
     }
     fn actual_textarea_api_read(bytes: usize) -> Option<formation::mutation_observation::Growth> {
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(32, 100_000, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                100_000,
+                64,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let textarea = setup.create_element_ns(&document, crate::Namespace::html(), "textarea");
@@ -4676,7 +4904,20 @@ pub(in crate::store) mod accounting_tests {
         use surgeist_css::{CssParserContext, CssUtf16InputLimits};
         use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(64, 100_000, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                64,
+                100_000,
+                64,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let container = setup.create_element_ns(&document, crate::Namespace::html(), "div");
@@ -4861,18 +5102,27 @@ pub(in crate::store) mod accounting_tests {
         remaining: Option<u64>,
     ) -> (bool, u64) {
         let cancel = AtomicBool::new(false);
-        let domain = DomLimits::new(256, 100_000, 256, 0, 0, 8, 100_000)
-            .unwrap()
-            .with_select_processing(256, 1_000_000, 1_000_000)
-            .unwrap()
-            .with_select_value_queries(
-                surgeist_html_semantics::HtmlCaptureLimits::new(
-                    256, 512, 256, 100_000, 256, 0, 0, 16_777_216,
-                ),
-                surgeist_html_semantics::HtmlSemanticLimits::new(
-                    1_000_000, 1, 256, 256, 1_000_000, 256,
-                ),
-            );
+        let domain = DomLimits::new(
+            256,
+            100_000,
+            256,
+            0,
+            0,
+            8,
+            100_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_select_processing(256, 1_000_000, 1_000_000)
+        .unwrap()
+        .with_select_value_queries(
+            surgeist_html_semantics::HtmlCaptureLimits::new(
+                256, 512, 256, 100_000, 256, 0, 0, 16_777_216,
+            ),
+            surgeist_html_semantics::HtmlSemanticLimits::new(
+                1_000_000, 1, 256, 256, 1_000_000, 256,
+            ),
+        );
         let mut dom = Dom::new(domain).unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
@@ -4995,7 +5245,20 @@ pub(in crate::store) mod accounting_tests {
     #[test]
     fn mandatory_tail_issues_ordinals_only_on_exposure_and_resets_at_the_next_command() {
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(64, 100_000, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                64,
+                100_000,
+                64,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let parent = setup.create_element_ns(&document, crate::Namespace::html(), "div");
@@ -5140,10 +5403,19 @@ pub(in crate::store) mod accounting_tests {
     #[test]
     fn details_mandatory_tail_reserves_its_later_publication_identity_before_cssom_commit() {
         let cancel = AtomicBool::new(false);
-        let domain = DomLimits::new(64, 100_000, 128, 0, 0, 8, 100_000)
-            .unwrap()
-            .with_details_toggle_intentions(64)
-            .unwrap();
+        let domain = DomLimits::new(
+            64,
+            100_000,
+            128,
+            0,
+            0,
+            8,
+            100_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_details_toggle_intentions(64)
+        .unwrap();
         let mut dom = Dom::new(domain).unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
@@ -5232,10 +5504,19 @@ pub(in crate::store) mod accounting_tests {
     fn select_mandatory_tail_reserves_new_same_target_identity_after_acknowledged_prefix() {
         use surgeist_cssom::CssomEditGuard;
         let cancel = AtomicBool::new(false);
-        let domain = DomLimits::new(64, 100_000, 128, 0, 0, 8, 100_000)
-            .unwrap()
-            .with_select_processing(64, 1_000_000, 10_000_000)
-            .unwrap();
+        let domain = DomLimits::new(
+            64,
+            100_000,
+            128,
+            0,
+            0,
+            8,
+            100_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_select_processing(64, 1_000_000, 10_000_000)
+        .unwrap();
         let mut dom = Dom::new(domain).unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
@@ -5359,14 +5640,23 @@ pub(in crate::store) mod accounting_tests {
     fn failed_semantic_query_retains_child_spent_work_across_source_retry() {
         use surgeist_html_semantics::{HtmlCaptureLimits, HtmlSemanticLimits};
         let cancel = AtomicBool::new(false);
-        let domain = DomLimits::new(32, 100_000, 64, 0, 0, 8, 100_000)
-            .unwrap()
-            .with_select_processing(16, 1_000_000, 1_000_000)
-            .unwrap()
-            .with_select_value_queries(
-                HtmlCaptureLimits::new(32, 64, 32, 100_000, 32, 0, 0, 16_777_216),
-                HtmlSemanticLimits::new(1, 1, 128, 0, 1_000_000, 128),
-            );
+        let domain = DomLimits::new(
+            32,
+            100_000,
+            64,
+            0,
+            0,
+            8,
+            100_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_select_processing(16, 1_000_000, 1_000_000)
+        .unwrap()
+        .with_select_value_queries(
+            HtmlCaptureLimits::new(32, 64, 32, 100_000, 32, 0, 0, 16_777_216),
+            HtmlSemanticLimits::new(1, 1, 128, 0, 1_000_000, 128),
+        );
         let mut dom = Dom::new(domain).unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
@@ -5490,7 +5780,20 @@ pub(in crate::store) mod accounting_tests {
     #[test]
     fn unchanged_padded_text_retains_its_original_record_and_payload_in_a_candidate() {
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(16, 100_000, 32, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                16,
+                100_000,
+                32,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let mut padded = Vec::with_capacity(65_536);
@@ -5528,7 +5831,20 @@ pub(in crate::store) mod accounting_tests {
     #[test]
     fn same_source_candidate_root_body_admits_exact_bytes_and_refuses_one_short() {
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(16, 100_000, 32, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                16,
+                100_000,
+                32,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let mut padded = Vec::with_capacity(65_536);
@@ -5586,8 +5902,20 @@ pub(in crate::store) mod accounting_tests {
     fn changed_text_candidate_admits_its_materialized_field_units_exactly_and_refuses_one_short() {
         let cancel = AtomicBool::new(false);
         for short in [false, true] {
-            let mut dom =
-                Dom::new(DomLimits::new(16, 100_000, 32, 0, 0, 8, 100_000).unwrap()).unwrap();
+            let mut dom = Dom::new(
+                DomLimits::new(
+                    16,
+                    100_000,
+                    32,
+                    0,
+                    0,
+                    8,
+                    100_000,
+                    crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
             let mut setup = DomBatch::new();
             let document = setup.create_document();
             let text = setup.create_text(&document, "original");
@@ -5666,7 +5994,20 @@ pub(in crate::store) mod accounting_tests {
     #[test]
     fn formed_source_input_holds_its_utf16_charge_while_candidate_remains_live() {
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(32, 100_000, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                100_000,
+                64,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let style = setup.create_element_ns(&document, crate::Namespace::html(), "style");
@@ -5716,8 +6057,20 @@ pub(in crate::store) mod accounting_tests {
     }
     fn slot_operation_fixture() -> (Dom, DomBatch, NodeId, NodeId, NodeId) {
         let cancel = AtomicBool::new(false);
-        let mut dom =
-            Dom::new(DomLimits::new(64, 100_000, 128, 128, 128, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                64,
+                100_000,
+                128,
+                128,
+                128,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut b = DomBatch::new();
         let d = b.create_document();
         let host = b.create_element_ns(&d, crate::Namespace::html(), "div");

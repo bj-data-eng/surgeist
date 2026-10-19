@@ -4,7 +4,17 @@ use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 
 fn limits() -> DomLimits {
-    DomLimits::new(128, 8192, 128, 0, 0, 32, 1_000_000).unwrap()
+    DomLimits::new(
+        128,
+        8192,
+        128,
+        0,
+        0,
+        32,
+        1_000_000,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
@@ -169,7 +179,19 @@ fn actual_clone_is_fresh_while_adoption_and_historical_snapshots_keep_return_val
 #[test]
 fn logical_string_exact_boundary_succeeds_and_one_more_rolls_back_every_edit() {
     let cap = 128;
-    let (mut dom, _, node) = setup(DomLimits::new(16, cap, 32, 0, 0, 8, 65536).unwrap());
+    let (mut dom, _, node) = setup(
+        DomLimits::new(
+            16,
+            cap,
+            32,
+            0,
+            0,
+            8,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    );
     let available = cap - dom.usage().string_code_units();
     let mut b = DomBatch::new();
     b.set_dialog_return_value(node, DocumentString::from_utf16(vec![65; available]));

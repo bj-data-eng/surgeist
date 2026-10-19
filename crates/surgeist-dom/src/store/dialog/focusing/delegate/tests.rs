@@ -10,7 +10,20 @@ fn limits(bytes: usize, work: u64) -> crate::DomSourceLimits {
     crate::DomSourceLimits::new(bytes, 1_000_000, work, 64, 4096, 4096, 2)
 }
 fn dom() -> Dom {
-    Dom::new(DomLimits::new(512, 1_000_000, 1024, 128, 128, 32, 4_000_000).unwrap()).unwrap()
+    Dom::new(
+        DomLimits::new(
+            512,
+            1_000_000,
+            1024,
+            128,
+            128,
+            32,
+            4_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
 }
 fn draft(dom: &Dom) -> Draft {
     let batch = DomBatch::new();

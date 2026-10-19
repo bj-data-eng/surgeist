@@ -84,7 +84,17 @@ struct MountedItems {
 }
 
 fn limits(nodes: usize) -> DomLimits {
-    DomLimits::new(nodes, 4096, 64, 0, 0, 16, 65536).unwrap()
+    DomLimits::new(
+        nodes,
+        4096,
+        64,
+        0,
+        0,
+        16,
+        65536,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
 }
 impl MountedItems {
     fn new() -> Self {

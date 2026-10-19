@@ -133,7 +133,7 @@ impl Draft {
         };
         for attribute in element.attributes().iter() {
             self.source_step(cancel)?;
-            if attribute.name().namespace().uri().is_none()
+            if attribute.name().namespace_uri().is_none()
                 && self.source_ascii(attribute.name().local_name(), name.local_name(), cancel)?
             {
                 return Ok(Some(attribute.value()));
@@ -373,11 +373,11 @@ impl Draft {
     pub(super) fn control_attribute_change(
         &mut self,
         key: Key,
-        changed: &crate::QualifiedName,
+        changed: &crate::DomQualifiedName,
         old: Option<&DocumentString>,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if changed.namespace().uri().is_some() {
+        if changed.namespace_uri().is_some() {
             return Ok(());
         }
         let is = |name: KnownHtmlAttribute| {
@@ -441,7 +441,20 @@ mod tests {
     use super::*;
     #[test]
     fn cancellation_after_prepared_message_and_reset_hooks_preserves_all_published_state() {
-        let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 32, 16, 8, 65536).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                4096,
+                64,
+                32,
+                16,
+                8,
+                65536,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let cancel = AtomicBool::new(false);
         let mut b = DomBatch::new();
         let d = b.create_document();

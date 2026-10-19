@@ -67,7 +67,20 @@ mod tests {
 
     #[test]
     fn static_shadow_including_order_reaches_the_real_three_bit_prefix_before_cancel() {
-        let mut dom = Dom::new(DomLimits::new(64, 8192, 128, 0, 0, 8, 65536).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                64,
+                8192,
+                128,
+                0,
+                0,
+                8,
+                65536,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let cancel = AtomicBool::new(false);
         let mut b = DomBatch::new();
         let d = b.create_document();
@@ -157,7 +170,20 @@ mod tests {
 
     #[test]
     fn qualification_lookup_uses_the_actual_root_child_document_not_the_connected_host() {
-        let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 65536).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                4096,
+                64,
+                0,
+                0,
+                8,
+                65536,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let cancel = AtomicBool::new(false);
         let mut b = DomBatch::new();
         let d1 = b.create_document();
@@ -213,7 +239,20 @@ mod tests {
     #[test]
     fn prepared_processed_bit_then_detach_cannot_publish_after_cancel_or_revision_exhaustion() {
         for exhausted in [false, true] {
-            let mut dom = Dom::new(DomLimits::new(16, 2048, 32, 0, 0, 8, 65536).unwrap()).unwrap();
+            let mut dom = Dom::new(
+                DomLimits::new(
+                    16,
+                    2048,
+                    32,
+                    0,
+                    0,
+                    8,
+                    65536,
+                    crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
             let cancel = AtomicBool::new(false);
             let mut b = DomBatch::new();
             let d = b.create_document();

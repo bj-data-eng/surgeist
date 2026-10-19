@@ -20,7 +20,20 @@ pub(in crate::store) struct Fixture {
 impl Fixture {
     fn new() -> Self {
         let cancel = cancellation();
-        let mut dom = Dom::new(DomLimits::new(64, 4096, 64, 0, 0, 16, 4_000_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                64,
+                4096,
+                64,
+                0,
+                0,
+                16,
+                4_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = DomBatch::new();
         let first = batch.create_document();
         let second = batch.create_document();

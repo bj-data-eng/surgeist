@@ -208,7 +208,6 @@ impl<T> OwnedBank<T> {
     pub fn len(&self) -> usize {
         self.bank.len()
     }
-    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.bank.is_empty()
     }

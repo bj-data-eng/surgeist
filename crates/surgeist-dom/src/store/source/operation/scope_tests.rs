@@ -6,8 +6,20 @@ fn limits() -> DomSourceLimits {
 }
 fn fixture() -> (Dom, DomHostedSource, DomHostedHostId, DocumentId, NodeId) {
     let cancel = AtomicBool::new(false);
-    let mut dom =
-        Dom::new(DomLimits::new(256, 1_000_000, 1024, 1024, 1024, 32, 4_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            256,
+            1_000_000,
+            1024,
+            1024,
+            1024,
+            32,
+            4_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let source = dom
         .register_hosted_source(
             DomHostedLimits::new(

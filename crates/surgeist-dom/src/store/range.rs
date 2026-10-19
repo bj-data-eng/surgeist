@@ -647,10 +647,19 @@ mod tests {
     use super::*;
 
     fn fixture() -> (Dom, DocumentId, DomRangeId) {
-        let limits = DomLimits::new(16, 1024, 32, 0, 0, 16, 8192)
-            .unwrap()
-            .with_ranges(1)
-            .unwrap();
+        let limits = DomLimits::new(
+            16,
+            1024,
+            32,
+            0,
+            0,
+            16,
+            8192,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_ranges(1)
+        .unwrap();
         let mut dom = Dom::new(limits).unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();

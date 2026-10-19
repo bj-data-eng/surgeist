@@ -10,7 +10,20 @@ use surgeist_dom::{
 const HTML: &str = "http://www.w3.org/1999/xhtml";
 const SVG: &str = "http://www.w3.org/2000/svg";
 fn new_dom() -> Dom {
-    Dom::new(DomLimits::new(256, 65536, 256, 0, 0, 32, 65536).unwrap()).unwrap()
+    Dom::new(
+        DomLimits::new(
+            256,
+            65536,
+            256,
+            0,
+            0,
+            32,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
@@ -45,7 +58,10 @@ fn skeleton(snapshot: &DomSnapshot, document: DocumentId) -> (NodeId, NodeId, No
     ] {
         let node = snapshot.node(id).unwrap();
         let element = node.as_element().unwrap();
-        assert_eq!(element.name().namespace(), &Namespace::from_uri(HTML));
+        assert_eq!(
+            element.name().namespace_uri(),
+            Namespace::from_uri(HTML).uri()
+        );
         assert_eq!(element.name().prefix(), None);
         assert_eq!(element.name().local_name(), &DocumentString::from(local));
         assert_eq!(node.tag_name(), Some(tag.into()));
@@ -192,8 +208,8 @@ fn whole_local_name_creation_folds_ascii_without_qname_extraction_or_unicode_rep
     let div = snapshot.node(id(&div)).unwrap();
     assert_eq!(div.as_element().unwrap().name().local_name(), &"div".into());
     assert_eq!(
-        div.as_element().unwrap().name().namespace(),
-        &Namespace::from_uri(HTML)
+        div.as_element().unwrap().name().namespace_uri(),
+        Namespace::from_uri(HTML).uri()
     );
     assert_eq!(div.node_name(), "DIV".into());
     let colon = snapshot.node(id(&colon)).unwrap();
@@ -218,8 +234,8 @@ fn whole_local_name_creation_folds_ascii_without_qname_extraction_or_unicode_rep
     let xml_element = snapshot.node(id(&xml_element)).unwrap();
     assert_eq!(xml_element.node_name(), "dIV".into());
     assert_eq!(
-        xml_element.as_element().unwrap().name().namespace(),
-        &Namespace::none()
+        xml_element.as_element().unwrap().name().namespace_uri(),
+        Namespace::none().uri()
     );
     let ns = snapshot.node(id(&ns)).unwrap();
     assert_eq!(ns.node_name(), "P:MIXED".into());
@@ -589,8 +605,21 @@ fn exact_skeleton_capacity_and_one_short_limits_apply_to_all_private_allocations
             ),
             (total_nodes, total_units, None),
         ] {
-            let mut dom =
-                Dom::new(DomLimits::new(nodes, units, 1, 0, 0, 8, 8192).unwrap()).unwrap();
+            let mut dom = Dom::new(
+                DomLimits::new(
+                    nodes,
+                    units,
+                    1,
+                    0,
+                    0,
+                    8,
+                    8192,
+                    surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                        .unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
             let mut batch = DomBatch::new();
             let source = batch.create_document();
             let source = apply(&mut dom, batch).document(&source).unwrap();

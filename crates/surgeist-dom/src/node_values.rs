@@ -604,7 +604,20 @@ mod source_tests {
     #[test]
     fn source_pi_success_and_invalid_cleanup_keep_the_original_cursor_results() {
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(32, 100_000, 32, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                100_000,
+                32,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let created = dom.apply(setup, &cancel).unwrap();
@@ -669,7 +682,20 @@ mod source_tests {
     }
     fn actual_pi_growth(bytes: usize, units: usize) -> PiRun {
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(16, 100_000, 32, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                16,
+                100_000,
+                32,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let doc = setup.create_document();
         let created = dom.apply(setup, &cancel).unwrap();

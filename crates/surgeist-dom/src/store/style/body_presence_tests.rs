@@ -87,9 +87,20 @@ fn acknowledged_style_creation_discovers_body_without_scanning_unrelated_childre
     let cancel = AtomicBool::new(false);
     for unrelated in [0, 256, 4096] {
         for body_present in [false, true] {
-            let mut dom =
-                Dom::new(DomLimits::new(20_000, 4_000_000, 32_768, 0, 0, 16, 4_000_000).unwrap())
-                    .unwrap();
+            let mut dom = Dom::new(
+                DomLimits::new(
+                    20_000,
+                    4_000_000,
+                    32_768,
+                    0,
+                    0,
+                    16,
+                    4_000_000,
+                    crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
             let mut batch = DomBatch::new();
             let source = batch.create_document();
             let ticket = batch.create_html_document(&source, None);
@@ -244,10 +255,19 @@ fn absent_render_blocking_removal_ignores_other_roles_and_preserves_duplicate_oc
     let cancel = AtomicBool::new(false);
     for unrelated in [0, 256] {
         let mut dom = Dom::new(
-            DomLimits::new(1024, 1_000_000, 2048, 0, 0, 16, 1_000_000)
-                .unwrap()
-                .with_autofocus_candidates(16)
-                .unwrap(),
+            DomLimits::new(
+                1024,
+                1_000_000,
+                2048,
+                0,
+                0,
+                16,
+                1_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap()
+            .with_autofocus_candidates(16)
+            .unwrap(),
         )
         .unwrap();
         let mut batch = DomBatch::new();
@@ -386,8 +406,20 @@ fn absent_render_blocking_removal_ignores_other_roles_and_preserves_duplicate_oc
 #[test]
 fn body_presence_uses_the_first_document_element_and_only_direct_html_children() {
     let cancel = AtomicBool::new(false);
-    let mut dom =
-        Dom::new(DomLimits::new(128, 100_000, 256, 0, 0, 16, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            128,
+            100_000,
+            256,
+            0,
+            0,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let source = batch.create_document();
     let ticket = batch.create_html_document(&source, None);

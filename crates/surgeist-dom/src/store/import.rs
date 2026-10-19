@@ -345,6 +345,7 @@ impl Draft {
                 return Err(DomError::NotSupported);
             }
             DomNodeKind::Element(e) => DomNodeKind::Element(e.clone_initialized(
+                self.bind_canonical_name(e.name(), formation.as_ref(), cancel)?,
                 self.document_metadata(document)?.document_environment(),
                 cancel,
                 formation.as_ref(),
@@ -372,7 +373,7 @@ impl Draft {
             };
             for attribute in element.attributes().iter() {
                 check_cancel(cancel)?;
-                self.append_attribute(copy, attribute, cause, limits, cancel)?;
+                self.append_canonical_attribute(copy, attribute, cause, limits, cancel)?;
             }
             if let Some(nonce) = element.nonce() {
                 self.set_nonce(copy, nonce, limits, cancel)?;

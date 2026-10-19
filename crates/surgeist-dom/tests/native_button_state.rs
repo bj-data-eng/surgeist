@@ -7,7 +7,20 @@ fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
 fn owner() -> Dom {
-    Dom::new(DomLimits::new(128, 16384, 256, 256, 128, 16, 65536).unwrap()).unwrap()
+    Dom::new(
+        DomLimits::new(
+            128,
+            16384,
+            256,
+            256,
+            128,
+            16,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
 }
 fn apply(dom: &mut Dom, b: DomBatch) -> DomCommit {
     dom.apply(b, &cancel()).unwrap()
@@ -382,8 +395,20 @@ fn target_limits_late_failure_foreign_identity_and_cancel_preserve_state_and_his
     let (d, n) = setup(&mut dom);
     let before = dom.snapshot();
     let usage = dom.usage();
-    dom.set_limits(DomLimits::new(128, 74, 256, 256, 128, 16, 65536).unwrap())
-        .unwrap();
+    dom.set_limits(
+        DomLimits::new(
+            128,
+            74,
+            256,
+            256,
+            128,
+            16,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut b = DomBatch::new();
     b.set_command_for_element(n, Some(n.into()));
     assert_eq!(
@@ -393,8 +418,20 @@ fn target_limits_late_failure_foreign_identity_and_cancel_preserve_state_and_his
             limit: 74
         }
     );
-    dom.set_limits(DomLimits::new(128, 75, 256, 256, 128, 16, 65536).unwrap())
-        .unwrap();
+    dom.set_limits(
+        DomLimits::new(
+            128,
+            75,
+            256,
+            256,
+            128,
+            16,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut b = DomBatch::new();
     b.set_command_for_element(n, Some(n.into()));
     b.insert_before(d, n, None);

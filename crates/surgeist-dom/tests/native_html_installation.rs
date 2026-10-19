@@ -13,7 +13,20 @@ fn limits() -> DomNativeHtmlInstallLimits {
     DomNativeHtmlInstallLimits::new(1024, 1000000, 1048576)
 }
 fn dom() -> Dom {
-    Dom::new(DomLimits::new(1024, 131072, 2048, 1024, 512, 16, 1048576).unwrap()).unwrap()
+    Dom::new(
+        DomLimits::new(
+            1024,
+            131072,
+            2048,
+            1024,
+            512,
+            16,
+            1048576,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
@@ -31,6 +44,18 @@ fn stamp(dom: &Dom, d: DocumentId) -> DomDocumentStamp {
 }
 fn name(namespace: Namespace, local: &str) -> QualifiedName {
     QualifiedName::new(namespace, None, local)
+}
+fn assert_name_values(actual: &DomQualifiedName, authored: &QualifiedName) {
+    assert_eq!(actual.namespace_uri(), authored.namespace().uri());
+    assert_eq!(actual.prefix(), authored.prefix());
+    assert_eq!(actual.local_name(), authored.local_name());
+}
+fn assert_attribute_values(actual: &[DomAttribute], authored: &OrderedAttributes) {
+    assert_eq!(actual.len(), authored.len());
+    for (actual, authored) in actual.iter().zip(authored.iter()) {
+        assert_name_values(actual.name(), authored.name());
+        assert_eq!(actual.value(), authored.value());
+    }
 }
 fn fragment_with_element(name: QualifiedName, attributes: OrderedAttributes) -> HtmlFragment {
     let mut b = HtmlFragment::builder(authoring()).unwrap();
@@ -151,10 +176,10 @@ fn mixed_fields_and_utf16_install_before_real_reference_with_complete_historical
     let HtmlNodeKind::Element(authored) = source.node(&ids[2]).unwrap().kind() else {
         panic!("authored Element")
     };
-    assert_eq!(e.name(), authored.name());
+    assert_name_values(e.name(), authored.name());
     assert_eq!(e.name().prefix(), Some(&"p:q".into()));
     assert_eq!(e.name().local_name(), &"a:b".into());
-    assert_eq!(e.attributes(), &attributes);
+    assert_attribute_values(e.attributes(), &attributes);
     assert_eq!(
         s.node(mapped[2]).unwrap().children(),
         &[report.node_for(&child).unwrap()]
@@ -212,8 +237,8 @@ fn native_components_preserve_whole_spelling_and_do_not_replay_ns_api_conditions
             .unwrap()
             .as_element()
             .unwrap();
-        assert_eq!(element.name(), &exact);
-        assert_eq!(element.attributes(), &attributes);
+        assert_name_values(element.name(), &exact);
+        assert_attribute_values(element.attributes(), &attributes);
     }
 }
 
@@ -859,7 +884,20 @@ fn installed_families_run_actual_attribute_and_control_hooks_then_remain_live() 
 fn wrapper_and_every_installed_string_have_exact_canonical_admission() {
     // Existing XML Document31 + HTML div namespace28/local3 =62 units/two nodes.
     for (nodes, units, success) in [(3, 63, false), (4, 62, false), (4, 63, true)] {
-        let mut dom = Dom::new(DomLimits::new(nodes, units, 32, 0, 0, 8, 65536).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                nodes,
+                units,
+                32,
+                0,
+                0,
+                8,
+                65536,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let (d, parent) = setup(&mut dom);
         let mut b = HtmlFragment::builder(authoring()).unwrap();
         b.append_text(&b.root(), "x").unwrap();

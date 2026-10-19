@@ -84,12 +84,12 @@ impl Draft {
             None
         } else {
             let formation = source::formation::Formation::new(self, cancel)?;
-            let element = DomElement::native_ns(
+            let element = self.native_element_ns(
                 namespace,
                 qualified_name,
                 self.document_metadata(document)?.document_environment(),
-                cancel,
                 formation.as_ref(),
+                cancel,
             )?;
             let root = self.allocate_formed(
                 DomNodeKind::Element(element),
@@ -311,7 +311,7 @@ impl Draft {
         let operand = source::formation::Formation::new(self, cancelled)?;
         let local_name = source::formation::string(local_name, operand.as_ref(), cancelled)?;
         let formation = source::formation::Formation::new(self, cancelled)?;
-        let element = DomElement::native(&local_name, metadata, cancelled, formation.as_ref())?;
+        let element = self.native_element(&local_name, metadata, formation.as_ref(), cancelled)?;
         drop(local_name);
         drop(operand);
         let key = self.allocate_formed(
@@ -340,7 +340,20 @@ impl Draft {
 mod tests {
     use super::*;
     fn owner() -> (Dom, DocumentId) {
-        let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 8192).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                4096,
+                64,
+                0,
+                0,
+                8,
+                8192,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = DomBatch::new();
         let source = batch.create_document();
         let source = dom
@@ -523,7 +536,20 @@ mod xml_tests {
         selected: Option<(DomResource, usize, bool)>,
     ) -> (Result<(), DomError>, xml_observation::State) {
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(32, 100_000, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                100_000,
+                64,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = DomBatch::new();
         let associated = batch.create_document();
         let associated = dom

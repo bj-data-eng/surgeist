@@ -2,7 +2,7 @@
 fn sparse_fixture(records: usize) -> (Dom, DocumentId, NodeId, DomViewTransitionId) {
     let (mut dom, document) = fixture();
     dom.set_limits(
-        DomLimits::new(32, 100_000, 512, 0, 0, 8, 100_000)
+        DomLimits::new(32, 100_000, 512, 0, 0, 8, 100_000, crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap())
             .unwrap()
             .with_view_transitions(32, 4096, 20_000)
             .unwrap(),
@@ -399,7 +399,7 @@ fn historical_transition_adoption_visits_new_frontier_once_and_releases_all_chil
 #[test]
 fn document_deltas_preserve_reverse_initialization_order_through_noop_and_retirement() {
     let cancel = AtomicBool::new(false);
-    let mut dom = Dom::new(DomLimits::new(32, 10_000, 128, 0, 0, 8, 100_000).unwrap()).unwrap();
+    let mut dom = Dom::new(DomLimits::new(32, 10_000, 128, 0, 0, 8, 100_000, crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap()).unwrap()).unwrap();
     let mut create = DomBatch::new();
     let first = create.create_document();
     let second = create.create_document();

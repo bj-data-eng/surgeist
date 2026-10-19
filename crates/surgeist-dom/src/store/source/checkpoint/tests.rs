@@ -3,7 +3,17 @@ use super::*;
 
 fn fixture() -> (Dom, NodeId, Draft) {
     let cancel = AtomicBool::new(false);
-    let limits = DomLimits::new(8, 4096, 64, 0, 0, 16, 1_000_000).unwrap();
+    let limits = DomLimits::new(
+        8,
+        4096,
+        64,
+        0,
+        0,
+        16,
+        1_000_000,
+        crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap();
     let mut dom = Dom::new(limits).unwrap();
     let mut setup = DomBatch::new();
     let document = setup.create_document();
@@ -89,7 +99,20 @@ fn sealing_inner_savepoint_keeps_outer_original_for_later_rollback() {
 #[test]
 fn original_dialog_interpreter_mark_restores_an_unstarted_method_after_its_event_boundary() {
     let cancel = AtomicBool::new(false);
-    let mut dom = Dom::new(DomLimits::new(8, 4096, 64, 0, 0, 16, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            8,
+            4096,
+            64,
+            0,
+            0,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut setup = DomBatch::new();
     let document = setup.create_document();
     let dialog = setup.create_element_ns(&document, crate::Namespace::html(), "dialog");

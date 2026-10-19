@@ -41,11 +41,20 @@ fn fixture() -> (DomSession, DomHostedTopLevel, NodeId, NodeId) {
 }
 fn fixture_with_profile(headless: bool) -> (DomSession, DomHostedTopLevel, NodeId, NodeId) {
     let dom = Dom::new(
-        DomLimits::new(512, 2_000_000, 2048, 2048, 2048, 64, 8_000_000)
-            .unwrap()
-            .with_dispatch_custody(
-                DomDispatchCustodyLimits::new(64, 4096, 32_000_000, 32_000_000, 8_000_000).unwrap(),
-            ),
+        DomLimits::new(
+            512,
+            2_000_000,
+            2048,
+            2048,
+            2048,
+            64,
+            8_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_dispatch_custody(
+            DomDispatchCustodyLimits::new(64, 4096, 32_000_000, 32_000_000, 8_000_000).unwrap(),
+        ),
     )
     .unwrap();
     let mut session = DomSession::new(

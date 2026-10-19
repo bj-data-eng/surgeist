@@ -1930,7 +1930,21 @@ mod constructor_settings_tests {
             work: 1_000_000,
         };
         let mut session = DomSession::new(
-            Dom::new(DomLimits::new(128, 200_000, 256, 256, 256, 32, 1_000_000).unwrap()).unwrap(),
+            Dom::new(
+                DomLimits::new(
+                    128,
+                    200_000,
+                    256,
+                    256,
+                    256,
+                    32,
+                    1_000_000,
+                    surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                        .unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap(),
             DomSessionLimits {
                 source_events: crate::DomSourceEventRuntimeLimits {
                     jobs: 0,

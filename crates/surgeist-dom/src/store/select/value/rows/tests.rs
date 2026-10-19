@@ -3,10 +3,19 @@ use super::*;
 #[test]
 fn qualified_rows_keep_original_ordinals_and_refusal_preserves_prior_capture_rows() {
     let cancel = AtomicBool::new(false);
-    let limits = DomLimits::new(64, 16384, 128, 0, 0, 8, 1_000_000)
-        .unwrap()
-        .with_select_processing(32, 8_000_000, 10_000_000)
-        .unwrap();
+    let limits = DomLimits::new(
+        64,
+        16384,
+        128,
+        0,
+        0,
+        8,
+        1_000_000,
+        crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_select_processing(32, 8_000_000, 10_000_000)
+    .unwrap();
     let mut dom = Dom::new(limits).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
@@ -113,10 +122,19 @@ fn qualified_rows_keep_original_ordinals_and_refusal_preserves_prior_capture_row
 fn local_admin_and_header_admit_exact_select_bytes_and_refuse_one_short_on_the_same_owner() {
     let cancel = AtomicBool::new(false);
     let mut dom = Dom::new(
-        DomLimits::new(64, 16384, 128, 0, 0, 8, 1_000_000)
-            .unwrap()
-            .with_select_processing(32, 8_000_000, 10_000_000)
-            .unwrap(),
+        DomLimits::new(
+            64,
+            16384,
+            128,
+            0,
+            0,
+            8,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_select_processing(32, 8_000_000, 10_000_000)
+        .unwrap(),
     )
     .unwrap();
     let mut setup = DomBatch::new();

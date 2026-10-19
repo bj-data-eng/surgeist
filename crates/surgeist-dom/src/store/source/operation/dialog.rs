@@ -1290,13 +1290,18 @@ impl Dom {
             owner,
             super::super::initial::CommandStorage { commands, capacity },
             limits,
-            observation.usage.work.clone(),
-            self.source_operation
-                .as_ref()
-                .and_then(|operation| operation.event_custody.as_ref())
-                .ok_or(DomError::InvalidSourceEvent)?
-                .source()
-                .identity(),
+            super::super::initial::Replay {
+                work: observation.usage.work.clone(),
+                identity: self
+                    .source_operation
+                    .as_ref()
+                    .and_then(|operation| operation.event_custody.as_ref())
+                    .ok_or(DomError::InvalidSourceEvent)?
+                    .source()
+                    .identity(),
+                // This callback batch is a child, not a resumed segment.
+                names: None,
+            },
             cancel,
         )?;
         Ok(draft)
@@ -1651,13 +1656,16 @@ impl DomSourceLease<'_> {
                 capacity: 0,
             },
             limits,
-            work,
-            operation
-                .event_custody
-                .as_ref()
-                .ok_or(DomError::InvalidSourceEvent)?
-                .source()
-                .identity(),
+            super::super::initial::Replay {
+                work,
+                identity: operation
+                    .event_custody
+                    .as_ref()
+                    .ok_or(DomError::InvalidSourceEvent)?
+                    .source()
+                    .identity(),
+                names: Some(operation.names.clone()),
+            },
             cancel,
         )?;
         if operation.request_close.is_some() {

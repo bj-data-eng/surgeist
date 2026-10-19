@@ -40,6 +40,8 @@ pages shared by snapshots. These receipts grant no host execution authority.
 | --- | --- |
 | Canonical State | Its body and retained queue-field backing occurrences. Absent queues add no out-of-line storage. Bank records, pages and auxiliary graphs have their own custody. |
 | Persistent page or record | Actual new page storage, or record body and its payload-field occurrences, admitted before controlled retention. Shared descendants keep their existing debit. |
+| Canonical names | Owner-qualified immutable records with weak index entries. Strong tokens retain text independently of the owner; admitted objects retain the corresponding child custody. |
+| Ordered attributes | One immutable DOM-owned typed payload and actual attribute-array capacity. Scalar-only record changes share that payload; text occurrences and name-record child custody remain distinct charges. Fresh empty attributes have no bank allocation. |
 | Retained Form history | One typed payload body, actual entry capacity and conservative name-field occurrences. Known-empty history has no payload. Slot controls own its child custody; another Slot or staged alias of that payload does not charge its contents again. |
 | Additional bank-root or savepoint alias | Actual holder and control storage. Sharing a root or copying record handles does not materialize its reachable records again. |
 | Changed transaction field or selected sequence | The new materialized field/backing, while the previous occurrence remains charged for as long as canonical state or rollback still retains it. |
@@ -55,6 +57,18 @@ owners. It holds weak accounting sidecars, rather than weak semantic records.
 Registry paths, sidecar targets, release records and retained capacity have their
 own admitted storage. Cleanup releases only objects whose controlled ownership
 has actually ended.
+
+`DomNameLimits` bounds directly owned name records, text, index capacity and
+operation receipts, plus canonical attribute-array storage and the directly
+owned name-custody capsules. Attribute-value text keeps its existing payload
+admission. Pending and dead entries count until removal; a live record
+is never evicted to escape admission. Name work and scratch have separate finite
+operation allowances. Shared custody-registry administration keeps its existing
+global and Source admission rather than acquiring a second name debit. The name
+ceiling constrains registered records even when external tokens keep them alive.
+It does not bound the whole DOM, caller-owned cloned handles or values surviving
+owner destruction, when the registry policy ends. Physical memory qualification
+includes these separately accounted resources.
 
 The [typed payload owner](../src/store/payload.rs) reserves a fresh identity
 before retaining or allocating a new body. Its pending holder keeps incoming

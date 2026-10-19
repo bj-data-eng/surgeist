@@ -9,7 +9,20 @@ use surgeist_html_semantics::{
 
 fn fixture() -> (DomSnapshot, DocumentId, NodeId) {
     let cancel = AtomicBool::new(false);
-    let mut dom = Dom::new(DomLimits::new(32, 4096, 32, 32, 32, 4, 65536).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            32,
+            4096,
+            32,
+            32,
+            32,
+            4,
+            65536,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let dialog = batch.create_element_ns(&document, Namespace::html(), "dialog");
@@ -114,7 +127,20 @@ fn unavailable_history_stays_missing_and_actual_raw_dialog_blocks_in_both_contex
 #[test]
 fn partial_document_coverage_uses_actual_lists_and_original_qualification() {
     let cancel = AtomicBool::new(false);
-    let mut dom = Dom::new(DomLimits::new(32, 4096, 32, 32, 32, 4, 65536).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            32,
+            4096,
+            32,
+            32,
+            32,
+            4,
+            65536,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let first = batch.create_document();
     let second = batch.create_document();

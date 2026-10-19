@@ -17,7 +17,20 @@ fn limits(bytes: usize, scratch: usize, work: u64) -> DomHostedLimits {
 }
 fn prepared_top_level() -> (Dom, DomHostedSource, Option<DomHostedPreparedTopLevel>) {
     let c = cancel();
-    let mut dom = Dom::new(DomLimits::new(64, 4096, 64, 0, 0, 16, 4_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            64,
+            4096,
+            64,
+            0,
+            0,
+            16,
+            4_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut source = dom
         .register_hosted_source(limits(8_000_000, 8_000_000, 1_000_000), &c)
         .unwrap();
@@ -134,7 +147,20 @@ fn fixture() -> (
     Option<DomHostedPolicyPublication>,
 ) {
     let c = cancel();
-    let mut dom = Dom::new(DomLimits::new(64, 4096, 64, 0, 0, 16, 4_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            64,
+            4096,
+            64,
+            0,
+            0,
+            16,
+            4_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut source = dom
         .register_hosted_source(limits(8_000_000, 8_000_000, 1_000_000), &c)
         .unwrap();

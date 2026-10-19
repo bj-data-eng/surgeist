@@ -68,11 +68,20 @@ fn fixture(limits: DomSessionLimits) -> (DomSession, NodeId) {
 fn fixture_pair(limits: DomSessionLimits) -> (DomSession, NodeId, NodeId) {
     let cancel = AtomicBool::new(false);
     let mut dom = Dom::new(
-        DomLimits::new(128, 100_000, 256, 128, 128, 32, 4_000_000)
-            .unwrap()
-            .with_dispatch_custody(
-                DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap(),
-            ),
+        DomLimits::new(
+            128,
+            100_000,
+            256,
+            128,
+            128,
+            32,
+            4_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_dispatch_custody(
+            DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap(),
+        ),
     )
     .unwrap();
     let mut batch = DomBatch::new();
@@ -627,11 +636,20 @@ fn hosted_uncanceled_resume_publishes_open_and_toggle_tracker_then_parks_at_reme
     // the actual Global/settings/agent/window loop; no native Document is
     // converted to hosted state by a fixture flag.
     let dom = Dom::new(
-        DomLimits::new(128, 100_000, 256, 128, 128, 32, 4_000_000)
-            .unwrap()
-            .with_dispatch_custody(
-                DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap(),
-            ),
+        DomLimits::new(
+            128,
+            100_000,
+            256,
+            128,
+            128,
+            32,
+            4_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_dispatch_custody(
+            DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap(),
+        ),
     )
     .unwrap();
     let mut session = DomSession::new(dom, session_limits()).unwrap();
@@ -827,13 +845,22 @@ fn hosted_uncanceled_resume_publishes_open_and_toggle_tracker_then_parks_at_reme
 fn hosted_queue_fixture() -> (DomSession, DomHostedTopLevel, NodeId) {
     let cancel = AtomicBool::new(false);
     let dom = Dom::new(
-        DomLimits::new(128, 100_000, 256, 128, 128, 32, 4_000_000)
-            .unwrap()
-            .with_dispatch_custody(
-                DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap(),
-            )
-            .with_details_toggle_intentions(8)
-            .unwrap(),
+        DomLimits::new(
+            128,
+            100_000,
+            256,
+            128,
+            128,
+            32,
+            4_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_dispatch_custody(
+            DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap(),
+        )
+        .with_details_toggle_intentions(8)
+        .unwrap(),
     )
     .unwrap();
     let mut session = DomSession::new(dom, session_limits()).unwrap();
@@ -1965,7 +1992,20 @@ fn explicit_job_zero_refuses_before_dispatch_and_constructor_work_refusal_return
             DomSourceEventRuntimeError::Admission(DomSourceEventResource::Jobs)
         ))
     ));
-    let dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 100_000).unwrap()).unwrap();
+    let dom = Dom::new(
+        DomLimits::new(
+            32,
+            4096,
+            64,
+            0,
+            0,
+            8,
+            100_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let before = dom.snapshot().stamp();
     limits.source_events.work = 0;
     let rejected = DomSession::new(dom, limits).unwrap_err();

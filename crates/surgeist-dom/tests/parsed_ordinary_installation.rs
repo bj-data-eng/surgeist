@@ -42,9 +42,20 @@ fn parse(source: HtmlSource) -> Arc<HtmlParseReport> {
     )
 }
 fn setup() -> (Dom, DomParsedDocumentEnvironment) {
-    let mut dom =
-        Dom::new(DomLimits::new(1024, 1_000_000, 1024, 4096, 4096, 32, 1_000_000).unwrap())
-            .unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            1024,
+            1_000_000,
+            1024,
+            4096,
+            4096,
+            32,
+            1_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut b = DomBatch::new();
     let origin_document = b.create_document();
     let commit = dom.apply(b, &AtomicBool::new(false)).unwrap();
@@ -132,12 +143,21 @@ fn contextual_href_observation_requires_the_actual_canonical_bound_inputs() {
     use surgeist_html_semantics::*;
     let cancel = AtomicBool::new(false);
     let mut dom = Dom::new(
-        DomLimits::new(1024, 1_000_000, 1024, 4096, 4096, 32, 1_000_000)
-            .unwrap()
-            .with_base_processing(256, 10_000_000)
-            .unwrap()
-            .with_encoding_url_processing(256, 10_000_000)
-            .unwrap(),
+        DomLimits::new(
+            1024,
+            1_000_000,
+            1024,
+            4096,
+            4096,
+            32,
+            1_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_base_processing(256, 10_000_000)
+        .unwrap()
+        .with_encoding_url_processing(256, 10_000_000)
+        .unwrap(),
     )
     .unwrap();
     let mut batch = DomBatch::new();
@@ -519,12 +539,21 @@ fn contextual_current_revision_is_independent_of_the_older_frozen_base_record() 
     use surgeist_html_semantics::*;
     let cancel = AtomicBool::new(false);
     let mut dom = Dom::new(
-        DomLimits::new(1024, 1_000_000, 1024, 4096, 4096, 32, 1_000_000)
-            .unwrap()
-            .with_base_processing(256, 10_000_000)
-            .unwrap()
-            .with_encoding_url_processing(256, 10_000_000)
-            .unwrap(),
+        DomLimits::new(
+            1024,
+            1_000_000,
+            1024,
+            4096,
+            4096,
+            32,
+            1_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_base_processing(256, 10_000_000)
+        .unwrap()
+        .with_encoding_url_processing(256, 10_000_000)
+        .unwrap(),
     )
     .unwrap();
     let mut batch = DomBatch::new();
@@ -2111,7 +2140,7 @@ fn element(result: &DomParsedHtmlInstallation, local: &str) -> NodeId {
                 .unwrap()
                 .as_element()
                 .filter(|element| {
-                    element.name().namespace() == &Namespace::html()
+                    element.name().namespace_uri() == Namespace::html().uri()
                         && element
                             .name()
                             .local_name()
@@ -2249,7 +2278,7 @@ fn saved_creation_state_is_independent_of_recovered_attribute_merge_and_foreign_
         .as_element()
         .unwrap();
     assert_eq!(div.attributes().len(), 1);
-    let first = &div.attributes().as_slice()[0];
+    let first = &div.attributes()[0];
     assert_eq!(first.name().local_name(), &DocumentString::from("a:b"));
     assert_eq!(first.value(), &DocumentString::from("first"));
     assert!(first.name().prefix().is_none());
@@ -3700,7 +3729,20 @@ fn parsed_meta_utf16_language_uses_canonical_exact_units_and_one_short_rolls_bac
     for allowance in [exact - 1, exact] {
         let (mut target, _) = setup();
         target
-            .set_limits(DomLimits::new(1024, allowance, 1024, 4096, 4096, 32, 1_000_000).unwrap())
+            .set_limits(
+                DomLimits::new(
+                    1024,
+                    allowance,
+                    1024,
+                    4096,
+                    4096,
+                    32,
+                    1_000_000,
+                    surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                        .unwrap(),
+                )
+                .unwrap(),
+            )
             .unwrap();
         let before = target.snapshot();
         let usage = target.usage();

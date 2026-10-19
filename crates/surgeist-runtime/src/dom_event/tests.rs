@@ -26,14 +26,23 @@ fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
 }
 fn dom() -> Dom {
     Dom::new(
-        DomLimits::new(128, 32768, 512, 128, 128, 32, 131072)
-            .unwrap()
-            .with_dispatch_custody(
-                surgeist_dom::DomDispatchCustodyLimits::new(
-                    64, 4096, 16_000_000, 16_000_000, 4_000_000,
-                )
-                .unwrap(),
-            ),
+        DomLimits::new(
+            128,
+            32768,
+            512,
+            128,
+            128,
+            32,
+            131072,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_dispatch_custody(
+            surgeist_dom::DomDispatchCustodyLimits::new(
+                64, 4096, 16_000_000, 16_000_000, 4_000_000,
+            )
+            .unwrap(),
+        ),
     )
     .unwrap()
 }

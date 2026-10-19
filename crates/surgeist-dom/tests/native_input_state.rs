@@ -15,10 +15,19 @@ fn limits() -> DomLimits {
     // the four Range min/max/step/current hooks dominate the three Color hooks.
     // Each Color literal is nonrecursive, <=64 UTF-16 units and <=4 components.
     let (scratch, work) = processing_envelope::color_limits(4);
-    DomLimits::new(512, 131072, 2048, 512, 512, 32, 1048576)
-        .unwrap()
-        .with_input_processing(scratch, work)
-        .unwrap()
+    DomLimits::new(
+        512,
+        131072,
+        2048,
+        512,
+        512,
+        32,
+        1048576,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_input_processing(scratch, work)
+    .unwrap()
 }
 fn owner() -> Dom {
     Dom::new(limits()).unwrap()
@@ -771,7 +780,20 @@ fn clone_copies_only_input_overlay_while_adoption_preserves_live_state() {
 
 #[test]
 fn reached_processing_limits_and_late_invalid_operations_are_atomic() {
-    let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 65536).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            32,
+            4096,
+            64,
+            0,
+            0,
+            8,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let (_, _, input) = setup(&mut dom);
     let before = dom.snapshot();
     let usage = dom.usage();
@@ -1099,7 +1121,20 @@ fn retained_current_message_and_image_history_units_are_independent_and_released
 #[test]
 fn exact_current_string_capacity_and_non_input_commands_preserve_atomicity() {
     for (units, passes) in [(97, false), (98, true)] {
-        let mut dom = Dom::new(DomLimits::new(16, units, 64, 0, 0, 8, 65536).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                16,
+                units,
+                64,
+                0,
+                0,
+                8,
+                65536,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let (_, root, input) = setup(&mut dom);
         let before = dom.snapshot();
         let usage = dom.usage();

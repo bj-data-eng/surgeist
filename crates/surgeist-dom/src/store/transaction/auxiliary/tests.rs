@@ -573,7 +573,20 @@ fn alias_replacement_admits_both_backings_and_preserves_full_old_pool_on_refusal
     use std::cell::{Cell, RefCell};
     use std::sync::atomic::{AtomicBool, Ordering};
     let cancel = AtomicBool::new(false);
-    let dom = Dom::new(DomLimits::new(64, 100_000, 128, 0, 0, 16, 1_000_000).unwrap()).unwrap();
+    let dom = Dom::new(
+        DomLimits::new(
+            64,
+            100_000,
+            128,
+            0,
+            0,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let batch = DomBatch::new();
     let draft = RefCell::new(
         Draft::new_source(

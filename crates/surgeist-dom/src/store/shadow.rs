@@ -52,7 +52,7 @@ impl Draft {
         let DomNodeKind::Element(element) = &node.kind else {
             return Err(DomError::WrongNodeKind);
         };
-        if !element.name().namespace().uri().is_some_and(|uri| {
+        if !element.name().namespace_uri().is_some_and(|uri| {
             uri.code_units()
                 .iter()
                 .copied()
@@ -156,7 +156,20 @@ mod tests {
     }
     #[test]
     fn cancellation_after_preparing_shadow_links_and_ids_preserves_published_state() {
-        let mut dom = Dom::new(DomLimits::new(8, 256, 16, 0, 0, 8, 8192).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                8,
+                256,
+                16,
+                0,
+                0,
+                8,
+                8192,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let host = host(&mut dom);
         let before = dom.snapshot();
         let usage = dom.usage();
@@ -184,7 +197,20 @@ mod tests {
     }
     #[test]
     fn exhausted_revision_rejects_shadow_publication_without_consuming_an_identity() {
-        let mut dom = Dom::new(DomLimits::new(8, 256, 16, 0, 0, 8, 8192).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                8,
+                256,
+                16,
+                0,
+                0,
+                8,
+                8192,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let host = host(&mut dom);
         dom.revision = DomRevision(u64::MAX);
         let before = dom.snapshot();

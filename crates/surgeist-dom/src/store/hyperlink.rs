@@ -356,13 +356,13 @@ impl Draft {
     pub(super) fn hyperlink_attribute_change(
         &mut self,
         key: Key,
-        name: &crate::QualifiedName,
+        name: &crate::DomQualifiedName,
         old: Option<&DocumentString>,
         new: Option<&DocumentString>,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if self.node(key)?.hyperlink.is_none() || name.namespace().uri().is_some() {
+        if self.node(key)?.hyperlink.is_none() || name.namespace_uri().is_some() {
             return Ok(());
         }
         let Some(attribute) = KnownHtmlAttribute::from_name(name) else {
@@ -383,7 +383,14 @@ impl Draft {
             }
             _ => false,
         };
-        match surgeist_html::hyperlink_attribute_effect(name.namespace(), attribute, equal) {
+        match surgeist_html::hyperlink_attribute_effect(
+            &name
+                .namespace_uri()
+                .cloned()
+                .map_or_else(crate::Namespace::none, crate::Namespace::from_uri),
+            attribute,
+            equal,
+        ) {
             HtmlHyperlinkAttributeEffect::None => Ok(()),
             HtmlHyperlinkAttributeEffect::SetUrlThenConsiderSpeculativeLoads => {
                 self.set_hyperlink_url(key, new, limits, cancel)?;
@@ -443,12 +450,21 @@ mod tests {
     use crate::Namespace;
     use surgeist_html_semantics::*;
     fn policy(work: u64, units: usize) -> DomLimits {
-        DomLimits::new(64, units, 256, 128, 64, 8, 131072)
-            .unwrap()
-            .with_base_processing(64, 1_000_000)
-            .unwrap()
-            .with_encoding_url_processing(64, work)
-            .unwrap()
+        DomLimits::new(
+            64,
+            units,
+            256,
+            128,
+            64,
+            8,
+            131072,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_base_processing(64, 1_000_000)
+        .unwrap()
+        .with_encoding_url_processing(64, work)
+        .unwrap()
     }
     fn fixture(
         capacity: usize,
@@ -565,12 +581,21 @@ mod tests {
     ) -> Option<source::formation::mutation_observation::Growth> {
         use surgeist_html_semantics::*;
         let cancel = AtomicBool::new(false);
-        let domain = DomLimits::new(32, 1_000_000, 64, 0, 0, 8, 100_000)
-            .unwrap()
-            .with_base_processing(32, 1_000_000)
-            .unwrap()
-            .with_encoding_url_processing(32, 1_000_000)
-            .unwrap();
+        let domain = DomLimits::new(
+            32,
+            1_000_000,
+            64,
+            0,
+            0,
+            8,
+            100_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_base_processing(32, 1_000_000)
+        .unwrap()
+        .with_encoding_url_processing(32, 1_000_000)
+        .unwrap();
         let mut dom = Dom::new(domain).unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();

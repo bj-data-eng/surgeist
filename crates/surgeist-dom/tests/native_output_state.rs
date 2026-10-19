@@ -4,7 +4,17 @@ use surgeist_dom::*;
 use surgeist_html_semantics::*;
 
 fn limits() -> DomLimits {
-    DomLimits::new(256, 65536, 1024, 256, 256, 32, 1048576).unwrap()
+    DomLimits::new(
+        256,
+        65536,
+        1024,
+        256,
+        256,
+        32,
+        1048576,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
 }
 fn apply(dom: &mut Dom, b: DomBatch) -> DomCommit {
     dom.apply(b, &AtomicBool::new(false)).unwrap()
@@ -480,8 +490,20 @@ fn source_reached_override_then_new_text_admission_refuses_atomically_one_short(
         let mut b = DomBatch::new();
         b.set_output_default_value(n, "abc");
         apply(&mut dom, b);
-        dom.set_limits(DomLimits::new(256, cap, 1024, 256, 256, 32, 1048576).unwrap())
-            .unwrap();
+        dom.set_limits(
+            DomLimits::new(
+                256,
+                cap,
+                1024,
+                256,
+                256,
+                32,
+                1048576,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let before = dom.snapshot();
         let usage = dom.usage();
         let mut b = DomBatch::new();
@@ -510,8 +532,20 @@ fn node_capacity_precedes_old_child_removal_and_late_wrong_family_rolls_back() {
     let mut b = DomBatch::new();
     b.set_output_default_value(n, "old");
     apply(&mut dom, b);
-    dom.set_limits(DomLimits::new(4, 65536, 1024, 256, 256, 32, 1048576).unwrap())
-        .unwrap();
+    dom.set_limits(
+        DomLimits::new(
+            4,
+            65536,
+            1024,
+            256,
+            256,
+            32,
+            1048576,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let before = dom.snapshot();
     let usage = dom.usage();
     let mut b = DomBatch::new();

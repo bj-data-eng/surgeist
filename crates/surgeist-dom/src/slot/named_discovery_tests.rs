@@ -46,7 +46,20 @@ struct Layout<'a> {
 }
 
 fn fixture(layout: Layout<'_>) -> Fixture {
-    let mut dom = Dom::new(DomLimits::new(4096, 1_000_000, 16_384, 64, 1, 0, 0).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            4096,
+            1_000_000,
+            16_384,
+            64,
+            1,
+            0,
+            0,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let host = batch.create_element_ns(&document, Namespace::html(), "div");

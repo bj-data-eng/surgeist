@@ -12,10 +12,19 @@ use surgeist_dom::{
 
 fn owner() -> Dom {
     Dom::new(
-        DomLimits::new(8192, 262_144, 16_384, 0, 0, 64, 4_000_000)
-            .unwrap()
-            .with_ranges(32)
-            .unwrap(),
+        DomLimits::new(
+            8192,
+            262_144,
+            16_384,
+            0,
+            0,
+            64,
+            4_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_ranges(32)
+        .unwrap(),
     )
     .unwrap()
 }

@@ -7,14 +7,23 @@ use surgeist_dom::*;
 use surgeist_html_semantics::{HtmlCaptureLimits, HtmlSemanticLimits};
 
 fn limits() -> DomLimits {
-    DomLimits::new(512, 32768, 2048, 2048, 256, 16, 1_000_000)
-        .unwrap()
-        .with_select_processing(128, 4_000_000, 10_000_000)
-        .unwrap()
-        .with_select_value_queries(
-            HtmlCaptureLimits::new(512, 4096, 512, 32768, 512, 0, 0, 16_777_216),
-            HtmlSemanticLimits::new(1_000_000, 16, 2048, 512, 4_000_000, 2048),
-        )
+    DomLimits::new(
+        512,
+        32768,
+        2048,
+        2048,
+        256,
+        16,
+        1_000_000,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_select_processing(128, 4_000_000, 10_000_000)
+    .unwrap()
+    .with_select_value_queries(
+        HtmlCaptureLimits::new(512, 4096, 512, 32768, 512, 0, 0, 16_777_216),
+        HtmlSemanticLimits::new(1_000_000, 16, 2048, 512, 4_000_000, 2048),
+    )
 }
 
 fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {

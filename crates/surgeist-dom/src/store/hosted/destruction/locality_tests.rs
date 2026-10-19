@@ -18,7 +18,17 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         let (dom, mut source, document, _) = source::operation::fullscreen::native_fixture(
-            DomLimits::new(4096, 1_000_000, 4096, 128, 128, 32, 128_000_000).unwrap(),
+            DomLimits::new(
+                4096,
+                1_000_000,
+                4096,
+                128,
+                128,
+                32,
+                128_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
         );
         source
             .set_limits(

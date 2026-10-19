@@ -13,7 +13,20 @@ use surgeist_html_semantics::{
 #[test]
 fn native_fresh_document_design_mode_disables_implicit_editing_host() {
     let cancel = AtomicBool::new(false);
-    let mut dom = Dom::new(DomLimits::new(8, 4096, 16, 0, 0, 8, 65536).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            8,
+            4096,
+            16,
+            0,
+            0,
+            8,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let root = batch.create_element_ns(&document, Namespace::html(), "div");
@@ -66,7 +79,20 @@ use surgeist_dom::{DocumentId, DomHtmlCapture, DomSnapshot, NodeId};
 use surgeist_html_semantics::HtmlSemanticMissing;
 
 fn owner() -> Dom {
-    Dom::new(DomLimits::new(256, 100_000, 1024, 1024, 1024, 16, 1_000_000).unwrap()).unwrap()
+    Dom::new(
+        DomLimits::new(
+            256,
+            100_000,
+            1024,
+            1024,
+            1024,
+            16,
+            1_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
 }
 fn capture(snapshot: &DomSnapshot, document: DocumentId) -> DomHtmlCapture {
     snapshot

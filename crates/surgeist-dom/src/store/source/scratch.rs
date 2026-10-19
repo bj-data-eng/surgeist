@@ -363,7 +363,20 @@ mod tests {
         if !scale_metrics::ENABLED {
             return;
         }
-        let dom = Dom::new(DomLimits::new(8, 4096, 32, 0, 0, 8, 65_536).unwrap()).unwrap();
+        let dom = Dom::new(
+            DomLimits::new(
+                8,
+                4096,
+                32,
+                0,
+                0,
+                8,
+                65_536,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let cancel = AtomicBool::new(false);
         let batch = DomBatch::new();
         let draft = Draft::new_source(
@@ -406,8 +419,20 @@ mod tests {
         if !scale_metrics::ENABLED {
             return;
         }
-        let dom = Dom::new(DomLimits::new(128, 1_000_000, 1024, 128, 128, 32, 4_000_000).unwrap())
-            .unwrap();
+        let dom = Dom::new(
+            DomLimits::new(
+                128,
+                1_000_000,
+                1024,
+                128,
+                128,
+                32,
+                4_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let batch = DomBatch::new();
         let cancel = AtomicBool::new(false);
         let limits =
@@ -446,8 +471,20 @@ mod tests {
 
     #[test]
     fn parked_worklist_snapshot_shares_exact_backing_and_retained_custody() {
-        let dom = Dom::new(DomLimits::new(128, 1_000_000, 1024, 128, 128, 32, 4_000_000).unwrap())
-            .unwrap();
+        let dom = Dom::new(
+            DomLimits::new(
+                128,
+                1_000_000,
+                1024,
+                128,
+                128,
+                32,
+                4_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let batch = DomBatch::new();
         let cancel = AtomicBool::new(false);
         let limits =

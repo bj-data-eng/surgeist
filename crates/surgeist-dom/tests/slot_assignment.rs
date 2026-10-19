@@ -7,7 +7,17 @@ fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
 fn limits(references: usize, inputs: usize) -> DomLimits {
-    DomLimits::new(128, 32768, 512, references, inputs, 16, 131072).unwrap()
+    DomLimits::new(
+        128,
+        32768,
+        512,
+        references,
+        inputs,
+        16,
+        131072,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
 }
 fn queries() -> DomSlotQueryLimits {
     DomSlotQueryLimits::new(128, 512).unwrap()
@@ -741,7 +751,20 @@ fn fragment_transfer_and_replacement_update_assignment_in_source_order() {
 
 #[test]
 fn deep_fallback_is_iterative_fallible_and_keeps_order_without_following_raw_self_intent() {
-    let mut dom = Dom::new(DomLimits::new(512, 65536, 1024, 2048, 1024, 0, 0).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            512,
+            65536,
+            1024,
+            2048,
+            1024,
+            0,
+            0,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut b = DomBatch::new();
     let d = b.create_document();
     let host = b.create_element_ns(&d, Namespace::html(), "div");
@@ -871,7 +894,19 @@ fn source_assignments_keep_finite_history_complete_or_explicitly_require_recompu
         c.changes().changes()
     );
     f.dom
-        .set_limits(DomLimits::new(128, 32768, 512, 128, 128, 0, 0).unwrap())
+        .set_limits(
+            DomLimits::new(
+                128,
+                32768,
+                512,
+                128,
+                128,
+                0,
+                0,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
         .unwrap();
     let before = f.dom.snapshot();
     let mut b = DomBatch::new();

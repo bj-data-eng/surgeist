@@ -130,8 +130,20 @@ fn source_retained_bytes_cover_actual_spare_attribute_backing() {
     let mut padded_byte_limit = None;
     for spare in [PADDED, 1] {
         let cancel = AtomicBool::new(false);
-        let mut dom =
-            Dom::new(DomLimits::new(128, 4_194_304, 512, 0, 0, 16, 1_000_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                128,
+                4_194_304,
+                512,
+                0,
+                0,
+                16,
+                1_000_000,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
         let parent = batch.create_element_ns(&document, Namespace::html(), "div");
@@ -209,7 +221,20 @@ fn source_retained_bytes_cover_actual_spare_attribute_backing() {
 }
 
 fn dom() -> Dom {
-    Dom::new(DomLimits::new(128, 32768, 512, 0, 0, 16, 1_000_000).unwrap()).unwrap()
+    Dom::new(
+        DomLimits::new(
+            128,
+            32768,
+            512,
+            0,
+            0,
+            16,
+            1_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
 }
 
 #[test]
@@ -1223,10 +1248,19 @@ fn committed_transition_generations_and_request_snapshots_survive_style_phases()
     use surgeist_dom::{DomSourceProgress, DomStyleAction};
     let cancel = AtomicBool::new(false);
     let mut dom = Dom::new(
-        DomLimits::new(64, 10000, 256, 0, 0, 16, 100000)
-            .unwrap()
-            .with_view_transitions(8, 16, 80)
-            .unwrap(),
+        DomLimits::new(
+            64,
+            10000,
+            256,
+            0,
+            0,
+            16,
+            100000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_view_transitions(8, 16, 80)
+        .unwrap(),
     )
     .unwrap();
     let mut batch = DomBatch::new();
@@ -1522,10 +1556,19 @@ fn issued_select_completion_parks_private_copy_and_reacquires_exact_fifo_head() 
     )
     .unwrap();
     let mut dom = Dom::new(
-        DomLimits::new(256, 100_000, 1024, 0, 0, 16, 1_000_000)
-            .unwrap()
-            .with_select_processing(32, 4_000_000, 10_000_000)
-            .unwrap(),
+        DomLimits::new(
+            256,
+            100_000,
+            1024,
+            0,
+            0,
+            16,
+            1_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_select_processing(32, 4_000_000, 10_000_000)
+        .unwrap(),
     )
     .unwrap();
     let mut batch = DomBatch::new();
@@ -1644,10 +1687,19 @@ fn issued_select_final_output_refusal_retries_same_head_once_and_preserves_next_
     )
     .unwrap();
     let mut dom = Dom::new(
-        DomLimits::new(256, 100_000, 1024, 0, 0, 16, 1_000_000)
-            .unwrap()
-            .with_select_processing(32, 4_000_000, 10_000_000)
-            .unwrap(),
+        DomLimits::new(
+            256,
+            100_000,
+            1024,
+            0,
+            0,
+            16,
+            1_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_select_processing(32, 4_000_000, 10_000_000)
+        .unwrap(),
     )
     .unwrap();
     let mut batch = DomBatch::new();
@@ -2070,7 +2122,20 @@ fn stale_operation_id_case(end: u8) {
 
 fn manual_slot_input_fixture(inputs: usize) -> (Dom, surgeist_dom::NodeId, surgeist_dom::NodeId) {
     use surgeist_dom::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment};
-    let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 32, inputs, 8, 65536).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            32,
+            4096,
+            64,
+            32,
+            inputs,
+            8,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut setup = DomBatch::new();
     let document = setup.create_document();
     let host = setup.create_element_ns(&document, Namespace::html(), "div");
@@ -2332,8 +2397,20 @@ fn source_slot_inputs_preserve_cancellation_and_command_limit_precedence() {
         ),
         Err(DomError::Cancelled)
     );
-    dom.set_limits(DomLimits::new(32, 4096, 0, 32, 0, 8, 65536).unwrap())
-        .unwrap();
+    dom.set_limits(
+        DomLimits::new(
+            32,
+            4096,
+            0,
+            32,
+            0,
+            8,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let cancel = AtomicBool::new(false);
     let expected = DomError::ResourceLimit {
         resource: DomResource::Commands,
@@ -2428,9 +2505,18 @@ fn meta_budget_reaches_first_style_request(low: u64) -> bool {
 }
 fn meta_recovery_fixture(low: u64) -> (Dom, DomLimits, surgeist_dom::DocumentId, DomSourceEdit) {
     let cancel = AtomicBool::new(false);
-    let high = DomLimits::new(128, 32768, 512, 0, 0, 16, 1_000_000)
-        .unwrap()
-        .with_meta_processing_work(1_000_000);
+    let high = DomLimits::new(
+        128,
+        32768,
+        512,
+        0,
+        0,
+        16,
+        1_000_000,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_meta_processing_work(1_000_000);
     let mut dom = Dom::new(high).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();

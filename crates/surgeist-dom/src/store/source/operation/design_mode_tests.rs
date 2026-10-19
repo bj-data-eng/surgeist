@@ -9,10 +9,19 @@ fn policy(outputs: usize, phases: u64) -> DomSourceLimits {
 fn fixture(root: bool, range: bool) -> (Dom, DocumentId, Option<crate::DomRangeId>) {
     let cancel = AtomicBool::new(false);
     let mut dom = Dom::new(
-        DomLimits::new(32, 100_000, 64, 0, 0, 16, 1_000_000)
-            .unwrap()
-            .with_ranges(4)
-            .unwrap(),
+        DomLimits::new(
+            32,
+            100_000,
+            64,
+            0,
+            0,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_ranges(4)
+        .unwrap(),
     )
     .unwrap();
     let mut batch = DomBatch::new();

@@ -6,8 +6,20 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 fn fixture(comments: usize, slots: usize) -> (Dom, NodeId) {
     let cancel = AtomicBool::new(false);
-    let mut dom =
-        Dom::new(DomLimits::new(2048, 1_000_000, 8192, 8192, 0, 8, 64_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            2048,
+            1_000_000,
+            8192,
+            8192,
+            0,
+            8,
+            64_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let root = batch.create_element(&document, "root");

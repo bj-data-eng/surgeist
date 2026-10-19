@@ -397,7 +397,20 @@ mod tests {
             return;
         }
         let cancel = AtomicBool::new(false);
-        let mut dom = Dom::new(DomLimits::new(16, 4096, 32, 0, 0, 8, 65_536).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                16,
+                4096,
+                32,
+                0,
+                0,
+                8,
+                65_536,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
         let output = batch.create_element_ns(&document, crate::Namespace::html(), "output");
@@ -437,7 +450,20 @@ mod tests {
     #[test]
     fn source_prefix_store_and_reset_replace_reach_cancellation_without_publishing() {
         for reset in [false, true] {
-            let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 65536).unwrap()).unwrap();
+            let mut dom = Dom::new(
+                DomLimits::new(
+                    32,
+                    4096,
+                    64,
+                    0,
+                    0,
+                    8,
+                    65536,
+                    crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
             let cancel = AtomicBool::new(false);
             let mut b = DomBatch::new();
             let d = b.create_document();
@@ -541,7 +567,20 @@ mod tests {
     #[test]
     fn fully_prepared_tree_owner_and_override_changes_refuse_cancel_or_revision_exhaustion() {
         for exhausted in [false, true] {
-            let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 65536).unwrap()).unwrap();
+            let mut dom = Dom::new(
+                DomLimits::new(
+                    32,
+                    4096,
+                    64,
+                    0,
+                    0,
+                    8,
+                    65536,
+                    crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
             let cancel = AtomicBool::new(false);
             let mut b = DomBatch::new();
             let d = b.create_document();

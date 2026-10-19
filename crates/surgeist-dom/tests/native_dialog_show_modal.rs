@@ -8,8 +8,20 @@ fn limits() -> DomSourceLimits {
 fn inactive_closed_and_already_open_nonmodal_dialogs_fail_before_dispatch_or_modal_effects() {
     for open in [false, true] {
         let cancel = AtomicBool::new(false);
-        let mut dom =
-            Dom::new(DomLimits::new(32, 100_000, 64, 0, 0, 16, 1_000_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                100_000,
+                64,
+                0,
+                0,
+                16,
+                1_000_000,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let dialog = setup.create_element_ns(&document, Namespace::html(), "dialog");
@@ -52,7 +64,20 @@ fn inactive_closed_and_already_open_nonmodal_dialogs_fail_before_dispatch_or_mod
 #[test]
 fn wrong_family_and_canceled_entry_leave_no_source_guard_or_canonical_changes() {
     let cancel = AtomicBool::new(false);
-    let mut dom = Dom::new(DomLimits::new(32, 100_000, 64, 0, 0, 16, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            32,
+            100_000,
+            64,
+            0,
+            0,
+            16,
+            1_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut setup = DomBatch::new();
     let document = setup.create_document();
     let div = setup.create_element_ns(&document, Namespace::html(), "div");

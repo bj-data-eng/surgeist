@@ -49,12 +49,21 @@ fn base_facts(
 #[test]
 fn installed_environment_accepts_exact_inputs_and_rejects_same_spelling_foreign_identities() {
     let cancel = AtomicBool::new(false);
-    let limits = DomLimits::new(128, 100_000, 256, 256, 256, 16, 1_000_000)
-        .unwrap()
-        .with_base_processing(128, 1_000_000)
-        .unwrap()
-        .with_encoding_url_processing(128, 1_000_000)
-        .unwrap();
+    let limits = DomLimits::new(
+        128,
+        100_000,
+        256,
+        256,
+        256,
+        16,
+        1_000_000,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_base_processing(128, 1_000_000)
+    .unwrap()
+    .with_encoding_url_processing(128, 1_000_000)
+    .unwrap();
     let mut dom = Dom::new(limits).unwrap();
     let mut batch = DomBatch::new();
     let origin_doc = batch.create_document();

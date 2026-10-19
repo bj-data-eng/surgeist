@@ -9,7 +9,20 @@ use surgeist_dom::{
 };
 const HTML: &str = "http://www.w3.org/1999/xhtml";
 fn dom() -> Dom {
-    Dom::new(DomLimits::new(256, 65536, 512, 0, 0, 32, 65536).unwrap()).unwrap()
+    Dom::new(
+        DomLimits::new(
+            256,
+            65536,
+            512,
+            0,
+            0,
+            32,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
@@ -628,7 +641,20 @@ fn detached_host_destruction_retires_all_owned_shadow_generations_and_old_snapsh
 fn exact_node_and_string_admission_and_late_failure_leave_no_root_or_identity_history() {
     for capacity in [2, 3] {
         // 31 source Document units + 28 HTML namespace + 3 div. Root adds no strings.
-        let mut dom = Dom::new(DomLimits::new(capacity, 62, 16, 0, 0, 8, 8192).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                capacity,
+                62,
+                16,
+                0,
+                0,
+                8,
+                8192,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = DomBatch::new();
         let doc = batch.create_document();
         let host = batch.create_element_ns(&doc, Namespace::from_uri(HTML), "div");
@@ -721,8 +747,20 @@ fn no_op_root_detach_and_transient_owned_tree_do_not_advance_revision_or_history
         DomError::Cancelled
     );
     assert_eq!(dom.snapshot().stamp(), before.stamp());
-    dom.set_limits(DomLimits::new(256, 65536, 512, 0, 0, 0, 0).unwrap())
-        .unwrap();
+    dom.set_limits(
+        DomLimits::new(
+            256,
+            65536,
+            512,
+            0,
+            0,
+            0,
+            0,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let text = batch.create_text(document, "new");
     batch.insert_before(&text, root, None);
@@ -782,8 +820,20 @@ fn late_shadow_import_node_or_string_limit_failure_rolls_back_the_whole_private_
         ),
         (4, 63, None),
     ] {
-        let mut target =
-            Dom::new(DomLimits::new(nodes, units, 16, 0, 0, 8, 8192).unwrap()).unwrap();
+        let mut target = Dom::new(
+            DomLimits::new(
+                nodes,
+                units,
+                16,
+                0,
+                0,
+                8,
+                8192,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
         let commit = apply(&mut target, batch);

@@ -97,7 +97,7 @@ impl<'a> DomInput<'a> {
             .attributes()
             .iter()
             .find(|a| {
-                a.name().namespace().uri().is_none()
+                a.name().namespace_uri().is_none()
                     && a.name()
                         .local_name()
                         .code_units()

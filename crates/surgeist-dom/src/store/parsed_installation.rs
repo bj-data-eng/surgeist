@@ -1028,10 +1028,16 @@ impl Dom {
                 return Err(Error::UnsupportedState { subject: node.id() });
             };
             // Existing captured Documents retain their own current platform.
-            // Only newly created auxiliary Documents take the store selection.
             let input = document_metadata.document_environment().input_platform();
-            let kind = state::kind(&source, node, input, &mut c)?;
-            source.rows[i].key = Some(draft.allocate(kind, document, self.limits, cancelled)?);
+            source.rows[i].key = Some(state::allocate(
+                &source,
+                node,
+                &mut draft,
+                document,
+                input,
+                self.limits,
+                &mut c,
+            )?);
         }
         for row in &source.rows {
             c.step(1)?;

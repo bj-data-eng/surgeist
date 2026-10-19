@@ -124,8 +124,20 @@ mod tests {
         use std::sync::atomic::AtomicBool;
         use surgeist_dom::{Dom, DomHostedLimits, DomHostedRecordLimits, DomLimits};
 
-        let dom = Dom::new(DomLimits::new(512, 200_000, 1024, 1024, 1024, 64, 4_000_000).unwrap())
-            .unwrap();
+        let dom = Dom::new(
+            DomLimits::new(
+                512,
+                200_000,
+                1024,
+                1024,
+                1024,
+                64,
+                4_000_000,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut session = DomSession::new(
             dom,
             DomSessionLimits {
@@ -234,9 +246,21 @@ mod tests {
         // Controlled native observations exercise the production checked
         // observation/coarsening path. They do not certify production sampling.
         fn clock(epoch: Result<Instant, Error>) -> (Dom, DomHostedSource, Clock) {
-            let mut dom =
-                Dom::new(DomLimits::new(512, 200_000, 1024, 1024, 1024, 64, 4_000_000).unwrap())
-                    .unwrap();
+            let mut dom = Dom::new(
+                DomLimits::new(
+                    512,
+                    200_000,
+                    1024,
+                    1024,
+                    1024,
+                    64,
+                    4_000_000,
+                    surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                        .unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
             let source = dom
                 .register_hosted_source(
                     DomHostedLimits::new(
@@ -421,7 +445,20 @@ mod tests {
             fn session() -> DomSession {
                 DomSession::new(
                     Dom::new(
-                        DomLimits::new(512, 1_000_000, 1024, 1024, 1024, 64, 4_000_000).unwrap(),
+                        DomLimits::new(
+                            512,
+                            1_000_000,
+                            1024,
+                            1024,
+                            1024,
+                            64,
+                            4_000_000,
+                            surgeist_dom::DomNameLimits::new(
+                                16_777_216, 16_384, 4_000_000, 1_048_576,
+                            )
+                            .unwrap(),
+                        )
+                        .unwrap(),
                     )
                     .unwrap(),
                     DomSessionLimits {

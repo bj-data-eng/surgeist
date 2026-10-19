@@ -576,10 +576,19 @@ mod tests {
 
     fn fixture() -> (Dom, DocumentId) {
         let mut dom = Dom::new(
-            DomLimits::new(8, 256, 32, 0, 0, 8, 8192)
-                .unwrap()
-                .with_view_transitions(4, 4, 16)
-                .unwrap(),
+            DomLimits::new(
+                8,
+                256,
+                32,
+                0,
+                0,
+                8,
+                8192,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap()
+            .with_view_transitions(4, 4, 16)
+            .unwrap(),
         )
         .unwrap();
         let mut b = DomBatch::new();
@@ -625,10 +634,19 @@ mod tests {
     fn source_append_fixture() -> (Dom, DocumentId, DomViewTransitionId) {
         let (mut dom, document) = fixture();
         dom.set_limits(
-            DomLimits::new(8, 8192, 32, 0, 0, 8, 8192)
-                .unwrap()
-                .with_view_transitions(4, 4, 16)
-                .unwrap(),
+            DomLimits::new(
+                8,
+                8192,
+                32,
+                0,
+                0,
+                8,
+                8192,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap()
+            .with_view_transitions(4, 4, 16)
+            .unwrap(),
         )
         .unwrap();
         let mut batch = DomBatch::new();

@@ -7,7 +7,20 @@ use surgeist_dom::{
 use surgeist_html::HtmlCanvasBitmapDimension;
 const HTML: &str = "http://www.w3.org/1999/xhtml";
 fn dom() -> Dom {
-    Dom::new(DomLimits::new(128, 32768, 256, 0, 0, 16, 65536).unwrap()).unwrap()
+    Dom::new(
+        DomLimits::new(
+            128,
+            32768,
+            256,
+            0,
+            0,
+            16,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> surgeist_dom::DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
@@ -284,7 +297,21 @@ fn exact_limits_count_canonical_digits_but_inline_defaults_cost_no_digit_storage
     // 31 document +28 HTML URI +6 canvas =65; width name contributes5.
     for (raw, exact) in [("300", 73), ("301", 76), ("000300", 76), ("0", 72)] {
         for capacity in [exact - 1, exact] {
-            let mut dom = Dom::new(DomLimits::new(2, capacity, 8, 0, 0, 0, 0).unwrap()).unwrap();
+            let mut dom = Dom::new(
+                DomLimits::new(
+                    2,
+                    capacity,
+                    8,
+                    0,
+                    0,
+                    0,
+                    0,
+                    surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                        .unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
             let mut batch = DomBatch::new();
             let document = batch.create_document();
             let canvas = batch.create_element_ns(&document, Namespace::from_uri(HTML), "canvas");
@@ -447,7 +474,20 @@ fn shadow_descendant_adoption_cloning_and_destruction_preserve_actual_family_sem
 #[test]
 fn family_changes_publish_complete_history_or_explicit_fallback_under_zero_history_budget() {
     for history in [0, 8] {
-        let mut dom = Dom::new(DomLimits::new(8, 1024, 16, 0, 0, history, 65536).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                8,
+                1024,
+                16,
+                0,
+                0,
+                history,
+                65536,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let (_, canvas, moving) = setup(&mut dom);
         let before = dom.snapshot();
         let mut batch = DomBatch::new();

@@ -10,12 +10,21 @@ fn cancel() -> AtomicBool {
 }
 fn owner() -> Dom {
     Dom::new(
-        DomLimits::new(256, 65536, 1024, 1024, 512, 16, 1_000_000)
-            .unwrap()
-            .with_base_processing(256, 10_000_000)
-            .unwrap()
-            .with_encoding_url_processing(256, 10_000_000)
-            .unwrap(),
+        DomLimits::new(
+            256,
+            65536,
+            1024,
+            1024,
+            512,
+            16,
+            1_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_base_processing(256, 10_000_000)
+        .unwrap()
+        .with_encoding_url_processing(256, 10_000_000)
+        .unwrap(),
     )
     .unwrap()
 }

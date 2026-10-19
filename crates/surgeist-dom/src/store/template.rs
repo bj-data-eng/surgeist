@@ -188,7 +188,17 @@ mod tests {
     use super::*;
     use std::sync::atomic::Ordering;
     fn limits() -> DomLimits {
-        DomLimits::new(512, 65536, 512, 256, 128, 8, 131072).unwrap()
+        DomLimits::new(
+            512,
+            65536,
+            512,
+            256,
+            128,
+            8,
+            131072,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
     }
     #[test]
     fn privately_allocated_contents_and_cache_have_no_ticket_or_publication_on_cancel_or_exhaustion()

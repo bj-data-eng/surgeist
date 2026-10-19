@@ -825,7 +825,17 @@ mod tests {
         assert_eq!(groups(actual), groups(before));
     }
     fn limits() -> DomLimits {
-        DomLimits::new(2048, 1_000_000, 8192, 8192, 0, 8, 64_000_000).unwrap()
+        DomLimits::new(
+            2048,
+            1_000_000,
+            8192,
+            8192,
+            0,
+            8,
+            64_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
     }
     fn fixture() -> (Dom, NodeId, [NodeId; 4]) {
         let cancel = AtomicBool::new(false);

@@ -56,8 +56,20 @@ fn policy(outputs: usize, phases: u64) -> DomSourceLimits {
     DomSourceLimits::new(32_000_000, 1_000_000, 100_000_000, phases, outputs, 0, 1)
 }
 fn fixture() -> (Dom, DocumentId, NodeId, NodeId) {
-    let mut dom =
-        Dom::new(DomLimits::new(64, 100_000, 128, 128, 128, 16, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            64,
+            100_000,
+            128,
+            128,
+            128,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let first = batch.create_element_ns(&document, Namespace::none(), "first");
@@ -93,8 +105,20 @@ fn actual_source_unfullscreen_with_no_flagged_members_does_not_scan_unrelated_ra
     scale_metrics::require_enabled().expect("compile with SURGEIST_DOM_STORAGE_COUNTERS=1");
     for unrelated in [0, 256] {
         let cancel = cancel();
-        let mut dom =
-            Dom::new(DomLimits::new(1024, 1_000_000, 2048, 0, 0, 16, 1_000_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                1024,
+                1_000_000,
+                2048,
+                0,
+                0,
+                16,
+                1_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
         let tickets: Vec<_> = (0..unrelated)
@@ -322,9 +346,20 @@ fn detached_adoption_preflight_does_not_scan_unrelated_raw_or_pending_members() 
             .0
     };
     for unrelated in [0, 4096] {
-        let mut dom =
-            Dom::new(DomLimits::new(8192, 1_000_000, 16_384, 0, 0, 16, 100_000_000).unwrap())
-                .unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                8192,
+                1_000_000,
+                16_384,
+                0,
+                0,
+                16,
+                100_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = DomBatch::new();
         let origin = batch.create_document();
         let destination = batch.create_document();

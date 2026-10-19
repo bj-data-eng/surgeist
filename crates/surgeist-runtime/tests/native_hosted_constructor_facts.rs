@@ -53,8 +53,20 @@ fn limits() -> DomSessionLimits {
     }
 }
 fn session(policy: DomSessionLimits) -> DomSession {
-    let dom =
-        Dom::new(DomLimits::new(256, 200_000, 1024, 1024, 1024, 32, 4_000_000).unwrap()).unwrap();
+    let dom = Dom::new(
+        DomLimits::new(
+            256,
+            200_000,
+            1024,
+            1024,
+            1024,
+            32,
+            4_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     DomSession::new(dom, policy).unwrap()
 }
 fn create(session: &mut DomSession) -> (HostedRuntime, DomHostedTopLevel) {

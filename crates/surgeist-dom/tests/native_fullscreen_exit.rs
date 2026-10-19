@@ -10,7 +10,20 @@ use surgeist_dom::{
 };
 
 fn owner() -> Dom {
-    Dom::new(DomLimits::new(64, 100_000, 256, 128, 128, 32, 4_000_000).unwrap()).unwrap()
+    Dom::new(
+        DomLimits::new(
+            64,
+            100_000,
+            256,
+            128,
+            128,
+            32,
+            4_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
 }
 fn source_limits() -> DomSourceLimits {
     DomSourceLimits::new(32_000_000, 1_000_000, 100_000_000, 64, 1024, 128, 8)

@@ -12,8 +12,20 @@ fn closed_disconnected_and_inactive_dialogs_return_before_request_state_or_servi
     // Source46713–46715: open precedes connectedness, which precedes activity.
     for (open, connected) in [(false, true), (true, false), (true, true)] {
         let cancel = AtomicBool::new(false);
-        let mut dom =
-            Dom::new(DomLimits::new(32, 100_000, 64, 0, 0, 16, 1_000_000).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                100_000,
+                64,
+                0,
+                0,
+                16,
+                1_000_000,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
         let dialog = setup.create_element_ns(&document, Namespace::html(), "dialog");
@@ -56,7 +68,20 @@ fn closed_disconnected_and_inactive_dialogs_return_before_request_state_or_servi
 #[test]
 fn request_close_rejects_a_non_dialog_without_retaining_an_unpublished_operation() {
     let cancel = AtomicBool::new(false);
-    let mut dom = Dom::new(DomLimits::new(16, 100_000, 32, 0, 0, 8, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            16,
+            100_000,
+            32,
+            0,
+            0,
+            8,
+            1_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut setup = DomBatch::new();
     let document = setup.create_document();
     let node = setup.create_element_ns(&document, Namespace::html(), "div");

@@ -3,7 +3,20 @@ use super::*;
 #[test]
 fn authored_popover_attributes_do_not_change_the_native_hidden_common_state() {
     let cancel = AtomicBool::new(false);
-    let mut dom = Dom::new(DomLimits::new(32, 100_000, 64, 0, 0, 16, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            32,
+            100_000,
+            64,
+            0,
+            0,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let dialog = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");

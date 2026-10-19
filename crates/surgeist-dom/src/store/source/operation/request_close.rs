@@ -208,7 +208,7 @@ impl DomSourceLease<'_> {
         let mut raw = None;
         for attr in element.attributes().iter() {
             op.draft.source_step(cancel)?;
-            if attr.name().namespace().uri().is_none()
+            if attr.name().namespace_uri().is_none()
                 && op.draft.source_ascii(
                     attr.name().local_name(),
                     surgeist_html::KnownHtmlAttribute::Closedby.local_name(),
@@ -236,8 +236,7 @@ impl DomSourceLease<'_> {
             for _ in 0..2 {
                 for _ in 0..=element
                     .name()
-                    .namespace()
-                    .uri()
+                    .namespace_uri()
                     .map_or(0, DocumentString::len)
                 {
                     budget.step(cancel)?;

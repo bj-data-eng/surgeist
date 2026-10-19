@@ -7,7 +7,17 @@ use surgeist_html::{
 };
 
 fn limits() -> DomLimits {
-    DomLimits::new(256, 65536, 1024, 256, 256, 32, 1048576).unwrap()
+    DomLimits::new(
+        256,
+        65536,
+        1024,
+        256,
+        256,
+        32,
+        1048576,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
 }
 fn owner() -> Dom {
     Dom::new(limits()).unwrap()
@@ -695,8 +705,20 @@ fn one_short_current_units_and_late_wrong_family_refuse_the_whole_private_batch(
     for cap in [100, 101] {
         let mut dom = owner();
         let (_, root, textarea) = setup(&mut dom);
-        dom.set_limits(DomLimits::new(256, cap, 1024, 256, 256, 32, 1048576).unwrap())
-            .unwrap();
+        dom.set_limits(
+            DomLimits::new(
+                256,
+                cap,
+                1024,
+                256,
+                256,
+                32,
+                1048576,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let before = dom.snapshot();
         let usage = dom.usage();
         let mut b = DomBatch::new();
@@ -732,8 +754,20 @@ fn default_setter_admits_its_real_text_node_and_reached_raw_copy_before_publicat
     for units in [103, 104] {
         let mut dom = owner();
         let (_, _, textarea) = setup(&mut dom);
-        dom.set_limits(DomLimits::new(4, units, 32, 0, 0, 8, 65536).unwrap())
-            .unwrap();
+        dom.set_limits(
+            DomLimits::new(
+                4,
+                units,
+                32,
+                0,
+                0,
+                8,
+                65536,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let before = dom.snapshot();
         let usage = dom.usage();
         let mut b = DomBatch::new();
@@ -758,8 +792,20 @@ fn default_setter_admits_its_real_text_node_and_reached_raw_copy_before_publicat
     }
     let mut dom = owner();
     let (_, _, textarea) = setup(&mut dom);
-    dom.set_limits(DomLimits::new(3, 1024, 32, 0, 0, 8, 65536).unwrap())
-        .unwrap();
+    dom.set_limits(
+        DomLimits::new(
+            3,
+            1024,
+            32,
+            0,
+            0,
+            8,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let before = dom.snapshot();
     let usage = dom.usage();
     let mut b = DomBatch::new();

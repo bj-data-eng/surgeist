@@ -8,9 +8,12 @@ impl DraftNode {
     fn capture(
         node: &Node,
         registry: &bank::CustodyRegistry,
+        names: &name_registry::Operation,
         mut admit: impl FnMut(custody::Usage) -> Result<(), DomError>,
     ) -> Result<Self, DomError> {
         let ledger = registry.ledger();
+        let element_custody =
+            payload::element_dependency(&node.kind, registry, Some(names), &mut admit)?;
         let fields_debit = ledger.retain(node.receipts.fields, &mut admit)?;
         let mut fields = NodeFields::from_canonical(node);
         if let Some(names) = &mut fields.form_past_names {
@@ -67,6 +70,7 @@ impl DraftNode {
             open_dialogs: relations(open, &mut admit)?,
             top_layer: relations(top, &mut admit)?,
             pending_top_layer_removals: relations(pending, &mut admit)?,
+            element_custody,
         })
     }
     pub(super) fn relation_mut(&mut self, field: RelationField) -> &mut Sequence<NodeId, Key> {
@@ -173,6 +177,7 @@ impl Draft {
                 let node = DraftNode::capture(
                     self.base.node(self.store, id)?,
                     self.custody_registry(),
+                    &self.names,
                     |usage| self.admit_custody_usage(usage, cancel),
                 )?;
                 self.set_created_dirty(index, true, cancel)?;
@@ -193,6 +198,7 @@ impl Draft {
         let node = DraftNode::capture(
             self.base.node(self.store, id)?,
             self.custody_registry(),
+            &self.names,
             |usage| self.admit_custody_usage(usage, cancel),
         )?;
         let index = self.records.len();
@@ -280,6 +286,12 @@ impl Draft {
         resize_debit(next.debit_mut(), usage, |usage| {
             self.admit_custody_usage(usage, cancel)
         })?;
+        let element_custody = payload::element_dependency(
+            &next.value().kind,
+            self.custody_registry(),
+            Some(&self.names),
+            |usage| self.admit_custody_usage(usage, cancel),
+        )?;
         let undo = self.prepare_undo_slots(10, cancel)? && undo;
         let inbound = self.prepare_inbound_fields(key, next.value(), cancel)?;
         let controls = self.prepare_control_fields(key, next.value(), cancel)?;
@@ -346,6 +358,10 @@ impl Draft {
         self.private_units = next_private_units;
         self.private_counts = next_private_counts;
         let old = std::mem::replace(&mut self.private_node_mut(key).fields, next);
+        let old_element_custody = std::mem::replace(
+            &mut self.private_node_mut(key).element_custody,
+            element_custody,
+        );
         let oldcounts = std::mem::replace(&mut self.counts, counts);
         if let Some(plan) = queue_documents {
             self.commit_queue_document_change(plan);
@@ -358,11 +374,15 @@ impl Draft {
             self.journal.push_prepared(Undo::Fields {
                 key,
                 old,
+                element_custody: old_element_custody,
                 counts: oldcounts,
                 units: oldunits,
                 private_units: oldprivateunits,
                 private_counts: oldprivatecounts,
             });
+        } else {
+            drop(old);
+            drop(old_element_custody);
         }
         Ok(())
     }
@@ -980,9 +1000,13 @@ impl DraftNode {
     pub(in crate::store) fn fresh(
         mut fields: NodeFields,
         mut incoming: custody::Debit,
-        ledger: &custody::Ledger,
+        registry: &bank::CustodyRegistry,
+        names: &name_registry::Operation,
         mut admit: impl FnMut(custody::Usage) -> Result<(), DomError>,
     ) -> Result<Self, DomError> {
+        let ledger = registry.ledger();
+        let element_custody =
+            payload::element_dependency(&fields.kind, registry, Some(names), &mut admit)?;
         let mut staged = |values: Vec<Key>| -> Result<Sequence<NodeId, Key>, DomError> {
             let bytes = values
                 .capacity()
@@ -1042,6 +1066,7 @@ impl DraftNode {
             top_layer,
             pending_top_layer_removals,
             fullscreen_events,
+            element_custody,
         })
     }
 }
@@ -1357,7 +1382,17 @@ mod movement_metrics_tests {
 
     fn draft(source: bool) -> (Draft, Key) {
         let cancel = AtomicBool::new(false);
-        let limits = DomLimits::new(16, 8192, 32, 0, 0, 8, 1_000_000).unwrap();
+        let limits = DomLimits::new(
+            16,
+            8192,
+            32,
+            0,
+            0,
+            8,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap();
         let mut dom = Dom::new(limits).unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();

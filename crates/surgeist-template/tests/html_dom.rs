@@ -35,7 +35,20 @@ fn validated(source: &str) -> ValidatedTemplate {
 }
 
 fn dom() -> Dom {
-    Dom::new(DomLimits::new(128, 32768, 512, 0, 0, 16, 262144).unwrap()).unwrap()
+    Dom::new(
+        DomLimits::new(
+            128,
+            32768,
+            512,
+            0,
+            0,
+            16,
+            262144,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
 }
 
 fn setup(dom: &mut Dom) -> (DocumentId, NodeId, NodeId) {
@@ -155,8 +168,8 @@ fn static_html_appends_ordered_real_nodes_and_retains_the_old_snapshot() {
     assert_eq!(node.owner_document(), Some(document));
     assert_eq!(node.node_name(), DocumentString::from("div"));
     let element = node.as_element().unwrap();
-    assert_eq!(element.name().namespace(), &Namespace::html());
-    let attributes = element.attributes().as_slice();
+    assert_eq!(element.name().namespace_uri(), Namespace::html().uri());
+    let attributes = element.attributes();
     assert_eq!(attributes.len(), 2);
     assert_eq!(
         attributes[0].name().local_name(),
@@ -171,7 +184,7 @@ fn static_html_appends_ordered_real_nodes_and_retains_the_old_snapshot() {
     assert!(
         attributes
             .iter()
-            .all(|a| a.name().namespace().uri().is_none())
+            .all(|a| a.name().namespace_uri().is_none())
     );
     let [span, tail] = node.children() else {
         panic!("span then tail")
@@ -179,11 +192,8 @@ fn static_html_appends_ordered_real_nodes_and_retains_the_old_snapshot() {
     let child = snapshot.node(*span).unwrap();
     assert_eq!(child.node_name(), DocumentString::from("span"));
     let element = child.as_element().unwrap();
-    assert_eq!(element.name().namespace(), &Namespace::html());
-    assert_eq!(
-        element.attributes().as_slice()[0].value(),
-        &DocumentString::from("Ω")
-    );
+    assert_eq!(element.name().namespace_uri(), Namespace::html().uri());
+    assert_eq!(element.attributes()[0].value(), &DocumentString::from("Ω"));
     assert_eq!(child.children().len(), 1);
     assert_eq!(
         snapshot
@@ -200,7 +210,7 @@ fn static_html_appends_ordered_real_nodes_and_retains_the_old_snapshot() {
     );
     let paragraph = snapshot.node(p).unwrap();
     assert_eq!(paragraph.node_name(), DocumentString::from("p"));
-    let attributes = paragraph.as_element().unwrap().attributes().as_slice();
+    let attributes = paragraph.as_element().unwrap().attributes();
     assert_eq!(attributes.len(), 1);
     assert_eq!(
         attributes[0].name().local_name(),
@@ -241,8 +251,7 @@ fn html_roots_attach_to_an_actual_connected_xml_element_parent() {
             .as_element()
             .unwrap()
             .name()
-            .namespace()
-            .uri()
+            .namespace_uri()
             .is_none()
     );
     let root = snapshot.node(root).unwrap();
@@ -252,8 +261,8 @@ fn html_roots_attach_to_an_actual_connected_xml_element_parent() {
         Some(commit.document(&document).unwrap())
     );
     assert_eq!(
-        root.as_element().unwrap().name().namespace(),
-        &Namespace::html()
+        root.as_element().unwrap().name().namespace_uri(),
+        Namespace::html().uri()
     );
     assert_eq!(
         snapshot.node(root.children()[0]).unwrap().data().unwrap(),
@@ -334,7 +343,20 @@ fn late_dom_failure_rolls_back_the_whole_composed_batch() {
 
 #[test]
 fn actual_dom_capacity_failure_preserves_the_existing_tree_and_revision() {
-    let mut dom = Dom::new(DomLimits::new(3, 32768, 512, 0, 0, 16, 262144).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            3,
+            32768,
+            512,
+            0,
+            0,
+            16,
+            262144,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let (document, parent, marker) = setup(&mut dom);
     let old = dom.snapshot();
     let mut batch = DomBatch::new();

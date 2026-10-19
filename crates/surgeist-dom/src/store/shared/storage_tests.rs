@@ -320,7 +320,20 @@ fn reserved_empty_first_write_admits_overlap_and_removal_keeps_selected_capacity
 #[ignore = "requires SURGEIST_DOM_STORAGE_COUNTERS=1; select explicitly"]
 fn canonical_empty_node_lists_allocate_no_shared_targets_and_snapshots_only_alias() {
     let observation = Observation::begin();
-    let mut dom = Dom::new(DomLimits::new(16, 4096, 64, 0, 0, 8, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            16,
+            4096,
+            64,
+            0,
+            0,
+            8,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let element = batch.create_element(&document, "plain");
@@ -369,7 +382,17 @@ fn canonical_empty_node_lists_allocate_no_shared_targets_and_snapshots_only_alia
 #[test]
 fn ordinary_source_and_rollback_preserve_empty_snapshots_and_noop_roots() {
     let cancel = AtomicBool::new(false);
-    let limits = DomLimits::new(16, 4096, 64, 0, 0, 16, 1_000_000).unwrap();
+    let limits = DomLimits::new(
+        16,
+        4096,
+        64,
+        0,
+        0,
+        16,
+        1_000_000,
+        crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap();
     let mut dom = Dom::new(limits).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();

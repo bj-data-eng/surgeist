@@ -48,15 +48,6 @@ impl AllocationGraph {
     pub(crate) fn string(&mut self, value: &DocumentString) {
         self.vector(value.shared_code_units(), "string.target", "string.buffer");
     }
-    pub(crate) fn name(&mut self, value: &crate::QualifiedName) {
-        if let Some(uri) = value.namespace().uri() {
-            self.string(uri);
-        }
-        if let Some(prefix) = value.prefix() {
-            self.string(prefix);
-        }
-        self.string(value.local_name());
-    }
     pub(in crate::store) fn merge(&mut self, other: &Self) {
         for ((address, _), (kind, bytes)) in &other.0 {
             self.allocation(*address, kind, *bytes);
@@ -119,7 +110,17 @@ fn nonzero_allocation_aliases_reject_conflicting_extents() {
 }
 
 fn limits() -> DomLimits {
-    DomLimits::new(32, 100_000, 128, 0, 0, 16, 1_000_000).unwrap()
+    DomLimits::new(
+        32,
+        100_000,
+        128,
+        0,
+        0,
+        16,
+        1_000_000,
+        crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
 }
 fn document(dom: &mut Dom) -> DocumentId {
     let mut batch = DomBatch::new();
@@ -198,6 +199,7 @@ fn node_storage(state: &Arc<State>) -> AllocationGraph {
 fn report(label: &str, dom: &Dom, graph: &AllocationGraph) {
     let mut controls = AllocationGraph::default();
     dom.custody_registry.inspect_raw_allocations(&mut controls);
+    payload::inspect_attribute_child_allocations(&dom.state_custody.slots, &mut controls);
     let mut measured_union = graph.clone();
     measured_union.merge(&controls);
     eprintln!(
@@ -253,13 +255,21 @@ fn native_node_graphs_retain_real_banks_payloads_and_snapshot_union() {
     assert_eq!(before.count("bank.record"), 9);
     assert!(before.count("bank.page") > 0 && before.count("bank.leaf") > 0);
     assert_eq!(before.count("native.canvas"), 1);
-    assert_eq!(before.count("attributes.target"), 4);
+    // Four freshly created Elements have no attribute bank allocation. Their
+    // four local atoms share one additional HTML namespace atom across the three
+    // HTML names in this DOM, without atomizing the PI/doctype names.
+    assert_eq!(before.count("attributes.target"), 0);
+    assert_eq!(before.count("attributes.buffer"), 0);
+    assert_eq!(before.count("name.record"), 5);
     report("all native kinds", &dom, &before);
 
     let mut batch = DomBatch::new();
     batch.set_attribute(plain, "id", "changed");
     dom.apply(batch, &cancel).unwrap();
     let after = node_storage(&dom.state);
+    assert_eq!(after.count("attributes.target"), 1);
+    assert_eq!(after.count("attributes.buffer"), 1);
+    assert_eq!(after.count("name.record"), 6); // The independently interned id.
     let mut union = before.clone();
     union.merge(&after);
     assert!(union.bytes() >= before.bytes() && union.bytes() >= after.bytes());

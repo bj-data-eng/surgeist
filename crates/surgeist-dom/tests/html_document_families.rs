@@ -7,7 +7,20 @@ use surgeist_dom::{
 use surgeist_html::HtmlCanvasBitmapDimension;
 const HTML: &str = "http://www.w3.org/1999/xhtml";
 fn owner() -> Dom {
-    Dom::new(DomLimits::new(128, 32768, 256, 0, 0, 16, 65536).unwrap()).unwrap()
+    Dom::new(
+        DomLimits::new(
+            128,
+            32768,
+            256,
+            0,
+            0,
+            16,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
@@ -74,7 +87,10 @@ fn html_whole_name_creation_selects_real_canvas_and_marquee_families_after_ascii
         let node = snapshot.node(id).unwrap();
         let element = node.as_element().unwrap();
         assert_eq!(node.node_name(), DocumentString::from(*display));
-        assert_eq!(element.name().namespace(), &Namespace::from_uri(HTML));
+        assert_eq!(
+            element.name().namespace_uri(),
+            Namespace::from_uri(HTML).uri()
+        );
         assert_eq!(element.name().prefix(), None);
         assert_eq!(element.name().local_name(), &DocumentString::from(*local));
         assert_eq!(node.owner_document(), Some(html));
@@ -283,7 +299,20 @@ fn composed_html_canvas_dimension_storage_obeys_independent_exact_capacity() {
     // Source XML 31 + HTML skeleton 125 + (HTML URI 28 + canvas 6) +
     // lowercase width name 5 + raw 301 3 + derived canonical digits 3 = 201.
     for capacity in [200, 201] {
-        let mut dom = Dom::new(DomLimits::new(7, capacity, 8, 0, 0, 0, 0).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                7,
+                capacity,
+                8,
+                0,
+                0,
+                0,
+                0,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut batch = DomBatch::new();
         let source = batch.create_document();
         let html = batch.create_html_document(&source, None);

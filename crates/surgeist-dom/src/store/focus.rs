@@ -70,7 +70,7 @@ impl Draft {
         let mut raw = None;
         for item in element.attributes().iter() {
             self.source_step(cancel)?;
-            if item.name().namespace().uri().is_none()
+            if item.name().namespace_uri().is_none()
                 && self.source_ascii(item.name().local_name(), attribute.local_name(), cancel)?
             {
                 raw = Some(item);
@@ -94,8 +94,7 @@ impl Draft {
             self.source_step(cancel)?;
             for _ in 0..=element
                 .name()
-                .namespace()
-                .uri()
+                .namespace_uri()
                 .map_or(0, DocumentString::len)
             {
                 self.source_step(cancel)?;

@@ -5,7 +5,17 @@ use surgeist_dom::{
 };
 
 fn limits() -> DomLimits {
-    DomLimits::new(64, 4096, 128, 0, 0, 16, 65536).unwrap()
+    DomLimits::new(
+        64,
+        4096,
+        128,
+        0,
+        0,
+        16,
+        65536,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
 }
 fn dom() -> Dom {
     Dom::new(limits()).unwrap()
@@ -110,7 +120,7 @@ fn shallow_element_import_copies_all_exact_attributes_and_has_fresh_detached_ide
         Some(&DocumentString::from("literal"))
     );
     assert_eq!(
-        element.attributes().as_slice()[1].name().prefix(),
+        element.attributes()[1].name().prefix(),
         Some(&DocumentString::from("p"))
     );
     assert_eq!(element.saved_is(), None);
@@ -432,7 +442,20 @@ fn import_rejects_document_foreign_source_stale_source_and_invalid_target_atomic
 fn resource_failure_after_partial_subtree_copy_and_late_command_leave_no_state() {
     let source = source();
     let snapshot = source.dom.snapshot();
-    let mut target = Dom::new(DomLimits::new(4, 4096, 16, 0, 0, 8, 8192).unwrap()).unwrap();
+    let mut target = Dom::new(
+        DomLimits::new(
+            4,
+            4096,
+            16,
+            0,
+            0,
+            8,
+            8192,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let document = new_document(&mut target);
     let before = target.snapshot();
     let usage = target.usage();
@@ -493,7 +516,20 @@ fn import_counts_exact_logical_strings_even_when_immutable_backing_is_shared() {
     let (snapshot, root) = attribute_source();
     // 31 target Document + 1 Element + 5 URI + 1 prefix + 1 local + 2 value.
     for (limit, succeeds) in [(40, false), (41, true)] {
-        let mut target = Dom::new(DomLimits::new(2, limit, 4, 0, 0, 8, 8192).unwrap()).unwrap();
+        let mut target = Dom::new(
+            DomLimits::new(
+                2,
+                limit,
+                4,
+                0,
+                0,
+                8,
+                8192,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let document = new_document(&mut target);
         let before = target.snapshot();
         let mut batch = DomBatch::new();
@@ -518,7 +554,17 @@ fn import_counts_exact_logical_strings_even_when_immutable_backing_is_shared() {
 
 #[test]
 fn deep_import_walks_bounded_tree_without_recursive_native_calls() {
-    let limits = DomLimits::new(1100, 4096, 3000, 0, 0, 0, 0).unwrap();
+    let limits = DomLimits::new(
+        1100,
+        4096,
+        3000,
+        0,
+        0,
+        0,
+        0,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap();
     let mut source = Dom::new(limits).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();

@@ -6,12 +6,21 @@ fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
 fn policy(records: usize, work: u64, units: usize) -> DomLimits {
-    DomLimits::new(128, units, 512, 64, 64, 8, 262144)
-        .unwrap()
-        .with_base_processing(128, 1_000_000)
-        .unwrap()
-        .with_encoding_url_processing(records, work)
-        .unwrap()
+    DomLimits::new(
+        128,
+        units,
+        512,
+        64,
+        64,
+        8,
+        262144,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_base_processing(128, 1_000_000)
+    .unwrap()
+    .with_encoding_url_processing(records, work)
+    .unwrap()
 }
 fn fixture() -> (Dom, DocumentId, NodeId, NodeId, NodeId) {
     let mut dom = Dom::new(policy(128, 1_000_000, 131072)).unwrap();

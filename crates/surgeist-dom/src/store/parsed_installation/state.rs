@@ -493,16 +493,21 @@ fn replace_units(
     Ok(())
 }
 
-pub(super) fn kind(
+pub(super) fn allocate(
     source: &Source<'_>,
     node: HtmlNode<'_>,
+    draft: &mut Draft,
+    document: Key,
     input: crate::DomNativeInputPlatform,
+    limits: DomLimits,
     c: &mut Control<'_>,
-) -> Result<DomNodeKind, Error> {
+) -> Result<Key, Error> {
+    let mut attributes_custody = None;
+    let mut attribute_scratch = 0usize;
     #[cfg(test)]
     let mut written = crate::store::CopyObservation::default();
     c.step(1)?;
-    Ok(match node.kind() {
+    let kind = match node.kind() {
         HtmlNodeKind::Document(_) => return Err(Error::UnsupportedState { subject: node.id() }),
         HtmlNodeKind::Fragment => {
             if let Some(properties) = node.shadow_properties() {
@@ -605,9 +610,40 @@ pub(super) fn kind(
                 c.string(value)?;
             }
             let family = family(source, node, class, input, c)?;
+            let name = draft.bind_name(element.name(), None, c.cancel)?;
+            let capacity = element.attributes().len();
+            let body = if capacity == 0 {
+                0
+            } else {
+                size_of::<payload::Payload<crate::name::AttributeValues>>()
+            };
+            c.retain(body)?;
+            let mut entries = draft.attribute_input(capacity, None, c.cancel, |values| {
+                c.reserve(values, capacity)
+            })?;
+            for attribute in element.attributes().iter() {
+                c.step(size_of::<crate::DomAttribute>())?;
+                let name = draft.bind_name(attribute.name(), None, c.cancel)?;
+                entries.entries.push(crate::DomAttribute::from_parts(
+                    name,
+                    attribute.value().clone(),
+                ));
+                #[cfg(test)]
+                written.pushed::<crate::DomAttribute>();
+            }
+            if entries.entries.capacity() != 0 {
+                attribute_scratch = entries
+                    .entries
+                    .capacity()
+                    .checked_mul(size_of::<crate::DomAttribute>())
+                    .and_then(|bytes| bytes.checked_add(body))
+                    .ok_or(Error::RepresentationExhausted)?;
+            }
+            let attributes = draft.form_attributes(entries, None, c.cancel)?;
+            attributes_custody = attributes.custody;
             DomNodeKind::Element(DomElement::from_parsed(
-                element.name().clone(),
-                element.attributes().clone(),
+                name,
+                attributes.value,
                 custom_state,
                 saved_is.cloned(),
                 nonce.cloned(),
@@ -615,7 +651,15 @@ pub(super) fn kind(
                 common.map(|reference| match reference {}),
             ))
         }
-    })
+    };
+    let key = draft.allocate(kind, document, limits, c.cancel)?;
+    // The exact new array/target has transferred into its controlled Slot.
+    c.bytes = c
+        .bytes
+        .checked_sub(attribute_scratch)
+        .expect("transferred attribute scratch");
+    drop(attributes_custody);
+    Ok(key)
 }
 
 fn family(

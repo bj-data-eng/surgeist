@@ -39,12 +39,21 @@ fn uuid(last: u16) -> [u16; 36] {
 fn child_history_publication_cancellation_restores_graph_and_retries_the_original_receipt() {
     let cancel = AtomicBool::new(false);
     let (mut dom, mut source, document, _) = super::super::fullscreen::native_fixture(
-        DomLimits::new(128, 1_000_000, 256, 128, 128, 32, 4_000_000)
-            .unwrap()
-            .with_fullscreen_exits(4)
-            .unwrap()
-            .with_fullscreen_events(4)
-            .unwrap(),
+        DomLimits::new(
+            128,
+            1_000_000,
+            256,
+            128,
+            128,
+            32,
+            4_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_fullscreen_exits(4)
+        .unwrap()
+        .with_fullscreen_events(4)
+        .unwrap(),
     );
     let parent = dom
         .snapshot()

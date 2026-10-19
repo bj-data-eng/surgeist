@@ -51,9 +51,18 @@ fn session_limits() -> DomSessionLimits {
 fn native_meta_history_and_empty_theme_scans_preserve_runtime_selection_associations() {
     let cancel = AtomicBool::new(false);
     let mut dom = Dom::new(
-        DomLimits::new(64, 8192, 128, 64, 32, 8, 262144)
-            .unwrap()
-            .with_meta_processing_work(1_000_000),
+        DomLimits::new(
+            64,
+            8192,
+            128,
+            64,
+            32,
+            8,
+            262144,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_meta_processing_work(1_000_000),
     )
     .unwrap();
     let mut batch = DomBatch::new();

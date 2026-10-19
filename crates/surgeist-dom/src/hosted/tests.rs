@@ -487,8 +487,20 @@ struct IssuerFixture {
 
 fn issuer_fixture() -> IssuerFixture {
     let cancel = cancellation();
-    let mut dom =
-        crate::Dom::new(crate::DomLimits::new(32, 1024, 32, 0, 0, 8, 1_000_000).unwrap()).unwrap();
+    let mut dom = crate::Dom::new(
+        crate::DomLimits::new(
+            32,
+            1024,
+            32,
+            0,
+            0,
+            8,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = crate::DomBatch::new();
     let ticket = batch.create_document();
     let commit = dom.apply(batch, &cancel).unwrap();

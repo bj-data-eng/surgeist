@@ -225,7 +225,7 @@ impl Draft {
             // The producer qualifies the actual Element against three constant
             // URI lengths. Only equal-length comparisons inspect URI units;
             // no scan grows with an arbitrary URI length or reads raw values.
-            if let Some(uri) = element.name().namespace().uri() {
+            if let Some(uri) = element.name().namespace_uri() {
                 for width in [28, 26, 34] {
                     self.source_step(cancel)?;
                     if uri.len() == width {
@@ -236,7 +236,7 @@ impl Draft {
                 }
             }
             // At most nine attribute-name units after the exact length gate.
-            if attribute.name().namespace().uri().is_none()
+            if attribute.name().namespace_uri().is_none()
                 && attribute.name().local_name().len() == 9
             {
                 for _ in 0..9 {

@@ -5,7 +5,20 @@ use surgeist_html::{HtmlScriptKind as Kind, HtmlScriptResult};
 use surgeist_html_semantics::HtmlCaptureLimits;
 
 fn dom() -> Dom {
-    Dom::new(DomLimits::new(256, 32768, 512, 128, 64, 16, 262144).unwrap()).unwrap()
+    Dom::new(
+        DomLimits::new(
+            256,
+            32768,
+            512,
+            128,
+            64,
+            16,
+            262144,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
@@ -505,7 +518,20 @@ fn actual_shadow_node_document_controls_preparation_independently_of_host() {
 #[test]
 fn exact_storage_failure_cancellation_and_finite_history_preserve_script_state() {
     for units in [64, 65] {
-        let mut dom = Dom::new(DomLimits::new(2, units, 8, 0, 0, 4, 8192).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                2,
+                units,
+                8,
+                0,
+                0,
+                4,
+                8192,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let before = dom.snapshot();
         let mut b = DomBatch::new();
         let d = b.create_document();
@@ -529,8 +555,20 @@ fn exact_storage_failure_cancellation_and_finite_history_preserve_script_state()
         }
     }
     for history in [0, 8] {
-        let mut dom =
-            Dom::new(DomLimits::new(16, 2048, 32, 0, 0, history, 65536).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                16,
+                2048,
+                32,
+                0,
+                0,
+                history,
+                65536,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let (d, root) = setup(&mut dom);
         let node = invalid_connected(&mut dom, d, root);
         let before = dom.snapshot();

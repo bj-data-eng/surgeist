@@ -3,12 +3,21 @@
 use super::*;
 
 fn limits() -> DomLimits {
-    DomLimits::new(256, 65536, 1024, 256, 128, 16, 2_000_000)
-        .unwrap()
-        .with_details_toggle_intentions(32)
-        .unwrap()
-        .with_select_processing(128, 8_000_000, 10_000_000)
-        .unwrap()
+    DomLimits::new(
+        256,
+        65536,
+        1024,
+        256,
+        128,
+        16,
+        2_000_000,
+        crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_details_toggle_intentions(32)
+    .unwrap()
+    .with_select_processing(128, 8_000_000, 10_000_000)
+    .unwrap()
 }
 fn rows(draft: &Draft, root: RootHeader, cancel: &AtomicBool) -> Vec<Key> {
     let mut result = Vec::new();

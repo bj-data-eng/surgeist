@@ -6,8 +6,20 @@ fn limits(work: u64) -> crate::DomSourceLimits {
     crate::DomSourceLimits::new(32_000_000, 1_000_000, work, 32, 4096, 4096, 2)
 }
 fn fixture(root_dialog: bool) -> (Dom, NodeId, NodeId) {
-    let mut dom =
-        Dom::new(DomLimits::new(64, 100_000, 128, 128, 128, 16, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            64,
+            100_000,
+            128,
+            128,
+            128,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let subject = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");

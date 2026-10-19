@@ -76,12 +76,22 @@ impl Fixture {
     fn new() -> Self {
         let mut session = DomSession::new(
             Dom::new(
-                DomLimits::new(512, 2_000_000, 2048, 2048, 2048, 64, 8_000_000)
-                    .unwrap()
-                    .with_dispatch_custody(
-                        DomDispatchCustodyLimits::new(32, 2048, 32_000_000, 32_000_000, 8_000_000)
-                            .unwrap(),
-                    ),
+                DomLimits::new(
+                    512,
+                    2_000_000,
+                    2048,
+                    2048,
+                    2048,
+                    64,
+                    8_000_000,
+                    surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                        .unwrap(),
+                )
+                .unwrap()
+                .with_dispatch_custody(
+                    DomDispatchCustodyLimits::new(32, 2048, 32_000_000, 32_000_000, 8_000_000)
+                        .unwrap(),
+                ),
             )
             .unwrap(),
             session_limits(),
@@ -662,7 +672,20 @@ fn teardown(mut fixture: Fixture) {
     // An independently live empty view cannot revive the disposed original
     // Hosted owner. This control creates no Host/Global/task in that session.
     let mut control = DomSession::new(
-        Dom::new(DomLimits::new(1, 1, 0, 0, 0, 0, 0).unwrap()).unwrap(),
+        Dom::new(
+            DomLimits::new(
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap(),
         session_limits(),
     )
     .unwrap();

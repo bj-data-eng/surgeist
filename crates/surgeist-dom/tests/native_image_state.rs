@@ -9,7 +9,17 @@ fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
 fn limits(nodes: usize, units: usize) -> DomLimits {
-    DomLimits::new(nodes, units, 4096, 0, 0, 16, 262144).unwrap()
+    DomLimits::new(
+        nodes,
+        units,
+        4096,
+        0,
+        0,
+        16,
+        262144,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
 }
 fn fixture() -> (Dom, DocumentId, NodeId) {
     let mut dom = Dom::new(limits(64, 16384)).unwrap();

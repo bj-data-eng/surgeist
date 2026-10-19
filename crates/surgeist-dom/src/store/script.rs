@@ -7,8 +7,8 @@ use surgeist_html::bounded::{
 };
 use surgeist_html::{HtmlScriptKind, HtmlScriptResult, KnownHtmlAttribute};
 
-fn attribute_name_is(name: &crate::QualifiedName, selected: &str) -> bool {
-    name.namespace().uri().is_none()
+fn attribute_name_is(name: &crate::DomQualifiedName, selected: &str) -> bool {
+    name.namespace_uri().is_none()
         && name
             .local_name()
             .code_units()
@@ -169,7 +169,7 @@ impl Draft {
     pub(super) fn script_attribute_change(
         &mut self,
         node: Key,
-        name: &crate::QualifiedName,
+        name: &crate::DomQualifiedName,
         old_present: bool,
         removed: bool,
         cancel: &AtomicBool,
@@ -224,7 +224,20 @@ mod tests {
     #[test]
     fn prepared_script_writes_and_real_created_document_refs_cancel_or_exhaust_together() {
         for exhausted in [false, true] {
-            let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 32768).unwrap()).unwrap();
+            let mut dom = Dom::new(
+                DomLimits::new(
+                    32,
+                    4096,
+                    64,
+                    0,
+                    0,
+                    8,
+                    32768,
+                    crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
             let cancel = AtomicBool::new(false);
             let mut b = DomBatch::new();
             let d = b.create_document();

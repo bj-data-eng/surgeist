@@ -440,14 +440,23 @@ mod tests {
     use surgeist_html_semantics::{HtmlCaptureLimits, HtmlSemanticLimits};
 
     fn fixture() -> (Dom, NodeId, NodeId, usize) {
-        let limits = DomLimits::new(64, 1_000_000, 64, 0, 0, 8, 1_000_000)
-            .unwrap()
-            .with_select_processing(64, 1_000_000, 1_000_000)
-            .unwrap()
-            .with_select_value_queries(
-                HtmlCaptureLimits::new(64, 128, 64, 1_000_000, 64, 0, 0, 16_777_216),
-                HtmlSemanticLimits::new(1_000_000, 1, 128, 128, 1_000_000, 128),
-            );
+        let limits = DomLimits::new(
+            64,
+            1_000_000,
+            64,
+            0,
+            0,
+            8,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_select_processing(64, 1_000_000, 1_000_000)
+        .unwrap()
+        .with_select_value_queries(
+            HtmlCaptureLimits::new(64, 128, 64, 1_000_000, 64, 0, 0, 16_777_216),
+            HtmlSemanticLimits::new(1_000_000, 1, 128, 128, 1_000_000, 128),
+        );
         let mut dom = Dom::new(limits).unwrap();
         let cancel = AtomicBool::new(false);
         let mut raw = Vec::with_capacity(65_536);
@@ -570,7 +579,20 @@ mod tests {
     #[test]
     fn source_option_value_constructor_refusal_keeps_work_without_retained_graph() {
         let cancel = AtomicBool::new(false);
-        let dom = Dom::new(DomLimits::new(16, 100_000, 32, 0, 0, 8, 100_000).unwrap()).unwrap();
+        let dom = Dom::new(
+            DomLimits::new(
+                16,
+                100_000,
+                32,
+                0,
+                0,
+                8,
+                100_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut draft = Draft::new(&dom, DomBatch::new().owner, &cancel).unwrap();
         draft.source_limits = Some(limits(16_000_000));
         let baseline = draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes;

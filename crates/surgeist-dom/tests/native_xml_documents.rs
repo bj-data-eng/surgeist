@@ -5,7 +5,17 @@ use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 
 fn limits() -> DomLimits {
-    DomLimits::new(128, 65536, 256, 0, 0, 32, 1_000_000).unwrap()
+    DomLimits::new(
+        128,
+        65536,
+        256,
+        0,
+        0,
+        32,
+        1_000_000,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
@@ -85,7 +95,7 @@ fn namespace_argument_selects_literal_mime_even_without_a_root() {
                 assert_eq!(root.parent(), Some(doc.node()));
                 assert_eq!(root.node_name(), DocumentString::from("MiXeD"));
                 let element = root.as_element().unwrap();
-                assert_eq!(element.name().namespace(), &namespace);
+                assert_eq!(element.name().namespace_uri(), namespace.uri());
                 assert_eq!(element.name().prefix(), None);
                 assert_eq!(element.name().local_name(), &DocumentString::from("MiXeD"));
                 assert!(element.attributes().is_empty());
@@ -135,8 +145,8 @@ fn prefixed_case_and_xml_class_survive_xhtml_mime_and_following_ticket() {
         .unwrap();
     assert_eq!(element.node_name(), DocumentString::from("NeXt"));
     assert_eq!(
-        element.as_element().unwrap().name().namespace(),
-        &Namespace::html()
+        element.as_element().unwrap().name().namespace_uri(),
+        Namespace::html().uri()
     );
     assert_eq!(element.as_element().unwrap().name().prefix(), None);
     assert_eq!(
@@ -313,7 +323,20 @@ fn node_and_string_exact_boundaries_and_cancellation_preserve_old_doctype_topolo
         (2, 63, false, DomResource::ManagedNodes),
         (3, 62, false, DomResource::StringCodeUnits),
     ] {
-        let mut dom = Dom::new(DomLimits::new(nodes, units, 32, 0, 0, 8, 65536).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                nodes,
+                units,
+                32,
+                0,
+                0,
+                8,
+                65536,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut b = DomBatch::new();
         let associated = b.create_document();
         let c = apply(&mut dom, b);
@@ -368,7 +391,20 @@ fn node_and_string_exact_boundaries_and_cancellation_preserve_old_doctype_topolo
 #[test]
 fn smaller_svg_mime_does_not_erase_required_initial_xml_metadata_admission() {
     for (cap, success) in [(60, false), (62, true)] {
-        let mut dom = Dom::new(DomLimits::new(8, cap, 16, 0, 0, 8, 65536).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                8,
+                cap,
+                16,
+                0,
+                0,
+                8,
+                65536,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut b = DomBatch::new();
         let associated = b.create_document();
         let c = apply(&mut dom, b);

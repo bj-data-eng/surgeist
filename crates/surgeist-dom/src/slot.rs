@@ -152,7 +152,7 @@ pub(crate) fn name_admitted<'a, E>(
         DomNodeKind::Element(e) => {
             for a in e.attributes().iter() {
                 step()?;
-                if a.name().namespace().uri().is_some() {
+                if a.name().namespace_uri().is_some() {
                     continue;
                 }
                 let units = a.name().local_name().code_units();

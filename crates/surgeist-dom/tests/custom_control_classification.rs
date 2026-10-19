@@ -13,7 +13,20 @@ use surgeist_html_semantics::{
 #[test]
 fn null_definition_custom_element_is_excluded_from_actual_fieldset_controls() {
     let cancel = AtomicBool::new(false);
-    let mut dom = Dom::new(DomLimits::new(8, 2048, 16, 0, 0, 4, 4096).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            8,
+            2048,
+            16,
+            0,
+            0,
+            4,
+            4096,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let fieldset = batch.create_element_ns(&document, Namespace::html(), "fieldset");

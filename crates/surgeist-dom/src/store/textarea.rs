@@ -304,7 +304,18 @@ mod tests {
         for empty in [Empty::Supported, Empty::Unsupported] {
             for none in [NoneDirection::Supported, NoneDirection::Unsupported] {
                 let mut dom = Dom::with_native_input_platform(
-                    DomLimits::new(16, 2048, 32, 0, 0, 8, 65536).unwrap(),
+                    DomLimits::new(
+                        16,
+                        2048,
+                        32,
+                        0,
+                        0,
+                        8,
+                        65536,
+                        crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                            .unwrap(),
+                    )
+                    .unwrap(),
                     crate::DomNativeInputPlatform::new(empty, none),
                 )
                 .unwrap();
@@ -401,7 +412,20 @@ mod tests {
     #[test]
     fn prepared_real_raw_child_and_owner_prefix_never_publishes_after_cancel_or_exhaustion() {
         for exhausted in [false, true] {
-            let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 65536).unwrap()).unwrap();
+            let mut dom = Dom::new(
+                DomLimits::new(
+                    32,
+                    4096,
+                    64,
+                    0,
+                    0,
+                    8,
+                    65536,
+                    crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
             let cancel = AtomicBool::new(false);
             let mut b = DomBatch::new();
             let d = b.create_document();

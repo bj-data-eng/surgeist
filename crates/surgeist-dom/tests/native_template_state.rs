@@ -10,7 +10,17 @@ fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
 fn limits(nodes: usize, units: usize) -> DomLimits {
-    DomLimits::new(nodes, units, 1024, 1024, 512, 32, 262144).unwrap()
+    DomLimits::new(
+        nodes,
+        units,
+        1024,
+        1024,
+        512,
+        32,
+        262144,
+        surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
 }
 fn dom() -> Dom {
     Dom::new(limits(512, 65536)).unwrap()
@@ -814,8 +824,20 @@ fn native_for_and_shadow_attributes_do_not_create_parser_patching_or_shadow_stat
     b.set_attribute(t, "for", "x");
     assert!(apply(&mut dom, b).changes().changes().is_empty());
     assert_eq!(dom.snapshot().stamp(), stamp);
-    dom.set_limits(DomLimits::new(512, 65536, 1024, 1024, 512, 0, 0).unwrap())
-        .unwrap();
+    dom.set_limits(
+        DomLimits::new(
+            512,
+            65536,
+            1024,
+            1024,
+            512,
+            0,
+            0,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut b = DomBatch::new();
     b.set_attribute(t, "for", "y");
     apply(&mut dom, b);

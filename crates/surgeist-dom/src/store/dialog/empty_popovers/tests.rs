@@ -5,8 +5,20 @@ fn limits(work: u64) -> crate::DomSourceLimits {
     crate::DomSourceLimits::new(16_000_000, 100_000, work, 16, 4096, 4096, 1)
 }
 fn fixture() -> (Dom, DocumentId, DocumentId, NodeId) {
-    let mut dom =
-        Dom::new(DomLimits::new(64, 100_000, 256, 256, 256, 16, 1_000_000).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            64,
+            100_000,
+            256,
+            256,
+            256,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let first = batch.create_document();
     let second = batch.create_document();

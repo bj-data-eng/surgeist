@@ -28,10 +28,19 @@ fn source_limits(work: u64) -> crate::DomSourceLimits {
 }
 fn fixture() -> (Dom, [DocumentId; 2], [NodeId; 3]) {
     let mut dom = Dom::new(
-        DomLimits::new(64, 100_000, 256, 128, 128, 16, 1_000_000)
-            .unwrap()
-            .with_autofocus_candidates(16)
-            .unwrap(),
+        DomLimits::new(
+            64,
+            100_000,
+            256,
+            128,
+            128,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_autofocus_candidates(16)
+        .unwrap(),
     )
     .unwrap();
     let mut b = DomBatch::new();
@@ -96,10 +105,19 @@ fn absent_autofocus_removal_does_not_walk_unrelated_candidates_or_other_roles() 
     for unrelated in [0, 256] {
         let cancel = cancel();
         let mut dom = Dom::new(
-            DomLimits::new(1024, 1_000_000, 2048, 0, 0, 16, 1_000_000)
-                .unwrap()
-                .with_autofocus_candidates(1024)
-                .unwrap(),
+            DomLimits::new(
+                1024,
+                1_000_000,
+                2048,
+                0,
+                0,
+                16,
+                1_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap()
+            .with_autofocus_candidates(1024)
+            .unwrap(),
         )
         .unwrap();
         let mut batch = DomBatch::new();

@@ -22,7 +22,8 @@ use std::sync::atomic::AtomicBool;
 use surgeist_dom::{Dom, DomBatch, DomLimits};
 
 fn main() -> Result<(), surgeist_dom::DomError> {
-    let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 8192)?)?;
+    let names = surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)?;
+    let mut dom = Dom::new(DomLimits::new(32, 4096, 64, 0, 0, 8, 8192, names)?)?;
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let comment = batch.create_comment(&document, "retained");

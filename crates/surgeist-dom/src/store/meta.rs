@@ -61,7 +61,7 @@ impl Draft {
         };
         for entry in element.attributes().iter() {
             self.meta_step(cancel)?;
-            if entry.name().namespace().uri().is_none()
+            if entry.name().namespace_uri().is_none()
                 && self.meta_ascii(
                     entry.name().local_name(),
                     attribute.local_name(),
@@ -457,11 +457,11 @@ impl Draft {
     pub(super) fn meta_attribute_changed(
         &mut self,
         key: Key,
-        name: &crate::QualifiedName,
+        name: &crate::DomQualifiedName,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if !self.is_meta(key)? || name.namespace().uri().is_some() {
+        if !self.is_meta(key)? || name.namespace_uri().is_some() {
             return Ok(());
         }
         let name_or_content = self.meta_ascii(name.local_name(), "name", false, cancel)?
@@ -577,9 +577,18 @@ mod tests {
     use super::*;
     use crate::Namespace;
     pub(super) fn policy() -> DomLimits {
-        DomLimits::new(32, 1_000_000, 64, 0, 0, 8, 1_000_000)
-            .unwrap()
-            .with_meta_processing_work(1_000_000)
+        DomLimits::new(
+            32,
+            1_000_000,
+            64,
+            0,
+            0,
+            8,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_meta_processing_work(1_000_000)
     }
     fn actual_source_meta_read(
         bytes: usize,

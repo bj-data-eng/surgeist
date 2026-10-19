@@ -1,11 +1,20 @@
 use super::*;
 
 fn configured(scopes: usize, references: usize) -> DomLimits {
-    DomLimits::new(32, 4096, 64, 0, 0, 0, 0)
-        .unwrap()
-        .with_dispatch_custody(
-            DomDispatchCustodyLimits::new(scopes, references, 65536, 65536, 10000).unwrap(),
-        )
+    DomLimits::new(
+        32,
+        4096,
+        64,
+        0,
+        0,
+        0,
+        0,
+        crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+    )
+    .unwrap()
+    .with_dispatch_custody(
+        DomDispatchCustodyLimits::new(scopes, references, 65536, 65536, 10000).unwrap(),
+    )
 }
 fn fixture(limits: DomLimits) -> (Dom, DocumentId, DocumentId, NodeId) {
     let mut dom = Dom::new(limits).unwrap();
@@ -143,7 +152,19 @@ fn failed_atomic_retirement_publishes_no_cell_or_association_change() {
 
 #[test]
 fn disabled_custody_does_not_disable_ordinary_destruction() {
-    let (mut dom, _, _, target) = fixture(DomLimits::new(32, 4096, 64, 0, 0, 0, 0).unwrap());
+    let (mut dom, _, _, target) = fixture(
+        DomLimits::new(
+            32,
+            4096,
+            64,
+            0,
+            0,
+            0,
+            0,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    );
     assert!(matches!(
         dom.register_dispatch_custody(&[target], &AtomicBool::new(false)),
         Err(DomError::ResourceLimit {

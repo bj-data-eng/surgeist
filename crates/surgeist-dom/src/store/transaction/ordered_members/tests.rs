@@ -4,7 +4,20 @@ use super::*;
 
 fn fixture() -> (Dom, NodeId, [Key; 3]) {
     let cancel = AtomicBool::new(false);
-    let mut dom = Dom::new(DomLimits::new(64, 4096, 64, 64, 0, 0, 0).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            64,
+            4096,
+            64,
+            64,
+            0,
+            0,
+            0,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let parent = batch.create_element(&document, "parent");
@@ -195,7 +208,20 @@ fn first_link_record_gate_is_exact_and_one_byte_short_does_not_allocate_it() {
 #[test]
 fn shadow_order_connects_only_reciprocal_roots_before_light_children() {
     let cancel = AtomicBool::new(false);
-    let mut dom = Dom::new(DomLimits::new(64, 4096, 64, 64, 0, 0, 0).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            64,
+            4096,
+            64,
+            64,
+            0,
+            0,
+            0,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let host = batch.create_element_ns(&document, crate::Namespace::html(), "div");

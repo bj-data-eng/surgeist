@@ -57,18 +57,27 @@ fn runtime_select_completion_preserves_a_real_handoff_retirement_skip() {
         )
         .unwrap();
         let mut dom = Dom::new(
-            DomLimits::new(128, 32768, 512, 512, 128, 16, 1_000_000)
-                .unwrap()
-                .with_select_processing(32, 4_000_000, 10_000_000)
-                .unwrap()
-                .with_select_value_queries(
-                    surgeist_html_semantics::HtmlCaptureLimits::new(
-                        128, 512, 512, 32768, 128, 0, 0, 16_777_216,
-                    ),
-                    surgeist_html_semantics::HtmlSemanticLimits::new(
-                        10_000_000, 1, 512, 0, 4_000_000, 512,
-                    ),
+            DomLimits::new(
+                128,
+                32768,
+                512,
+                512,
+                128,
+                16,
+                1_000_000,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap()
+            .with_select_processing(32, 4_000_000, 10_000_000)
+            .unwrap()
+            .with_select_value_queries(
+                surgeist_html_semantics::HtmlCaptureLimits::new(
+                    128, 512, 512, 32768, 128, 0, 0, 16_777_216,
                 ),
+                surgeist_html_semantics::HtmlSemanticLimits::new(
+                    10_000_000, 1, 512, 0, 4_000_000, 512,
+                ),
+            ),
         )
         .unwrap();
         let mut batch = DomBatch::new();
@@ -141,7 +150,21 @@ fn runtime_select_completion_preserves_a_real_handoff_retirement_skip() {
             panic!("a retired Select skip must not request unrelated Style services")
         };
         let mut foreign_session = DomSession::new(
-            Dom::new(DomLimits::new(32, 4096, 32, 32, 32, 8, 100_000).unwrap()).unwrap(),
+            Dom::new(
+                DomLimits::new(
+                    32,
+                    4096,
+                    32,
+                    32,
+                    32,
+                    8,
+                    100_000,
+                    surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576)
+                        .unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap(),
             session_limits(),
         )
         .unwrap();
@@ -337,10 +360,19 @@ fn runtime_select_completion_preserves_a_real_handoff_retirement_skip() {
 fn runtime_live_select_completion_returns_its_actual_source_progress() {
     let cancel = AtomicBool::new(false);
     let mut dom = Dom::new(
-        DomLimits::new(64, 8192, 128, 128, 64, 8, 1_000_000)
-            .unwrap()
-            .with_select_processing(8, 4_000_000, 10_000_000)
-            .unwrap(),
+        DomLimits::new(
+            64,
+            8192,
+            128,
+            128,
+            64,
+            8,
+            1_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_select_processing(8, 4_000_000, 10_000_000)
+        .unwrap(),
     )
     .unwrap();
     let mut batch = DomBatch::new();
@@ -417,10 +449,19 @@ fn runtime_live_select_copy_resumes_the_same_real_style_csp_request_once() {
     )
     .unwrap();
     let mut dom = Dom::new(
-        DomLimits::new(256, 100_000, 1024, 0, 0, 16, 1_000_000)
-            .unwrap()
-            .with_select_processing(32, 4_000_000, 10_000_000)
-            .unwrap(),
+        DomLimits::new(
+            256,
+            100_000,
+            1024,
+            0,
+            0,
+            16,
+            1_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_select_processing(32, 4_000_000, 10_000_000)
+        .unwrap(),
     )
     .unwrap();
     let mut batch = DomBatch::new();

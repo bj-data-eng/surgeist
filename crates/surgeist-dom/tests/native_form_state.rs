@@ -7,7 +7,20 @@ fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
 fn dom() -> Dom {
-    Dom::new(DomLimits::new(128, 16384, 256, 256, 128, 16, 65536).unwrap()).unwrap()
+    Dom::new(
+        DomLimits::new(
+            128,
+            16384,
+            256,
+            256,
+            128,
+            16,
+            65536,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
 }
 fn apply(dom: &mut Dom, b: DomBatch) -> DomCommit {
     dom.apply(b, &cancel()).unwrap()
@@ -483,7 +496,20 @@ fn fragment_transfer_replacement_and_retirement_keep_relations_generation_exact(
 #[test]
 fn native_form_exact_string_and_node_limits_refuse_atomically_and_retirement_releases_units() {
     for cap in [62, 63] {
-        let mut dom = Dom::new(DomLimits::new(2, cap, 8, 0, 0, 4, 4096).unwrap()).unwrap();
+        let mut dom = Dom::new(
+            DomLimits::new(
+                2,
+                cap,
+                8,
+                0,
+                0,
+                4,
+                4096,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let mut b = DomBatch::new();
         let d = b.create_document();
         let f = b.create_element_ns(&d, Namespace::html(), "form");
@@ -518,7 +544,20 @@ fn native_form_exact_string_and_node_limits_refuse_atomically_and_retirement_rel
             assert_eq!(dom.usage().string_code_units(), 31);
         }
     }
-    let mut dom = Dom::new(DomLimits::new(1, 1024, 8, 0, 0, 4, 4096).unwrap()).unwrap();
+    let mut dom = Dom::new(
+        DomLimits::new(
+            1,
+            1024,
+            8,
+            0,
+            0,
+            4,
+            4096,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let mut b = DomBatch::new();
     let d = b.create_document();
     b.create_element_ns(&d, Namespace::html(), "form");

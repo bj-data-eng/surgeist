@@ -21,6 +21,17 @@ and custom-element state come from actual canonical records. It creates no
 intermediate HTML construction tree. Common slots not represented by HTML's
 capture schema remain available through the retained `source()` snapshot.
 
+Ordinary HTML interpretation borrows canonical name and attribute views directly.
+An owned semantic capture instead forms its HTML-owned values through the capture
+builder's controlled borrowed-input front. The required
+`HtmlCaptureLimits::element_value_bytes()` allowance covers cumulative initial
+element name, ordered-attribute and saved-creation-`is` retention, including
+destination capacity and formation/validation overlap. UTF-16 units and work
+remain separately admitted. This allowance does not bound the whole capture
+heap or later nonce, hyperlink and context facts; the adapter also retains its
+source snapshot and identity map under their own limits. Refusal and cancellation
+preserve the original typed failure without returning a partial capture.
+
 ## Association closure and query limits
 
 Actual open and closed ShadowRoots extend the capture closure through their reciprocal

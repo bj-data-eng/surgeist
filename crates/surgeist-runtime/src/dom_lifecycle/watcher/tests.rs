@@ -49,13 +49,22 @@ fn session_limits() -> DomSessionLimits {
 fn hosted_queue_fixture() -> (DomSession, DomHostedTopLevel, NodeId) {
     let cancel = AtomicBool::new(false);
     let dom = Dom::new(
-        DomLimits::new(128, 100_000, 256, 128, 128, 32, 4_000_000)
-            .unwrap()
-            .with_dispatch_custody(
-                DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap(),
-            )
-            .with_details_toggle_intentions(8)
-            .unwrap(),
+        DomLimits::new(
+            128,
+            100_000,
+            256,
+            128,
+            128,
+            32,
+            4_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_dispatch_custody(
+            DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap(),
+        )
+        .with_details_toggle_intentions(8)
+        .unwrap(),
     )
     .unwrap();
     let mut session = DomSession::new(dom, session_limits()).unwrap();

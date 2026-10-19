@@ -64,7 +64,7 @@ pub(super) fn body(snapshot: &DomSnapshot, document: DocumentId) -> NodeId {
                 .unwrap()
                 .as_element()
                 .is_some_and(|element| {
-                    element.name().namespace() == &Namespace::html()
+                    element.name().namespace_uri() == Namespace::html().uri()
                         && element.name().local_name() == &DocumentString::from("body")
                 })
         })
@@ -88,14 +88,22 @@ impl HostedFixture {
 
     pub fn active_with_platform(platform: DomNativeInputPlatform) -> Self {
         let dom = Dom::with_native_input_platform(
-            DomLimits::new(512, 200_000, 1024, 1024, 1024, 64, 4_000_000)
-                .unwrap()
-                .with_dispatch_custody(
-                    DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000)
-                        .unwrap(),
-                )
-                .with_details_toggle_intentions(32)
-                .unwrap(),
+            DomLimits::new(
+                512,
+                200_000,
+                1024,
+                1024,
+                1024,
+                64,
+                4_000_000,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap()
+            .with_dispatch_custody(
+                DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap(),
+            )
+            .with_details_toggle_intentions(32)
+            .unwrap(),
             platform,
         )
         .unwrap();

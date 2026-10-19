@@ -348,7 +348,20 @@ mod tests {
 
     fn draft() -> (Dom, Draft) {
         let cancel = AtomicBool::new(false);
-        let dom = Dom::new(DomLimits::new(8, 4096, 64, 0, 0, 16, 1_000_000).unwrap()).unwrap();
+        let dom = Dom::new(
+            DomLimits::new(
+                8,
+                4096,
+                64,
+                0,
+                0,
+                16,
+                1_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
         let batch = DomBatch::new();
         let draft = Draft::new_source(
             &dom,

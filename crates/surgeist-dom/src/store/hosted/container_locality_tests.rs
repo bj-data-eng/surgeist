@@ -15,7 +15,19 @@ struct Fixture {
 fn fixture(unrelated: usize, populated: bool) -> Fixture {
     let mut f = history::tests::Fixture::new();
     f.dom
-        .set_limits(DomLimits::new(4096, 1_000_000, 4096, 0, 0, 32, 128_000_000).unwrap())
+        .set_limits(
+            DomLimits::new(
+                4096,
+                1_000_000,
+                4096,
+                0,
+                0,
+                32,
+                128_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
         .unwrap();
     let (top, _, preparation_work) = f.issue(0);
     drop(preparation_work);
@@ -246,7 +258,19 @@ fn container_order_is_shadow_before_light_and_historical_views_keep_old_edges() 
 fn empty_output_steps(unrelated: usize, containers: usize) -> u64 {
     let mut f = history::tests::Fixture::new();
     f.dom
-        .set_limits(DomLimits::new(4096, 1_000_000, 4096, 0, 0, 32, 128_000_000).unwrap())
+        .set_limits(
+            DomLimits::new(
+                4096,
+                1_000_000,
+                4096,
+                0,
+                0,
+                32,
+                128_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
         .unwrap();
     let (top, _, preparation_work) = f.issue(0);
     drop(preparation_work);

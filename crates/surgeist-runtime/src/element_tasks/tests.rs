@@ -67,16 +67,25 @@ fn apply(dom: &mut DomSession, batch: DomBatch) -> DomCommit {
 }
 fn fixture() -> (DomSession, DocumentId, NodeId, NodeId) {
     let mut dom = Dom::new(
-        DomLimits::new(256, 65536, 1024, 1024, 512, 16, 1_000_000)
-            .unwrap()
-            .with_dispatch_custody(
-                surgeist_dom::DomDispatchCustodyLimits::new(
-                    64, 4096, 16_000_000, 16_000_000, 4_000_000,
-                )
-                .unwrap(),
+        DomLimits::new(
+            256,
+            65536,
+            1024,
+            1024,
+            512,
+            16,
+            1_000_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_dispatch_custody(
+            surgeist_dom::DomDispatchCustodyLimits::new(
+                64, 4096, 16_000_000, 16_000_000, 4_000_000,
             )
-            .with_details_toggle_intentions(128)
             .unwrap(),
+        )
+        .with_details_toggle_intentions(128)
+        .unwrap(),
     )
     .unwrap();
     let mut batch = DomBatch::new();
@@ -1098,16 +1107,25 @@ fn target_destroyed_after_prestart_dispatch_refusal_is_skipped_without_delivery(
 fn session_bootstrap_distinguishes_actual_nonempty_raw_transfer_from_empty_or_refused_take() {
     for route in 0..3 {
         let mut dom = Dom::new(
-            DomLimits::new(32, 4096, 128, 128, 128, 8, 100_000)
-                .unwrap()
-                .with_dispatch_custody(
-                    surgeist_dom::DomDispatchCustodyLimits::new(
-                        64, 4096, 16_000_000, 16_000_000, 4_000_000,
-                    )
-                    .unwrap(),
+            DomLimits::new(
+                32,
+                4096,
+                128,
+                128,
+                128,
+                8,
+                100_000,
+                surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap()
+            .with_dispatch_custody(
+                surgeist_dom::DomDispatchCustodyLimits::new(
+                    64, 4096, 16_000_000, 16_000_000, 4_000_000,
                 )
-                .with_details_toggle_intentions(8)
                 .unwrap(),
+            )
+            .with_details_toggle_intentions(8)
+            .unwrap(),
         )
         .unwrap();
         let mut batch = DomBatch::new();

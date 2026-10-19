@@ -144,6 +144,7 @@ pub(in crate::store) enum Undo {
     Fields {
         key: super::Key,
         old: custody::Held<Box<NodeFields>>,
+        element_custody: Option<bank::Dependency>,
         counts: Counts,
         units: usize,
         private_units: usize,
@@ -268,12 +269,16 @@ impl Undo {
             Self::Fields {
                 key,
                 old,
+                element_custody,
                 counts,
                 units,
                 private_units,
                 private_counts,
             } => {
+                // Discard current semantic handles before their control
+                // frontier; restore both halves of the original inverse.
                 draft.private_node_mut(key).fields = old;
+                draft.private_node_mut(key).element_custody = element_custody;
                 draft.counts = counts;
                 draft.units = units;
                 draft.private_units = private_units;
