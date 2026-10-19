@@ -349,14 +349,16 @@ fn receiving_types_are_item_value_paths_not_dom_ancestors() {
         Some(DocumentString::from("TypeA").code_units())
     );
 }
-#[test]
-fn shared_itemref_routes_report_each_receiver_once() {
-    // HTML877d §5.2: "the relevant types of the item for which it is a
-    // property's value". The leaf is a property value of two receiving items,
-    // so it has two independent type contexts; the many routes above each
-    // receiver are that receiver's own context and are not enumerated again.
-    // This small cycle-free document must be answered, not refused.
-    const LEVELS: usize = 16;
+/// A cycle-free document whose leaf is reached from a typed root through
+/// `levels` doubling itemref levels: two receivers, `2^levels` routes.
+struct SharedItemrefDocument {
+    capture: HtmlCapture,
+    document: HtmlCaptureSubjectId,
+    root: HtmlCaptureSubjectId,
+    receivers: Vec<HtmlCaptureSubjectId>,
+    leaf: HtmlCaptureSubjectId,
+}
+fn shared_itemref_document(levels: usize) -> SharedItemrefDocument {
     let (mut b, d) = builder();
     let root = el(
         &mut b,
@@ -370,8 +372,8 @@ fn shared_itemref_routes_report_each_receiver_once() {
     );
     let mut children = vec![root.clone()];
     let mut receivers = Vec::new();
-    for level in 0..LEVELS {
-        let next = if level + 1 == LEVELS {
+    for level in 0..levels {
+        let next = if level + 1 == levels {
             "leaf".to_owned()
         } else {
             format!("a{} b{}", level + 1, level + 1)
@@ -390,7 +392,7 @@ fn shared_itemref_routes_report_each_receiver_once() {
                 ],
             );
             cs(&mut b, &item, &[]);
-            if level + 1 == LEVELS {
+            if level + 1 == levels {
                 receivers.push(item.clone());
             }
             children.push(item);
@@ -406,24 +408,80 @@ fn shared_itemref_routes_report_each_receiver_once() {
     cs(&mut b, &leaf, &[]);
     children.push(leaf.clone());
     cs(&mut b, &d, &children);
-    let c = b.finish().unwrap();
-    let id = c.subject_id(&leaf).unwrap();
-    let r = run(&c, &context(&c), &id, HtmlSemanticQuery::MicrodataItem);
+    let capture = b.finish().unwrap();
+    SharedItemrefDocument {
+        document: capture.subject_id(&d).unwrap(),
+        root: capture.subject_id(&root).unwrap(),
+        receivers: receivers
+            .iter()
+            .map(|r| capture.subject_id(r).unwrap())
+            .collect(),
+        leaf: capture.subject_id(&leaf).unwrap(),
+        capture,
+    }
+}
+#[test]
+fn shared_itemref_routes_report_each_receiver_once() {
+    // HTML877d §5.2: "the relevant types of the item for which it is a
+    // property's value". The leaf is a property value of two receiving items,
+    // so it has two independent type contexts; the many routes above each
+    // receiver are that receiver's own context and are not enumerated again.
+    // This small cycle-free document must be answered, not refused.
+    const LEVELS: usize = 16;
+    let doc = shared_itemref_document(LEVELS);
+    let c = &doc.capture;
+    let r = run(c, &context(c), &doc.leaf, HtmlSemanticQuery::MicrodataItem);
     assert_eq!(
         item(&r).type_context().typing(),
         &HtmlMicrodataTyping::Typed
     );
     let paths = known(item(&r).type_context().paths());
     assert_eq!(paths.len(), 2);
-    for (path, receiver) in paths.iter().zip(&receivers) {
+    for (path, receiver) in paths.iter().zip(&doc.receivers) {
         let items = path.items();
         assert_eq!(items.len(), LEVELS + 2);
-        assert_eq!(items[0], id);
-        assert_eq!(items[1], c.subject_id(receiver).unwrap());
-        assert_eq!(items.last(), Some(&c.subject_id(&root).unwrap()));
+        assert_eq!(items[0], doc.leaf);
+        assert_eq!(&items[1], receiver);
+        assert_eq!(items.last(), Some(&doc.root));
         assert_eq!(
             path.types().token_units(0),
             Some(DocumentString::from("Root").code_units())
+        );
+    }
+}
+#[test]
+fn item_and_document_queries_scale_with_the_item_graph_not_its_routes() {
+    // Doubling the levels doubles the items, edges and itemref tokens. Work
+    // proportional to the graph (up to a logarithmic search factor) grows by
+    // about 2.3; enumerating routes or scanning the whole tree for every
+    // itemref token grows by 3 or more and exhausts caller budgets on large
+    // documents. The bound is a growth property, not a pinned cost.
+    let work =
+        |levels: usize,
+         query: fn(&SharedItemrefDocument) -> (HtmlSemanticQuery, HtmlCaptureSubjectId)| {
+            let doc = shared_itemref_document(levels);
+            let (q, subject) = query(&doc);
+            let r = run(&doc.capture, &context(&doc.capture), &subject, q);
+            r.usage().work() as f64
+        };
+    let item_query = |d: &SharedItemrefDocument| (HtmlSemanticQuery::MicrodataItem, d.leaf.clone());
+    let document_query = |d: &SharedItemrefDocument| {
+        (
+            HtmlSemanticQuery::MicrodataDocumentAuthor,
+            d.document.clone(),
+        )
+    };
+    for (name, query) in [
+        ("item", item_query as fn(&SharedItemrefDocument) -> _),
+        (
+            "document",
+            document_query as fn(&SharedItemrefDocument) -> _,
+        ),
+    ] {
+        let growth = work(64, query) / work(32, query);
+        assert!(
+            growth < 2.75,
+            "{name} work grew by {growth:.2} when the graph doubled"
         );
     }
 }
