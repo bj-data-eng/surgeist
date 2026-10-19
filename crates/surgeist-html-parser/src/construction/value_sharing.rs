@@ -325,9 +325,8 @@ impl Pools {
         if !self.strings_enabled() {
             return Ok(None);
         }
-        if let Some(hit) = self.drive_string(input, false, c)? {
-            return Ok(Some(hit));
-        }
+        // Offer returns existing hits before preparing any mutation. A miss
+        // keeps its qualified fingerprint and scan through the insertion.
         self.drive_string(input, true, c)
     }
     fn offer_attributes(
