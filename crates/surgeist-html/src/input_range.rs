@@ -8,10 +8,12 @@ use crate::{
 
 /// A completed finite Range calculation value, preserving actual signed-zero bits.
 ///
-/// Ordinary `HtmlFloatingPointNumber` values normalize zero. Range's bounded
-/// ingress and lattice operations instead retain the current/result bit identity
-/// until an actual replacement requests best-number serialization. This type
-/// carries only that algorithm value; it does not parse or calculate numbers.
+/// Parsing never produces −0: the rules for parsing floating-point number values
+/// convert into the finite binary64 values except −0, for both ordinary
+/// `HtmlFloatingPointNumber` values and Range's bounded ingress. Range's lattice
+/// operations retain the signed-zero bits their arithmetic produces until an
+/// actual replacement requests best-number serialization. This type carries only
+/// that algorithm value; it does not parse or calculate numbers.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlInputRangeNumber(u64);
 

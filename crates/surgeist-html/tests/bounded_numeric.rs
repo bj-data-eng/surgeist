@@ -396,6 +396,48 @@ fn service(
 }
 
 #[test]
+fn range_ingress_converts_every_zero_spelling_to_the_unsigned_zero() {
+    // HTML877d rules for parsing floating-point number values, step 15:
+    // "Let S be the set of finite IEEE 754 double-precision floating-point
+    // values except −0", so a zero conversion is never negative. Rounding
+    // to the nearest member keeps the sign of a nonzero negative subnormal:
+    // -5e-324 is the least negative subnormal, while -2e-324 lies below half
+    // of it and rounds to zero.
+    for (spelling, expected) in [
+        ("0", 0),
+        ("-0", 0),
+        ("-0.0", 0),
+        ("-0e5", 0),
+        ("-0.000e-3", 0),
+        ("-.0", 0),
+        ("-2e-324", 0),
+        ("-5e-324", (-5e-324_f64).to_bits()),
+    ] {
+        let source: Vec<_> = spelling.encode_utf16().collect();
+        let mut grammar = FloatingPointGrammarCursor::new(&source, FloatingPointParseMode::Author);
+        while !grammar.is_finished() {
+            grammar.advance();
+        }
+        // Each spelling is a valid floating-point number, so grammar succeeds.
+        let parts = grammar.range_decimal_parts().unwrap();
+        let mut ingress =
+            FiniteDecimalIngressCursor::new(parts, source.len(), RangeNumericHeaders::default())
+                .unwrap();
+        let mut buffers = std::array::from_fn(|_| Vec::new());
+        let mut output = Vec::new();
+        while let Some(request) = ingress.request() {
+            let reply = service(request, &source, &mut buffers, &mut output);
+            ingress.reply(reply).unwrap();
+        }
+        let bits = ingress.result().unwrap().unwrap();
+        let value = HtmlInputRangeNumber::try_from(f64::from_bits(bits))
+            .unwrap()
+            .value();
+        assert_eq!(value.to_bits(), expected, "{spelling}");
+    }
+}
+
+#[test]
 fn range_ingress_and_shortest_output_use_only_caller_scratch() {
     let source: Vec<_> = "12.5".encode_utf16().collect();
     let mut grammar = FloatingPointGrammarCursor::new(&source, FloatingPointParseMode::Author);
