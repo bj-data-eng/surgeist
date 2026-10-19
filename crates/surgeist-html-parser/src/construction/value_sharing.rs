@@ -1408,6 +1408,76 @@ impl FrozenArena {
 mod tests {
     use super::*;
 
+    fn assert_cold_string_inspection(repetitions: usize, expected_units: usize) {
+        let input = DocumentString::from_utf16([65, 0xd800, 0, 0xdc00].repeat(repetitions));
+        let equal = DocumentString::from_utf16([65, 0xd800, 0, 0xdc00].repeat(repetitions));
+        assert_eq!(input.len(), expected_units);
+        assert!(!Arc::ptr_eq(
+            input.shared_code_units(),
+            equal.shared_code_units()
+        ));
+        let capacity = input.shared_code_units().capacity();
+        let mut c = ParseControl::new(
+            crate::parser::tree_builder::tests::limits(100),
+            crate::HtmlParseCancellation::new(),
+        );
+        let inspected = {
+            let mut sharing = Sharing::new(&mut c, ValueSharingMode::Combined).unwrap();
+            let pools = sharing.pools.as_mut().unwrap();
+            assert_eq!(pools.strings.heap_usage().bytes(), 0);
+            let before = sharing.control.usage().work(WorkCategory::InspectByte);
+            assert!(pools.string(&input, sharing.control).unwrap().is_none());
+            let inspected = sharing.control.usage().work(WorkCategory::InspectByte) - before;
+            assert!(sharing.control.stop().is_none());
+            assert!(pools.strings.heap_usage().bytes() > 0);
+            assert_eq!(pools.attributes.heap_usage().bytes(), 0);
+
+            // A subsequent independently backed equal operand must really hit
+            // the offered original, so an early bypass cannot satisfy the cut.
+            let selected = pools
+                .string(&equal, sharing.control)
+                .unwrap()
+                .expect("cold miss retained an eligible string");
+            assert!(Arc::ptr_eq(
+                selected.value.shared_code_units(),
+                input.shared_code_units()
+            ));
+            assert_eq!(selected.value.len(), expected_units);
+            for chunk in selected.value.code_units().chunks_exact(4) {
+                assert_eq!(chunk, [65, 0xd800, 0, 0xdc00]);
+            }
+            selected.release(sharing.control);
+            inspected
+        };
+        // This is the same original controller and real paired-root Drop,
+        // including pool data-before-credit cleanup; work is never refunded.
+        super::super::tests::storage_zero(&c);
+        assert!(c.stop().is_none());
+        assert_eq!(input.shared_code_units().capacity(), capacity);
+        assert_eq!(input.len(), expected_units);
+        assert_eq!(equal.len(), expected_units);
+        for value in [&input, &equal] {
+            for chunk in value.code_units().chunks_exact(4) {
+                assert_eq!(chunk, [65, 0xd800, 0, 0xdc00]);
+            }
+        }
+        // On an empty pool there are no candidate payload comparisons. The
+        // successful input hash admits two InspectByte credits per raw UTF-16
+        // unit. Promoting its qualified immutable miss must not hash it again.
+        // This observes original-controller work, not CPU or allocator reads.
+        assert_eq!(inspected, (expected_units * 2) as u64);
+    }
+
+    #[test]
+    fn cold_string_miss_charges_one_inspection_of_nonempty_raw_utf16() {
+        assert_cold_string_inspection(1, 4);
+    }
+
+    #[test]
+    fn cold_string_miss_charges_one_inspection_of_longer_raw_utf16() {
+        assert_cold_string_inspection(17, 68);
+    }
+
     #[test]
     fn second_pool_prepare_refusal_retains_both_abort_authorities_and_releases_custody() {
         // This is the concrete consumer guard over the producers' real public
