@@ -71,7 +71,7 @@ pub(crate) fn validate_shared_support_surface() -> bool {
     let _ = capture_csstree_oracle_from_public_parser as fn() -> Result<(), String>;
     let _ = validate_csstree_expected_classes_contract
         as fn(&[u8]) -> Result<ExpectedClassSummary, String>;
-    // Keep items used only by some corpus modules referenced from this module.
+    // Summary accessors that only some corpus tests call.
     let _ = ExpectedClassSummary::digest as fn(&ExpectedClassSummary) -> &str;
     let _ = ExpectedClassSummary::class_counts
         as fn(&ExpectedClassSummary) -> [(&'static str, usize); 4];
