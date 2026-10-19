@@ -104,10 +104,10 @@ impl HtmlValueInterpreter {
     /// Raw admission precedes applicability; wrong names do not run a grammar.
     pub fn modification_datetime(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlModificationDatetimeReport, HtmlValueAdmissionError> {
-        self.admit_attribute_raw(raw.map(Attribute::value))?;
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let attribute = report(
             RuleMetadata {
                 attribute: KnownHtmlAttribute::Datetime,
@@ -120,7 +120,7 @@ impl HtmlValueInterpreter {
             raw,
         );
         let common = if attribute.applicability() == HtmlAttributeApplicability::Applicable {
-            Some(self.date_with_optional_time(raw.map(Attribute::value))?)
+            Some(self.date_with_optional_time(raw.map(HtmlAttributeInput::value))?)
         } else {
             None
         };

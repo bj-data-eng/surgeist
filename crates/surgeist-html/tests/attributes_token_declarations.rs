@@ -53,7 +53,10 @@ fn candidate_units(report: &HtmlAccessKeyReport) -> Vec<Vec<u16>> {
 fn zero_token_values_conform_but_missing_is_not_specified_empty() {
     let i = HtmlValueInterpreter::new(0);
     let missing = i
-        .accesskey(&element(KnownHtmlElement::Button), None)
+        .accesskey(
+            &element(KnownHtmlElement::Button),
+            None::<&surgeist_html::Attribute>,
+        )
         .unwrap();
     assert_eq!(
         missing.input().author(),
@@ -87,14 +90,22 @@ fn zero_token_values_conform_but_missing_is_not_specified_empty() {
         );
         assert_eq!(sizes(value).keywords(), Some([].as_slice()));
     }
-    let missing = i.blocking(&element(KnownHtmlElement::Style), None).unwrap();
+    let missing = i
+        .blocking(
+            &element(KnownHtmlElement::Style),
+            None::<&surgeist_html::Attribute>,
+        )
+        .unwrap();
     assert_eq!(missing.explicit_tokens(), Some(HtmlBlockingTokens::Empty));
     assert_eq!(
         missing.input().author(),
         &HtmlTokenDeclarationAuthorState::Missing
     );
     let missing = i
-        .icon_sizes(&element(KnownHtmlElement::Link), None)
+        .icon_sizes(
+            &element(KnownHtmlElement::Link),
+            None::<&surgeist_html::Attribute>,
+        )
         .unwrap();
     assert_eq!(missing.keywords(), None);
     assert_eq!(
@@ -348,7 +359,11 @@ fn complete_script_context_matrix_allows_only_two_external_kinds() {
         );
         assert_eq!(
             interpreter()
-                .blocking_for_script(&element(KnownHtmlElement::Script), None, context)
+                .blocking_for_script(
+                    &element(KnownHtmlElement::Script),
+                    None::<&surgeist_html::Attribute>,
+                    context
+                )
                 .unwrap()
                 .input()
                 .context_author(),

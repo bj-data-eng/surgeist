@@ -10,11 +10,13 @@
 //! these rules. WHATWG source attribution is in `licenses/whatwg/NOTICE.md`.
 //! Referrer-policy vocabulary is qualified separately in its report metadata.
 
+use crate::semantic_input::{attributes_iter, capture_attribute, capture_name, find_attribute};
 use crate::{
     Attribute, DocumentString, HtmlCustomElementNameError, HtmlShadowRootMode, HtmlSlotAssignment,
     HtmlTokenError, HtmlValueAdmissionError, HtmlValueInterpreter, KnownHtmlAttribute,
     KnownHtmlElement, Namespace, QualifiedName,
 };
+use crate::{HtmlAttributeInput, HtmlNameInput};
 
 /// Exact presence of the supplied attribute, independent of validity/defaults.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -267,7 +269,7 @@ impl<T> HtmlAttributeReport<T> {
     }
     /// Returns the exact supplied raw value, preserving absence versus empty.
     pub fn raw(&self) -> Option<&DocumentString> {
-        self.raw_attribute.as_ref().map(Attribute::value)
+        self.raw_attribute.as_ref().map(HtmlAttributeInput::value)
     }
     pub fn observation(&self) -> HtmlAttributeObservation {
         self.observation
@@ -1303,7 +1305,7 @@ impl HtmlBooleanAttribute {
         }
     }
 
-    fn rule_for(self, element: &QualifiedName) -> RuleMetadata {
+    fn rule_for(self, element: &(impl crate::HtmlNameInput + ?Sized)) -> RuleMetadata {
         let mut rule = self.rule();
         if self == Self::Disabled {
             match KnownHtmlElement::from_name(element) {
@@ -1349,8 +1351,8 @@ impl HtmlBooleanAttribute {
     }
 }
 
-fn html_element_namespace(element: &QualifiedName) -> bool {
-    element.namespace().uri().is_some_and(|uri| {
+fn html_element_namespace(element: &(impl crate::HtmlNameInput + ?Sized)) -> bool {
+    element.namespace_uri().is_some_and(|uri| {
         uri.code_units()
             .iter()
             .copied()
@@ -1360,13 +1362,13 @@ fn html_element_namespace(element: &QualifiedName) -> bool {
 
 fn applies(
     rule: RuleMetadata,
-    element: &QualifiedName,
-    raw: Option<&Attribute>,
+    element: &(impl crate::HtmlNameInput + ?Sized),
+    raw: Option<&impl crate::HtmlAttributeInput>,
 ) -> HtmlAttributeApplicability {
     // Compare only the selected expanded name; prefixes have no role here.
     // Avoid a vocabulary scan so specialized callers retain their work bounds.
     if raw.is_some_and(|a| {
-        a.name().namespace().uri().is_some()
+        a.name().namespace_uri().is_some()
             || !a
                 .name()
                 .local_name()
@@ -1432,7 +1434,10 @@ fn applies(
     HtmlAttributeApplicability::Applicable
 }
 
-fn has_hyperlink_author_constraint(rule: RuleMetadata, element: &QualifiedName) -> bool {
+fn has_hyperlink_author_constraint(
+    rule: RuleMetadata,
+    element: &(impl crate::HtmlNameInput + ?Sized),
+) -> bool {
     matches!(
         rule.context,
         Context::Fetching {
@@ -1445,7 +1450,10 @@ fn has_hyperlink_author_constraint(rule: RuleMetadata, element: &QualifiedName) 
     )
 }
 
-fn has_boolean_author_constraint(rule: RuleMetadata, element: &QualifiedName) -> bool {
+fn has_boolean_author_constraint(
+    rule: RuleMetadata,
+    element: &(impl crate::HtmlNameInput + ?Sized),
+) -> bool {
     match rule.context {
         Context::ImageMap | Context::ImageControls | Context::StylesheetLink => true,
         Context::InputControl(_) => matches!(
@@ -1464,8 +1472,8 @@ fn has_boolean_author_constraint(rule: RuleMetadata, element: &QualifiedName) ->
 // context remain with the selected attribute owner.
 fn report<T>(
     rule: RuleMetadata,
-    element: &QualifiedName,
-    raw: Option<&Attribute>,
+    element: &(impl crate::HtmlNameInput + ?Sized),
+    raw: Option<&impl crate::HtmlAttributeInput>,
 ) -> HtmlAttributeReport<T> {
     let observation = match raw {
         None => HtmlAttributeObservation::Missing,
@@ -1487,8 +1495,8 @@ fn report<T>(
         HtmlAttributeContextAuthorState::NotRequired
     };
     HtmlAttributeReport {
-        element: element.clone(),
-        raw_attribute: raw.cloned(),
+        element: capture_name(element),
+        raw_attribute: raw.map(capture_attribute),
         rule,
         observation,
         applicability,
@@ -1646,8 +1654,8 @@ impl HtmlValueInterpreter {
     fn enumerated<T: Copy>(
         &self,
         rule: &EnumRule<T>,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<T>, HtmlValueAdmissionError> {
         self.enumerated_with_context(rule, element, raw, SuppliedContext::None)
     }
@@ -1655,11 +1663,11 @@ impl HtmlValueInterpreter {
     fn enumerated_with_context<T: Copy>(
         &self,
         rule: &EnumRule<T>,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         supplied_context: SuppliedContext,
     ) -> Result<HtmlAttributeReport<T>, HtmlValueAdmissionError> {
-        self.admit_attribute_raw(raw.map(Attribute::value))?;
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let mut result = report(rule.metadata, element, raw);
         result.supplied_context = supplied_context.clone();
         match supplied_context {
@@ -1774,7 +1782,7 @@ impl HtmlValueInterpreter {
                 _ => result.context_author,
             };
         }
-        let selection = enum_value_selection(rule, raw.map(Attribute::value));
+        let selection = enum_value_selection(rule, raw.map(HtmlAttributeInput::value));
         result.recognition = selection.recognition;
         result.author = selection.author;
         result.intrinsic = selection.intrinsic;
@@ -1785,8 +1793,8 @@ impl HtmlValueInterpreter {
     pub fn boolean_attribute(
         &self,
         selected: HtmlBooleanAttribute,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.boolean_with_context(selected, element, raw, SuppliedContext::None)
     }
@@ -1794,11 +1802,11 @@ impl HtmlValueInterpreter {
     fn boolean_with_context(
         &self,
         selected: HtmlBooleanAttribute,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         supplied_context: SuppliedContext,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
-        self.admit_attribute_raw(raw.map(Attribute::value))?;
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         if let SuppliedContext::StylesheetLink(context) = &supplied_context {
             self.admit_attribute_raw(context.rel())?;
         }
@@ -1982,8 +1990,8 @@ impl HtmlValueInterpreter {
     /// URL resolution, activation and server-side map behavior remain external.
     pub fn ismap_with_context(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         context: HtmlImageMapAttributeContext,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.boolean_with_context(
@@ -1998,8 +2006,8 @@ impl HtmlValueInterpreter {
     /// A host may expose UI; this operation does not create or suppress controls.
     pub fn image_controls_with_context(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         context: HtmlImageControlsAttributeContext,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.boolean_with_context(
@@ -2029,8 +2037,8 @@ impl HtmlValueInterpreter {
     /// The supplied context is re-admitted under this interpreter's own cap.
     pub fn stylesheet_disabled(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         context: &HtmlStylesheetLinkAttributeContext,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.boolean_with_context(
@@ -2047,8 +2055,8 @@ impl HtmlValueInterpreter {
     pub fn boolean_attribute_for_input(
         &self,
         selected: HtmlBooleanAttribute,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         state: HtmlInputType,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.boolean_with_context(selected, element, raw, SuppliedContext::Input(state))
@@ -2059,8 +2067,8 @@ impl HtmlValueInterpreter {
     pub fn boolean_attribute_for_script(
         &self,
         selected: HtmlBooleanAttribute,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         context: HtmlScriptAttributeContext,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.boolean_with_context(selected, element, raw, SuppliedContext::Script(context))
@@ -2070,8 +2078,8 @@ impl HtmlValueInterpreter {
     /// This does not compute form ownership or the effective no-validate state.
     pub fn formnovalidate_for_button(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         context: HtmlButtonSubmitterContext,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.boolean_with_context(
@@ -2086,8 +2094,8 @@ impl HtmlValueInterpreter {
     /// Presence does not describe current editability or validation results.
     pub fn readonly_for_custom_control(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         context: HtmlCustomControlAttributeContext,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.boolean_with_context(
@@ -2102,8 +2110,8 @@ impl HtmlValueInterpreter {
     /// Ancestors, legend exceptions and actual disabledness are separate queries.
     pub fn disabled(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.boolean_attribute(HtmlBooleanAttribute::Disabled, element, raw)
     }
@@ -2111,8 +2119,8 @@ impl HtmlValueInterpreter {
     /// Interprets disabled for an explicitly classified autonomous custom control.
     pub fn disabled_for_custom_control(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         context: HtmlCustomControlAttributeContext,
     ) -> Result<HtmlAttributeReport<bool>, HtmlValueAdmissionError> {
         self.boolean_with_context(
@@ -2127,8 +2135,8 @@ impl HtmlValueInterpreter {
     /// Computed directionality and auto-directionality need separate context.
     pub fn dir(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlDirState>, HtmlValueAdmissionError> {
         let mut result = self.enumerated(&DIR, element, raw)?;
         if result.applicability == HtmlAttributeApplicability::Applicable
@@ -2155,7 +2163,7 @@ macro_rules! interpret_method {
     ($method:ident, $rule:ident, $type:ty) => {
         impl HtmlValueInterpreter {
             #[doc = concat!("Interprets the intrinsic ", stringify!($method), " attribute state; no contextual or runtime state is computed.")]
-            pub fn $method(&self, element: &QualifiedName, raw: Option<&Attribute>) -> Result<HtmlAttributeReport<$type>, HtmlValueAdmissionError> {
+            pub fn $method(&self, element: &(impl crate::HtmlNameInput + ?Sized), raw: Option<&impl crate::HtmlAttributeInput>) -> Result<HtmlAttributeReport<$type>, HtmlValueAdmissionError> {
                 self.enumerated(&$rule, element, raw)
             }
         }
@@ -2204,8 +2212,8 @@ macro_rules! script_interpret_method {
             /// Interprets an intrinsic keyword attribute with explicitly supplied script facts.
             pub fn $method(
                 &self,
-                element: &QualifiedName,
-                raw: Option<&Attribute>,
+                element: &(impl crate::HtmlNameInput + ?Sized),
+                raw: Option<&impl crate::HtmlAttributeInput>,
                 context: HtmlScriptAttributeContext,
             ) -> Result<HtmlAttributeReport<$type>, HtmlValueAdmissionError> {
                 self.enumerated_with_context(&$rule, element, raw, SuppliedContext::Script(context))
@@ -2227,8 +2235,8 @@ impl HtmlValueInterpreter {
     /// The href value and effective request policy are not resolved.
     pub fn referrerpolicy_for_hyperlink(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         context: HtmlHyperlinkAttributeContext,
     ) -> Result<HtmlAttributeReport<HtmlReferrerPolicy>, HtmlValueAdmissionError> {
         self.enumerated_with_context(

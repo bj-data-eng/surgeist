@@ -1,6 +1,6 @@
 //! Nullable Element reflection decisions, HTML 877d §2.6.1.
 
-use crate::{KnownHtmlAttribute, QualifiedName};
+use crate::KnownHtmlAttribute;
 
 /// Whether an actual attribute change clears this property's explicit target.
 ///
@@ -16,10 +16,10 @@ use crate::{KnownHtmlAttribute, QualifiedName};
 /// comparison, which reads at most the selected canonical spelling's length.
 pub fn reflected_element_attribute_change(
     reflected: KnownHtmlAttribute,
-    changed: &QualifiedName,
+    changed: &(impl crate::HtmlNameInput + ?Sized),
 ) -> bool {
     let expected = reflected.local_name().as_bytes();
-    changed.namespace().uri().is_none()
+    changed.namespace_uri().is_none()
         && changed.local_name().len() == expected.len()
         && changed
             .local_name()

@@ -15,7 +15,7 @@ fn temporal_content_authorship(state: HtmlInputType, spelling: &str) {
             &E::Input.qualified_name(),
             Some(&minimum),
             Some(&maximum),
-            None,
+            None::<&surgeist_html::Attribute>,
             Some(&value),
             state,
         )
@@ -589,7 +589,14 @@ fn exact_names_surrogates_and_admission_remain_owned_by_the_shared_front_door() 
         DocumentString::from_utf16(vec![0xd800, 50]),
     );
     let report = HtmlValueInterpreter::new(2)
-        .input_numeric_constraints(&element, Some(&min), None, None, None, HtmlInputType::Time)
+        .input_numeric_constraints(
+            &element,
+            Some(&min),
+            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::Attribute>,
+            HtmlInputType::Time,
+        )
         .unwrap();
     assert_eq!(report.minimum().element(), &element);
     assert_eq!(report.minimum().raw_attribute(), Some(&min));
@@ -603,9 +610,9 @@ fn exact_names_surrogates_and_admission_remain_owned_by_the_shared_front_door() 
         .input_numeric_constraints(
             &element,
             Some(&wrong),
-            None,
-            None,
-            None,
+            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::Attribute>,
             HtmlInputType::Time,
         )
         .unwrap_err();
@@ -616,9 +623,9 @@ fn exact_names_surrogates_and_admission_remain_owned_by_the_shared_front_door() 
         .input_numeric_constraints(
             &element,
             Some(&wrong),
-            None,
-            None,
-            None,
+            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::Attribute>,
             HtmlInputType::Time,
         )
         .unwrap();

@@ -149,7 +149,7 @@ fn missing_empty_and_whitespace_have_independent_presence_and_fields() {
     let missing = HtmlValueInterpreter::new(100)
         .input_accept_for_input(
             &KnownHtmlElement::Input.qualified_name(),
-            None,
+            None::<&surgeist_html::Attribute>,
             HtmlInputType::File,
         )
         .unwrap();
@@ -364,7 +364,7 @@ fn unsupplied_state_is_required_and_type_defaults_do_not_guess_file() {
     );
     assert_eq!(report.author(), &HtmlAcceptAuthorState::Conforming);
     let state = *interpreter
-        .input_type(&element, None)
+        .input_type(&element, None::<&surgeist_html::Attribute>)
         .unwrap()
         .intrinsic()
         .unwrap();
@@ -480,7 +480,7 @@ fn missing_accept_in_nonfile_state_has_no_authored_presence_violation() {
     let report = HtmlValueInterpreter::new(0)
         .input_accept_for_input(
             &KnownHtmlElement::Input.qualified_name(),
-            None,
+            None::<&surgeist_html::Attribute>,
             HtmlInputType::Text,
         )
         .unwrap();

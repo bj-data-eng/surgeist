@@ -398,7 +398,9 @@ fn raw_utf16_names_and_ranges_survive_all_observations_without_lossy_conversion(
 #[test]
 fn missing_empty_whitespace_and_unapplied_roles_have_distinct_outcomes() {
     let interpreter = HtmlValueInterpreter::new(20);
-    let missing = interpreter.img_srcset(&element("img"), None).unwrap();
+    let missing = interpreter
+        .img_srcset(&element("img"), None::<&surgeist_html::Attribute>)
+        .unwrap();
     assert_eq!(missing.observation(), HtmlAttributeObservation::Missing);
     assert_eq!(
         missing.processing(),

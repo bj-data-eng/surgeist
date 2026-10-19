@@ -64,7 +64,12 @@ fn prohibited_input_states_preserve_known_absent_boolean_content() {
         (Boolean::Formnovalidate, Input::Text),
     ] {
         let report = interpreter
-            .boolean_attribute_for_input(selected, &element("input"), None, state)
+            .boolean_attribute_for_input(
+                selected,
+                &element("input"),
+                None::<&surgeist_html::Attribute>,
+                state,
+            )
             .unwrap();
         assert_eq!(report.intrinsic(), Some(&false));
         assert_eq!(report.observation(), Observation::Missing);
@@ -96,7 +101,11 @@ fn absent_input_type_facts_do_not_erase_known_boolean_content() {
             Author::Nonconforming(Conformance::BooleanSpelling)
         );
         let absent = interpreter
-            .boolean_attribute(selected, &element("input"), None)
+            .boolean_attribute(
+                selected,
+                &element("input"),
+                None::<&surgeist_html::Attribute>,
+            )
             .unwrap();
         assert_eq!(absent.intrinsic(), Some(&false));
         assert_eq!(absent.author(), Author::Missing);
@@ -136,7 +145,12 @@ fn prohibited_script_contexts_preserve_present_content_and_boolean_spelling() {
             );
         }
         let absent = interpreter
-            .boolean_attribute_for_script(selected, &element("script"), None, context)
+            .boolean_attribute_for_script(
+                selected,
+                &element("script"),
+                None::<&surgeist_html::Attribute>,
+                context,
+            )
             .unwrap();
         assert_eq!(absent.intrinsic(), Some(&false));
         assert_eq!(absent.author(), Author::Missing);
@@ -160,7 +174,11 @@ fn absent_script_facts_do_not_erase_known_boolean_content() {
             Author::Nonconforming(Conformance::BooleanSpelling)
         );
         let absent = interpreter
-            .boolean_attribute(selected, &element("script"), None)
+            .boolean_attribute(
+                selected,
+                &element("script"),
+                None::<&surgeist_html::Attribute>,
+            )
             .unwrap();
         assert_eq!(absent.intrinsic(), Some(&false));
         assert_eq!(absent.author(), Author::Missing);
@@ -191,7 +209,11 @@ fn non_submit_button_preserves_formnovalidate_content_presence() {
         );
     }
     let absent = interpreter
-        .formnovalidate_for_button(&element("button"), None, Button::NotSubmitButton)
+        .formnovalidate_for_button(
+            &element("button"),
+            None::<&surgeist_html::Attribute>,
+            Button::NotSubmitButton,
+        )
         .unwrap();
     assert_eq!(absent.intrinsic(), Some(&false));
     assert_eq!(absent.author(), Author::Missing);
@@ -215,7 +237,11 @@ fn absent_button_submitter_facts_do_not_erase_formnovalidate_presence() {
         Author::Nonconforming(Conformance::BooleanSpelling)
     );
     let absent = interpreter
-        .boolean_attribute(Boolean::Formnovalidate, &element("button"), None)
+        .boolean_attribute(
+            Boolean::Formnovalidate,
+            &element("button"),
+            None::<&surgeist_html::Attribute>,
+        )
         .unwrap();
     assert_eq!(absent.intrinsic(), Some(&false));
     assert_eq!(absent.author(), Author::Missing);

@@ -64,7 +64,10 @@ fn absent_contribution_is_empty_but_present_empty_and_ascii_space_restrict_all()
 
     // Presence is the caller's observation, not fabricated input to parsing.
     let report = HtmlValueInterpreter::new(128)
-        .iframe_sandbox(&E::Iframe.qualified_name(), None)
+        .iframe_sandbox(
+            &E::Iframe.qualified_name(),
+            None::<&surgeist_html::Attribute>,
+        )
         .unwrap();
     assert_eq!(report.intrinsic(), Some(&HtmlSandboxDirectiveState::Absent));
     for raw in ["", " \t\n\r\u{c}"] {

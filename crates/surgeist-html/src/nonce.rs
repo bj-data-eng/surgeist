@@ -1,6 +1,6 @@
 //! Nonce content and cryptographic-slot decisions, HTML 877d §2.5.6.
+use crate::DocumentString;
 use crate::values::{HTML_NAMESPACE_URI, MATHML_NAMESPACE_URI, SVG_NAMESPACE_URI};
-use crate::{DocumentString, QualifiedName};
 
 /// Actual captured cryptographic slot; content attributes are independent.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -81,8 +81,8 @@ fn exact(value: &DocumentString, literal: &[u8]) -> bool {
             .zip(literal)
             .all(|(&a, &b)| a == u16::from(b))
 }
-pub fn nonce_element(name: &QualifiedName) -> bool {
-    name.namespace().uri().is_some_and(|uri| {
+pub fn nonce_element(name: &(impl crate::HtmlNameInput + ?Sized)) -> bool {
+    name.namespace_uri().is_some_and(|uri| {
         [
             HTML_NAMESPACE_URI.as_bytes(),
             SVG_NAMESPACE_URI.as_bytes(),
@@ -94,12 +94,12 @@ pub fn nonce_element(name: &QualifiedName) -> bool {
 }
 /// Attribute-change decision. Prefix metadata does not change expanded identity.
 pub fn nonce_attribute_change<'a>(
-    element: &QualifiedName,
-    attribute: &QualifiedName,
+    element: &(impl crate::HtmlNameInput + ?Sized),
+    attribute: &(impl crate::HtmlNameInput + ?Sized),
     new_value: Option<&'a DocumentString>,
 ) -> HtmlNonceAttributeEffect<'a> {
     if !nonce_element(element)
-        || attribute.namespace().uri().is_some()
+        || attribute.namespace_uri().is_some()
         || !exact(attribute.local_name(), b"nonce")
     {
         return HtmlNonceAttributeEffect::Ignore;
@@ -111,7 +111,7 @@ pub fn nonce_attribute_change<'a>(
 }
 /// Insertion-only decision. A known false conjunct discharges unrelated gaps.
 pub fn nonce_insertion_effect(
-    element: &QualifiedName,
+    element: &(impl crate::HtmlNameInput + ?Sized),
     content: Option<&DocumentString>,
     connection: HtmlNonceConnection,
     policy: HtmlHeaderDeliveredCsp,

@@ -96,7 +96,9 @@ fn thirteen_union_keywords_match_whole_ascii_case_and_emit_canonical_as() {
 
 #[test]
 fn missing_empty_invalid_and_xslt_never_get_an_enum_default() {
-    let missing = interpreter().link_as(&link(), None).unwrap();
+    let missing = interpreter()
+        .link_as(&link(), None::<&surgeist_html::Attribute>)
+        .unwrap();
     assert_eq!(missing.observation(), HtmlAttributeObservation::Missing);
     assert_eq!(missing.recognition(), HtmlAttributeRecognition::Missing);
     assert_eq!(missing.author(), HtmlAttributeAuthorState::Missing);

@@ -5,7 +5,7 @@ type Error = HtmlMediaInterpretationError;
 fn attr(name: &str, value: &str) -> Attribute {
     Attribute::new(QualifiedName::new(Namespace::none(), None, name), value)
 }
-fn matched<'a>(a: &'a Attribute, field: HtmlMediaField) -> HtmlMediaFieldMatch<'a> {
+fn matched<'a>(a: &'a Attribute, field: HtmlMediaField) -> HtmlMediaFieldMatch<'a, Attribute> {
     match_media_field(a, field, |_| Ok::<_, ()>(()))
         .unwrap()
         .unwrap()
@@ -13,12 +13,12 @@ fn matched<'a>(a: &'a Attribute, field: HtmlMediaField) -> HtmlMediaFieldMatch<'
 fn no_error(_: usize) -> Result<(), &'static str> {
     Ok(())
 }
-fn admitted(owner: &mut HtmlMediaInterpretation<'_>) {
+fn admitted(owner: &mut HtmlMediaInterpretation<'_, QualifiedName, Attribute>) {
     owner.admit_media(|_| Ok::<_, &'static str>(())).unwrap();
     owner.inspect_namespace(no_error).unwrap();
     owner.derive_role(no_error).unwrap();
 }
-fn value(owner: &mut HtmlMediaInterpretation<'_>) -> Vec<usize> {
+fn value(owner: &mut HtmlMediaInterpretation<'_, QualifiedName, Attribute>) -> Vec<usize> {
     owner.begin_value().unwrap();
     let mut work = Vec::new();
     while owner.value_action() != Ok(HtmlMediaCursorAction::Complete) {
@@ -328,7 +328,7 @@ fn final_assembly_refusal_and_explicit_between_action_stop_never_publish_local_r
 }
 
 fn drive_with_checkpoint<'raw>(
-    owner: &mut HtmlMediaInterpretation<'raw>,
+    owner: &mut HtmlMediaInterpretation<'raw, QualifiedName, Attribute>,
     name: &'raw Attribute,
     mut tick: impl FnMut() -> Result<(), &'static str>,
 ) -> Result<(), HtmlMediaActionError<&'static str>> {
@@ -354,10 +354,11 @@ fn every_raw_namespace_role_value_theme_and_assembly_admission_refusal_is_termin
     let element = KnownHtmlElement::Meta.qualified_name();
     let raw = attr("media", "all");
     let name = attr("name", "theme-color");
-    // One raw admission, 29 namespace checkpoints (header + 28 URI units), one role envelope,
+    // One raw admission, 29 namespace checkpoints (header + 28 URI units), local role header
+    // plus its remaining envelope,
     // one name admission, three value units + Finish, 12 theme checkpoints,
     // and one final assembly admission.
-    const CHECKPOINTS: usize = 49;
+    const CHECKPOINTS: usize = 50;
     for stop in 0..CHECKPOINTS {
         let mut slot = Some(HtmlMediaInterpretation::from_matched(
             &element,

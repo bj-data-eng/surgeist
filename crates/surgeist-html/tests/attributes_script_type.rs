@@ -54,7 +54,9 @@ fn native_keywords_emit_only_the_three_canonical_authored_keywords() {
 #[test]
 fn missing_and_empty_are_distinct_nominal_classic_observations_and_advice() {
     let i = interpreter();
-    let missing = i.script_type(&script(), None).unwrap();
+    let missing = i
+        .script_type(&script(), None::<&surgeist_html::Attribute>)
+        .unwrap();
     let empty_raw = raw("");
     let empty = i.script_type(&script(), Some(&empty_raw)).unwrap();
     assert_eq!(missing.observation(), HtmlAttributeObservation::Missing);

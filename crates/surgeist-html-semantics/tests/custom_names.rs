@@ -376,7 +376,10 @@ fn wrong_expanded_role_retains_raw_unapplied_without_a_default() {
         assert_eq!(report.intrinsic(), None);
     }
     let absent = HtmlValueInterpreter::new(0)
-        .is_attribute(&QualifiedName::new(Namespace::svg(), None, "button"), None)
+        .is_attribute(
+            &QualifiedName::new(Namespace::svg(), None, "button"),
+            None::<&surgeist_html::Attribute>,
+        )
         .unwrap();
     assert_eq!(
         absent.applicability(),
@@ -424,9 +427,12 @@ fn original_raw_admission_precedes_local_invalidity_and_wrong_role() {
     }
     let zero = HtmlValueInterpreter::new(0);
     assert_eq!(
-        zero.is_attribute(&KnownHtmlElement::Button.qualified_name(), None)
-            .unwrap()
-            .author(),
+        zero.is_attribute(
+            &KnownHtmlElement::Button.qualified_name(),
+            None::<&surgeist_html::Attribute>
+        )
+        .unwrap()
+        .author(),
         HtmlAttributeAuthorState::Missing
     );
     let empty = raw("");

@@ -441,12 +441,12 @@ impl HtmlValueInterpreter {
     /// Wrong roles never run a grammar or become a missing-attribute default.
     pub fn area_coordinates(
         &self,
-        element: &QualifiedName,
-        shape: Option<&Attribute>,
-        coords: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        shape: Option<&impl crate::HtmlAttributeInput>,
+        coords: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlAreaCoordinatesReport, HtmlValueAdmissionError> {
-        self.admit_attribute_raw(shape.map(Attribute::value))?;
-        self.admit_attribute_raw(coords.map(Attribute::value))?;
+        self.admit_attribute_raw(shape.map(HtmlAttributeInput::value))?;
+        self.admit_attribute_raw(coords.map(HtmlAttributeInput::value))?;
         let shape = self.enumerated(&SHAPE, element, shape)?;
         let coords = report(
             RuleMetadata {

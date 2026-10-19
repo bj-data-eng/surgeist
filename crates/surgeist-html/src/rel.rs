@@ -2,10 +2,12 @@
 
 use crate::tokens::{SpaceTokenCursor, SpaceTokenStep};
 pub(crate) mod controlled;
+use crate::semantic_input::{attributes_iter, find_attribute};
 use crate::{
-    Attribute, DocumentString, HtmlLinkDestination, HtmlValueAdmissionError, HtmlValueInterpreter,
-    KnownHtmlElement, OrderedAttributes, QualifiedName,
+    DocumentString, HtmlLinkDestination, HtmlValueAdmissionError, HtmlValueInterpreter,
+    KnownHtmlElement,
 };
+use crate::{HtmlAttributeInput, HtmlNameInput};
 use controlled::RelInputs;
 
 /// HTML877d's historical flag, owned by the actual constructed link record.
@@ -66,7 +68,7 @@ pub enum HtmlRelRole {
     Form,
 }
 impl HtmlRelRole {
-    pub fn from_element(element: &QualifiedName) -> Option<Self> {
+    pub fn from_element(element: &(impl crate::HtmlNameInput + ?Sized)) -> Option<Self> {
         Self::from_known(KnownHtmlElement::from_name(element)?)
     }
     pub fn from_known(element: KnownHtmlElement) -> Option<Self> {
@@ -809,14 +811,13 @@ impl HtmlValueInterpreter {
     /// registry, aggregate memory/work or cancellation certificate is supplied.
     pub fn rel_with_attributes(
         &self,
-        element: &QualifiedName,
-        attributes: &OrderedAttributes,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        attributes: &(impl crate::HtmlAttributesInput + ?Sized),
     ) -> Result<HtmlRelReport, HtmlValueAdmissionError> {
         let get = |name: &str| {
-            attributes
-                .iter()
+            attributes_iter(attributes)
                 .find(|a| {
-                    a.name().namespace().uri().is_none()
+                    a.name().namespace_uri().is_none()
                         && a.name()
                             .local_name()
                             .code_units()
@@ -824,11 +825,11 @@ impl HtmlValueInterpreter {
                             .copied()
                             .eq(name.bytes().map(u16::from))
                 })
-                .map(Attribute::value)
+                .map(HtmlAttributeInput::value)
         };
         let as_name = crate::KnownHtmlAttribute::As.qualified_name();
-        let as_attribute = attributes.get(as_name.namespace(), as_name.local_name());
-        self.admit_attribute_raw(as_attribute.map(Attribute::value))?;
+        let as_attribute = find_attribute(attributes, as_name.namespace(), as_name.local_name());
+        self.admit_attribute_raw(as_attribute.map(HtmlAttributeInput::value))?;
         let mut input = RelInputs {
             role: None,
             rel: get("rel"),

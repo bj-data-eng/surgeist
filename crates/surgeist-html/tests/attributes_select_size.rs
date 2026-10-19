@@ -300,7 +300,7 @@ fn wrong_element_namespace_case_and_attribute_namespace_do_not_guess_defaults() 
         ),
     ] {
         let report = HtmlValueInterpreter::new(256)
-            .select_size(&element, Some(&size), None)
+            .select_size(&element, Some(&size), None::<&surgeist_html::Attribute>)
             .unwrap();
         assert_eq!(report.applicability(), applicability);
         assert_eq!(
@@ -319,7 +319,7 @@ fn wrong_element_namespace_case_and_attribute_namespace_do_not_guess_defaults() 
             .select_size(
                 &KnownHtmlElement::Select.qualified_name(),
                 Some(&wrong),
-                None,
+                None::<&surgeist_html::Attribute>,
             )
             .unwrap();
         assert!(report.common().is_none());
@@ -358,7 +358,7 @@ fn utf16_and_surrogates_stay_exact_while_shared_recovery_observes_prefix_only() 
     let missing = HtmlValueInterpreter::new(3)
         .select_size(
             &KnownHtmlElement::Select.qualified_name(),
-            None,
+            None::<&surgeist_html::Attribute>,
             Some(&multiple),
         )
         .unwrap();
@@ -378,7 +378,7 @@ fn each_slot_admits_exact_raw_length_before_roles_or_irrelevant_presence() {
         .unwrap();
     known(&report, "2", HtmlNumericAttributeValueOrigin::Recovered);
     let failure = HtmlValueInterpreter::new(3)
-        .select_size(&element, Some(&size), None)
+        .select_size(&element, Some(&size), None::<&surgeist_html::Attribute>)
         .unwrap_err();
     assert_eq!((failure.capacity(), failure.required()), (3, 4));
     let short_size = attr(KnownHtmlAttribute::Size, "2");
@@ -395,7 +395,11 @@ fn each_slot_admits_exact_raw_length_before_roles_or_irrelevant_presence() {
     }
     known(
         &HtmlValueInterpreter::new(0)
-            .select_size(&element, None, None)
+            .select_size(
+                &element,
+                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::Attribute>,
+            )
             .unwrap(),
         "1",
         HtmlNumericAttributeValueOrigin::MissingDefault,
@@ -420,7 +424,11 @@ fn native_constructor_rejects_zero_and_authors_canonical_unbounded_positive_valu
         assert_eq!(raw.name(), &KnownHtmlAttribute::Size.qualified_name());
         assert_eq!(raw.value(), &DocumentString::from(canonical));
         let report = HtmlValueInterpreter::new(256)
-            .select_size(&KnownHtmlElement::Select.qualified_name(), Some(&raw), None)
+            .select_size(
+                &KnownHtmlElement::Select.qualified_name(),
+                Some(&raw),
+                None::<&surgeist_html::Attribute>,
+            )
             .unwrap();
         assert_eq!(report.author(), HtmlNumericAttributeAuthorState::Conforming);
         known(

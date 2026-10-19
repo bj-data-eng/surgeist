@@ -121,15 +121,15 @@ impl HtmlValueInterpreter {
     /// Target resolution, command validity and activation are not performed.
     pub fn command(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlCommandReadback>, HtmlValueAdmissionError> {
-        self.admit_attribute_raw(raw.map(Attribute::value))?;
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let mut result = report(COMMAND.metadata, element, raw);
         if result.applicability != HtmlAttributeApplicability::Applicable {
             return Ok(result);
         }
-        let selection = enum_value_selection(&COMMAND, raw.map(Attribute::value));
+        let selection = enum_value_selection(&COMMAND, raw.map(HtmlAttributeInput::value));
         result.recognition = selection.recognition;
         result.author = selection.author;
         result.intrinsic = selection.intrinsic.map(|state| HtmlCommandReadback {
@@ -137,7 +137,7 @@ impl HtmlValueInterpreter {
             custom: None,
         });
         if let Some(value) = raw
-            .map(Attribute::value)
+            .map(HtmlAttributeInput::value)
             .filter(|value| custom_prefix(value))
         {
             result.recognition = HtmlAttributeRecognition::CustomCommand;
@@ -160,8 +160,8 @@ impl HtmlValueInterpreter {
     /// Unchecked author-context observation until actual input state is supplied.
     pub fn popovertargetaction(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlPopoverTargetAction>, HtmlValueAdmissionError> {
         self.enumerated(&POPOVER_ACTION, element, raw)
     }
@@ -171,8 +171,8 @@ impl HtmlValueInterpreter {
     /// or apply the source's separate activation/effect rules.
     pub fn popovertargetaction_for_input(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         state: HtmlInputType,
     ) -> Result<HtmlAttributeReport<HtmlPopoverTargetAction>, HtmlValueAdmissionError> {
         self.enumerated_with_context(&POPOVER_ACTION, element, raw, SuppliedContext::Input(state))

@@ -286,7 +286,9 @@ fn tabindex_missing_and_failure_are_source_null_not_idl_element_defaults() {
         KnownHtmlElement::Div.qualified_name(),
         QualifiedName::new(Namespace::html(), None, "custom-name"),
     ] {
-        let missing = interpreter.tabindex(&element, None).unwrap();
+        let missing = interpreter
+            .tabindex(&element, None::<&surgeist_html::Attribute>)
+            .unwrap();
         assert_eq!(missing.intrinsic(), Some(&HtmlTabindexValue::Null));
         assert_eq!(missing.author(), HtmlNumericAttributeAuthorState::Missing);
         assert_eq!(
@@ -454,8 +456,12 @@ fn submitter_override_keywords_reuse_literal_grammars_and_missing_has_no_state()
     let interpreter = HtmlValueInterpreter::new(64);
     for element in [KnownHtmlElement::Input, KnownHtmlElement::Button] {
         let element = element.qualified_name();
-        let missing_method = interpreter.formmethod(&element, None).unwrap();
-        let missing_enctype = interpreter.formenctype(&element, None).unwrap();
+        let missing_method = interpreter
+            .formmethod(&element, None::<&Attribute>)
+            .unwrap();
+        let missing_enctype = interpreter
+            .formenctype(&element, None::<&Attribute>)
+            .unwrap();
         assert_eq!(missing_method.intrinsic(), None);
         assert_eq!(missing_enctype.intrinsic(), None);
         assert_eq!(
@@ -599,7 +605,7 @@ fn submitter_facts_observe_authorship_without_erasing_override_keywords() {
         assert_eq!(report.context_author(), expected);
         assert_eq!(
             interpreter
-                .formmethod_for_input(&input, None, state)
+                .formmethod_for_input(&input, None::<&Attribute>, state)
                 .unwrap()
                 .context_author(),
             HtmlAttributeContextAuthorState::NotRequired
@@ -638,7 +644,7 @@ fn submitter_facts_observe_authorship_without_erasing_override_keywords() {
         assert_eq!(report.context_author(), expected);
         assert_eq!(
             interpreter
-                .formenctype_for_button(&button, None, context)
+                .formenctype_for_button(&button, None::<&Attribute>, context)
                 .unwrap()
                 .intrinsic(),
             None

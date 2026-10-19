@@ -224,10 +224,10 @@ impl HtmlValueInterpreter {
     pub fn navigable_target_attribute(
         &self,
         role: HtmlNavigableTargetAttribute,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlNavigableTarget>, HtmlValueAdmissionError> {
-        self.admit_attribute_raw(raw.map(Attribute::value))?;
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let mut result = report(role.metadata(), element, raw);
         if result.applicability != HtmlAttributeApplicability::Applicable {
             return Ok(result);

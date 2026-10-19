@@ -269,7 +269,10 @@ fn wrong_element_namespace_case_and_attribute_keep_exact_unapplied_evidence() {
         assert_eq!(report.inventory_rows(), &[103]);
     }
     let absent = HtmlValueInterpreter::new(0)
-        .details_name(&KnownHtmlElement::Div.qualified_name(), None)
+        .details_name(
+            &KnownHtmlElement::Div.qualified_name(),
+            None::<&surgeist_html::Attribute>,
+        )
         .unwrap();
     assert_eq!(absent.observation(), HtmlAttributeObservation::Missing);
     assert_eq!(absent.author(), HtmlAttributeAuthorState::Unapplied);
@@ -314,7 +317,10 @@ fn original_utf16_cap_precedes_applicability_and_counts_units_without_loss() {
     }
     let interpreter = HtmlValueInterpreter::new(0);
     assert_eq!(
-        interpreter.details_name(&details, None).unwrap().author(),
+        interpreter
+            .details_name(&details, None::<&surgeist_html::Attribute>)
+            .unwrap()
+            .author(),
         HtmlAttributeAuthorState::Missing
     );
     let empty = raw("");
@@ -402,7 +408,11 @@ fn checked_name_does_not_replace_details_open_boolean_spelling_or_presence() {
     );
     assert_eq!(report.raw_attribute(), Some(&open));
     let absent = interpreter
-        .boolean_attribute(HtmlBooleanAttribute::DetailsOpen, &details, None)
+        .boolean_attribute(
+            HtmlBooleanAttribute::DetailsOpen,
+            &details,
+            None::<&surgeist_html::Attribute>,
+        )
         .unwrap();
     assert_eq!(absent.intrinsic(), Some(&false));
 }

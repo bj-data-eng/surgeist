@@ -184,7 +184,8 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         element: &'a HtmlCapturedElement,
         field: HtmlMediaField,
-    ) -> Result<Option<HtmlMediaFieldMatch<'a>>, HtmlSemanticFailure> {
+    ) -> Result<Option<HtmlMediaFieldMatch<'a, surgeist_html::Attribute>>, HtmlSemanticFailure>
+    {
         for candidate in element.attributes().iter() {
             if let Some(matched) = match_media_field(candidate, field, |work| self.charge(work))? {
                 return Ok(Some(matched));

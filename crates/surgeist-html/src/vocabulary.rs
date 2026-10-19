@@ -22,10 +22,8 @@ fn exact_string(value: &DocumentString, expected: &str) -> bool {
         .eq(expected.encode_utf16())
 }
 
-fn html_namespace(namespace: &Namespace) -> bool {
-    namespace
-        .uri()
-        .is_some_and(|uri| exact_string(uri, "http://www.w3.org/1999/xhtml"))
+fn html_namespace(namespace: Option<&DocumentString>) -> bool {
+    namespace.is_some_and(|uri| exact_string(uri, "http://www.w3.org/1999/xhtml"))
 }
 
 macro_rules! vocabulary {
@@ -59,8 +57,8 @@ impl KnownHtmlElement {
     ///
     /// Unknown, foreign, uppercase, and malformed names return `None`. The raw
     /// name remains unchanged; this is recognition, not HTML parser case folding.
-    pub fn from_name(name: &QualifiedName) -> Option<Self> {
-        html_namespace(name.namespace()).then(|| {
+    pub fn from_name(name: &(impl crate::HtmlNameInput + ?Sized)) -> Option<Self> {
+        html_namespace(name.namespace_uri()).then(|| {
             Self::ALL
                 .iter()
                 .copied()
@@ -85,8 +83,8 @@ impl KnownHtmlAttribute {
     /// Recognition identifies the local spelling. Applicability and value
     /// semantics require the element-specific defining clause. A foreign or
     /// unknown raw attribute remains representable by [`crate::Attribute`].
-    pub fn from_name(name: &QualifiedName) -> Option<Self> {
-        name.namespace().uri().is_none().then(|| {
+    pub fn from_name(name: &(impl crate::HtmlNameInput + ?Sized)) -> Option<Self> {
+        name.namespace_uri().is_none().then(|| {
             Self::ALL
                 .iter()
                 .copied()

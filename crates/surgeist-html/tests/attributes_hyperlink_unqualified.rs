@@ -15,7 +15,7 @@ fn absent_href_evidence_does_not_erase_the_missing_policy_default() {
     // interpretation does not need evidence of the href author requirement.
     for local in ["a", "area"] {
         let report = HtmlValueInterpreter::new(100)
-            .referrerpolicy(&element(local), None)
+            .referrerpolicy(&element(local), None::<&surgeist_html::Attribute>)
             .unwrap();
         assert_eq!(report.intrinsic(), Some(&HtmlReferrerPolicy::Empty));
         assert_eq!(report.observation(), Observation::Missing);

@@ -117,12 +117,12 @@ impl HtmlValueInterpreter {
     /// A malformed present max is not an absent max or an authored default one.
     pub fn progress_attributes(
         &self,
-        element: &QualifiedName,
-        value: Option<&Attribute>,
-        maximum: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        value: Option<&impl crate::HtmlAttributeInput>,
+        maximum: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlProgressAttributeReport, HtmlValueAdmissionError> {
-        self.admit_attribute_raw(value.map(Attribute::value))?;
-        self.admit_attribute_raw(maximum.map(Attribute::value))?;
+        self.admit_attribute_raw(value.map(HtmlAttributeInput::value))?;
+        self.admit_attribute_raw(maximum.map(HtmlAttributeInput::value))?;
         let (value, value_key) = self.progress_number(element, value, false)?;
         let (maximum, maximum_key) = self.progress_number(element, maximum, true)?;
         let upper_bound = upper_bound(&value_key, &maximum_key);
@@ -135,8 +135,8 @@ impl HtmlValueInterpreter {
 
     fn progress_number(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         maximum: bool,
     ) -> Result<(HtmlProgressNumberReport, ExactNumber), HtmlValueAdmissionError> {
         let attribute = report(

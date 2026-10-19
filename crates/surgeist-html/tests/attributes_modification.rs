@@ -328,7 +328,9 @@ fn admission_precedes_wrong_role_and_counts_exact_utf16_units() {
 fn zero_capacity_admits_absence_and_empty_and_retained_reports_are_immutable() {
     let interpreter = HtmlValueInterpreter::new(0);
     let element = KnownHtmlElement::Ins.qualified_name();
-    let absent = interpreter.modification_datetime(&element, None).unwrap();
+    let absent = interpreter
+        .modification_datetime(&element, None::<&surgeist_html::Attribute>)
+        .unwrap();
     let empty = attr("");
     let present = interpreter
         .modification_datetime(&element, Some(&empty))

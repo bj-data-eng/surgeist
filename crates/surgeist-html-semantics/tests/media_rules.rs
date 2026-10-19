@@ -200,9 +200,13 @@ fn ordinary_original_admission_expanded_roles_and_exact_meta_name() {
         HtmlMediaPlacementObservation::Unchecked
     );
     assert_eq!(
-        i.media_for_meta(&KnownHtmlElement::Meta.qualified_name(), Some(&media), None)
-            .unwrap()
-            .meta_placement(),
+        i.media_for_meta(
+            &KnownHtmlElement::Meta.qualified_name(),
+            Some(&media),
+            None::<&surgeist_html::Attribute>
+        )
+        .unwrap()
+        .meta_placement(),
         HtmlMediaPlacementObservation::Known(HtmlMetaMediaPlacement::Forbidden)
     );
     let wrong = attr("id", "x");
@@ -227,7 +231,11 @@ fn ordinary_original_admission_expanded_roles_and_exact_meta_name() {
     let n = attr("name", "theme-color");
     assert!(
         HtmlValueInterpreter::new(1)
-            .media_for_meta(&KnownHtmlElement::Div.qualified_name(), None, Some(&n))
+            .media_for_meta(
+                &KnownHtmlElement::Div.qualified_name(),
+                None::<&surgeist_html::Attribute>,
+                Some(&n)
+            )
             .is_err()
     );
 }

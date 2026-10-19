@@ -71,7 +71,10 @@ fn expect_restrictions_except(flags: &HtmlSandboxFlags, removed: &[F]) {
 fn missing_is_absent_while_empty_and_whitespace_parse_to_all_restrictions() {
     let interpreter = HtmlValueInterpreter::new(16);
     let missing = interpreter
-        .iframe_sandbox(&E::Iframe.qualified_name(), None)
+        .iframe_sandbox(
+            &E::Iframe.qualified_name(),
+            None::<&surgeist_html::Attribute>,
+        )
         .unwrap();
     assert_eq!(
         missing.intrinsic(),
@@ -446,9 +449,12 @@ fn raw_unit_admission_precedes_wrong_names_and_zero_admits_missing_or_empty() {
     assert_eq!(error.required(), 4);
     let zero = HtmlValueInterpreter::new(0);
     assert_eq!(
-        zero.iframe_sandbox(&E::Iframe.qualified_name(), None)
-            .unwrap()
-            .intrinsic(),
+        zero.iframe_sandbox(
+            &E::Iframe.qualified_name(),
+            None::<&surgeist_html::Attribute>
+        )
+        .unwrap()
+        .intrinsic(),
         Some(&HtmlSandboxDirectiveState::Absent)
     );
     expect_restrictions_except(

@@ -453,9 +453,9 @@ fn dimension_selection(
 impl HtmlValueInterpreter {
     fn input_image_string(
         &self,
-        element: &QualifiedName,
+        element: &(impl crate::HtmlNameInput + ?Sized),
         selected: KnownHtmlAttribute,
-        raw: Option<&Attribute>,
+        raw: Option<&impl crate::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
     ) -> HtmlInputImageStringReport {
         let mut attribute = report(image_metadata(selected), element, raw);
@@ -502,13 +502,13 @@ impl HtmlValueInterpreter {
 
     fn input_image_report(
         &self,
-        element: &QualifiedName,
+        element: &(impl crate::HtmlNameInput + ?Sized),
         state: Option<HtmlInputType>,
-        alt: Option<&Attribute>,
-        src: Option<&Attribute>,
+        alt: Option<&impl crate::HtmlAttributeInput>,
+        src: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlInputImageAttributeReport, HtmlValueAdmissionError> {
-        self.admit_attribute_raw(alt.map(Attribute::value))?;
-        self.admit_attribute_raw(src.map(Attribute::value))?;
+        self.admit_attribute_raw(alt.map(HtmlAttributeInput::value))?;
+        self.admit_attribute_raw(src.map(HtmlAttributeInput::value))?;
         Ok(HtmlInputImageAttributeReport {
             alt: self.input_image_string(element, KnownHtmlAttribute::Alt, alt, state),
             src: self.input_image_string(element, KnownHtmlAttribute::Src, src, state),
@@ -519,9 +519,9 @@ impl HtmlValueInterpreter {
     /// Unknown state leaves required-string checks Unchecked, even on absence.
     pub fn input_image_attributes(
         &self,
-        element: &QualifiedName,
-        alt: Option<&Attribute>,
-        src: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        alt: Option<&impl crate::HtmlAttributeInput>,
+        src: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlInputImageAttributeReport, HtmlValueAdmissionError> {
         self.input_image_report(element, None, alt, src)
     }
@@ -530,19 +530,19 @@ impl HtmlValueInterpreter {
     /// these local checks; other states retain forbidden-presence context evidence.
     pub fn input_image_attributes_for_state(
         &self,
-        element: &QualifiedName,
+        element: &(impl crate::HtmlNameInput + ?Sized),
         state: HtmlInputType,
-        alt: Option<&Attribute>,
-        src: Option<&Attribute>,
+        alt: Option<&impl crate::HtmlAttributeInput>,
+        src: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlInputImageAttributeReport, HtmlValueAdmissionError> {
         self.input_image_report(element, Some(state), alt, src)
     }
 
     fn embedded_dimension(
         &self,
-        element: &QualifiedName,
+        element: &(impl crate::HtmlNameInput + ?Sized),
         selected: KnownHtmlAttribute,
-        raw: Option<&Attribute>,
+        raw: Option<&impl crate::HtmlAttributeInput>,
         context: Option<&HtmlEmbeddedDimensionContext>,
     ) -> Result<HtmlEmbeddedDimensionReport, HtmlValueAdmissionError> {
         let mut attribute = report(image_metadata(selected), element, raw);
@@ -560,7 +560,7 @@ impl HtmlValueInterpreter {
             ImageRuleSelection::Unselected => return Ok(result),
             ImageRuleSelection::Selected => {}
         }
-        let common = self.nonnegative_integer(raw.map(Attribute::value))?;
+        let common = self.nonnegative_integer(raw.map(HtmlAttributeInput::value))?;
         result.author = match common.author() {
             HtmlValueAuthorState::Missing => HtmlImageAttributeAuthorState::Missing,
             HtmlValueAuthorState::Valid(_) => HtmlImageAttributeAuthorState::Conforming,
@@ -579,13 +579,13 @@ impl HtmlValueInterpreter {
 
     fn embedded_dimension_report(
         &self,
-        element: &QualifiedName,
-        width: Option<&Attribute>,
-        height: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        width: Option<&impl crate::HtmlAttributeInput>,
+        height: Option<&impl crate::HtmlAttributeInput>,
         context: Option<&HtmlEmbeddedDimensionContext>,
     ) -> Result<HtmlEmbeddedDimensionAttributeReport, HtmlValueAdmissionError> {
-        self.admit_attribute_raw(width.map(Attribute::value))?;
-        self.admit_attribute_raw(height.map(Attribute::value))?;
+        self.admit_attribute_raw(width.map(HtmlAttributeInput::value))?;
+        self.admit_attribute_raw(height.map(HtmlAttributeInput::value))?;
         Ok(HtmlEmbeddedDimensionAttributeReport {
             width: self.embedded_dimension(element, KnownHtmlAttribute::Width, width, context)?,
             height: self.embedded_dimension(
@@ -602,9 +602,9 @@ impl HtmlValueInterpreter {
     /// remain unknown. Canvas has its separate, unchanged 300/150 default rules.
     pub fn embedded_dimension_attributes(
         &self,
-        element: &QualifiedName,
-        width: Option<&Attribute>,
-        height: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        width: Option<&impl crate::HtmlAttributeInput>,
+        height: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlEmbeddedDimensionAttributeReport, HtmlValueAdmissionError> {
         self.embedded_dimension_report(element, width, height, None)
     }
@@ -613,9 +613,9 @@ impl HtmlValueInterpreter {
     /// from raw values. This is not a captured proof or natural-resource check.
     pub fn embedded_dimension_attributes_with_context(
         &self,
-        element: &QualifiedName,
-        width: Option<&Attribute>,
-        height: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        width: Option<&impl crate::HtmlAttributeInput>,
+        height: Option<&impl crate::HtmlAttributeInput>,
         context: &HtmlEmbeddedDimensionContext,
     ) -> Result<HtmlEmbeddedDimensionAttributeReport, HtmlValueAdmissionError> {
         self.embedded_dimension_report(element, width, height, Some(context))

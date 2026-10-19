@@ -67,8 +67,8 @@ impl HtmlValueInterpreter {
     /// no CSS parsing/conversion, color-well update, picker or live IDL outcome.
     pub fn input_colorspace(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlInputColorSpace>, HtmlValueAdmissionError> {
         let mut report = self.enumerated(&INPUT_COLORSPACE, element, raw)?;
         if report.applicability == HtmlAttributeApplicability::Applicable && raw.is_some() {
@@ -87,8 +87,8 @@ impl HtmlValueInterpreter {
     /// Resource and effect limits are the same as input_colorspace.
     pub fn input_colorspace_for_input(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         state: HtmlInputType,
     ) -> Result<HtmlAttributeReport<HtmlInputColorSpace>, HtmlValueAdmissionError> {
         let mut report = self.input_colorspace(element, raw)?;

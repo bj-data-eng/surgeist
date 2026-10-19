@@ -35,10 +35,10 @@ impl HtmlValueInterpreter {
     /// UTF-16 cap, not a work/cancellation or physical-allocation guarantee.
     pub fn form_name(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlFormName>, HtmlValueAdmissionError> {
-        self.admit_attribute_raw(raw.map(Attribute::value))?;
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         Ok(Self::form_name_report_from_borrowed(element, raw))
     }
 
@@ -48,10 +48,10 @@ impl HtmlValueInterpreter {
     /// state/metadata fields, length tests and shared-handle retentions. Local
     /// form-name grammar tests only empty, without scanning/copying the value.
     pub fn form_name_report_work_bound(
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Option<usize> {
-        let namespace = element.namespace().uri().map_or(0, DocumentString::len);
+        let namespace = element.namespace_uri().map_or(0, DocumentString::len);
         let element_work = element
             .local_name()
             .len()
@@ -76,8 +76,8 @@ impl HtmlValueInterpreter {
 
     /// No temporary names or value buffers. Raw admission/precharge belong to caller.
     pub(crate) fn form_name_report_from_borrowed(
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> HtmlAttributeReport<HtmlFormName> {
         let mut result = report(
             RuleMetadata {

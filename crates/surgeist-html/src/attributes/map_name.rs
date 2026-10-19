@@ -24,10 +24,10 @@ impl HtmlValueInterpreter {
     /// operation has a raw-unit cap, not a work or aggregate allocation budget.
     pub fn map_name(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlSpaceToken>, HtmlValueAdmissionError> {
-        self.admit_attribute_raw(raw.map(Attribute::value))?;
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         Ok(Self::map_name_report_from_borrowed(element, raw))
     }
 
@@ -40,10 +40,10 @@ impl HtmlValueInterpreter {
     /// ten report/five metadata fields and fixed state/branch writes. All loops
     /// and arithmetic are input-bounded; this is not a parser polling quantum.
     pub fn map_name_report_work_bound(
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Option<usize> {
-        let namespace = element.namespace().uri().map_or(0, DocumentString::len);
+        let namespace = element.namespace_uri().map_or(0, DocumentString::len);
         let element_work = element
             .local_name()
             .len()
@@ -72,8 +72,8 @@ impl HtmlValueInterpreter {
     /// token buffer or generic report applicability allocation. The caller owns
     /// raw admission and, for captured use, precharge and surrounding polls.
     pub(crate) fn map_name_report_from_borrowed(
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> HtmlAttributeReport<HtmlSpaceToken> {
         let mut result = report(
             RuleMetadata {

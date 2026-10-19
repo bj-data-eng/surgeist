@@ -64,7 +64,7 @@ fn all_seven_intrinsic_states_keep_recognition_separate_from_author_conformance(
 #[test]
 fn missing_empty_and_unrecognized_have_no_invented_default_state() {
     let r = HtmlValueInterpreter::new(0)
-        .meta_http_equiv(&element(), None)
+        .meta_http_equiv(&element(), None::<&surgeist_html::Attribute>)
         .unwrap();
     assert_eq!(r.intrinsic(), None);
     assert_eq!(r.recognition(), HtmlAttributeRecognition::Missing);

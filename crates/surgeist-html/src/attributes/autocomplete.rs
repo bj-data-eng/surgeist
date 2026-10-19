@@ -1034,7 +1034,7 @@ fn input_applies(state: HtmlInputType) -> bool {
 
 fn context_author(
     element: KnownHtmlElement,
-    raw: Option<&Attribute>,
+    raw: Option<&impl crate::HtmlAttributeInput>,
     state: Option<HtmlInputType>,
     syntax: &HtmlAutocompleteSyntaxState,
     tokens: Option<&HtmlSpaceSeparatedTokens>,
@@ -1258,8 +1258,8 @@ impl HtmlValueInterpreter {
     /// processing. Default expectation outcomes request actual form-owner facts.
     pub fn control_autocomplete(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlAutocompleteReport, HtmlValueAdmissionError> {
         self.control_autocomplete_with_state(element, raw, None)
     }
@@ -1267,16 +1267,16 @@ impl HtmlValueInterpreter {
     /// This does not sanitize data, infer form association or mediate credentials.
     pub fn control_autocomplete_for_input(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         state: HtmlInputType,
     ) -> Result<HtmlAutocompleteReport, HtmlValueAdmissionError> {
         self.control_autocomplete_with_state(element, raw, Some(state))
     }
     fn control_autocomplete_with_state(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
     ) -> Result<HtmlAutocompleteReport, HtmlValueAdmissionError> {
         let result =
@@ -1298,8 +1298,8 @@ impl HtmlValueInterpreter {
     /// intermediates. All operands remain borrowed on refusal.
     pub fn control_autocomplete_controlled(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
         limits: AutocompleteMaterializationLimits,
     ) -> Result<AutocompleteMaterialized, AutocompleteMaterializationFailure> {
@@ -1319,12 +1319,12 @@ impl HtmlValueInterpreter {
 
     fn materialize_autocomplete(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
         storage: &mut Materialization,
     ) -> Result<HtmlAutocompleteReport, AutocompleteMaterializationError> {
-        self.admit_attribute_raw(raw.map(Attribute::value))
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))
             .map_err(AutocompleteMaterializationError::RawAdmission)?;
         let mut input = report(RULE, element, raw);
         if let Some(state) = state {
@@ -1651,7 +1651,7 @@ mod controlled_tests {
         let result = HtmlValueInterpreter::new(0)
             .control_autocomplete_controlled(
                 &KnownHtmlElement::Input.qualified_name(),
-                None,
+                None::<&Attribute>,
                 Some(HtmlInputType::Hidden),
                 zero,
             )

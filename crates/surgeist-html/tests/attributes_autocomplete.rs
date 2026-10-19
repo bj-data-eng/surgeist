@@ -719,7 +719,11 @@ fn missing_empty_and_unknown_defaults_keep_source_null_owner_unresolved() {
         ),
     ] {
         let report = interpreter
-            .control_autocomplete_for_input(&KnownHtmlElement::Input.qualified_name(), None, state)
+            .control_autocomplete_for_input(
+                &KnownHtmlElement::Input.qualified_name(),
+                None::<&surgeist_html::Attribute>,
+                state,
+            )
             .unwrap();
         assert_eq!(report.observation(), HtmlAttributeObservation::Missing);
         assert_eq!(report.syntax(), &HtmlAutocompleteSyntaxState::Missing);
@@ -1105,7 +1109,11 @@ fn exact_role_attribute_and_fact_family_rejections_retain_raw_without_processing
 fn raw_admission_precedes_role_and_state_checks_while_zero_admits_empty() {
     let interpreter = HtmlValueInterpreter::new(0);
     let element = KnownHtmlElement::Textarea.qualified_name();
-    assert!(interpreter.control_autocomplete(&element, None).is_ok());
+    assert!(
+        interpreter
+            .control_autocomplete(&element, None::<&surgeist_html::Attribute>)
+            .is_ok()
+    );
     assert!(
         interpreter
             .control_autocomplete(&element, Some(&raw("")))

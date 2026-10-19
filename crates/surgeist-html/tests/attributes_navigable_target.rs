@@ -471,9 +471,13 @@ fn full_original_utf16_cap_precedes_wrong_role_and_local_failure() {
         }
         let zero = HtmlValueInterpreter::new(0);
         assert_eq!(
-            zero.navigable_target_attribute(role, &element.qualified_name(), None)
-                .unwrap()
-                .author(),
+            zero.navigable_target_attribute(
+                role,
+                &element.qualified_name(),
+                None::<&surgeist_html::Attribute>
+            )
+            .unwrap()
+            .author(),
             HtmlAttributeAuthorState::Missing
         );
         let empty = attribute(name, "");

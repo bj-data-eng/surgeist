@@ -307,8 +307,8 @@ impl HtmlValueInterpreter {
     /// Retains token observations; effective hints require actual input state.
     pub fn input_accept(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlAcceptReport, HtmlValueAdmissionError> {
         self.input_accept_with_state(element, raw, None)
     }
@@ -316,19 +316,19 @@ impl HtmlValueInterpreter {
     /// This operation does not execute a picker, sniff files or validate MIME.
     pub fn input_accept_for_input(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         state: HtmlInputType,
     ) -> Result<HtmlAcceptReport, HtmlValueAdmissionError> {
         self.input_accept_with_state(element, raw, Some(state))
     }
     fn input_accept_with_state(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
     ) -> Result<HtmlAcceptReport, HtmlValueAdmissionError> {
-        self.admit_attribute_raw(raw.map(Attribute::value))?;
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let mut input = report(RULE, element, raw);
         if let Some(state) = state {
             input.supplied_context = SuppliedContext::Input(state);

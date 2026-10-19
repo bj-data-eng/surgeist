@@ -40,10 +40,10 @@ impl HtmlValueInterpreter {
     /// trimming, splitting, case folding or Unicode normalization.
     pub fn id_attribute(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlSpaceToken>, HtmlValueAdmissionError> {
-        self.admit_attribute_raw(raw.map(Attribute::value))?;
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         Ok(Self::id_report_from_borrowed(element, raw))
     }
 
@@ -53,11 +53,13 @@ impl HtmlValueInterpreter {
     /// Fixed 128 covers guards, exact shared-handle retentions and report fields.
     /// The caller admits original raw length and polls around this bounded work;
     /// this is not a guarantee of per-unit cancellation inside the token owner.
-    pub fn id_report_work_bound(element: &QualifiedName, raw: Option<&Attribute>) -> Option<usize> {
+    pub fn id_report_work_bound(
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
+    ) -> Option<usize> {
         let mut work = 128usize.checked_add(
             element
-                .namespace()
-                .uri()
+                .namespace_uri()
                 .map_or(0, DocumentString::len)
                 .checked_add(1)?
                 .checked_mul(8)?,
@@ -80,8 +82,8 @@ impl HtmlValueInterpreter {
     /// No temporary namespace/name or token buffer: the same local semantics
     /// as the standalone report, with immutable backing retained by handles.
     pub(crate) fn id_report_from_borrowed(
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> HtmlAttributeReport<HtmlSpaceToken> {
         let mut result = report(
             RuleMetadata {

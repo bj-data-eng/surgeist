@@ -101,8 +101,8 @@ impl HtmlValueInterpreter {
     /// or pragma effects. Present applicable context remains independently unchecked.
     pub fn meta_http_equiv(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlMetaPragmaState>, HtmlValueAdmissionError> {
         let mut result = self.enumerated(&HTTP_EQUIV, element, raw)?;
         if result.applicability == HtmlAttributeApplicability::Applicable && raw.is_some() {

@@ -129,7 +129,7 @@ fn absent_empty_and_raw_token_sandbox_reports_are_separate_from_unprocessed_nati
     let content = HtmlChildNavigablePresence::Null;
     assert_eq!(
         interpreter
-            .iframe_sandbox(&iframe, None)
+            .iframe_sandbox(&iframe, None::<&surgeist_html::Attribute>)
             .unwrap()
             .intrinsic(),
         Some(&HtmlSandboxDirectiveState::Absent)

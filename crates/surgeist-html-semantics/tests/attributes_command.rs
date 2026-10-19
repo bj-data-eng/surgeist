@@ -91,7 +91,7 @@ fn all_standard_commands_match_ascii_case_and_emit_canonical_spelling() {
 #[test]
 fn missing_command_is_unknown_with_missing_author_and_recognition() {
     let report = HtmlValueInterpreter::new(0)
-        .command(&element("button"), None)
+        .command(&element("button"), None::<&surgeist_html::Attribute>)
         .unwrap();
     assert_eq!(report.observation(), HtmlAttributeObservation::Missing);
     assert_eq!(report.recognition(), HtmlAttributeRecognition::Missing);
@@ -332,7 +332,7 @@ fn all_action_keywords_match_ascii_case_and_emit_their_own_domain() {
 fn action_missing_empty_and_unknown_keep_distinct_reports_while_defaulting_toggle() {
     let interpreter = HtmlValueInterpreter::new(64);
     let missing = interpreter
-        .popovertargetaction(&element("button"), None)
+        .popovertargetaction(&element("button"), None::<&surgeist_html::Attribute>)
         .unwrap();
     assert_eq!(missing.intrinsic(), Some(&HtmlPopoverTargetAction::Toggle));
     assert_eq!(missing.recognition(), HtmlAttributeRecognition::Missing);
@@ -420,7 +420,7 @@ fn all_input_states_keep_content_and_independently_check_author_presence() {
         );
         assert!(report.context_source_clause().unwrap().contains("#"));
         let missing = interpreter
-            .popovertargetaction_for_input(&input, None, state)
+            .popovertargetaction_for_input(&input, None::<&surgeist_html::Attribute>, state)
             .unwrap();
         assert_eq!(
             missing.context_author(),
@@ -852,7 +852,7 @@ fn prefixed_action_preserves_exact_units_and_unknown_input_context_after_drop() 
         interpreter.popovertargetaction(&input, Some(&raw)).unwrap()
     };
     let _other = interpreter
-        .popovertargetaction(&element("button"), None)
+        .popovertargetaction(&element("button"), None::<&surgeist_html::Attribute>)
         .unwrap();
     assert_eq!(report.element(), &input);
     assert_eq!(report.raw_attribute().unwrap().name(), &name);
@@ -865,7 +865,7 @@ fn prefixed_action_preserves_exact_units_and_unknown_input_context_after_drop() 
     );
     assert_eq!(
         interpreter
-            .popovertargetaction(&input, None)
+            .popovertargetaction(&input, None::<&surgeist_html::Attribute>)
             .unwrap()
             .context_author(),
         HtmlAttributeContextAuthorState::NotRequired

@@ -357,7 +357,7 @@ fn forbidden_input_authorship_keeps_lexical_error_and_raw() {
     let report = HtmlValueInterpreter::new(64)
         .control_length_bounds(
             &E::Input.qualified_name(),
-            None,
+            None::<&surgeist_html::Attribute>,
             Some(&maximum),
             Some(HtmlInputType::Number),
             None,
@@ -382,8 +382,8 @@ fn absent_attributes_select_no_presence_author_violation_even_on_ignored_state()
     let report = HtmlValueInterpreter::new(0)
         .control_length_bounds(
             &E::Input.qualified_name(),
-            None,
-            None,
+            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::Attribute>,
             Some(HtmlInputType::Checkbox),
             None,
         )
@@ -507,7 +507,7 @@ fn textarea_does_not_accept_an_input_state_fact_family() {
     let report = HtmlValueInterpreter::new(64)
         .control_length_bounds(
             &E::Textarea.qualified_name(),
-            None,
+            None::<&surgeist_html::Attribute>,
             Some(&maximum),
             Some(HtmlInputType::Text),
             None,
@@ -547,7 +547,7 @@ fn input_value_checks_exact_utf16_without_textarea_newline_normalization() {
         let report = interpreter
             .control_length_bounds(
                 &E::Input.qualified_name(),
-                None,
+                None::<&surgeist_html::Attribute>,
                 Some(&maximum),
                 Some(HtmlInputType::Text),
                 Some(&initial),
@@ -585,7 +585,7 @@ fn textarea_descendant_text_counts_normalized_utf16_without_wrapping() {
         let report = interpreter
             .control_length_bounds(
                 &E::Textarea.qualified_name(),
-                None,
+                None::<&surgeist_html::Attribute>,
                 Some(&maximum),
                 None,
                 Some(&initial),
@@ -665,7 +665,7 @@ fn wrong_initial_text_fact_family_and_value_identity_remain_explicit() {
         let report = interpreter
             .control_length_bounds(
                 &element.qualified_name(),
-                None,
+                None::<&surgeist_html::Attribute>,
                 Some(&maximum),
                 state,
                 Some(facts),
@@ -767,7 +767,13 @@ fn source_rows_and_role_definitions_are_selected_without_reinventing_inventory()
         (E::Textarea, None, "textarea"),
     ] {
         let report = interpreter
-            .control_length_bounds(&element.qualified_name(), None, None, state, None)
+            .control_length_bounds(
+                &element.qualified_name(),
+                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::Attribute>,
+                state,
+                None,
+            )
             .unwrap();
         assert_eq!(report.minimum().inventory_rows(), &[99]);
         assert_eq!(report.maximum().inventory_rows(), &[94]);
@@ -803,7 +809,10 @@ fn source_rows_and_role_definitions_are_selected_without_reinventing_inventory()
         );
     }
     let size = interpreter
-        .input_size(&E::Input.qualified_name(), None)
+        .input_size(
+            &E::Input.qualified_name(),
+            None::<&surgeist_html::Attribute>,
+        )
         .unwrap();
     assert_eq!(size.inventory_rows(), &[143]);
     assert!(size.source_clause().ends_with("#attr-input-size"));
@@ -868,7 +877,13 @@ fn absent_or_failed_maximum_and_absent_input_value_need_no_text_state_fact() {
         (Some(&valid), Some(&absent_value)),
     ] {
         let report = interpreter
-            .control_length_bounds(&E::Input.qualified_name(), None, maximum, None, initial)
+            .control_length_bounds(
+                &E::Input.qualified_name(),
+                None::<&surgeist_html::Attribute>,
+                maximum,
+                None,
+                initial,
+            )
             .unwrap();
         assert_eq!(
             report.initial_text_author(),
@@ -888,7 +903,7 @@ fn input_state_context_is_retained_when_initial_text_check_is_ignored() {
     let report = HtmlValueInterpreter::new(64)
         .control_length_bounds(
             &E::Input.qualified_name(),
-            None,
+            None::<&surgeist_html::Attribute>,
             Some(&maximum),
             Some(HtmlInputType::Number),
             Some(&initial),
@@ -935,7 +950,7 @@ fn prefixed_input_value_has_unnamespaced_expanded_identity() {
     let report = HtmlValueInterpreter::new(64)
         .control_length_bounds(
             &E::Input.qualified_name(),
-            None,
+            None::<&surgeist_html::Attribute>,
             Some(&maximum),
             Some(HtmlInputType::Email),
             Some(&initial),

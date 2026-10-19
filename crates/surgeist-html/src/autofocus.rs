@@ -5,7 +5,7 @@
 //! it neither observes a preference nor supplies a preference service.
 
 use crate::values::{HTML_NAMESPACE_URI, MATHML_NAMESPACE_URI, SVG_NAMESPACE_URI};
-use crate::{Attribute, KnownHtmlAttribute, QualifiedName};
+use crate::{HtmlNameInput, KnownHtmlAttribute};
 
 /// Recognize one actual autofocus content attribute for an Element
 /// in the HTML, SVG or MathML namespace. HTML877d raw8898–8903 excludes global
@@ -23,11 +23,14 @@ use crate::{Attribute, KnownHtmlAttribute, QualifiedName};
 /// comparisons (the three URI lengths differ), followed by at most nine attribute
 /// local-name comparisons after its length check. The adapter admits its actual
 /// attribute walk and this fixed work before calling the helper.
-pub fn autofocus_presence(element: &QualifiedName, attribute: Option<&Attribute>) -> bool {
+pub fn autofocus_presence(
+    element: &(impl crate::HtmlNameInput + ?Sized),
+    attribute: Option<&impl crate::HtmlAttributeInput>,
+) -> bool {
     let Some(attribute) = attribute else {
         return false;
     };
-    let Some(uri) = element.namespace().uri() else {
+    let Some(uri) = element.namespace_uri() else {
         return false;
     };
     let applicable_namespace = [HTML_NAMESPACE_URI, SVG_NAMESPACE_URI, MATHML_NAMESPACE_URI]
@@ -41,7 +44,7 @@ pub fn autofocus_presence(element: &QualifiedName, attribute: Option<&Attribute>
     }
     let name = attribute.name();
     let expected = KnownHtmlAttribute::Autofocus.local_name();
-    name.namespace().uri().is_none()
+    name.namespace_uri().is_none()
         && name.local_name().len() == expected.len()
         && name
             .local_name()

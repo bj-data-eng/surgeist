@@ -48,10 +48,10 @@ impl HtmlValueInterpreter {
     /// physical-memory, work or cancellation budget.
     pub fn details_name(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlDetailsName>, HtmlValueAdmissionError> {
-        self.admit_attribute_raw(raw.map(Attribute::value))?;
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let mut result = report(
             RuleMetadata {
                 attribute: KnownHtmlAttribute::Name,

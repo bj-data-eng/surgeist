@@ -30,8 +30,8 @@ const RELATIONS: [HtmlMeterAuthorRelation; 9] = [
     HtmlMeterAuthorRelation::LowHigh,
 ];
 
-fn input(attributes: &[Option<Attribute>; 6]) -> HtmlMeterAttributeInput<'_> {
-    HtmlMeterAttributeInput {
+fn input(attributes: &[Option<Attribute>; 6]) -> HtmlMeterAttributeInput<'_, Attribute> {
+    HtmlMeterAttributeInput::<Attribute> {
         value: attributes[0].as_ref(),
         minimum: attributes[1].as_ref(),
         maximum: attributes[2].as_ref(),

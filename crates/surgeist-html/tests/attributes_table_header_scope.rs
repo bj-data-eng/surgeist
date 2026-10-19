@@ -96,7 +96,9 @@ fn four_exact_ascii_case_insensitive_keywords_select_conforming_states() {
 #[test]
 fn absent_and_empty_select_auto_with_distinct_raw_author_and_presence_evidence() {
     let interpreter = HtmlValueInterpreter::new(0);
-    let missing = interpreter.th_scope(&th(), None).unwrap();
+    let missing = interpreter
+        .th_scope(&th(), None::<&surgeist_html::Attribute>)
+        .unwrap();
     assert_eq!(missing.observation(), HtmlAttributeObservation::Missing);
     assert_eq!(missing.recognition(), HtmlAttributeRecognition::Missing);
     assert_eq!(missing.author(), HtmlAttributeAuthorState::Missing);
@@ -350,7 +352,10 @@ fn prefixes_and_normative_source_metadata_are_independent_of_lexical_defaults() 
     }
     // Existing unrelated reports do not acquire scope provenance.
     let row_type = HtmlValueInterpreter::new(8)
-        .ol_type(&KnownHtmlElement::Ol.qualified_name(), None)
+        .ol_type(
+            &KnownHtmlElement::Ol.qualified_name(),
+            None::<&surgeist_html::Attribute>,
+        )
         .unwrap();
     assert_eq!(row_type.context_source_clause(), None);
 }

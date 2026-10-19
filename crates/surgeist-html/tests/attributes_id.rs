@@ -306,7 +306,10 @@ fn wrong_role_or_namespace_preserves_unapplied_raw_without_local_validation() {
         );
     }
     let absent = HtmlValueInterpreter::new(0)
-        .id_attribute(&QualifiedName::new(Namespace::svg(), None, "div"), None)
+        .id_attribute(
+            &QualifiedName::new(Namespace::svg(), None, "div"),
+            None::<&surgeist_html::Attribute>,
+        )
         .unwrap();
     assert_eq!(absent.observation(), HtmlAttributeObservation::Missing);
     assert_eq!(absent.recognition(), HtmlAttributeRecognition::Unapplied);
@@ -346,7 +349,10 @@ fn raw_utf16_admission_precedes_wrong_role_and_invalid_value_checks() {
     }
     let interpreter = HtmlValueInterpreter::new(0);
     assert_eq!(
-        interpreter.id_attribute(&div, None).unwrap().author(),
+        interpreter
+            .id_attribute(&div, None::<&surgeist_html::Attribute>)
+            .unwrap()
+            .author(),
         HtmlAttributeAuthorState::Missing
     );
     let empty = raw("");

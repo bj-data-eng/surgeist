@@ -787,7 +787,7 @@ fn wrong_expanded_names_precede_state_capability_and_keep_all_observations() {
             &E::Input.qualified_name(),
             Some(&wrong_min),
             Some(&wrong_max),
-            None,
+            None::<&surgeist_html::Attribute>,
             Some(&good_value),
             State::Time,
         )
@@ -819,7 +819,14 @@ fn wrong_expanded_names_precede_state_capability_and_keep_all_observations() {
         ),
     ] {
         let report = interpreter
-            .input_numeric_constraints(&element, None, None, None, None, State::Number)
+            .input_numeric_constraints(
+                &element,
+                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::Attribute>,
+                None::<&surgeist_html::Attribute>,
+                State::Number,
+            )
             .unwrap();
         assert_eq!(
             report.outcome().clone(),
@@ -833,10 +840,10 @@ fn wrong_expanded_names_precede_state_capability_and_keep_all_observations() {
     let report = interpreter
         .input_numeric_constraints(
             &E::Input.qualified_name(),
-            None,
+            None::<&surgeist_html::Attribute>,
             Some(&upper),
-            None,
-            None,
+            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::Attribute>,
             State::Range,
         )
         .unwrap();
@@ -922,7 +929,7 @@ fn native_step_and_limits_use_existing_checked_finite_values() {
             Some(&min),
             Some(&max),
             Some(&step),
-            None,
+            None::<&surgeist_html::Attribute>,
             State::Number,
         )
         .unwrap();
@@ -969,9 +976,9 @@ fn leading_isolated_surrogates_remain_raw_and_fail_the_conversion() {
         .input_numeric_constraints(
             &E::Input.qualified_name(),
             Some(&raw),
-            None,
-            None,
-            None,
+            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::Attribute>,
             State::Range,
         )
         .unwrap();
@@ -991,9 +998,9 @@ fn leading_isolated_surrogates_remain_raw_and_fail_the_conversion() {
         .input_numeric_constraints(
             &E::Input.qualified_name(),
             Some(&raw),
-            None,
-            None,
-            None,
+            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::Attribute>,
             State::Range,
         )
         .unwrap_err();

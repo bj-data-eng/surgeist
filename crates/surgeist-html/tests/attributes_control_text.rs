@@ -30,7 +30,9 @@ fn newline_error(offset: usize) -> HtmlAttributeConformanceError {
 fn dirname_absence_and_empty_have_no_default_name_and_distinct_author_evidence() {
     let interpreter = HtmlValueInterpreter::new(0);
     for element in [input(), textarea()] {
-        let absent = interpreter.dirname(&element, None).unwrap();
+        let absent = interpreter
+            .dirname(&element, None::<&surgeist_html::Attribute>)
+            .unwrap();
         assert_eq!(
             absent.applicability(),
             HtmlAttributeApplicability::Applicable
@@ -104,7 +106,9 @@ fn every_nonempty_dirname_is_exact_without_trimming_or_token_restrictions() {
 fn empty_placeholder_is_conforming_and_is_distinct_from_absence() {
     let interpreter = HtmlValueInterpreter::new(0);
     for element in [input(), textarea()] {
-        let absent = interpreter.placeholder(&element, None).unwrap();
+        let absent = interpreter
+            .placeholder(&element, None::<&surgeist_html::Attribute>)
+            .unwrap();
         assert_eq!(absent.observation(), HtmlAttributeObservation::Missing);
         assert_eq!(absent.recognition(), HtmlAttributeRecognition::Missing);
         assert_eq!(absent.author(), HtmlAttributeAuthorState::Missing);
@@ -292,10 +296,10 @@ fn all_22_normative_input_states_have_independent_dirname_placeholder_presence_r
             "placeholder {state:?}"
         );
         let absent_name = interpreter
-            .dirname_for_input(&input(), None, state)
+            .dirname_for_input(&input(), None::<&surgeist_html::Attribute>, state)
             .unwrap();
         let absent_hint = interpreter
-            .placeholder_for_input(&input(), None, state)
+            .placeholder_for_input(&input(), None::<&surgeist_html::Attribute>, state)
             .unwrap();
         assert_eq!(absent_name.author(), HtmlAttributeAuthorState::Missing);
         assert_eq!(absent_hint.author(), HtmlAttributeAuthorState::Missing);

@@ -2,7 +2,6 @@
 //! Vocabulary only: no Fetch translation, loading or module execution.
 
 use super::*;
-use crate::OrderedAttributes;
 
 const FETCH_VOCABULARY: &str = concat!(
     "https://fetch.spec.whatwg.org/commit-snapshots/",
@@ -161,8 +160,8 @@ impl HtmlValueInterpreter {
     /// Unchecked, including required presence when the as attribute is absent.
     pub fn link_as(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlLinkDestination>, HtmlValueAdmissionError> {
         let mut report = self.enumerated(&LINK_AS, element, raw)?;
         if report.applicability == HtmlAttributeApplicability::Applicable {
@@ -177,19 +176,19 @@ impl HtmlValueInterpreter {
     /// only, without asserting that execution reached it (e.g. href may be empty).
     pub fn link_as_with_attributes(
         &self,
-        element: &QualifiedName,
-        attributes: &OrderedAttributes,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        attributes: &(impl crate::HtmlAttributesInput + ?Sized),
     ) -> Result<HtmlLinkDestinationReport, HtmlValueAdmissionError> {
         let name = KnownHtmlAttribute::As.qualified_name();
-        let raw = attributes.get(name.namespace(), name.local_name());
+        let raw = find_attribute(attributes, name.namespace(), name.local_name());
         let name = KnownHtmlAttribute::Rel.qualified_name();
-        let rel = attributes.get(name.namespace(), name.local_name());
-        self.admit_attribute_raw(raw.map(Attribute::value))?;
-        self.admit_attribute_raw(rel.map(Attribute::value))?;
+        let rel = find_attribute(attributes, name.namespace(), name.local_name());
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
+        self.admit_attribute_raw(rel.map(HtmlAttributeInput::value))?;
         let attribute = self.link_as(element, raw)?;
         let mut result = HtmlLinkDestinationReport {
             attribute,
-            rel: rel.cloned(),
+            rel: rel.map(capture_attribute),
             preload_author: HtmlLinkDestinationContextAuthorState::Unapplied,
             modulepreload_author: HtmlLinkDestinationContextAuthorState::Unapplied,
             other_rel_author: HtmlLinkDestinationContextAuthorState::Unapplied,

@@ -15,12 +15,12 @@ impl HtmlMediaField {
     }
 }
 /// A successful match is bound to the actual immutable candidate and field.
-pub struct HtmlMediaFieldMatch<'raw> {
-    attribute: &'raw Attribute,
+pub struct HtmlMediaFieldMatch<'raw, A: HtmlAttributeInput> {
+    attribute: &'raw A,
     field: HtmlMediaField,
 }
-impl<'raw> HtmlMediaFieldMatch<'raw> {
-    pub fn attribute(&self) -> &'raw Attribute {
+impl<'raw, A: HtmlAttributeInput> HtmlMediaFieldMatch<'raw, A> {
+    pub fn attribute(&self) -> &'raw A {
         self.attribute
     }
     pub fn field(&self) -> HtmlMediaField {
@@ -29,13 +29,13 @@ impl<'raw> HtmlMediaFieldMatch<'raw> {
 }
 /// Replaces the comparison in the caller's original first-match traversal.
 /// The candidate visit and each reached local-name unit are admitted separately.
-pub fn match_media_field<'raw, E>(
-    attribute: &'raw Attribute,
+pub fn match_media_field<'raw, E, A: HtmlAttributeInput>(
+    attribute: &'raw A,
     field: HtmlMediaField,
     mut admit: impl FnMut(usize) -> Result<(), E>,
-) -> Result<Option<HtmlMediaFieldMatch<'raw>>, E> {
+) -> Result<Option<HtmlMediaFieldMatch<'raw, A>>, E> {
     admit(1)?;
-    if attribute.name().namespace().uri().is_some() {
+    if attribute.name().namespace_uri().is_some() {
         return Ok(None);
     }
     let units = attribute.name().local_name().code_units();
@@ -51,7 +51,10 @@ pub fn match_media_field<'raw, E>(
     Ok(Some(HtmlMediaFieldMatch { attribute, field }))
 }
 /// Ordinary matching shares the same rule and performs no controlled admission.
-pub fn media_field_matches(attribute: &Attribute, field: HtmlMediaField) -> bool {
+pub fn media_field_matches(
+    attribute: &impl crate::HtmlAttributeInput,
+    field: HtmlMediaField,
+) -> bool {
     match match_media_field(attribute, field, |_| Ok::<_, std::convert::Infallible>(())) {
         Ok(value) => value.is_some(),
         Err(never) => match never {},
@@ -75,21 +78,22 @@ pub enum HtmlMediaActionError<E> {
     Protocol(HtmlMediaInterpretationError),
 }
 #[derive(Clone, Copy)]
-enum Name<'raw> {
+enum Name<'raw, A: HtmlAttributeInput> {
     NotSupplied,
     SuppliedAbsent,
-    Present(&'raw Attribute),
+    Present(&'raw A),
 }
 /// Retains actual operands and local decisions; semantic processing remains external.
-pub struct HtmlMediaInterpretation<'raw> {
-    element: &'raw QualifiedName,
-    raw: Option<&'raw Attribute>,
+pub struct HtmlMediaInterpretation<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> {
+    element: &'raw N,
+    raw: Option<&'raw A>,
     raw_field: Option<bool>,
-    name: Name<'raw>,
+    name: Name<'raw, A>,
     name_field: Option<bool>,
     media_admitted: bool,
     name_admitted: bool,
     html_namespace: Option<bool>,
+    namespace_code_units: usize,
     role: Option<Option<HtmlMediaElementRole>>,
     value: Option<HtmlMediaValueCursor<'raw>>,
     theme: Option<ThemeColorNameCursor<'raw>>,
@@ -97,8 +101,8 @@ pub struct HtmlMediaInterpretation<'raw> {
     stopped: bool,
     applicability: Option<HtmlAttributeApplicability>,
 }
-impl<'raw> HtmlMediaInterpretation<'raw> {
-    pub(super) fn ordinary(element: &'raw QualifiedName, raw: Option<&'raw Attribute>) -> Self {
+impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpretation<'raw, N, A> {
+    pub(super) fn ordinary(element: &'raw N, raw: Option<&'raw A>) -> Self {
         Self {
             element,
             raw,
@@ -108,6 +112,7 @@ impl<'raw> HtmlMediaInterpretation<'raw> {
             media_admitted: false,
             name_admitted: false,
             html_namespace: None,
+            namespace_code_units: 0,
             role: None,
             value: None,
             theme: None,
@@ -117,10 +122,7 @@ impl<'raw> HtmlMediaInterpretation<'raw> {
         }
     }
     /// Uses the candidate already matched during the caller's original traversal.
-    pub fn from_matched(
-        element: &'raw QualifiedName,
-        raw: Option<HtmlMediaFieldMatch<'raw>>,
-    ) -> Self {
+    pub fn from_matched(element: &'raw N, raw: Option<HtmlMediaFieldMatch<'raw, A>>) -> Self {
         let mut owner = Self::ordinary(element, raw.as_ref().map(|m| m.attribute));
         owner.raw_field = Some(raw.is_none_or(|m| m.field == HtmlMediaField::Media));
         owner
@@ -147,7 +149,7 @@ impl<'raw> HtmlMediaInterpretation<'raw> {
     }
     pub fn admit_media<E>(
         &mut self,
-        admit: impl FnOnce(Option<&'raw Attribute>) -> Result<(), E>,
+        admit: impl FnOnce(Option<&'raw A>) -> Result<(), E>,
     ) -> Result<(), HtmlMediaActionError<E>> {
         self.require(!self.media_admitted)
             .map_err(HtmlMediaActionError::Protocol)?;
@@ -158,7 +160,7 @@ impl<'raw> HtmlMediaInterpretation<'raw> {
     }
     fn supply(
         &mut self,
-        name: Option<&'raw Attribute>,
+        name: Option<&'raw A>,
         matched: Option<bool>,
     ) -> Result<(), HtmlMediaInterpretationError> {
         self.require(self.value.is_none())?;
@@ -175,13 +177,13 @@ impl<'raw> HtmlMediaInterpretation<'raw> {
     }
     pub(super) fn supply_ordinary_name(
         &mut self,
-        name: Option<&'raw Attribute>,
+        name: Option<&'raw A>,
     ) -> Result<(), HtmlMediaInterpretationError> {
         self.supply(name, None)
     }
     pub fn supply_matched_name(
         &mut self,
-        name: Option<HtmlMediaFieldMatch<'raw>>,
+        name: Option<HtmlMediaFieldMatch<'raw, A>>,
     ) -> Result<(), HtmlMediaInterpretationError> {
         self.require(self.value.is_none())?;
         if name
@@ -194,7 +196,7 @@ impl<'raw> HtmlMediaInterpretation<'raw> {
     }
     pub fn admit_name<E>(
         &mut self,
-        admit: impl FnOnce(Option<&'raw Attribute>) -> Result<(), E>,
+        admit: impl FnOnce(Option<&'raw A>) -> Result<(), E>,
     ) -> Result<(), HtmlMediaActionError<E>> {
         self.require(
             self.media_admitted && !self.name_admitted && !matches!(self.name, Name::NotSupplied),
@@ -213,7 +215,8 @@ impl<'raw> HtmlMediaInterpretation<'raw> {
             .map_err(HtmlMediaActionError::Protocol)?;
         self.execute(|| admit(1))?;
         let expected = b"http://www.w3.org/1999/xhtml";
-        let result = if let Some(uri) = self.element.namespace().uri() {
+        let result = if let Some(uri) = self.element.namespace_uri() {
+            self.namespace_code_units = uri.len();
             if uri.len() != expected.len() {
                 false
             } else {
@@ -233,29 +236,32 @@ impl<'raw> HtmlMediaInterpretation<'raw> {
         self.html_namespace = Some(result);
         Ok(())
     }
+    /// Admit the local-name header before requesting it. Namespace length was
+    /// already observed under `inspect_namespace`'s header admission. The second
+    /// admission covers the remaining role envelope; together the calls retain
+    /// its original namespace-length + (local-length + 1) * vocabulary-size bound.
     pub fn derive_role<E>(
         &mut self,
-        admit: impl FnOnce(usize) -> Result<(), E>,
+        mut admit: impl FnMut(usize) -> Result<(), E>,
     ) -> Result<(), HtmlMediaActionError<E>> {
         self.require(self.html_namespace.is_some() && self.role.is_none())
             .map_err(HtmlMediaActionError::Protocol)?;
+        self.execute(|| admit(1))?;
         let units = self.element.local_name().len();
-        let ns = self
-            .element
-            .namespace()
-            .uri()
-            .map_or(0, DocumentString::len);
         let work = units
             .checked_add(1)
             .and_then(|n| n.checked_mul(KnownHtmlElement::ALL.len()))
-            .and_then(|n| n.checked_add(ns));
+            .and_then(|n| n.checked_add(self.namespace_code_units));
         let Some(work) = work else {
             self.stop();
             return Err(HtmlMediaActionError::Protocol(
                 HtmlMediaInterpretationError::RepresentationExhausted,
             ));
         };
-        self.execute(|| admit(work))?;
+        let remaining = work
+            .checked_sub(1)
+            .expect("nonempty HTML vocabulary includes the prepaid local header");
+        self.execute(|| admit(remaining))?;
         self.role = Some(HtmlMediaElementRole::from_known(
             KnownHtmlElement::from_name(self.element),
         ));
@@ -375,7 +381,7 @@ impl<'raw> HtmlMediaInterpretation<'raw> {
         }
         Ok(cursor.result())
     }
-    fn name_attribute(&self) -> Option<&'raw Attribute> {
+    fn name_attribute(&self) -> Option<&'raw A> {
         match self.name {
             Name::Present(a) => Some(a),
             _ => None,
@@ -440,8 +446,8 @@ impl<'raw> HtmlMediaInterpretation<'raw> {
         self.execute(admit)?;
         self.applicability = Some(applicability);
         self.report = Some(HtmlMediaAttributeReport {
-            raw: self.raw.cloned(),
-            name: self.name_attribute().cloned(),
+            raw: self.raw.map(capture_attribute),
+            name: self.name_attribute().map(capture_attribute),
             applicability,
             role: self.role.expect("classified"),
             value: self.value().expect("complete value"),
@@ -452,10 +458,10 @@ impl<'raw> HtmlMediaInterpretation<'raw> {
     pub fn stop(&mut self) {
         self.stopped = true;
     }
-    pub fn raw(&self) -> Option<&'raw Attribute> {
+    pub fn raw(&self) -> Option<&'raw A> {
         self.raw
     }
-    pub fn abort(self) -> HtmlMediaInputs<'raw> {
+    pub fn abort(self) -> HtmlMediaInputs<'raw, N, A> {
         HtmlMediaInputs {
             element: self.element,
             raw: self.raw,
@@ -487,25 +493,25 @@ impl<'raw> HtmlMediaInterpretation<'raw> {
 }
 
 /// Original name operand supply, with absence distinct from non-selection.
-pub enum HtmlMediaNameSupply<'raw> {
+pub enum HtmlMediaNameSupply<'raw, A: HtmlAttributeInput> {
     NotSupplied,
     SuppliedAbsent,
-    Present(&'raw Attribute),
+    Present(&'raw A),
 }
 /// Operands recovered without scanning, sharing or allocation.
-pub struct HtmlMediaInputs<'raw> {
-    element: &'raw QualifiedName,
-    raw: Option<&'raw Attribute>,
-    name: HtmlMediaNameSupply<'raw>,
+pub struct HtmlMediaInputs<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> {
+    element: &'raw N,
+    raw: Option<&'raw A>,
+    name: HtmlMediaNameSupply<'raw, A>,
 }
-impl<'raw> HtmlMediaInputs<'raw> {
-    pub fn element(&self) -> &'raw QualifiedName {
+impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInputs<'raw, N, A> {
+    pub fn element(&self) -> &'raw N {
         self.element
     }
-    pub fn raw(&self) -> Option<&'raw Attribute> {
+    pub fn raw(&self) -> Option<&'raw A> {
         self.raw
     }
-    pub fn name(&self) -> &HtmlMediaNameSupply<'raw> {
+    pub fn name(&self) -> &HtmlMediaNameSupply<'raw, A> {
         &self.name
     }
 }

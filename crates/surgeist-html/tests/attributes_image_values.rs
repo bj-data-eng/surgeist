@@ -32,8 +32,8 @@ fn actual_image_requires_both_strings_and_retains_missing_versus_empty() {
         .input_image_attributes_for_state(
             &element(KnownHtmlElement::Input),
             HtmlInputType::Image,
-            None,
-            None,
+            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::Attribute>,
         )
         .unwrap();
     let alt = raw(KnownHtmlAttribute::Alt, "");
@@ -212,7 +212,11 @@ fn content_only_input_and_source_keep_unknown_context_distinct_from_absence() {
     let width = raw(KnownHtmlAttribute::Width, "+2tail");
     for name in [KnownHtmlElement::Input, KnownHtmlElement::Source] {
         let report = interpreter
-            .embedded_dimension_attributes(&element(name), Some(&width), None)
+            .embedded_dimension_attributes(
+                &element(name),
+                Some(&width),
+                None::<&surgeist_html::Attribute>,
+            )
             .unwrap();
         for slot in [report.width(), report.height()] {
             assert_eq!(slot.author(), HtmlImageAttributeAuthorState::Unchecked);
@@ -300,8 +304,8 @@ fn normative_twenty_two_input_states_select_only_image_and_forbid_other_presence
                 .input_image_attributes_for_state(
                     &element(KnownHtmlElement::Input),
                     state,
-                    None,
-                    None,
+                    None::<&surgeist_html::Attribute>,
+                    None::<&surgeist_html::Attribute>,
                 )
                 .unwrap();
             assert_eq!(
@@ -328,7 +332,11 @@ fn unconditional_embedded_roles_have_exact_zero_and_missing_without_canvas_defau
         KnownHtmlElement::Video,
     ] {
         let report = interpreter
-            .embedded_dimension_attributes(&element(name), Some(&width), None)
+            .embedded_dimension_attributes(
+                &element(name),
+                Some(&width),
+                None::<&surgeist_html::Attribute>,
+            )
             .unwrap();
         assert_eq!(
             report.width().author(),
@@ -354,7 +362,11 @@ fn unconditional_embedded_roles_have_exact_zero_and_missing_without_canvas_defau
         );
     }
     let canvas = interpreter
-        .embedded_dimension_attributes(&element(KnownHtmlElement::Canvas), Some(&width), None)
+        .embedded_dimension_attributes(
+            &element(KnownHtmlElement::Canvas),
+            Some(&width),
+            None::<&surgeist_html::Attribute>,
+        )
         .unwrap();
     assert_eq!(
         canvas.width().attribute().applicability(),
@@ -363,7 +375,10 @@ fn unconditional_embedded_roles_have_exact_zero_and_missing_without_canvas_defau
     assert!(canvas.width().common().is_none());
     assert_eq!(
         interpreter
-            .canvas_width(&element(KnownHtmlElement::Canvas), None)
+            .canvas_width(
+                &element(KnownHtmlElement::Canvas),
+                None::<&surgeist_html::Attribute>
+            )
             .unwrap()
             .intrinsic()
             .unwrap()
@@ -372,7 +387,10 @@ fn unconditional_embedded_roles_have_exact_zero_and_missing_without_canvas_defau
     );
     assert_eq!(
         interpreter
-            .canvas_height(&element(KnownHtmlElement::Canvas), None)
+            .canvas_height(
+                &element(KnownHtmlElement::Canvas),
+                None::<&surgeist_html::Attribute>
+            )
             .unwrap()
             .intrinsic()
             .unwrap()
@@ -395,7 +413,11 @@ fn dimension_prefix_recovery_does_not_repair_author_syntax_or_default_zero() {
     ] {
         let width = raw(KnownHtmlAttribute::Width, text);
         let report = HtmlValueInterpreter::new(100)
-            .embedded_dimension_attributes(&element(KnownHtmlElement::Img), Some(&width), None)
+            .embedded_dimension_attributes(
+                &element(KnownHtmlElement::Img),
+                Some(&width),
+                None::<&surgeist_html::Attribute>,
+            )
             .unwrap();
         assert_eq!(
             report.width().author(),
@@ -494,7 +516,7 @@ fn actual_picture_parent_is_distinct_from_known_other_no_parent_and_unavailable(
             .embedded_dimension_attributes_with_context(
                 &element(KnownHtmlElement::Source),
                 Some(&width),
-                None,
+                None::<&surgeist_html::Attribute>,
                 &context,
             )
             .unwrap();
@@ -526,7 +548,7 @@ fn wrong_fact_family_is_typed_and_does_not_run_dimension_grammar() {
             .embedded_dimension_attributes_with_context(
                 &element(name),
                 Some(&width),
-                None,
+                None::<&surgeist_html::Attribute>,
                 &context,
             )
             .unwrap();
@@ -573,7 +595,11 @@ fn exact_expanded_roles_and_prefixes_survive_without_cross_slot_parsing() {
         "02",
     );
     let report = HtmlValueInterpreter::new(20)
-        .embedded_dimension_attributes(&element(KnownHtmlElement::Img), Some(&prefixed), None)
+        .embedded_dimension_attributes(
+            &element(KnownHtmlElement::Img),
+            Some(&prefixed),
+            None::<&surgeist_html::Attribute>,
+        )
         .unwrap();
     assert_eq!(report.width().attribute().raw_attribute(), Some(&prefixed));
     assert_eq!(report.width().recovered().unwrap().decimal_digits(), "2");
@@ -583,7 +609,11 @@ fn exact_expanded_roles_and_prefixes_survive_without_cross_slot_parsing() {
     ] {
         let width = Attribute::new(name, "2");
         let report = HtmlValueInterpreter::new(20)
-            .embedded_dimension_attributes(&element(KnownHtmlElement::Img), Some(&width), None)
+            .embedded_dimension_attributes(
+                &element(KnownHtmlElement::Img),
+                Some(&width),
+                None::<&surgeist_html::Attribute>,
+            )
             .unwrap();
         assert_eq!(
             report.width().attribute().applicability(),
@@ -597,7 +627,12 @@ fn exact_expanded_roles_and_prefixes_survive_without_cross_slot_parsing() {
         element(KnownHtmlElement::Img),
     ] {
         let report = HtmlValueInterpreter::new(20)
-            .input_image_attributes_for_state(&name, HtmlInputType::Image, None, Some(&src))
+            .input_image_attributes_for_state(
+                &name,
+                HtmlInputType::Image,
+                None::<&surgeist_html::Attribute>,
+                Some(&src),
+            )
             .unwrap();
         assert_eq!(
             report.src().author(),
@@ -627,7 +662,11 @@ fn every_original_slot_is_capped_before_roles_context_and_trimming() {
     );
     assert!(
         interpreter
-            .input_image_attributes(&element(KnownHtmlElement::Div), Some(&long_alt), None)
+            .input_image_attributes(
+                &element(KnownHtmlElement::Div),
+                Some(&long_alt),
+                None::<&surgeist_html::Attribute>
+            )
             .is_err()
     );
     let height = raw(KnownHtmlAttribute::Height, "1234567");
@@ -635,7 +674,7 @@ fn every_original_slot_is_capped_before_roles_context_and_trimming() {
         interpreter
             .embedded_dimension_attributes_with_context(
                 &element(KnownHtmlElement::Source),
-                None,
+                None::<&surgeist_html::Attribute>,
                 Some(&height),
                 &HtmlEmbeddedDimensionContext::SourceParent(HtmlImageSourceParent::NoParent)
             )
@@ -644,7 +683,11 @@ fn every_original_slot_is_capped_before_roles_context_and_trimming() {
     let width = raw(KnownHtmlAttribute::Width, "1234567");
     assert!(
         interpreter
-            .embedded_dimension_attributes(&element(KnownHtmlElement::Div), Some(&width), None)
+            .embedded_dimension_attributes(
+                &element(KnownHtmlElement::Div),
+                Some(&width),
+                None::<&surgeist_html::Attribute>
+            )
             .is_err()
     );
     let exact = HtmlValueInterpreter::new(7)
@@ -692,8 +735,8 @@ fn reports_link_the_actual_defining_clauses_not_generic_canvas_or_img_alt_rules(
         .input_image_attributes_for_state(
             &element(KnownHtmlElement::Input),
             HtmlInputType::Image,
-            None,
-            None,
+            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::Attribute>,
         )
         .unwrap();
     assert_eq!(
@@ -714,8 +757,8 @@ fn reports_link_the_actual_defining_clauses_not_generic_canvas_or_img_alt_rules(
         .input_image_attributes_for_state(
             &element(KnownHtmlElement::Input),
             HtmlInputType::Text,
-            None,
-            None,
+            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::Attribute>,
         )
         .unwrap();
     assert_eq!(
@@ -723,7 +766,11 @@ fn reports_link_the_actual_defining_clauses_not_generic_canvas_or_img_alt_rules(
         Some(format!("{BASE}text-(type=text)-state-and-search-state-(type=search)").as_str())
     );
     let dimensions = interpreter
-        .embedded_dimension_attributes(&element(KnownHtmlElement::Img), None, None)
+        .embedded_dimension_attributes(
+            &element(KnownHtmlElement::Img),
+            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::Attribute>,
+        )
         .unwrap();
     for slot in [dimensions.width(), dimensions.height()] {
         assert_eq!(
@@ -742,7 +789,11 @@ fn reports_link_the_actual_defining_clauses_not_generic_canvas_or_img_alt_rules(
     assert_eq!(dimensions.width().attribute().inventory_rows(), &[178]);
     assert_eq!(dimensions.height().attribute().inventory_rows(), &[64]);
     let source = interpreter
-        .embedded_dimension_attributes(&element(KnownHtmlElement::Source), None, None)
+        .embedded_dimension_attributes(
+            &element(KnownHtmlElement::Source),
+            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::Attribute>,
+        )
         .unwrap();
     assert_eq!(
         source.width().attribute().context_source_clause(),

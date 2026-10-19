@@ -278,7 +278,7 @@ fn strict_failures_preserve_common_prefix_recovery_and_original_utf16() {
         .progress_attributes(
             &KnownHtmlElement::Progress.qualified_name(),
             Some(&raw),
-            None,
+            None::<&surgeist_html::Attribute>,
         )
         .unwrap();
     syntax(report.value());
@@ -375,12 +375,20 @@ fn each_original_slot_is_admitted_before_wrong_role_or_element_processing() {
         DocumentString::from_utf16(vec![0xD83D, 0xDE00, 0xD800]),
     );
     let error = HtmlValueInterpreter::new(2)
-        .progress_attributes(&KnownHtmlElement::Div.qualified_name(), Some(&raw), None)
+        .progress_attributes(
+            &KnownHtmlElement::Div.qualified_name(),
+            Some(&raw),
+            None::<&surgeist_html::Attribute>,
+        )
         .unwrap_err();
     assert_eq!((error.capacity(), error.required()), (2, 3));
     assert!(
         HtmlValueInterpreter::new(3)
-            .progress_attributes(&KnownHtmlElement::Div.qualified_name(), Some(&raw), None)
+            .progress_attributes(
+                &KnownHtmlElement::Div.qualified_name(),
+                Some(&raw),
+                None::<&surgeist_html::Attribute>
+            )
             .is_ok()
     );
     assert!(

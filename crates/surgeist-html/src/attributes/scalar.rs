@@ -371,13 +371,13 @@ impl HtmlValueInterpreter {
     fn nonnegative_attribute(
         &self,
         rule: NonnegativeRule,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<
         HtmlNumericAttributeReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
         HtmlValueAdmissionError,
     > {
-        self.admit_attribute_raw(raw.map(Attribute::value))?;
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let mut attribute = report(rule.metadata, element, raw);
         if attribute.applicability() != HtmlAttributeApplicability::Applicable {
             return Ok(HtmlNumericAttributeReport {
@@ -387,7 +387,7 @@ impl HtmlValueInterpreter {
                 origin: None,
             });
         }
-        let common = self.nonnegative_integer(raw.map(Attribute::value))?;
+        let common = self.nonnegative_integer(raw.map(HtmlAttributeInput::value))?;
         let author = nonnegative_author(&common, rule.positive);
         let (value, origin) = match common.recovery() {
             HtmlValueRecoveryState::Value(value) if !rule.positive || !value.is_zero() => {
@@ -418,11 +418,11 @@ impl HtmlValueInterpreter {
     fn bounded_span(
         &self,
         rule: BoundedSpanRule,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlNumericAttributeReport<HtmlNonNegativeInteger, u16>, HtmlValueAdmissionError>
     {
-        self.admit_attribute_raw(raw.map(Attribute::value))?;
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let mut attribute = report(rule.metadata, element, raw);
         if attribute.applicability() != HtmlAttributeApplicability::Applicable {
             return Ok(HtmlNumericAttributeReport {
@@ -432,7 +432,7 @@ impl HtmlValueInterpreter {
                 origin: None,
             });
         }
-        let common = self.nonnegative_integer(raw.map(Attribute::value))?;
+        let common = self.nonnegative_integer(raw.map(HtmlAttributeInput::value))?;
         let author = constrained_nonnegative_author(&common, rule.positive, Some(rule.maximum));
         let (value, origin) = match common.recovery() {
             HtmlValueRecoveryState::Value(value) if rule.positive && value.is_zero() => {
@@ -469,8 +469,8 @@ impl HtmlValueInterpreter {
     /// not establish overlap conformance or reflect a WebIDL getter.
     pub fn cell_colspan(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlNumericAttributeReport<HtmlNonNegativeInteger, u16>, HtmlValueAdmissionError>
     {
         self.bounded_span(CELL_COLSPAN, element, raw)
@@ -484,8 +484,8 @@ impl HtmlValueInterpreter {
     /// actual table formation and WebIDL reflection are separate operations.
     pub fn cell_rowspan(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlNumericAttributeReport<HtmlNonNegativeInteger, u16>, HtmlValueAdmissionError>
     {
         self.bounded_span(CELL_ROWSPAN, element, raw)
@@ -498,8 +498,8 @@ impl HtmlValueInterpreter {
     /// separate from WebIDL reflection and CSS table layout.
     pub fn col_span(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlNumericAttributeReport<HtmlNonNegativeInteger, u16>, HtmlValueAdmissionError>
     {
         self.bounded_span(COL_SPAN, element, raw)
@@ -515,8 +515,8 @@ impl HtmlValueInterpreter {
     /// group's own span. No child evidence, group width or IDL getter is inferred.
     pub fn colgroup_span(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlNumericAttributeReport<HtmlNonNegativeInteger, u16>, HtmlValueAdmissionError>
     {
         self.bounded_span(COLGROUP_SPAN, element, raw)
@@ -534,8 +534,8 @@ impl HtmlValueInterpreter {
     /// captured ancestor/reset/shadow-host computation remains with its own owner.
     pub fn heading_offset(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<
         HtmlNumericAttributeReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
         HtmlValueAdmissionError,
@@ -555,8 +555,8 @@ impl HtmlValueInterpreter {
     /// Missing or failed nonnegative recovery selects 300, without bitmap effects.
     pub fn canvas_width(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<
         HtmlNumericAttributeReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
         HtmlValueAdmissionError,
@@ -568,8 +568,8 @@ impl HtmlValueInterpreter {
     /// This does not apply WebIDL conversion or allocate a bitmap.
     pub fn canvas_height(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<
         HtmlNumericAttributeReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
         HtmlValueAdmissionError,
@@ -581,8 +581,8 @@ impl HtmlValueInterpreter {
     /// The exact positive content result is not an unsigned-long IDL projection.
     pub fn textarea_cols(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<
         HtmlNumericAttributeReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
         HtmlValueAdmissionError,
@@ -594,8 +594,8 @@ impl HtmlValueInterpreter {
     /// This does not compute wrapping, rendering or unsigned-long IDL projection.
     pub fn textarea_rows(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<
         HtmlNumericAttributeReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
         HtmlValueAdmissionError,
@@ -608,11 +608,11 @@ impl HtmlValueInterpreter {
     /// summary-parent qualification, focusability or focus navigation order.
     pub fn tabindex(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlNumericAttributeReport<HtmlInteger, HtmlTabindexValue>, HtmlValueAdmissionError>
     {
-        self.admit_attribute_raw(raw.map(Attribute::value))?;
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let mut attribute = report(TABINDEX, element, raw);
         if attribute.applicability() != HtmlAttributeApplicability::Applicable {
             return Ok(HtmlNumericAttributeReport {
@@ -622,7 +622,7 @@ impl HtmlValueInterpreter {
                 origin: None,
             });
         }
-        let common = self.integer(raw.map(Attribute::value))?;
+        let common = self.integer(raw.map(HtmlAttributeInput::value))?;
         let author = numeric_author(&common);
         let (value, origin) = match common.recovery() {
             HtmlValueRecoveryState::Value(value) => (
@@ -657,8 +657,8 @@ macro_rules! override_methods {
             /// of unchecked author context, with no form submission effects.
             pub fn $ordinary(
                 &self,
-                element: &QualifiedName,
-                raw: Option<&Attribute>,
+                element: &(impl crate::HtmlNameInput + ?Sized),
+                raw: Option<&impl crate::HtmlAttributeInput>,
             ) -> Result<HtmlAttributeReport<$type>, HtmlValueAdmissionError> {
                 self.enumerated(&$rule, element, raw)
             }
@@ -667,8 +667,8 @@ macro_rules! override_methods {
             /// Forbidden state does not erase content; no form owner is selected.
             pub fn $input(
                 &self,
-                element: &QualifiedName,
-                raw: Option<&Attribute>,
+                element: &(impl crate::HtmlNameInput + ?Sized),
+                raw: Option<&impl crate::HtmlAttributeInput>,
                 state: HtmlInputType,
             ) -> Result<HtmlAttributeReport<$type>, HtmlValueAdmissionError> {
                 self.enumerated_with_context(&$rule, element, raw, SuppliedContext::Input(state))
@@ -678,8 +678,8 @@ macro_rules! override_methods {
             /// Auto eligibility is supplied, never inferred from type alone.
             pub fn $button(
                 &self,
-                element: &QualifiedName,
-                raw: Option<&Attribute>,
+                element: &(impl crate::HtmlNameInput + ?Sized),
+                raw: Option<&impl crate::HtmlAttributeInput>,
                 context: HtmlButtonSubmitterContext,
             ) -> Result<HtmlAttributeReport<$type>, HtmlValueAdmissionError> {
                 self.enumerated_with_context(
@@ -942,16 +942,16 @@ impl HtmlValueInterpreter {
     /// multiple unnecessary for the display-size result.
     pub fn select_size(
         &self,
-        element: &QualifiedName,
-        size: Option<&Attribute>,
-        multiple: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        size: Option<&impl crate::HtmlAttributeInput>,
+        multiple: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlSelectSizeReport, HtmlValueAdmissionError> {
-        self.admit_attribute_raw(size.map(Attribute::value))?;
-        self.admit_attribute_raw(multiple.map(Attribute::value))?;
+        self.admit_attribute_raw(size.map(HtmlAttributeInput::value))?;
+        self.admit_attribute_raw(multiple.map(HtmlAttributeInput::value))?;
         let attribute = report(SELECT_SIZE, element, size);
         let multiple = self.boolean_attribute(HtmlBooleanAttribute::Multiple, element, multiple)?;
         let common = if attribute.applicability() == HtmlAttributeApplicability::Applicable {
-            Some(self.nonnegative_integer(size.map(Attribute::value))?)
+            Some(self.nonnegative_integer(size.map(HtmlAttributeInput::value))?)
         } else {
             None
         };
@@ -1053,10 +1053,10 @@ impl HtmlValueInterpreter {
     fn list_integer_attribute(
         &self,
         metadata: RuleMetadata,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlListIntegerAttributeReport, HtmlValueAdmissionError> {
-        self.admit_attribute_raw(raw.map(Attribute::value))?;
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let mut attribute = report(metadata, element, raw);
         let common = if attribute.applicability() == HtmlAttributeApplicability::Applicable {
             if metadata.attribute == KnownHtmlAttribute::Value && raw.is_some() {
@@ -1064,7 +1064,7 @@ impl HtmlValueInterpreter {
                 // this standalone declaration has no actual parent observation.
                 attribute.context_author = HtmlAttributeContextAuthorState::Unchecked;
             }
-            Some(self.integer(raw.map(Attribute::value))?)
+            Some(self.integer(raw.map(HtmlAttributeInput::value))?)
         } else {
             None
         };
@@ -1085,8 +1085,8 @@ impl HtmlValueInterpreter {
     /// be authored with HtmlInteger::as_document_string and Attribute::new.
     pub fn ol_start(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlListIntegerAttributeReport, HtmlValueAdmissionError> {
         self.list_integer_attribute(OL_START, element, raw)
     }
@@ -1100,8 +1100,8 @@ impl HtmlValueInterpreter {
     /// applicability. Existing exact integer/Attribute factories author syntax.
     pub fn li_value(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlListIntegerAttributeReport, HtmlValueAdmissionError> {
         self.list_integer_attribute(LI_VALUE, element, raw)
     }

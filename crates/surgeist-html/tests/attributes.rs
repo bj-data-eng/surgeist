@@ -38,7 +38,9 @@ fn disabled_local_presence_uses_each_standard_elements_defining_clause() {
         ("option", 44, "attr-option-disabled"),
     ] {
         let context = element(local);
-        let missing = interpreter.disabled(&context, None).unwrap();
+        let missing = interpreter
+            .disabled(&context, None::<&surgeist_html::Attribute>)
+            .unwrap();
         assert_eq!(missing.applicability(), Applicability::Applicable);
         assert_eq!(missing.intrinsic(), Some(&false));
         assert_eq!(missing.observation(), Observation::Missing);
@@ -136,7 +138,7 @@ fn disabled_custom_controls_require_actual_supplied_form_association() {
         );
     }
     let missing = interpreter
-        .disabled_for_custom_control(&context, None, FormAssociated)
+        .disabled_for_custom_control(&context, None::<&surgeist_html::Attribute>, FormAssociated)
         .unwrap();
     assert_eq!(missing.intrinsic(), Some(&false));
     let empty = attr("disabled", "");
@@ -237,7 +239,7 @@ fn disabled_admits_exact_raw_units_before_even_unapplied_contexts() {
     }
     assert_eq!(
         HtmlValueInterpreter::new(0)
-            .disabled(&element("input"), None)
+            .disabled(&element("input"), None::<&surgeist_html::Attribute>)
             .unwrap()
             .intrinsic(),
         Some(&false)
@@ -313,7 +315,9 @@ fn referrerpolicy_recognizes_the_pinned_vocabulary_including_conforming_empty() 
 fn referrerpolicy_empty_default_stays_unresolved_and_raw_states_remain_distinct() {
     let interpreter = HtmlValueInterpreter::new(100);
     let context = element("iframe");
-    let missing = interpreter.referrerpolicy(&context, None).unwrap();
+    let missing = interpreter
+        .referrerpolicy(&context, None::<&surgeist_html::Attribute>)
+        .unwrap();
     assert_eq!(missing.intrinsic(), Some(&HtmlReferrerPolicy::Empty));
     assert_eq!(missing.observation(), Observation::Missing);
     assert_eq!(missing.recognition(), Recognition::Missing);
@@ -499,7 +503,7 @@ fn referrerpolicy_contexts_use_explicit_hyperlink_and_script_facts() {
     );
     assert_eq!(
         interpreter
-            .crossorigin(&element("img"), None)
+            .crossorigin(&element("img"), None::<&surgeist_html::Attribute>)
             .unwrap()
             .vocabulary_source_clause(),
         None
@@ -570,7 +574,9 @@ fn cors_intrinsic_defaults_do_not_claim_a_request_mode() {
     let interpreter = HtmlValueInterpreter::new(100);
     for local in ["audio", "video", "img", "link"] {
         let context = element(local);
-        let missing = interpreter.crossorigin(&context, None).unwrap();
+        let missing = interpreter
+            .crossorigin(&context, None::<&surgeist_html::Attribute>)
+            .unwrap();
         assert_eq!(missing.intrinsic(), Some(&HtmlCrossOriginState::NoCors));
         assert_eq!(missing.author(), Author::Missing);
         assert_eq!(missing.recognition(), Recognition::Missing);
@@ -654,7 +660,7 @@ fn fetchpriority_is_a_literal_intrinsic_hint_with_no_empty_keyword() {
         let context = element(local);
         assert_eq!(
             interpreter
-                .fetchpriority(&context, None)
+                .fetchpriority(&context, None::<&surgeist_html::Attribute>)
                 .unwrap()
                 .intrinsic(),
             Some(&HtmlFetchPriority::Auto)
@@ -810,7 +816,7 @@ fn script_fetch_attributes_require_supplied_source_table_facts() {
         );
     }
     let missing = interpreter
-        .crossorigin_for_script(&script, None, ExternalModule)
+        .crossorigin_for_script(&script, None::<&surgeist_html::Attribute>, ExternalModule)
         .unwrap();
     assert_eq!(missing.intrinsic(), Some(&HtmlCrossOriginState::NoCors));
     let inline = interpreter
@@ -865,7 +871,7 @@ fn fetch_attribute_names_raw_units_and_admission_remain_exact() {
     for local in ["audio", "video", "iframe", "div"] {
         assert_eq!(
             interpreter
-                .fetchpriority(&element(local), None)
+                .fetchpriority(&element(local), None::<&surgeist_html::Attribute>)
                 .unwrap()
                 .applicability(),
             Applicability::DifferentElement
@@ -954,7 +960,9 @@ fn complete_input_keyword_table_selects_source_states_and_authors_canonical_valu
 fn input_text_fallback_preserves_missing_empty_and_unrecognized_authorship() {
     let interpreter = HtmlValueInterpreter::new(100);
     let context = element("input");
-    let omitted = interpreter.input_type(&context, None).unwrap();
+    let omitted = interpreter
+        .input_type(&context, None::<&surgeist_html::Attribute>)
+        .unwrap();
     assert_eq!(omitted.intrinsic(), Some(&HtmlInputType::Text));
     assert_eq!(omitted.observation(), Observation::Missing);
     assert_eq!(omitted.recognition(), Recognition::Missing);
@@ -1024,7 +1032,9 @@ fn button_type_keywords_do_not_turn_auto_fallback_into_a_valid_keyword() {
         );
         assert_eq!(report.raw_attribute(), Some(&raw));
     }
-    let missing = interpreter.button_type(&context, None).unwrap();
+    let missing = interpreter
+        .button_type(&context, None::<&surgeist_html::Attribute>)
+        .unwrap();
     assert_eq!(missing.intrinsic(), Some(&HtmlButtonTypeState::Auto));
     assert_eq!(missing.author(), Author::Missing);
     assert_eq!(missing.recognition(), Recognition::Missing);
@@ -1199,7 +1209,7 @@ fn element_keyword_defaults_preserve_missing_empty_and_invalid() {
     macro_rules! defaults {
         ($method:ident, $element:literal, $name:literal, $missing:expr, $invalid:expr) => {
             let context = element($element);
-            let omitted = interpreter.$method(&context, None).unwrap();
+            let omitted = interpreter.$method(&context, None::<&Attribute>).unwrap();
             assert_eq!(omitted.observation(), Observation::Missing);
             assert_eq!(omitted.author(), Author::Missing);
             assert_eq!(omitted.intrinsic(), Some(&$missing));
@@ -1294,7 +1304,9 @@ fn preload_has_no_guessed_missing_or_invalid_hint_and_empty_is_automatic() {
     let interpreter = HtmlValueInterpreter::new(100);
     for local in ["audio", "video"] {
         let context = element(local);
-        let missing = interpreter.preload(&context, None).unwrap();
+        let missing = interpreter
+            .preload(&context, None::<&surgeist_html::Attribute>)
+            .unwrap();
         assert_eq!(
             missing.intrinsic(),
             Some(&HtmlPreloadState::ImplementationDefined)
@@ -1587,7 +1599,7 @@ fn element_boolean_rules_are_presence_only_in_their_selected_context() {
         for local in elements {
             let context = element(local);
             let omitted = interpreter
-                .boolean_attribute(selected, &context, None)
+                .boolean_attribute(selected, &context, None::<&surgeist_html::Attribute>)
                 .unwrap();
             assert_eq!(omitted.intrinsic(), Some(&false));
             assert_eq!(omitted.author(), Author::Missing);
@@ -1632,7 +1644,7 @@ fn element_boolean_rules_are_presence_only_in_their_selected_context() {
         }
         assert_eq!(
             interpreter
-                .boolean_attribute(selected, &element("div"), None)
+                .boolean_attribute(selected, &element("div"), None::<&surgeist_html::Attribute>)
                 .unwrap()
                 .intrinsic(),
             None
@@ -1653,7 +1665,11 @@ fn element_boolean_rules_are_presence_only_in_their_selected_context() {
     );
     assert_eq!(
         interpreter
-            .boolean_attribute(HtmlBooleanAttribute::DialogOpen, &element("details"), None)
+            .boolean_attribute(
+                HtmlBooleanAttribute::DialogOpen,
+                &element("details"),
+                None::<&surgeist_html::Attribute>
+            )
             .unwrap()
             .applicability(),
         Applicability::DifferentElement
@@ -1751,7 +1767,11 @@ fn boolean_false_text_is_nonconforming_but_presence_is_true() {
     assert_eq!(result.observation(), Observation::PresentNonempty);
     assert_eq!(result.raw_attribute(), Some(&false_text));
     let omitted = interpreter
-        .boolean_attribute(HtmlBooleanAttribute::Inert, &element, None)
+        .boolean_attribute(
+            HtmlBooleanAttribute::Inert,
+            &element,
+            None::<&surgeist_html::Attribute>,
+        )
         .unwrap();
     assert_eq!(omitted.intrinsic(), Some(&false));
     assert_eq!(omitted.observation(), Observation::Missing);
@@ -1919,7 +1939,7 @@ fn missing_and_unknown_keywords_keep_different_default_and_author_states() {
     let e = element("div");
     macro_rules! defaults {
         ($method:ident, $name:literal, $missing:expr, $invalid:expr) => {{
-            let report = i.$method(&e, None).unwrap();
+            let report = i.$method(&e, None::<&Attribute>).unwrap();
             assert_eq!(report.intrinsic(), Some(&$missing));
             assert_eq!(report.author(), Author::Missing);
             assert_eq!(report.recognition(), Recognition::Missing);
@@ -2033,7 +2053,7 @@ fn autocapitalize_aliases_are_recognized_and_canonical_authoring_is_explicit() {
 fn bdo_required_direction_conformance_is_independent_of_intrinsic_state() {
     let i = HtmlValueInterpreter::new(100);
     let bdo = element("bdo");
-    let missing = i.dir(&bdo, None).unwrap();
+    let missing = i.dir(&bdo, None::<&surgeist_html::Attribute>).unwrap();
     assert_eq!(missing.intrinsic(), Some(&HtmlDirState::Undefined));
     assert_eq!(
         missing.author(),
@@ -2075,7 +2095,9 @@ fn bdo_required_direction_conformance_is_independent_of_intrinsic_state() {
     );
     // Exact uppercase local name is an unknown HTML name, not the bdo identity.
     assert_eq!(
-        i.dir(&element("BDO"), None).unwrap().author(),
+        i.dir(&element("BDO"), None::<&surgeist_html::Attribute>)
+            .unwrap()
+            .author(),
         Author::Missing
     );
 }
@@ -2084,8 +2106,18 @@ fn bdo_required_direction_conformance_is_independent_of_intrinsic_state() {
 fn keyboard_hints_have_no_guessed_missing_invalid_or_empty_default() {
     let i = HtmlValueInterpreter::new(100);
     let e = element("input");
-    assert_eq!(i.inputmode(&e, None).unwrap().intrinsic(), None);
-    assert_eq!(i.enterkeyhint(&e, None).unwrap().intrinsic(), None);
+    assert_eq!(
+        i.inputmode(&e, None::<&surgeist_html::Attribute>)
+            .unwrap()
+            .intrinsic(),
+        None
+    );
+    assert_eq!(
+        i.enterkeyhint(&e, None::<&surgeist_html::Attribute>)
+            .unwrap()
+            .intrinsic(),
+        None
+    );
     for value in ["", "unknown", " text ", "ｔｅｘｔ"] {
         let raw = attr("inputmode", value);
         let report = i.inputmode(&e, Some(&raw)).unwrap();
@@ -2212,7 +2244,9 @@ fn raw_value_admission_precedes_even_unapplied_name_processing() {
     assert_eq!(error.required(), 1);
     assert_eq!(error.capacity(), 0);
     assert_eq!(
-        i.hidden(&element("div"), None).unwrap().intrinsic(),
+        i.hidden(&element("div"), None::<&surgeist_html::Attribute>)
+            .unwrap()
+            .intrinsic(),
         Some(&HtmlHiddenState::NotHidden)
     );
     let raw = attr("hidden", "");
@@ -2237,7 +2271,12 @@ fn raw_value_admission_precedes_even_unapplied_name_processing() {
 fn declarative_modes_are_template_only_and_do_not_claim_root_creation() {
     let i = HtmlValueInterpreter::new(100);
     let template = KnownHtmlElement::Template.qualified_name();
-    assert_eq!(i.shadowrootmode(&template, None).unwrap().intrinsic(), None);
+    assert_eq!(
+        i.shadowrootmode(&template, None::<&surgeist_html::Attribute>)
+            .unwrap()
+            .intrinsic(),
+        None
+    );
     let bad = attr("shadowrootmode", "");
     let report = i.shadowrootmode(&template, Some(&bad)).unwrap();
     assert_eq!(report.intrinsic(), None);
@@ -2263,7 +2302,7 @@ fn declarative_modes_are_template_only_and_do_not_claim_root_creation() {
         attr("shadowrootmode", "open")
     );
     assert_eq!(
-        i.shadowrootslotassignment(&template, None)
+        i.shadowrootslotassignment(&template, None::<&surgeist_html::Attribute>)
             .unwrap()
             .intrinsic(),
         Some(&HtmlSlotAssignment::Named)
@@ -2381,7 +2420,11 @@ fn native_global_keywords_construct_real_attributes_and_typed_states() {
 fn metadata_selects_actual_defining_headingreset_clause_and_existing_rows() {
     // The retained non-normative index incorrectly links headingreset to tabindex.
     let report = HtmlValueInterpreter::new(0)
-        .boolean_attribute(HtmlBooleanAttribute::HeadingReset, &element("h1"), None)
+        .boolean_attribute(
+            HtmlBooleanAttribute::HeadingReset,
+            &element("h1"),
+            None::<&surgeist_html::Attribute>,
+        )
         .unwrap();
     assert_eq!(report.attribute(), KnownHtmlAttribute::Headingreset);
     assert_eq!(report.inventory_rows(), &[63]);

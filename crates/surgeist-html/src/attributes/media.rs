@@ -64,26 +64,26 @@ impl HtmlValueInterpreter {
     /// actual link relationships are unproved. Original raw admission comes first.
     pub fn media(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlMediaAttributeReport, HtmlValueAdmissionError> {
         self.media_report(element, raw, None, false)
     }
     /// Adds the actual no-namespace name field for meta placement. None means
     /// established absence; a wrong expanded attribute is DifferentContext.
-    pub fn media_for_meta(
+    pub fn media_for_meta<A: HtmlAttributeInput>(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
-        name: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&A>,
+        name: Option<&A>,
     ) -> Result<HtmlMediaAttributeReport, HtmlValueAdmissionError> {
         self.media_report(element, raw, name, true)
     }
-    fn media_report(
+    fn media_report<A: HtmlAttributeInput>(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
-        name: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&A>,
+        name: Option<&A>,
         name_supplied: bool,
     ) -> Result<HtmlMediaAttributeReport, HtmlValueAdmissionError> {
         use controlled::{HtmlMediaInterpretation, HtmlMediaInterpretationError};
@@ -95,14 +95,14 @@ impl HtmlValueInterpreter {
                 .expect("initial name supply");
         }
         local
-            .admit_media(|raw| self.admit_attribute_raw(raw.map(Attribute::value)))
+            .admit_media(|raw| self.admit_attribute_raw(raw.map(HtmlAttributeInput::value)))
             .map_err(|error| match error {
                 controlled::HtmlMediaActionError::Admission(error) => error,
                 _ => unreachable!("ordinary media phase"),
             })?;
         if name_supplied {
             local
-                .admit_name(|name| self.admit_attribute_raw(name.map(Attribute::value)))
+                .admit_name(|name| self.admit_attribute_raw(name.map(HtmlAttributeInput::value)))
                 .map_err(|error| match error {
                     controlled::HtmlMediaActionError::Admission(error) => error,
                     _ => unreachable!("ordinary name phase"),

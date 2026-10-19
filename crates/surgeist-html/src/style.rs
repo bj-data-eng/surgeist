@@ -80,7 +80,7 @@ pub enum HtmlDocumentBodyRole {
     Other,
 }
 pub fn document_body_role_with<E>(
-    name: &crate::QualifiedName,
+    name: &(impl crate::HtmlNameInput + ?Sized),
     mut admit: impl FnMut(crate::bounded::HtmlElementNameRead) -> Result<(), E>,
 ) -> Result<HtmlDocumentBodyRole, E> {
     use crate::native_initialization::{local_matches, namespace_matches};

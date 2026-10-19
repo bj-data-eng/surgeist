@@ -8,9 +8,7 @@
 //! This is neither parser recovery nor WebIDL prototype construction.
 
 use crate::values::{HTML_NAMESPACE_URI, MATHML_NAMESPACE_URI, SVG_NAMESPACE_URI};
-use crate::{
-    HtmlNativeFormAssociationKind, HtmlTemplateFreshInsertionState, KnownHtmlElement, QualifiedName,
-};
+use crate::{HtmlNativeFormAssociationKind, HtmlTemplateFreshInsertionState, KnownHtmlElement};
 use core::convert::Infallible;
 
 /// Name-derived family and namespace applicability, independent of creation cause.
@@ -378,12 +376,12 @@ const OBSOLETE: &[(&str, HtmlElementClass)] = &[
 ];
 
 pub(crate) fn namespace_matches<E>(
-    name: &QualifiedName,
+    name: &(impl crate::HtmlNameInput + ?Sized),
     expected: &str,
     admit: &mut impl FnMut(HtmlElementNameRead) -> Result<(), E>,
 ) -> Result<Option<bool>, E> {
     admit(HtmlElementNameRead::NamespaceHeader)?;
-    let Some(value) = name.namespace().uri() else {
+    let Some(value) = name.namespace_uri() else {
         return Ok(None);
     };
     if value.len() != expected.len() {
@@ -399,7 +397,7 @@ pub(crate) fn namespace_matches<E>(
 }
 
 pub(crate) fn local_matches<E>(
-    name: &QualifiedName,
+    name: &(impl crate::HtmlNameInput + ?Sized),
     expected: &str,
     admit: &mut impl FnMut(HtmlElementNameRead) -> Result<(), E>,
 ) -> Result<bool, E> {
@@ -429,7 +427,7 @@ pub(crate) fn local_matches<E>(
 /// same family classification; actual custom state uses its separate shared rule.
 /// This function never folds names or treats an unhandled known family as Common.
 pub fn element_classification_with<E>(
-    name: &QualifiedName,
+    name: &(impl crate::HtmlNameInput + ?Sized),
     mut admit: impl FnMut(HtmlElementNameRead) -> Result<(), E>,
 ) -> Result<HtmlElementClass, E> {
     use HtmlElementClass as R;
@@ -470,7 +468,7 @@ pub fn element_classification_with<E>(
 /// Existing/parsed current state cannot be established by this fresh operation.
 /// Classification's exact name reads are admitted once, before each operand read.
 pub fn native_element_initialization_with<E>(
-    name: &QualifiedName,
+    name: &(impl crate::HtmlNameInput + ?Sized),
     admit: impl FnMut(HtmlElementNameRead) -> Result<(), E>,
 ) -> Result<HtmlNativeInitialization, E> {
     element_classification_with(name, admit)

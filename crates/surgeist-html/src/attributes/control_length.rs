@@ -287,7 +287,7 @@ pub enum HtmlControlInitialText {
 impl HtmlControlInitialText {
     fn raw(&self) -> Option<&DocumentString> {
         match self {
-            Self::InputValue(value) => value.as_ref().map(Attribute::value),
+            Self::InputValue(value) => value.as_ref().map(HtmlAttributeInput::value),
             Self::TextareaDescendantText(value) => Some(value),
         }
     }
@@ -368,7 +368,10 @@ impl HtmlControlLengthBoundsReport {
     }
 }
 
-fn metadata(attribute: KnownHtmlAttribute, element: &QualifiedName) -> RuleMetadata {
+fn metadata(
+    attribute: KnownHtmlAttribute,
+    element: &(impl crate::HtmlNameInput + ?Sized),
+) -> RuleMetadata {
     let textarea = KnownHtmlElement::from_name(element) == Some(KnownHtmlElement::Textarea);
     let (rows, source, context): (&'static [u16], _, _) = match attribute {
         KnownHtmlAttribute::Size => (
@@ -450,8 +453,8 @@ impl HtmlValueInterpreter {
     fn control_integer(
         &self,
         selected: KnownHtmlAttribute,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
     ) -> Result<IntegerObservation, HtmlValueAdmissionError> {
         let mut attribute = report(metadata(selected, element), element, raw);
@@ -500,7 +503,7 @@ impl HtmlValueInterpreter {
                 _ => HtmlAttributeContextAuthorState::Conforming,
             }
         };
-        let common = self.nonnegative_integer(raw.map(Attribute::value))?;
+        let common = self.nonnegative_integer(raw.map(HtmlAttributeInput::value))?;
         let author = author(&common, selected == KnownHtmlAttribute::Size);
         Ok(IntegerObservation {
             attribute,
@@ -514,8 +517,8 @@ impl HtmlValueInterpreter {
     /// getter and numeric recovery remain available; content advisory is unresolved.
     pub fn input_size(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlInputSizeReport, HtmlValueAdmissionError> {
         self.input_size_with_state(element, raw, None)
     }
@@ -523,8 +526,8 @@ impl HtmlValueInterpreter {
     /// Adds a supplied actual input state; ignored states retain raw/recovery/getter.
     pub fn input_size_for_input(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         state: HtmlInputType,
     ) -> Result<HtmlInputSizeReport, HtmlValueAdmissionError> {
         self.input_size_with_state(element, raw, Some(state))
@@ -532,11 +535,11 @@ impl HtmlValueInterpreter {
 
     fn input_size_with_state(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
     ) -> Result<HtmlInputSizeReport, HtmlValueAdmissionError> {
-        self.admit_attribute_raw(raw.map(Attribute::value))?;
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let integer = self.control_integer(KnownHtmlAttribute::Size, element, raw, state)?;
         let content =
             (integer.application == HtmlControlAttributeApplication::Applicable).then(|| {
@@ -556,15 +559,15 @@ impl HtmlValueInterpreter {
     /// Every supplied value is admitted before any grammar/name/text scan.
     pub fn control_length_bounds(
         &self,
-        element: &QualifiedName,
-        minimum: Option<&Attribute>,
-        maximum: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        minimum: Option<&impl crate::HtmlAttributeInput>,
+        maximum: Option<&impl crate::HtmlAttributeInput>,
         input_state: Option<HtmlInputType>,
         initial_text: Option<&HtmlControlInitialText>,
     ) -> Result<HtmlControlLengthBoundsReport, HtmlControlLengthError> {
         let raws = [
-            minimum.map(Attribute::value),
-            maximum.map(Attribute::value),
+            minimum.map(HtmlAttributeInput::value),
+            maximum.map(HtmlAttributeInput::value),
             initial_text.and_then(HtmlControlInitialText::raw),
         ];
         for raw in raws {
@@ -594,8 +597,8 @@ impl HtmlValueInterpreter {
     fn length_attribute(
         &self,
         selected: KnownHtmlAttribute,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
     ) -> Result<HtmlControlLengthReport, HtmlValueAdmissionError> {
         let integer = self.control_integer(selected, element, raw, state)?;

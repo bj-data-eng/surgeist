@@ -23,6 +23,25 @@ Parsing belongs to [surgeist-html-parser](../surgeist-html-parser/README.md);
 captured-tree queries belong to [surgeist-html-semantics](../surgeist-html-semantics/README.md).
 Consumers depend directly on the owner they use. No HTML result is a live DOM.
 
+`HtmlNameInput`, `HtmlAttributeInput` and `HtmlAttributesInput` lend exact
+semantic operands without prescribing their storage. HTML construction values
+implement these traits; another owner can supply immutable names and attributes
+without constructing an HTML attribute array. Attribute slices preserve their
+original order. The traits supply no validation, atom identity, tree facts or
+custody, and do not normalize UTF-16, prefixes or raw values.
+
+Name getters remain lazy: controlled classification admits its namespace or
+local-name header before requesting that component, and never requests the
+unused prefix. Attribute interpretation admits each original raw value before
+applicability, including selected values overridden by another attribute.
+Reports still retain their selected individual name/attribute evidence by
+sharing the original immutable text backing after admission. These handle
+retentions are distinct from exporting an owned attribute array; whole-bank
+exports and their overlapping storage remain the consuming owner's explicit
+admission responsibility. Intrinsic token/number/report allocation retains its
+existing contract; borrowed inputs do not make every interpretation allocation
+free.
+
 `element_classification_with` selects family and common/nonce applicability from
 the exact expanded name through one bounded inventory. `HtmlCommonState<R>` holds
 current common values with consumer-owned element references. Its HTML-only state

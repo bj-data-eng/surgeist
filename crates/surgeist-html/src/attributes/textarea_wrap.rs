@@ -2,7 +2,6 @@
 //! This does not perform the textarea wrapping transformation or form submission.
 
 use super::*;
-use crate::OrderedAttributes;
 
 /// Conforming local textarea wrap keywords and their intrinsic content states.
 /// Soft is also the source's missing/invalid fallback. A Hard native attribute
@@ -54,9 +53,9 @@ impl<T> HtmlAttributeReport<T> {
 
 fn with_cols_context(
     mut report: HtmlAttributeReport<HtmlTextareaWrap>,
-    cols: Option<&Attribute>,
+    cols: Option<&impl crate::HtmlAttributeInput>,
 ) -> HtmlAttributeReport<HtmlTextareaWrap> {
-    report.supplied_context = SuppliedContext::TextareaCols(cols.cloned());
+    report.supplied_context = SuppliedContext::TextareaCols(cols.map(capture_attribute));
     report.context_author = if report.applicability != HtmlAttributeApplicability::Applicable {
         HtmlAttributeContextAuthorState::Unapplied
     } else if report.intrinsic == Some(HtmlTextareaWrap::Hard) {
@@ -85,8 +84,8 @@ impl HtmlValueInterpreter {
     /// per-original-value cap, without physical/work/cancellation accounting.
     pub fn textarea_wrap(
         &self,
-        element: &QualifiedName,
-        wrap: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        wrap: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlAttributeReport<HtmlTextareaWrap>, HtmlValueAdmissionError> {
         let mut report = self.enumerated(&TEXTAREA_WRAP, element, wrap)?;
         if report.applicability == HtmlAttributeApplicability::Applicable
@@ -113,14 +112,14 @@ impl HtmlValueInterpreter {
     /// physical-memory ledger, controlled work or cancellation guarantee.
     pub fn textarea_wrap_with_cols(
         &self,
-        element: &QualifiedName,
-        attributes: &OrderedAttributes,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        attributes: &(impl crate::HtmlAttributesInput + ?Sized),
     ) -> Result<HtmlAttributeReport<HtmlTextareaWrap>, HtmlValueAdmissionError> {
         let namespace = Namespace::none();
-        let wrap = attributes.get(&namespace, &DocumentString::from("wrap"));
-        let cols = attributes.get(&namespace, &DocumentString::from("cols"));
-        self.admit_attribute_raw(wrap.map(Attribute::value))?;
-        self.admit_attribute_raw(cols.map(Attribute::value))?;
+        let wrap = find_attribute(attributes, &namespace, &DocumentString::from("wrap"));
+        let cols = find_attribute(attributes, &namespace, &DocumentString::from("cols"));
+        self.admit_attribute_raw(wrap.map(HtmlAttributeInput::value))?;
+        self.admit_attribute_raw(cols.map(HtmlAttributeInput::value))?;
         Ok(with_cols_context(self.textarea_wrap(element, wrap)?, cols))
     }
 }

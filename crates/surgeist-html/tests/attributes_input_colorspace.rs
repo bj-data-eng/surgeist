@@ -63,7 +63,9 @@ fn exact_keywords_and_ascii_case_select_states_without_claiming_color_context() 
 #[test]
 fn absence_and_empty_share_limited_srgb_but_not_author_or_presence_states() {
     let interpreter = HtmlValueInterpreter::new(0);
-    let missing = interpreter.input_colorspace(&input(), None).unwrap();
+    let missing = interpreter
+        .input_colorspace(&input(), None::<&surgeist_html::Attribute>)
+        .unwrap();
     assert_eq!(missing.observation(), HtmlAttributeObservation::Missing);
     assert_eq!(missing.recognition(), HtmlAttributeRecognition::Missing);
     assert_eq!(missing.author(), HtmlAttributeAuthorState::Missing);
@@ -198,7 +200,7 @@ fn color_only_presence_is_independent_of_spelling_and_all_other_input_states() {
     ] {
         let interpreter = HtmlValueInterpreter::new(64);
         let absent = interpreter
-            .input_colorspace_for_input(&input(), None, state)
+            .input_colorspace_for_input(&input(), None::<&surgeist_html::Attribute>, state)
             .unwrap();
         assert_eq!(absent.input_state(), Some(state));
         assert_eq!(absent.author(), HtmlAttributeAuthorState::Missing);
@@ -353,7 +355,9 @@ fn source_metadata_and_prefixed_expanded_names_preserve_independent_context_evid
             assert_eq!(report.context_source_clause(), Some(format!("https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#{anchor}").as_str()));
         }
     }
-    let unrelated = interpreter.input_type(&element, None).unwrap();
+    let unrelated = interpreter
+        .input_type(&element, None::<&surgeist_html::Attribute>)
+        .unwrap();
     assert_eq!(unrelated.context_source_clause(), None);
 }
 

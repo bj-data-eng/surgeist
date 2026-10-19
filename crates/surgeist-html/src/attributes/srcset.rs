@@ -616,53 +616,56 @@ impl Role {
         )
     }
 }
-fn attribute<'a>(attributes: &'a OrderedAttributes, name: &str) -> Option<&'a Attribute> {
-    attributes.get(&Namespace::none(), &DocumentString::from(name))
+fn attribute<'a, A: crate::HtmlAttributesInput + ?Sized>(
+    attributes: &'a A,
+    name: &str,
+) -> Option<&'a A::Attribute> {
+    find_attribute(attributes, &Namespace::none(), &DocumentString::from(name))
 }
 
 impl HtmlValueInterpreter {
     /// Interprets literal img candidates; surrounding author facts stay unchecked.
     pub fn img_srcset(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
         self.srcset(Role::Img, element, raw, None)
     }
     /// Interprets literal source candidates without guessing picture ancestry.
     pub fn source_srcset(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
         self.srcset(Role::Source, element, raw, None)
     }
     /// Interprets literal link candidates without executing preload or selection.
     pub fn link_imagesrcset(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
         self.srcset(Role::Link, element, raw, None)
     }
     /// Context target content and surrounding facts come from one raw attribute set.
     pub fn img_srcset_with_context(
         &self,
-        element: &QualifiedName,
+        element: &(impl crate::HtmlNameInput + ?Sized),
         context: &HtmlSrcsetContext,
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
         self.context_srcset(Role::Img, element, context)
     }
     pub fn source_srcset_with_context(
         &self,
-        element: &QualifiedName,
+        element: &(impl crate::HtmlNameInput + ?Sized),
         context: &HtmlSrcsetContext,
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
         self.context_srcset(Role::Source, element, context)
     }
     pub fn link_imagesrcset_with_context(
         &self,
-        element: &QualifiedName,
+        element: &(impl crate::HtmlNameInput + ?Sized),
         context: &HtmlSrcsetContext,
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
         self.context_srcset(Role::Link, element, context)
@@ -670,7 +673,7 @@ impl HtmlValueInterpreter {
     fn context_srcset(
         &self,
         role: Role,
-        element: &QualifiedName,
+        element: &(impl crate::HtmlNameInput + ?Sized),
         context: &HtmlSrcsetContext,
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
         let name = match role {
@@ -687,11 +690,11 @@ impl HtmlValueInterpreter {
     fn srcset(
         &self,
         role: Role,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         context: Option<&HtmlSrcsetContext>,
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
-        self.admit_attribute_raw(raw.map(Attribute::value))
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))
             .map_err(HtmlSrcsetInterpretationError::RawAdmission)?;
         // Surrounding raw values use the same per-value standalone admission.
         if let Some(context) = context {
@@ -704,7 +707,7 @@ impl HtmlValueInterpreter {
                 ..
             } = context
             {
-                for attribute in attributes.iter() {
+                for attribute in attributes_iter(attributes) {
                     self.admit_attribute_raw(Some(attribute.value()))
                         .map_err(HtmlSrcsetInterpretationError::RawAdmission)?;
                 }
@@ -917,8 +920,8 @@ fn check_context(
 }
 fn allows_auto_sizes(
     interpreter: &HtmlValueInterpreter,
-    name: &QualifiedName,
-    attributes: &OrderedAttributes,
+    name: &(impl crate::HtmlNameInput + ?Sized),
+    attributes: &(impl crate::HtmlAttributesInput + ?Sized),
 ) -> bool {
     // Reuse the existing enum owner; no CSS sizes evaluation is required here.
     let loading = interpreter

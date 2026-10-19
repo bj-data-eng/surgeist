@@ -3,7 +3,7 @@
 //! remain separate. No string here is parsed as a MIME record or a JS/JSON program.
 
 use super::*;
-use crate::{HtmlScriptKind, OrderedAttributes, script_type::HtmlScriptTypeCursor};
+use crate::{HtmlScriptKind, script_type::HtmlScriptTypeCursor};
 
 /// The three HTML-defined authored type keywords. Classic is expressed by
 /// omission; data blocks retain an authored MIME string rather than a keyword.
@@ -146,10 +146,10 @@ impl HtmlValueInterpreter {
     /// controlled session/work/cancellation or aggregate memory guarantee.
     pub fn script_type(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlScriptTypeReport, HtmlValueAdmissionError> {
-        self.admit_attribute_raw(raw.map(Attribute::value))?;
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let applicability = applies(
             RuleMetadata {
                 attribute: KnownHtmlAttribute::Type,
@@ -162,8 +162,8 @@ impl HtmlValueInterpreter {
             raw,
         );
         let mut report = HtmlScriptTypeReport {
-            element: element.clone(),
-            raw: raw.cloned(),
+            element: capture_name(element),
+            raw: raw.map(capture_attribute),
             applicability,
             observation: match raw {
                 None => HtmlAttributeObservation::Missing,
@@ -177,7 +177,8 @@ impl HtmlValueInterpreter {
         if applicability != HtmlAttributeApplicability::Applicable {
             return Ok(report);
         }
-        let kind = HtmlScriptTypeCursor::content(raw.map(Attribute::value)).finish_ordinary();
+        let kind =
+            HtmlScriptTypeCursor::content(raw.map(HtmlAttributeInput::value)).finish_ordinary();
         report.meaning = Some(kind.map_or(
             HtmlScriptTypeMeaning::DataBlock,
             HtmlScriptTypeMeaning::Script,
@@ -203,21 +204,25 @@ impl HtmlValueInterpreter {
     /// execution; the ordinary per-value allocation contract is unchanged.
     pub fn script_type_with_attributes(
         &self,
-        element: &QualifiedName,
-        attributes: &OrderedAttributes,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        attributes: &(impl crate::HtmlAttributesInput + ?Sized),
     ) -> Result<HtmlScriptTypePreparationReport, HtmlValueAdmissionError> {
         let name = KnownHtmlAttribute::Type.qualified_name();
-        let raw = attributes.get(name.namespace(), name.local_name());
-        let language = attributes.get(&Namespace::none(), &DocumentString::from("language"));
-        self.admit_attribute_raw(raw.map(Attribute::value))?;
-        self.admit_attribute_raw(language.map(Attribute::value))?;
+        let raw = find_attribute(attributes, name.namespace(), name.local_name());
+        let language = find_attribute(
+            attributes,
+            &Namespace::none(),
+            &DocumentString::from("language"),
+        );
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
+        self.admit_attribute_raw(language.map(HtmlAttributeInput::value))?;
         let content = self.script_type(element, raw)?;
         let classification = if content.applicability != HtmlAttributeApplicability::Applicable {
             HtmlScriptTypeClassification::Unapplied
         } else {
             HtmlScriptTypeCursor::preparation(
-                raw.map(Attribute::value),
-                language.map(Attribute::value),
+                raw.map(HtmlAttributeInput::value),
+                language.map(HtmlAttributeInput::value),
             )
             .finish_ordinary()
             .map_or(
@@ -227,7 +232,7 @@ impl HtmlValueInterpreter {
         };
         Ok(HtmlScriptTypePreparationReport {
             content,
-            language: language.cloned(),
+            language: language.map(capture_attribute),
             classification,
         })
     }

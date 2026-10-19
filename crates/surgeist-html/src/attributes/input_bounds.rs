@@ -423,8 +423,8 @@ fn author<A, R>(
 impl HtmlValueInterpreter {
     fn input_numeric_attribute(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         role: KnownHtmlAttribute,
         state: HtmlInputType,
     ) -> Result<HtmlInputNumericAttributeReport, HtmlValueAdmissionError> {
@@ -463,7 +463,7 @@ impl HtmlValueInterpreter {
             result.author = HtmlInputNumericAuthorState::Conforming;
             return Ok(result);
         }
-        let input = raw.map(Attribute::value);
+        let input = raw.map(HtmlAttributeInput::value);
         let common = if role == KnownHtmlAttribute::Step || computed_state(state) {
             HtmlInputNumericCommonReport::FloatingPoint(self.floating_point_number(input)?)
         } else {
@@ -499,18 +499,18 @@ impl HtmlValueInterpreter {
     /// Interpret numeric/temporal content limits and step together, using supplied
     /// actual input state. Every supplied UTF-16 value is admitted first. The
     /// standalone cap does not claim parser/session allocation or cancellation bounds.
-    pub fn input_numeric_constraints(
+    pub fn input_numeric_constraints<A: HtmlAttributeInput>(
         &self,
-        element: &QualifiedName,
-        minimum: Option<&Attribute>,
-        maximum: Option<&Attribute>,
-        step: Option<&Attribute>,
-        value: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        minimum: Option<&A>,
+        maximum: Option<&A>,
+        step: Option<&A>,
+        value: Option<&A>,
         state: HtmlInputType,
     ) -> Result<HtmlInputNumericConstraintsReport, HtmlInputNumericConstraintsError> {
         let raws = [minimum, maximum, step, value];
         for raw in raws {
-            self.admit_attribute_raw(raw.map(Attribute::value))?;
+            self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         }
         let input_code_units = raws.into_iter().try_fold(0usize, |sum, raw| {
             sum.checked_add(raw.map_or(0, |raw| raw.value().code_units().len()))

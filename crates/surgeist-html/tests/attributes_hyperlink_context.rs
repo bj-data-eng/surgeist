@@ -15,7 +15,7 @@ fn missing_href_does_not_erase_the_missing_referrerpolicy_intrinsic_default() {
         let report = HtmlValueInterpreter::new(100)
             .referrerpolicy_for_hyperlink(
                 &element(local),
-                None,
+                None::<&surgeist_html::Attribute>,
                 HtmlHyperlinkAttributeContext::WithoutHref,
             )
             .unwrap();

@@ -1,7 +1,9 @@
 //! HTML §13.4 decisions over supplied values. Capture qualification and parser
 //! execution/accounting belong to their adapters, never to this local owner.
 
-use crate::{DocumentString, QualifiedName};
+use crate::DocumentString;
+#[cfg(test)]
+use crate::QualifiedName;
 use std::convert::Infallible;
 
 /// All four pinned parser modes. Fragment admission accepts requested Inert/Fragment.
@@ -132,16 +134,15 @@ fn exact(value: &DocumentString, literal: &str) -> bool {
             .copied()
             .eq(literal.bytes().map(u16::from))
 }
-fn html_namespace(name: &QualifiedName) -> bool {
-    name.namespace()
-        .uri()
+fn html_namespace(name: &(impl crate::HtmlNameInput + ?Sized)) -> bool {
+    name.namespace_uri()
         .is_some_and(|uri| exact(uri, HTML_NAMESPACE))
 }
 
 /// Selects only the tokenizer state from an exact name and already-resolved mode.
 /// No capture facts or execution capability are read or inferred.
 pub fn fragment_tokenizer_state(
-    name: &QualifiedName,
+    name: &(impl crate::HtmlNameInput + ?Sized),
     effective: HtmlParserScriptingMode,
 ) -> HtmlFragmentTokenizerState {
     if !html_namespace(name) {
@@ -155,7 +156,9 @@ pub fn fragment_tokenizer_state(
 
 /// Selects only the fragment's initial insertion mode from its exact context name.
 /// Scripting status and tokenizer state do not influence this operation.
-pub fn fragment_insertion_mode(name: &QualifiedName) -> HtmlFragmentInsertionMode {
+pub fn fragment_insertion_mode(
+    name: &(impl crate::HtmlNameInput + ?Sized),
+) -> HtmlFragmentInsertionMode {
     if !html_namespace(name) {
         return HtmlFragmentInsertionMode::InBody;
     }

@@ -4,7 +4,7 @@
 //! Over the accepted raw domain, attribute identity is namespace/local name;
 //! retained prefix metadata does not change that identity (issue #1175).
 
-use crate::{DocumentString, OrderedAttributes, QualifiedName};
+use crate::{DocumentString, HtmlAttributeInput, HtmlNameInput};
 use std::convert::Infallible;
 
 /// Comparison semantics requested by an HTML integration-point rule.
@@ -104,29 +104,30 @@ fn borrowed_comparison(
 
 /// Classifies an HTML integration point over exact borrowed construction values.
 /// Attribute identity uses namespace/local name and ignores retained prefix metadata.
-pub fn is_html_integration_point(name: &QualifiedName, attributes: &OrderedAttributes) -> bool {
-    let rule = html_integration_point_rule(
-        name.namespace().uri(),
-        name.local_name(),
-        borrowed_comparison,
-    )
-    .unwrap_or_else(|never| match never {});
+pub fn is_html_integration_point(
+    name: &(impl crate::HtmlNameInput + ?Sized),
+    attributes: &(impl crate::HtmlAttributesInput + ?Sized),
+) -> bool {
+    let rule =
+        html_integration_point_rule(name.namespace_uri(), name.local_name(), borrowed_comparison)
+            .unwrap_or_else(|never| match never {});
     match rule {
         HtmlIntegrationPointRule::Never => false,
         HtmlIntegrationPointRule::Always => true,
-        HtmlIntegrationPointRule::EncodingAttribute => attributes
-            .iter()
-            .find_map(|attribute| {
-                let name = attribute.name();
-                html_integration_point_encoding_attribute(
-                    name.namespace().uri(),
-                    name.local_name(),
-                    attribute.value(),
-                    borrowed_comparison,
-                )
-                .unwrap_or_else(|never| match never {})
-            })
-            .unwrap_or(false),
+        HtmlIntegrationPointRule::EncodingAttribute => {
+            crate::semantic_input::attributes_iter(attributes)
+                .find_map(|attribute| {
+                    let name = attribute.name();
+                    html_integration_point_encoding_attribute(
+                        name.namespace_uri(),
+                        name.local_name(),
+                        attribute.value(),
+                        borrowed_comparison,
+                    )
+                    .unwrap_or_else(|never| match never {})
+                })
+                .unwrap_or(false)
+        }
     }
 }
 
@@ -153,7 +154,7 @@ pub fn mathml_text_integration_point<E>(
 
 /// Classifies MathML text integration points from an exact expanded name.
 /// Prefix metadata, scripting and attributes do not influence this local rule.
-pub fn is_mathml_text_integration_point(name: &QualifiedName) -> bool {
+pub fn is_mathml_text_integration_point(name: &(impl crate::HtmlNameInput + ?Sized)) -> bool {
     // Retain the ordinary capture adapter's exact-unit iterator comparisons;
     // parser adapters independently admit their length/header and pair reads.
     let exact = |value: &DocumentString, literal: &str| {
@@ -165,10 +166,9 @@ pub fn is_mathml_text_integration_point(name: &QualifiedName) -> bool {
     };
     mathml_text_integration_point(|test| {
         Ok::<_, Infallible>(match test {
-            HtmlMathmlTextPointTest::Namespace(expected) => name
-                .namespace()
-                .uri()
-                .is_some_and(|uri| exact(uri, expected)),
+            HtmlMathmlTextPointTest::Namespace(expected) => {
+                name.namespace_uri().is_some_and(|uri| exact(uri, expected))
+            }
             HtmlMathmlTextPointTest::Local(choices) => choices
                 .iter()
                 .any(|expected| exact(name.local_name(), expected)),

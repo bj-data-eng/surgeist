@@ -11,17 +11,23 @@ use std::error::Error;
 use std::fmt;
 
 /// Actual unvalidated raw slots, not conformance or captured-context proof.
-#[derive(Clone, Copy, Debug)]
-pub struct HtmlMeterAttributeInput<'a> {
-    pub value: Option<&'a Attribute>,
-    pub minimum: Option<&'a Attribute>,
-    pub maximum: Option<&'a Attribute>,
-    pub low: Option<&'a Attribute>,
-    pub high: Option<&'a Attribute>,
-    pub optimum: Option<&'a Attribute>,
+#[derive(Debug)]
+pub struct HtmlMeterAttributeInput<'a, A: HtmlAttributeInput> {
+    pub value: Option<&'a A>,
+    pub minimum: Option<&'a A>,
+    pub maximum: Option<&'a A>,
+    pub low: Option<&'a A>,
+    pub high: Option<&'a A>,
+    pub optimum: Option<&'a A>,
 }
-impl<'a> HtmlMeterAttributeInput<'a> {
-    fn slots(self) -> [Option<&'a Attribute>; 6] {
+impl<A: HtmlAttributeInput> Copy for HtmlMeterAttributeInput<'_, A> {}
+impl<A: HtmlAttributeInput> Clone for HtmlMeterAttributeInput<'_, A> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<'a, A: HtmlAttributeInput> HtmlMeterAttributeInput<'a, A> {
+    fn slots(self) -> [Option<&'a A>; 6] {
         [
             self.value,
             self.minimum,
@@ -259,12 +265,12 @@ impl HtmlValueInterpreter {
     /// or clamps. Malformed present min/max never become author defaults 0/1.
     pub fn meter_attributes(
         &self,
-        element: &QualifiedName,
-        input: HtmlMeterAttributeInput<'_>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        input: HtmlMeterAttributeInput<'_, impl HtmlAttributeInput>,
     ) -> Result<HtmlMeterAttributeReport, HtmlValueAdmissionError> {
         let raw = input.slots();
         for slot in raw {
-            self.admit_attribute_raw(slot.map(Attribute::value))?;
+            self.admit_attribute_raw(slot.map(HtmlAttributeInput::value))?;
         }
         let (value, v) = self.meter_number(element, raw[0], HtmlMeterNumberRole::Value)?;
         let (minimum, min) = self.meter_number(element, raw[1], HtmlMeterNumberRole::Minimum)?;
@@ -272,7 +278,7 @@ impl HtmlValueInterpreter {
         let (low, l) = self.meter_number(element, raw[3], HtmlMeterNumberRole::Low)?;
         let (high, h) = self.meter_number(element, raw[4], HtmlMeterNumberRole::High)?;
         let (optimum, o) = self.meter_number(element, raw[5], HtmlMeterNumberRole::Optimum)?;
-        let applicable = element.namespace() == &Namespace::html()
+        let applicable = element.namespace_uri() == Namespace::html().uri()
             && KnownHtmlElement::from_name(element) == Some(KnownHtmlElement::Meter);
         let relations = meter_relations(&[v, min, max, l, h, o], applicable);
         Ok(HtmlMeterAttributeReport {
@@ -282,8 +288,8 @@ impl HtmlValueInterpreter {
     }
     fn meter_number(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
         role: HtmlMeterNumberRole,
     ) -> Result<(HtmlMeterNumberReport, ExactFact), HtmlValueAdmissionError> {
         let attribute = report(role.metadata(), element, raw);

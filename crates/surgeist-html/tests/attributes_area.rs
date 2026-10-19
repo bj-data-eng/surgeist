@@ -318,7 +318,7 @@ fn applicability_uses_expanded_names_preserves_exact_raw_and_admits_first() {
     let admission = HtmlValueInterpreter::new(5)
         .area_coordinates(
             &KnownHtmlElement::Div.qualified_name(),
-            None,
+            None::<&surgeist_html::Attribute>,
             Some(&huge_wrong),
         )
         .unwrap_err();

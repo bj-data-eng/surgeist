@@ -454,10 +454,10 @@ impl HtmlValueInterpreter {
     /// No navigation, origin fact, active policy or host enforcement is inferred.
     pub fn iframe_sandbox(
         &self,
-        element: &QualifiedName,
-        raw: Option<&Attribute>,
+        element: &(impl crate::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::HtmlAttributeInput>,
     ) -> Result<HtmlSandboxReport, HtmlValueAdmissionError> {
-        self.admit_attribute_raw(raw.map(Attribute::value))?;
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let mut attribute = report(SANDBOX, element, raw);
         if attribute.applicability() != HtmlAttributeApplicability::Applicable {
             return Ok(HtmlSandboxReport {
@@ -466,7 +466,7 @@ impl HtmlValueInterpreter {
                 author: HtmlSandboxAuthorState::Unapplied,
             });
         }
-        let common = self.space_separated_tokens(raw.map(Attribute::value))?;
+        let common = self.space_separated_tokens(raw.map(HtmlAttributeInput::value))?;
         let tokens = match common.recovery() {
             HtmlValueRecoveryState::Value(tokens) => tokens,
             HtmlValueRecoveryState::Missing => {

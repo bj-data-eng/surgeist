@@ -167,7 +167,10 @@ fn insertion_presence_uses_exact_expanded_name_and_ignores_boolean_value_spellin
         "false",
     );
     assert!(autofocus_presence(&element, Some(&prefixed)));
-    assert!(!autofocus_presence(&element, None));
+    assert!(!autofocus_presence(
+        &element,
+        None::<&surgeist_html::Attribute>
+    ));
     for local in [
         "",
         "Autofocus",
@@ -220,7 +223,10 @@ fn insertion_presence_requires_exact_html_svg_or_mathml_namespace_identity() {
         for prefix in [None, Some(DocumentString::from("actual-prefix"))] {
             let element = QualifiedName::new(namespace.clone(), prefix, "actual-element");
             assert!(autofocus_presence(&element, Some(&actual)));
-            assert!(!autofocus_presence(&element, None));
+            assert!(!autofocus_presence(
+                &element,
+                None::<&surgeist_html::Attribute>
+            ));
         }
     }
     for namespace in [

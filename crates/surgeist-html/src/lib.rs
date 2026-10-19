@@ -56,6 +56,7 @@ mod script_preparation;
 mod script_result;
 mod script_type;
 mod select;
+mod semantic_input;
 mod slot_assign;
 mod svg_script_flags;
 mod template_markers;
@@ -136,6 +137,7 @@ pub use rel::*;
 pub use script_flags::HtmlScriptFlags;
 pub use script_result::{HtmlScriptReadySteps, HtmlScriptResult};
 pub use script_type::HtmlScriptKind;
+pub use semantic_input::{HtmlAttributeInput, HtmlAttributesInput, HtmlNameInput};
 pub use svg_script_flags::SvgScriptFlags;
 pub use template_state::{
     HtmlTemplateContentsOwnerDocument, HtmlTemplateFreshInsertionState,
