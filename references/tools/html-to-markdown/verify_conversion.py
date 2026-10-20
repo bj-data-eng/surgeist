@@ -19,6 +19,30 @@ def visible(n):
         v+=(' ' if block else '')+visible(c)+(' ' if block else '')+(c.tail or '')
     return v
 errors=[]
+# Inline SVG diagrams are checked as assets: each must reproduce its source
+# element tree with exact-case names, and the body then compares the source
+# with the image reference and diagram text the conversion emits instead.
+svg_names=json.loads((work/'svg-assets.json').read_text()) if (work/'svg-assets.json').exists() else []
+if svg_names:
+    from lxml import etree
+    from svg_assets import ASSET_SCHEME, asset_shape, extract, shape
+    raw_source=(work/'source.html').read_bytes()
+    source_svgs=source.xpath('.//svg')
+    if len(source_svgs)!=len(svg_names):errors.append({'svg_asset_count':(len(source_svgs),len(svg_names))})
+    for svg,name in zip(source_svgs,svg_names):
+        target=Path('references','assets',name)
+        if not target.exists():errors.append({'missing_svg_asset':name});continue
+        if target.read_bytes()!=(work/'assets'/name).read_bytes():errors.append({'svg_asset_differs_from_conversion':name})
+        data=target.read_bytes()
+        if shape(svg)!=asset_shape(etree.fromstring(data),svg):errors.append({'svg_asset_geometry_mismatch':name})
+        # Assert passivity and exact-case names directly, independently of the
+        # normalization the shape comparison shares with extraction.
+        if re.search(rb'<script|<foreignObject|\son[a-z]+\s*=|javascript:',data,flags=re.I):errors.append({'svg_asset_not_passive':name})
+        for exact in set(re.findall(rb'\s([a-zA-Z]*[A-Z][a-zA-Z]*)=',data))|set(re.findall(rb'<([a-zA-Z]*[A-Z][a-zA-Z]*)[\s>/]',data)):
+            if exact not in raw_source:errors.append({'svg_asset_name_case_not_in_source':(name,exact.decode())})
+    extract(source,html.fromstring('<html></html>'),r['filename'].removesuffix('.md'))
+    for img in source.xpath('.//img'):
+        if img.get('src','').startswith(ASSET_SCHEME):img.set('src','assets/'+img.get('src').removeprefix(ASSET_SCHEME))
 actual=Counter(result.xpath('//@id'))
 if actual!=Counter(r['ids']): errors.append({'ids_missing':list((Counter(r['ids'])-actual).elements()),'ids_extra':list((actual-Counter(r['ids'])).elements())})
 source_pres=source.xpath('.//pre')
@@ -73,7 +97,7 @@ if [norm(n.text_content()) for n in source_inline]!=[norm(n.text_content()) for 
 source_vars=source.xpath('.//var[not(ancestor::pre)]')
 result_vars=result.xpath('.//var[not(ancestor::pre)]')
 if [norm(n.text_content()) for n in source_vars]!=[norm(n.text_content()) for n in result_vars]:errors.append({'variable_mismatch':True,'counts':(len(source_vars),len(result_vars))})
-source_images=[(urljoin(r['base'],n.get('src','')),n.get('alt','')) for n in source.xpath('.//img')]
+source_images=[(n.get('src') if n.get('src','').startswith('assets/') and svg_names else urljoin(r['base'],n.get('src','')),n.get('alt','')) for n in source.xpath('.//img')]
 result_images=[(n.get('src',''),n.get('alt','')) for n in result.xpath('.//img')]
 if source_images!=result_images:errors.append({'image_source_or_description_mismatch':True})
 for a in whole.xpath('.//a[@href]'):

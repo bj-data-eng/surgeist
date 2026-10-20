@@ -1,8 +1,22 @@
 from pathlib import Path
-import json,sys
+import json,shutil,sys
+
+# Defaults reproduce the CSSOM planning captures. Another capture supplies
+# `candidate-options.json` in its work directory to state its own selection,
+# report section and source stability.
+DEFAULTS={
+    'report_anchor':'cssom-planning-reference-refresh--2026-10-09',
+    'stability_note':'An undated editor URL can change; the retrieval date and exact byte hash identify this captured HTML.',
+    'selection_note':'This full edition is the selected planning reference for the new CSSOM work. The [source-edition mapping](SOURCE-EDITIONS.md#cssom-planning-sources) distinguishes these planning selections from historical editions consumed by completed CSS work.',
+}
 
 for work in [Path(value) for value in sys.argv[1:]]:
     r=json.loads((work/'conversion-record.json').read_text())
+    options=work/'candidate-options.json'
+    o={**DEFAULTS,**(json.loads(options.read_text()) if options.exists() else {})}
+    svgs=json.loads((work/'svg-assets.json').read_text()) if (work/'svg-assets.json').exists() else []
+    for name in svgs: shutil.copyfile(work/'assets'/name,Path('references','assets',name))
+    svg_note=(f'- {len(svgs)} inline SVG diagrams are retained as local passive SVG assets with their source geometry, exact-case names and visible text; railroad diagrams carry the capture\u2019s railroad stylesheet with light-theme values resolved. Each image is followed by its diagram text. Supporting assets are not reference documents.\n' if svgs else '')
     target=Path('references',r['filename'])
     marker='<!-- captured-body-start -->'
     body=(work/'pandoc-body.md').read_text()
@@ -21,7 +35,7 @@ This software or document includes material copied from or derived from [{title}
 
 Original copyright notice: Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply. The capture’s full original notice and links remain below.
 
-License: [{license2023}](../licenses/w3c/software-license-2023.txt). Changes are format conversion, visible semantic labels, and exact self-fragment links as detailed in the [conversion report](CONVERSION-REPORT.md#cssom-planning-reference-refresh--2026-10-09).
+License: [{license2023}](../licenses/w3c/software-license-2023.txt). Changes are format conversion, visible semantic labels, and exact self-fragment links as detailed in the [conversion report](CONVERSION-REPORT.md#{o['report_anchor']}).
 
 # Source provenance
 
@@ -29,7 +43,7 @@ Title: {title}
 
 Source snapshot: {r['base']}
 
-Retrieved: {r['retrieved']}. The captured page states {status}. An undated editor URL can change; the retrieval date and exact byte hash identify this captured HTML.
+Retrieved: {r['retrieved']}. The captured page states {status}. {o['stability_note']}
 
 Captured HTML SHA-256: {r['html_sha256']}
 
@@ -41,8 +55,8 @@ Representation notes:
 - All source body IDs are retained, including those inside preformatted blocks, which are relocated immediately before those blocks. Fragment-only links stay local only when their exact captured target exists; other links remain upstream.
 - All {count} tables have readable Markdown layouts. {table_note} Synthetic Field/Definition or Column N headings are non-normative. Source row headers remain bold; native HTML header/accessibility semantics are not expressible in GFM.
 - Preformatted examples retain literal text. Single-line table examples use semantic inline code. Compiler-generated hyperlinks inside fenced code blocks are omitted while their IDs and visible code text are retained; other source links are preserved. Small semantic code, variable, emphasis, subscript, and superscript HTML remains where Markdown notation would alter text.
-- Conversion uses Pandoc 3.1.11.1 with focused Python/lxml preparation and a semantic Lua filter; the parsed GFM output is checked against the captured HTML. The [conversion report](CONVERSION-REPORT.md#cssom-planning-reference-refresh--2026-10-09) records provenance and check boundaries.
-- This full edition is the selected planning reference for the new CSSOM work. The [source-edition mapping](SOURCE-EDITIONS.md#cssom-planning-sources) distinguishes these planning selections from historical editions consumed by completed CSS work.
+{svg_note}- Conversion uses Pandoc 3.1.11.1 with focused Python/lxml preparation and a semantic Lua filter; the parsed GFM output is checked against the captured HTML. The [conversion report](CONVERSION-REPORT.md#{o['report_anchor']}) records provenance and check boundaries.
+- {o['selection_note']}
 
 ---
 
