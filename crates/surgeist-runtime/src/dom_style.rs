@@ -2253,6 +2253,7 @@ use crate::{
 use surgeist_dom::DomStyleInlineCspObservation;
 #[cfg(test)]
 mod tests {
+    mod preferred_sets;
     pub(super) fn session_limits(style: super::DomStyleRuntimeLimits) -> super::DomSessionLimits {
         super::DomSessionLimits {
             source_events: crate::dom_dialog::DomSourceEventRuntimeLimits {
