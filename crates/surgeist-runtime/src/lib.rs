@@ -236,7 +236,8 @@ pub use dom_style::{
     DomSession, DomSessionCreateError, DomSessionCreateFailure, DomSessionLimits,
     DomShutdownOutcome, DomShutdownReason, DomStyleDisabledObservation, DomStyleEventContext,
     DomStyleNetworkingProgress, DomStyleNetworkingTaskId, DomStyleProcessedSheet, DomStyleRuntime,
-    DomStyleRuntimeError, DomStyleRuntimeLimits, DomStyleUnavailable,
+    DomStyleRuntimeError, DomStyleRuntimeLimits, DomStyleSheetSetCommit,
+    DomStyleSheetSetObservation, DomStyleUnavailable,
 };
 pub use effect::{
     AppEffect, AppEffectPayload, CallServiceEffect, CancelTaskEffect, DiagnosticEffect,

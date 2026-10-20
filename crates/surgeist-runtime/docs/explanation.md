@@ -127,6 +127,55 @@ unbind operation. With a live Host, graceful Session shutdown reports
 `HostedLifecycle`; terminal Session drop releases custody without claiming
 destruction or completion.
 
+### Document stylesheet-set preferences
+
+A genuine bound Document stylesheet owner retains its preferred UTF-16 name and
+last explicitly selected name. They begin empty and null respectively, survive
+an empty list and last-sheet removal, and remain separate for each Document.
+Native Style creation applies CSSOM's add-sheet selection in the same batch as
+sheet creation and collection membership: the first eligible non-alternate named
+sheet establishes preferred, later nonmatching named sheets are disabled, and
+unnamed sheets remain enabled. Initially disabled sheets do not establish a
+preferred name. Shadow lists have no Document preference state; adopting a Style
+uses the destination Document's history without copying the source's history.
+
+Call `style_execution().sheet_sets` with the current controlled DOM view and an
+actual bound Document root. The observation contains exact names, canonical
+basis, preference revision and current CSSOM revision. A missing owner refuses;
+it does not mean an empty list. `enable_sheet_set` changes named-sheet flags
+without changing either name. `select_sheet_set` also records the chosen name,
+including an explicitly empty name. `change_preferred_sheet_set_name` stores its
+exact name even with no sheets, and enables it only when the name changed and
+last-selected is still null. Names compare case-sensitively as lossless UTF-16.
+Empty enable/select disables named sheets and leaves unnamed sheets untouched.
+
+Mutations accept the observation as their exact basis and return the authentic
+`CssomCommit` with a resulting observation. Direct supported CSSOM flag edits
+remain visible and make an old producer basis stale without rewriting preference
+history. Refresh the observation after canonical or producer changes. Standalone
+reads and mutations refuse while a real Source operation, hosted operation or
+staged/unacknowledged Style publication retains custody. Ordinary networking
+event callbacks can use them when that custody is idle. These operations do not
+supply the later Meta/HTTP trigger integration or an ordinary multi-owner atomic
+Meta fence; Source CSSOM commit and fallible acknowledgement keep their original
+retained-publication protocol.
+
+Runtime admits current/staged name backing, old/new overlap, metadata and result
+wrappers under its existing storage and cumulative work limits. Each mutation's
+`max_output` must admit its one commit/observation result before the final
+fallible CSSOM commit; the prepared preference state publishes infallibly after
+that commit. CSSOM retains its separate graph/receipt accounting. Returned
+immutable observations belong to the caller; current-bank accounting does not
+bound caller-held history or total process memory. Root identity includes the
+actual canonical generation and producer owner. Supported shadow-host retirement
+prunes only the retired root. Ordinary and Source `destroy` reject a Document with
+`InvalidDestruction`. Hosted teardown refuses while DOM-registered CSSOM custody
+remains; a Runtime-only empty binding does not itself register that custody.
+Hosted phase retirement preserves the canonical Document identity and its
+preference history. Public root unbind and direct Document generation removal
+are unavailable. Session drop releases whole-session custody without certifying
+Document destruction.
+
 For Dialog Show's initial beforetoggle request, call
 `DomSourceRuntime::service_event` with the original request, actual dispatcher
 and explicit canonical/dispatch limits. The Session's finite

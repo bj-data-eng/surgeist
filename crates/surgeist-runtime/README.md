@@ -11,6 +11,9 @@ The [DOM orchestration guide](docs/explanation.md#dom-orchestration) explains
 `DomSession`, Source operations, event/task custody and hosted lifecycle limits.
 These native operations do not supply complete browser services, positive focus
 movement or rendering readiness.
+The actual Style association owner also retains [Document stylesheet-set
+preferences](docs/explanation.md#document-stylesheet-set-preferences), including
+empty-list history and source-defined enable/select behavior.
 
 ## Start
 
