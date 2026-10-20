@@ -41,6 +41,11 @@ CSS/Color integration.
 Select affected checks under the root process/resource policy; commands below
 run from this crate directory.
 
+Integration tests share [tests/css.rs](tests/css.rs), grouped under
+[tests/css/](tests/css/). Select focused coverage with `--test css` and a
+module/test-name filter, rather than the former per-file target names. Three
+allocator tests retain separate binaries declared in [Cargo.toml](Cargo.toml).
+
 Validation and parsing share the default public surface. Full package tests include corpus
 parser probes. The [corpus guide](tests/corpus/csstree/README.md) owns maintenance
 with the local `surgeist-generator` CLI; do not hand-edit its generated set.
