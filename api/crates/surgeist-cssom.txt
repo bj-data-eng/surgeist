@@ -4423,6 +4423,9 @@ pub fn surgeist_cssom::CssomCommit::publication(&self) -> &surgeist_cssom::Cssom
 pub fn surgeist_cssom::CssomCommit::rule(&self, ticket: &surgeist_cssom::CssomRuleTicket) -> core::result::Result<&surgeist_cssom::CssomRuleId, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomCommit::sheet(&self, ticket: &surgeist_cssom::CssomSheetTicket) -> core::result::Result<&surgeist_cssom::CssomSheetId, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomCommit::take_owner_effects(&mut self) -> alloc::vec::Vec<surgeist_cssom::CssomOwnerEffect>
+pub struct surgeist_cssom::CssomCommitRetirement
+impl core::fmt::Debug for surgeist_cssom::CssomCommitRetirement
+pub fn surgeist_cssom::CssomCommitRetirement::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_cssom::CssomConstructorDocument
 pub surgeist_cssom::CssomConstructorDocument::base_location: alloc::string::String
 pub surgeist_cssom::CssomConstructorDocument::identity: alloc::string::String
@@ -4587,6 +4590,11 @@ impl core::fmt::Debug for surgeist_cssom::CssomOwnerId
 pub fn surgeist_cssom::CssomOwnerId::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::hash::Hash for surgeist_cssom::CssomOwnerId
 pub fn surgeist_cssom::CssomOwnerId::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_cssom::CssomPreparedCommit<'store>
+impl surgeist_cssom::CssomPreparedCommit<'_>
+pub fn surgeist_cssom::CssomPreparedCommit<'_>::publish(self) -> (surgeist_cssom::CssomCommit, surgeist_cssom::CssomCommitRetirement)
+impl core::fmt::Debug for surgeist_cssom::CssomPreparedCommit<'_>
+pub fn surgeist_cssom::CssomPreparedCommit<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_cssom::CssomPreparedDeclaration
 impl surgeist_cssom::CssomPreparedDeclaration
 pub fn surgeist_cssom::CssomPreparedDeclaration::candidates(&self) -> &[surgeist_cssom::CssomDeclarationCandidate]
@@ -4819,6 +4827,8 @@ impl surgeist_cssom::CssomStore
 pub fn surgeist_cssom::CssomStore::css_supports_rule(&self, id: &surgeist_cssom::CssomRuleId) -> core::result::Result<surgeist_cssom::CssSupportsRule, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomStore
 pub fn surgeist_cssom::CssomStore::media_list(&self, id: &surgeist_cssom::CssomMediaListId) -> core::result::Result<surgeist_cssom::MediaList, surgeist_cssom::CssomError>
+impl surgeist_cssom::CssomStore
+pub fn surgeist_cssom::CssomStore::prepare_commit(&mut self, batch: surgeist_cssom::CssomBatch) -> core::result::Result<surgeist_cssom::CssomPreparedCommit<'_>, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomStore
 pub fn surgeist_cssom::CssomStore::style_sheet(&self, id: &surgeist_cssom::CssomSheetId) -> core::result::Result<surgeist_cssom::StyleSheet, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomStore

@@ -11,6 +11,9 @@ use std::{
 use surgeist_css::CssRule;
 use surgeist_css::*;
 
+mod prepared_commit;
+pub use prepared_commit::{CssomCommitRetirement, CssomPreparedCommit};
+
 /// Exclusive live writer. Snapshots/batches own captures and never borrow this store.
 pub struct CssomStore {
     pub(crate) state: Arc<State>,
@@ -100,99 +103,9 @@ impl CssomStore {
     }
     /// An operation error poisons the whole batch. Stale commits publish nothing.
     pub fn commit(&mut self, batch: CssomBatch) -> Result<CssomCommit, CssomError> {
-        self.check_guard(&CssomEditGuard {
-            revision: batch.base.revision.clone(),
-            context: batch.base.context.clone(),
-        })?;
-        if batch.pending_preparations.load(Ordering::Relaxed) != 0 {
-            return Err(CssomError::UnresolvedDeclarationPreparation);
-        }
-        if batch.poisoned {
-            return Err(CssomError::BatchAborted);
-        }
-        let reserved = self.replacement_reservations(batch.terminal_replacement.as_ref())?;
-        batch
-            .staged
-            .check_limits(&self.replacement_limits(reserved)?)?;
-        let changed = batch.changed();
-        if !changed {
-            let (effects, next_effect) =
-                self.reserve_owner_effects(&batch, &self.state.revision)?;
-            self.next_effect = next_effect;
-            return Ok(CssomCommit {
-                effects,
-                token: batch.token,
-                created: batch.created,
-                publication: CssomPublication::Unchanged {
-                    revision: self.state.revision.clone(),
-                },
-            });
-        }
-        let revision = self
-            .state
-            .revision
-            .value
-            .checked_add(1)
-            .filter(|v| {
-                u64::try_from(reserved.0)
-                    .ok()
-                    .and_then(|count| v.checked_add(count))
-                    .is_some_and(|end| end <= self.limits.max_revision)
-            })
-            .ok_or(CssomError::RevisionExhausted)?;
-        let effect_revision = CssomRevision {
-            owner: self.state.owner.clone(),
-            value: revision,
-        };
-        let (effects, next_effect) = self.reserve_owner_effects(&batch, &effect_revision)?;
-        let before = self.snapshot();
-        let mut next = batch.staged;
-        next.revision = CssomRevision {
-            owner: next.owner.clone(),
-            value: revision,
-        };
-        let next = Arc::new(next);
-        let after = CssomSnapshot {
-            state: next.clone(),
-        };
-        let summary = CssomChangeSummary {
-            owner: self.state.owner.clone(),
-            from: self.state.revision.clone(),
-            to: next.revision.clone(),
-            categories: batch.categories,
-            affected: batch.affected,
-            before_inputs: before.inputs(),
-            after_inputs: after.inputs(),
-            full_recompute: batch.full_recompute,
-        };
-        // Allocate history before the only live publication. Allocator failure is typed.
-        if self.limits.summary_history > 0 {
-            let slots = reserved.0.checked_add(1).ok_or(CssomError::Limit {
-                resource: "summary capacity",
-                maximum: self.limits.summary_history,
-            })?;
-            self.history
-                .try_reserve(slots)
-                .map_err(|_| CssomError::Limit {
-                    resource: "summary capacity",
-                    maximum: self.limits.summary_history,
-                })?;
-            self.history.push_back(summary.clone());
-            while self.history.len() > self.limits.summary_history {
-                self.history.pop_front();
-            }
-        }
-        self.state = next;
-        if let Some(token) = batch.terminal_replacement {
-            self.pending_replacements.remove(token.sheet());
-        }
-        self.next_effect = next_effect;
-        Ok(CssomCommit {
-            effects,
-            token: batch.token,
-            created: batch.created,
-            publication: CssomPublication::Changed(Box::new(summary)),
-        })
+        let (commit, retirement) = self.prepare_commit(batch)?.publish();
+        drop(retirement);
+        Ok(commit)
     }
     /// Coalesces complete retained history only. Gaps and input drift demand recompute.
     pub fn changes_since(&self, before: &CssomSnapshot) -> CssomChanges {

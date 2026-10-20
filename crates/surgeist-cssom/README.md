@@ -92,6 +92,29 @@ creation tickets to owner-qualified live IDs. One successful publication advance
 one revision. Failed or stale batches publish nothing. Source no-ops and batches
 that restore the original observable state preserve the revision. IDs are never
 reused within an owner. Dropping a staged ticket/batch cannot publish an identity.
+
+`CssomStore::prepare_commit` consumes the attempted batch and holds an exclusive
+Store loan while all validation, effect serialization/reservation, successor
+state, boxed output, history copy and capacity are prepared privately. It exposes
+no tentative effects, live IDs or snapshot. Dropping it abandons staging without
+changing canonical state, history rows, effect identity issuance or pending
+replacement membership. Each private effect releases its own count/byte quota;
+an older external effect may independently finish while preparation exists.
+History capacity acquired during preparation can remain enlarged.
+
+Consuming `publish` returns the genuine `CssomCommit` and an opaque
+`CssomCommitRetirement`. The publication tail performs only prechecked moves,
+swaps, prelocated terminal removal, reserved history insertion/eviction and effect
+identity assignment. The retirement owns replaced canonical state, an evicted
+history summary and removed pending-replacement backing, so their potentially
+large destruction stays outside a caller's composed publication fence. It has
+no execution or acknowledgement responsibility. Existing `commit` uses this same
+producer path and disposes retirement after its own publication. Canonical logical
+quotas do not include separately retained old snapshots, outcomes or retirement
+backing, and this capability makes no new total-memory or system-OOM guarantee.
+Multi-owner DOM/Runtime composition and actual Document association remain the
+consuming subsystem's separate responsibility.
+
 Constructed initial ingestion and recovered replacement filter import roots;
 external ingestion retains them. Original checked occurrences stay separately owned.
 The standard `CssStyleSheet::new` starts empty with new rule-list/media identities
