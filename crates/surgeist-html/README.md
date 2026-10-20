@@ -246,6 +246,54 @@ Document history, URL facts, CSS/CSSOM, policy enforcement and affected UI.
 `default_document_referrer_policy` supplies the selected initial Document policy,
 which is separate from a fetching attribute's empty fallback.
 
+HTML also provides the [neutral Meta CSP protocol](src/csp_policy.rs) for an
+explicitly supplied external processor. A consumer session issues qualified
+Document associations and exact UTF-16 insertion requests. The external backend
+declares supported semantic profiles under its processor authority; the caller
+validates the selected service profile before invocation. Actual CSP parsing,
+Meta/Enforce directive filtering and complete resulting policy semantics remain
+with that backend. HTML supplies neither an engine nor an enforcement service.
+
+An immutable policy state retains the actual native `Arc<A>`. Its narrow native
+borrow validates processor and semantic profile before testing the artifact type;
+it recovers the retained value without a resolver, typed mirror or general
+downcast API. Genuine initial-empty is distinct from unavailable history/service.
+Installation and inheritance preserve the artifact and its processing provenance
+while issuing new destination Document authority. Later requests use the actual
+previous native state, including after the original report is gone.
+
+Every controlled operation describes work, live overlap and closing obligations
+before retention or mutation. Cached artifact layouts include complete native
+storage and an independent finite disposal-work/atomic bound. The real backend
+guarantees allocation-free, nonpanicking, nonblocking transitive last-owner
+destruction with no policy work or enforcement. It prepays partial construction
+before creating custody. Consuming controllers retain their original receipts,
+drop backing before refunding acquired storage, and never refund spent work.
+Each new strong occurrence prepays its possible last-owner bound. A moved input
+keeps its existing receipt: `HtmlCspLayout::transferred` identifies that custody;
+`retained` describes complete returned custody and `peak` includes the action's
+overlap. Complete-graph reservations can conservatively count shared graphs;
+they do not claim exact physical deduplication or include opaque Arc/allocator
+bookkeeping. Ordinary Clone values still require admission when retained by a
+controlled consumer; Clone establishes no currentness or publication authority.
+
+Publication preparation validates the supplied association and reserves checked
+generation headroom, clones and outputs. Its borrowing guard either aborts with
+the actual owned inputs or publishes by moves/swaps, returning the actual receipt,
+retired whole association and input custody. No allocation, fallible callback or
+last native destructor follows the state change. Every accepted occurrence,
+including genuine no-change, advances association generation separately from
+immutable policy identity. Latest qualification retains prior identity/revision,
+not a predecessor-artifact chain.
+
+The real parser/DOM adapters must bind neutral subjects to their actual
+construction/canonical Documents, establish source guards and currentness, and
+coordinate publication with their existing owner. A private association Clone may
+be a transactional branch or snapshot; this protocol has no current-association
+registry. Native/parser integration and exact-policy Base/Style qualification are
+not yet connected. Existing reached CSP gaps/refusals therefore remain. Controlled
+adapter tests establish this protocol, not CSP engine conformance.
+
 `HtmlHyperlinkSetUrlCursor` orders A/Area cache clearing, href presence,
 encoding-parse and successful storage. Shared attribute and tree decisions
 preserve the namespace/equality and connection guards. Consumers retain actual
