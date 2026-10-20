@@ -5,6 +5,7 @@ mod csstree_at_rule_reconciliation;
 mod csstree_baseline;
 mod csstree_basic_selector_admission;
 mod csstree_basic_selector_projection;
+mod csstree_canonical;
 mod csstree_declaration_list_reconciliation;
 mod csstree_declaration_values;
 mod csstree_expected_classes;

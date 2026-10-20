@@ -1,3 +1,12 @@
+//! Contract checks for the CSS-owned CSSTree expected-class registry.
+//!
+//! Expected classes are independent expectations, not parser captures. A change
+//! to a case's class kind or to an expected diagnostic (code, recovery action or
+//! payload relation) must cite its specification basis in the same change, in
+//! the owning reconciliation record, test or corpus README. Parser output, the
+//! oracle and the I01 observables fixture are characterization and are never
+//! such a basis.
+
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;

@@ -51,6 +51,60 @@ records; it is not an additional set of cases. The
 These corpus results do not establish complete grammar coverage of the selected
 standards profile.
 
+The oracle is characterization, not a correctness oracle. It is captured from
+the current public parser, so it detects behavior changes but cannot show that
+the captured behavior is right; a re-captured oracle is never evidence for a
+behavior change. The I01 observables fixture
+(`tests/fixtures/i01-c01-observables.tsv`) is characterization on the same
+terms. Independent evidence comes from the CSS-owned expected classes and
+reconciliation records, and from the
+[canonical comparison](../../css/corpora/csstree/csstree_canonical.rs). That comparison serializes
+Surgeist's public parse result for each upstream-parsed case and compares it with
+CSSTree's own generator expectation: the case's `canonical_css`, or its input
+when that field is absent, as CSSTree's `lib/__tests/generate.js` requires at
+the pinned revision. Both sides are tokenized by the crate's CSS Syntax 3
+tokenizer dependency (cssparser, the Servo and Firefox tokenizer), so token
+boundaries, escapes, bad strings and urls, functions and input preprocessing
+follow the specification. One documented normalization then removes comments,
+quote style, optional whitespace and optional final semicolons, and the token
+sequences are compared. A removed comment still separates the tokens around it,
+identifiers and strings compare by decoded value, and whitespace stays
+significant before a namespace `|`, between `<` or `>` and `=`, and on only one
+side of a `+`, so combinators, declarations, values and rule structure remain
+distinct.
+
+Selector fixtures that the registry observes only for panic freedom, such as the
+combinator cases, are still projected through the public selector parser; a
+rejection there is compared as empty output and needs its own cited exception.
+
+Of the 721 upstream-parsed cases, 468 are compared: 298 match and 170 are
+listed in [`canonical_exceptions.rs`](../../css/support/csstree/canonical_exceptions.rs)
+as deliberate differences with a cited reason, or as known defects. Each
+exception also pins its expected Surgeist form in the normalized rendering, and
+the actual serialization must equal that form token by token, so a different
+wrong serialization of an excepted case fails. Each pinned form was checked
+against its reason, not only captured from the parser. The other
+253 have no public projection (92 panic-freedom-only value and prelude cases)
+or retain no syntax after a whole-input rejection (161 cases). A case is
+excluded as a whole-input rejection only when its expected class records one:
+empty retained syntax with a `RejectInput` diagnostic, as a strict rejection
+(142 cases) or a fully observed unsupported disposition (19 outside-profile,
+vendor or upstream-option cases). Retaining nothing under any other class
+fails. A listed case that starts matching fails the comparison, matched exactly
+by case ID.
+
+Some matches show only that retained tokens replay faithfully, because Surgeist
+keeps those values as tokens rather than typed syntax: custom properties,
+`var()`, general-enclosed conditions and `@supports` or `@container` condition
+text. They are structural evidence for the surrounding rule, not for a typed
+value grammar.
+
+A change to an expected class kind or expected diagnostic (code, recovery
+action or payload relation) in `tests/csstree/expected-classes.json` must cite
+its specification basis in the same change, in the owning reconciliation record,
+test or this guide. Parser output, the oracle and the observables fixture are not
+such a basis.
+
 The CSS-owned adapter registry sends ordinary `selector`, `selectorList`, and
 `mediaQuery` fixtures directly to their matching raw fragment parsers. Inputs
 and diagnostic coordinates remain unchanged. Selector probes provide only the
@@ -160,7 +214,10 @@ unknown dimension unit remains ordinary feature syntax with unknown semantics;
 it does not require a vendor-specific parser mode. These expectations exercise
 the real adapter and preserve source identities without refreshing the oracle.
 
-The adapterless Combinator fixtures retain their explicit panic-freedom policy.
+The adapterless Combinator fixtures retain their explicit panic-freedom policy
+in the registry and the oracle. The canonical comparison still projects them
+through the public selector parser, which parses the same single complex
+selector as CSSTree's `selector` context.
 The mixed `atrulePrelude` fixture resolves its adapter from validated options:
 `atrule: media` selects the raw media-query-list parser, while the unnamed generic
 prelude retains only a custom-property containment panic-freedom probe. Its text
