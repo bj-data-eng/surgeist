@@ -366,7 +366,7 @@ fn production_session_parked_source_reentry_scale() {
         }
         listeners
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 subject,
                 DomEventType::BeforeToggle,
                 DomEventCallback::new(move |dom, _, context: &mut Callback, _| {

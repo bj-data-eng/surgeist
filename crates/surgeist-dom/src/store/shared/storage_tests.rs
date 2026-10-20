@@ -117,12 +117,14 @@ fn supplied_zero_capacity_target_keeps_its_identity_and_owner() {
 
 #[test]
 fn zero_capacity_canonical_sequence_retains_no_backing_occurrence() {
-    let empty = SharedVec::<u32>::default();
     let ledger = custody::Ledger::default();
     let sequence =
-        transaction::Sequence::canonical(&empty, std::convert::identity, &ledger, |_| Ok(()))
+        transaction::Sequence::<u32, u32>::empty(std::convert::identity, &ledger, |_| Ok(()))
             .unwrap();
     assert!(sequence.view().is_empty());
+    assert_eq!(sequence.capacity(), 0);
+    assert_eq!(sequence.staged_values(), Some(&[][..]));
+    assert!(sequence.canonical_backing().is_none());
     assert_eq!(sequence.receipt(), custody::Usage::ZERO);
     assert_eq!(ledger.total(), custody::Usage::ZERO);
 }
@@ -153,10 +155,9 @@ fn zero_sized_values_keep_vec_capacity_without_requiring_element_clone() {
 
 #[test]
 fn absent_first_write_refuses_one_short_and_rollback_restores_absence() {
-    let original = SharedVec::<u32>::default();
     let ledger = custody::Ledger::default();
     let mut sequence =
-        transaction::Sequence::canonical(&original, std::convert::identity, &ledger, |_| Ok(()))
+        transaction::Sequence::<u32, u32>::empty(std::convert::identity, &ledger, |_| Ok(()))
             .unwrap();
     let exact = size_of::<u32>();
     assert!(matches!(
@@ -174,12 +175,10 @@ fn absent_first_write_refuses_one_short_and_rollback_restores_absence() {
         })
     ));
     assert_eq!(ledger.total(), custody::Usage::ZERO);
-    assert!(
-        sequence
-            .canonical_backing()
-            .unwrap()
-            .same_storage(&original)
-    );
+    assert!(sequence.view().is_empty());
+    assert_eq!(sequence.capacity(), 0);
+    assert_eq!(sequence.receipt(), custody::Usage::ZERO);
+    assert!(sequence.canonical_backing().is_none());
     assert!(matches!(
         sequence.insert(
             0,
@@ -207,13 +206,11 @@ fn absent_first_write_refuses_one_short_and_rollback_restores_absence() {
     assert_eq!(ledger.total(), custody::Usage::new(exact, 0));
     sequence.restore(inverse);
     assert_eq!(ledger.total(), custody::Usage::ZERO);
-    assert!(!sequence.canonical_backing().unwrap().has_backing());
-    assert!(
-        sequence
-            .canonical_backing()
-            .unwrap()
-            .same_storage(&original)
-    );
+    assert!(sequence.view().is_empty());
+    assert_eq!(sequence.capacity(), 0);
+    assert_eq!(sequence.staged_values(), Some(&[][..]));
+    assert_eq!(sequence.receipt(), custody::Usage::ZERO);
+    assert!(sequence.canonical_backing().is_none());
 }
 
 #[test]
@@ -223,13 +220,48 @@ fn reserved_empty_first_write_admits_overlap_and_removal_keeps_selected_capacity
     let capacity = raw.capacity();
     let original = SharedVec::from(raw);
     let ledger = custody::Ledger::default();
-    let mut sequence =
-        transaction::Sequence::canonical(&original, std::convert::identity, &ledger, |_| Ok(()))
-            .unwrap();
+    let registry = bank::CustodyRegistry::new(&ledger, |_| Ok(())).unwrap();
+    let payload_usage = custody::Usage::new(
+        size_of::<store::payload::Payload<store::canonical::ContainerChildren<u32>>>()
+            + size_of::<Vec<u32>>()
+            + capacity * size_of::<u32>(),
+        0,
+    );
+    let reserved = store::payload::Reserved::new().unwrap();
+    let debit = ledger.retain(payload_usage, |_| Ok(())).unwrap();
+    let group = reserved
+        .materialize(
+            custody::Held::new(
+                store::canonical::ContainerChildren {
+                    values: original.clone(),
+                },
+                debit,
+            ),
+            payload_usage,
+            |_| Ok(()),
+        )
+        .unwrap()
+        .seal(&registry, |_| Ok(()))
+        .unwrap();
+    let mut sequence = transaction::Sequence::captured(
+        &group.value.value.values,
+        group.custody.clone(),
+        std::convert::identity,
+    );
     let before = ledger.total();
+    let raw_group = custody::Usage::new(
+        std::mem::size_of_val(&*group.value)
+            + size_of::<Vec<u32>>()
+            + group.value.value.values.capacity() * size_of::<u32>(),
+        0,
+    );
     assert_eq!(
         before,
-        custody::Usage::new(size_of::<Vec<u32>>() + capacity * size_of::<u32>(), 0)
+        raw_group
+            .checked_add(group.custody.inspect_control_graph().usage())
+            .unwrap()
+            .checked_add(registry.inspect_storage())
+            .unwrap()
     );
     let requested = 2 * size_of::<u32>();
     let exact = before.bytes() + requested;
@@ -340,19 +372,26 @@ fn canonical_empty_node_lists_allocate_no_shared_targets_and_snapshots_only_alia
     let text = batch.create_text(&document, "text");
     let comment = batch.create_comment(&document, "comment");
     let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
-    let ids = [&element, &text, &comment].map(|ticket| commit.created(ticket).unwrap().unwrap());
+    let ids = [&document, &element, &text, &comment]
+        .map(|ticket| commit.created(ticket).unwrap().unwrap());
     let before_snapshots = observation.counts();
     let snapshot = dom.snapshot();
     let snapshot_clone = snapshot.clone();
     assert_eq!(observation.counts(), before_snapshots);
     for id in ids {
         let node = snapshot_clone.state.slots[id.slot].node.as_ref().unwrap();
-        for values in [&node.children, &node.manual_nodes, &node.assigned_nodes] {
-            assert!(values.is_empty());
-            assert_eq!(values.capacity(), 0);
+        assert!(node.children().is_empty());
+        assert!(node.children_backing().is_none());
+        assert!(node.manual_nodes().is_empty());
+        assert!(node.assigned_nodes().is_empty());
+        assert!(matches!(
+            node.associations(),
+            None | Some(store::canonical::ElementAssociations::None)
+        ));
+        assert!(node.fullscreen_events().is_empty());
+        if let store::Node::Document(document) = node {
+            assert!(document.value.fullscreen_events.is_none());
         }
-        assert!(node.fullscreen_events.is_empty());
-        assert_eq!(node.fullscreen_events.capacity(), 0);
     }
     let graph = dom
         .state
@@ -441,14 +480,20 @@ fn ordinary_source_and_rollback_preserve_empty_snapshots_and_noop_roots() {
         draft
             .node(Key::Existing(root))
             .unwrap()
-            .children
+            .children()
             .iter()
             .collect::<Vec<_>>(),
         [Key::Existing(child)]
     );
     let spent = draft.source_work.load(Ordering::Relaxed);
     mark.restore(&mut draft);
-    assert!(draft.node(Key::Existing(root)).unwrap().children.is_empty());
+    assert!(
+        draft
+            .node(Key::Existing(root))
+            .unwrap()
+            .children()
+            .is_empty()
+    );
     assert_eq!(draft.source_work.load(Ordering::Relaxed), spent);
     let prepared = draft.finish(&dom, &cancel).unwrap();
     let commit = dom.publish(prepared, &cancel).unwrap();

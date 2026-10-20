@@ -82,49 +82,38 @@ impl<'a> DomImg<'a> {
         self.node.id()
     }
     pub fn state(self) -> &'a HtmlImgFreshState {
-        &self.node.node.image.as_ref().expect("checked Img").native
+        &self.node.node.image().expect("checked Img").native
     }
     pub fn dimension_attribute_source(self) -> NodeId {
         self.node
             .node
-            .image
-            .as_ref()
+            .image()
             .expect("checked Img")
             .dimension_source
     }
     pub fn form_owner(self) -> Result<Option<NodeId>, crate::DomError> {
         self.node.snapshot.require_complete_source()?;
-        Ok(self.node.node.control_owner)
+        Ok(self.node.node.control_owner())
     }
     pub fn parser_inserted(self) -> bool {
-        self.node
-            .node
-            .image
-            .as_ref()
-            .expect("checked Img")
-            .parser_inserted
+        self.node.node.image().expect("checked Img").parser_inserted
     }
     pub fn suspended_update(self) -> Result<Option<DomImageUpdate>, crate::DomError> {
         self.node.snapshot.require_complete_source()?;
-        let waiting = self
-            .node
-            .node
-            .image
-            .as_ref()
-            .and_then(|state| state.waiting);
+        let waiting = self.node.node.image().and_then(|state| state.waiting);
         Ok(waiting.map(|waiting| DomImageUpdate {
             id: DomImageUpdateId {
                 target: self.id(),
                 invocation: waiting.invocation,
             },
-            document: self.node.node.document,
+            document: self.node.node.document(),
             flags: waiting.flags,
         }))
     }
 }
 impl<'a> DomNode<'a> {
     pub fn as_img(self) -> Option<DomImg<'a>> {
-        self.node.image.as_ref()?;
+        self.node.image()?;
         Some(DomImg { node: self })
     }
 }

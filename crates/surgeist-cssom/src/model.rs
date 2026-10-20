@@ -146,6 +146,40 @@ pub struct CssomContext {
 }
 
 impl CssomContext {
+    pub(crate) fn validate(&self) -> Result<(), CssomError> {
+        if self
+            .inputs
+            .iter()
+            .filter(|input| matches!(input.data, CssomInputData::ParserMode(_)))
+            .count()
+            > 1
+        {
+            return Err(CssomError::InvalidInput("ambiguous parser mode input"));
+        }
+        if self
+            .inputs
+            .iter()
+            .filter(|input| matches!(input.data, CssomInputData::Support(_)))
+            .count()
+            > 1
+        {
+            return Err(CssomError::InvalidInput("ambiguous declaration support"));
+        }
+        for (index, input) in self.inputs.iter().enumerate() {
+            if input.version.role != input.data.role() {
+                return Err(CssomError::InvalidInput("supplied input role mismatch"));
+            }
+            if self.inputs[..index].iter().any(|previous| {
+                previous.version.role == input.version.role
+                    && previous.version.identity == input.version.identity
+            }) {
+                return Err(CssomError::InvalidInput(
+                    "duplicate supplied input identity",
+                ));
+            }
+        }
+        Ok(())
+    }
     /// Parser facts apply to subsequent text ingestion; existing checked payloads retain theirs.
     pub(crate) fn parser_context(&self) -> CssParserContext {
         self.inputs
@@ -492,16 +526,78 @@ pub enum CssomBlockData {
     FontFace(CssFontFaceDescriptors),
 }
 /// Genuine raw contents of the last replacement request, independent of edited selected values.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct CssomDeclarationInput {
-    pub source: String,
-    pub parser_context: CssParserContext,
-    pub diagnostics: Vec<CssRecoveryDiagnostic>,
+    source: DeclarationInputSource,
+    diagnostics: Vec<CssRecoveryDiagnostic>,
+}
+#[derive(Clone, Debug)]
+enum DeclarationInputSource {
+    Utf8(String, CssParserContext),
+    Parsed(CssParseSource),
+}
+impl CssomDeclarationInput {
+    pub(crate) fn utf8(
+        source: &str,
+        parser_context: CssParserContext,
+        diagnostics: Vec<CssRecoveryDiagnostic>,
+    ) -> Self {
+        Self {
+            source: DeclarationInputSource::Utf8(source.to_owned(), parser_context),
+            diagnostics,
+        }
+    }
+    pub(crate) fn parsed(source: CssParseSource, diagnostics: Vec<CssRecoveryDiagnostic>) -> Self {
+        Self {
+            source: DeclarationInputSource::Parsed(source),
+            diagnostics,
+        }
+    }
+    /// The actual parser text: normalized CSS for a preprocessed notification,
+    /// or original UTF8 for an ordinary setter replacement.
+    pub fn source(&self) -> &str {
+        match &self.source {
+            DeclarationInputSource::Utf8(text, _) => text,
+            DeclarationInputSource::Parsed(source) => source.source().as_str(),
+        }
+    }
+    pub fn parser_context(&self) -> CssParserContext {
+        match &self.source {
+            DeclarationInputSource::Utf8(_, context) => *context,
+            DeclarationInputSource::Parsed(source) => source.context(),
+        }
+    }
+    /// Mandatory complete source for the preprocessed notification path,
+    /// including empty or entirely discarded input. Ordinary setters stay UTF8.
+    pub fn parse_source(&self) -> Option<&CssParseSource> {
+        match &self.source {
+            DeclarationInputSource::Utf8(_, _) => None,
+            DeclarationInputSource::Parsed(source) => Some(source),
+        }
+    }
+    pub fn diagnostics(&self) -> &[CssRecoveryDiagnostic] {
+        &self.diagnostics
+    }
+}
+impl PartialEq for CssomDeclarationInput {
+    fn eq(&self, other: &Self) -> bool {
+        self.diagnostics == other.diagnostics
+            && match (&self.source, &other.source) {
+                (DeclarationInputSource::Utf8(a, ac), DeclarationInputSource::Utf8(b, bc)) => {
+                    a == b && ac == bc
+                }
+                (DeclarationInputSource::Parsed(a), DeclarationInputSource::Parsed(b)) => {
+                    a.context() == b.context()
+                        && a.source().original_utf16() == b.source().original_utf16()
+                }
+                _ => false,
+            }
+    }
 }
 #[derive(Clone, Debug)]
 pub struct CssomBlock {
     pub(crate) parent: Option<CssomRuleId>,
-    pub(crate) owner: Option<CssomInputVersion>,
+    pub(crate) binding: crate::inline_context::BlockBinding,
     pub(crate) flags: CssomBlockFlags,
     pub(crate) data: Arc<CssomBlockData>,
     pub(crate) admission_inputs: Arc<Vec<CssomInputVersion>>,
@@ -538,7 +634,17 @@ impl CssomBlock {
         self.parent.as_ref()
     }
     pub fn owner(&self) -> Option<&CssomInputVersion> {
-        self.owner.as_ref()
+        match &self.binding {
+            crate::inline_context::BlockBinding::Store(owner) => owner.as_ref(),
+            crate::inline_context::BlockBinding::Inline(context) => Some(context.owner()),
+        }
+    }
+    /// The current per-block packet, absent for store-context declarations.
+    pub fn inline_context(&self) -> Option<&CssomInlineDeclarationContext> {
+        match &self.binding {
+            crate::inline_context::BlockBinding::Inline(context) => Some(context),
+            crate::inline_context::BlockBinding::Store(_) => None,
+        }
     }
     pub const fn flags(&self) -> CssomBlockFlags {
         self.flags
@@ -624,6 +730,21 @@ impl State {
     }
     pub(crate) fn block(&self, id: &CssomBlockId) -> Result<&CssomBlock, CssomError> {
         lookup(&self.blocks, id, &id.owner, &self.owner)
+    }
+    pub(crate) fn declaration_context(
+        &self,
+        id: &CssomBlockId,
+    ) -> Result<&Arc<CssomContext>, CssomError> {
+        Ok(self
+            .block(id)?
+            .inline_context()
+            .map_or(&self.context, CssomInlineDeclarationContext::shared_context))
+    }
+    pub(crate) fn inline_contexts(&self) -> impl Iterator<Item = &CssomContext> {
+        self.blocks
+            .values()
+            .filter_map(CssomBlock::inline_context)
+            .map(CssomInlineDeclarationContext::context)
     }
     pub(crate) fn media(&self, id: &CssomMediaListId) -> Result<&CssMediaQueryList, CssomError> {
         lookup(&self.media, id, &id.owner, &self.owner)

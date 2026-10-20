@@ -299,7 +299,7 @@ fn actual_details_observations_outlive_row_and_receipt_output_transfers_its_back
     .unwrap();
     dispatcher
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             target,
             DomEventType::Toggle,
             DomEventCallback::new(|_, _, context: &mut HeldObservations, event| {

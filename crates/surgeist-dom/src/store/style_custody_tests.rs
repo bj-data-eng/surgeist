@@ -81,7 +81,7 @@ fn cssom_root(root: NodeId) -> DomStyleCssomRoot {
 }
 
 fn retain_fixture_owner(dom: &mut Dom, owner: &DomStyleCssomRoot) {
-    let document = dom.state.node(dom.owner, owner.root()).unwrap().document;
+    let document = dom.state.node(dom.owner, owner.root()).unwrap().document();
     dom.style_cssom_roots = dom
         .style_cssom_roots
         .prepare_insert(owner, document, |_| Ok(()), || Ok(()))

@@ -24,7 +24,9 @@ impl Draft {
         Ok(())
     }
     fn is_meta(&self, key: Key) -> Result<bool, DomError> {
-        Ok(matches!(&self.node(key)?.kind, DomNodeKind::Element(element) if element.is_meta()))
+        Ok(
+            matches!(&self.node(key)?.kind(), transaction::KindRead::Element(element) if element.is_meta()),
+        )
     }
     fn meta_ascii(
         &self,
@@ -56,10 +58,10 @@ impl Draft {
         attribute: Attr,
         cancel: &AtomicBool,
     ) -> Result<Option<&DocumentString>, DomError> {
-        let DomNodeKind::Element(element) = &self.node(key)?.kind else {
+        let transaction::KindRead::Element(element) = &self.node(key)?.kind() else {
             return Ok(None);
         };
-        for entry in element.attributes().iter() {
+        for entry in element.language().attributes().iter() {
             self.meta_step(cancel)?;
             if entry.name().namespace_uri().is_none()
                 && self.meta_ascii(
@@ -84,9 +86,13 @@ impl Draft {
         loop {
             self.meta_step(cancel)?;
             let node = self.node(key)?;
-            match node.parent {
+            match node.parent() {
                 Some(parent) => key = parent,
-                None => return Ok(matches!(node.kind, DomNodeKind::Document(_)).then_some(key)),
+                None => {
+                    return Ok(
+                        matches!(node.kind(), transaction::KindRead::Document(_)).then_some(key)
+                    );
+                }
             }
         }
     }
@@ -96,12 +102,10 @@ impl Draft {
         cancel: &AtomicBool,
         edit: impl FnOnce(&mut DomDocumentMetadata) -> R,
     ) -> Result<R, DomError> {
-        self.with_node_fields(document, cancel, |fields| {
-            let DomNodeKind::Document(metadata) = &mut fields.kind else {
-                unreachable!("checked Document")
-            };
-            edit(metadata)
-        })
+        let mut metadata = self.document_metadata_mut(document, cancel)?;
+        let result = edit(&mut metadata);
+        metadata.commit(cancel)?;
+        Ok(result)
     }
     fn meta_pragma(
         &mut self,
@@ -128,10 +132,10 @@ impl Draft {
         // CSP's actual Head guard precedes even the content-attribute read.
         if state == Pragma::ContentSecurityPolicy {
             self.meta_step(cancel)?;
-            let Some(parent) = self.node(key)?.parent else {
+            let Some(parent) = self.node(key)?.parent() else {
                 return Ok(());
             };
-            let DomNodeKind::Element(parent) = &self.node(parent)?.kind else {
+            let transaction::KindRead::Element(parent) = &self.node(parent)?.kind() else {
                 return Ok(());
             };
             if parent.common_state().html().is_none()
@@ -196,15 +200,12 @@ impl Draft {
                 }
                 #[cfg(test)]
                 transaction::queues::admission_observation::after_payload(self);
-                self.with_node_fields_formed(document, cancel, formation, |fields| {
-                    let DomNodeKind::Document(metadata) = &mut fields.kind else {
-                        unreachable!("checked Document");
-                    };
-                    metadata
-                        .meta_state_mut()
-                        .expect("checked history")
-                        .pragma_language = Some(DocumentString::from_utf16(token))
-                })?;
+                let mut metadata = self.document_metadata_mut(document, cancel)?;
+                metadata
+                    .meta_state_mut()
+                    .expect("checked history")
+                    .pragma_language = Some(DocumentString::from_utf16(token));
+                metadata.commit_formed(formation, cancel)?;
                 self.units = units;
             }
             Pragma::Refresh => {
@@ -472,7 +473,7 @@ impl Draft {
         }
         if name_or_content || media {
             self.meta_candidates(
-                self.node(key)?.document,
+                self.node(key)?.document(),
                 true,
                 name_or_content,
                 limits,

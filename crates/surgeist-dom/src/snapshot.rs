@@ -4,17 +4,18 @@ use crate::store::{Node, State};
 use crate::{DocumentId, DocumentString, DomError, DomOwnerId, DomRevision, DomStamp, NodeId};
 use crate::{DomDocumentMetadata, DomDocumentType, DomElement, DomProcessingInstruction};
 
-/// The complete node kinds supported by this contribution.
-#[derive(Clone, Debug, PartialEq)]
-pub enum DomNodeKind {
-    Document(DomDocumentMetadata),
-    Element(DomElement),
+/// A borrowed view of a node's immutable payload in one captured snapshot.
+/// Copying this view preserves its snapshot lifetime and creates no node.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DomNodeKind<'a> {
+    Document(&'a DomDocumentMetadata),
+    Element(&'a DomElement),
     DocumentFragment,
-    ShadowRoot(crate::DomShadowRootState),
-    Text(DocumentString),
-    Comment(DocumentString),
-    ProcessingInstruction(DomProcessingInstruction),
-    DocumentType(DomDocumentType),
+    ShadowRoot(&'a crate::DomShadowRootState),
+    Text(&'a DocumentString),
+    Comment(&'a DocumentString),
+    ProcessingInstruction(&'a DomProcessingInstruction),
+    DocumentType(&'a DomDocumentType),
 }
 
 /// Owned immutable state, including detached nodes and all documents.
@@ -107,7 +108,7 @@ impl<'a> DomDocument<'a> {
             .state
             .node(self.snapshot.owner, self.id.0)
             .expect("captured Document")
-            .active_range
+            .active_range()
     }
     pub fn id(self) -> DocumentId {
         self.id
@@ -174,7 +175,7 @@ impl<'a> DomDocument<'a> {
     /// itself, although its source-defined ownerDocument getter returns None.
     pub fn node(self, id: NodeId) -> Result<DomNode<'a>, DomError> {
         let node = self.snapshot.node(id)?;
-        if node.node.document != self.id {
+        if node.node.document() != self.id {
             return Err(DomError::WrongDocument);
         }
         Ok(node)
@@ -252,7 +253,7 @@ impl<'a> DomNode<'a> {
     /// Privileged canonical ownership, including closed roots. This does not
     /// implement the source's open-only Element.shadowRoot presentation.
     pub fn hosted_shadow_root(self) -> Option<NodeId> {
-        self.node.shadow_root
+        self.node.shadow_root()
     }
     /// Source Element.shadowRoot presentation: a closed root is not exposed.
     pub fn shadow_root(self) -> Option<NodeId> {
@@ -267,7 +268,7 @@ impl<'a> DomNode<'a> {
     /// The exact ShadowRoot's host. Template contents instead use fragment_host().
     pub fn shadow_host(self) -> Option<NodeId> {
         matches!(self.kind(), DomNodeKind::ShadowRoot(_))
-            .then_some(self.node.host)
+            .then_some(self.node.host())
             .flatten()
     }
     pub fn as_shadow_root(self) -> Option<DomShadowRoot<'a>> {
@@ -292,7 +293,7 @@ impl<'a> DomNode<'a> {
     }
     /// Host-including ancestry crosses ShadowRoot and owned Template fragment hosts.
     pub fn host_including_parent(self) -> Option<NodeId> {
-        self.parent().or(self.node.host)
+        self.parent().or(self.node.host())
     }
     pub fn shadow_including_root(self) -> NodeId {
         let mut node = self;
@@ -351,12 +352,12 @@ impl<'a> DomNode<'a> {
     pub fn id(self) -> NodeId {
         self.id
     }
-    pub fn kind(self) -> &'a DomNodeKind {
-        &self.node.kind
+    pub fn kind(self) -> DomNodeKind<'a> {
+        self.node.kind()
     }
     /// DOM nodeName readback; PI targets and doctype names preserve exact units.
     pub fn node_name(self) -> DocumentString {
-        match &self.node.kind {
+        match self.kind() {
             DomNodeKind::Document(_) => "#document".into(),
             DomNodeKind::Element(_) => self.tag_name().expect("Element tag name"),
             DomNodeKind::DocumentFragment | DomNodeKind::ShadowRoot(_) => {
@@ -370,16 +371,13 @@ impl<'a> DomNode<'a> {
     }
     /// Checked document view, including for documents discovered by enumeration.
     pub fn as_document(self) -> Option<DomDocument<'a>> {
-        matches!(self.node.kind, DomNodeKind::Document(_)).then_some(DomDocument {
+        matches!(self.kind(), DomNodeKind::Document(_)).then_some(DomDocument {
             snapshot: self.snapshot,
             id: DocumentId(self.id),
         })
     }
     pub fn as_element(self) -> Option<&'a DomElement> {
-        match &self.node.kind {
-            DomNodeKind::Element(value) => Some(value),
-            _ => None,
-        }
+        self.node.element()
     }
     /// Source tagName follows the actual current node-document. Raw namespace,
     /// prefix and local name remain unchanged by this presentation or adoption.
@@ -409,7 +407,7 @@ impl<'a> DomNode<'a> {
             .is_some_and(|element| crate::names::in_html_namespace(element.name()))
             && self
                 .snapshot
-                .document(self.node.document)
+                .document(self.node.document())
                 .expect("canonical node document")
                 .metadata()
                 .class()
@@ -450,7 +448,7 @@ impl<'a> DomNode<'a> {
         })
     }
     pub fn element_children(self) -> impl DoubleEndedIterator<Item = NodeId> + 'a {
-        self.node.children.iter().copied().filter(move |id| {
+        self.node.children().iter().copied().filter(move |id| {
             self.snapshot
                 .node(*id)
                 .expect("captured child")
@@ -514,16 +512,16 @@ impl<'a> DomNode<'a> {
     }
     /// DOM's ownerDocument getter: None for Document, otherwise node document.
     pub fn owner_document(self) -> Option<DocumentId> {
-        (!matches!(self.node.kind, DomNodeKind::Document(_))).then_some(self.node.document)
+        (!matches!(self.kind(), DomNodeKind::Document(_))).then_some(self.node.document())
     }
     pub fn parent(self) -> Option<NodeId> {
-        self.node.parent
+        self.node.parent()
     }
     pub fn children(self) -> &'a [NodeId] {
-        &self.node.children
+        self.node.children()
     }
     pub fn data(self) -> Option<&'a DocumentString> {
-        match &self.node.kind {
+        match self.kind() {
             DomNodeKind::Text(data) | DomNodeKind::Comment(data) => Some(data),
             DomNodeKind::ProcessingInstruction(value) => Some(value.data()),
             _ => None,
@@ -533,7 +531,7 @@ impl<'a> DomNode<'a> {
     pub fn root(self) -> NodeId {
         let mut id = self.id;
         let mut node = self.node;
-        while let Some(parent) = node.parent {
+        while let Some(parent) = node.parent() {
             id = parent;
             node = self
                 .snapshot

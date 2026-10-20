@@ -31,7 +31,7 @@ impl EntryScope {
         let Ok(node) = dom.state.node(dom.owner, node) else {
             return Ok(Self::NativeEntry);
         };
-        let Some(global) = node.relevant_global else {
+        let Some(global) = node.relevant_global() else {
             return Ok(Self::NativeEntry);
         };
         draft.source_step(cancel)?;

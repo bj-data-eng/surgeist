@@ -474,10 +474,10 @@ fn css_text_recovery_uses_actual_input_and_correlation_then_capture_survives_sto
         .replacement_input()
         .unwrap();
     assert_eq!(
-        input.source.as_str(),
+        input.source(),
         "width:2px;bad:lost;background:linear-gradient(red,blue);color:red;}"
     );
-    assert_eq!(input.diagnostics, outcome.diagnostics());
+    assert_eq!(input.diagnostics(), outcome.diagnostics());
 }
 
 #[test]

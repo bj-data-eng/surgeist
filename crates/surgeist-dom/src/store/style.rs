@@ -55,6 +55,7 @@ impl Draft {
         let node = self.node(key)?;
         let state = self
             .element(key)?
+            .language()
             .style_state()
             .expect("Style")
             .creation_state();
@@ -65,7 +66,7 @@ impl Draft {
         Ok(surgeist_html::style_is_potentially_render_blocking(
             explicit,
             state,
-            node.style_parser_document == Some(node.document),
+            node.style_parser_document() == Some(node.document()),
         ))
     }
     fn style_render_blocking_required(
@@ -99,7 +100,7 @@ impl Draft {
         else {
             return Ok(false);
         };
-        let DomNodeKind::Element(element) = self.node(root)?.kind else {
+        let transaction::KindRead::Element(element) = self.node(root)?.kind() else {
             return Err(DomError::WrongNodeKind);
         };
         if surgeist_html::document_body_role_with(element.name(), |_| self.source_step(cancel))?
@@ -114,8 +115,8 @@ impl Draft {
         ))
     }
     fn style_block_rendering(&mut self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
-        let document = self.node(key)?.document;
-        let DomNodeKind::Document(metadata) = &self.node(document)?.kind else {
+        let document = self.node(key)?.document();
+        let transaction::KindRead::Document(metadata) = &self.node(document)?.kind() else {
             return Err(DomError::WrongNodeKind);
         };
         let html = self.source_ascii(metadata.content_type(), "text/html", cancel)?;
@@ -127,9 +128,8 @@ impl Draft {
             return Ok(());
         }
         let node = self.node(document)?;
-        let list = &node
-            .base_document
-            .as_ref()
+        let list = node
+            .base_document()
             .ok_or(DomError::WrongNodeKind)?
             .render_blocking;
         self.source_step(cancel)?;
@@ -150,10 +150,10 @@ impl Draft {
         )
     }
     fn style_unblock_rendering(&mut self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
-        let document = self.node(key)?.document;
+        let document = self.node(key)?.document();
         let length = self
             .node(document)?
-            .base_document
+            .base_document()
             .as_ref()
             .ok_or(DomError::WrongNodeKind)?
             .render_blocking
@@ -196,7 +196,7 @@ impl Draft {
         for key in owners.iter().copied() {
             self.source_step(cancel)?;
             let Ok(node) = self.node(key) else { continue };
-            let Some(document) = &node.base_document else {
+            let Some(document) = &node.base_document() else {
                 continue;
             };
             for _ in document.render_blocking.iter() {
@@ -218,7 +218,8 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if !matches!(&self.node(key)?.kind, DomNodeKind::Element(e) if e.style_state().is_some()) {
+        if !matches!(&self.node(key)?.kind(), transaction::KindRead::Element(e) if e.style_state().is_some())
+        {
             return Ok(());
         }
         // Without live Ranges, the conservative fixed-counter scan needs no
@@ -232,6 +233,7 @@ impl Draft {
         }
         if self.source_limits.is_some() {
             self.element(key)?
+                .language()
                 .style_state()
                 .expect("Style")
                 .next_association
@@ -276,8 +278,10 @@ impl Draft {
         };
         let reply = match action {
             Action::RemoveAssociatedSheet => {
-                let state = match &self.node(frame.key)?.kind {
-                    DomNodeKind::Element(element) => element.style_state().expect("actual Style"),
+                let state = match &self.node(frame.key)?.kind() {
+                    transaction::KindRead::Element(element) => {
+                        element.language().style_state().expect("actual Style")
+                    }
                     _ => unreachable!("actual Style"),
                 };
                 if state.availability == crate::DomStyleSheetAvailability::PendingParsedProcessing {
@@ -300,12 +304,13 @@ impl Draft {
             Action::ReadScriptBlocking
                 if !self
                     .element(frame.key)?
+                    .language()
                     .style_state()
                     .expect("Style")
                     .creation_state()
                     .created_by_document_parser()
-                    || self.node(frame.key)?.style_parser_document
-                        != Some(self.node(frame.key)?.document) =>
+                    || self.node(frame.key)?.style_parser_document()
+                        != Some(self.node(frame.key)?.document()) =>
             {
                 // The first conjunct refers to THIS Document's parser, not a
                 // historical boolean after template ownership or adoption.
@@ -371,6 +376,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         let state = self
             .element(key)?
+            .language()
             .style_state()
             .ok_or(DomError::WrongNodeKind)?;
         if state.availability == crate::DomStyleSheetAvailability::PendingParsedProcessing {
@@ -405,7 +411,7 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if self.element(key)?.style_state().is_none() {
+        if self.element(key)?.language().style_state().is_none() {
             return Ok(());
         }
         let attribute = surgeist_html::KnownHtmlAttribute::from_name(name);
@@ -430,7 +436,7 @@ impl Draft {
         {
             return Ok(());
         }
-        let state = self.element(key)?.style_state().expect("Style");
+        let state = self.element(key)?.language().style_state().expect("Style");
         if state.availability == crate::DomStyleSheetAvailability::PendingParsedProcessing {
             return Err(DomError::StyleProcessingUnavailable);
         }
@@ -461,8 +467,10 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let Some(state) = (match &self.node(key)?.kind {
-            DomNodeKind::Element(e) => e.style_state().map(crate::DomStyleState::creation_state),
+        let Some(state) = (match &self.node(key)?.kind() {
+            transaction::KindRead::Element(e) => {
+                e.style_state().map(crate::DomStyleState::creation_state)
+            }
             _ => None,
         }) else {
             return Ok(());

@@ -20,7 +20,7 @@ impl Draft {
         &self,
         document: Key,
     ) -> Result<(transaction::SequenceView<'_, NodeId, Key>, bool), DomError> {
-        match self.node(document)?.autofocus_document {
+        match self.node(document)?.autofocus_document() {
             Some(transaction::AutofocusRead::Known {
                 candidates,
                 processed,
@@ -127,12 +127,14 @@ impl Draft {
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
         self.autofocus_state(document)?;
-        self.with_node_fields(document, cancel, |fields| {
-            let Some(State::Known { processed, .. }) = &mut fields.autofocus_document else {
+        {
+            let mut fields = self.autofocus_document_mut(document, cancel)?;
+            let Some(State::Known { processed, .. }) = &mut (*fields) else {
                 unreachable!()
             };
             *processed = true;
-        })?;
+            fields.commit(cancel)
+        }?;
         Ok(())
     }
     pub(in crate::store) fn retire_autofocus_candidate(
@@ -141,7 +143,10 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
-        if !matches!(self.node(subject)?.kind, DomNodeKind::Element(_)) {
+        if !matches!(
+            self.node(subject)?.kind(),
+            transaction::KindRead::Element(_)
+        ) {
             return Ok(());
         }
         let mut owners = self.effect_vec();
@@ -158,7 +163,7 @@ impl Draft {
         for key in owners.iter().copied() {
             self.source_step(cancel)?;
             if matches!(
-                self.node(key)?.autofocus_document,
+                self.node(key)?.autofocus_document(),
                 Some(transaction::AutofocusRead::Known { .. })
             ) {
                 self.autofocus_remove(key, subject, cancel)?;
@@ -182,7 +187,7 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<usize, DomError> {
         self.source_step(cancel)?;
-        let document = self.node(subject)?.document;
+        let document = self.node(subject)?.document();
         if !matches!(
             self.document_allow_focus_permission(document, cancel)?,
             AllowFocusPermission::Allowed
@@ -255,7 +260,10 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
-        if !matches!(self.node(subject)?.kind, DomNodeKind::Element(_)) {
+        if !matches!(
+            self.node(subject)?.kind(),
+            transaction::KindRead::Element(_)
+        ) {
             return Ok(());
         }
         self.push_effect(
@@ -288,12 +296,12 @@ impl Draft {
                         self.source_step(cancel)
                     })?;
                     Some(R::InDocumentTree(matches!(
-                        self.node(root)?.kind,
-                        DomNodeKind::Document(_)
+                        self.node(root)?.kind(),
+                        transaction::KindRead::Document(_)
                     )))
                 }
                 A::CaptureTargetDocument => {
-                    frame.target = Some(self.node(frame.subject)?.document);
+                    frame.target = Some(self.node(frame.subject)?.document());
                     Some(R::Applied)
                 }
                 A::ReadFullyActive => Some(R::FullyActive(self.document_fully_active(

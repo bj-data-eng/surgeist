@@ -1,0 +1,37 @@
+//! Filters, masking, clipping, shapes, shadows, opacity and compositing.
+
+mod circle_radius_grammar;
+mod clip_foundation;
+mod clip_path_construction_serialization;
+mod clip_path_lifecycle;
+mod clip_typed;
+mod compositing_expansion_lifecycle;
+mod compositing_family_contract;
+mod filter_blur_default;
+mod filter_construction_serialization;
+mod filter_image_construction_serialization;
+mod filter_image_contract;
+mod filter_lifecycle;
+mod filter_svg_authored_contract;
+mod filter_svg_typed_values;
+mod mask_layer_component_order_admission_contract;
+mod mask_value_serialization;
+mod masking_authored_contract;
+mod masking_construction_serialization;
+mod opacity_exact_scalar;
+mod opacity_exact_scalar_values;
+mod opacity_expansion;
+mod opacity_expansion_values;
+mod opacity_specified_serialization;
+mod path_shape_construction_serialization;
+mod path_shape_lifecycle;
+mod polygon_separator;
+mod rectangular_shape_construction_serialization;
+mod rectangular_shape_lifecycle;
+mod shadow_construction_serialization;
+mod shadow_lifecycle;
+mod shape_foundation_lifecycle;
+mod shape_numeric_projection_lifecycle;
+mod shape_position_lifecycle;
+mod shapes_authored_construction;
+mod shapes_authored_contract;

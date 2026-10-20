@@ -19,6 +19,7 @@ pub(crate) mod color_profile;
 mod contain_intrinsic_size;
 pub(crate) mod counter_style;
 mod declaration_block;
+pub(crate) use declaration_block::parse_snapshot as parse_declaration_block_contents_snapshot;
 mod declaration_list;
 mod domain_declaration_contents;
 pub(crate) mod property_input;

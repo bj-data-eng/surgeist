@@ -2326,3 +2326,100 @@ fn optional_owner_exhaustion_completed_bypass_is_not_a_mandatory_promotion_error
     assert_eq!(pool.heap_usage().bytes(), 0);
     assert!(Arc::ptr_eq(input.shared_code_units(), &backing));
 }
+
+// Executed reads are separate from Budget's admitted public descriptors. These
+// counters observe completed Value::read calls inside the original operation;
+// metadata words are never relabeled as user UTF-16 or copied backing.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct Executed {
+    hash_utf16_units: usize,
+    hash_metadata_reads: usize,
+    compare_input_utf16_units: usize,
+    compare_candidate_utf16_units: usize,
+    compare_metadata_reads: usize,
+    compare_read_pairs: usize,
+    compare_utf16_pairs: usize,
+    compare_metadata_pairs: usize,
+    eligibility_checks: usize,
+    eligibility_bypasses: usize,
+    payload_bypasses: usize,
+}
+thread_local! {
+    static EXECUTED: Cell<Option<Executed>> = const { Cell::new(None) };
+}
+struct ObserveExecution;
+impl ObserveExecution {
+    fn start() -> Self {
+        EXECUTED.with(|slot| {
+            assert!(slot.get().is_none());
+            slot.set(Some(Executed::default()));
+        });
+        Self
+    }
+    fn read(&self) -> Executed {
+        EXECUTED.with(|slot| slot.get().unwrap())
+    }
+}
+impl Drop for ObserveExecution {
+    fn drop(&mut self) {
+        EXECUTED.with(|slot| slot.set(None));
+    }
+}
+fn execution(update: impl FnOnce(&mut Executed)) {
+    EXECUTED.with(|slot| {
+        if let Some(mut value) = slot.get() {
+            update(&mut value);
+            slot.set(Some(value));
+        }
+    });
+}
+pub(super) fn observe_execution_hash(unit: bool) {
+    execution(|value| {
+        if unit {
+            value.hash_utf16_units += 1;
+        } else {
+            value.hash_metadata_reads += 1;
+        }
+    });
+}
+pub(super) fn observe_execution_compare_input(unit: bool) {
+    execution(|value| {
+        if unit {
+            value.compare_input_utf16_units += 1;
+        } else {
+            value.compare_metadata_reads += 1;
+        }
+    });
+}
+pub(super) fn observe_execution_compare_candidate(unit: bool) {
+    execution(|value| {
+        if unit {
+            value.compare_candidate_utf16_units += 1;
+        } else {
+            value.compare_metadata_reads += 1;
+        }
+    });
+}
+pub(super) fn observe_execution_compare_pair(left_unit: bool, right_unit: bool) {
+    execution(|value| {
+        value.compare_read_pairs += 1;
+        if left_unit && right_unit {
+            value.compare_utf16_pairs += 1;
+        }
+        if !left_unit && !right_unit {
+            value.compare_metadata_pairs += 1;
+        }
+    });
+}
+pub(super) fn observe_execution_eligibility_check() {
+    execution(|value| value.eligibility_checks += 1);
+}
+pub(super) fn observe_execution_eligibility_bypass() {
+    execution(|value| value.eligibility_bypasses += 1);
+}
+pub(super) fn observe_execution_payload_bypass() {
+    execution(|value| value.payload_bypasses += 1);
+}
+
+#[path = "execution_tests.rs"]
+mod execution_tests;

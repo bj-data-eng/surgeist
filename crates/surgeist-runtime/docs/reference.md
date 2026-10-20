@@ -30,6 +30,7 @@
 | Native event dispatch | Controlled `DomEventDom` access, listener registration, immutable dispatch paths and resumable progress in [dom_event.rs](../src/dom_event.rs) |
 | Shared DOM session and Style orchestration | `DomSession`, weak execution permissions, resource custody and source/networking progress in [dom_style.rs](../src/dom_style.rs) |
 | Source event orchestration | `DomSourceRuntime::service_event`, canonical `raise_event_limits` and independent adapter `raise_event_runtime_limits` in [dom_source.rs](../src/dom_source.rs), with finite Session-owned linked jobs and retained actual receipts in [dom_dialog.rs](../src/dom_dialog.rs) |
+| Inline Source publication | `DomSourceRuntime::apply_with_inline_styles`, `resume_with_inline_styles` and their paired publication boundaries in [dom_source.rs](../src/dom_source.rs) |
 | Element tasks | Shared source-qualified Details/Dialog task owner and explicit run policy in [element_tasks.rs](../src/element_tasks.rs) |
 | Native hosted lifecycle | `HostedRuntime`, explicit limits, top-level creation, settings and queued teardown in [dom_lifecycle.rs](../src/dom_lifecycle.rs) |
 

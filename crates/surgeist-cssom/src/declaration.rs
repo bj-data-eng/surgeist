@@ -22,6 +22,7 @@ pub struct CssomPreparedDeclaration {
     preparation: Arc<()>,
     block: CssomBlockId,
     context: Arc<CssomContext>,
+    inline_context: Option<CssomInlineDeclarationContext>,
     action: PreparedAction,
     reflect_owner: bool,
     input: Option<CssomDeclarationInput>,
@@ -41,6 +42,9 @@ enum PreparedAction {
 impl CssomPreparedDeclaration {
     pub(crate) fn captured_context(&self) -> &CssomContext {
         &self.context
+    }
+    pub(crate) fn block(&self) -> &CssomBlockId {
+        &self.block
     }
     pub fn candidates(&self) -> &[CssomDeclarationCandidate] {
         &self.candidates
@@ -426,6 +430,12 @@ impl CssomBatch {
         diagnostics: Vec<CssRecoveryDiagnostic>,
         budget: DeclarationBudget,
     ) -> CssomPreparedDeclaration {
+        let context = self
+            .staged
+            .declaration_context(&block)
+            .expect("preparation block was validated")
+            .clone();
+        let inline_context = self.staged.blocks[&block].inline_context().cloned();
         let preparation = Arc::new(());
         let declarations = match &action {
             PreparedAction::Set(value) => vec![value.clone()],
@@ -435,7 +445,7 @@ impl CssomBatch {
         let mut candidates = Vec::new();
         let mut decisions_required = Vec::new();
         for (ordinal, value) in declarations.into_iter().enumerate() {
-            if value_requirement(&self.staged.context, &value)
+            if value_requirement(&context, &value)
                 == Some(CssomUsabilityRequirement::WholeDeclarationDecision)
             {
                 decisions_required.push(ordinal);
@@ -450,7 +460,8 @@ impl CssomBatch {
             batch: self.token.clone(),
             preparation,
             block,
-            context: self.staged.context.clone(),
+            context,
+            inline_context,
             action,
             reflect_owner: true,
             input: None,
@@ -483,11 +494,10 @@ impl CssomBatch {
             let mut budget = DeclarationBudget::new(limits, 12);
             check_input_storage(text, this.limits.max_input_bytes)?;
             let component_limits = budget.input(text)?;
+            let context = this.staged.declaration_context(id)?.clone();
             let (items, diagnostics) =
                 if matches!(this.staged.block(id)?.data(), CssomBlockData::Page { .. }) {
-                    let report = this
-                        .staged
-                        .context
+                    let report = context
                         .parser_context()
                         .parse_page_declaration_block_contents_with_limits(text, component_limits);
                     let (body, diagnostics) = report.into_parts();
@@ -534,9 +544,7 @@ impl CssomBatch {
                         diagnostics,
                     )
                 } else {
-                    let report = this
-                        .staged
-                        .context
+                    let report = context
                         .parser_context()
                         .parse_declaration_block_contents_with_limits(text, component_limits);
                     let (body, diagnostics) = report.into_parts();
@@ -560,11 +568,8 @@ impl CssomBatch {
                         maximum: limits.max_entries,
                     })?,
             );
-            let input = CssomDeclarationInput {
-                source: text.to_owned(),
-                parser_context: this.staged.context.parser_context(),
-                diagnostics: diagnostics.clone(),
-            };
+            let input =
+                CssomDeclarationInput::utf8(text, context.parser_context(), diagnostics.clone());
             let mut preparation = this.preparation(
                 id.clone(),
                 PreparedAction::Replace(items),
@@ -594,7 +599,8 @@ impl CssomBatch {
             if matches!(this.staged.block(id)?.data(), CssomBlockData::FontFace(_)) {
                 return Ok(this.preparation(id.clone(), PreparedAction::Noop, Vec::new(), budget));
             }
-            let parser_context = this.staged.context.parser_context();
+            let context = this.staged.declaration_context(id)?.clone();
+            let parser_context = context.parser_context();
             let svg = CssSvgGlyphOrientationVerticalDeclaration::metadata();
             let normalized = if name.eq_ignore_ascii_case(svg.name())
                 && parser_context == parser_context.with_svg_glyph_orientation_vertical()
@@ -609,14 +615,14 @@ impl CssomBatch {
                 return Ok(this.preparation(id.clone(), PreparedAction::Noop, Vec::new(), budget));
             };
             if let Name::Known(grammar) = normalized.clone()
-                && support(&this.staged.context)
+                && support(&context)
                     .and_then(|(_, support)| support.requirement(grammar))
                     .is_none()
             {
                 return Ok(this.preparation(id.clone(), PreparedAction::Noop, Vec::new(), budget));
             }
             if matches!(normalized, Name::SvgGlyph)
-                && support(&this.staged.context)
+                && support(&context)
                     .and_then(|(_, profile)| profile.svg_glyph_orientation_vertical())
                     .is_none()
             {
@@ -643,7 +649,7 @@ impl CssomBatch {
             if !complete_value_components(value, component_limits)? {
                 return Ok(this.preparation(id.clone(), PreparedAction::Noop, Vec::new(), budget));
             }
-            let context = this.staged.context.parser_context();
+            let context = context.parser_context();
             let report = match normalized {
                 Name::SvgGlyph => context.parse_property_value_text(
                     value,
@@ -686,29 +692,42 @@ impl CssomBatch {
             Ok(this.preparation(id.clone(), action, diagnostics, budget))
         })
     }
-    /// Supplied inline attribute notification; qualifying external changes do not echo a host write.
-    /// Unrelated local names/namespaces and computed blocks take the source no-op branch.
-    pub fn prepare_style_attribute_change(
+    pub(crate) fn prepare_attribute_report(
         &mut self,
         id: &CssomBlockId,
-        change: &CssomStyleAttributeChange,
-        limits: CssomDeclarationRequestLimits,
-    ) -> Result<Option<CssomPreparedDeclaration>, CssomError> {
-        self.apply(|this| {
-            let block = this.staged.block(id)?;
-            if change.local_name != "style"
-                || change.namespace.is_some()
-                || block.flags.computed
-                || block.flags.updating
-            {
-                return Ok(None);
-            }
-            if block.owner.as_ref() != Some(&change.owner) {
-                return Err(CssomError::StaleOwnerNotification);
-            }
-            this.prepare_contents(id, change.value.as_deref().unwrap_or(""), limits, false)
-                .map(Some)
-        })
+        report: CssDeclarationBlockParseReport,
+        mut budget: DeclarationBudget,
+    ) -> Result<CssomPreparedDeclaration, CssomError> {
+        let (source, report) = report.into_parts();
+        let (body, diagnostics) = report.into_parts();
+        check_input_storage(source.source().as_str(), self.limits.max_input_bytes)?;
+        budget.text(source.source().as_str())?;
+        check_resource_diagnostics(&diagnostics)?;
+        budget.scan(body.len())?;
+        budget.phases(
+            body.len()
+                .checked_mul(4)
+                .and_then(|n| n.checked_add(6))
+                .ok_or(CssomError::Limit {
+                    resource: "declaration phases",
+                    maximum: budget.limits.max_entries,
+                })?,
+        );
+        let items = body
+            .iter()
+            .cloned()
+            .map(CssomDeclarationValue::Property)
+            .collect();
+        let input = CssomDeclarationInput::parsed(source, diagnostics.clone());
+        let mut preparation = self.preparation(
+            id.clone(),
+            PreparedAction::Replace(items),
+            diagnostics,
+            budget,
+        );
+        preparation.reflect_owner = false;
+        preparation.input = Some(input);
+        Ok(preparation)
     }
     pub fn prepare_css_float(
         &mut self,
@@ -723,17 +742,55 @@ impl CssomBatch {
         prepared: CssomPreparedDeclaration,
         decisions: &[CssomDeclarationDecision],
     ) -> Result<CssomDeclarationEditResult, CssomError> {
-        let current = self
-            .staged
-            .context
-            .inputs
-            .iter()
-            .filter(|input| input.version.role == CssomInputRole::Support)
-            .map(|input| input.version.clone())
-            .collect::<Vec<_>>();
-        self.apply_declaration_with_inputs(prepared, decisions, &current)
+        self.apply(|this| {
+            if !Arc::ptr_eq(&this.token, &prepared.batch) {
+                return Err(CssomError::ForeignTicket);
+            }
+            let current = this.current_declaration_inputs(&prepared.block)?;
+            this.apply_declaration_with_inputs(prepared, decisions, &current)
+        })
     }
-    /// Current independently revised composed-owner decision inputs, supplied without callbacks.
+    pub(crate) fn current_declaration_inputs(
+        &self,
+        id: &CssomBlockId,
+    ) -> Result<Vec<CssomInputVersion>, CssomError> {
+        let block = self.staged.block(id)?;
+        let context = self.staged.declaration_context(id)?;
+        let inline = block.inline_context().is_some();
+        let count = context
+            .inputs
+            .len()
+            .checked_add(if inline { context.linked.len() } else { 0 })
+            .ok_or(CssomError::Limit {
+                resource: "declaration current input inventory",
+                maximum: self.limits.max_entries,
+            })?;
+        let mut current = Vec::new();
+        current
+            .try_reserve_exact(count)
+            .map_err(|_| CssomError::Limit {
+                resource: "declaration current input inventory",
+                maximum: self.limits.max_entries,
+            })?;
+        current.extend(
+            context
+                .inputs
+                .iter()
+                .filter(|input| inline || input.version.role == CssomInputRole::Support)
+                .map(|input| input.version.clone())
+                .chain(
+                    context
+                        .linked
+                        .iter()
+                        .filter(|_| inline)
+                        .map(|linked| linked.version.clone()),
+                ),
+        );
+        Ok(current)
+    }
+    /// Independently current inputs, supplied without callbacks. Inline blocks
+    /// require every packet input/linked version plus decision Support versions;
+    /// store-context declarations retain their Support-only input contract.
     pub fn apply_declaration_with_inputs(
         &mut self,
         mut prepared: CssomPreparedDeclaration,
@@ -743,10 +800,10 @@ impl CssomBatch {
         self.apply(|this| {
             prepared.budget.scan(current.len())?;
             for (index, input) in current.iter().enumerate() {
-                if input.role != CssomInputRole::Support
-                    || current[..index]
-                        .iter()
-                        .any(|previous| previous.identity == input.identity)
+                if (prepared.inline_context.is_none() && input.role != CssomInputRole::Support)
+                    || current[..index].iter().any(|previous| {
+                        previous.identity == input.identity && previous.role == input.role
+                    })
                 {
                     return Err(CssomError::InvalidInput(
                         "ambiguous current usability decision inputs",
@@ -755,7 +812,9 @@ impl CssomBatch {
             }
             if current.iter().any(|current| {
                 prepared.context.inputs.iter().any(|captured| {
-                    captured.version.role == CssomInputRole::Support
+                    (prepared.inline_context.is_some()
+                        || captured.version.role == CssomInputRole::Support)
+                        && captured.version.role == current.role
                         && captured.version.identity == current.identity
                         && captured.version != *current
                 })
@@ -765,8 +824,22 @@ impl CssomBatch {
             if !Arc::ptr_eq(&this.token, &prepared.batch) {
                 return Err(CssomError::ForeignTicket);
             }
-            if this.staged.context != prepared.context {
+            if this.staged.declaration_context(&prepared.block)? != &prepared.context
+                || this.staged.block(&prepared.block)?.inline_context()
+                    != prepared.inline_context.as_ref()
+            {
                 return Err(CssomError::StaleDeclarationDecision);
+            }
+            if let Some(packet) = &prepared.inline_context {
+                prepared.budget.scan(packet.versions().count())?;
+                if packet.versions().any(|version| !current.contains(version))
+                    || current.iter().any(|version| {
+                        version.role != CssomInputRole::Support
+                            && !packet.versions().any(|expected| expected == version)
+                    })
+                {
+                    return Err(CssomError::StaleDeclarationDecision);
+                }
             }
             if prepared.reflect_owner {
                 readonly(this.staged.block(&prepared.block)?)?;
@@ -1102,6 +1175,42 @@ impl CssomBatch {
             &[CssomChange::Declarations, CssomChange::Provenance],
         );
     }
+    /// Request a fresh write of the current selected declaration state without
+    /// changing or reparsing declarations. Commit admits serialization, effect
+    /// quota and a new single-use identity even when publication is Unchanged.
+    /// Terminal effects remain terminal; this request does not revive them.
+    pub fn request_owner_synchronization(
+        &mut self,
+        id: &CssomBlockId,
+        limits: CssomDeclarationRequestLimits,
+    ) -> Result<(), CssomError> {
+        self.apply(|this| {
+            let block = this.staged.block(id)?;
+            source_precondition(block)?;
+            if !matches!(
+                block.data(),
+                CssomBlockData::Properties { .. }
+                    | CssomBlockData::Page { .. }
+                    | CssomBlockData::FontFace(_)
+            ) {
+                return Err(CssomError::WrongKind);
+            }
+            if block.owner().is_none() {
+                return Err(CssomError::InvalidInput(
+                    "owner synchronization requires a bound declaration",
+                ));
+            }
+            if !this.owner_updates.iter().any(|(old, _)| old == id) {
+                this.owner_updates
+                    .try_reserve(1)
+                    .map_err(|_| CssomError::Limit {
+                        resource: "owner update capacity",
+                        maximum: this.limits.max_pending_owner_effects,
+                    })?;
+            }
+            this.request_owner_update(id, &DeclarationBudget::new(limits, 1))
+        })
+    }
     fn request_owner_update(
         &mut self,
         id: &CssomBlockId,
@@ -1109,7 +1218,7 @@ impl CssomBatch {
     ) -> Result<(), CssomError> {
         let block = self.staged.block(id)?;
         source_precondition(block)?;
-        if block.owner.is_some() {
+        if block.owner().is_some() {
             self.owner_updates.retain(|(old, _)| old != id);
             self.owner_updates.push((id.clone(), budget.clone()));
         }

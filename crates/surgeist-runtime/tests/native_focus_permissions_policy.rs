@@ -228,7 +228,7 @@ fn drive(
     .unwrap();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             event.subject(),
             DomEventType::BeforeToggle,
             DomEventCallback::new(move |_, _, calls: &mut Vec<bool>, event| {
@@ -844,7 +844,7 @@ fn beforetoggle_removing_actual_own_inert_preserves_called_focusing_wait_and_exa
     .unwrap();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(move |dom, _, context: &mut Context, event| {

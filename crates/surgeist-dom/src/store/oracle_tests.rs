@@ -62,7 +62,11 @@ fn full_element_units(element: &crate::DomElement) -> usize {
 }
 
 fn assert_element_value_receipts(element: &crate::DomElement) {
-    let attributes = element.attributes_backing();
+    let Some(attributes) = element.attributes_backing() else {
+        assert!(element.attributes().is_empty());
+        assert!(element.attribute_binding().is_none());
+        return;
+    };
     let mut text = source::storage::Payload::default();
     let mut units = 0;
     for attribute in attributes.entries() {
@@ -93,125 +97,9 @@ fn assert_element_value_receipts(element: &crate::DomElement) {
     assert_eq!(attributes.own_usage(), expected);
 }
 
-fn full_kind_payload(kind: &DomNodeKind) -> source::storage::Payload {
-    let mut out = source::storage::Payload::default();
-    match kind {
-        DomNodeKind::Document(metadata) => {
-            for string in [
-                Some(metadata.content_type()),
-                Some(metadata.encoding()),
-                Some(metadata.url()),
-                metadata
-                    .meta_state()
-                    .and_then(|state| state.pragma_language()),
-            ]
-            .into_iter()
-            .flatten()
-            {
-                out.string(string).unwrap();
-            }
-            if let Some(Some(selected)) = &metadata.meta_color_scheme {
-                let actual = selected.report.retained_storage();
-                out.add_bytes(actual.bytes()).unwrap();
-                out.add_units(actual.utf16_units()).unwrap();
-            }
-            if let crate::DomDocumentCreationCause::ParsedOffline { url, .. } =
-                metadata.creation_cause()
-            {
-                out.producer(url.retained_storage_usage()).unwrap();
-            }
-            if metadata.document_environment().hosted.is_some() {
-                out.add_bytes(size_of::<crate::hosted::DocumentAssociation>())
-                    .unwrap();
-            }
-            if let Some(inputs) = &metadata.hosted_inputs {
-                out.add_bytes(inputs.payload_bytes().unwrap()).unwrap();
-                out.add_units(inputs.payload_units().unwrap()).unwrap();
-            }
-        }
-        DomNodeKind::Element(element) => {
-            out.name(element.name()).unwrap();
-            // The typed bank target/buffer and NameRecord targets have their
-            // own capsules. The Slot retains these text occurrences only.
-            for attribute in element.attributes().iter() {
-                out.name(attribute.name()).unwrap();
-                out.string(attribute.value()).unwrap();
-            }
-            for value in [element.saved_is(), element.nonce()].into_iter().flatten() {
-                out.string(value).unwrap();
-            }
-            if let Some(state) = element.fieldset_state() {
-                out.string(&state.control.message).unwrap();
-            }
-            if let Some(state) = element.button_state() {
-                out.string(&state.control.message).unwrap();
-            }
-            if let Some(state) = element.input_state() {
-                out.add_bytes(size_of::<crate::DomInputState>()).unwrap();
-                out.string(&state.current).unwrap();
-                out.string(&state.control.message).unwrap();
-                if let surgeist_html::HtmlInputImageHistory::Last {
-                    source: Some(value),
-                    ..
-                } = &state.image
-                {
-                    out.string(value).unwrap();
-                }
-            }
-            if let Some(state) = element.textarea_state() {
-                out.add_bytes(size_of::<crate::DomTextareaState>()).unwrap();
-                out.string(&state.raw).unwrap();
-                out.string(&state.control.message).unwrap();
-            }
-            if let Some(state) = element.output_state() {
-                out.add_bytes(size_of::<crate::DomOutputState>()).unwrap();
-                out.string(&state.control.message).unwrap();
-                if let Some(value) = &state.default_override {
-                    out.string(value).unwrap();
-                }
-            }
-            if let Some(state) = element.select_state() {
-                out.add_bytes(size_of::<crate::DomSelectState>()).unwrap();
-                out.string(&state.control.message).unwrap();
-            }
-            if let Some(state) = element.dialog_state() {
-                out.add_bytes(size_of::<crate::dialog::DomDialogState>())
-                    .unwrap();
-                out.string(state.return_value()).unwrap();
-                if let Some(value) = &state.request_return_value {
-                    out.string(value).unwrap();
-                }
-            }
-            if element.style_state().is_some() {
-                out.add_bytes(size_of::<crate::DomStyleState>()).unwrap();
-            }
-            if let Some(state) = element.canvas_none_state() {
-                out.add_bytes(size_of::<surgeist_html::HtmlCanvasNoneState>())
-                    .unwrap();
-                for dimension in [state.width(), state.height()] {
-                    if let surgeist_html::HtmlCanvasBitmapDimension::Parsed(value) = dimension {
-                        out.add_bytes(value.retained_buffer_bytes()).unwrap();
-                        out.add_units(value.retained_buffer_bytes()).unwrap();
-                    }
-                }
-            }
-        }
-        DomNodeKind::Text(value) | DomNodeKind::Comment(value) => out.string(value).unwrap(),
-        DomNodeKind::ProcessingInstruction(value) => out
-            .append(value.retained_payload(|| Ok(())).unwrap())
-            .unwrap(),
-        DomNodeKind::DocumentType(value) => {
-            for string in [value.name(), value.public_id(), value.system_id()] {
-                out.string(string).unwrap();
-            }
-        }
-        DomNodeKind::DocumentFragment | DomNodeKind::ShadowRoot(_) => {}
-    }
-    out
-}
 fn full_names_payload(node: &super::Node) -> source::storage::Payload {
     let mut out = source::storage::Payload::default();
-    if let Some(names) = &node.form_past_names {
+    if let Some(names) = &node.form_past_names() {
         if names.payload().is_some() {
             out.add_bytes(size_of::<
                 super::payload::Payload<crate::form::History<NodeId>>,
@@ -226,83 +114,18 @@ fn full_names_payload(node: &super::Node) -> source::storage::Payload {
     }
     out
 }
-fn full_fields_payload(node: &super::Node) -> source::storage::Payload {
-    let mut out = full_kind_payload(&node.kind);
-    if let Some(frozen) = node.base.as_ref().and_then(|state| state.frozen.as_ref()) {
-        out.producer(frozen.value.retained_storage_usage()).unwrap();
-    }
-    if let Some(facts) = node
-        .base_document
-        .as_ref()
-        .and_then(|state| state.facts.as_ref())
-    {
-        out.producer(facts.retained_storage_usage()).unwrap();
-    }
-    if let Some(parsed) = node
-        .hyperlink
-        .as_ref()
-        .and_then(|state| state.parsed.as_ref())
-    {
-        let actual = parsed.value.retained_storage_usage();
-        out.add_bytes(
-            actual.retained_bytes()
-                - size_of::<surgeist_html_semantics::HtmlHyperlinkUrlSnapshot>(),
-        )
-        .unwrap();
-        out.add_units(actual.utf16_extent()).unwrap();
-    }
-    if let Some(facts) = node
-        .encoding_url_document
-        .as_ref()
-        .and_then(|state| state.facts.as_ref())
-    {
-        out.producer(facts.retained_storage_usage()).unwrap();
-    }
-    if let Some(image) = &node.image {
-        out.string(image.native.current_request().current_url())
-            .unwrap();
-    }
-    out
-}
 fn sequence<T>(out: &mut source::storage::Payload, values: &super::SharedVec<T>) {
     if values.has_backing() {
         out.add_bytes(size_of::<Vec<T>>()).unwrap();
         out.bank::<T>(values.capacity()).unwrap();
     }
 }
-fn full_node_payload(node: &super::Node) -> source::storage::Payload {
-    let mut out = full_fields_payload(node);
-    sequence(&mut out, &node.children);
-    sequence(&mut out, &node.manual_nodes);
-    sequence(&mut out, &node.assigned_nodes);
-    sequence(&mut out, &node.fullscreen_events);
-    if let Some(document) = &node.base_document {
-        sequence(&mut out, &document.render_blocking);
-    }
-    if let Some(canonical::Autofocus::Known { candidates, .. }) = &node.autofocus_document {
-        sequence(&mut out, candidates);
-    }
-    if let Some(canonical::Interactive::Known {
-        open_dialogs,
-        top_layer,
-        pending_top_layer_removals,
-    }) = &node.interactive_document
-    {
-        sequence(&mut out, open_dialogs);
-        sequence(&mut out, top_layer);
-        sequence(&mut out, pending_top_layer_removals);
-    }
-    out
-}
 fn full_slot_payload(slot: &super::Slot) -> source::storage::Payload {
-    let mut out = source::storage::Payload {
-        bytes: size_of::<super::Slot>(),
-        units: 0,
-    };
-    if let Some(node) = &slot.node {
-        out.append(full_node_payload(node)).unwrap();
+    let raw = super::compact_tests::typed_graph::slot_payload(slot);
+    source::storage::Payload {
+        bytes: raw.bytes(),
+        units: raw.units(),
     }
-    out
 }
 fn graph_payload<T>(
     values: &bank::Bank<T>,
@@ -461,7 +284,7 @@ fn full_usage(dom: &Dom) -> DomUsage {
             continue;
         };
         add(&mut usage.nodes, 1);
-        let units = match &node.kind {
+        let units = match &node.kind() {
             DomNodeKind::Document(metadata) => {
                 add(
                     &mut usage.meta_color_scheme_bytes,
@@ -482,37 +305,33 @@ fn full_usage(dom: &Dom) -> DomUsage {
         add(&mut usage.units, units);
         add(
             &mut usage.units,
-            node.base.as_ref().map_or(0, crate::base::BaseState::units),
+            node.base().map_or(0, crate::base::BaseState::units),
         );
         add(
             &mut usage.units,
-            node.hyperlink
-                .as_ref()
+            node.hyperlink()
                 .map_or(0, crate::hyperlink::HyperlinkState::units),
         );
         add(
             &mut usage.units,
-            node.encoding_url_document
-                .as_ref()
-                .map_or(0, crate::hyperlink::EncodingUrlDocument::units),
+            node.encoding_url_document()
+                .and_then(|document| document.facts)
+                .map_or(0, |facts| facts.formation_usage().utf16_extent()),
         );
-        if let Some(facts) = node
-            .base_document
-            .as_ref()
-            .and_then(|document| document.facts.as_ref())
-        {
+        if let Some(facts) = node.base_document().and_then(|document| document.facts) {
             add(&mut usage.units, facts.formation_usage().utf16_extent());
         }
-        if let Some(names) = &node.form_past_names {
+        if let Some(names) = &node.form_past_names() {
             for name in names.entries().iter() {
                 add(&mut usage.units, name.name.len());
             }
         }
-        if let Some(canonical::Autofocus::Known { candidates, .. }) = &node.autofocus_document {
+        if let Some(canonical::AutofocusView::Known { candidates, .. }) = &node.autofocus_document()
+        {
             add(&mut usage.autofocus_candidates, candidates.len());
         }
-        add(&mut usage.slot_references, node.manual_nodes.len());
-        add(&mut usage.slot_references, node.assigned_nodes.len());
+        add(&mut usage.slot_references, node.manual_nodes().len());
+        add(&mut usage.slot_references, node.assigned_nodes().len());
     }
     for transition in &state.view_transitions.transitions {
         add(&mut usage.transitions, 1);
@@ -553,7 +372,7 @@ fn ancestor_path(state: &State, owner: DomOwnerId, mut id: NodeId) -> Vec<NodeId
     loop {
         assert!(seen.insert(id), "canonical ordinary parent cycle");
         path.push(id);
-        match state.node(owner, id).unwrap().parent {
+        match state.node(owner, id).unwrap().parent() {
             Some(parent) => id = parent,
             None => break,
         }
@@ -564,10 +383,10 @@ fn ancestor_path(state: &State, owner: DomOwnerId, mut id: NodeId) -> Vec<NodeId
 
 fn boundary_length(state: &State, owner: DomOwnerId, id: NodeId) -> usize {
     let node = state.node(owner, id).unwrap();
-    match &node.kind {
+    match &node.kind() {
         DomNodeKind::Text(value) | DomNodeKind::Comment(value) => value.len(),
         DomNodeKind::ProcessingInstruction(pi) => pi.data().len(),
-        _ => node.children.len(),
+        _ => node.children().len(),
     }
 }
 
@@ -592,7 +411,7 @@ fn ordered_boundaries(
         let child_index = state
             .node(owner, start.container)
             .unwrap()
-            .children
+            .children()
             .iter()
             .position(|id| *id == right[common])
             .unwrap();
@@ -601,7 +420,7 @@ fn ordered_boundaries(
         let child_index = state
             .node(owner, end.container)
             .unwrap()
-            .children
+            .children()
             .iter()
             .position(|id| *id == left[common])
             .unwrap();
@@ -609,12 +428,12 @@ fn ordered_boundaries(
     } else {
         let parent = state.node(owner, left[common - 1]).unwrap();
         let left_index = parent
-            .children
+            .children()
             .iter()
             .position(|id| *id == left[common])
             .unwrap();
         let right_index = parent
-            .children
+            .children()
             .iter()
             .position(|id| *id == right[common])
             .unwrap();
@@ -657,14 +476,14 @@ fn assert_range_dependencies(owner: DomOwnerId, state: &State) {
     }
     for (index, slot) in state.slots.iter() {
         if let Some(node) = &slot.node
-            && let DomActiveRangeState::Known(Some(id)) = node.active_range
+            && let DomActiveRangeState::Known(Some(id)) = node.active_range()
         {
             let document = NodeId {
                 owner,
                 slot: index,
                 generation: slot.generation,
             };
-            assert!(matches!(node.kind, DomNodeKind::Document(_)));
+            assert!(matches!(node.kind(), DomNodeKind::Document(_)));
             associations.entry(id).or_default().insert(document);
         }
     }
@@ -721,48 +540,46 @@ fn assert_inbound(owner: DomOwnerId, state: &State) {
         let mut reference = |target| {
             *expected.entry((target, source)).or_insert(0usize) += 1;
         };
-        reference(node.document.node());
+        reference(node.document().node());
         for target in [
-            node.parent,
-            node.shadow_root,
-            node.host,
-            node.template_contents,
-            node.template_patch.and_then(|patch| patch.target),
-            node.template_patch.and_then(|patch| patch.start),
-            node.template_patch.and_then(|patch| patch.end),
-            node.template_document
+            node.parent(),
+            node.shadow_root(),
+            node.host(),
+            node.template_contents(),
+            node.template_patch().and_then(|patch| patch.target),
+            node.template_patch().and_then(|patch| patch.start),
+            node.template_patch().and_then(|patch| patch.end),
+            node.template_document()
                 .and_then(crate::template::TemplateDocument::inert),
-            node.manual_slot,
-            node.assigned_slot,
-            node.reflected_targets
+            node.manual_slot(),
+            node.assigned_slot(),
+            node.reflected_targets()
                 .and_then(|values| values.get(ReflectedTarget::CommandFor))
                 .flatten(),
-            node.reflected_targets
+            node.reflected_targets()
                 .and_then(|values| values.get(ReflectedTarget::PopoverTarget))
                 .flatten(),
-            node.control_owner,
-            node.option_select,
-            node.script
+            node.control_owner(),
+            node.option_select(),
+            node.script()
                 .as_ref()
                 .and_then(|script| script.parser_document),
-            node.script
+            node.script()
                 .as_ref()
                 .and_then(|script| script.preparation_document),
-            node.style_parser_document,
-            node.base
+            node.style_parser_document(),
+            node.base()
                 .as_ref()
                 .and_then(|base| base.frozen.as_ref())
                 .map(|value| value.document),
-            node.base_document
-                .as_ref()
-                .and_then(|document| document.first),
-            node.link.as_ref().and_then(|link| link.parser_document),
-            node.image.as_ref().map(|image| image.dimension_source),
-            node.hyperlink
+            node.base_document().and_then(|document| document.first),
+            node.link().as_ref().and_then(|link| link.parser_document),
+            node.image().as_ref().map(|image| image.dimension_source),
+            node.hyperlink()
                 .as_ref()
                 .and_then(|link| link.parsed.as_ref())
                 .map(|value| value.document),
-            match &node.kind {
+            match &node.kind() {
                 DomNodeKind::Element(element) => element
                     .common_state()
                     .html()
@@ -775,31 +592,32 @@ fn assert_inbound(owner: DomOwnerId, state: &State) {
         {
             reference(target);
         }
-        for values in [&node.children, &node.manual_nodes, &node.assigned_nodes] {
+        for values in [node.children(), node.manual_nodes(), node.assigned_nodes()] {
             for target in values.iter().copied() {
                 reference(target);
             }
         }
-        if let Some(names) = &node.form_past_names {
+        if let Some(names) = &node.form_past_names() {
             for value in names.entries().iter() {
                 reference(value.target);
             }
         }
-        if let Some(document) = &node.base_document {
+        if let Some(document) = &node.base_document() {
             for target in document.render_blocking.iter().copied() {
                 reference(target);
             }
         }
-        if let Some(canonical::Autofocus::Known { candidates, .. }) = &node.autofocus_document {
+        if let Some(canonical::AutofocusView::Known { candidates, .. }) = &node.autofocus_document()
+        {
             for target in candidates.iter().copied() {
                 reference(target);
             }
         }
-        if let Some(canonical::Interactive::Known {
+        if let Some(canonical::InteractiveView::Known {
             open_dialogs,
             top_layer,
             pending_top_layer_removals,
-        }) = &node.interactive_document
+        }) = &node.interactive_document()
         {
             for values in [open_dialogs, top_layer, pending_top_layer_removals] {
                 for target in values.iter().copied() {
@@ -857,7 +675,7 @@ fn assert_queue_targets(owner: DomOwnerId, state: &State) {
         match index {
             0 => {
                 for id in state.signal_slots.iter().copied() {
-                    add_target(id, Some(state.node(owner, id).unwrap().document.node()));
+                    add_target(id, Some(state.node(owner, id).unwrap().document().node()));
                 }
             }
             1 => {
@@ -865,7 +683,7 @@ fn assert_queue_targets(owner: DomOwnerId, state: &State) {
                     if let super::select::Task::Update { target, .. } = task {
                         add_target(
                             *target,
-                            Some(state.node(owner, *target).unwrap().document.node()),
+                            Some(state.node(owner, *target).unwrap().document().node()),
                         );
                     }
                 }
@@ -921,7 +739,7 @@ fn assert_control_index(owner: DomOwnerId, state: &State) {
     let mut groups: HashMap<ControlGroup, HashSet<NodeId>> = HashMap::new();
     for (index, slot) in state.slots.iter() {
         let Some(node) = &slot.node else { continue };
-        let DomNodeKind::Element(element) = &node.kind else {
+        let DomNodeKind::Element(element) = &node.kind() else {
             continue;
         };
         let listed = element.button_state().is_some()
@@ -938,7 +756,7 @@ fn assert_control_index(owner: DomOwnerId, state: &State) {
             slot: index,
             generation: slot.generation,
         };
-        let document = node.document.node();
+        let document = node.document().node();
         let root = *ancestor_path(state, owner, id).first().unwrap();
         let mut form_present = false;
         let mut name = None;
@@ -960,7 +778,7 @@ fn assert_control_index(owner: DomOwnerId, state: &State) {
         let fact = (
             document,
             root,
-            node.control_owner,
+            node.control_owner(),
             form_present,
             radio,
             name.clone(),
@@ -982,7 +800,7 @@ fn assert_control_index(owner: DomOwnerId, state: &State) {
             groups
                 .entry(ControlGroup::Radio(
                     root,
-                    node.control_owner,
+                    node.control_owner(),
                     name.code_units().to_vec(),
                 ))
                 .or_default()
@@ -1069,8 +887,8 @@ fn assert_slot_participants(owner: DomOwnerId, state: &State) {
     }
     let mut positions = HashMap::new();
     for (&parent, node) in &nodes {
-        for (ordinal, &child) in node.children.iter().enumerate() {
-            assert_eq!(nodes[&child].parent, Some(parent));
+        for (ordinal, &child) in node.children().iter().enumerate() {
+            assert_eq!(nodes[&child].parent(), Some(parent));
             assert!(positions.insert(child, (parent, ordinal)).is_none());
         }
     }
@@ -1098,12 +916,12 @@ fn assert_slot_participants(owner: DomOwnerId, state: &State) {
                 "ordinary child graph is a forest"
             );
             let node = nodes[&id];
-            if matches!(&node.kind, DomNodeKind::Element(element) if element.is_slot()) {
+            if matches!(&node.kind(), DomNodeKind::Element(element) if element.is_slot()) {
                 slots.push(id);
             }
             // Ordinary children alone define this walk. A ShadowRoot and
             // Template contents start their own groups through the root loop.
-            pending.extend(node.children.iter().rev().copied());
+            pending.extend(node.children().iter().rev().copied());
         }
         if !slots.is_empty() {
             assert!(expected.insert(root, slots).is_none());
@@ -1185,7 +1003,7 @@ fn assert_slot_participants(owner: DomOwnerId, state: &State) {
 /// independently checked by the raw graph inspector.
 fn assert_slot_names(owner: DomOwnerId, state: &State) {
     fn name(node: &super::Node, attribute: &[u16]) -> Option<DocumentString> {
-        let DomNodeKind::Element(element) = &node.kind else {
+        let DomNodeKind::Element(element) = &node.kind() else {
             return None;
         };
         element
@@ -1205,7 +1023,7 @@ fn assert_slot_names(owner: DomOwnerId, state: &State) {
                 state
                     .node(owner, edge[0])
                     .unwrap()
-                    .children
+                    .children()
                     .iter()
                     .position(|&child| child == edge[1])
                     .unwrap()
@@ -1221,17 +1039,17 @@ fn assert_slot_names(owner: DomOwnerId, state: &State) {
             slot: index,
             generation: slot.generation,
         };
-        let slot = if matches!(&node.kind,DomNodeKind::Element(element) if element.is_slot()) {
+        let slot = if matches!(&node.kind(),DomNodeKind::Element(element) if element.is_slot()) {
             let root = *ancestor_path(state, owner, id).first().unwrap();
             Some((root, name(node, &[110, 97, 109, 101])))
         } else {
             None
         };
-        let light = if matches!(node.kind, DomNodeKind::Element(_) | DomNodeKind::Text(_)) {
-            node.parent.and_then(|parent|{
+        let light = if matches!(node.kind(), DomNodeKind::Element(_) | DomNodeKind::Text(_)) {
+            node.parent().and_then(|parent|{
                 let host=state.node(owner,parent).unwrap();
-                let shadow=host.shadow_root.and_then(|root|state.node(owner,root).ok())?;
-                (matches!(&shadow.kind,DomNodeKind::ShadowRoot(value) if value.slot_assignment()==crate::HtmlSlotAssignment::Named)&&shadow.host==Some(parent))
+                let shadow=host.shadow_root().and_then(|root|state.node(owner,root).ok())?;
+                (matches!(&shadow.kind(),DomNodeKind::ShadowRoot(value) if value.slot_assignment()==crate::HtmlSlotAssignment::Named)&&shadow.host()==Some(parent))
                     .then(||(parent,name(node,&[115,108,111,116])))
             })
         } else {
@@ -1291,12 +1109,12 @@ fn assert_hosted_containers(owner: DomOwnerId, state: &State) {
     let mut roots = Vec::new();
     for (index, slot) in state.slots.iter() {
         let Some(node) = &slot.node else { continue };
-        if node.parent.is_some() {
+        if node.parent().is_some() {
             continue;
         }
-        if matches!(node.kind, DomNodeKind::ShadowRoot(_))
-            && node.host.is_some_and(|host| {
-                state.node(owner, host).unwrap().shadow_root
+        if matches!(node.kind(), DomNodeKind::ShadowRoot(_))
+            && node.host().is_some_and(|host| {
+                state.node(owner, host).unwrap().shadow_root()
                     == Some(NodeId {
                         owner,
                         slot: index,
@@ -1322,12 +1140,12 @@ fn assert_hosted_containers(owner: DomOwnerId, state: &State) {
                 "canonical shadow-inclusive closure visited once"
             );
             let node = state.node(owner, id).unwrap();
-            if matches!(&node.kind,DomNodeKind::Element(element) if element.child_navigable().is_some())
+            if matches!(&node.kind(),DomNodeKind::Element(element) if element.child_navigable().is_some())
             {
                 expected.entry(root).or_default().push(id);
             }
-            pending.extend(node.children.iter().rev().copied());
-            if let Some(shadow) = node.shadow_root {
+            pending.extend(node.children().iter().rev().copied());
+            if let Some(shadow) = node.shadow_root() {
                 pending.push(shadow);
             }
         }
@@ -1381,7 +1199,7 @@ fn assert_hosted_containers(owner: DomOwnerId, state: &State) {
 fn assert_family_discovery(owner: DomOwnerId, state: &State) {
     use surgeist_html::KnownHtmlElement as Tag;
     use transaction::family_discovery::FactKindInspection as Kind;
-    let tag = |id| match &state.node(owner, id).unwrap().kind {
+    let tag = |id| match &state.node(owner, id).unwrap().kind() {
         DomNodeKind::Element(element) => Tag::from_name(element.name()),
         _ => None,
     };
@@ -1392,7 +1210,7 @@ fn assert_family_discovery(owner: DomOwnerId, state: &State) {
                 state
                     .node(owner, edge[0])
                     .unwrap()
-                    .children
+                    .children()
                     .iter()
                     .position(|&child| child == edge[1])
                     .unwrap()
@@ -1403,7 +1221,7 @@ fn assert_family_discovery(owner: DomOwnerId, state: &State) {
     let mut groups = HashMap::<(usize, NodeId, Option<DocumentString>), Vec<NodeId>>::new();
     for (index, slot) in state.slots.iter() {
         let Some(node) = &slot.node else { continue };
-        let DomNodeKind::Element(element) = &node.kind else {
+        let DomNodeKind::Element(element) = &node.kind() else {
             continue;
         };
         let id = NodeId {
@@ -1436,7 +1254,7 @@ fn assert_family_discovery(owner: DomOwnerId, state: &State) {
                 Kind::Details
             }
             Some(Tag::Option) => {
-                let mut parent = node.parent;
+                let mut parent = node.parent();
                 let mut optgroup = false;
                 while let Some(ancestor) = parent {
                     match tag(ancestor) {
@@ -1449,7 +1267,7 @@ fn assert_family_discovery(owner: DomOwnerId, state: &State) {
                         }
                         _ => (),
                     }
-                    parent = state.node(owner, ancestor).unwrap().parent;
+                    parent = state.node(owner, ancestor).unwrap().parent();
                 }
                 if let Some(select) = select {
                     groups
@@ -1460,7 +1278,7 @@ fn assert_family_discovery(owner: DomOwnerId, state: &State) {
                 Kind::Option
             }
             Some(Tag::Selectedcontent) if element.selectedcontent_disabled() == Some(false) => {
-                let mut parent = node.parent;
+                let mut parent = node.parent();
                 while let Some(ancestor) = parent {
                     if tag(ancestor) == Some(Tag::Select) {
                         groups
@@ -1468,7 +1286,7 @@ fn assert_family_discovery(owner: DomOwnerId, state: &State) {
                             .or_default()
                             .push(id);
                     }
-                    parent = state.node(owner, ancestor).unwrap().parent;
+                    parent = state.node(owner, ancestor).unwrap().parent();
                 }
                 Kind::Target
             }
@@ -1542,21 +1360,22 @@ fn assert_role_facts(owner: DomOwnerId, state: &State) {
             slot: index,
             generation: slot.generation,
         };
-        if let Some(base) = &node.base_document {
+        if let Some(base) = &node.base_document() {
             for &target in base.render_blocking.iter() {
                 occurrence(Role::RenderBlocking, source, target);
             }
         }
-        if let Some(canonical::Autofocus::Known { candidates, .. }) = &node.autofocus_document {
+        if let Some(canonical::AutofocusView::Known { candidates, .. }) = &node.autofocus_document()
+        {
             for &target in candidates.iter() {
                 occurrence(Role::AutofocusCandidates, source, target);
             }
         }
-        if let Some(canonical::Interactive::Known {
+        if let Some(canonical::InteractiveView::Known {
             open_dialogs,
             top_layer,
             pending_top_layer_removals,
-        }) = &node.interactive_document
+        }) = &node.interactive_document()
         {
             for (role, values) in [
                 (Role::OpenDialogs, open_dialogs),
@@ -1568,7 +1387,7 @@ fn assert_role_facts(owner: DomOwnerId, state: &State) {
                 }
             }
             for &target in top_layer.iter() {
-                if let DomNodeKind::Element(element) = &state.node(owner, target).unwrap().kind {
+                if let DomNodeKind::Element(element) = &state.node(owner, target).unwrap().kind() {
                     if element
                         .common_state()
                         .html()
@@ -1582,10 +1401,10 @@ fn assert_role_facts(owner: DomOwnerId, state: &State) {
                 }
             }
         }
-        for &target in node.children.iter() {
+        for &target in node.children().iter() {
             let selected = state.node(owner, target).unwrap();
-            if let DomNodeKind::Element(element) = &selected.kind {
-                if matches!(node.kind, DomNodeKind::Document(_)) {
+            if let DomNodeKind::Element(element) = &selected.kind() {
+                if matches!(node.kind(), DomNodeKind::Document(_)) {
                     occurrence(Role::DocumentElement, source, target);
                 }
                 let name = element.name();
@@ -1804,28 +1623,29 @@ fn full_counts(state: &State, usage: DomUsage) -> transaction::Counts {
     };
     for (_, slot) in state.slots.iter() {
         if let Some(node) = &slot.node {
-            add(&mut counts.slot_references, node.manual_nodes.len());
-            add(&mut counts.slot_references, node.assigned_nodes.len());
-            add(&mut counts.fullscreen_events, node.fullscreen_events.len());
+            add(&mut counts.slot_references, node.manual_nodes().len());
+            add(&mut counts.slot_references, node.assigned_nodes().len());
+            add(
+                &mut counts.fullscreen_events,
+                node.fullscreen_events().len(),
+            );
             add(
                 &mut counts.base_observations,
-                node.base_document
-                    .as_ref()
-                    .and_then(|base| base.facts.as_ref())
+                node.base_document()
+                    .and_then(|base| base.facts)
                     .map_or(0, |facts| facts.formation_usage().record_capacity()),
             );
             add(
                 &mut counts.encoding_observations,
-                node.encoding_url_document
-                    .as_ref()
-                    .and_then(|document| document.facts.as_ref())
+                node.encoding_url_document()
+                    .and_then(|document| document.facts)
                     .map_or(0, |facts| facts.formation_usage().record_capacity()),
             );
             add(
                 &mut counts.templates,
                 usize::from(
-                    node.template_contents.is_some()
-                        || node.template_document.is_some_and(|document| {
+                    node.template_contents().is_some()
+                        || node.template_document().is_some_and(|document| {
                             matches!(document, crate::template::TemplateDocument::InertTemplate)
                                 || document.inert().is_some()
                         }),
@@ -1833,12 +1653,12 @@ fn full_counts(state: &State, usage: DomUsage) -> transaction::Counts {
             );
             add(
                 &mut counts.shadow_roots,
-                usize::from(matches!(node.kind, DomNodeKind::ShadowRoot(_))),
+                usize::from(matches!(node.kind(), DomNodeKind::ShadowRoot(_))),
             );
             add(
                 &mut counts.slots,
                 usize::from(
-                    matches!(&node.kind,DomNodeKind::Element(element) if element.is_slot()),
+                    matches!(&node.kind(),DomNodeKind::Element(element) if element.is_slot()),
                 ),
             );
         }
@@ -1872,93 +1692,87 @@ fn validate_full_state(owner: DomOwnerId, state: &State) {
             slot: slot_index,
             generation: slot.generation,
         };
-        if let DomNodeKind::Element(element) = &node.kind {
+        if let DomNodeKind::Element(element) = &node.kind() {
             assert_element_value_receipts(element);
         }
-        let payload = full_node_payload(node);
-        assert_eq!(
-            node.receipts.payload,
-            custody::Usage::new(payload.bytes, payload.units)
-        );
-        let fields = full_fields_payload(node);
-        assert_eq!(
-            node.receipts.fields,
-            custody::Usage::new(
-                size_of::<transaction::NodeFields>() + fields.bytes,
-                fields.units
-            )
-        );
+        super::compact_tests::typed_graph::assert_node_receipts(node);
         let names = full_names_payload(node);
         assert_eq!(
-            node.form_past_names
+            node.form_past_names()
                 .as_ref()
                 .map_or(custody::Usage::ZERO, |names| names.own_usage()),
             custody::Usage::new(names.bytes, names.units)
         );
         assert_eq!(
-            node.form_past_names
+            node.form_past_names()
                 .as_ref()
                 .map_or(0, |names| names.logical_units()),
-            node.form_past_names.as_ref().map_or(0, |names| names
+            node.form_past_names().as_ref().map_or(0, |names| names
                 .entries()
                 .iter()
                 .map(|entry| entry.name.len())
                 .sum())
         );
         assert!(matches!(
-            state.node(owner, node.document.node()).unwrap().kind,
+            state.node(owner, node.document().node()).unwrap().kind(),
             DomNodeKind::Document(_)
         ));
         let mut children = HashSet::new();
-        for child in &node.children {
+        for child in node.children() {
             assert!(children.insert(*child), "duplicate ordinary child");
-            assert_eq!(state.node(owner, *child).unwrap().parent, Some(id));
+            assert_eq!(state.node(owner, *child).unwrap().parent(), Some(id));
         }
-        if let Some(parent) = node.parent {
-            assert!(state.node(owner, parent).unwrap().children.contains(&id));
+        if let Some(parent) = node.parent() {
+            assert!(state.node(owner, parent).unwrap().children().contains(&id));
         }
         ancestor_path(state, owner, id);
-        if let Some(root) = node.shadow_root {
+        if let Some(root) = node.shadow_root() {
             let root = state.node(owner, root).unwrap();
-            assert!(matches!(root.kind, DomNodeKind::ShadowRoot(_)));
-            assert_eq!(root.host, Some(id));
+            assert!(matches!(root.kind(), DomNodeKind::ShadowRoot(_)));
+            assert_eq!(root.host(), Some(id));
         }
-        if let Some(contents) = node.template_contents {
+        if let Some(contents) = node.template_contents() {
             let contents = state.node(owner, contents).unwrap();
-            assert!(matches!(contents.kind, DomNodeKind::DocumentFragment));
-            assert_eq!(contents.host, Some(id));
+            assert!(matches!(contents.kind(), DomNodeKind::DocumentFragment));
+            assert_eq!(contents.host(), Some(id));
         }
-        if let Some(host) = node.host {
+        if let Some(host) = node.host() {
             let host = state.node(owner, host).unwrap();
-            match node.kind {
-                DomNodeKind::ShadowRoot(_) => assert_eq!(host.shadow_root, Some(id)),
-                DomNodeKind::DocumentFragment => assert_eq!(host.template_contents, Some(id)),
+            match node.kind() {
+                DomNodeKind::ShadowRoot(_) => assert_eq!(host.shadow_root(), Some(id)),
+                DomNodeKind::DocumentFragment => assert_eq!(host.template_contents(), Some(id)),
                 _ => panic!("host association belongs to ShadowRoot or Template contents"),
             }
         }
-        for target in &node.manual_nodes {
-            assert_eq!(state.node(owner, *target).unwrap().manual_slot, Some(id));
+        for target in node.manual_nodes() {
+            assert_eq!(state.node(owner, *target).unwrap().manual_slot(), Some(id));
         }
         // Assigned lists and stored inverse fields are separate historical
         // source records. Recomputing a list does not clear removed members'
         // old inverse (docs/slots-and-checkpoints.md; DOM assign-slottables).
         let mut assigned = HashSet::new();
-        for target in &node.assigned_nodes {
+        for target in node.assigned_nodes() {
             assert!(assigned.insert(*target), "unique stored assigned nodes");
             assert!(matches!(
-                state.node(owner, *target).unwrap().kind,
+                state.node(owner, *target).unwrap().kind(),
                 DomNodeKind::Element(_) | DomNodeKind::Text(_)
             ));
         }
-        if let Some(slot) = node.manual_slot {
-            assert!(state.node(owner, slot).unwrap().manual_nodes.contains(&id));
-        }
-        if let Some(slot) = node.assigned_slot {
+        if let Some(slot) = node.manual_slot() {
             assert!(
-                matches!(&state.node(owner,slot).unwrap().kind,DomNodeKind::Element(element) if element.is_slot())
+                state
+                    .node(owner, slot)
+                    .unwrap()
+                    .manual_nodes()
+                    .contains(&id)
             );
         }
-        if let DomActiveRangeState::Known(Some(range)) = node.active_range {
+        if let Some(slot) = node.assigned_slot() {
+            assert!(
+                matches!(&state.node(owner,slot).unwrap().kind(),DomNodeKind::Element(element) if element.is_slot())
+            );
+        }
+        if let DomActiveRangeState::Known(Some(range)) = node.active_range() {
             assert_eq!(range.owner, owner);
             let slot = state.ranges.get(range.slot).unwrap();
             assert_eq!(slot.generation, range.generation);
@@ -2028,10 +1842,13 @@ fn assert_name_attribute_custody(dom: &Dom) {
     let mut raw = Vec::new();
     for (_, slot) in dom.state.slots.iter() {
         let Some(node) = &slot.node else { continue };
-        let DomNodeKind::Element(element) = &node.kind else {
+        let DomNodeKind::Element(element) = &node.kind() else {
             continue;
         };
-        if let Some(payload) = element.attributes_backing().payload() {
+        if let Some(payload) = element
+            .attributes_backing()
+            .and_then(|attributes| attributes.payload())
+        {
             raw.push((
                 payload.identity,
                 custody::Usage::new(
@@ -2064,6 +1881,11 @@ fn assert_name_attribute_custody(dom: &Dom) {
 
 pub(super) fn assert_full_canonical(dom: &Dom) {
     validate_full_state(dom.owner(), &dom.state);
+    assert_eq!(
+        super::payload::inspect_slot_typed_custody(&dom.state_custody.slots),
+        super::compact_tests::typed_graph::materializations(&dom.state),
+        "actual Slot/root composites and independent child custody equal raw layouts"
+    );
     assert_eq!(dom.usage(), full_usage(dom));
     // This independent producer walk uses actual chunk/header capacities and
     // raw change slices; its claimed side reads the live owner Debits only.

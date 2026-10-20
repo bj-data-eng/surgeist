@@ -243,11 +243,11 @@ impl Draft {
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
         let node = self.node(key)?;
-        let DomNodeKind::Element(element) = &node.kind else {
+        let Some(element) = node.element() else {
             return Ok(());
         };
         let metadata = self
-            .document_metadata(node.document)
+            .document_metadata(node.document())
             .map_err(|error| match error {
                 DomError::WrongNodeKind => DomError::WrongDocument,
                 error => error,
@@ -284,7 +284,7 @@ impl Draft {
                 }
             }
         }
-        self.with_element_fields(key, cancel, |element| element.establish_registry(binding))?;
+        self.establish_element_registry(key, binding, cancel)?;
         Ok(())
     }
 }

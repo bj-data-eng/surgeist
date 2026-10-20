@@ -1200,9 +1200,12 @@ mod tests {
     }
     #[test]
     fn ingress_literal_values_and_recovery_grammar_remain_separate() {
+        // HTML877d rules for parsing floating-point number values, step 15:
+        // the conversion set is the finite binary64 values "except −0".
         for (raw, bits) in [
             ("0", 0),
-            ("-0", 1u64 << 63),
+            ("-0", 0),
+            ("-0.000", 0),
             ("1", 0x3ff0000000000000),
             (".1", 0x3fb999999999999a),
             ("9007199254740993", 0x4340000000000000),
@@ -1232,7 +1235,9 @@ mod tests {
                 format!("1e{}", "9".repeat(2000)),
                 Err(RangeNumericError::Overflow),
             ),
-            (format!("-1e-{}", "9".repeat(2000)), Ok(1u64 << 63)),
+            // Step 15 rounds a negative underflow to the nearest value in a set
+            // that excludes −0, so the result is the unsigned zero.
+            (format!("-1e-{}", "9".repeat(2000)), Ok(0)),
             (format!("0e{}", "9".repeat(2000)), Ok(0)),
         ] {
             let mut d = Driver::new(&raw);
@@ -2047,7 +2052,7 @@ mod tests {
             assert!(d.scratch[RangeScratchRole::Right.index()].is_empty());
             assert!(d.scratch[RangeScratchRole::Trial.index()].is_empty());
         }
-        for (raw, bits) in [("0", 0), ("-0", 1u64 << 63)] {
+        for (raw, bits) in [("0", 0), ("-0", 0)] {
             let mut d = Driver::new(raw);
             assert_eq!(d.ingress(FloatingPointParseMode::Author), Ok(bits));
             assert!(d.scratch.iter().all(Vec::is_empty));

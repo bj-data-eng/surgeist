@@ -59,7 +59,7 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<AllowFocusPermission, DomError> {
         self.source_step(cancel)?;
-        self.document_allow_focus_permission(self.node(subject)?.document, cancel)
+        self.document_allow_focus_permission(self.node(subject)?.document(), cancel)
     }
     fn selected_focus_control(
         &self,
@@ -86,21 +86,21 @@ impl Draft {
             cancel,
         )?;
         self.source_step(cancel)?;
-        let document = self.node(subject)?.document;
+        let document = self.node(subject)?.document();
         let mut is_document_element = false;
-        for child in self.node(document)?.children.iter() {
+        for child in self.node(document)?.children().iter() {
             self.source_step(cancel)?;
-            if matches!(self.node(child)?.kind, DomNodeKind::Element(_)) {
+            if matches!(self.node(child)?.kind(), transaction::KindRead::Element(_)) {
                 is_document_element = child == subject;
                 break;
             }
         }
         self.source_step(cancel)?;
-        let delegates = match self.node(subject)?.shadow_root {
+        let delegates = match self.node(subject)?.shadow_root() {
             None => false,
             Some(root) => {
                 self.source_step(cancel)?;
-                let DomNodeKind::ShadowRoot(state) = &self.node(root)?.kind else {
+                let transaction::KindRead::ShadowRoot(state) = &self.node(root)?.kind() else {
                     return Err(DomError::WrongNodeKind);
                 };
                 state.properties().delegates_focus()
@@ -120,7 +120,7 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<Option<Key>, DomError> {
         self.source_step(cancel)?;
-        self.focus_top_document(self.node(control)?.document, cancel)
+        self.focus_top_document(self.node(control)?.document(), cancel)
     }
     pub(super) fn dialog_focusing_boundary(
         &mut self,
@@ -193,7 +193,7 @@ impl Draft {
                     ) {
                         (Some(control), Some(top)) => {
                             self.source_step(cancel)?;
-                            let document = self.node(control)?.document;
+                            let document = self.node(control)?.document();
                             self.source_step(cancel)?;
                             Some(R::SameOrigin(
                                 self.document_metadata(document)?.origin()

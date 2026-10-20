@@ -1,6 +1,6 @@
 //! Qualified canonical Document modal facts, independent of flat-node coverage.
 use super::*;
-use crate::store::canonical::Interactive as DocumentInteractiveState;
+use crate::store::canonical::InteractiveView as DocumentInteractiveState;
 use surgeist_html_semantics::{
     HtmlDocumentModalBlocking, HtmlDocumentModalFact, HtmlFlatTreeProducerId, HtmlFlatTreeRevision,
     HtmlInertFactLimits, HtmlInertFacts, HtmlInertNodeFact,
@@ -26,7 +26,7 @@ pub(super) fn with_facts(
         // capture contains only a supplemental portion of this Document's tree.
         // Neither open/modal flags, pending removal nor missing captured members
         // replace the source's last actual HTML Dialog in raw order.
-        let blocking = match node.node.interactive_document.as_ref() {
+        let blocking = match node.node.interactive_document() {
             Some(DocumentInteractiveState::Known { top_layer, .. }) => {
                 let mut blocking = HtmlDocumentModalBlocking::Unblocked;
                 for member in top_layer.iter().rev() {

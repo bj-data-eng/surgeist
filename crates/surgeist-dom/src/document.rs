@@ -197,24 +197,25 @@ pub struct DomDocumentEnvironment {
 /// flags. Only the private native environment constructor establishes it.
 ///
 /// All native entrypoints admit inert strings/values and canonical identities,
-/// never network/data/same-document script acquisition, inline/external execution,
-/// executable handlers/listeners, SVG load/error recipients or script acquisition,
-/// execution or notification callback/task/resource/event outputs. Host
+/// never network/data/same-document script acquisition or inline/external execution.
+/// This is acquisition/execution provenance, not a permanent no-listener proof.
+/// Reached processing independently checks the current positive Load/Error
+/// recipient capabilities before changing the processed flag. Host
 /// observations are selection facts only; Slot
 /// intentions cannot represent an SVG event. Native fragment installation creates
 /// fresh values; snapshot import clones another checked native owner. Neither
 /// admits retained script resources/history. A future capability-bearing front
 /// must qualify its real transition before it can retain this closed witness.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct ClosedSvgScriptProcessing {
+pub(crate) struct NativeSvgScriptEnvironment {
     _sealed: (),
 }
-impl ClosedSvgScriptProcessing {
+impl NativeSvgScriptEnvironment {
     pub(crate) const fn native_creation() -> Self {
         Self { _sealed: () }
     }
-    /// Tiny step3 remains real while acquisition, execution and unobservable
-    /// notification are omitted under the independently established closed owner.
+    /// Tiny step3 remains real after the reached operation has separately
+    /// established that its native notifications have no applicable recipient.
     pub(crate) fn mark_processed(self, flags: &mut surgeist_html::SvgScriptFlags) {
         flags.mark_processed();
     }
@@ -621,12 +622,16 @@ impl DomDocumentMetadata {
         language: Option<DocumentString>,
         referrer: surgeist_html::HtmlReferrerPolicy,
         will_declaratively_refresh: bool,
+        theme_color: Option<surgeist_color::Color>,
+        color_scheme: Option<crate::meta::SelectedColorScheme>,
     ) {
         self.meta = Some(crate::DomMetaDocumentState {
             pragma_language: language,
             will_declaratively_refresh,
         });
         self.policy.referrer = Some(referrer);
+        self.meta_theme_color = crate::DomMetaThemeColorState::Known(theme_color);
+        self.meta_color_scheme = Some(color_scheme);
     }
     pub(crate) fn meta_state_mut(&mut self) -> Option<&mut crate::DomMetaDocumentState> {
         self.meta.as_mut()

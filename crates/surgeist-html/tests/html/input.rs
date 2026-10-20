@@ -1,0 +1,10 @@
+mod checkbox_rules;
+mod color_rules;
+mod directionality;
+mod email_url_rules;
+mod file_image_rules;
+mod image_values;
+mod radio_rules;
+mod range_sanitation;
+mod selection_rules;
+mod temporal_rules;

@@ -168,10 +168,10 @@ fn targets_case(unrelated: usize, target_count: usize) {
         let snapshot = dom.snapshot();
         let children = snapshot.node(target).unwrap().children();
         assert_eq!(children.len(), 1);
-        assert_eq!(
+        assert!(matches!(
             snapshot.node(children[0]).unwrap().kind(),
-            &DomNodeKind::Text("chosen".into())
-        );
+            DomNodeKind::Text(value) if value.code_units() == [99, 104, 111, 115, 101, 110]
+        ));
     }
     if target_count == 0 {
         assert_eq!(dom.snapshot().stamp(), before.stamp());

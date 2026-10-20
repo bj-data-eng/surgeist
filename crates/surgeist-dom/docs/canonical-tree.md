@@ -163,6 +163,12 @@ belongs to itself for membership; its `owner_document()` getter returns `None`.
 A detached node keeps its owner document while its ordinary root and
 connectedness change.
 
+`DomNode::kind()` returns a copyable `DomNodeKind<'a>` by value. Its payload
+variants borrow the actual values in that immutable snapshot; observing or
+copying the enum allocates no storage and clones no owned payload. The borrowed
+values retain the snapshot's lifetime. Callers needing an independently owned
+string or language value explicitly clone that value.
+
 ## Change coverage and cancellation
 
 Each commit reports complete changed domains for this supported surface,

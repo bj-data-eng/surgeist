@@ -361,7 +361,7 @@ fn before_with_policy(
     .unwrap();
     let listener = registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(|_, _, calls: &mut usize, event| {

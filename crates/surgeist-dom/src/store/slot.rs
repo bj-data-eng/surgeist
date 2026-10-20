@@ -2,10 +2,22 @@ use super::*;
 use crate::slot::{self, Tree};
 use transaction::RelationField;
 
+impl<'a> From<transaction::KindRead<'a>> for slot::TreeKind<'a> {
+    fn from(kind: transaction::KindRead<'a>) -> Self {
+        match kind {
+            transaction::KindRead::Element(element) => Self::Element(element.language()),
+            transaction::KindRead::Text(_) => Self::Text,
+            transaction::KindRead::ShadowRoot(state) => Self::ShadowRoot(state),
+            _ => Self::Other,
+        }
+    }
+}
+
 fn tree_relations(
     view: transaction::SequenceView<'_, NodeId, Key>,
 ) -> slot::TreeRelations<'_, Key> {
     match view {
+        transaction::SequenceView::Empty => slot::TreeRelations::Direct(&[]),
         transaction::SequenceView::Canonical(values, map) => {
             slot::TreeRelations::Canonical(values, map)
         }
@@ -55,18 +67,18 @@ impl Tree for Draft {
     fn get(&self, key: Key) -> Result<slot::TreeNode<'_, Key>, DomError> {
         let n = self.node(key)?;
         Ok(slot::TreeNode {
-            kind: n.kind,
-            parent: n.parent,
-            ordinal: n.parent.and_then(|parent| {
+            kind: n.kind().into(),
+            parent: n.parent(),
+            ordinal: n.parent().and_then(|parent| {
                 self.slot_index
                     .position(self.live_key(key))
                     .filter(|position| position.parent == self.live_key(parent))
                     .map(|position| position.ordinal)
             }),
-            children: tree_relations(n.children),
-            shadow_root: n.shadow_root,
-            host: n.host,
-            manual: tree_relations(n.manual_nodes),
+            children: tree_relations(n.children()),
+            shadow_root: n.shadow_root(),
+            host: n.host(),
+            manual: tree_relations(n.manual_nodes()),
         })
     }
     fn slot_after(
@@ -221,18 +233,18 @@ impl Draft {
         for _ in &*nodes {
             self.source_step(cancel)?;
         }
-        for _ in self.node(key)?.assigned_nodes.iter() {
+        for _ in self.node(key)?.assigned_nodes().iter() {
             self.source_step(cancel)?;
         }
         let changed = !self
             .node(key)?
-            .assigned_nodes
+            .assigned_nodes()
             .iter()
             .eq(nodes.iter().copied());
         let new_signal = changed && !self.slot_signal_contains(key, cancel)?;
         let required = self
             .slot_reference_count(cancel)?
-            .checked_sub(self.node(key)?.assigned_nodes.len())
+            .checked_sub(self.node(key)?.assigned_nodes().len())
             .and_then(|n| n.checked_add(nodes.len()))
             .and_then(|n| n.checked_add(usize::from(new_signal)))
             .ok_or(DomError::RepresentationExhausted)?;
@@ -255,14 +267,16 @@ impl Draft {
             nodes.into_values(),
             cancel,
         )?;
-        for index in 0..self.node(key)?.assigned_nodes.len() {
+        for index in 0..self.node(key)?.assigned_nodes().len() {
             self.source_step(cancel)?;
             let node = self
                 .node(key)?
-                .assigned_nodes
+                .assigned_nodes()
                 .get(index)
                 .expect("assigned node");
-            self.with_node_fields(node, cancel, |fields| fields.assigned_slot = Some(key))?;
+            let mut slottable = self.slottable_fields_mut(node, cancel)?;
+            slottable.assigned_slot = Some(key);
+            slottable.commit(cancel)?;
         }
         Ok(())
     }
@@ -275,7 +289,7 @@ impl Draft {
         let mut current = self.slot_after(root, None, &mut || self.source_step(cancel))?;
         while let Some(key) = current {
             self.source_step(cancel)?;
-            if slot::is_slot(self.node(key)?.kind) {
+            if slot::is_slot(self.node(key)?.kind().into()) {
                 self.assign_slottables(key, limits, cancel)?;
             }
             current = self.slot_after(root, Some(key), &mut || self.source_step(cancel))?;
@@ -316,7 +330,7 @@ impl Draft {
             HtmlSlotAssignAction as A, HtmlSlotAssignCursor, HtmlSlotAssignReply as R,
         };
         self.source_step(cancel)?;
-        if !slot::is_slot(self.node(target)?.kind) {
+        if !slot::is_slot(self.node(target)?.kind().into()) {
             return Err(DomError::SlotInapplicable);
         }
         let mut nodes = self.effect_vec();
@@ -324,13 +338,13 @@ impl Draft {
         for operand in incoming {
             self.source_step(cancel)?;
             let key = self.resolve(operand.clone())?;
-            if !slot::is_slottable(self.node(key)?.kind) {
+            if !slot::is_slottable(self.node(key)?.kind().into()) {
                 return Err(DomError::WrongNodeKind);
             }
             nodes.push(key);
         }
         let mut cursor =
-            HtmlSlotAssignCursor::new(self.node(target)?.manual_nodes.len(), nodes.len());
+            HtmlSlotAssignCursor::new(self.node(target)?.manual_nodes().len(), nodes.len());
         let mut pending = self.effect_vec();
         let mut referred = None;
         loop {
@@ -340,20 +354,22 @@ impl Draft {
                 A::ClearPreviousManualInverse { previous_ordinal } => {
                     let key = self
                         .node(target)?
-                        .manual_nodes
+                        .manual_nodes()
                         .get(previous_ordinal)
                         .expect("previous manual node");
-                    self.with_node_fields(key, cancel, |fields| fields.manual_slot = None)?;
+                    let mut slottable = self.slottable_fields_mut(key, cancel)?;
+                    slottable.manual_slot = None;
+                    slottable.commit(cancel)?;
                     R::Applied
                 }
                 A::BeginPendingManualSet => R::Applied,
                 A::ReadIncomingManualAssignment { ordinal } => {
-                    referred = self.node(nodes[ordinal])?.manual_slot;
+                    referred = self.node(nodes[ordinal])?.manual_slot();
                     R::ManualAssignmentPresent(referred.is_some())
                 }
                 A::RemoveIncomingFromReferredManualSet { ordinal } => {
                     let key = referred.expect("actual preceding read");
-                    for _ in self.node(key)?.manual_nodes.iter() {
+                    for _ in self.node(key)?.manual_nodes().iter() {
                         self.source_step(cancel)?;
                     }
                     self.relations_retain(
@@ -365,9 +381,9 @@ impl Draft {
                     R::Applied
                 }
                 A::SetIncomingManualAssignmentToTarget { ordinal } => {
-                    self.with_node_fields(nodes[ordinal], cancel, |fields| {
-                        fields.manual_slot = Some(target)
-                    })?;
+                    let mut slottable = self.slottable_fields_mut(nodes[ordinal], cancel)?;
+                    slottable.manual_slot = Some(target);
+                    slottable.commit(cancel)?;
                     R::Applied
                 }
                 A::CompareIncoming {
@@ -382,7 +398,7 @@ impl Draft {
                 A::ReplaceTargetManualSet => {
                     let required = self
                         .slot_reference_count(cancel)?
-                        .checked_sub(self.node(target)?.manual_nodes.len())
+                        .checked_sub(self.node(target)?.manual_nodes().len())
                         .and_then(|n| n.checked_add(pending.len()))
                         .ok_or(DomError::RepresentationExhausted)?;
                     admit(
@@ -419,9 +435,9 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if let Some(root) = self.node(parent)?.shadow_root
-            && matches!(&self.node(root)?.kind,DomNodeKind::ShadowRoot(state) if state.slot_assignment()==crate::HtmlSlotAssignment::Named)
-            && slot::is_slottable(self.node(node)?.kind)
+        if let Some(root) = self.node(parent)?.shadow_root()
+            && matches!(self.node(root)?.kind(),transaction::KindRead::ShadowRoot(state) if state.slot_assignment()==crate::HtmlSlotAssignment::Named)
+            && slot::is_slottable(self.node(node)?.kind().into())
         {
             self.assign_a_slot(node, limits, cancel)?;
         }
@@ -434,11 +450,11 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if slot::is_slot(self.node(parent)?.kind)
-            && self.node(parent)?.assigned_nodes.is_empty()
+        if slot::is_slot(self.node(parent)?.kind().into())
+            && self.node(parent)?.assigned_nodes().is_empty()
             && matches!(
-                self.node(slot::root(self, parent, cancel)?)?.kind,
-                DomNodeKind::ShadowRoot(_)
+                self.node(slot::root(self, parent, cancel)?)?.kind(),
+                transaction::KindRead::ShadowRoot(_)
             )
         {
             self.signal_slot(parent, limits, cancel)?;
@@ -452,7 +468,7 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if let Some(slot) = self.node(node)?.assigned_slot {
+        if let Some(slot) = self.node(node)?.assigned_slot() {
             self.assign_slottables(slot, limits, cancel)?;
         }
         self.signal_fallback_parent(parent, limits, cancel)?;
@@ -484,18 +500,18 @@ impl Draft {
             return Ok(());
         }
         let new = slot::name_admitted(
-            self.node(node)?.kind,
+            self.node(node)?.kind().into(),
             if is_name { "name" } else { "slot" },
             &mut || self.source_step(cancel),
         )?;
         if slot::same_name(old, new, &mut || self.source_step(cancel))? {
             return Ok(());
         }
-        if is_name && slot::is_slot(self.node(node)?.kind) {
+        if is_name && slot::is_slot(self.node(node)?.kind().into()) {
             self.assign_tree(slot::root(self, node, cancel)?, limits, cancel)?;
         }
         if is_slot {
-            if let Some(slot) = self.node(node)?.assigned_slot {
+            if let Some(slot) = self.node(node)?.assigned_slot() {
                 self.assign_slottables(slot, limits, cancel)?;
             }
             self.assign_a_slot(node, limits, cancel)?;
@@ -516,15 +532,15 @@ impl Draft {
             self.source_step(cancel)?;
             let Ok(node) = self.node(owner) else { continue };
             let mut manual = false;
-            for value in node.manual_nodes.iter() {
+            for value in node.manual_nodes().iter() {
                 self.source_step(cancel)?;
                 if value == key {
                     manual = true;
                     break;
                 }
             }
-            let clear_manual = node.manual_slot == Some(key);
-            let clear_assigned = node.assigned_slot == Some(key);
+            let clear_manual = node.manual_slot() == Some(key);
+            let clear_assigned = node.assigned_slot() == Some(key);
             if manual {
                 self.relations_retain(
                     owner,
@@ -534,14 +550,14 @@ impl Draft {
                 )?;
             }
             if clear_manual || clear_assigned {
-                self.with_node_fields(owner, cancel, |fields| {
-                    if clear_manual {
-                        fields.manual_slot = None;
-                    }
-                    if clear_assigned {
-                        fields.assigned_slot = None;
-                    }
-                })?;
+                let mut slottable = self.slottable_fields_mut(owner, cancel)?;
+                if clear_manual {
+                    slottable.manual_slot = None;
+                }
+                if clear_assigned {
+                    slottable.assigned_slot = None;
+                }
+                slottable.commit(cancel)?;
             }
         }
         if self.slot_signal_contains(key, cancel)? {
@@ -690,9 +706,15 @@ mod tests {
             Err(DomError::SourceWorkLimit { limit: spent })
         );
         assert_eq!(draft.source_work.load(Ordering::Relaxed), spent);
-        assert!(draft.node(target).unwrap().manual_nodes.is_empty());
+        assert!(draft.node(target).unwrap().manual_nodes().is_empty());
         assert_eq!(draft.select_temporary_bytes.load(Ordering::Relaxed), 0);
-        assert!(dom.state.node(dom.owner, x).unwrap().manual_slot.is_none());
+        assert!(
+            dom.state
+                .node(dom.owner, x)
+                .unwrap()
+                .manual_slot()
+                .is_none()
+        );
     }
     #[test]
     fn source_slot_attribute_hook_admits_work_before_reading_its_name() {
@@ -753,7 +775,7 @@ mod tests {
         let retained = draft.source_storage_bytes(&cancel).unwrap() + draft.source_other_bytes;
         draft.source_limits.as_mut().unwrap().retained_bytes = retained;
         let key = draft.resolve(s.into()).unwrap();
-        let document = draft.node(key).unwrap().document;
+        let document = draft.node(key).unwrap().document();
         assert_eq!(
             draft.slot_retirement(key, document, dom.limits(), &cancel),
             Err(DomError::ResourceLimit {
@@ -788,7 +810,7 @@ mod tests {
             draft
                 .node(draft.resolve(x.into()).unwrap())
                 .unwrap()
-                .manual_slot,
+                .manual_slot(),
             Some(target)
         );
         assert_eq!(*dom.state, *before.state);

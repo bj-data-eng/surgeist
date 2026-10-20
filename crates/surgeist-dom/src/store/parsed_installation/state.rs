@@ -90,7 +90,27 @@ pub(super) fn transfer_document_meta<'a>(
     if let Some(language) = language {
         c.string(language)?;
     }
-    metadata.establish_parsed_meta_history(language.cloned(), view.referrer_policy(), refresh);
+    c.step(1)?;
+    let theme_color = view.theme_color().map_err(missing_meta)?;
+    c.step(1)?;
+    let color_scheme = view.color_scheme().map(|report| {
+        // The producer seals the authored CSS result and its exact backing
+        // receipt. Canonical metadata retains that graph without reparsing;
+        // normal Document payload/count admission prices it before publish.
+        let usage = report.retained_storage();
+        crate::meta::SelectedColorScheme {
+            report: report.clone(),
+            bytes: usage.bytes(),
+            units: usage.utf16_units(),
+        }
+    });
+    metadata.establish_parsed_meta_history(
+        language.cloned(),
+        view.referrer_policy(),
+        refresh,
+        theme_color,
+        color_scheme,
+    );
     Ok(())
 }
 
@@ -237,7 +257,7 @@ pub(super) fn metadata(
         let key = source.key(&node.id(), c)?;
         if let Some(document) = record.node_document() {
             let document = source.document_key(document, c)?;
-            if draft.node(key)?.document != document {
+            if draft.node(key)?.document() != document {
                 return Err(Error::UnsupportedState { subject: node.id() });
             }
         }
@@ -248,7 +268,9 @@ pub(super) fn metadata(
             } else {
                 crate::template::TemplateDocument::Ordinary { inert: cache }
             });
-            draft.with_node_fields(key, c.cancel, |fields| fields.template_document = value)?;
+            let mut role = draft.template_document_mut(key, c.cancel)?;
+            *role = value;
+            role.commit(c.cancel)?;
         }
         if let Some(template) = record.template() {
             if !matches!(
@@ -284,30 +306,43 @@ pub(super) fn metadata(
                     .transpose()?,
             };
             let value = Some(contents);
-            draft.with_node_fields(key, c.cancel, |fields| fields.template_contents = value)?;
+            let mut template = draft.template_mut(key, c.cancel)?;
+            template.template_contents = value;
+            template.commit(c.cancel)?;
             let value = Some(patch);
-            draft.with_node_fields(key, c.cancel, |fields| fields.template_patch = value)?;
+            let mut template = draft.template_mut(key, c.cancel)?;
+            template.template_patch = value;
+            template.commit(c.cancel)?;
             if owned {
-                draft.with_node_fields(contents, c.cancel, |fields| fields.host = Some(key))?;
+                let mut host = draft.host_mut(contents, c.cancel)?;
+                *host = Some(key);
+                host.commit(c.cancel)?;
             }
         }
         if let Some(Some(select)) = record.option_nearest_select() {
             let value = Some(source.key(&select.id(), c)?);
-            draft.with_node_fields(key, c.cancel, |fields| fields.option_select = value)?;
+            let mut select = draft.option_fields_mut(key, c.cancel)?;
+            *select = value;
+            select.commit(c.cancel)?;
         }
         if let Some(owner) = record.form_owner() {
             let owner = owner.map(|value| source.key(&value.id(), c)).transpose()?;
             let parser_inserted = required(record.form_parser_inserted(), node)?;
             let value = owner;
-            draft.with_node_fields(key, c.cancel, |fields| fields.control_owner = value)?;
-            draft.with_element_fields(key, c.cancel, |element| {
-                if let Some(control) = element.native_control_mut() {
-                    control.parser_inserted = parser_inserted;
-                } else if !element.is_img() {
-                    return Err(Error::UnsupportedState { subject: node.id() });
-                }
-                Ok(())
-            })??;
+            let mut owner = draft.control_fields_mut(key, c.cancel)?;
+            owner.control_owner = value;
+            owner.commit(c.cancel)?;
+            let element = draft
+                .node(key)?
+                .element()
+                .ok_or(Error::UnsupportedState { subject: node.id() })?;
+            if element.native_control().is_some() {
+                draft.with_control(key, c.cancel, |control| {
+                    control.parser_inserted = parser_inserted
+                })?;
+            } else if !element.is_img() {
+                return Err(Error::UnsupportedState { subject: node.id() });
+            }
         }
         if let Some(script) = record.script_state() {
             let (parser, preparation) = required(record.script_documents(), node)?;
@@ -329,58 +364,84 @@ pub(super) fn metadata(
                 result: script.result(),
                 ready: script.steps_when_result_ready(),
             });
-            draft.with_node_fields(key, c.cancel, |fields| fields.script = value)?;
+            let mut script = draft.script_fields_mut(key, c.cancel)?;
+            *script = value;
+            script.commit(c.cancel)?;
         }
         if let Some(base) = record.base_state() {
             let frozen = match base {
                 HtmlParseBaseState::Unfrozen => None,
                 HtmlParseBaseState::Frozen(base) => {
                     c.string(base.value().serialization())?;
-                    Some(crate::base::Frozen {
-                        value: base.value().clone(),
-                        document: source.key(&base.document().id(), c)?,
-                        revision: base.revision().clone(),
-                        // Report preparation excludes a Pending response. False
-                        // preserves Returned; true is completed parser response,
-                        // not native delivery.
-                        response: if base.responded() {
+                    Some((
+                        base.value(),
+                        source.key(&base.document().id(), c)?,
+                        base.revision(),
+                        if base.responded() {
                             crate::base::Response::ParsedCompleted
                         } else {
                             crate::base::Response::Returned
                         },
-                    })
+                    ))
                 }
                 HtmlParseBaseState::Unavailable { .. } => {
                     return Err(Error::BaseStateUnavailable { subject: node.id() });
                 }
             };
-            let old = draft
-                .node(key)?
-                .base
-                .as_ref()
-                .map_or(0, |state| state.units());
-            let next = crate::base::BaseState { frozen };
-            replace_units(draft, old, next.units(), limits)?;
-            let value = Some(next);
-            draft.with_node_fields(key, c.cancel, |fields| fields.base = value)?;
+            let old = draft.node(key)?.base().map_or(0, |state| state.units());
+            replace_units(
+                draft,
+                old,
+                frozen
+                    .as_ref()
+                    .map_or(0, |(value, ..)| value.serialization().len()),
+                limits,
+            )?;
+            let mut extra = source::storage::Payload::default();
+            if let Some((value, ..)) = &frozen {
+                extra.producer(value.retained_storage_usage())?;
+            }
+            draft.replace_base_from(
+                key,
+                extra,
+                || {
+                    Ok(Some(crate::base::BaseState {
+                        frozen: frozen.map(|(value, document, revision, response)| {
+                            crate::base::Frozen {
+                                value: value.clone(),
+                                document,
+                                revision: revision.clone(),
+                                response,
+                            }
+                        }),
+                    }))
+                },
+                c.cancel,
+            )?;
         }
         if let Some(facts) = record.document_base_facts() {
             let old = draft
                 .node(key)?
-                .base_document
-                .as_ref()
+                .base_document()
                 .map_or(0, |state| state.units());
             let first = required(record.document_first_base(), node)?
                 .map(|node| source.key(&node.id(), c))
                 .transpose()?;
-            let next = crate::base::BaseDocument {
-                facts: Some(facts.clone()),
-                first,
-                render_blocking: Vec::new(),
-            };
-            replace_units(draft, old, next.units(), limits)?;
-            let value = Some(next);
-            draft.with_node_fields(key, c.cancel, |fields| fields.base_document = value)?;
+            replace_units(draft, old, facts.formation_usage().utf16_extent(), limits)?;
+            let mut extra = source::storage::Payload::default();
+            extra.producer(facts.retained_storage_usage())?;
+            draft.replace_base_document_from(
+                key,
+                extra,
+                || {
+                    Ok(Some(crate::base::BaseDocument {
+                        facts: Some(facts.clone()),
+                        first,
+                        render_blocking: Vec::new(),
+                    }))
+                },
+                c.cancel,
+            )?;
         }
         if let Some(flags) = record.link_flags() {
             let parser = required(record.link_parser_document(), node)?
@@ -391,7 +452,9 @@ pub(super) fn metadata(
                 parser_document: parser,
                 sheet: None,
             });
-            draft.with_node_fields(key, c.cancel, |fields| fields.link = value)?;
+            let mut link = draft.link_fields_mut(key, c.cancel)?;
+            *link = value;
+            link.commit(c.cancel)?;
         }
         if let Some(hyperlink) = record.hyperlink() {
             let document = source.document_ref_key(hyperlink.document(), c)?;
@@ -399,10 +462,7 @@ pub(super) fn metadata(
                 surgeist_html_parser::HtmlParseHyperlinkState::AbsentHref => None,
                 surgeist_html_parser::HtmlParseHyperlinkState::Observed(value) => {
                     c.string(value.raw())?;
-                    Some(crate::hyperlink::Parsed {
-                        document,
-                        value: (*value).clone(),
-                    })
+                    Some(*value)
                 }
                 surgeist_html_parser::HtmlParseHyperlinkState::Unavailable(reason) => {
                     return Err(Error::HyperlinkUnavailable {
@@ -413,13 +473,31 @@ pub(super) fn metadata(
             };
             let old = draft
                 .node(key)?
-                .hyperlink
-                .as_ref()
+                .hyperlink()
                 .map_or(0, |state| state.units());
-            let next = crate::hyperlink::HyperlinkState { parsed };
-            replace_units(draft, old, next.units(), limits)?;
-            let value = Some(next);
-            draft.with_node_fields(key, c.cancel, |fields| fields.hyperlink = value)?;
+            replace_units(
+                draft,
+                old,
+                parsed.map_or(0, |value| value.retained_utf16_extent()),
+                limits,
+            )?;
+            let mut extra = source::storage::Payload::default();
+            if let Some(value) = parsed {
+                extra.hyperlink_snapshot(value)?;
+            }
+            draft.replace_hyperlink_from(
+                key,
+                extra,
+                || {
+                    Ok(Some(crate::hyperlink::HyperlinkState {
+                        parsed: parsed.map(|value| crate::hyperlink::Parsed {
+                            document,
+                            value: value.clone(),
+                        }),
+                    }))
+                },
+                c.cancel,
+            )?;
         }
         if let Some(image) = record.image() {
             let latest = image.latest_started();
@@ -443,14 +521,23 @@ pub(super) fn metadata(
                 source.observation(&node.id(), c, |r| r.form_parser_inserted())?,
                 node,
             )?;
-            let value = Some(crate::image::ImageState {
-                native: image.state().clone(),
-                dimension_source: source.key(&image.dimension_attribute_source().id(), c)?,
-                parser_inserted,
-                high_water: latest,
-                waiting,
-            });
-            draft.with_node_fields(key, c.cancel, |fields| fields.image = value)?;
+            let dimension_source = source.key(&image.dimension_attribute_source().id(), c)?;
+            let mut extra = source::storage::Payload::default();
+            extra.string(image.state().current_request().current_url())?;
+            draft.replace_image_from(
+                key,
+                extra,
+                || {
+                    Ok(Some(crate::image::ImageState {
+                        native: image.state().clone(),
+                        dimension_source,
+                        parser_inserted,
+                        high_water: latest,
+                        waiting,
+                    }))
+                },
+                c.cancel,
+            )?;
         }
         if let Some(style) = record.style() {
             let document = style.creating_parser_document();
@@ -465,7 +552,9 @@ pub(super) fn metadata(
                     }
                 })
                 .transpose()?;
-            draft.with_node_fields(key, c.cancel, |fields| fields.style_parser_document = value)?;
+            let mut parser = draft.style_parser_document_mut(key, c.cancel)?;
+            *parser = value;
+            parser.commit(c.cancel)?;
         }
     }
     c.step(1)?;
@@ -502,8 +591,6 @@ pub(super) fn allocate(
     limits: DomLimits,
     c: &mut Control<'_>,
 ) -> Result<Key, Error> {
-    let mut attributes_custody = None;
-    let mut attribute_scratch = 0usize;
     #[cfg(test)]
     let mut written = crate::store::CopyObservation::default();
     c.step(1)?;
@@ -523,23 +610,23 @@ pub(super) fn allocate(
                 }
                 let shadow =
                     selected.ok_or_else(|| Error::MissingMetadata { subject: node.id() })?;
-                DomNodeKind::ShadowRoot(crate::DomShadowRootState::from_parsed(
+                NewNode::ShadowRoot(crate::DomShadowRootState::from_parsed(
                     shadow.properties,
                     shadow.keep_registry_null,
                     shadow.declarative,
                     shadow.available_to_internals,
                 ))
             } else {
-                DomNodeKind::DocumentFragment
+                NewNode::DocumentFragment
             }
         }
         HtmlNodeKind::Text(value) => {
             c.string(value)?;
-            DomNodeKind::Text(value.clone())
+            NewNode::Text(value.clone())
         }
         HtmlNodeKind::Comment(value) => {
             c.string(value)?;
-            DomNodeKind::Comment(value.clone())
+            NewNode::Comment(value.clone())
         }
         HtmlNodeKind::Doctype(value) => {
             c.string(value.name())?;
@@ -549,7 +636,7 @@ pub(super) fn allocate(
             if let Some(value) = value.system_id() {
                 c.string(value)?;
             }
-            DomNodeKind::DocumentType(DomDocumentType::from_parsed(
+            NewNode::DocumentType(DomDocumentType::from_parsed(
                 value.name().clone(),
                 value.public_id().cloned().unwrap_or_default(),
                 value.system_id().cloned().unwrap_or_default(),
@@ -575,7 +662,7 @@ pub(super) fn allocate(
                 #[cfg(test)]
                 written.pushed::<(DocumentString, DocumentString)>();
             }
-            DomNodeKind::ProcessingInstruction(DomProcessingInstruction::from_parsed(
+            NewNode::ProcessingInstruction(DomProcessingInstruction::from_parsed(
                 value.target().clone(),
                 value.data().clone(),
                 pairs,
@@ -609,8 +696,17 @@ pub(super) fn allocate(
             if let Some(value) = nonce {
                 c.string(value)?;
             }
-            let family = family(source, node, class, input, c)?;
-            let name = draft.bind_name(element.name(), None, c.cancel)?;
+            let cancel = c.cancel;
+            let mut admit = |next| draft.admit_custody_usage(next, cancel);
+            let mut formation = crate::element::ElementFormation::new(
+                draft.custody_registry(),
+                None,
+                cancel,
+                &mut admit,
+            );
+            let family = family(source, node, class, input, c, &mut formation)?;
+            let name = draft.bind_name(element.name(), None, cancel)?;
+            let name = draft.form_element_name(name, None, cancel)?;
             let capacity = element.attributes().len();
             let body = if capacity == 0 {
                 0
@@ -629,37 +725,46 @@ pub(super) fn allocate(
                     attribute.value().clone(),
                 ));
                 #[cfg(test)]
+                if scale_metrics::ENABLED {
+                    scale_metrics::record(scale_metrics::Event::ParsedAttributeRowMaterialized);
+                }
+                #[cfg(test)]
                 written.pushed::<crate::DomAttribute>();
             }
-            if entries.entries.capacity() != 0 {
-                attribute_scratch = entries
+            let attribute_scratch = if entries.entries.capacity() != 0 {
+                entries
                     .entries
                     .capacity()
                     .checked_mul(size_of::<crate::DomAttribute>())
                     .and_then(|bytes| bytes.checked_add(body))
-                    .ok_or(Error::RepresentationExhausted)?;
-            }
-            let attributes = draft.form_attributes(entries, None, c.cancel)?;
-            attributes_custody = attributes.custody;
-            DomNodeKind::Element(DomElement::from_parsed(
-                name,
-                attributes.value,
+                    .ok_or(Error::RepresentationExhausted)?
+            } else {
+                0
+            };
+            let attributes = draft.form_attributes(entries, None, cancel)?;
+            let attributes = draft.form_attribute_binding(attributes, None, cancel)?;
+            let mut formed = DomElement::from_parsed(
+                name.value,
+                attributes.as_ref().map(|value| value.value.clone()),
                 custom_state,
                 saved_is.cloned(),
                 nonce.cloned(),
                 family,
                 common.map(|reference| match reference {}),
-            ))
+                formation,
+            )?;
+            formed.children.name = Some(name.custody);
+            formed.children.attributes = attributes.map(|value| value.custody);
+            let key = draft.allocate_element_formed(formed, document, limits, cancel, None)?;
+            // The exact input array/target now belongs to the receiving Slot.
+            c.bytes = c
+                .bytes
+                .checked_sub(attribute_scratch)
+                .expect("transferred attribute scratch");
+            return Ok(key);
         }
     };
-    let key = draft.allocate(kind, document, limits, c.cancel)?;
-    // The exact new array/target has transferred into its controlled Slot.
-    c.bytes = c
-        .bytes
-        .checked_sub(attribute_scratch)
-        .expect("transferred attribute scratch");
-    drop(attributes_custody);
-    Ok(key)
+    Ok(draft.allocate(kind, document, limits, c.cancel)?)
 }
 
 fn family(
@@ -668,6 +773,7 @@ fn family(
     requirement: Requirement,
     input: crate::DomNativeInputPlatform,
     c: &mut Control<'_>,
+    formation: &mut crate::element::ElementFormation<'_>,
 ) -> Result<NativeFamily, Error> {
     let parser_inserted = if let Requirement::FormAssociated(kind) = requirement {
         if required(source.observation(&node.id(), c, |r| r.form_kind())?, node)? != kind {
@@ -679,6 +785,11 @@ fn family(
         )?
     } else {
         false
+    };
+    let control_payload = || -> Result<source::storage::Payload, DomError> {
+        let mut extra = source::storage::Payload::default();
+        extra.empty_string()?;
+        Ok(extra)
     };
     let control = || crate::control::NativeControlState {
         parser_inserted,
@@ -712,13 +823,21 @@ fn family(
             // Qualify before retaining the shared value; its actual canonical
             // occurrence is admitted by the existing string/kind allocation.
             c.string(view.return_value())?;
-            NativeFamily::Dialog(Arc::new(
-                crate::dialog::DomDialogState::from_parsed(
+            let mut extra = source::storage::Payload::default();
+            extra.string(view.return_value())?;
+            NativeFamily::Dialog(formation.native(
+                extra,
+                source::storage::Payload::default(),
+                || match crate::dialog::DomDialogState::from_parsed(
                     view.return_value().clone(),
                     disposition,
-                )
-                .map_err(|missing| missing_dialog(&missing))?,
-            ))
+                ) {
+                    Ok(state) => Ok(state),
+                    Err(_) => unreachable!(
+                        "closed parsed Dialog disposition was qualified before materialization"
+                    ),
+                },
+            )?)
         }
         Requirement::KnownHtml(Element::Details) => NativeFamily::Details,
         Requirement::KnownHtml(Element::Meta) => NativeFamily::Meta,
@@ -761,7 +880,11 @@ fn family(
         Requirement::KnownHtml(Element::Style) => {
             let style = required(source.observation(&node.id(), c, |r| r.style())?, node)?;
             let surgeist_html_parser::HtmlParseStyleAssociation::Pending = style.association();
-            NativeFamily::Style(Arc::new(crate::DomStyleState::from_parsed(style.state())))
+            NativeFamily::Style(formation.native(
+                source::storage::Payload::default(),
+                source::storage::Payload::default(),
+                || Ok(crate::DomStyleState::from_parsed(style.state())),
+            )?)
         }
         Requirement::KnownHtml(Element::Slot) => NativeFamily::Slot,
         Requirement::KnownHtml(Element::Picture) => NativeFamily::Picture,
@@ -786,7 +909,6 @@ fn family(
             // Reuse the owner interpretation of this actual immutable width /
             // height, without applying an attribute transition or reset hook.
             let mut stopped = None;
-            let cancel = c.cancel;
             let value = NativeFamily::canvas_from_attributes(
                 element.attributes().as_slice(),
                 &mut || match c.step(1) {
@@ -796,8 +918,7 @@ fn family(
                         Err(DomError::Cancelled)
                     }
                 },
-                None,
-                cancel,
+                formation,
             );
             // Preserve the adapter's first typed admission failure; the private
             // owner callback's interruption is not a different cancellation.
@@ -825,30 +946,47 @@ fn family(
                 node,
             )?)
         }
-        Requirement::FormAssociated(Form::Button) => {
-            NativeFamily::Button(crate::DomButtonState { control: control() })
-        }
-        Requirement::FormAssociated(Form::Fieldset) => {
-            NativeFamily::Fieldset(crate::DomFieldsetState { control: control() })
-        }
+        Requirement::FormAssociated(Form::Button) => NativeFamily::Button(formation.native(
+            control_payload()?,
+            source::storage::Payload::default(),
+            || Ok(crate::DomButtonState { control: control() }),
+        )?),
+        Requirement::FormAssociated(Form::Fieldset) => NativeFamily::Fieldset(formation.native(
+            control_payload()?,
+            source::storage::Payload::default(),
+            || Ok(crate::DomFieldsetState { control: control() }),
+        )?),
         Requirement::FormAssociated(Form::Output) => {
             let surgeist_html_parser::HtmlParseOutputOverride::Null = required(
                 source.observation(&node.id(), c, |r| r.output_default_override())?,
                 node,
             )?;
-            NativeFamily::Output(Arc::new(crate::DomOutputState {
-                control: control(),
-                default_override: None,
-            }))
+            NativeFamily::Output(formation.native(
+                control_payload()?,
+                source::storage::Payload::default(),
+                || {
+                    Ok(crate::DomOutputState {
+                        control: control(),
+                        default_override: None,
+                    })
+                },
+            )?)
         }
         Requirement::FormAssociated(Form::Select) => {
-            NativeFamily::Select(Arc::new(crate::DomSelectState {
-                control: control(),
-                flags: required(
-                    source.observation(&node.id(), c, |r| r.select_flags().copied())?,
-                    node,
-                )?,
-            }))
+            let flags = required(
+                source.observation(&node.id(), c, |r| r.select_flags().copied())?,
+                node,
+            )?;
+            NativeFamily::Select(formation.native(
+                control_payload()?,
+                source::storage::Payload::default(),
+                || {
+                    Ok(crate::DomSelectState {
+                        control: control(),
+                        flags,
+                    })
+                },
+            )?)
         }
         Requirement::FormAssociated(Form::Textarea) => {
             let raw = required(
@@ -856,15 +994,24 @@ fn family(
                 node,
             )?;
             c.string(raw)?;
-            NativeFamily::Textarea(Arc::new(crate::DomTextareaState {
-                control: control(),
-                flags: required(
-                    source.observation(&node.id(), c, |r| r.textarea_flags().copied())?,
-                    node,
-                )?,
-                raw: raw.clone(),
-                selection: HtmlInputSelection::initial(input.none_direction()),
-            }))
+            let flags = required(
+                source.observation(&node.id(), c, |r| r.textarea_flags().copied())?,
+                node,
+            )?;
+            let mut extra = control_payload()?;
+            extra.string(raw)?;
+            NativeFamily::Textarea(formation.native(
+                extra,
+                source::storage::Payload::default(),
+                || {
+                    Ok(crate::DomTextareaState {
+                        control: control(),
+                        flags,
+                        raw: raw.clone(),
+                        selection: HtmlInputSelection::initial(input.none_direction()),
+                    })
+                },
+            )?)
         }
         Requirement::FormAssociated(Form::Input) => {
             let flags = required(
@@ -900,35 +1047,49 @@ fn family(
                 // history still retains its actual initial (0,0) coordinate.
                 surgeist_html::HtmlInputImageCoordinate::initial()
             };
-            let image = match source.observation(&node.id(), c, |r| r.input_image_source())? {
-                None => HtmlInputImageHistory::NeverEntered,
-                Some(surgeist_html_parser::HtmlInputImageSource::Absent) => {
-                    HtmlInputImageHistory::Last {
-                        source: None,
-                        coordinate,
-                    }
-                }
-                Some(surgeist_html_parser::HtmlInputImageSource::Present(value)) => {
-                    c.string(value)?;
-                    HtmlInputImageHistory::Last {
-                        source: Some(value.clone()),
-                        coordinate,
-                    }
-                }
-            };
+            let image = source.observation(&node.id(), c, |r| r.input_image_source())?;
+            if let Some(surgeist_html_parser::HtmlInputImageSource::Present(value)) = image {
+                c.string(value)?;
+            }
+            let mut extra = control_payload()?;
+            extra.string(raw)?;
+            if let Some(surgeist_html_parser::HtmlInputImageSource::Present(value)) = image {
+                extra.string(value)?;
+            }
             // The parser owns the exact cursor but no selected range/direction
             // API. Installation establishes the initial direction from the
             // explicitly supplied target platform; it does not import a range.
             let direction = HtmlInputSelection::initial(input.none_direction()).direction();
-            NativeFamily::Input(Arc::new(crate::DomInputState {
-                control: control(),
-                flags,
-                current: raw.clone(),
-                selection: HtmlInputSelection::cursor(cursor, direction),
-                files,
-                image,
-                email_count: source.observation(&node.id(), c, |r| r.input_email_value_count())?,
-            }))
+            let email_count = source.observation(&node.id(), c, |r| r.input_email_value_count())?;
+            NativeFamily::Input(formation.native(
+                extra,
+                source::storage::Payload::default(),
+                || {
+                    Ok(crate::DomInputState {
+                        control: control(),
+                        flags,
+                        current: raw.clone(),
+                        selection: HtmlInputSelection::cursor(cursor, direction),
+                        files,
+                        image: match image {
+                            None => HtmlInputImageHistory::NeverEntered,
+                            Some(surgeist_html_parser::HtmlInputImageSource::Absent) => {
+                                HtmlInputImageHistory::Last {
+                                    source: None,
+                                    coordinate,
+                                }
+                            }
+                            Some(surgeist_html_parser::HtmlInputImageSource::Present(value)) => {
+                                HtmlInputImageHistory::Last {
+                                    source: Some(value.clone()),
+                                    coordinate,
+                                }
+                            }
+                        },
+                        email_count,
+                    })
+                },
+            )?)
         }
         Requirement::SvgScript => {
             let processed = required(

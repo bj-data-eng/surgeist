@@ -52,6 +52,28 @@ pub(crate) fn parse_with_context(
     )
 }
 
+pub(crate) fn parse_snapshot(
+    snapshot: &CssSourceSnapshot,
+    limits: CssComponentValueLimits,
+    parser_context: CssParserContext,
+) -> CssParseReport<CssDeclarationList> {
+    let (declarations, mut diagnostics) = parse_contents_with_snapshot(
+        snapshot.as_str(),
+        limits,
+        parser_context,
+        Some(snapshot),
+        |_| OrdinaryReceiver { parser_context },
+    )
+    .into_parts();
+    for diagnostic in &mut diagnostics {
+        diagnostic.bind_source(snapshot);
+    }
+    CssParseReport::new(
+        CssDeclarationList::new(declarations.unwrap_or_default()),
+        diagnostics,
+    )
+}
+
 /// Domain callbacks supply only name/value admission. Syntax unit selection,
 /// source observations, synchronization and diagnostic spans have one owner.
 pub(super) trait Receiver {
@@ -127,8 +149,21 @@ pub(super) fn parse_contents<R: Receiver>(
     parser_context: CssParserContext,
     make_receiver: impl FnOnce(RecoveryState) -> R + Send,
 ) -> CssParseReport<Option<Vec<R::Declaration>>> {
+    parse_contents_with_snapshot(source, limits, parser_context, None, make_receiver)
+}
+
+fn parse_contents_with_snapshot<R: Receiver>(
+    source: &str,
+    limits: CssComponentValueLimits,
+    parser_context: CssParserContext,
+    snapshot: Option<&CssSourceSnapshot>,
+    make_receiver: impl FnOnce(RecoveryState) -> R + Send,
+) -> CssParseReport<Option<Vec<R::Declaration>>> {
     fragments::bounded_execution(source, || {
-        let document = match syntax::source_document_with_limits(source, limits) {
+        let document = match snapshot.map_or_else(
+            || syntax::source_document_with_limits(source, limits),
+            |snapshot| syntax::source_document_snapshot_with_limits(snapshot, limits),
+        ) {
             Ok(document) => document,
             Err(error) => {
                 return CssParseReport::new(None, vec![syntax_bridge::arena_error(source, error)]);

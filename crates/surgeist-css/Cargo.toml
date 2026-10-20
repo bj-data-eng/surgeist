@@ -25,6 +25,9 @@ serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.145"
 stats_alloc = { version = "=0.1.10", default-features = false }
 
+# Integration tests share the `css` binary (tests/css.rs). The targets below
+# install a global allocator to count allocations, so each keeps its own
+# process.
 [[test]]
 name = "property_component_admission_allocations"
 harness = false
@@ -32,3 +35,6 @@ harness = false
 [[test]]
 name = "checked_admission_borrowing"
 harness = false
+
+[[test]]
+name = "component_borrow_retention"

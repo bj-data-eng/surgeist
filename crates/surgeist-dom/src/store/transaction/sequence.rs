@@ -62,7 +62,10 @@ fn record_relation_copied_bytes(bytes: usize) {
 }
 
 enum Backing<C, S> {
-    Canonical(Held<SharedVec<C>>),
+    Captured {
+        values: SharedVec<C>,
+        _custody: super::super::bank::ObjectCustody,
+    },
     Staged(Held<Vec<S>>),
 }
 
@@ -79,6 +82,7 @@ pub(in crate::store) enum SequenceUndo<C, S> {
 
 #[derive(Clone, Copy)]
 pub(in crate::store) enum SequenceView<'a, C, S> {
+    Empty,
     Canonical(&'a SharedVec<C>, fn(C) -> S),
     Staged(&'a Vec<S>),
     AliasedCanonical(
@@ -95,20 +99,22 @@ pub(in crate::store) enum SequenceView<'a, C, S> {
 }
 
 impl<C: Copy, S: Copy> Sequence<C, S> {
-    pub fn canonical(
+    /// Alias one already controlled group. The original materialization
+    /// control, rather than a new occurrence debit, keeps its backing admitted
+    /// for this selected sequence and for any inverse that receives it.
+    pub fn captured(
         values: &SharedVec<C>,
+        custody: super::super::bank::ObjectCustody,
         map: fn(C) -> S,
-        ledger: &Ledger,
-        admit: impl FnMut(Usage) -> Result<(), DomError>,
-    ) -> Result<Self, DomError> {
-        let bytes = values.retained_bytes()?;
-        let debit = ledger.retain(Usage::new(bytes, 0), admit)?;
-        Ok(Self {
-            backing: Backing::Canonical(Held::new(values.clone(), debit)),
+    ) -> Self {
+        Self {
+            backing: Backing::Captured {
+                values: values.clone(),
+                _custody: custody,
+            },
             map,
-        })
+        }
     }
-
     pub fn staged(values: Vec<S>, debit: Debit, map: fn(C) -> S) -> Self {
         Self {
             backing: Backing::Staged(Held::new(values, debit)),
@@ -130,7 +136,7 @@ impl<C: Copy, S: Copy> Sequence<C, S> {
 
     pub fn view(&self) -> SequenceView<'_, C, S> {
         match &self.backing {
-            Backing::Canonical(values) => SequenceView::Canonical(values.value(), self.map),
+            Backing::Captured { values, .. } => SequenceView::Canonical(values, self.map),
             Backing::Staged(values) => SequenceView::Staged(values.value()),
         }
     }
@@ -142,7 +148,7 @@ impl<C: Copy, S: Copy> Sequence<C, S> {
     #[cfg(test)]
     pub fn capacity(&self) -> usize {
         match &self.backing {
-            Backing::Canonical(values) => values.value().capacity(),
+            Backing::Captured { values, .. } => values.capacity(),
             Backing::Staged(values) => values.value().capacity(),
         }
     }
@@ -150,7 +156,7 @@ impl<C: Copy, S: Copy> Sequence<C, S> {
     #[cfg(test)]
     pub fn canonical_backing(&self) -> Option<&SharedVec<C>> {
         match &self.backing {
-            Backing::Canonical(values) => Some(values.value()),
+            Backing::Captured { values, .. } => Some(values),
             Backing::Staged(_) => None,
         }
     }
@@ -158,7 +164,7 @@ impl<C: Copy, S: Copy> Sequence<C, S> {
     #[cfg(test)]
     pub fn staged_values(&self) -> Option<&[S]> {
         match &self.backing {
-            Backing::Canonical(_) => None,
+            Backing::Captured { .. } => None,
             Backing::Staged(values) => Some(values.value()),
         }
     }
@@ -166,7 +172,7 @@ impl<C: Copy, S: Copy> Sequence<C, S> {
     #[cfg(test)]
     pub fn receipt(&self) -> Usage {
         match &self.backing {
-            Backing::Canonical(values) => values.debit().usage(),
+            Backing::Captured { .. } => Usage::ZERO,
             Backing::Staged(values) => values.debit().usage(),
         }
     }
@@ -357,7 +363,7 @@ impl<C: Copy, S: Copy> Sequence<C, S> {
             return Ok(None);
         }
         let capacity = match &self.backing {
-            Backing::Canonical(_) => needed.max(self.len()),
+            Backing::Captured { .. } => needed.max(self.len()),
             Backing::Staged(values) => needed.max(values.value().capacity().saturating_mul(2)),
         };
         let bytes = capacity_bytes::<S>(capacity)?;
@@ -391,6 +397,7 @@ impl<C: Copy, S: Copy> Sequence<C, S> {
 impl<'a, C: Copy, S: Copy> SequenceView<'a, C, S> {
     pub fn len(self) -> usize {
         match self {
+            Self::Empty => 0,
             Self::Canonical(v, _) | Self::AliasedCanonical(v, _, _, _) => v.len(),
             Self::Staged(v) | Self::AliasedStaged(v, _, _) => v.len(),
         }
@@ -401,12 +408,14 @@ impl<'a, C: Copy, S: Copy> SequenceView<'a, C, S> {
     #[cfg(test)]
     pub fn capacity(self) -> usize {
         match self {
+            Self::Empty => 0,
             Self::Canonical(v, _) | Self::AliasedCanonical(v, _, _, _) => v.capacity(),
             Self::Staged(v) | Self::AliasedStaged(v, _, _) => v.capacity(),
         }
     }
     pub fn get(self, index: usize) -> Option<S> {
         match self {
+            Self::Empty => None,
             Self::Canonical(v, map) => v.get(index).copied().map(map),
             Self::Staged(v) => v.get(index).copied(),
             Self::AliasedCanonical(v, map, ctx, alias) => v
@@ -428,6 +437,7 @@ impl<'a, C: Copy, S: Copy> SequenceView<'a, C, S> {
         alias: fn(S, &super::super::source::AllocationIds) -> S,
     ) -> Self {
         match self {
+            Self::Empty => Self::Empty,
             Self::Canonical(v, map) | Self::AliasedCanonical(v, map, _, _) => {
                 Self::AliasedCanonical(v, map, ctx, alias)
             }
@@ -512,7 +522,7 @@ impl<C, S> SequenceUndo<C, S> {
     pub(super) fn journal_bytes(&self) -> usize {
         match self {
             Self::Backing(old) => match &old.backing {
-                Backing::Canonical(_) => 0,
+                Backing::Captured { .. } => 0,
                 Backing::Staged(values) => values.debit().usage().bytes(),
             },
             Self::Inserted { .. } => 0,
@@ -533,6 +543,41 @@ mod tests {
         u64::from(value)
     }
 
+    fn captured_sequence(
+        values: &SharedVec<u32>,
+        ledger: &Ledger,
+    ) -> (
+        Sequence<u32, u64>,
+        super::super::super::payload::Sealed<
+            super::super::super::canonical::ContainerChildren<u32>,
+        >,
+        super::super::super::bank::CustodyRegistry,
+    ) {
+        use super::super::super::{bank::CustodyRegistry, canonical::ContainerChildren, payload};
+        let registry = CustodyRegistry::new(ledger, accept).unwrap();
+        let usage = Usage::new(
+            size_of::<payload::Payload<ContainerChildren<u32>>>()
+                + size_of::<Vec<u32>>()
+                + values.capacity() * size_of::<u32>(),
+            0,
+        );
+        let group = payload::Pending::new(
+            Held::new(
+                ContainerChildren {
+                    values: values.clone(),
+                },
+                ledger.retain(Usage::ZERO, accept).unwrap(),
+            ),
+            usage,
+            accept,
+        )
+        .unwrap()
+        .seal(&registry, accept)
+        .unwrap();
+        let sequence = Sequence::captured(&group.value.value.values, group.custody.clone(), map);
+        (sequence, group, registry)
+    }
+
     fn assert_relation_copies(
         counters: &super::super::super::scale_metrics::Counters,
         bytes: usize,
@@ -546,12 +591,84 @@ mod tests {
     }
 
     #[test]
+    fn captured_group_alias_retains_original_backing_without_a_second_occurrence() {
+        use super::super::super::{bank::CustodyRegistry, canonical::ContainerChildren, payload};
+        let ledger = Ledger::default();
+        let registry = CustodyRegistry::new(&ledger, accept).unwrap();
+        let mut values = Vec::with_capacity(4096);
+        values.extend([3u32, 5, 8]);
+        let values = SharedVec::from(values);
+        let usage = Usage::new(
+            size_of::<payload::Payload<ContainerChildren<u32>>>()
+                + size_of::<Vec<u32>>()
+                + values.capacity() * size_of::<u32>(),
+            0,
+        );
+        let debit = ledger.retain(Usage::ZERO, accept).unwrap();
+        let original = payload::Pending::new(
+            super::super::super::custody::Held::new(
+                ContainerChildren {
+                    values: values.clone(),
+                },
+                debit,
+            ),
+            usage,
+            accept,
+        )
+        .unwrap()
+        .seal(&registry, accept)
+        .unwrap();
+        let before = ledger.total();
+        let mut sequence =
+            Sequence::captured(&original.value.value.values, original.custody.clone(), map);
+        assert_eq!(ledger.total(), before);
+        assert!(sequence.canonical_backing().unwrap().same_storage(&values));
+        assert_eq!(sequence.view().iter().collect::<Vec<_>>(), [3, 5, 8]);
+        assert_eq!(sequence.receipt(), Usage::ZERO);
+        let inverse = sequence
+            .insert(1, &[11], true, &ledger, accept, || Ok(()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(sequence.view().iter().collect::<Vec<_>>(), [3, 11, 5, 8]);
+        sequence.restore(inverse);
+        assert!(sequence.canonical_backing().unwrap().same_storage(&values));
+        assert_eq!(sequence.capacity(), 4096);
+        assert_eq!(ledger.total(), before);
+        let rejected = sequence.insert(
+            1,
+            &[13],
+            true,
+            &ledger,
+            |_| Err(DomError::Cancelled),
+            || Ok(()),
+        );
+        assert!(matches!(rejected, Err(DomError::Cancelled)));
+        assert!(sequence.canonical_backing().unwrap().same_storage(&values));
+        assert_eq!(ledger.total(), before);
+        drop(original);
+        drop(sequence);
+        registry.reconcile_releases();
+        drop(registry);
+        assert_eq!(ledger.total(), Usage::ZERO);
+    }
+
+    #[test]
+    fn empty_view_has_no_backing_and_aliases_remain_empty() {
+        let view = SequenceView::<u32, u64>::Empty;
+        assert_eq!(view.len(), 0);
+        assert_eq!(view.capacity(), 0);
+        assert_eq!(view.get(0), None);
+        assert_eq!(view.iter().next(), None);
+        assert_eq!(view.iter().next_back(), None);
+    }
+
+    #[test]
     fn scalar_field_changes_can_retain_a_large_sequence_without_mapping_members() {
         let ledger = Ledger::default();
         let mut values = Vec::with_capacity(4096);
         values.extend([3, 5, 8]);
         let values = SharedVec::from(values);
-        let sequence = Sequence::canonical(&values, map, &ledger, accept).unwrap();
+        let (sequence, _group, _registry) = captured_sequence(&values, &ledger);
         assert_eq!(
             sequence.canonical_backing().unwrap().as_ptr(),
             values.as_ptr()
@@ -585,7 +702,7 @@ mod tests {
     fn nested_same_sequence_edits_restore_capacity_and_each_intermediate_value() {
         let ledger = Ledger::default();
         let values = SharedVec::from(vec![3u32, 5]);
-        let mut sequence = Sequence::canonical(&values, map, &ledger, accept).unwrap();
+        let (mut sequence, _group, _registry) = captured_sequence(&values, &ledger);
         let outer = sequence
             .insert(2, &[8], true, &ledger, accept, || Ok(()))
             .unwrap()
@@ -609,7 +726,7 @@ mod tests {
     fn refused_materialization_preserves_original_backing_and_custody() {
         let ledger = Ledger::default();
         let values = SharedVec::from(vec![3u32, 5]);
-        let mut sequence = Sequence::canonical(&values, map, &ledger, accept).unwrap();
+        let (mut sequence, _group, _registry) = captured_sequence(&values, &ledger);
         let before = ledger.total();
         assert!(
             sequence
@@ -678,7 +795,7 @@ mod tests {
         }
         let ledger = Ledger::default();
         let values = SharedVec::from(vec![3u32, 5, 8]);
-        let sequence = Sequence::canonical(&values, map, &ledger, accept).unwrap();
+        let (sequence, _group, _registry) = captured_sequence(&values, &ledger);
         let before = ledger.total();
         let mut steps = 0;
         let measurement = Measurement::begin().unwrap();

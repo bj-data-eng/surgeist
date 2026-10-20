@@ -86,11 +86,6 @@ impl DomNameAtom {
     fn same_text(&self, other: &Self) -> bool {
         self == other || self.text() == other.text()
     }
-    #[cfg(test)]
-    fn inspect_allocations(&self, graph: &mut crate::store::compact_tests::AllocationGraph) {
-        graph.target(&self.0, "name.record");
-        graph.string(self.text());
-    }
 }
 impl std::fmt::Debug for DomNameAtom {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -151,6 +146,15 @@ impl DomQualifiedName {
     pub fn prefix(&self) -> Option<&DocumentString> {
         self.prefix.as_ref()
     }
+    /// Storage-only replacement for an exclusively held ingress candidate.
+    /// The optional pool has proved exact text equality; expanded-name atoms
+    /// and prefix presence are unchanged.
+    pub(crate) fn replace_prefix(
+        &mut self,
+        prefix: Option<DocumentString>,
+    ) -> Option<DocumentString> {
+        std::mem::replace(&mut self.prefix, prefix)
+    }
     pub fn local_name(&self) -> &DocumentString {
         self.local.text()
     }
@@ -184,19 +188,6 @@ impl DomQualifiedName {
             payload.string(text)?;
         }
         Ok(payload)
-    }
-    #[cfg(test)]
-    pub(crate) fn inspect_allocations(
-        &self,
-        graph: &mut crate::store::compact_tests::AllocationGraph,
-    ) {
-        if let Some(namespace) = self.namespace() {
-            namespace.inspect_allocations(graph);
-        }
-        if let Some(prefix) = self.prefix() {
-            graph.string(prefix);
-        }
-        self.local.inspect_allocations(graph);
     }
 }
 impl PartialEq for DomQualifiedName {
@@ -244,6 +235,17 @@ impl DomAttribute {
     }
     pub fn value(&self) -> &DocumentString {
         &self.value
+    }
+    /// Replace only backing after a controlled exact-equality lookup, while
+    /// the unpublished input still owns both original and selected receipts.
+    pub(crate) fn replace_prefix(
+        &mut self,
+        prefix: Option<DocumentString>,
+    ) -> Option<DocumentString> {
+        self.name.replace_prefix(prefix)
+    }
+    pub(crate) fn replace_value(&mut self, value: DocumentString) -> DocumentString {
+        std::mem::replace(&mut self.value, value)
     }
     pub(crate) fn logical_units(&self) -> Option<usize> {
         self.name.logical_units()?.checked_add(self.value.len())

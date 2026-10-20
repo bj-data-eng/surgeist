@@ -64,7 +64,7 @@ impl Draft {
     > {
         step()?;
         let node = self.node(document)?;
-        let DomNodeKind::Document(metadata) = &node.kind else {
+        let transaction::KindRead::Document(metadata) = &node.kind() else {
             return Err(DomError::WrongNodeKind);
         };
         if metadata.document_environment().has_ever_had_navigable() {
@@ -81,7 +81,7 @@ impl Draft {
         {
             return Err(failure(Failure::EnvironmentMismatch));
         }
-        let base = node.base_document.ok_or(DomError::WrongNodeKind)?;
+        let base = node.base_document().ok_or(DomError::WrongNodeKind)?;
         let facts = base
             .facts
             .ok_or_else(|| failure(Failure::Base(HtmlBaseMissing::DocumentFacts)))?;
@@ -109,7 +109,10 @@ impl Draft {
         let first = if let Some(key) = base.first {
             step()?;
             HtmlDocumentFirstBase::Present(
-                self.node(key)?.base.and_then(|b| b.frozen).map(|f| f.value),
+                self.node(key)?
+                    .base()
+                    .and_then(|b| b.frozen)
+                    .map(|f| f.value),
             )
         } else {
             HtmlDocumentFirstBase::Absent
@@ -132,9 +135,9 @@ impl Draft {
         let (base, encoding, revision) = self.encoding_url_environment(document, cancel)?;
         let facts = self
             .node(document)?
-            .encoding_url_document
+            .encoding_url_document()
             .as_ref()
-            .and_then(|document| document.facts.as_ref())
+            .and_then(|document| document.facts)
             .ok_or_else(|| failure(Failure::MissingFacts))?;
         facts
             .lookup_units_with(raw, base, encoding, revision, || {
@@ -166,8 +169,8 @@ impl Draft {
             .map_err(|e| failure(Failure::Producer(e)))?;
         let previous_records = self
             .node(key)?
-            .encoding_url_document
-            .map_or(0, crate::hyperlink::EncodingUrlDocument::records);
+            .encoding_url_document()
+            .map_or(0, |value| value.records());
         let records = self
             .counts
             .encoding_observations
@@ -181,7 +184,7 @@ impl Draft {
         )?;
         let previous = self
             .node(key)?
-            .encoding_url_document
+            .encoding_url_document()
             .as_ref()
             .expect("native Document")
             .units();
@@ -197,25 +200,26 @@ impl Draft {
             cancel,
         )?;
         let formation = source::formation::Formation::new(self, cancel)?;
-        if let Some(budget) = formation.as_ref() {
-            let mut payload = source::storage::Payload::default();
-            payload.producer(facts.retained_storage_usage())?;
-            budget.retain_payload(payload, cancel)?;
-        }
-        let facts = facts.clone();
-        #[cfg(test)]
-        source::formation::mutation_observation::grew_payload(
-            growth,
-            facts.retained_storage_usage().retained_bytes(),
-            facts.retained_storage_usage().utf16_extent(),
-        );
-        self.with_node_fields_formed(key, cancel, formation, |fields| {
-            fields
-                .encoding_url_document
-                .as_mut()
-                .expect("Document")
-                .facts = Some(facts)
-        })?;
+        let mut payload = source::storage::Payload::default();
+        payload.producer(facts.retained_storage_usage())?;
+        self.replace_encoding_url_document_formed_from(
+            key,
+            payload,
+            formation,
+            |_| {
+                let facts = facts.clone();
+                #[cfg(test)]
+                source::formation::mutation_observation::grew_payload(
+                    growth,
+                    facts.retained_storage_usage().retained_bytes(),
+                    facts.retained_storage_usage().utf16_extent(),
+                );
+                Ok(Some(crate::hyperlink::EncodingUrlDocument {
+                    facts: Some(facts),
+                }))
+            },
+            cancel,
+        )?;
         self.units = units;
         Ok(())
     }
@@ -228,7 +232,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         let old = self
             .node(key)?
-            .hyperlink
+            .hyperlink()
             .as_ref()
             .expect("hyperlink")
             .units();
@@ -236,11 +240,13 @@ impl Draft {
             .checked_add(value.value.retained_utf16_extent())
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
-        let document = self.node(key)?.document;
+        let document = self.node(key)?.document();
         let RetainedParse { value, payload } = value;
-        self.with_node_fields_charged(key, cancel, payload, |fields| {
-            fields.hyperlink.as_mut().expect("hyperlink").parsed = Some(Parsed { document, value })
-        })?;
+        {
+            let mut fields = self.hyperlink_fields_mut(key, cancel)?;
+            (*fields).as_mut().expect("hyperlink").parsed = Some(Parsed { document, value });
+            fields.commit_charged(payload, cancel)
+        }?;
         self.units = units;
         Ok(())
     }
@@ -261,27 +267,29 @@ impl Draft {
                 Action::ClearUrl => {
                     let previous = self
                         .node(key)?
-                        .hyperlink
+                        .hyperlink()
                         .as_ref()
                         .expect("actual A/Area")
                         .units();
-                    self.with_node_fields(key, cancel, |fields| {
-                        fields.hyperlink.as_mut().expect("hyperlink").parsed = None
-                    })?;
+                    {
+                        let mut fields = self.hyperlink_fields_mut(key, cancel)?;
+                        (*fields).as_mut().expect("hyperlink").parsed = None;
+                        fields.commit(cancel)
+                    }?;
                     self.units -= previous;
                     Reply::Applied
                 }
                 Action::ReadHref => Reply::HrefPresent(href.is_some()),
                 Action::ParseHref => {
                     self.encoding_url_step(cancel)?;
-                    let document = self.node(key)?.document;
+                    let document = self.node(key)?.document();
                     let (base, encoding, revision) =
                         self.encoding_url_environment(document, cancel)?;
                     let facts = self
                         .node(document)?
-                        .encoding_url_document
+                        .encoding_url_document()
                         .as_ref()
-                        .and_then(|d| d.facts.as_ref())
+                        .and_then(|d| d.facts)
                         .ok_or_else(|| failure(Failure::MissingFacts))?;
                     #[cfg(test)]
                     let snapshot_growth = std::cell::Cell::new(None);
@@ -362,7 +370,7 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if self.node(key)?.hyperlink.is_none() || name.namespace_uri().is_some() {
+        if self.node(key)?.hyperlink().is_none() || name.namespace_uri().is_some() {
             return Ok(());
         }
         let Some(attribute) = KnownHtmlAttribute::from_name(name) else {
@@ -394,16 +402,16 @@ impl Draft {
             HtmlHyperlinkAttributeEffect::None => Ok(()),
             HtmlHyperlinkAttributeEffect::SetUrlThenConsiderSpeculativeLoads => {
                 self.set_hyperlink_url(key, new, limits, cancel)?;
-                self.hyperlink_speculation(self.node(key)?.document, cancel)
+                self.hyperlink_speculation(self.node(key)?.document(), cancel)
             }
             HtmlHyperlinkAttributeEffect::ConsiderSpeculativeLoads => {
-                self.hyperlink_speculation(self.node(key)?.document, cancel)
+                self.hyperlink_speculation(self.node(key)?.document(), cancel)
             }
         }
     }
     fn hyperlink_speculation(&self, document: Key, cancel: &AtomicBool) -> Result<(), DomError> {
         self.effect_step(cancel)?;
-        let DomNodeKind::Document(metadata) = &self.node(document)?.kind else {
+        let transaction::KindRead::Document(metadata) = &self.node(document)?.kind() else {
             return Err(DomError::WrongNodeKind);
         };
         // HTML877d76574–76588: never-active-in-a-navigable establishes null node
@@ -419,7 +427,7 @@ impl Draft {
         old_ancestor: Option<Key>,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if self.node(key)?.hyperlink.is_none() {
+        if self.node(key)?.hyperlink().is_none() {
             return Ok(());
         }
         let (mutation, document) = if let Some(old) = old_ancestor {
@@ -427,14 +435,14 @@ impl Draft {
                 HtmlHyperlinkTreeMutation::Removal {
                     old_ancestor_connected: self.shadow_connected(old, cancel)?,
                 },
-                self.node(old)?.document,
+                self.node(old)?.document(),
             )
         } else {
             (
                 HtmlHyperlinkTreeMutation::Insertion {
                     connected: self.shadow_connected(key, cancel)?,
                 },
-                self.node(key)?.document,
+                self.node(key)?.document(),
             )
         };
         if surgeist_html::hyperlink_tree_considers_speculative_loads(mutation) {
@@ -885,8 +893,7 @@ mod tests {
         assert!(
             d.node(d.resolve(a.into()).unwrap())
                 .unwrap()
-                .hyperlink
-                .as_ref()
+                .hyperlink()
                 .unwrap()
                 .parsed
                 .is_none()

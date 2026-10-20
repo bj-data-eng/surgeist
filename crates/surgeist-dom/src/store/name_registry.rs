@@ -17,6 +17,11 @@ pub(in crate::store) use ingress::Normalized;
 #[cfg(test)]
 mod tests;
 use index::{Index, Prepared};
+#[cfg(test)]
+pub(in crate::store) use tests::memory_report::{
+    Observation as NameMemoryObservation, Population as MemoryPopulation, Stage as MemoryStage,
+    run_lifecycle as run_memory_lifecycle,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Resource {
@@ -711,6 +716,8 @@ impl Operation {
         for unit in text.code_units() {
             self.scope.step(admission)?;
             hash.write_u16(*unit);
+            #[cfg(test)]
+            metric(super::scale_metrics::Event::NameHashUnit);
         }
         self.reserve_hashed(text, hash.finish(), admission)
     }
@@ -729,6 +736,8 @@ impl Operation {
         while let Some(slot) = current {
             self.scope.step(admission)?;
             let row = lease.index.row(slot);
+            #[cfg(test)]
+            metric(super::scale_metrics::Event::NameProbeRow);
             current = row.next;
             if row.fingerprint != fingerprint || row.len != text.len() {
                 continue;
@@ -740,9 +749,13 @@ impl Operation {
             for (left, right) in record.text().code_units().iter().zip(text.code_units()) {
                 self.scope.step(admission)?;
                 if left != right {
+                    #[cfg(test)]
+                    metric(super::scale_metrics::Event::NameComparisonPair);
                     equal = false;
                     break;
                 }
+                #[cfg(test)]
+                metric(super::scale_metrics::Event::NameComparisonPair);
             }
             if equal {
                 let origin = match row.pending.as_ref() {
@@ -904,11 +917,11 @@ impl Promotions {
     }
     fn visit(&self, mut visit: impl FnMut(&DomNameAtom) -> Result<()>) -> Result<()> {
         for (index, _) in self.touched.iter() {
-            let Some(crate::DomNodeKind::Element(element)) = self
+            let Some(element) = self
                 .slots
                 .get(index)
                 .and_then(|slot| slot.node.as_ref())
-                .map(|node| &node.kind)
+                .and_then(|node| node.element())
             else {
                 continue;
             };
@@ -917,9 +930,14 @@ impl Promotions {
                 visit(namespace)?;
             }
             visit(name.local_name_atom())?;
-            let unchanged = self.before.get(index).and_then(|slot| slot.node.as_ref()).is_some_and(|node| {
-                matches!(&node.kind, crate::DomNodeKind::Element(old) if old.attributes_backing().same_storage(element.attributes_backing()))
-            });
+            let unchanged = self
+                .before
+                .get(index)
+                .and_then(|slot| slot.node.as_ref())
+                .is_some_and(|node| {
+                    node.element()
+                        .is_some_and(|old| old.same_attribute_storage(element))
+                });
             if !unchanged {
                 for attribute in element.attributes() {
                     if let Some(namespace) = attribute.name().namespace() {

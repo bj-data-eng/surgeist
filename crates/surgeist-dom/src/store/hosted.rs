@@ -791,10 +791,10 @@ impl DomHostedCreationLease {
                     None
                 };
                 let target_name = DocumentString::from("");
-                let DomNodeKind::Document(metadata) = &prepared
+                let DomNodeKind::Document(metadata) = prepared
                     .state
                     .node(dom.owner, request.document.node())?
-                    .kind
+                    .kind()
                 else {
                     return Err(DomError::WrongDocument.into());
                 };
@@ -862,7 +862,7 @@ impl DomHostedCreationLease {
             return Err(DomHostedError::WrongPhase);
         };
         let result = *result;
-        let draft = dom.hosted_draft(operation, source, cancel)?;
+        let mut draft = dom.hosted_draft(operation, source, cancel)?;
         let mut prepared = draft.finish(dom, cancel)?;
         set_pending(&mut prepared, None, cancel)?;
         let permit = source.permit(request, source.revision()?, true, cancel)?;
@@ -985,27 +985,31 @@ impl Dom {
             cancel,
         )?;
         let retained = source.retain(size_of::<DocumentAssociation>(), cancel)?;
-        let association = Arc::new(DocumentAssociation {
-            source: source.observe(),
-            host: request.host,
-            context: request.context,
-            global,
-            navigation_start,
-            policy: operation.policy.ok_or(DomHostedError::WrongPhase)?,
-            phase: DocumentPhase::Constructed,
-            _retained: retained,
-        });
+        let policy = operation.policy.ok_or(DomHostedError::WrongPhase)?;
         let mut draft = self.hosted_draft(operation, source, cancel)?;
         draft.set_registries(Some(registries), None, cancel)?;
         let formation = source::formation::Formation::new(&draft, cancel)?;
         if let Some(formation) = &formation {
             let mut payload = source::storage::Payload::default();
+            // Metadata owns this association occurrence. Admit its target
+            // alongside the original inputs before allocating the target.
+            payload.add_bytes(size_of::<DocumentAssociation>())?;
             payload.add_bytes(inputs.payload_bytes()?)?;
             payload.add_units(inputs.payload_units()?)?;
             // Metadata also retains its URL occurrence, sharing this actual backing.
             payload.string(inputs.url().serialization())?;
             formation.retain_payload(payload, cancel)?;
         }
+        let association = Arc::new(DocumentAssociation {
+            source: source.observe(),
+            host: request.host,
+            context: request.context,
+            global,
+            navigation_start,
+            policy,
+            phase: DocumentPhase::Constructed,
+            _retained: retained,
+        });
         let metadata = DomDocumentMetadata::hosted_initial(
             self.document_environment.input_platform(),
             operation.origin.clone(),
@@ -1017,7 +1021,7 @@ impl Dom {
         )?;
         let document = Key::Created(draft.created.len());
         let document = draft.allocate_formed(
-            DomNodeKind::Document(metadata),
+            NewNode::Document(metadata),
             document,
             self.limits,
             cancel,
@@ -1060,7 +1064,7 @@ impl Dom {
         cancel: &AtomicBool,
     ) -> Result<Prepared, DomHostedError> {
         let node = self.state.node(self.owner, document.node())?;
-        let DomNodeKind::Document(metadata) = &node.kind else {
+        let DomNodeKind::Document(metadata) = node.kind() else {
             return Err(DomError::WrongDocument.into());
         };
         let environment = metadata.document_environment();
@@ -1083,13 +1087,9 @@ impl Dom {
             _retained: retained,
         });
         let mut draft = self.hosted_draft(operation, source, cancel)?;
-        draft.with_node_fields(Key::Existing(document.node()), cancel, |fields| {
-            let DomNodeKind::Document(metadata) = &mut fields.kind else {
-                return Err(DomError::WrongDocument);
-            };
-            metadata.set_hosted_association(association);
-            Ok(())
-        })??;
+        let mut metadata = draft.document_metadata_mut(Key::Existing(document.node()), cancel)?;
+        metadata.set_hosted_association(association);
+        metadata.commit(cancel)?;
         Ok(draft.finish(self, cancel)?)
     }
 }
@@ -1100,6 +1100,15 @@ pub(crate) struct GlobalDocumentIndex {
     identity: custody::MaterializationId,
     entries: transaction::auxiliary::index::Index<GlobalMapping>,
     _retained: Retained,
+}
+enum GlobalReadError<E> {
+    Work(E),
+    Identity(DomError),
+}
+impl<E> From<DomError> for GlobalReadError<E> {
+    fn from(error: DomError) -> Self {
+        Self::Identity(error)
+    }
 }
 #[derive(Debug)]
 pub(in crate::store) struct GlobalMapping {
@@ -1132,16 +1141,26 @@ impl GlobalDocumentIndex {
         &self,
         global: DomHostedGlobalId,
     ) -> Result<DocumentId, DomHostedError> {
+        self.document_with(global, &mut || Ok(()))
+    }
+    pub(in crate::store) fn document_with<E: From<DomHostedError>>(
+        &self,
+        global: DomHostedGlobalId,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<DocumentId, E> {
         let key =
             transaction::auxiliary::index::Key::new(global.source, global.slot, global.generation);
         self.entries
-            .get(key)
+            .get_with(key, &mut || step().map_err(GlobalReadError::Work))
             .map_err(|error| match error {
-                DomError::ForeignOwner => DomHostedError::StaleIdentity,
-                other => other.into(),
+                GlobalReadError::Work(error) => error,
+                GlobalReadError::Identity(DomError::ForeignOwner) => {
+                    DomHostedError::StaleIdentity.into()
+                }
+                GlobalReadError::Identity(other) => DomHostedError::from(other).into(),
             })?
             .map(|entry| entry.document)
-            .ok_or(DomHostedError::StaleIdentity)
+            .ok_or_else(|| DomHostedError::StaleIdentity.into())
     }
     #[cfg(test)]
     pub(in crate::store) fn inspect_materializations(
@@ -1216,7 +1235,7 @@ impl DomSnapshot {
         &self,
         node: NodeId,
     ) -> Result<Option<DomHostedGlobalId>, DomHostedError> {
-        let global = self.state.node(self.owner, node)?.relevant_global;
+        let global = self.state.node(self.owner, node)?.relevant_global();
         if global.is_some_and(|id| id.source.owner != self.owner) {
             return Err(DomHostedError::ForeignSource);
         }
@@ -1288,10 +1307,22 @@ impl Dom {
         node: NodeId,
         cancel: &AtomicBool,
     ) -> Result<Option<DomHostedGlobalId>, DomHostedError> {
+        self.dispatch_relevant_global_with(node, cancel, &mut || Ok(()))
+    }
+    pub(in crate::store) fn dispatch_relevant_global_with<E>(
+        &self,
+        node: NodeId,
+        cancel: &AtomicBool,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<DomHostedGlobalId>, E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+    {
         let _work = self.dispatch_hosted_read_work(cancel)?;
+        step()?;
         let global = self.snapshot().relevant_global(node)?;
         if let Some(global) = global {
-            self.dispatch_global_document_current(global)?;
+            self.dispatch_global_document_current_with(global, step)?;
         }
         Ok(global)
     }
@@ -1308,8 +1339,27 @@ impl Dom {
         &self,
         global: DomHostedGlobalId,
     ) -> Result<DocumentId, DomHostedError> {
+        self.dispatch_global_document_current_with(global, &mut || Ok(()))
+    }
+    fn dispatch_global_document_current_with<E>(
+        &self,
+        global: DomHostedGlobalId,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<DocumentId, E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+    {
+        if global.source.owner != self.owner {
+            return Err(DomHostedError::ForeignSource.into());
+        }
         let snapshot = self.snapshot();
-        let document = snapshot.global_document(global)?;
+        let document = self
+            .state
+            .hosted_globals
+            .as_ref()
+            .ok_or(DomHostedError::StaleIdentity)?
+            .document_with(global, step)?;
+        step()?;
         let environment = snapshot
             .document(document)?
             .metadata()
@@ -1317,6 +1367,7 @@ impl Dom {
         environment
             .hosted
             .as_ref()
+            .filter(|association| association.global == global)
             .ok_or(DomHostedError::StaleIdentity)?
             .validate_live()?;
         Ok(document)
@@ -1329,7 +1380,7 @@ impl Dom {
         cancel: &AtomicBool,
     ) -> Result<bool, DomHostedError> {
         let work = self.dispatch_hosted_read_work(cancel)?;
-        let DomNodeKind::Document(metadata) = &self.state.node(self.owner, document.node())?.kind
+        let DomNodeKind::Document(metadata) = self.state.node(self.owner, document.node())?.kind()
         else {
             return Err(DomError::WrongDocument.into());
         };
@@ -1362,6 +1413,13 @@ impl Draft {
         document: Key,
         cancel: &AtomicBool,
     ) -> Result<bool, DomError> {
+        self.document_fully_active_with(document, || self.source_step(cancel))
+    }
+    pub(super) fn document_fully_active_with(
+        &self,
+        document: Key,
+        mut step: impl FnMut() -> Result<(), DomError>,
+    ) -> Result<bool, DomError> {
         match &self
             .document_metadata(document)?
             .document_environment()
@@ -1386,13 +1444,11 @@ impl Draft {
                     .hosted_history
                     .as_deref()
                     .ok_or(DomError::HostedSourceUnavailable)?;
-                captured_fully_active(graph, document, navigable, || {
-                    self.source_step(cancel).map_err(Into::into)
-                })
-                .map_err(|error| match error {
-                    DomHostedError::Dom(error) => error,
-                    _ => DomError::HostedSourceUnavailable,
-                })
+                captured_fully_active(graph, document, navigable, || step().map_err(Into::into))
+                    .map_err(|error| match error {
+                        DomHostedError::Dom(error) => error,
+                        _ => DomError::HostedSourceUnavailable,
+                    })
             }
         }
     }
@@ -1411,7 +1467,8 @@ impl Dom {
         // unloading is suppressed for an initial child. Canonical fullscreen
         // membership cannot be certified settled by retiring the hosted graph.
         let captured = self.state.node(self.owner, document.node())?;
-        let Some(canonical::Interactive::Known { top_layer, .. }) = &captured.interactive_document
+        let Some(canonical::InteractiveView::Known { top_layer, .. }) =
+            captured.interactive_document()
         else {
             return Err(DomError::FullscreenModelUnavailable {
                 step: crate::DomFullscreenModelStep::ReadTopLayer,
@@ -1420,7 +1477,7 @@ impl Dom {
         };
         for &id in top_layer.iter().rev() {
             work.step(cancel)?;
-            let DomNodeKind::Element(element) = &self.state.node(self.owner, id)?.kind else {
+            let DomNodeKind::Element(element) = self.state.node(self.owner, id)?.kind() else {
                 return Err(DomError::WrongNodeKind.into());
             };
             if element.fullscreen_flag() {
@@ -1640,7 +1697,7 @@ impl Dom {
                 return Err(DomError::UnavailableCreation.into());
             };
             let node = self.state.node(self.owner, id)?;
-            if let DomNodeKind::Element(element) = &node.kind
+            if let DomNodeKind::Element(element) = node.kind()
                 && let Some(Some(child)) = element.child_navigable()
             {
                 work.step(cancel)?;
@@ -1786,7 +1843,7 @@ impl Dom {
         cancel: &AtomicBool,
     ) -> Result<bool, DomHostedError> {
         work.step(cancel)?;
-        let DomNodeKind::Document(metadata) = &self.state.node(self.owner, document.node())?.kind
+        let DomNodeKind::Document(metadata) = self.state.node(self.owner, document.node())?.kind()
         else {
             return Err(DomError::WrongDocument.into());
         };

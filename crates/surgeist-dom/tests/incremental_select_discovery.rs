@@ -213,12 +213,12 @@ fn selectedcontent_scope_uses_actual_disabled_hooks_and_move_rollback() {
         let snapshot = dom.snapshot();
         let children = snapshot.node(target).unwrap().children();
         assert_eq!(children.len(), 1);
-        snapshot.node(children[0]).unwrap().kind().clone()
+        snapshot.node(children[0]).unwrap().data().unwrap().clone()
     };
     let mut edit = DomBatch::new();
     edit.set_select_selected_index(outer, 0);
     dom.apply(edit, &cancel).unwrap();
-    assert_eq!(text_at(&dom, enabled), DomNodeKind::Text("outer".into()));
+    assert_eq!(text_at(&dom, enabled), DocumentString::from("outer"));
     assert_eq!(
         dom.snapshot().node(nested_target).unwrap().children(),
         &[sentinel]
@@ -236,10 +236,7 @@ fn selectedcontent_scope_uses_actual_disabled_hooks_and_move_rollback() {
             .unwrap()
             .disabled()
     );
-    assert_eq!(
-        text_at(&dom, nested_target),
-        DomNodeKind::Text("inner".into())
-    );
+    assert_eq!(text_at(&dom, nested_target), DocumentString::from("inner"));
     assert!(
         old.node(nested_target)
             .unwrap()
@@ -268,8 +265,5 @@ fn selectedcontent_scope_uses_actual_disabled_hooks_and_move_rollback() {
     let mut retry = DomBatch::new();
     retry.set_select_selected_index(nested, 0);
     dom.apply(retry, &cancel).unwrap();
-    assert_eq!(
-        text_at(&dom, nested_target),
-        DomNodeKind::Text("inner".into())
-    );
+    assert_eq!(text_at(&dom, nested_target), DocumentString::from("inner"));
 }

@@ -278,7 +278,7 @@ impl Continuation {
             return Err(DomHostedError::IncompleteOperation);
         }
         let node = dom.state.node(dom.owner, job.document.node())?;
-        let DomNodeKind::Document(metadata) = &node.kind else {
+        let DomNodeKind::Document(metadata) = node.kind() else {
             return Err(DomError::WrongDocument.into());
         };
         let environment = metadata.document_environment();

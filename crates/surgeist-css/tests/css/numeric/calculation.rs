@@ -1,0 +1,29 @@
+//! Math functions, calculation trees and their projections.
+
+mod calc_size;
+mod calc_size_composed_contract;
+mod calculation_projection_retirement;
+mod exact_numeric_construction;
+mod exact_numeric_function_domains;
+mod exact_numeric_grammar;
+mod exact_numeric_pure_consumers;
+mod legacy_calculation_admission;
+mod numeric_angle_function_product_projection;
+mod numeric_angle_sum_replacement_projection;
+mod numeric_calculation_clone;
+mod numeric_contextual_basis_policy_lifecycle;
+mod numeric_contextual_comparison_lifecycle;
+mod numeric_contextual_magnitude_projection_lifecycle;
+mod numeric_finite_angle_arithmetic_range_projection;
+mod numeric_finite_angle_range_projection;
+mod numeric_hinted_noncolor_contexts;
+mod numeric_hinted_noncolor_values;
+mod numeric_hinted_number_construction;
+mod numeric_lifecycle_stack;
+mod numeric_percentage_basis_projection;
+mod numeric_serialization_stack;
+mod numeric_source_order_projection_lifecycle;
+mod numeric_type_operations_lifecycle;
+mod steps_calculation_admission;
+mod typed_calculations;
+mod typed_sum_construction;

@@ -28,14 +28,13 @@ fn queued(
         let owner = DomBatch::new();
         let mut draft = Draft::new(&dom, owner.owner.clone(), &cancel()).unwrap();
         let key = draft.resolve(subject.into()).unwrap();
-        let mut state = draft.dialog_state(key).unwrap().clone();
+        let token = cancel();
+        let mut state = draft.dialog_state_mut(key, &token).unwrap();
         state.toggle_tracker = Some(crate::DomDialogToggleTracker {
             task: id,
             old: surgeist_html::HtmlDialogState::Closed,
         });
-        let mut element = draft.element_fields_mut(key, &cancel()).unwrap();
-        element.set_dialog_state(state);
-        element.commit(&cancel()).unwrap();
+        state.commit(&token).unwrap();
         let prepared = draft.finish(&dom, &cancel()).unwrap();
         dom.publish(prepared, &cancel()).unwrap();
         DomDialogTaskInfo::Toggle(crate::DomDialogToggleTaskInfo {

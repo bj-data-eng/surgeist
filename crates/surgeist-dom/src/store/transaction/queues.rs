@@ -1629,7 +1629,7 @@ impl Draft {
         };
         let mut step = || source::formation::step(formation.as_ref(), cancel);
         let document = if signal_count != 0 || native_count != 0 {
-            Some(self.live_key(self.node(target)?.document))
+            Some(self.live_key(self.node(target)?.document()))
         } else {
             None
         };
@@ -1807,7 +1807,7 @@ impl Draft {
         }
         match (queue.document)(value) {
             DocumentSource::CurrentTarget => Ok(Some(
-                self.live_key(self.node(self.live_key(target))?.document),
+                self.live_key(self.node(self.live_key(target))?.document()),
             )),
             DocumentSource::Fixed(document) => {
                 Ok(document.map(|document| self.live_key(Key::Existing(document.node()))))
@@ -2517,7 +2517,15 @@ mod tests {
                 ids: source::AllocationIds::default(),
                 private: source::Privacy::default(),
             });
-            let kind = draft.node(Key::Existing(details)).unwrap().kind.clone();
+            let kind = NewNode::Element(
+                draft
+                    .node(Key::Existing(details))
+                    .unwrap()
+                    .element()
+                    .unwrap()
+                    .language()
+                    .clone(),
+            );
             let target = draft
                 .allocate(kind, Key::Existing(document.node()), limits, &cancel)
                 .unwrap();
@@ -2688,7 +2696,15 @@ mod tests {
             ids: source::AllocationIds::default(),
             private: source::Privacy::default(),
         });
-        let kind = draft.node(Key::Existing(select)).unwrap().kind.clone();
+        let kind = NewNode::Element(
+            draft
+                .node(Key::Existing(select))
+                .unwrap()
+                .element()
+                .unwrap()
+                .language()
+                .clone(),
+        );
         let target = draft
             .allocate(kind, Key::Existing(document.node()), limits, &cancel)
             .unwrap();

@@ -2,6 +2,7 @@
 //! A node may own separate member records in several groups. Only the existing
 //! ChildPosition map establishes ordinary topology; shadow edges are reciprocal.
 use super::super::*;
+use super::KindRead;
 use super::{NodeRead, slot_index::SlotIndex};
 use std::cmp::Ordering;
 
@@ -144,11 +145,11 @@ impl<'a> OrderView<'a> {
         }
         if mode == Mode::ShadowIncluding {
             let node = self.node(key)?;
-            if matches!(node.kind, DomNodeKind::ShadowRoot(_))
-                && let Some(host) = node.host
+            if matches!(node.kind(), KindRead::ShadowRoot(_))
+                && let Some(host) = node.host()
             {
                 let reciprocal = match self.node(host) {
-                    Ok(node) => node.shadow_root.map(|root| self.normalize(root)) == Some(key),
+                    Ok(node) => node.shadow_root().map(|root| self.normalize(root)) == Some(key),
                     Err(DomError::StaleNode) => false,
                     Err(error) => return Err(error),
                 };
@@ -434,6 +435,37 @@ pub(in crate::store) enum Membership {
     Insert(Key),
     Remove(Key),
 }
+#[derive(Clone, Copy)]
+enum MemberOrder<'a> {
+    Tree(OrderView<'a>, Mode),
+    Identity,
+}
+impl MemberOrder<'_> {
+    fn normalize(self, key: Key) -> Key {
+        match self {
+            Self::Tree(view, _) => view.normalize(key),
+            Self::Identity => key,
+        }
+    }
+    fn compare(
+        self,
+        a: Key,
+        b: Key,
+        step: &mut dyn FnMut() -> Result<(), DomError>,
+    ) -> Result<Ordering, DomError> {
+        match self {
+            Self::Tree(view, mode) => view.compare(a, b, mode, step),
+            Self::Identity => {
+                step()?;
+                let coordinate = |key| match key {
+                    Key::Existing(id) => (0, id.owner.get(), id.slot, id.generation),
+                    Key::Created(index) => (1, 0, index, 0),
+                };
+                Ok(coordinate(a).cmp(&coordinate(b)))
+            }
+        }
+    }
+}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct Link {
     key: Key,
@@ -664,8 +696,7 @@ impl Members {
         custody: &mut MembersCustody,
         root: Option<MemberId>,
         key: Key,
-        order: OrderView<'_>,
-        mode: Mode,
+        order: MemberOrder<'_>,
         edit: &mut Edit<'_>,
     ) -> Result<MemberId, DomError> {
         let Some(id) = root else {
@@ -684,13 +715,11 @@ impl Members {
             return Ok(id);
         };
         let mut node = self.get(id, edit.step)?;
-        match order.compare(key, node.key, mode, edit.step)? {
+        match order.compare(key, node.key, edit.step)? {
             Ordering::Equal => return Ok(id),
-            Ordering::Less => {
-                node.left = Some(self.insert(custody, node.left, key, order, mode, edit)?)
-            }
+            Ordering::Less => node.left = Some(self.insert(custody, node.left, key, order, edit)?),
             Ordering::Greater => {
-                node.right = Some(self.insert(custody, node.right, key, order, mode, edit)?)
+                node.right = Some(self.insert(custody, node.right, key, order, edit)?)
             }
         }
         self.save(custody, id, node, edit)?;
@@ -713,19 +742,14 @@ impl Members {
         custody: &mut MembersCustody,
         root: Option<MemberId>,
         key: Key,
-        order: OrderView<'_>,
-        mode: Mode,
+        order: MemberOrder<'_>,
         edit: &mut Edit<'_>,
     ) -> Result<Option<MemberId>, DomError> {
         let Some(id) = root else { return Ok(None) };
         let mut node = self.get(id, edit.step)?;
-        match order.compare(key, node.key, mode, edit.step)? {
-            Ordering::Less => {
-                node.left = self.remove(custody, node.left, key, order, mode, edit)?
-            }
-            Ordering::Greater => {
-                node.right = self.remove(custody, node.right, key, order, mode, edit)?
-            }
+        match order.compare(key, node.key, edit.step)? {
+            Ordering::Less => node.left = self.remove(custody, node.left, key, order, edit)?,
+            Ordering::Greater => node.right = self.remove(custody, node.right, key, order, edit)?,
             Ordering::Equal => match (node.left, node.right) {
                 (None, right) => {
                     self.put(custody, id, None, edit)?;
@@ -738,7 +762,7 @@ impl Members {
                 (Some(_), Some(right)) => {
                     let successor = self.get(self.minimum(right, edit.step)?, edit.step)?.key;
                     node.key = successor;
-                    node.right = self.remove(custody, node.right, successor, order, mode, edit)?;
+                    node.right = self.remove(custody, node.right, successor, order, edit)?;
                 }
             },
         }
@@ -757,18 +781,17 @@ impl Members {
             })
             .transpose()
     }
-    pub fn contains(
+    fn contains_by(
         &self,
         root: RootHeader,
         key: Key,
-        order: OrderView<'_>,
-        mode: Mode,
+        order: MemberOrder<'_>,
         step: &mut dyn FnMut() -> Result<(), DomError>,
     ) -> Result<bool, DomError> {
         let mut next = root.0;
         while let Some(id) = next {
             let node = self.get(id, step)?;
-            match order.compare(key, node.key, mode, step)? {
+            match order.compare(key, node.key, step)? {
                 Ordering::Equal => return Ok(node.key == order.normalize(key)),
                 Ordering::Less => next = node.left,
                 Ordering::Greater => next = node.right,
@@ -784,11 +807,30 @@ impl Members {
         mode: Mode,
         step: &mut dyn FnMut() -> Result<(), DomError>,
     ) -> Result<Option<Key>, DomError> {
+        self.after_by(root, key, MemberOrder::Tree(order, mode), step)
+    }
+    /// Enumerate a group whose members can have disconnected ordinary roots.
+    /// Identity ordering is deliberately independent of tree topology.
+    pub fn after_identity(
+        &self,
+        root: RootHeader,
+        key: Key,
+        step: &mut dyn FnMut() -> Result<(), DomError>,
+    ) -> Result<Option<Key>, DomError> {
+        self.after_by(root, key, MemberOrder::Identity, step)
+    }
+    fn after_by(
+        &self,
+        root: RootHeader,
+        key: Key,
+        order: MemberOrder<'_>,
+        step: &mut dyn FnMut() -> Result<(), DomError>,
+    ) -> Result<Option<Key>, DomError> {
         let mut next = root.0;
         let mut result = None;
         while let Some(id) = next {
             let node = self.get(id, step)?;
-            if order.compare(node.key, key, mode, step)? == Ordering::Greater {
+            if order.compare(node.key, key, step)? == Ordering::Greater {
                 result = Some(node.key);
                 next = node.left
             } else {
@@ -825,13 +867,39 @@ impl Members {
         membership: Membership,
         order: OrderView<'_>,
         mode: Mode,
+        edit: Edit<'_>,
+    ) -> Result<Change, DomError> {
+        self.change_by(
+            custody,
+            root,
+            membership,
+            MemberOrder::Tree(order, mode),
+            edit,
+        )
+    }
+    /// Change a group ordered solely by exact generation-qualified identity.
+    pub fn change_identity(
+        &self,
+        custody: &MembersCustody,
+        root: RootHeader,
+        membership: Membership,
+        edit: Edit<'_>,
+    ) -> Result<Change, DomError> {
+        self.change_by(custody, root, membership, MemberOrder::Identity, edit)
+    }
+    fn change_by(
+        &self,
+        custody: &MembersCustody,
+        root: RootHeader,
+        membership: Membership,
+        order: MemberOrder<'_>,
         mut edit: Edit<'_>,
     ) -> Result<Change, DomError> {
         let (key, present) = match membership {
             Membership::Insert(key) => (key, true),
             Membership::Remove(key) => (key, false),
         };
-        let previous = self.contains(root, key, order, mode, edit.step)?;
+        let previous = self.contains_by(root, key, order, edit.step)?;
         let mut next = Change {
             members: self.clone(),
             custody: custody.clone(),
@@ -842,11 +910,11 @@ impl Members {
             next.root = RootHeader(if present {
                 Some(
                     next.members
-                        .insert(&mut next.custody, root.0, key, order, mode, &mut edit)?,
+                        .insert(&mut next.custody, root.0, key, order, &mut edit)?,
                 )
             } else {
                 next.members
-                    .remove(&mut next.custody, root.0, key, order, mode, &mut edit)?
+                    .remove(&mut next.custody, root.0, key, order, &mut edit)?
             });
         }
         Ok(next)

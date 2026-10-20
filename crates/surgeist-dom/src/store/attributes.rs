@@ -1,4 +1,5 @@
 use super::*;
+use crate::element::{ElementFormation, FormedElement, NonceUpdate};
 use crate::names::{attribute_name, name_units, valid_attribute_local_name};
 use crate::{DomAttribute as Attribute, DomQualifiedName as QualifiedName, Namespace};
 
@@ -192,9 +193,11 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         check_cancel(cancelled)?;
-        let DomNodeKind::Element(element) = &self.node(node)?.kind else {
-            return Err(DomError::WrongNodeKind);
-        };
+        let element = self
+            .node(node)?
+            .element()
+            .ok_or(DomError::WrongNodeKind)?
+            .language();
         let old = element.nonce().ok_or(DomError::NonceInapplicable)?.len();
         let units = (self.units - old)
             .checked_add(value.len())
@@ -202,9 +205,26 @@ impl Draft {
         admit(units, limits.units, DomResource::StringCodeUnits)?;
         let candidate = source::formation::Formation::new(self, cancelled)?;
         let value = retain_string(value, candidate.as_ref(), cancelled)?;
+        let mut original = source::storage::Payload::default();
+        if candidate.is_some() {
+            original.string(&value)?;
+        }
+        let (value, controls) = {
+            let mut admit = |next| self.admit_custody_usage(next, cancelled);
+            let mut context = ElementFormation::new(
+                self.custody_registry(),
+                candidate.as_ref(),
+                cancelled,
+                &mut admit,
+            );
+            let value = context.nonce(value, original)?;
+            (value, context.into_children())
+        };
         self.with_element_fields_formed(node, cancelled, candidate, |element| {
-            element.set_nonce(value)
+            element.set_nonce_payload(value)
         })?;
+        // The selected language dependency has now adopted the exact group.
+        drop(controls);
         self.units = units;
         Ok(())
     }
@@ -217,9 +237,11 @@ impl Draft {
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
-        let DomNodeKind::Element(element) = &self.node(node)?.kind else {
-            return Err(DomError::WrongNodeKind);
-        };
+        let element = self
+            .node(node)?
+            .element()
+            .ok_or(DomError::WrongNodeKind)?
+            .language();
         let mut name_formation = source::formation::Formation::new(self, cancelled)?;
         let mut normalized = name_registry::Normalized::new(&self.names);
         let (position, raw_name) = if let Some(namespace) = namespace {
@@ -303,9 +325,7 @@ impl Draft {
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
-        if !matches!(&self.node(node)?.kind, DomNodeKind::Element(_)) {
-            return Err(DomError::WrongNodeKind);
-        }
+        self.node(node)?.element().ok_or(DomError::WrongNodeKind)?;
         let name_formation = source::formation::Formation::new(self, cancelled)?;
         let name = self.bind_name(attribute.name(), name_formation.as_ref(), cancelled)?;
         self.write_attribute(
@@ -329,9 +349,7 @@ impl Draft {
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
-        if !matches!(&self.node(node)?.kind, DomNodeKind::Element(_)) {
-            return Err(DomError::WrongNodeKind);
-        }
+        self.node(node)?.element().ok_or(DomError::WrongNodeKind)?;
         let name_formation = source::formation::Formation::new(self, cancelled)?;
         let name =
             self.bind_canonical_name(attribute.name(), name_formation.as_ref(), cancelled)?;
@@ -361,9 +379,11 @@ impl Draft {
         check_cancel(cancelled)?;
         #[cfg(test)]
         transaction::queues::admission_observation::before_payload(self);
-        let DomNodeKind::Element(element) = &self.node(node)?.kind else {
-            return Err(DomError::WrongNodeKind);
-        };
+        let element = self
+            .node(node)?
+            .element()
+            .ok_or(DomError::WrongNodeKind)?
+            .language();
         #[cfg(test)]
         let copy_boundary = attribute_copy_observation::before(
             self,
@@ -415,7 +435,7 @@ impl Draft {
             write.name,
             retain_string(value, candidate.as_ref(), cancelled)?,
         );
-        let nonce = nonce_after_effect(element, nonce_value, candidate.as_ref(), cancelled)?;
+        let nonce = nonce_after_effect(nonce_value, candidate.as_ref(), cancelled)?;
         #[cfg(test)]
         let mut attribute_writes = crate::store::CopyObservation::default();
         let capacity = element
@@ -451,21 +471,29 @@ impl Draft {
         }
         #[cfg(test)]
         attribute_copy_observation::copied(copy_boundary, &attributes.entries, self, cancelled)?;
-        let attributes = self.form_attributes(attributes, candidate.as_ref(), cancelled)?;
-        let _attributes_custody = attributes.custody;
-        let staged = element.with_attributes_formed(
-            attributes.value,
-            &changed,
-            nonce,
-            candidate.as_ref(),
-            cancelled,
-        )?;
         if let Some(name_formation) = write.name_formation {
             candidate
                 .as_ref()
                 .expect("same Source payload producer")
                 .absorb(name_formation);
         }
+        let attributes = self.form_attributes(attributes, candidate.as_ref(), cancelled)?;
+        let attributes = self.form_attribute_binding(attributes, candidate.as_ref(), cancelled)?;
+        let (binding, binding_custody) = match attributes {
+            Some(formed) => (Some(formed.value), Some(formed.custody)),
+            None => (None, None),
+        };
+        let mut staged = {
+            let mut admit = |next| self.admit_custody_usage(next, cancelled);
+            let context = ElementFormation::new(
+                self.custody_registry(),
+                candidate.as_ref(),
+                cancelled,
+                &mut admit,
+            );
+            element.with_attributes_formed(binding, &changed, nonce, context)?
+        };
+        staged.children.attributes = binding_custody;
         self.publish_element(node, old_units, staged, candidate, limits, cancelled)?;
         #[cfg(test)]
         attribute_copy_observation::hooks(
@@ -499,6 +527,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         let node = hook.subject;
         let changed = &hook.changed;
+        self.inline_attribute(node, changed, hook.new_value.as_ref(), cancelled)?;
         let old_value = hook.old_value.as_ref();
         let new_value = hook.new_value.as_ref();
         let change = if new_value.is_none() {
@@ -577,9 +606,11 @@ impl Draft {
     ) -> Result<(), DomError> {
         #[cfg(test)]
         transaction::queues::admission_observation::before_payload(self);
-        let DomNodeKind::Element(element) = &self.node(node)?.kind else {
-            return Err(DomError::WrongNodeKind);
-        };
+        let element = self
+            .node(node)?
+            .element()
+            .ok_or(DomError::WrongNodeKind)?
+            .language();
         let name_formation = source::formation::Formation::new(self, cancelled)?;
         let mut normalized = name_registry::Normalized::new(&self.names);
         let name = if namespace.is_none() && self.html_element_in_html_document(node)? {
@@ -615,7 +646,7 @@ impl Draft {
             self.source_step(cancelled)?;
         }
         let nonce_value = surgeist_html::nonce_attribute_change(element.name(), &changed, None);
-        let nonce = nonce_after_effect(element, nonce_value, candidate.as_ref(), cancelled)?;
+        let nonce = nonce_after_effect(nonce_value, candidate.as_ref(), cancelled)?;
         #[cfg(test)]
         let mut attribute_writes = crate::store::CopyObservation::default();
         let capacity = element.attributes().len();
@@ -638,14 +669,22 @@ impl Draft {
         #[cfg(test)]
         attribute_copy_observation::copied(copy_boundary, &attributes.entries, self, cancelled)?;
         let attributes = self.form_attributes(attributes, candidate.as_ref(), cancelled)?;
-        let _attributes_custody = attributes.custody;
-        let staged = element.with_attributes_formed(
-            attributes.value,
-            &changed,
-            nonce,
-            candidate.as_ref(),
-            cancelled,
-        )?;
+        let attributes = self.form_attribute_binding(attributes, candidate.as_ref(), cancelled)?;
+        let (binding, binding_custody) = match attributes {
+            Some(formed) => (Some(formed.value), Some(formed.custody)),
+            None => (None, None),
+        };
+        let mut staged = {
+            let mut admit = |next| self.admit_custody_usage(next, cancelled);
+            let context = ElementFormation::new(
+                self.custody_registry(),
+                candidate.as_ref(),
+                cancelled,
+                &mut admit,
+            );
+            element.with_attributes_formed(binding, &changed, nonce, context)?
+        };
+        staged.children.attributes = binding_custody;
         self.publish_element(node, old_units, staged, candidate, limits, cancelled)?;
         #[cfg(test)]
         attribute_copy_observation::hooks(&changed, Some(&old_value), None, self);
@@ -669,13 +708,13 @@ impl Draft {
         &mut self,
         node: Key,
         old_units: usize,
-        staged: DomElement,
+        staged: FormedElement,
         formation: Option<source::formation::Formation>,
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         struct Candidate {
-            value: DomElement,
+            value: FormedElement,
             formation: Option<source::formation::Formation>,
         }
         let candidate = Candidate {
@@ -686,36 +725,31 @@ impl Draft {
             .checked_add(
                 candidate
                     .value
+                    .value
                     .units()
                     .ok_or(DomError::RepresentationExhausted)?,
             )
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
         let Candidate { value, formation } = candidate;
-        self.with_node_fields_formed(node, cancelled, formation, |fields| {
-            fields.kind = DomNodeKind::Element(value)
-        })?;
+        self.replace_element_formed(node, value, formation, cancelled)?;
         self.units = units;
         Ok(())
     }
 }
 fn nonce_after_effect(
-    element: &DomElement,
     effect: surgeist_html::HtmlNonceAttributeEffect<'_>,
     budget: Option<&source::formation::Formation>,
     cancel: &AtomicBool,
-) -> Result<Option<DocumentString>, DomError> {
+) -> Result<NonceUpdate, DomError> {
     use surgeist_html::HtmlNonceAttributeEffect;
     match effect {
-        HtmlNonceAttributeEffect::Ignore => element
-            .nonce()
-            .map(|value| retain_string(value, budget, cancel))
-            .transpose(),
+        HtmlNonceAttributeEffect::Ignore => Ok(NonceUpdate::Unchanged),
         HtmlNonceAttributeEffect::ClearSlot => {
-            source::formation::units(&[], false, budget, cancel).map(Some)
+            source::formation::units(&[], false, budget, cancel).map(NonceUpdate::Set)
         }
         HtmlNonceAttributeEffect::CopyValue(value) => {
-            retain_string(value, budget, cancel).map(Some)
+            retain_string(value, budget, cancel).map(NonceUpdate::Set)
         }
     }
 }
@@ -895,11 +929,8 @@ mod tests {
         let mut bytes = size_of::<payload::Payload<crate::name::AttributeValues>>()
             + std::mem::size_of_val(attributes);
         let mut units = 0;
-        // nonce_after_effect retains the existing nonce before copying the
-        // bank. Some(empty) still owns one shared Vec target header.
-        if let Some(nonce) = element.nonce() {
-            string(nonce, &mut bytes, &mut units);
-        }
+        // This unrelated data-* edit aliases the original nonce group.
+        // Ignore forms no new nonce occurrence at this raw-copy boundary.
         for attribute in &attributes[..attributes.len() - 1] {
             name(attribute.name(), &mut bytes, &mut units);
             string(attribute.value(), &mut bytes, &mut units);
@@ -1255,7 +1286,8 @@ mod dialog_tail_tests {
         let (mut draft, _) =
             Draft::new_source(&dom, batch.owner.clone(), &batch.commands, limits, &cancel).unwrap();
         let key = draft.resolve(dialog.into()).unwrap();
-        let attribute = &draft.element(key).unwrap().attributes()[0];
+        let element = draft.element(key).unwrap();
+        let attribute = &element.attributes()[0];
         let formation = source::formation::Formation::new(&draft, &cancel).unwrap();
         let changed = retain_name(attribute.name(), formation.as_ref(), &cancel).unwrap();
         let new_value = retain_string(attribute.value(), formation.as_ref(), &cancel).unwrap();

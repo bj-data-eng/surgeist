@@ -88,6 +88,12 @@ impl Fixture {
                         .unwrap(),
                 )
                 .unwrap()
+                .with_event_recipients(
+                    surgeist_dom::DomEventRecipientLimits::new(
+                        64, 16_000_000, 16_000_000, 4_000_000,
+                    )
+                    .unwrap(),
+                )
                 .with_dispatch_custody(
                     DomDispatchCustodyLimits::new(32, 2048, 32_000_000, 32_000_000, 8_000_000)
                         .unwrap(),
@@ -511,7 +517,7 @@ fn deliver_load(fixture: &mut Fixture) {
     let style = fixture.style;
     let once = registry
         .add_listener(
-            &fixture.session.dom(),
+            &mut fixture.session.dom(),
             style,
             DomEventType::Load,
             DomEventCallback::new(move |_, _, context: &mut Networking, event| {

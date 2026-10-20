@@ -90,7 +90,7 @@ impl Operation {
         let document = match frame {
             FocusFrame::Dialog(subject) => {
                 self.draft.source_step(cancel)?;
-                self.draft.node(subject)?.document
+                self.draft.node(subject)?.document()
             }
             FocusFrame::Insertion(frame) => frame.target.ok_or(DomError::InvalidSourceOperation)?,
         };
@@ -163,9 +163,8 @@ impl Operation {
         };
         if matches!(request, DomFocusRequest::RememberDialog(_)) {
             // An already-null slot remains a semantic no-op.
-            let mut element = self.draft.element_fields_mut(subject, cancel)?;
-            element.remember_no_focused_element();
-            element.commit(cancel)?;
+            self.draft
+                .clear_previously_focused_element(subject, cancel)?;
             self.draft.source_prepare_dialog_reply(cancel)?;
             let Some(crate::store::method::Frame::Dialog(frame)) = self.draft.method.as_mut()
             else {

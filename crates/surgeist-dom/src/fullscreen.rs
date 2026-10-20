@@ -98,7 +98,7 @@ impl DomFullscreenEventBatch {
 impl<'a> DomDocument<'a> {
     pub fn pending_fullscreen_events(self) -> Result<&'a [DomFullscreenEvent], DomError> {
         self.snapshot.require_complete_source()?;
-        Ok(&self.snapshot.node(self.id.node())?.node.fullscreen_events)
+        Ok(self.snapshot.node(self.id.node())?.node.fullscreen_events())
     }
 }
 

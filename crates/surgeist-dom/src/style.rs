@@ -109,17 +109,19 @@ impl<'a> DomStyle<'a> {
         if self.state().availability == DomStyleSheetAvailability::PendingParsedProcessing {
             return Err(crate::DomError::StyleProcessingUnavailable);
         }
-        let document = self.node.snapshot.node(self.node.node.document.node())?;
+        let document = self.node.snapshot.node(self.node.node.document().node())?;
         Ok(document
             .node
-            .base_document
-            .as_ref()
+            .base_document()
             .is_some_and(|state| state.render_blocking.contains(&self.node.id())))
     }
     /// Native and native-clone creation has no parser Document. A parser-owned
     /// installation must establish its own actual cause and relation.
     pub fn parser_document(self) -> Option<crate::DocumentId> {
-        self.node.node.style_parser_document.map(crate::DocumentId)
+        self.node
+            .node
+            .style_parser_document()
+            .map(crate::DocumentId)
     }
 }
 impl<'a> DomNode<'a> {

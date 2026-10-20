@@ -6,7 +6,7 @@ use std::cell::RefCell;
 
 #[derive(Clone, Copy)]
 enum Site {
-    Fields(Key),
+    NativeTarget(Key),
     Relation(Key, transaction::RelationField),
     Payload,
 }
@@ -37,13 +37,13 @@ impl Binding {
         });
         Self
     }
-    pub fn fields(
+    pub fn native_target(
         key: Key,
         additional: custody::Usage,
         resource: DomResource,
         short: bool,
     ) -> Self {
-        Self::new(Site::Fields(key), additional, resource, short)
+        Self::new(Site::NativeTarget(key), additional, resource, short)
     }
     pub fn relation(
         key: Key,
@@ -84,7 +84,7 @@ fn before(draft: &mut Draft, site: Site) {
         let mut active = active.borrow_mut();
         let Some(state) = active.as_mut() else { return };
         let matches = match (state.site, site) {
-            (Site::Fields(a), Site::Fields(b)) => a == b,
+            (Site::NativeTarget(a), Site::NativeTarget(b)) => a == b,
             (Site::Relation(a, af), Site::Relation(b, bf)) => {
                 a == b && std::mem::discriminant(&af) == std::mem::discriminant(&bf)
             }
@@ -116,8 +116,8 @@ fn before(draft: &mut Draft, site: Site) {
         state.limit = Some(limit);
     });
 }
-pub(in crate::store) fn before_fields(draft: &mut Draft, key: Key) {
-    before(draft, Site::Fields(key));
+pub(in crate::store) fn before_native_target(draft: &mut Draft, key: Key) {
+    before(draft, Site::NativeTarget(key));
 }
 pub(in crate::store) fn before_relation(
     draft: &mut Draft,
@@ -129,73 +129,48 @@ pub(in crate::store) fn before_relation(
 pub(in crate::store) fn before_payload(draft: &mut Draft) {
     before(draft, Site::Payload);
 }
-pub(in crate::store) fn after_payload(draft: &mut Draft) {
+fn after(draft: &mut Draft, matches: impl FnOnce(Site) -> bool) {
     ACTIVE.with(|active| {
         if let Some(state) = active.borrow_mut().as_mut()
-            && matches!(state.site, Site::Payload)
+            && matches(state.site)
             && let Some(policy) = state.parent_policy.take()
         {
             draft.source_limits = Some(policy);
         }
     });
 }
-
-/// Independent raw occurrence walk for these actual Dialog fixtures. It reads
-/// capacities and values, never cached receipts or a measured ledger delta.
-pub(in crate::store) fn dialog_fields(draft: &Draft, key: Key) -> custody::Usage {
-    fn string(value: &DocumentString, bytes: &mut usize, units: &mut usize) {
-        let capacity = value.shared_code_units().capacity();
-        *bytes += size_of::<Vec<u16>>() + capacity * size_of::<u16>();
-        *units += capacity;
-    }
-    fn name(
-        value: &(impl surgeist_html::HtmlNameInput + ?Sized),
-        bytes: &mut usize,
-        units: &mut usize,
-    ) {
-        for value in [
-            value.namespace_uri(),
-            value.prefix(),
-            Some(value.local_name()),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            string(value, bytes, units);
-        }
-    }
-    let node = draft.node(key).unwrap();
-    assert!(
-        node.base.is_none()
-            && node.base_document.is_none()
-            && node.image.is_none()
-            && node.hyperlink.is_none()
-            && node.encoding_url_document.is_none()
-            && node.form_past_names.is_none()
+pub(in crate::store) fn after_payload(draft: &mut Draft) {
+    after(draft, |site| matches!(site, Site::Payload));
+}
+pub(in crate::store) fn after_native_target(draft: &mut Draft, key: Key) {
+    after(
+        draft,
+        |site| matches!(site, Site::NativeTarget(selected) if selected == key),
     );
-    let DomNodeKind::Element(element) = node.kind else {
-        panic!("Dialog element")
-    };
-    let state = element.dialog_state().expect("actual Dialog");
-    // The typed attribute bank and its child frontier have independent
-    // custody, prepared before this selected fields-only observation window.
-    let mut bytes = size_of::<transaction::NodeFields>() + size_of::<DomDialogState>();
-    let mut units = 0;
-    name(element.name(), &mut bytes, &mut units);
-    for attribute in element.attributes().iter() {
-        name(attribute.name(), &mut bytes, &mut units);
-        string(attribute.value(), &mut bytes, &mut units);
-    }
-    for value in [
-        element.saved_is(),
-        element.nonce(),
-        Some(state.return_value()),
-        state.request_return_value.as_ref(),
-    ]
-    .into_iter()
-    .flatten()
-    {
-        string(value, &mut bytes, &mut units);
-    }
-    custody::Usage::new(bytes, units)
+}
+
+/// Exact selected target-header admission, independently derived from the
+/// actual Rust layouts. Dialog controllers have already admitted the raw
+/// DomDialogState body and all new retained string occurrences before this
+/// gate; neither old Element children nor those live inputs are charged again.
+///
+/// This is not a complete custody/index/compact-binding-plan bound. The native
+/// factory restores the original fixture policy after materializing this
+/// target, before separately admitted control administration. Its zero unit
+/// delta verifies the current retained-unit limit, not newly copied units.
+pub(in crate::store) fn dialog_native_target(draft: &Draft, key: Key) -> custody::Usage {
+    assert!(
+        draft
+            .node(key)
+            .unwrap()
+            .element()
+            .unwrap()
+            .dialog_state()
+            .is_some(),
+        "actual Dialog"
+    );
+    let bytes = size_of::<payload::Payload<DomDialogState>>()
+        .checked_sub(size_of::<DomDialogState>())
+        .expect("typed target contains its exact native state");
+    custody::Usage::new(bytes, 0)
 }

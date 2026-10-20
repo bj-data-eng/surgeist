@@ -16,7 +16,7 @@
 
 use surgeist_css::{CssKnownProperty as Property, *};
 
-#[path = "../tests/common/property_expectations.rs"]
+#[path = "../tests/css/support/property_expectations.rs"]
 mod property_expectations;
 
 fn assert_selected_four(result: Result<CssExpansion, CssExpansionError>) {

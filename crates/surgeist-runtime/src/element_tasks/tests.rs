@@ -221,7 +221,7 @@ fn coalescing_preserves_first_old_latest_new_and_requeues_after_other_targets() 
     let mut registry = registry();
     registry
         .add_listener(
-            &dom.dom(),
+            &mut dom.dom(),
             document.node(),
             DomEventType::Toggle,
             record(),
@@ -234,7 +234,7 @@ fn coalescing_preserves_first_old_latest_new_and_requeues_after_other_targets() 
     for target in [a, b] {
         registry
             .add_listener(
-                &dom.dom(),
+                &mut dom.dom(),
                 target,
                 DomEventType::Toggle,
                 record(),
@@ -323,7 +323,7 @@ fn reentrant_replacement_is_untracked_by_postdispatch_clear_but_still_delivers()
     c.reenter = true;
     registry
         .add_listener(
-            &dom.dom(),
+            &mut dom.dom(),
             a,
             DomEventType::Toggle,
             DomEventCallback::new(move |dom, _, c: &mut Context, event| {
@@ -451,7 +451,7 @@ fn detach_and_adopt_preserve_target_but_retired_generation_is_skipped() {
     for target in [a, b] {
         registry
             .add_listener(
-                &dom.dom(),
+                &mut dom.dom(),
                 target,
                 DomEventType::Toggle,
                 record(),
@@ -513,7 +513,7 @@ fn destruction_during_actual_listener_preserves_delivery_and_callback_failure_cl
     let mut registry = registry();
     registry
         .add_listener(
-            &dom.dom(),
+            &mut dom.dom(),
             a,
             DomEventType::Toggle,
             DomEventCallback::new(move |dom, _, c: &mut Context, event| {
@@ -530,7 +530,7 @@ fn destruction_during_actual_listener_preserves_delivery_and_callback_failure_cl
         .unwrap();
     registry
         .add_listener(
-            &dom.dom(),
+            &mut dom.dom(),
             a,
             DomEventType::Toggle,
             record(),
@@ -701,7 +701,7 @@ fn retained_dispatch_survives_callback_coordinator_replacement_and_resumes_once(
     let mut registry = registry();
     registry
         .add_listener(
-            &dom.dom(),
+            &mut dom.dom(),
             a,
             DomEventType::Toggle,
             DomEventCallback::new(move |_dom, _, c: &mut Context, event| {
@@ -721,7 +721,7 @@ fn retained_dispatch_survives_callback_coordinator_replacement_and_resumes_once(
         .unwrap();
     registry
         .add_listener(
-            &dom.dom(),
+            &mut dom.dom(),
             a,
             DomEventType::Toggle,
             record(),
@@ -971,7 +971,7 @@ fn accessor_unwind_after_completed_dispatch_keeps_actual_receipt_and_releases_ru
     let mut registry = registry();
     registry
         .add_listener(
-            &dom.dom(),
+            &mut dom.dom(),
             target,
             DomEventType::Toggle,
             DomEventCallback::new(|_, _, context: &mut Context, event| {
@@ -1038,7 +1038,7 @@ fn target_destroyed_after_prestart_dispatch_refusal_is_skipped_without_delivery(
     let mut registry = registry();
     registry
         .add_listener(
-            &dom.dom(),
+            &mut dom.dom(),
             target,
             DomEventType::Toggle,
             record(),

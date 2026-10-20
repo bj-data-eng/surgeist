@@ -83,7 +83,11 @@ pub struct DomFullscreenExitHandoffCommit<'a, 'dom> {
     checkpoint: Option<checkpoint::Checkpoint>,
 }
 impl DomFullscreenExitHandoffCommit<'_, '_> {
-    pub fn publish(mut self) -> DomFullscreenExitJob {
+    pub fn publish(self) -> DomFullscreenExitJob {
+        self.publish_inner().0
+    }
+
+    fn publish_inner(mut self) -> (DomFullscreenExitJob, crate::DomChanges) {
         let job = self.job.take().expect("prepared invocation job");
         let bank = self.bank.take().expect("prepared invocation bank");
         let control = self.control.take().expect("prepared continuation control");
@@ -97,13 +101,13 @@ impl DomFullscreenExitHandoffCommit<'_, '_> {
             .segment
             .take()
             .expect("prepared original publication")
-            .publish(&mut operation, self.lease.dom);
+            .publish(&mut operation, self.lease.dom, self.checkpoint.as_ref());
         // No allocation, callback or cancellation can interrupt this fence.
         self.lease.dom.fullscreen_exits = bank;
         operation
             .draft
             .commit_fullscreen_handoff(control, &published.committed);
-        drop(published);
+        let changes = published.commit.changes.clone();
         // Transfer the named mandatory credit, leaving the outer guard intact.
         operation
             .headroom
@@ -115,7 +119,7 @@ impl DomFullscreenExitHandoffCommit<'_, '_> {
         operation.custody_units = self.custody_units;
         self.lease.dom.source_operation = Some(operation);
         self.checkpoint.take();
-        job
+        (job, changes)
     }
 }
 impl Drop for DomFullscreenExitHandoffCommit<'_, '_> {
@@ -203,6 +207,118 @@ impl Operation {
 }
 impl<'dom> DomSourceLease<'dom> {
     pub fn prepare_fullscreen_exit_handoff<'a>(
+        &'a mut self,
+        request: &DomSourceFullscreenExitHandoffRequest,
+        source: &crate::DomHostedSource,
+        cancel: &AtomicBool,
+    ) -> Result<DomFullscreenExitHandoffCommit<'a, 'dom>, DomError> {
+        let publication = self.prepare_fullscreen_handoff(request, source, cancel)?;
+        if let Some(recording) = publication
+            .segment
+            .as_ref()
+            .and_then(|segment| segment.prepared.inline_recording.as_ref())
+        {
+            recording.require_unreached(|| {
+                publication
+                    .lease
+                    .dom
+                    .source_operation
+                    .as_ref()
+                    .expect("original Source")
+                    .draft
+                    .source_step(cancel)
+            })?;
+        }
+        Ok(publication)
+    }
+
+    /// Commit a context-bearing handoff after the scheduling owner has reserved
+    /// its actual row. All DOM formation precedes the final fallible CSSOM
+    /// commit; canonical publication and the returned job transfer are infallible.
+    /// The resolver is borrowed only for this execution and is never retained.
+    pub fn commit_fullscreen_exit_handoff_with_inline_styles(
+        &mut self,
+        request: &DomSourceFullscreenExitHandoffRequest,
+        source: &crate::DomHostedSource,
+        mut resolver: impl FnMut(
+            &[surgeist_cssom::CssomDeclarationCandidate],
+            &surgeist_cssom::CssomContext,
+        )
+            -> Result<surgeist_cssom::CssomAdmission, surgeist_cssom::CssomError>,
+        cancel: &AtomicBool,
+    ) -> Result<
+        (
+            DomFullscreenExitJob,
+            Option<crate::DomInlineStyleSourcePublication>,
+        ),
+        crate::DomInlineStyleError,
+    > {
+        let mut publication = self.prepare_fullscreen_handoff(request, source, cancel)?;
+        let segment = publication.segment.as_mut().expect("prepared segment");
+        let has_inputs = segment
+            .prepared
+            .inline_recording
+            .as_ref()
+            .is_some_and(|r| r.has_inputs());
+        let inline = if has_inputs {
+            let operation = publication
+                .lease
+                .dom
+                .source_operation
+                .as_ref()
+                .expect("original Source");
+            let limits = operation
+                .inline_request_limits()
+                .expect("recorded Source capability");
+            let formation = segment
+                .prepared
+                ._formation
+                .as_ref()
+                .expect("Source formation");
+            formation.retain_bytes(size_of::<crate::DomInlineStyleSourcePublication>(), cancel)?;
+            let outputs = segment
+                .outputs
+                .checked_add(1)
+                .ok_or(DomError::RepresentationExhausted)?;
+            if outputs.checked_add(1).is_none_or(|n| {
+                n > operation
+                    .draft
+                    .source_limits
+                    .expect("Source limits")
+                    .outputs
+            }) {
+                return Err(DomError::SourceOutputLimit.into());
+            }
+            segment.outputs = outputs;
+            let prepared = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                publication.lease.dom.prepare_inline_batch(
+                    &segment.prepared,
+                    limits,
+                    &mut resolver,
+                    cancel,
+                )
+            }));
+            let prepared = match prepared {
+                Ok(prepared) => prepared?,
+                Err(payload) => {
+                    drop(publication);
+                    std::panic::resume_unwind(payload)
+                }
+            };
+            prepared
+                .map(|batch| publication.lease.dom.commit_inline_batch(batch))
+                .transpose()?
+        } else {
+            None
+        };
+        let (job, dom) = publication.publish_inner();
+        Ok((
+            job,
+            inline.map(|inline| crate::DomInlineStyleSourcePublication { dom, inline }),
+        ))
+    }
+
+    fn prepare_fullscreen_handoff<'a>(
         &'a mut self,
         request: &DomSourceFullscreenExitHandoffRequest,
         source: &crate::DomHostedSource,
@@ -306,7 +422,14 @@ impl<'dom> DomSourceLease<'dom> {
                 return Err(DomError::SourcePublicationLimit);
             }
             let mut segment = op
-                .prepare_segment(self.dom, true, PublicationTarget::None, None, cancel)
+                .prepare_segment(
+                    self.dom,
+                    true,
+                    PublicationTarget::None,
+                    None,
+                    Some(&checkpoint),
+                    cancel,
+                )
                 .map_err(|error| match error {
                     crate::DomHostedError::Dom(error) => error,
                     _ => DomError::HostedSourceUnavailable,

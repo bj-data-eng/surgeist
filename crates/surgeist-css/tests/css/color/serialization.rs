@@ -1,0 +1,10 @@
+//! Specified and resolved color serialization.
+
+mod color_serialization_regressions;
+mod color_specified_serialization;
+mod declared_color_literal_formatting;
+mod hex_color_serialization;
+mod missing_alpha_color_serialization;
+mod numeric_srgb_scalar_serialization;
+mod retained_color_alpha_weight_formatting;
+mod srgb_calculated_alpha_serialization;

@@ -33,6 +33,7 @@ impl<K: Copy> HyperlinkState<K> {
             }),
         }
     }
+    #[cfg(test)]
     pub(crate) fn units(&self) -> usize {
         self.parsed
             .as_ref()
@@ -53,21 +54,6 @@ impl PartialEq for EncodingUrlDocument {
     }
 }
 impl Eq for EncodingUrlDocument {}
-impl EncodingUrlDocument {
-    pub(crate) fn fresh() -> Self {
-        Self { facts: None }
-    }
-    pub(crate) fn units(&self) -> usize {
-        self.facts
-            .as_ref()
-            .map_or(0, |f| f.formation_usage().utf16_extent())
-    }
-    pub(crate) fn records(&self) -> usize {
-        self.facts
-            .as_ref()
-            .map_or(0, |f| f.formation_usage().record_capacity())
-    }
-}
 #[derive(Clone, Copy, Debug)]
 pub struct DomHyperlink<'a> {
     node: DomNode<'a>,
@@ -84,8 +70,7 @@ impl<'a> DomHyperlink<'a> {
     pub fn parse_observation(self) -> Option<&'a HtmlHyperlinkUrlSnapshot> {
         self.node
             .node
-            .hyperlink
-            .as_ref()?
+            .hyperlink()?
             .parsed
             .as_ref()
             .map(|p| &p.value)
@@ -94,8 +79,7 @@ impl<'a> DomHyperlink<'a> {
     pub fn parse_document(self) -> Option<DocumentId> {
         self.node
             .node
-            .hyperlink
-            .as_ref()?
+            .hyperlink()?
             .parsed
             .as_ref()
             .map(|p| DocumentId(p.document))
@@ -103,7 +87,7 @@ impl<'a> DomHyperlink<'a> {
 }
 impl<'a> DomNode<'a> {
     pub fn as_hyperlink(self) -> Option<DomHyperlink<'a>> {
-        self.node.hyperlink.as_ref()?;
+        self.node.hyperlink()?;
         Some(DomHyperlink { node: self })
     }
 }
@@ -113,9 +97,7 @@ impl<'a> crate::DomDocument<'a> {
             .node(self.id.node())
             .expect("Document")
             .node
-            .encoding_url_document
-            .as_ref()?
+            .encoding_url_document()?
             .facts
-            .as_ref()
     }
 }

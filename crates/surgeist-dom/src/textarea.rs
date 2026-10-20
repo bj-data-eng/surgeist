@@ -97,7 +97,7 @@ impl<'a> DomTextarea<'a> {
     }
     pub fn form_owner(self) -> Result<Option<NodeId>, crate::DomError> {
         self.node.snapshot.require_complete_source()?;
-        Ok(self.node.node.control_owner)
+        Ok(self.node.node.control_owner())
     }
     /// API value, with Infra newlines normalized; no submitted hard wrapping.
     pub fn value(

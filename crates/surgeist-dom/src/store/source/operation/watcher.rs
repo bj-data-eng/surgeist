@@ -115,7 +115,7 @@ impl DomSourceLease<'_> {
                 .dom
                 .state
                 .node(self.dom.owner, request.subject)?
-                .relevant_global
+                .relevant_global()
             else {
                 return Ok(None);
             };

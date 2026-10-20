@@ -28,14 +28,14 @@ impl Draft {
         };
         if self
             .node(node)?
-            .reflected_targets
+            .reflected_targets()
             .and_then(|targets| targets.get(key))
             .is_none()
         {
             return Err(DomError::ButtonInapplicable);
         }
         if let Some(target) = target
-            && !matches!(self.node(target)?.kind, DomNodeKind::Element(_))
+            && !matches!(self.node(target)?.kind(), transaction::KindRead::Element(_))
         {
             return Err(DomError::WrongNodeKind);
         }
@@ -48,14 +48,16 @@ impl Draft {
             admit_effect()?;
             match effect {
                 Effect::ClearExplicitTarget => {
-                    self.with_node_fields(node, cancel, |fields| {
+                    {
+                        let mut fields = self.control_fields_mut(node, cancel)?;
                         *fields
                             .reflected_targets
                             .as_mut()
                             .expect("checked Button")
                             .slot_mut(key)
-                            .expect("checked reflected slot") = None
-                    })?;
+                            .expect("checked reflected slot") = None;
+                        fields.commit(cancel)
+                    }?;
                 }
                 Effect::RemoveContentAttribute => {
                     let operand = source::formation::Formation::new(self, cancel)?;
@@ -90,14 +92,16 @@ impl Draft {
                     )?;
                 }
                 Effect::SetExplicitTargetFromSuppliedElement => {
-                    self.with_node_fields(node, cancel, |fields| {
+                    {
+                        let mut fields = self.control_fields_mut(node, cancel)?;
                         *fields
                             .reflected_targets
                             .as_mut()
                             .expect("checked Button")
                             .slot_mut(key)
-                            .expect("checked reflected slot") = target
-                    })?;
+                            .expect("checked reflected slot") = target;
+                        fields.commit(cancel)
+                    }?;
                 }
             }
         }
@@ -109,7 +113,11 @@ impl Draft {
         changed: &crate::DomQualifiedName,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        self.with_node_fields(node, cancel, |fields| {
+        if self.node(node)?.reflected_targets().is_none() {
+            return Ok(());
+        }
+        {
+            let mut fields = self.control_fields_mut(node, cancel)?;
             if let Some(targets) = fields.reflected_targets.as_mut() {
                 for key in [ReflectedTarget::CommandFor, ReflectedTarget::PopoverTarget] {
                     if surgeist_html::reflected_element_attribute_change(key.attribute(), changed)
@@ -118,8 +126,9 @@ impl Draft {
                         *slot = None;
                     }
                 }
-            }
-        })
+            };
+            fields.commit(cancel)
+        }
     }
     pub(super) fn retire_reflected_target(
         &mut self,
@@ -129,7 +138,7 @@ impl Draft {
         let owners = self.inbound_keys(target, cancel)?;
         for owner in owners.iter().copied() {
             self.source_step(cancel)?;
-            let Some(targets) = self.node(owner)?.reflected_targets else {
+            let Some(targets) = self.node(owner)?.reflected_targets() else {
                 continue;
             };
             if ![ReflectedTarget::CommandFor, ReflectedTarget::PopoverTarget]
@@ -138,7 +147,8 @@ impl Draft {
             {
                 continue;
             }
-            self.with_node_fields(owner, cancel, |fields| {
+            {
+                let mut fields = self.control_fields_mut(owner, cancel)?;
                 let targets = fields
                     .reflected_targets
                     .as_mut()
@@ -150,7 +160,8 @@ impl Draft {
                         *slot = None;
                     }
                 }
-            })?;
+                fields.commit(cancel)
+            }?;
         }
         Ok(())
     }
@@ -214,13 +225,13 @@ mod tests {
                 draft
                     .node(key)
                     .unwrap()
-                    .reflected_targets
+                    .reflected_targets()
                     .unwrap()
                     .get(ReflectedTarget::CommandFor)
                     .unwrap(),
                 None
             );
-            let DomNodeKind::Element(element) = &draft.node(key).unwrap().kind else {
+            let transaction::KindRead::Element(element) = &draft.node(key).unwrap().kind() else {
                 unreachable!()
             };
             // Non-null completed empty-content write and its clearing hook;

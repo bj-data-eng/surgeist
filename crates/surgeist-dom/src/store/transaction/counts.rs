@@ -27,36 +27,36 @@ impl Counts {
     pub fn node(node: NodeRead<'_>) -> Result<Self, DomError> {
         Ok(Self {
             base_observations: node
-                .base_document
+                .base_document()
                 .as_ref()
                 .and_then(|state| state.facts)
                 .map_or(0, |facts| facts.formation_usage().record_capacity()),
             encoding_observations: node
-                .encoding_url_document
-                .map_or(0, crate::hyperlink::EncodingUrlDocument::records),
-            meta_color_scheme_bytes: match node.kind {
-                DomNodeKind::Document(metadata) => metadata.meta_color_scheme_bytes(),
+                .encoding_url_document()
+                .map_or(0, super::records::EncodingUrlRead::records),
+            meta_color_scheme_bytes: match node.kind() {
+                super::KindRead::Document(metadata) => metadata.meta_color_scheme_bytes(),
                 _ => 0,
             },
-            fullscreen_events: node.fullscreen_events.len(),
-            autofocus_candidates: match node.autofocus_document {
+            fullscreen_events: node.fullscreen_events().len(),
+            autofocus_candidates: match node.autofocus_document() {
                 Some(super::AutofocusRead::Known { candidates, .. }) => candidates.len(),
                 _ => 0,
             },
             slot_references: node
-                .manual_nodes
+                .manual_nodes()
                 .len()
-                .checked_add(node.assigned_nodes.len())
+                .checked_add(node.assigned_nodes().len())
                 .ok_or(DomError::RepresentationExhausted)?,
             templates: usize::from(
-                node.template_contents.is_some()
-                    || node.template_document.is_some_and(|state| {
+                node.template_contents().is_some()
+                    || node.template_document().is_some_and(|state| {
                         matches!(state, crate::template::TemplateDocument::InertTemplate)
                             || state.inert().is_some()
                     }),
             ),
-            shadow_roots: usize::from(matches!(node.kind, DomNodeKind::ShadowRoot(_))),
-            slots: usize::from(crate::slot::is_slot(node.kind)),
+            shadow_roots: usize::from(matches!(node.kind(), super::KindRead::ShadowRoot(_))),
+            slots: usize::from(crate::slot::is_slot(node.kind().into())),
             ..Self::default()
         })
     }
@@ -144,7 +144,7 @@ impl Counts {
             ),
             (
                 self.fullscreen_events,
-                limits.fullscreen_events,
+                limits.fullscreen_events(),
                 DomResource::FullscreenEvents,
             ),
             (

@@ -96,7 +96,8 @@ impl Child {
             Key::Created(i) => ids.get(i).ok_or(DomError::UnavailableCreation)?,
         };
         let node = state.node(basis.owner, container)?;
-        let DomNodeKind::Document(metadata) = &state.node(basis.owner, node.document.node())?.kind
+        let DomNodeKind::Document(metadata) =
+            state.node(basis.owner, node.document().node())?.kind()
         else {
             return Err(DomError::WrongDocument);
         };
@@ -143,7 +144,7 @@ impl Child {
                 container,
                 document: DomDocumentStamp {
                     store: basis,
-                    document: node.document,
+                    document: node.document(),
                 },
                 parent,
                 parent_global: association.global,
@@ -249,8 +250,9 @@ impl DomSourceLease<'_> {
             // owner. It is not the shared-src initial ancestor-return path.
             return Err(DomHostedError::UnsupportedProfile);
         }
-        let document = operation.draft.node(key)?.document;
-        let DomNodeKind::Document(metadata) = &operation.draft.node(document)?.kind else {
+        let document = operation.draft.node(key)?.document();
+        let transaction::KindRead::Document(metadata) = operation.draft.node(document)?.kind()
+        else {
             return Err(DomError::WrongDocument.into());
         };
         let environment = metadata.document_environment();
@@ -282,7 +284,9 @@ impl DomSourceLease<'_> {
             }
         };
         let child_key = child.document.ok_or(DomHostedError::WrongPhase)?;
-        let DomNodeKind::Document(child_metadata) = &operation.draft.node(child_key)?.kind else {
+        let transaction::KindRead::Document(child_metadata) =
+            operation.draft.node(child_key)?.kind()
+        else {
             return Err(DomError::WrongDocument.into());
         };
         let initial = child_metadata
@@ -312,7 +316,8 @@ impl DomSourceLease<'_> {
                 .document
                 .ok_or(DomHostedError::StaleIdentity)?;
             let active_key = Key::Existing(active.node());
-            let DomNodeKind::Document(active_metadata) = &operation.draft.node(active_key)?.kind
+            let transaction::KindRead::Document(active_metadata) =
+                operation.draft.node(active_key)?.kind()
             else {
                 return Err(DomError::WrongDocument.into());
             };
@@ -440,8 +445,8 @@ impl DomSourceLease<'_> {
             return Err(DomHostedError::WrongPhase);
         }
         let key = child.hook.key();
-        let document = op.draft.node(key)?.document;
-        let DomNodeKind::Document(parent) = &op.draft.node(document)?.kind else {
+        let document = op.draft.node(key)?.document();
+        let transaction::KindRead::Document(parent) = op.draft.node(document)?.kind() else {
             return Err(DomError::WrongDocument.into());
         };
         let parent_inputs = parent
@@ -715,8 +720,8 @@ impl DomSourceLease<'_> {
             }
         }
         let key = child.hook.key();
-        let document = op.draft.node(key)?.document;
-        let DomNodeKind::Document(metadata) = &op.draft.node(document)?.kind else {
+        let document = op.draft.node(key)?.document();
+        let transaction::KindRead::Document(metadata) = op.draft.node(document)?.kind() else {
             return Err(DomError::WrongDocument);
         };
         let inputs = metadata
@@ -885,8 +890,8 @@ impl DomSourceLease<'_> {
             return Err(DomHostedError::WrongPhase);
         }
         let key = child.hook.key();
-        let document = op.draft.node(key)?.document;
-        let DomNodeKind::Document(parent) = &op.draft.node(document)?.kind else {
+        let document = op.draft.node(key)?.document();
+        let transaction::KindRead::Document(parent) = op.draft.node(document)?.kind() else {
             return Err(DomError::WrongDocument.into());
         };
         let base = op.draft.document_base_record(document, cancel)?;
@@ -905,7 +910,7 @@ impl DomSourceLease<'_> {
             .document
             .ok_or(DomHostedError::StaleIdentity)?;
         let top_key = op.draft.resolve(top_document.node().into())?;
-        let DomNodeKind::Document(top_metadata) = &op.draft.node(top_key)?.kind else {
+        let transaction::KindRead::Document(top_metadata) = op.draft.node(top_key)?.kind() else {
             return Err(DomError::WrongDocument.into());
         };
         let top_policy = &top_metadata
@@ -1021,7 +1026,7 @@ impl Draft {
             return Err(DomHostedError::StaleBasis);
         }
         let parent_key = self.resolve(parent.document.document().node().into())?;
-        let DomNodeKind::Document(parent_metadata) = &self.node(parent_key)?.kind else {
+        let transaction::KindRead::Document(parent_metadata) = self.node(parent_key)?.kind() else {
             return Err(DomError::WrongDocument.into());
         };
         let platform = parent_metadata.document_environment().input_platform();
@@ -1041,7 +1046,7 @@ impl Draft {
         let old_owner = self.hosted_owner.replace(request.key.operation);
         let result = self.with_effect_scope(|draft| {
             let document = draft.allocate_formed(
-                DomNodeKind::Document(metadata),
+                NewNode::Document(metadata),
                 document,
                 limits,
                 cancel,
@@ -1068,7 +1073,7 @@ impl Draft {
         phase: DocumentPhase,
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedError> {
-        let DomNodeKind::Document(metadata) = &self.node(document)?.kind else {
+        let transaction::KindRead::Document(metadata) = self.node(document)?.kind() else {
             return Err(DomError::WrongDocument.into());
         };
         let environment = metadata.document_environment();
@@ -1087,12 +1092,9 @@ impl Draft {
             phase,
             _retained: retained,
         });
-        let mut fields = self.node_fields_mut(document, cancel)?;
-        let DomNodeKind::Document(metadata) = &mut fields.kind else {
-            unreachable!("validated actual Document")
-        };
+        let mut metadata = self.document_metadata_mut(document, cancel)?;
         metadata.set_hosted_association(association);
-        fields.commit(cancel)?;
+        metadata.commit(cancel)?;
         Ok(())
     }
 }
@@ -1181,7 +1183,8 @@ impl DomSourceLease<'_> {
                     }
                     (P::MakeActive(active), PublicationValue::MakeActive) => {
                         let key = child.document.ok_or(DomHostedError::WrongPhase)?;
-                        let DomNodeKind::Document(metadata) = &operation.draft.node(key)?.kind
+                        let transaction::KindRead::Document(metadata) =
+                            operation.draft.node(key)?.kind()
                         else {
                             return Err(DomError::WrongDocument.into());
                         };
@@ -1225,7 +1228,8 @@ impl DomSourceLease<'_> {
                         },
                     ) => {
                         let key = child.document.ok_or(DomHostedError::WrongPhase)?;
-                        let DomNodeKind::Document(metadata) = &operation.draft.node(key)?.kind
+                        let transaction::KindRead::Document(metadata) =
+                            operation.draft.node(key)?.kind()
                         else {
                             return Err(DomError::WrongDocument.into());
                         };
@@ -1302,11 +1306,11 @@ impl DomSourceLease<'_> {
                             },
                             cancel,
                         )?;
-                        let mut element = operation
-                            .draft
-                            .element_fields_mut(child.hook.key(), cancel)?;
-                        element.establish_child_navigable(Some(*navigable))?;
-                        element.commit(cancel)?;
+                        operation.draft.establish_child_navigable(
+                            child.hook.key(),
+                            Some(*navigable),
+                            cancel,
+                        )?;
                         Next::Queue(creation)
                     }
                     _ => return Err(DomHostedError::WrongPhase),
@@ -1316,6 +1320,7 @@ impl DomSourceLease<'_> {
                     true,
                     super::PublicationTarget::None,
                     Some((source, inner.request(), current.revision)),
+                    Some(&checkpoint),
                     cancel,
                 )?;
                 Ok(next_phase)
@@ -1494,6 +1499,7 @@ impl DomSourceLease<'_> {
                     true,
                     super::PublicationTarget::None,
                     Some((source, original, packet.revision)),
+                    Some(&checkpoint),
                     cancel,
                 )?;
                 Ok(())
@@ -1596,7 +1602,8 @@ impl DomSourceLease<'_> {
             entry: nav.active,
             navigable,
         };
-        let DomNodeKind::Document(metadata) = &op.draft.node(Key::Existing(document.node()))?.kind
+        let transaction::KindRead::Document(metadata) =
+            op.draft.node(Key::Existing(document.node()))?.kind()
         else {
             return Err(DomError::WrongDocument.into());
         };
@@ -1733,6 +1740,7 @@ impl DomSourceLease<'_> {
                         true,
                         super::PublicationTarget::None,
                         Some((source, original, packet.revision)),
+                        Some(&checkpoint),
                         cancel,
                     )?;
                     Ok(())

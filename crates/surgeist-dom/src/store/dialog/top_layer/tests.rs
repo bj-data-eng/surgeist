@@ -62,7 +62,7 @@ fn draft(dom: &Dom) -> Draft {
     .unwrap()
     .0
 }
-fn publish(dom: &mut Dom, draft: &Draft) -> DomCommit {
+fn publish(dom: &mut Dom, draft: &mut Draft) -> DomCommit {
     let prepared = draft.finish(dom, &cancel()).unwrap();
     dom.publish(prepared, &cancel()).unwrap()
 }
@@ -75,7 +75,7 @@ fn positive_fixture() -> (Dom, DocumentId, DocumentId, [NodeId; 3]) {
     }
     let key = staged.resolve(ids[0].into()).unwrap();
     staged.set_dialog_modal(key, true, &cancel()).unwrap();
-    publish(&mut dom, &staged);
+    publish(&mut dom, &mut staged);
     (dom, document, destination, ids)
 }
 
@@ -88,7 +88,7 @@ fn raw_pending_and_ua_input_follow_add_request_readd_and_immediate_removal_order
     staged.request_top_layer_removal(last, &cancel()).unwrap();
     staged.request_top_layer_removal(first, &cancel()).unwrap();
     staged.request_top_layer_removal(first, &cancel()).unwrap();
-    publish(&mut dom, &staged);
+    publish(&mut dom, &mut staged);
     let requested = dom.snapshot();
     let view = requested.document(document).unwrap().top_layer().unwrap();
     assert_eq!(view.raw_members(), &ids);
@@ -102,7 +102,7 @@ fn raw_pending_and_ua_input_follow_add_request_readd_and_immediate_removal_order
     );
     let mut staged = draft(&dom);
     staged.add_top_layer(first, &cancel()).unwrap();
-    publish(&mut dom, &staged);
+    publish(&mut dom, &mut staged);
     let readded = dom.snapshot();
     let view = readded.document(document).unwrap().top_layer().unwrap();
     assert_eq!(view.raw_members(), &[ids[1], ids[2], ids[0]]);
@@ -130,7 +130,7 @@ fn raw_pending_and_ua_input_follow_add_request_readd_and_immediate_removal_order
     staged
         .remove_top_layer_immediately(last, &cancel())
         .unwrap();
-    publish(&mut dom, &staged);
+    publish(&mut dom, &mut staged);
     assert_eq!(
         dom.snapshot()
             .document(document)
@@ -201,7 +201,7 @@ fn manual_open_removal_preserves_modal_raw_but_request_and_real_removal_clear_th
     let first = staged.resolve(ids[0].into()).unwrap();
     staged.request_top_layer_removal(first, &cancel()).unwrap();
     staged.set_dialog_modal(first, false, &cancel()).unwrap();
-    let structural = publish(&mut dom, &staged);
+    let structural = publish(&mut dom, &mut staged);
     assert_eq!(structural.changes().changes().len(), 2);
     assert!(
         structural
@@ -364,11 +364,11 @@ fn hidden_actual_popovers_allow_nonempty_modal_raw_and_unknown_state_refuses() {
             .unwrap()
     );
     let key = staged.resolve(document.node().into()).unwrap();
-    staged
-        .with_node_fields(key, &cancel(), |fields| {
-            fields.interactive_document = Some(DocumentInteractiveState::Unavailable)
-        })
-        .unwrap();
+    {
+        let mut state = staged.interactive_document_mut(key, &cancel()).unwrap();
+        *state = Some(DocumentInteractiveState::Unavailable);
+        state.commit(&cancel()).unwrap();
+    }
     assert_eq!(
         staged.add_top_layer(staged.resolve(ids[0].into()).unwrap(), &cancel()),
         Err(DomError::DialogDocumentStateUnavailable)
@@ -382,7 +382,7 @@ fn hidden_actual_popovers_allow_nonempty_modal_raw_and_unknown_state_refuses() {
         staged.add_top_layer(key, &cancel()),
         Err(DomError::WrongNodeKind)
     );
-    publish(&mut dom, &staged);
+    publish(&mut dom, &mut staged);
     assert!(matches!(
         dom.snapshot().document(document).unwrap().top_layer(),
         Err(DomError::DialogDocumentStateUnavailable)
@@ -447,7 +447,7 @@ fn semantic_blocker_is_last_actual_raw_dialog_independent_of_pending_open_and_mo
     staged.request_top_layer_removal(other, &cancel()).unwrap();
     staged.add_top_layer(other, &cancel()).unwrap();
     staged.request_top_layer_removal(last, &cancel()).unwrap();
-    publish(&mut dom, &staged);
+    publish(&mut dom, &mut staged);
     let snapshot = dom.snapshot();
     assert!(
         !snapshot
@@ -522,7 +522,7 @@ fn semantic_blocker_is_last_actual_raw_dialog_independent_of_pending_open_and_mo
         let key = staged.resolve(id.into()).unwrap();
         staged.remove_top_layer_immediately(key, &cancel()).unwrap();
     }
-    publish(&mut dom, &staged);
+    publish(&mut dom, &mut staged);
     let current = dom
         .snapshot()
         .html_capture(

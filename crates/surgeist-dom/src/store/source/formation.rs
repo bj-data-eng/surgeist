@@ -17,21 +17,6 @@ pub(crate) fn allocated_arc<T>(value: T) -> Arc<T> {
     }
     target
 }
-/// Observe a fresh copy-on-write target only when make_mut changes its actual
-/// address; a uniquely owned target remains in place and allocates nothing.
-pub(crate) fn make_arc_mut<T: Clone>(target: &mut Arc<T>) -> &mut T {
-    #[cfg(test)]
-    let before = Arc::as_ptr(target);
-    let value = Arc::make_mut(target);
-    #[cfg(test)]
-    if scale_metrics::ENABLED && !std::ptr::eq(before, value) {
-        scale_metrics::record(scale_metrics::Event::StructuralAllocation {
-            bytes: size_of::<T>(),
-        });
-    }
-    value
-}
-
 pub(super) fn allocated_box<T>(value: T) -> Box<T> {
     let result = Box::new(value);
     #[cfg(test)]
@@ -431,6 +416,39 @@ impl Formation {
                 *debit = Some(incoming);
             }
         }
+    }
+    /// Transfer an already admitted payload occurrence from its constructing
+    /// holder. The caller keeps the represented data alive through this move;
+    /// this does not allocate, admit, or change the original work owner.
+    pub(in crate::store) fn absorb_payload_debit(&self, incoming: custody::Debit) {
+        assert!(
+            incoming.belongs_to(self.storage.ledger()),
+            "same original Source payload ledger"
+        );
+        let usage = incoming.usage();
+        let own = self
+            .own
+            .get()
+            .checked_add(usage.bytes())
+            .expect("admitted payload bytes");
+        let units = self
+            .own_units
+            .get()
+            .checked_add(usage.units())
+            .expect("admitted payload units");
+        self.live
+            .load(Ordering::Relaxed)
+            .checked_add(usage.bytes())
+            .expect("admitted live bytes");
+        self.live_units
+            .load(Ordering::Relaxed)
+            .checked_add(usage.units())
+            .expect("admitted live units");
+        self.absorb_debit(Some(incoming));
+        self.own.set(own);
+        self.own_units.set(units);
+        self.live.fetch_add(usage.bytes(), Ordering::Relaxed);
+        self.live_units.fetch_add(usage.units(), Ordering::Relaxed);
     }
     pub(in crate::store) fn absorb(&self, other: Self) {
         assert!(
@@ -977,7 +995,6 @@ pub(in crate::store) mod mutation_observation {
         Children,
         SelectTasks,
         Metadata,
-        Family,
         Output,
         TextareaApi,
         InputString,

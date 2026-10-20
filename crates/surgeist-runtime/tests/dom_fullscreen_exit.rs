@@ -1163,7 +1163,7 @@ fn nested_exit_handoff_restores_the_enclosing_real_dispatch_source_guard() {
     .unwrap();
     listeners
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             dialog,
             DomEventType::BeforeToggle,
             DomEventCallback::new(move |dom, _, context: &mut Context, event| {

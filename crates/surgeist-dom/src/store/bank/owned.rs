@@ -214,6 +214,17 @@ impl<T> OwnedBank<T> {
     pub fn get(&self, index: usize) -> Option<&T> {
         self.bank.get(index)?.value.as_ref()
     }
+    /// The same owned lookup, charging the actual underlying radix reads.
+    pub fn get_with<E>(
+        &self,
+        index: usize,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<&T>, E> {
+        Ok(self
+            .bank
+            .get_with(index, step)?
+            .and_then(|slot| slot.value.as_ref()))
+    }
     pub fn is_held(&self, index: usize) -> bool {
         self.bank.get(index).is_some_and(|slot| slot.held)
     }

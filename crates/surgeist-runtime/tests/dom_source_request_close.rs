@@ -330,7 +330,7 @@ fn authentic_uncanceled_request_closes_with_omitted_empty_and_supplied_results_a
         let mut registry = dispatcher::<()>();
         registry
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 subject,
                 DomEventType::Cancel,
                 DomEventCallback::new(|_, _, _, event| {
@@ -383,7 +383,7 @@ fn canceled_cancel_keeps_open_and_real_original_guard_is_reset_for_the_next_requ
     let mut registry = dispatcher::<usize>();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::Cancel,
             DomEventCallback::new(|_, _, calls: &mut usize, event| {
@@ -484,7 +484,7 @@ fn mutation_registry(
     let mut registry = dispatcher();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::Cancel,
             DomEventCallback::new(move |dom, _, context: &mut MutationContext, event| {
@@ -718,7 +718,7 @@ fn cancel_retirement_finishes_started_path_and_once_before_native_final_reset_fa
         let mut registry = mutation_registry(&mut session, subject);
         let late = registry
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 subject,
                 DomEventType::Cancel,
                 DomEventCallback::new(move |_, _, context: &mut MutationContext, event| {
@@ -811,7 +811,7 @@ fn cancel_dispatch_suspension_drop_and_canceled_attempt_preserve_once_and_origin
     let mut registry = dispatcher::<Vec<&'static str>>();
     let once = registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::Cancel,
             DomEventCallback::new(|_, _, calls: &mut Vec<&'static str>, event| {
@@ -827,7 +827,7 @@ fn cancel_dispatch_suspension_drop_and_canceled_attempt_preserve_once_and_origin
         .unwrap();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::Cancel,
             DomEventCallback::new(|_, _, calls: &mut Vec<&'static str>, _| {
@@ -904,7 +904,7 @@ fn nested_close_retirement_preserves_its_stopped_action_and_settles_original_wat
     let mut registry = dispatcher::<MutationContext>();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(move |dom, _, context: &mut MutationContext, event| {
@@ -945,7 +945,7 @@ fn nested_close_retirement_preserves_its_stopped_action_and_settles_original_wat
         .unwrap();
     let late = registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(move |_, _, context: &mut MutationContext, event| {
@@ -1022,7 +1022,7 @@ fn attempted_window_retirement_during_cancel_refuses_and_preserves_actual_live_r
         refused: false,
     };
     let mut registry = dispatcher::<InactivityContext>();
-    registry.add_listener(&session.dom(), subject, DomEventType::Cancel, DomEventCallback::new(|dom,_,context: &mut InactivityContext,event| {
+    registry.add_listener(&mut session.dom(), subject, DomEventType::Cancel, DomEventCallback::new(|dom,_,context: &mut InactivityContext,event| {
         event.prevent_default();
         let retirement = context.hosted.destroy_top_level(dom, context.top.navigable(), &cancel());
         assert!(matches!(retirement, Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(DomError::SourceOperationPending)))), "ordinary hosted destruction cannot start during Source dispatch: {retirement:?}");
@@ -1205,7 +1205,7 @@ fn successful_request_dispatches_real_close_and_toggle_tasks_through_their_actua
     for kind in [DomEventType::Close, DomEventType::Toggle] {
         registry
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 subject,
                 kind,
                 DomEventCallback::new(move |_, _, context: &mut QueueContext, event| {
@@ -1321,7 +1321,7 @@ fn terminal_child_request_inside_parent_cancel_preserves_original_parent_and_no_
     let mut registry = dispatcher::<TerminalChildContext>();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             child,
             DomEventType::Cancel,
             DomEventCallback::new(|dom, _, context: &mut TerminalChildContext, event| {
@@ -1367,7 +1367,7 @@ fn terminal_child_request_inside_parent_cancel_preserves_original_parent_and_no_
         .unwrap();
     let child_late = registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             child,
             DomEventType::Cancel,
             DomEventCallback::new(|_, _, context: &mut TerminalChildContext, event| {
@@ -1382,7 +1382,7 @@ fn terminal_child_request_inside_parent_cancel_preserves_original_parent_and_no_
             },
         )
         .unwrap();
-    registry.add_listener(&session.dom(), parent, DomEventType::Cancel, DomEventCallback::new(|dom,listeners,context: &mut TerminalChildContext,event| {
+    registry.add_listener(&mut session.dom(), parent, DomEventType::Cancel, DomEventCallback::new(|dom,listeners,context: &mut TerminalChildContext,event| {
         context.calls.push("parent first");
         event.prevent_default();
         if context.child_invocations != 0 { return Ok(()); }
@@ -1423,7 +1423,7 @@ fn terminal_child_request_inside_parent_cancel_preserves_original_parent_and_no_
     }), DomEventListenerOptions::default()).unwrap();
     let parent_late = registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             parent,
             DomEventType::Cancel,
             DomEventCallback::new(|_, _, context: &mut TerminalChildContext, event| {

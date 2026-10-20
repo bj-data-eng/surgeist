@@ -94,20 +94,29 @@ fn actual_show_proves_empty_popover_lists_without_visiting_hidden_raw_members() 
         let document = batch.create_document();
         let dialog = batch.create_element_ns(&document, crate::Namespace::html(), "dialog");
         batch.insert_before(&dialog, &document, None);
-        let tickets: Vec<_> = (0..unrelated)
-            .map(|_| {
-                let node = batch.create_element_ns(&document, crate::Namespace::html(), "div");
-                batch.set_attribute(&node, "popover", "auto");
-                node
-            })
-            .collect();
         let setup = dom.apply(batch, &cancel).unwrap();
         let document = setup.document(&document).unwrap();
         let dialog = setup.created(&dialog).unwrap().unwrap();
-        let members: Vec<_> = tickets
-            .iter()
-            .map(|ticket| setup.created(ticket).unwrap().unwrap())
-            .collect();
+        // Bound each ordinary setup formation without changing the final raw
+        // population or including setup in the measured Source query window.
+        let mut members = Vec::new();
+        for start in (0..unrelated).step_by(64) {
+            let mut batch = DomBatch::new();
+            let tickets: Vec<_> = (start..(start + 64).min(unrelated))
+                .map(|_| {
+                    let node = batch.create_element_ns(document, crate::Namespace::html(), "div");
+                    batch.set_attribute(&node, "popover", "auto");
+                    node
+                })
+                .collect();
+            let setup = dom.apply(batch, &cancel).unwrap();
+            members.extend(
+                tickets
+                    .iter()
+                    .map(|ticket| setup.created(ticket).unwrap().unwrap()),
+            );
+        }
+        assert_eq!(members.len(), unrelated);
         // Population establishes canonical native Raw roles only. It does not
         // claim to execute a public Source command or measure its preparation.
         // The actual Show below retains the finite Source policy and receipts.
@@ -276,11 +285,17 @@ fn actual_show_proves_empty_popover_lists_without_visiting_hidden_raw_members() 
             DomError::IncompleteSourceOperation
         );
         let node = pending.state.node(pending.owner, document.node()).unwrap();
-        let Some(canonical::Interactive::Known { top_layer, .. }) = &node.interactive_document
-        else {
-            panic!("actual known canonical raw list")
+        let canonical::Node::Document(node) = node else {
+            panic!("actual canonical Document")
         };
-        assert_eq!(top_layer.as_slice(), members);
+        let top_layer = match &node.value.interactive_document {
+            canonical::Interactive::KnownEmpty => &[][..],
+            canonical::Interactive::Known(interactive) => interactive.value.top_layer.as_slice(),
+            canonical::Interactive::Absent | canonical::Interactive::Unavailable => {
+                panic!("actual known canonical raw list")
+            }
+        };
+        assert_eq!(top_layer, members);
         assert!(
             reads.calls > 0,
             "real Show must reach its current/captured Document queries"

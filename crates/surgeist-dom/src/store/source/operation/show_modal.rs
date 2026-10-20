@@ -31,7 +31,7 @@ impl Operation {
             .published_id(frame.subject)
             .ok_or(DomError::UnavailableCreation)?;
         let node = dom.state.node(dom.owner, subject)?;
-        let DomNodeKind::Element(element) = &node.kind else {
+        let DomNodeKind::Element(element) = node.kind() else {
             return Err(DomError::DialogInapplicable);
         };
         let state = element.dialog_state().ok_or(DomError::DialogInapplicable)?;
@@ -55,7 +55,7 @@ impl Operation {
             || watcher.operation.serial >= dom.next_source_operation
             || watcher.global.source().owner != dom.owner
             || watcher.window_document().node().owner() != dom.owner
-            || node.relevant_global != Some(watcher.global())
+            || node.relevant_global() != Some(watcher.global())
             || (watcher.operation == self.id
                 && (watcher.command != self.index
                     || watcher.occurrence >= self.draft.source_invocation))

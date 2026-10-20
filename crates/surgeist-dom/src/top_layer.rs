@@ -47,8 +47,8 @@ impl<'a> DomDocument<'a> {
     pub fn top_layer(self) -> Result<DomDocumentTopLayer<'a>, DomError> {
         self.snapshot.require_complete_source()?;
         let node = self.snapshot.node(self.id.node())?;
-        match node.node.interactive_document.as_ref() {
-            Some(crate::store::canonical::Interactive::Known {
+        match node.node.interactive_document() {
+            Some(crate::store::canonical::InteractiveView::Known {
                 top_layer,
                 pending_top_layer_removals,
                 ..

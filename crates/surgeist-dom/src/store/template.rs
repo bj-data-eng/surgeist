@@ -1,4 +1,5 @@
 //! HTML877d native Template contents/appropriate owner, in this staged owner.
+use super::transaction::KindRead;
 use super::*;
 use crate::template::TemplateDocument;
 
@@ -13,7 +14,7 @@ impl Draft {
         self.source_step(cancel)?;
         let state = self
             .node(document)?
-            .template_document
+            .template_document()
             .ok_or(DomError::WrongDocument)?;
         Ok(
             match surgeist_html::template_contents_owner_document(
@@ -36,13 +37,14 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<Option<Key>, DomError> {
         self.source_step(cancel)?;
-        let Some(contents) = self.node(template)?.template_contents else {
+        let Some(contents) = self.node(template)?.template_contents() else {
             return Ok(None);
         };
         let target = self.node(contents)?;
         Ok(
-            (matches!(target.kind, DomNodeKind::DocumentFragment) && target.host == Some(template))
-                .then_some(contents),
+            (matches!(target.kind(), KindRead::DocumentFragment)
+                && target.host() == Some(template))
+            .then_some(contents),
         )
     }
     pub(super) fn retire_template_contents_target(
@@ -50,7 +52,7 @@ impl Draft {
         retired: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if !matches!(self.node(retired)?.kind, DomNodeKind::ShadowRoot(_)) {
+        if !matches!(self.node(retired)?.kind(), KindRead::ShadowRoot(_)) {
             return Ok(());
         }
         let affected = self.inbound_keys(retired, cancel)?;
@@ -58,9 +60,11 @@ impl Draft {
             self.source_step(cancel)?;
             if self
                 .node(key)
-                .is_ok_and(|node| node.template_contents == Some(retired))
+                .is_ok_and(|node| node.template_contents() == Some(retired))
             {
-                self.with_node_fields(key, cancel, |fields| fields.template_contents = None)?;
+                let mut relation = self.template_mut(key, cancel)?;
+                relation.template_contents = None;
+                relation.commit(cancel)?;
             }
         }
         Ok(())
@@ -74,7 +78,7 @@ impl Draft {
         check_cancel(cancel)?;
         let state = self
             .node(document)?
-            .template_document
+            .template_document()
             .expect("Document role");
         match surgeist_html::template_contents_owner_document(
             matches!(state, TemplateDocument::InertTemplate),
@@ -85,7 +89,7 @@ impl Draft {
                 Ok(state.inert().expect("actual cached Document"))
             }
             surgeist_html::HtmlTemplateContentsOwnerDocument::CreateAssociatedInertDocument => {
-                let DomNodeKind::Document(source) = &self.node(document)?.kind else {
+                let KindRead::Document(source) = self.node(document)?.kind() else {
                     unreachable!("Document role requires Document")
                 };
                 let formation = source::formation::Formation::new(self, cancel)?;
@@ -95,14 +99,14 @@ impl Draft {
                     &mut |text| source::formation::string(text, formation.as_ref(), cancel),
                 )?;
                 let key = Key::Created(self.created.len());
-                let key = self.allocate(DomNodeKind::Document(metadata), key, limits, cancel)?;
+                let key = self.allocate(NewNode::Document(metadata), key, limits, cancel)?;
                 drop(formation);
-                self.with_node_fields(key, cancel, |fields| {
-                    fields.template_document = Some(TemplateDocument::InertTemplate)
-                })?;
-                self.with_node_fields(document, cancel, |fields| {
-                    fields.template_document = Some(TemplateDocument::Ordinary { inert: Some(key) })
-                })?;
+                let mut relation = self.template_document_mut(key, cancel)?;
+                *relation = Some(TemplateDocument::InertTemplate);
+                relation.commit(cancel)?;
+                let mut relation = self.template_document_mut(document, cancel)?;
+                *relation = Some(TemplateDocument::Ordinary { inert: Some(key) });
+                relation.commit(cancel)?;
                 check_cancel(cancel)?;
                 Ok(key)
             }
@@ -114,21 +118,23 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if !matches!(&self.node(node)?.kind, DomNodeKind::Element(element)
+        if !matches!(self.node(node)?.kind(), KindRead::Element(element)
             if element.is_template())
         {
             return Ok(());
         }
         let document =
-            self.appropriate_template_document(self.node(node)?.document, limits, cancel)?;
-        let contents = self.allocate(DomNodeKind::DocumentFragment, document, limits, cancel)?;
-        self.with_node_fields(contents, cancel, |fields| fields.host = Some(node))?;
-        self.with_node_fields(node, cancel, |fields| {
-            fields.template_contents = Some(contents)
-        })?;
-        self.with_node_fields(node, cancel, |fields| {
-            fields.template_patch = Some(crate::template::TemplatePatch::fresh())
-        })?;
+            self.appropriate_template_document(self.node(node)?.document(), limits, cancel)?;
+        let contents = self.allocate(NewNode::DocumentFragment, document, limits, cancel)?;
+        let mut relation = self.host_mut(contents, cancel)?;
+        *relation = Some(node);
+        relation.commit(cancel)?;
+        let mut relation = self.template_mut(node, cancel)?;
+        relation.template_contents = Some(contents);
+        relation.commit(cancel)?;
+        let mut relation = self.template_mut(node, cancel)?;
+        relation.template_patch = Some(crate::template::TemplatePatch::fresh());
+        relation.commit(cancel)?;
         check_cancel(cancel)
     }
     pub(super) fn template_adoption_target(
@@ -142,7 +148,7 @@ impl Draft {
             return Ok(None);
         };
         let target = self.appropriate_template_document(document, limits, cancel)?;
-        Ok((self.node(contents)?.document != target).then_some((contents, target)))
+        Ok((self.node(contents)?.document() != target).then_some((contents, target)))
     }
 }
 
@@ -156,14 +162,15 @@ impl Draft {
         for key in affected.iter().copied() {
             self.effect_step(cancel)?;
             if self.node(key).is_ok_and(|node| {
-                node.template_patch.is_some_and(|patch| {
+                node.template_patch().is_some_and(|patch| {
                     patch.target == Some(target)
                         || patch.start == Some(target)
                         || patch.end == Some(target)
                 })
             }) {
-                self.with_node_fields(key, cancel, |fields| {
-                    let patch = fields
+                let mut relation = self.template_mut(key, cancel)?;
+                {
+                    let patch = relation
                         .template_patch
                         .as_mut()
                         .expect("affected template patch");
@@ -176,12 +183,16 @@ impl Draft {
                     if patch.end == Some(target) {
                         patch.end = None;
                     }
-                })?;
+                }
+                relation.commit(cancel)?;
             }
         }
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod patch_retirement_tests;
 
 #[cfg(test)]
 mod tests {
@@ -223,7 +234,7 @@ mod tests {
             draft
                 .node(Key::Existing(d.node()))
                 .unwrap()
-                .template_document
+                .template_document()
                 .unwrap()
                 .inert()
                 .is_some()

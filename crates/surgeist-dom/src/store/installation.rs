@@ -358,7 +358,13 @@ impl Dom {
         }
         let document = current.document(basis.document()).map_err(Error::Target)?;
         let target = document.node(parent).map_err(Error::Target)?;
-        if !tree::parent_can_have_children(target.kind()) {
+        if !matches!(
+            target.kind(),
+            DomNodeKind::Document(_)
+                | DomNodeKind::Element(_)
+                | DomNodeKind::DocumentFragment
+                | DomNodeKind::ShadowRoot(_)
+        ) {
             return Err(Error::Target(DomError::HierarchyRequest));
         }
         if let Some(before) = before {
@@ -390,12 +396,7 @@ impl Dom {
             .transpose()
             .map_err(Error::Target)?;
         let wrapper = draft
-            .allocate(
-                DomNodeKind::DocumentFragment,
-                document,
-                self.limits,
-                cancelled,
-            )
+            .allocate(NewNode::DocumentFragment, document, self.limits, cancelled)
             .map_err(Error::Target)?;
         let source_root = source.root().id();
         let pending_header =
@@ -468,113 +469,127 @@ impl Dom {
                 let parent = visit
                     .parent
                     .expect("ordinary source child has a staged parent");
-                let document = draft.node(parent).map_err(Error::Target)?.document;
+                let document = draft.node(parent).map_err(Error::Target)?.document();
                 let formation =
                     source::formation::Formation::new(&draft, cancelled).map_err(Error::Target)?;
-                let kind = match original.kind() {
-                    HtmlNodeKind::Element(element) => {
-                        control.name(element.name())?;
-                        DomNodeKind::Element(
+                let key = if let HtmlNodeKind::Element(element) = original.kind() {
+                    control.name(element.name())?;
+                    let formed = draft
+                        .native_element_components(
+                            element.name(),
                             draft
-                                .native_element_components(
-                                    element.name(),
-                                    draft
-                                        .document_metadata(document)
-                                        .map_err(Error::Target)?
-                                        .document_environment(),
-                                    formation.as_ref(),
-                                    cancelled,
-                                )
-                                .map_err(|error| source_error(&visit.source, error))?,
-                        )
-                    }
-                    HtmlNodeKind::Text(value) => {
-                        control.charge(value.len())?;
-                        DomNodeKind::Text(
-                            source::formation::share(value, formation.as_ref(), cancelled)
-                                .map_err(|error| source_error(&visit.source, error))?,
-                        )
-                    }
-                    HtmlNodeKind::Comment(value) => {
-                        control.charge(value.len())?;
-                        DomNodeKind::Comment(
-                            source::formation::share(value, formation.as_ref(), cancelled)
-                                .map_err(|error| source_error(&visit.source, error))?,
-                        )
-                    }
-                    HtmlNodeKind::ProcessingInstruction(value) => {
-                        control.charge(
-                            value
-                                .target()
-                                .len()
-                                .checked_add(value.data().len())
-                                .ok_or(Error::RepresentationExhausted)?,
-                        )?;
-                        DomNodeKind::ProcessingInstruction(
-                            crate::DomProcessingInstruction::new(
-                                value.target(),
-                                value.data(),
-                                formation.as_ref(),
-                                cancelled,
-                            )
-                            .map_err(|error| source_error(&visit.source, error))?,
-                        )
-                    }
-                    HtmlNodeKind::Doctype(value) => {
-                        control.charge(
-                            value
-                                .name()
-                                .len()
-                                .checked_add(value.public_id().map_or(0, DocumentString::len))
-                                .and_then(|n| {
-                                    n.checked_add(value.system_id().map_or(0, DocumentString::len))
-                                })
-                                .ok_or(Error::RepresentationExhausted)?,
-                        )?;
-                        let public = value
-                            .public_id()
-                            .is_none()
-                            .then(|| source::formation::string("", formation.as_ref(), cancelled))
-                            .transpose()
-                            .map_err(Error::Target)?;
-                        let system = value
-                            .system_id()
-                            .is_none()
-                            .then(|| source::formation::string("", formation.as_ref(), cancelled))
-                            .transpose()
-                            .map_err(Error::Target)?;
-                        let kind = crate::DomDocumentType::new(
-                            value.name(),
-                            value
-                                .public_id()
-                                .or(public.as_ref())
-                                .expect("actual public ID"),
-                            value
-                                .system_id()
-                                .or(system.as_ref())
-                                .expect("actual system ID"),
+                                .document_metadata(document)
+                                .map_err(Error::Target)?
+                                .document_environment(),
                             formation.as_ref(),
                             cancelled,
                         )
                         .map_err(|error| source_error(&visit.source, error))?;
-                        for temporary in [public, system].into_iter().flatten() {
-                            let mut payload = source::storage::Payload::default();
-                            payload.string(&temporary).map_err(Error::Target)?;
-                            drop(temporary);
-                            if let Some(budget) = &formation {
-                                budget.release_payload(payload);
-                            }
+                    draft
+                        .allocate_element_formed(
+                            formed,
+                            document,
+                            self.limits,
+                            cancelled,
+                            formation,
+                        )
+                        .map_err(|error| source_error(&visit.source, error))?
+                } else {
+                    let kind = match original.kind() {
+                        HtmlNodeKind::Element(_) => unreachable!("handled Element"),
+                        HtmlNodeKind::Text(value) => {
+                            control.charge(value.len())?;
+                            NewNode::Text(
+                                source::formation::share(value, formation.as_ref(), cancelled)
+                                    .map_err(|error| source_error(&visit.source, error))?,
+                            )
                         }
-                        DomNodeKind::DocumentType(kind)
-                    }
-                    HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment => {
-                        return Err(source_error(&visit.source, DomError::HierarchyRequest));
-                    }
+                        HtmlNodeKind::Comment(value) => {
+                            control.charge(value.len())?;
+                            NewNode::Comment(
+                                source::formation::share(value, formation.as_ref(), cancelled)
+                                    .map_err(|error| source_error(&visit.source, error))?,
+                            )
+                        }
+                        HtmlNodeKind::ProcessingInstruction(value) => {
+                            control.charge(
+                                value
+                                    .target()
+                                    .len()
+                                    .checked_add(value.data().len())
+                                    .ok_or(Error::RepresentationExhausted)?,
+                            )?;
+                            NewNode::ProcessingInstruction(
+                                crate::DomProcessingInstruction::new(
+                                    value.target(),
+                                    value.data(),
+                                    formation.as_ref(),
+                                    cancelled,
+                                )
+                                .map_err(|error| source_error(&visit.source, error))?,
+                            )
+                        }
+                        HtmlNodeKind::Doctype(value) => {
+                            control.charge(
+                                value
+                                    .name()
+                                    .len()
+                                    .checked_add(value.public_id().map_or(0, DocumentString::len))
+                                    .and_then(|n| {
+                                        n.checked_add(
+                                            value.system_id().map_or(0, DocumentString::len),
+                                        )
+                                    })
+                                    .ok_or(Error::RepresentationExhausted)?,
+                            )?;
+                            let public = value
+                                .public_id()
+                                .is_none()
+                                .then(|| {
+                                    source::formation::string("", formation.as_ref(), cancelled)
+                                })
+                                .transpose()
+                                .map_err(Error::Target)?;
+                            let system = value
+                                .system_id()
+                                .is_none()
+                                .then(|| {
+                                    source::formation::string("", formation.as_ref(), cancelled)
+                                })
+                                .transpose()
+                                .map_err(Error::Target)?;
+                            let kind = crate::DomDocumentType::new(
+                                value.name(),
+                                value
+                                    .public_id()
+                                    .or(public.as_ref())
+                                    .expect("actual public ID"),
+                                value
+                                    .system_id()
+                                    .or(system.as_ref())
+                                    .expect("actual system ID"),
+                                formation.as_ref(),
+                                cancelled,
+                            )
+                            .map_err(|error| source_error(&visit.source, error))?;
+                            for temporary in [public, system].into_iter().flatten() {
+                                let mut payload = source::storage::Payload::default();
+                                payload.string(&temporary).map_err(Error::Target)?;
+                                drop(temporary);
+                                if let Some(budget) = &formation {
+                                    budget.release_payload(payload);
+                                }
+                            }
+                            NewNode::DocumentType(kind)
+                        }
+                        HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment => {
+                            return Err(source_error(&visit.source, DomError::HierarchyRequest));
+                        }
+                    };
+                    draft
+                        .allocate_formed(kind, document, self.limits, cancelled, formation)
+                        .map_err(|error| source_error(&visit.source, error))?
                 };
-                let key = draft
-                    .allocate(kind, document, self.limits, cancelled)
-                    .map_err(|error| source_error(&visit.source, error))?;
-                drop(formation);
                 draft
                     .initialize_native_element(key, self.limits, cancelled)
                     .map_err(|error| source_error(&visit.source, error))?;
@@ -641,7 +656,7 @@ impl Dom {
                     let target = draft
                         .node(key)
                         .map_err(Error::Target)?
-                        .template_contents
+                        .template_contents()
                         .ok_or_else(|| {
                             association(&visit.source, Association::TemplateOwnership)
                         })?;
@@ -1048,7 +1063,7 @@ mod tests {
         .0;
         let wrapper = draft
             .allocate(
-                DomNodeKind::DocumentFragment,
+                NewNode::DocumentFragment,
                 Key::Existing(document.node()),
                 dom.limits,
                 &cancel,

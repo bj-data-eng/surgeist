@@ -72,7 +72,7 @@ fn draft(dom: &Dom) -> Draft {
     .unwrap()
     .0
 }
-fn publish(dom: &mut Dom, draft: &Draft) -> DomCommit {
+fn publish(dom: &mut Dom, draft: &mut Draft) -> DomCommit {
     dom.publish(draft.finish(dom, &cancel()).unwrap(), &cancel())
         .unwrap()
 }
@@ -88,7 +88,7 @@ fn history(dom: &mut Dom, docs: [DocumentId; 2], ids: [NodeId; 3]) {
     }
     let second = d.resolve(docs[1].node().into()).unwrap();
     d.autofocus_set_processed(second, &cancel()).unwrap();
-    publish(dom, &d);
+    publish(dom, &mut d);
 }
 fn candidates(dom: &Dom, doc: DocumentId) -> Vec<NodeId> {
     dom.snapshot()
@@ -144,7 +144,7 @@ fn absent_autofocus_removal_does_not_walk_unrelated_candidates_or_other_roles() 
         // The subject is genuinely present in another role, not autofocus.
         let subject = staged.resolve(absent.into()).unwrap();
         staged.add_top_layer(subject, &cancel).unwrap();
-        publish(&mut dom, &staged);
+        publish(&mut dom, &mut staged);
         let old = dom.snapshot();
         let mut staged = draft(&dom);
         let owner = staged.resolve(document.into()).unwrap();
@@ -199,11 +199,12 @@ fn native_initial_history_and_unavailable_history_have_distinct_readback() {
     assert!(!view.processed());
     let mut d = draft(&dom);
     let key = d.resolve(docs[0].node().into()).unwrap();
-    d.with_node_fields(key, &cancel(), |fields| {
-        fields.autofocus_document = Some(State::Unavailable)
-    })
-    .unwrap();
-    publish(&mut dom, &d);
+    {
+        let mut state = d.autofocus_document_mut(key, &cancel()).unwrap();
+        *state = Some(State::Unavailable);
+        state.commit(&cancel()).unwrap();
+    }
+    publish(&mut dom, &mut d);
     assert_eq!(
         dom.snapshot()
             .document(docs[0])
@@ -233,14 +234,14 @@ fn source_ordered_remove_append_clear_and_processed_writes_preserve_other_docume
     d.autofocus_remove(doc, subject, &cancel()).unwrap();
     d.autofocus_append(doc, subject, dom.limits, &cancel())
         .unwrap();
-    publish(&mut dom, &d);
+    publish(&mut dom, &mut d);
     assert_eq!(candidates(&dom, docs[0]), [ids[1], ids[2], ids[0]]);
     assert_eq!(candidates(&dom, docs[1]), ids);
     let mut d = draft(&dom);
     let doc = d.resolve(docs[0].node().into()).unwrap();
     d.autofocus_clear(doc, &cancel()).unwrap();
     d.autofocus_set_processed(doc, &cancel()).unwrap();
-    let c = publish(&mut dom, &d);
+    let c = publish(&mut dom, &mut d);
     assert_eq!(
         c.changes().changes(),
         &[DomChange::DocumentAutofocusState(docs[0])]
@@ -469,7 +470,7 @@ fn exact_unpublished_candidate_retirement_never_enters_the_public_mapping() {
     d.autofocus_append(doc, key, dom.limits, &cancel()).unwrap();
     d.apply(&Command::Destroy((&subject).into()), dom.limits, &cancel())
         .unwrap();
-    let c = publish(&mut dom, &d);
+    let c = publish(&mut dom, &mut d);
     assert_eq!(c.created(&subject).unwrap(), None);
     assert!(candidates(&dom, docs[0]).is_empty());
     assert_eq!(dom.usage().autofocus_candidates(), 0);

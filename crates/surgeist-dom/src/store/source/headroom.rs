@@ -421,6 +421,7 @@ impl Draft {
             self.source_step(cancel)?;
             let state = self
                 .element(key)?
+                .language()
                 .style_state()
                 .ok_or(DomError::WrongNodeKind)?;
             if state.availability == crate::DomStyleSheetAvailability::PendingParsedProcessing {
@@ -577,12 +578,10 @@ mod tests {
         .0
     }
     fn set_association_start(draft: &mut Draft, key: Key, start: u64) {
-        let mut state = draft.element(key).unwrap().style_state().unwrap().clone();
-        state.next_association = start;
         let cancel = AtomicBool::new(false);
-        let mut element = draft.element_fields_mut(key, &cancel).unwrap();
-        element.set_style_state(state);
-        element.commit(&cancel).unwrap();
+        let mut state = draft.style_state_mut(key, &cancel).unwrap();
+        state.next_association = start;
+        state.commit(&cancel).unwrap();
     }
 
     #[test]
@@ -848,7 +847,7 @@ mod tests {
             .admit_source_command_headroom(&f.dom, Entry::Command(&batch.commands[0]), 0, &cancel)
             .unwrap();
         assert_eq!(admitted.remaining_phases, 7);
-        assert_eq!(draft.node(key).unwrap().parent, None);
+        assert_eq!(draft.node(key).unwrap().parent(), None);
         assert!(draft.effects.is_empty());
         assert!(draft.source_headroom.is_none());
         assert_eq!(draft.source_invocation, invocation);
@@ -865,7 +864,7 @@ mod tests {
             ),
             Err(DomError::Cancelled)
         ));
-        assert_eq!(draft.node(key).unwrap().parent, None);
+        assert_eq!(draft.node(key).unwrap().parent(), None);
         assert!(draft.source_headroom.is_none());
         assert_eq!(live.load(Ordering::Relaxed), original_live);
     }
@@ -915,7 +914,7 @@ mod tests {
                 .draft
                 .node(wrapper)
                 .unwrap()
-                .children
+                .children()
                 .iter()
                 .collect::<Vec<_>>();
             assert_eq!(children.len(), 2);
@@ -945,13 +944,13 @@ mod tests {
                     .draft
                     .node(wrapper)
                     .unwrap()
-                    .children
+                    .children()
                     .iter()
                     .collect::<Vec<_>>(),
                 children
             );
-            assert_eq!(staged.draft.node(wrapper).unwrap().parent, None);
-            assert!(staged.draft.node(parent).unwrap().children.is_empty());
+            assert_eq!(staged.draft.node(wrapper).unwrap().parent(), None);
+            assert!(staged.draft.node(parent).unwrap().children().is_empty());
             assert_eq!(staged.draft.created.len(), created);
             assert_eq!(staged.draft.source_invocation, invocation);
             assert!(staged.draft.source_headroom.is_none());
@@ -995,7 +994,7 @@ mod tests {
             let children = draft
                 .node(selectedcontent)
                 .unwrap()
-                .children
+                .children()
                 .iter()
                 .collect::<Vec<_>>();
             assert_eq!(
@@ -1019,7 +1018,7 @@ mod tests {
                 draft
                     .node(selectedcontent)
                     .unwrap()
-                    .children
+                    .children()
                     .iter()
                     .collect::<Vec<_>>(),
                 children
@@ -1072,7 +1071,7 @@ mod tests {
             draft
                 .node(Key::Existing(f.styles[0]))
                 .unwrap()
-                .children
+                .children()
                 .iter()
                 .collect::<Vec<_>>(),
             [Key::Existing(first)]
@@ -1115,7 +1114,7 @@ mod tests {
                 draft
                     .node(style)
                     .unwrap()
-                    .children
+                    .children()
                     .iter()
                     .collect::<Vec<_>>(),
                 [Key::Existing(first), Key::Existing(second)]

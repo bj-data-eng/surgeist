@@ -1,0 +1,342 @@
+//! Page payloads keep page semantics inside an ordinary group under scope.
+//! https://www.w3.org/TR/2011/REC-CSS2-20110607/page.html#page-box
+//! https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/
+use surgeist_css::*;
+
+fn page_rules(sheet: &CssNormalizedSheet) -> Vec<&CssPageRule> {
+    sheet
+        .items()
+        .iter()
+        .filter_map(|item| match item {
+            CssNormalizedItem::Rule(context) => match context.kind() {
+                CssRuleContextKindRef::Page(page) => Some(page),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect()
+}
+
+fn assert_margin(page: &CssPageRule) {
+    assert_eq!(page.declarations().properties().len(), 1);
+    let declaration = &page.declarations().properties()[0];
+    assert_eq!(declaration.importance(), CssImportance::Important);
+    let CssKnownPropertyValueRef::Margin(value) =
+        declaration.known().unwrap().property_value().unwrap()
+    else {
+        panic!("typed margin")
+    };
+    let [top, right, bottom, left] = value.value().assigned_values();
+    for (side, expected) in [(top, "-1px"), (right, "2%"), (left, "3cm")] {
+        let CssMarginValue::LengthPercentage(length_percentage) = side else {
+            panic!("exact page margin literal")
+        };
+        let literal = length_percentage.literal_component().unwrap();
+        match (expected, literal.view()) {
+            ("-1px", CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })) => {
+                assert_eq!((number.representation(), unit), ("-1", "px"));
+            }
+            ("2%", CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))) => {
+                assert_eq!(number.representation(), "2");
+            }
+            ("3cm", CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })) => {
+                assert_eq!((number.representation(), unit), ("3", "cm"));
+            }
+            other => panic!("unexpected page margin token: {other:?}"),
+        }
+        assert_eq!(side.serialize_specified().unwrap(), expected);
+    }
+    assert!(matches!(bottom, CssMarginValue::Auto));
+}
+
+#[test]
+fn scoped_pages_reuse_payload_without_element_declaration_contributions() {
+    for (prelude, selector) in [
+        ("", None),
+        (":left", Some(CssPagePseudo::Left)),
+        (":right", Some(CssPagePseudo::Right)),
+        (":first", Some(CssPagePseudo::First)),
+    ] {
+        let source = format!(
+            "@scope(.host){{@media print{{@page {prelude}{{margin:-1px 2% auto 3cm!important}}}}}}"
+        );
+        let report = parse_sheet(&source);
+        assert!(report.is_clean(), "{:?}", report.diagnostics());
+        let [CssRule::Scope(scope)] = report.syntax().rules() else {
+            panic!("scope")
+        };
+        let [CssScopedRule::Media(media)] = scope.rules().rules() else {
+            panic!("media")
+        };
+        let [CssScopedRule::Page(page)] = media.rules().rules() else {
+            panic!("typed scoped page")
+        };
+        assert_eq!(page_pseudo(page), selector);
+        assert_eq!(
+            page.position().byte_offset().value(),
+            source.find("@page").unwrap()
+        );
+        assert_margin(page);
+        let detached = page.clone();
+        let normalized = normalize_sheet(report.syntax()).unwrap();
+        assert!(
+            !normalized
+                .items()
+                .iter()
+                .any(|item| matches!(item, CssNormalizedItem::Declaration(_)))
+        );
+        let pages = page_rules(&normalized);
+        assert_eq!(pages.len(), 1);
+        assert_eq!(*pages[0], detached);
+        assert!(
+            pages[0].declarations().properties()[0]
+                .same_occurrence(&page.declarations().properties()[0])
+        );
+        drop(report);
+        drop(normalized);
+        let CssRule::Page(ordinary) = CssRule::Page(detached) else {
+            unreachable!()
+        };
+        assert_margin(&ordinary);
+        assert_eq!(page_pseudo(&ordinary), selector);
+    }
+}
+
+#[test]
+fn scoped_page_prelude_errors_keep_neighbors_and_valid_page() {
+    let source = "@scope{@media all{before{}@page :left;@page :unknown{margin:1px}@page :right{margin-right:2%}after{}}}";
+    let report = parse_sheet(source);
+    assert_eq!(report.diagnostics().len(), 2);
+    assert!(
+        report
+            .diagnostics()
+            .iter()
+            .all(|d| d.action() == CssRecoveryAction::DropAtRule)
+    );
+    let [CssRule::Scope(scope)] = report.syntax().rules() else {
+        panic!("scope")
+    };
+    let [CssScopedRule::Media(media)] = scope.rules().rules() else {
+        panic!("media")
+    };
+    let [
+        CssScopedRule::Style(before),
+        CssScopedRule::Page(page),
+        CssScopedRule::Style(after),
+    ] = media.rules().rules()
+    else {
+        panic!("retained neighbors and valid page")
+    };
+    assert_eq!(
+        before.position().byte_offset().value(),
+        source.find("before{}").unwrap()
+    );
+    assert_eq!(
+        after.position().byte_offset().value(),
+        source.find("after{}").unwrap()
+    );
+    assert_eq!(page_pseudo(page), Some(CssPagePseudo::Right));
+    assert_eq!(
+        page.declarations().properties()[0]
+            .known()
+            .unwrap()
+            .property(),
+        CssKnownProperty::MarginRight
+    );
+}
+
+#[test]
+fn scoped_page_retains_payload_and_original_positions_at_eof() {
+    let source = "@scope(.host){@media print{@page :first{margin:-1px 2% auto 3cm!important";
+    let report = parse_sheet(source);
+    assert_eq!(report.diagnostics().len(), 3);
+    assert!(
+        report
+            .diagnostics()
+            .iter()
+            .all(|d| d.action() == CssRecoveryAction::RetainWithImplicitClosure)
+    );
+    let [CssRule::Scope(scope)] = report.syntax().rules() else {
+        panic!("scope")
+    };
+    let [CssScopedRule::Media(media)] = scope.rules().rules() else {
+        panic!("media")
+    };
+    let [CssScopedRule::Page(page)] = media.rules().rules() else {
+        panic!("page")
+    };
+    assert_margin(page);
+    assert_eq!(page_pseudo(page), Some(CssPagePseudo::First));
+    assert_eq!(
+        page.position().byte_offset().value(),
+        source.find("@page").unwrap()
+    );
+    assert_eq!(
+        page.declarations().properties()[0]
+            .position()
+            .unwrap()
+            .byte_offset()
+            .value(),
+        source.find("margin:").unwrap()
+    );
+    let normalized = normalize_sheet(report.syntax()).unwrap();
+    assert_eq!(page_rules(&normalized), vec![page]);
+}
+
+#[test]
+fn page_leaf_does_not_change_namespace_resolution_of_scoped_neighbors() {
+    let source = "@namespace svg 'urn:svg';@scope(svg|root){@media all{svg|before{}@page{margin:1px}bad|lost{}svg|after{}}}";
+    let report = parse_sheet(source);
+    let [diagnostic] = report.diagnostics() else {
+        panic!("one undeclared prefix")
+    };
+    assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
+    assert_eq!(
+        diagnostic.span().start().byte_offset().value(),
+        source.find("bad|lost").unwrap()
+    );
+    let [CssRule::Namespace(_), CssRule::Scope(scope)] = report.syntax().rules() else {
+        panic!("namespace and scope")
+    };
+    let [CssScopedRule::Media(media)] = scope.rules().rules() else {
+        panic!("media")
+    };
+    let [
+        CssScopedRule::Style(before),
+        CssScopedRule::Page(page),
+        CssScopedRule::Style(after),
+    ] = media.rules().rules()
+    else {
+        panic!("neighbors and page")
+    };
+    assert_eq!(page.declarations().properties().len(), 1);
+    for (style, local_name) in [(before, "before"), (after, "after")] {
+        let [CssScopedStyleSelector::Selector(CssSelector::Compound(selector))] =
+            style.selectors().selectors()
+        else {
+            panic!("qualified selector")
+        };
+        let name = selector.type_selector().unwrap();
+        assert!(
+            matches!(name.namespace(), CssNamespaceConstraint::Named(prefix) if prefix.as_str() == "svg")
+        );
+        assert_eq!(name.local_name(), Some(local_name));
+    }
+    assert_eq!(
+        page_rules(&normalize_sheet(report.syntax()).unwrap()).len(),
+        1
+    );
+}
+
+#[test]
+fn scoped_page_depth_ceiling_preserves_detached_leaf_and_later_sibling() {
+    std::thread::Builder::new()
+        .stack_size(2 * 1024 * 1024)
+        .spawn(|| {
+            // Scope + 254 media blocks + page is exactly the depth-256 ceiling.
+            let prefix = format!("@scope{{{}", "@media all{".repeat(254));
+            let source = format!(
+                "{prefix}@page:left{{margin:-1px 2% auto 3cm!important}}{}",
+                "}".repeat(255)
+            );
+            let report = parse_sheet(&source);
+            assert!(report.is_clean(), "{:?}", report.diagnostics());
+            let normalized = normalize_sheet(report.syntax()).unwrap();
+            let pages = page_rules(&normalized);
+            assert_eq!(pages.len(), 1);
+            let detached = pages[0].clone();
+            assert_margin(&detached);
+            let cloned_sheet = report.syntax().clone();
+            drop(report);
+            drop(normalized);
+            drop(cloned_sheet);
+            assert_margin(&detached.clone());
+            drop(detached);
+            let exceeded = format!(
+                "{prefix}@media all{{@page{{margin:1px}}}}{}tail{{}}",
+                "}".repeat(255)
+            );
+            let report = parse_sheet(&exceeded);
+            let [diagnostic] = report.diagnostics() else {
+                panic!("one excess page block")
+            };
+            assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
+            assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
+            assert!(matches!(
+                report.syntax().rules().last(),
+                Some(CssRule::Style(_))
+            ));
+            assert!(page_rules(&normalize_sheet(report.syntax()).unwrap()).is_empty());
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[test]
+fn excess_scoped_page_preserves_statement_in_its_same_parent() {
+    std::thread::Builder::new()
+        .stack_size(2 * 1024 * 1024)
+        .spawn(|| {
+            // Scope + 255 media blocks admit depth256. Page is depth257;
+            // its rejected block cannot consume the following statement.
+            let source = format!(
+                "@scope{{{}@page{{margin:0}}@layer kept;{}}}.after{{color:red}}",
+                "@media all{".repeat(255),
+                "}".repeat(255)
+            );
+            let report = parse_sheet(&source);
+            let [diagnostic] = report.diagnostics() else {
+                panic!(
+                    "one excess Page resource diagnostic: {:?}",
+                    report.diagnostics()
+                )
+            };
+            assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
+            assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
+            assert_eq!(
+                diagnostic.span().start().byte_offset().value(),
+                source.find("@page").unwrap()
+            );
+            assert_eq!(
+                diagnostic.span().end().byte_offset().value(),
+                source.find("@layer").unwrap()
+            );
+            let [CssRule::Scope(scope), CssRule::Style(after)] = report.syntax().rules() else {
+                panic!("scope and original outside sibling retained")
+            };
+            assert_eq!(
+                after.position().byte_offset().value(),
+                source.find(".after").unwrap()
+            );
+            let mut rules = scope.rules().rules();
+            for _ in 0..255 {
+                let [CssScopedRule::Media(media)] = rules else {
+                    panic!("all admitted Media ancestors survive")
+                };
+                rules = media.rules().rules();
+            }
+            let [CssScopedRule::LayerStatement(layer)] = rules else {
+                panic!("same-parent Layer statement retained: {rules:?}")
+            };
+            assert_eq!(layer.names().names()[0].components(), &["kept".to_owned()]);
+            assert_eq!(
+                layer.position().byte_offset().value(),
+                source.find("@layer").unwrap()
+            );
+            assert_eq!(
+                validate_sheet(&source),
+                report.clone().into_validation_result()
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+fn page_pseudo(page: &surgeist_css::CssPageRule) -> Option<surgeist_css::CssPagePseudo> {
+    page.selectors()
+        .selectors()
+        .first()
+        .and_then(|s| s.pseudos().first().copied())
+}

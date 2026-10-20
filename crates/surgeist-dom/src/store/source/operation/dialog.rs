@@ -209,6 +209,10 @@ impl Operation {
     pub(in crate::store) fn id(&self) -> DomSourceOperationId {
         self.id
     }
+    pub(in crate::store) fn inline_feedback_observation(&self) -> Option<crate::DomSourceEventId> {
+        self.observation()
+            .map(|observation| observation.request.identity())
+    }
     pub(in crate::store) fn is_observing_event(&self) -> bool {
         matches!(self.draft, OperationDraft::Observed(_))
     }
@@ -1436,8 +1440,9 @@ impl DomSourceLease<'_> {
     }
     fn advance_dialog_task_observation(
         &mut self,
+        execution: &mut Execution<'_>,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceProgress, DomError> {
+    ) -> Result<DomSourceProgress, AdvanceError> {
         let operation = self
             .dom
             .source_operation
@@ -1448,7 +1453,9 @@ impl DomSourceLease<'_> {
             .observation()
             .ok_or(DomError::InvalidSourceEvent)?;
         if observation.request.kind() == DomSourceEventKind::Close {
-            return self.finish_dialog_noop(false, None, cancel);
+            return self
+                .finish_dialog_noop(false, None, cancel)
+                .map_err(Into::into);
         }
         let subject = observation.request.subject();
         self.dom.source_event_step(&observation.request, cancel)?;
@@ -1457,18 +1464,21 @@ impl DomSourceLease<'_> {
                 .dispatch_custody_association(&observation.receiver, 0, subject)?,
             crate::DomDispatchAssociation::Retired(_)
         ) {
-            return self.finish_dialog_noop(
-                false,
-                Some(crate::DomDialogToggleTaskDisposition::TargetRetiredDuringDispatch),
-                cancel,
-            );
+            return self
+                .finish_dialog_noop(
+                    false,
+                    Some(crate::DomDialogToggleTaskDisposition::TargetRetiredDuringDispatch),
+                    cancel,
+                )
+                .map_err(Into::into);
         }
-        self.rebase_dialog_observation(None, cancel)
+        self.rebase_dialog_observation(None, execution, cancel)
     }
     pub(super) fn advance_dialog_observation(
         &mut self,
+        execution: &mut Execution<'_>,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceProgress, DomError> {
+    ) -> Result<DomSourceProgress, AdvanceError> {
         let operation = self
             .dom
             .source_operation
@@ -1483,12 +1493,19 @@ impl DomSourceLease<'_> {
             && operation.cancelled
             && observation.request.work.stage.load(Ordering::Relaxed) == 0
         {
-            return self.finish_dialog_noop(true, None, cancel);
+            return self
+                .finish_dialog_noop(true, None, cancel)
+                .map_err(Into::into);
         }
         if observation.accepted.is_none() {
             return Ok(DomSourceProgress::Request(DomSourceRequest::Event(
                 observation.request.clone(),
             )));
+        }
+        if let Some((element, identity)) = self.dom.inline_feedback_observation()
+            && identity == observation.request.identity()
+        {
+            return Err(DomError::InlineStyleOperationPending { element }.into());
         }
         // Feed the authenticated event outcome to the original language owner.
         // Replay only this pure local transition on admission retry; the actual
@@ -1500,7 +1517,7 @@ impl DomSourceLease<'_> {
             .map(|frame| frame.before_focusing())
             .transpose()?;
         if frame.is_none() {
-            return self.advance_dialog_task_observation(cancel);
+            return self.advance_dialog_task_observation(execution, cancel);
         }
         let mut frame = frame.take().expect("original method frame");
         self.dom.source_event_step(&observation.request, cancel)?;
@@ -1519,7 +1536,7 @@ impl DomSourceLease<'_> {
                 .map_err(DomError::CloseWatcherProtocol)?;
             call.occurrence = None;
             // Commit this pure transition only when rebase admission succeeds.
-            return self.rebase_request_close_cancel(frame, call, cancel);
+            return self.rebase_request_close_cancel(frame, call, execution, cancel);
         }
         frame
             .cursor
@@ -1533,13 +1550,15 @@ impl DomSourceLease<'_> {
         let action = frame.cursor.action();
         match action {
             HtmlDialogAction::Complete(HtmlDialogOutcome::Completed) => {
-                return self.finish_dialog_noop(false, None, cancel);
+                return self
+                    .finish_dialog_noop(false, None, cancel)
+                    .map_err(Into::into);
             }
             HtmlDialogAction::Complete(HtmlDialogOutcome::InvalidState) => {
-                return Err(DomError::DialogInvalidState);
+                return Err(DomError::DialogInvalidState.into());
             }
             HtmlDialogAction::ReadOpen => {}
-            action => return Err(DomError::DialogProcessingUnavailable { action }),
+            action => return Err(DomError::DialogProcessingUnavailable { action }.into()),
         }
         let subject = observation.request.subject();
         match self
@@ -1554,7 +1573,7 @@ impl DomSourceLease<'_> {
                     subject,
                     action: crate::DomSourceStoppedAction::Dialog(action),
                 };
-                return self.rebase_dialog_failure(cause, cancel);
+                return self.rebase_dialog_failure(cause, execution, cancel);
             }
             crate::DomDispatchAssociation::Retired(_) => {
                 let id = operation.id;
@@ -1576,17 +1595,19 @@ impl DomSourceLease<'_> {
                     operation: id,
                     subject,
                     action,
-                });
+                }
+                .into());
             }
         }
-        self.rebase_dialog_observation(Some(frame), cancel)
+        self.rebase_dialog_observation(Some(frame), execution, cancel)
     }
     fn rebase_request_close_cancel(
         &mut self,
         frame: crate::store::dialog::MethodFrame,
         call: super::request_close::Call,
+        execution: &mut Execution<'_>,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceProgress, DomError> {
+    ) -> Result<DomSourceProgress, AdvanceError> {
         let old = self
             .dom
             .source_operation
@@ -1599,7 +1620,7 @@ impl DomSourceLease<'_> {
             .as_mut()
             .expect("original operation")
             .request_close = Some(call);
-        let result = self.rebase_dialog_observation(Some(frame), cancel);
+        let result = self.rebase_dialog_observation(Some(frame), execution, cancel);
         if let Some(operation) = self.dom.source_operation.as_mut()
             && operation.observation().is_some()
         {
@@ -1610,8 +1631,9 @@ impl DomSourceLease<'_> {
     fn rebase_dialog_failure(
         &mut self,
         cause: crate::DomSourceCleanupCause,
+        execution: &mut Execution<'_>,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceProgress, DomError> {
+    ) -> Result<DomSourceProgress, AdvanceError> {
         // Failure remains outside Draft rollback. It never supplies a normal
         // nested return or an Applied acknowledgement to RunCloseAction.
         let operation = self
@@ -1624,13 +1646,14 @@ impl DomSourceLease<'_> {
             call.nested = false;
             call.occurrence = None;
         }
-        self.rebase_dialog_observation(None, cancel)
+        self.rebase_dialog_observation(None, execution, cancel)
     }
     fn rebase_dialog_observation(
         &mut self,
         frame: Option<crate::store::dialog::MethodFrame>,
+        execution: &mut Execution<'_>,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceProgress, DomError> {
+    ) -> Result<DomSourceProgress, AdvanceError> {
         let operation = self
             .dom
             .source_operation
@@ -1678,7 +1701,7 @@ impl DomSourceLease<'_> {
             {
                 None
             }
-            Err(error) => return Err(error),
+            Err(error) => return Err(error.into()),
         };
         if let Some(mut frame) = frame {
             if let Some(key) = key {
@@ -1692,6 +1715,7 @@ impl DomSourceLease<'_> {
         let custody_bytes = self.dom.source_owner_custody_bytes()?;
         let custody_units = self.dom.fullscreen_custody_units()?;
         let mut operation = self.dom.source_operation.take().expect("retained observer");
+        operation.prepare_rebased_inline(self.dom, &mut draft);
         let old = std::mem::replace(&mut operation.draft, OperationDraft::Segment(draft));
         let OperationDraft::Observed(observation) = old else {
             unreachable!("qualified observer")
@@ -1722,7 +1746,7 @@ impl DomSourceLease<'_> {
             Ok(limits) => operation.draft.source_limits = Some(limits),
             Err(error) => {
                 self.dom.source_operation = Some(operation);
-                return Err(error);
+                return Err(error.into());
             }
         }
         let refreshed_aux = self.dom.source_retained_stack_bytes().and_then(|stack| {
@@ -1738,11 +1762,11 @@ impl DomSourceLease<'_> {
             Ok(bytes) => operation.canonical_aux_bytes = bytes,
             Err(error) => {
                 self.dom.source_operation = Some(operation);
-                return Err(error);
+                return Err(error.into());
             }
         }
         operation.started = true;
-        let result = self.advance_operation(&mut operation, cancel);
+        let result = self.advance_operation(&mut operation, execution, cancel);
         if self.complete || matches!(result, Ok(DomSourceProgress::Complete(_))) {
             self.complete = true;
             self.dom.source_operation = self.dom.source_parents.pop();

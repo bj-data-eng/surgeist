@@ -353,7 +353,7 @@ fn same_origin_autofocus_tail_output_is_preadmitted_before_actual_toggle_queue_e
         .unwrap();
         registry
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 subject,
                 crate::DomEventType::BeforeToggle,
                 crate::DomEventCallback::new(|_, _, calls: &mut usize, event| {

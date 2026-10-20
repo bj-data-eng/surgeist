@@ -92,7 +92,7 @@ fn accepted_toggle_reports_exact_retired_or_surviving_cleanup_after_later_once_l
         let mut registry = dispatcher();
         registry
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 subject,
                 DomEventType::Toggle,
                 DomEventCallback::new(move |dom, _, context: &mut Cleanup, event| {
@@ -143,7 +143,7 @@ fn accepted_toggle_reports_exact_retired_or_surviving_cleanup_after_later_once_l
             .unwrap();
         let late = registry
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 subject,
                 DomEventType::Toggle,
                 DomEventCallback::new(move |dom, _, context: &mut Cleanup, event| {
@@ -296,7 +296,7 @@ fn toggle_retired_before_dispatch_is_skipped_without_postdispatch_result_or_call
     let mut registry = dispatcher();
     let listener = registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::Toggle,
             DomEventCallback::new(|_, _, context: &mut Cleanup, _| {

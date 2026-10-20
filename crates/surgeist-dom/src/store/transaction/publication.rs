@@ -1,164 +1,8 @@
 //! Candidate construction follows the transaction's exact sparse record set.
 use super::super::*;
-use super::{NodeReceipts, SequenceView};
+#[cfg(test)]
+use super::SequenceView;
 
-#[cfg(test)]
-#[derive(Default)]
-struct CopyObservation {
-    bytes: usize,
-    relation: bool,
-}
-#[cfg(test)]
-impl CopyObservation {
-    fn relation() -> Self {
-        Self {
-            relation: true,
-            ..Self::default()
-        }
-    }
-    fn pushed<T>(&mut self) {
-        self.bytes += size_of::<T>();
-    }
-}
-#[cfg(test)]
-impl Drop for CopyObservation {
-    fn drop(&mut self) {
-        if scale_metrics::ENABLED && self.bytes != 0 {
-            scale_metrics::record(scale_metrics::Event::SequenceMaterialized { bytes: self.bytes });
-            if self.relation {
-                scale_metrics::record(scale_metrics::Event::RelationSequenceMaterialized {
-                    bytes: self.bytes,
-                });
-            }
-        }
-    }
-}
-
-fn add_sequence<C, S>(
-    usage: custody::Usage,
-    view: SequenceView<'_, C, S>,
-) -> Result<custody::Usage, DomError>
-where
-    C: Copy,
-    S: Copy,
-{
-    let bytes = match view {
-        SequenceView::Canonical(values, _) | SequenceView::AliasedCanonical(values, _, _, _) => {
-            values.retained_bytes()?
-        }
-        SequenceView::Staged(values) | SequenceView::AliasedStaged(values, _, _) => {
-            // Publication allocates a replacement for the selected values. A
-            // zero-capacity replacement has no immutable target body.
-            if values.is_empty() && size_of::<C>() != 0 {
-                0
-            } else {
-                values
-                    .len()
-                    .checked_mul(size_of::<C>())
-                    .and_then(|bytes| bytes.checked_add(size_of::<Vec<C>>()))
-                    .ok_or(DomError::RepresentationExhausted)?
-            }
-        }
-    };
-    usage.checked_add(custody::Usage::new(bytes, 0))
-}
-fn keys(
-    view: SequenceView<'_, NodeId, Key>,
-    map: &impl Fn(Key) -> NodeId,
-    debit: &mut custody::Debit,
-    draft: &Draft,
-    cancel: &AtomicBool,
-) -> Result<SharedVec<NodeId>, DomError> {
-    if let SequenceView::Canonical(values, _) | SequenceView::AliasedCanonical(values, _, _, _) =
-        view
-    {
-        return Ok(values.clone());
-    }
-    let mut values = Vec::new();
-    values
-        .try_reserve_exact(view.len())
-        .map_err(|_| DomError::AllocationFailed)?;
-    #[cfg(test)]
-    if scale_metrics::ENABLED && values.capacity() != 0 {
-        scale_metrics::record(scale_metrics::Event::StructuralAllocation {
-            bytes: values.capacity() * size_of::<NodeId>(),
-        });
-    }
-    let extra = values
-        .capacity()
-        .checked_sub(view.len())
-        .and_then(|n| n.checked_mul(size_of::<NodeId>()))
-        .ok_or(DomError::RepresentationExhausted)?;
-    if extra != 0 {
-        debit.grow(custody::Usage::new(extra, 0), |usage| {
-            draft.admit_custody_usage(usage, cancel)
-        })?;
-    }
-    #[cfg(test)]
-    let mut copied = CopyObservation::relation();
-    for value in view.iter() {
-        draft.source_step(cancel)?;
-        values.push(map(value));
-        #[cfg(test)]
-        copied.pushed::<NodeId>();
-    }
-    let values = SharedVec::from(values);
-    #[cfg(test)]
-    if scale_metrics::ENABLED && values.has_backing() {
-        scale_metrics::record(scale_metrics::Event::StructuralAllocation {
-            bytes: size_of::<Vec<NodeId>>(),
-        });
-    }
-    Ok(values)
-}
-fn events(
-    view: SequenceView<'_, crate::DomFullscreenEvent, crate::DomFullscreenEvent>,
-    debit: &mut custody::Debit,
-    draft: &Draft,
-    cancel: &AtomicBool,
-) -> Result<SharedVec<crate::DomFullscreenEvent>, DomError> {
-    if let SequenceView::Canonical(values, _) | SequenceView::AliasedCanonical(values, _, _, _) =
-        view
-    {
-        return Ok(values.clone());
-    }
-    let mut values = Vec::new();
-    values
-        .try_reserve_exact(view.len())
-        .map_err(|_| DomError::AllocationFailed)?;
-    #[cfg(test)]
-    if scale_metrics::ENABLED && values.capacity() != 0 {
-        scale_metrics::record(scale_metrics::Event::StructuralAllocation {
-            bytes: values.capacity() * size_of::<crate::DomFullscreenEvent>(),
-        });
-    }
-    let extra = values
-        .capacity()
-        .checked_sub(view.len())
-        .and_then(|n| n.checked_mul(size_of::<crate::DomFullscreenEvent>()))
-        .ok_or(DomError::RepresentationExhausted)?;
-    if extra != 0 {
-        debit.grow(custody::Usage::new(extra, 0), |usage| {
-            draft.admit_custody_usage(usage, cancel)
-        })?;
-    }
-    #[cfg(test)]
-    let mut copied = CopyObservation::relation();
-    for value in view.iter() {
-        draft.source_step(cancel)?;
-        values.push(value);
-        #[cfg(test)]
-        copied.pushed::<crate::DomFullscreenEvent>();
-    }
-    let values = SharedVec::from(values);
-    #[cfg(test)]
-    if scale_metrics::ENABLED && values.has_backing() {
-        scale_metrics::record(scale_metrics::Event::StructuralAllocation {
-            bytes: size_of::<Vec<crate::DomFullscreenEvent>>(),
-        });
-    }
-    Ok(values)
-}
 impl Draft {
     fn form_node(
         &self,
@@ -166,9 +10,9 @@ impl Draft {
         map: &impl Fn(Key) -> NodeId,
         cancel: &AtomicBool,
     ) -> Result<FormedSlot, DomError> {
-        let source = self.node(key)?;
-        if source
-            .base
+        if self
+            .node(key)?
+            .base()
             .and_then(|v| v.frozen)
             .is_some_and(|v| v.response == crate::base::Response::Pending)
         {
@@ -178,149 +22,15 @@ impl Draft {
                 ),
             ));
         }
-        let private = self.records_for(key);
-        let fields = private.fields.value();
-        let field_usage = private
-            .fields
-            .debit()
-            .usage()
-            .checked_sub(custody::Usage::new(size_of::<super::NodeFields>(), 0))?;
-        let mut payload = field_usage;
-        payload = add_sequence(payload, source.children)?;
-        payload = add_sequence(payload, source.manual_nodes)?;
-        payload = add_sequence(payload, source.assigned_nodes)?;
-        payload = add_sequence(payload, source.fullscreen_events)?;
-        if let Some(base) = &source.base_document {
-            payload = add_sequence(payload, base.render_blocking)?;
-        }
-        if let Some(super::AutofocusRead::Known { candidates, .. }) = source.autofocus_document {
-            payload = add_sequence(payload, candidates)?;
-        }
-        if let Some(super::InteractiveRead::Known {
-            open_dialogs,
-            top_layer,
-            pending_top_layer_removals,
-        }) = source.interactive_document
-        {
-            for seq in [open_dialogs, top_layer, pending_top_layer_removals] {
-                payload = add_sequence(payload, seq)?;
-            }
-        }
-        let total = payload.checked_add(custody::Usage::new(size_of::<Slot>(), 0))?;
-        let mut debit = self
-            .custody_ledger()
-            .retain(total, |usage| self.admit_custody_usage(usage, cancel))?;
-        let form_past_names = fields
-            .form_past_names
-            .as_ref()
-            .map(|names| names.project(self, map, cancel))
-            .transpose()?;
-        let node = Node {
-            receipts: NodeReceipts {
-                fields: field_usage
-                    .checked_add(custody::Usage::new(size_of::<super::NodeFields>(), 0))?,
-                payload,
-            },
-            active_range: source.active_range,
-            relevant_global: source.relevant_global,
-            document: DocumentId(map(source.document)),
-            kind: source.kind.clone(),
-            parent: source.parent.map(map),
-            children: keys(source.children, map, &mut debit, self, cancel)?,
-            shadow_root: source.shadow_root.map(map),
-            host: source.host.map(map),
-            template_contents: source.template_contents.map(map),
-            template_patch: source.template_patch.map(|v| v.map(map)),
-            template_document: source.template_document.map(|v| v.map(map)),
-            manual_nodes: keys(source.manual_nodes, map, &mut debit, self, cancel)?,
-            assigned_nodes: keys(source.assigned_nodes, map, &mut debit, self, cancel)?,
-            manual_slot: source.manual_slot.map(map),
-            assigned_slot: source.assigned_slot.map(map),
-            reflected_targets: source.reflected_targets.map(|v| v.map(map)),
-            control_owner: source.control_owner.map(map),
-            option_select: source.option_select.map(map),
-            form_past_names: form_past_names.as_ref().map(|names| names.value.clone()),
-            script: source.script.map(|v| v.map(map)),
-            style_parser_document: source.style_parser_document.map(map),
-            base: source.base.map(|v| crate::base::BaseState {
-                frozen: v.frozen.map(|f| crate::base::Frozen {
-                    value: f.value.clone(),
-                    document: map(f.document),
-                    revision: f.revision.clone(),
-                    response: f.response,
-                }),
-            }),
-            base_document: source
-                .base_document
-                .map(|v| {
-                    Ok::<_, DomError>(canonical::BaseDocument {
-                        facts: v.facts.cloned(),
-                        first: v.first.map(map),
-                        render_blocking: keys(v.render_blocking, map, &mut debit, self, cancel)?,
-                    })
-                })
-                .transpose()?,
-            link: source.link.map(|v| crate::base::LinkState {
-                flags: v.flags,
-                parser_document: v.parser_document.map(map),
-                sheet: v.sheet.cloned(),
-            }),
-            image: source.image.map(|v| crate::image::ImageState {
-                native: v.native.clone(),
-                dimension_source: map(v.dimension_source),
-                parser_inserted: v.parser_inserted,
-                high_water: v.high_water,
-                waiting: v.waiting,
-            }),
-            hyperlink: source.hyperlink.map(|v| crate::hyperlink::HyperlinkState {
-                parsed: v.parsed.map(|p| crate::hyperlink::Parsed {
-                    document: map(p.document),
-                    value: p.value.clone(),
-                }),
-            }),
-            encoding_url_document: source.encoding_url_document.cloned(),
-            autofocus_document: source
-                .autofocus_document
-                .map(|v| match v {
-                    super::AutofocusRead::Unavailable => Ok(canonical::Autofocus::Unavailable),
-                    super::AutofocusRead::Known {
-                        candidates,
-                        processed,
-                    } => Ok(canonical::Autofocus::Known {
-                        candidates: keys(candidates, map, &mut debit, self, cancel)?,
-                        processed,
-                    }),
-                })
-                .transpose()?,
-            interactive_document: source
-                .interactive_document
-                .map(|v| match v {
-                    super::InteractiveRead::Unavailable => Ok(canonical::Interactive::Unavailable),
-                    super::InteractiveRead::Known {
-                        open_dialogs,
-                        top_layer,
-                        pending_top_layer_removals,
-                    } => Ok(canonical::Interactive::Known {
-                        open_dialogs: keys(open_dialogs, map, &mut debit, self, cancel)?,
-                        top_layer: keys(top_layer, map, &mut debit, self, cancel)?,
-                        pending_top_layer_removals: keys(
-                            pending_top_layer_removals,
-                            map,
-                            &mut debit,
-                            self,
-                            cancel,
-                        )?,
-                    }),
-                })
-                .transpose()?,
-            fullscreen_events: events(source.fullscreen_events, &mut debit, self, cancel)?,
-        };
-        let payload = debit
-            .usage()
-            .checked_sub(custody::Usage::new(size_of::<Slot>(), 0))?;
-        let mut node = node;
-        node.receipts.payload = payload;
-        let id = map(key);
+        let mut projected = self.project_node(key, map, cancel)?;
+        projected
+            .value
+            .debit_mut()
+            .grow(custody::Usage::new(size_of::<Slot>(), 0), |usage| {
+                self.admit_custody_usage(usage, cancel)
+            })?;
+        let id = map(self.live_key(key));
+        let (node, debit) = projected.value.into_parts();
         Ok(FormedSlot {
             value: custody::Held::new(
                 Slot {
@@ -330,14 +40,14 @@ impl Draft {
                 },
                 debit,
             ),
-            names: form_past_names.and_then(|names| names.custody),
+            dependency: projected.dependency,
         })
     }
 }
 
 struct FormedSlot {
     value: custody::Held<Slot>,
-    names: Option<bank::ObjectCustody>,
+    dependency: Option<bank::Dependency>,
 }
 struct NodePublication {
     slots: bank::Bank<Slot>,
@@ -361,23 +71,17 @@ impl Draft {
         let payload =
             source::storage::canonical_slot(formed.value.value(), || self.source_step(cancel))?;
         let reusable = formed.value.value().node.is_none() && !formed.value.value().retired;
-        let dependency = payload::slot_dependency(
-            formed.value.value(),
-            self.custody_registry(),
-            Some(&self.names),
-            |next| self.admit_custody_usage(next, cancel),
-        )?;
         let shared = formed
             .value
             .debit_mut()
             .share(|usage| self.admit_custody_usage(usage, cancel))?;
-        let (value, zero) = formed.value.into_parts();
+        let FormedSlot { value, dependency } = formed;
+        let (value, zero) = value.into_parts();
         drop(zero);
         let mut record = bank::ControlledRecord::from_parts(bank::Record::new(value)?, shared);
         if let Some(dependency) = dependency {
             record = record.with_dependency(dependency);
         }
-        drop(formed.names);
         let (next, nextcustody) = slots.set_controlled(
             custody,
             index,
@@ -433,7 +137,7 @@ impl Draft {
                     index,
                     FormedSlot {
                         value: custody::Held::new(slot, debit),
-                        names: None,
+                        dependency: None,
                     },
                     cancel,
                 )?;
@@ -460,7 +164,7 @@ impl Draft {
                         id.slot,
                         FormedSlot {
                             value: custody::Held::new(slot, debit),
-                            names: None,
+                            dependency: None,
                         },
                         cancel,
                     )?;
@@ -942,7 +646,7 @@ impl Draft {
             created.push(live.as_ref().and_then(|_| allocated_ids.get(index)));
             #[cfg(test)]
             tickets_written.pushed::<Option<NodeId>>();
-            documents.push(live.is_some_and(|n| matches!(n.kind, DomNodeKind::Document(_))));
+            documents.push(live.is_some_and(|n| matches!(n.kind(), super::KindRead::Document(_))));
             #[cfg(test)]
             tickets_written.pushed::<bool>();
         }
@@ -972,6 +676,13 @@ impl Draft {
         let semantic_changed = !changes.is_empty();
         Ok((
             Prepared {
+                inline_echo: self.inline_echo.clone(),
+                sharing: None,
+                inline_recording: self.inline_recording.clone(),
+                inline_positions: self
+                    .inline_membership
+                    .as_ref()
+                    .map(|_| self.slot_index.capture_position_changes()),
                 name_promotions,
                 created_ranges,
                 retirements,
@@ -1007,6 +718,14 @@ impl Draft {
         self.source_step(cancel)?;
         let journal = self.journal.prepare_commit()?;
         Ok(super::PreparedRebase {
+            inline_recording: self.inline_recording.as_ref().map(|recording| {
+                recording.restarted(
+                    publication
+                        .inline_index
+                        .as_ref()
+                        .unwrap_or(recording.index()),
+                )
+            }),
             state: publication.state.clone(),
             custody: publication.state_custody.clone(),
             stamp: publication.to,
@@ -1024,6 +743,7 @@ impl Draft {
         committed: &super::PublicationCommitted,
     ) {
         self.journal.commit(rebase.journal);
+        self.inline_recording = rebase.inline_recording;
         // Old provisional records release before their matching root custody.
         self.records.clear();
         self.existing = bank::Bank::default();
@@ -1102,13 +822,13 @@ impl Draft {
             let Ok(node) = state.node(owner, document.node()) else {
                 return Ok(None);
             };
-            if !matches!(node.kind, DomNodeKind::Document(_)) {
+            if !matches!(node.kind(), DomNodeKind::Document(_)) {
                 return Ok(None);
             }
-            for child in node.children.iter() {
+            for child in node.children().iter() {
                 self.source_step(cancel)?;
                 if matches!(
-                    state.node(owner, *child).map(|n| &n.kind),
+                    state.node(owner, *child).map(Node::kind),
                     Ok(DomNodeKind::Element(_))
                 ) {
                     return Ok(Some(*child));
@@ -1136,7 +856,7 @@ impl Draft {
                 state.slots.get(slot).and_then(|s| {
                     s.node
                         .as_ref()
-                        .filter(|n| matches!(n.kind, DomNodeKind::Document(_)))
+                        .filter(|n| matches!(n.kind(), DomNodeKind::Document(_)))
                         .map(|_| {
                             DocumentId(NodeId {
                                 owner,
@@ -1159,7 +879,11 @@ impl Draft {
                     .get(slot)
                     .and_then(|s| s.node.as_ref())
                     .expect("selected Document");
-                if a.children.same_storage(&b.children) {
+                if match (a.children_backing(), b.children_backing()) {
+                    (None, None) => true,
+                    (Some(a), Some(b)) => a.same_storage(b),
+                    _ => false,
+                } {
                     continue;
                 }
             }
@@ -1277,7 +1001,7 @@ mod tests {
         let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
         let key = draft
             .allocate(
-                DomNodeKind::Comment("new".into()),
+                NewNode::Comment("new".into()),
                 Key::Existing(document.node()),
                 dom.limits,
                 &cancel,
@@ -1333,6 +1057,81 @@ mod tests {
     }
 
     #[test]
+    fn aggregate_slot_keeps_root_credit_through_cancelled_install_and_real_retry() {
+        let (mut dom, _, form, _) = fixture();
+        let original = dom.snapshot();
+        let cancel = AtomicBool::new(false);
+        let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
+        draft
+            .set_nonce(
+                Key::Existing(form),
+                &"aggregate".into(),
+                dom.limits,
+                &cancel,
+            )
+            .unwrap();
+        let formed = draft
+            .form_node(Key::Existing(form), &existing, &cancel)
+            .unwrap();
+        let root_id = formed.value.value().node.as_ref().unwrap().identity();
+        let expected = custody::Usage::new(
+            size_of::<Slot>() + size_of::<payload::Payload<canonical::ElementNode<NodeId>>>(),
+            0,
+        );
+        assert_eq!(formed.value.debit().usage(), expected);
+        assert!(formed.dependency.is_some());
+        let watch =
+            payload::destruction_observation::Observation::begin(root_id, draft.custody_ledger());
+        let at_entry = draft.custody_ledger().total();
+        let mut slots = dom.state.slots.clone();
+        let mut controls = dom.state_custody.slots.clone();
+        cancel.store(true, Ordering::Relaxed);
+        assert!(matches!(
+            draft.install_candidate_slot(&mut slots, &mut controls, form.slot, formed, &cancel,),
+            Err(DomError::Cancelled)
+        ));
+        assert_eq!(
+            watch.observed(),
+            Some(at_entry),
+            "root data dies before its composite Slot receipt"
+        );
+        assert!(slots.shares_root(&dom.state.slots));
+        assert_eq!(dom.snapshot().stamp(), original.stamp());
+        drop(watch);
+        drop(slots);
+        drop(controls);
+
+        cancel.store(false, Ordering::Relaxed);
+        let prepared = draft.finish(&dom, &cancel).unwrap();
+        dom.publish(prepared, &cancel).unwrap();
+        assert_eq!(
+            dom.state
+                .node(dom.owner, form)
+                .unwrap()
+                .element()
+                .unwrap()
+                .nonce(),
+            Some(&DocumentString::from("aggregate"))
+        );
+        assert!(
+            original
+                .node(form)
+                .unwrap()
+                .as_element()
+                .unwrap()
+                .nonce()
+                .unwrap()
+                .is_empty()
+        );
+        let root = dom.state.node(dom.owner, form).unwrap().identity();
+        assert!(
+            !payload::inspect_slot_typed_custody(&dom.state_custody.slots).contains_key(&root),
+            "root body belongs to the Slot record, not a second control"
+        );
+        super::super::super::oracle_tests::assert_full_canonical(&dom);
+    }
+
+    #[test]
     fn publication_distinguishes_absent_and_reserved_empty_sequences() {
         let (dom, _, _, _) = fixture();
         let cancel = AtomicBool::new(false);
@@ -1350,9 +1149,15 @@ mod tests {
             );
             let values = SharedVec::from(raw);
             let view = SequenceView::Canonical(&values, Key::Existing);
-            assert_eq!(add_sequence(custody::Usage::ZERO, view).unwrap(), expected);
+            assert_eq!(
+                crate::store::transaction::projection::sequence_usage(view).unwrap(),
+                expected
+            );
             let mut debit = draft.custody_ledger().retain(expected, |_| Ok(())).unwrap();
-            let alias = keys(view, &existing, &mut debit, &draft, &cancel).unwrap();
+            let alias = crate::store::transaction::projection::projected_values(
+                view, existing, &mut debit, &draft, &cancel,
+            )
+            .unwrap();
             assert!(alias.same_storage(&values));
             assert_eq!(alias.capacity(), actual_capacity);
             assert_eq!(debit.usage(), expected);
@@ -1361,23 +1166,33 @@ mod tests {
         let operands = Vec::<Key>::new();
         let staged = SequenceView::Staged(&operands);
         assert_eq!(
-            add_sequence(custody::Usage::ZERO, staged).unwrap(),
+            crate::store::transaction::projection::sequence_usage(staged).unwrap(),
             custody::Usage::ZERO
         );
         let mut debit = draft
             .custody_ledger()
             .retain(custody::Usage::ZERO, |_| Ok(()))
             .unwrap();
-        let values = keys(staged, &existing, &mut debit, &draft, &cancel).unwrap();
+        let values = crate::store::transaction::projection::projected_values(
+            staged, existing, &mut debit, &draft, &cancel,
+        )
+        .unwrap();
         assert!(!values.has_backing());
         assert_eq!(debit.usage(), custody::Usage::ZERO);
         let operands = Vec::<crate::DomFullscreenEvent>::new();
         let staged = SequenceView::Staged(&operands);
         assert_eq!(
-            add_sequence(custody::Usage::ZERO, staged).unwrap(),
+            crate::store::transaction::projection::sequence_usage(staged).unwrap(),
             custody::Usage::ZERO
         );
-        let values = events(staged, &mut debit, &draft, &cancel).unwrap();
+        let values = crate::store::transaction::projection::projected_values(
+            staged,
+            std::convert::identity,
+            &mut debit,
+            &draft,
+            &cancel,
+        )
+        .unwrap();
         assert!(!values.has_backing());
         assert_eq!(debit.usage(), custody::Usage::ZERO);
         assert_eq!(
@@ -1400,9 +1215,9 @@ mod tests {
             .retain(custody::Usage::ZERO, |_| Ok(()))
             .unwrap();
         let (values, counters) = measured(|| {
-            keys(
+            crate::store::transaction::projection::projected_values(
                 SequenceView::Staged(&operands),
-                &existing,
+                existing,
                 &mut debit,
                 &draft,
                 &cancel,
@@ -1413,8 +1228,15 @@ mod tests {
         assert_eq!(counters.structural_bytes, 0);
         assert_eq!(counters.sequence_materializations, 0);
         let operands = Vec::<crate::DomFullscreenEvent>::new();
-        let (values, counters) =
-            measured(|| events(SequenceView::Staged(&operands), &mut debit, &draft, &cancel));
+        let (values, counters) = measured(|| {
+            crate::store::transaction::projection::projected_values(
+                SequenceView::Staged(&operands),
+                std::convert::identity,
+                &mut debit,
+                &draft,
+                &cancel,
+            )
+        });
         assert!(!values.unwrap().has_backing());
         assert_eq!(counters.structural_allocations, 0);
         assert_eq!(counters.structural_bytes, 0);
@@ -1445,9 +1267,9 @@ mod tests {
             )
             .unwrap();
         let (result, counters) = measured(|| {
-            keys(
+            crate::store::transaction::projection::projected_values(
                 SequenceView::Staged(&operands),
-                &existing,
+                existing,
                 &mut debit,
                 &draft,
                 &cancel,
@@ -1479,9 +1301,9 @@ mod tests {
             )
             .unwrap();
         let (alias, counters) = measured(|| {
-            keys(
+            crate::store::transaction::projection::projected_values(
                 SequenceView::Canonical(&values, Key::Existing),
-                &existing,
+                existing,
                 &mut alias_debit,
                 &draft,
                 &cancel,
@@ -1510,8 +1332,15 @@ mod tests {
                 |_| Ok(()),
             )
             .unwrap();
-        let (result, counters) =
-            measured(|| events(SequenceView::Staged(&operands), &mut debit, &draft, &cancel));
+        let (result, counters) = measured(|| {
+            crate::store::transaction::projection::projected_values(
+                SequenceView::Staged(&operands),
+                std::convert::identity,
+                &mut debit,
+                &draft,
+                &cancel,
+            )
+        });
         let values = result.unwrap();
         assert_eq!(values.as_slice(), &[event; 3]);
         assert_eq!(counters.structural_allocations, 2);
@@ -1540,8 +1369,9 @@ mod tests {
             )
             .unwrap();
         let (alias, counters) = measured(|| {
-            events(
+            crate::store::transaction::projection::projected_values(
                 SequenceView::Canonical(&values, std::convert::identity),
+                std::convert::identity,
                 &mut alias_debit,
                 &draft,
                 &cancel,
@@ -1579,9 +1409,9 @@ mod tests {
             .unwrap();
         cancel.store(true, Ordering::Relaxed);
         let (result, counters) = measured(|| {
-            keys(
+            crate::store::transaction::projection::projected_values(
                 SequenceView::Staged(&operands),
-                &existing,
+                existing,
                 &mut debit,
                 &draft,
                 &cancel,
@@ -1598,9 +1428,9 @@ mod tests {
 
         cancel.store(false, Ordering::Relaxed);
         let (result, counters) = measured(|| {
-            keys(
+            crate::store::transaction::projection::projected_values(
                 SequenceView::Staged(&operands),
-                &|key| {
+                |key| {
                     // The first real mapped value is appended before the next
                     // work check observes cancellation.
                     cancel.store(true, Ordering::Relaxed);
@@ -1638,19 +1468,17 @@ mod tests {
             });
         }
         let names = super::super::names::Names::staged(entries, None, &draft, &cancel).unwrap();
-        draft
-            .with_node_fields_formed(Key::Existing(form), &cancel, None, |fields| {
-                fields.form_past_names = Some(names);
-            })
-            .unwrap();
+        let mut fields = draft.form_names_mut(Key::Existing(form), &cancel).unwrap();
+        *fields = Some(names);
+        fields.commit(&cancel).unwrap();
         draft.units += 13;
-        let selected = draft
-            .records_for(Key::Existing(form))
-            .fields
-            .value()
-            .form_past_names
-            .as_ref()
-            .unwrap();
+        let Some(super::super::staged::Associations::Form(super::super::staged::Group::Changed(
+            selected,
+        ))) = draft.records_for(Key::Existing(form)).associations()
+        else {
+            panic!("selected Form group")
+        };
+        let selected = &selected.value().past_names;
         // This is the actual publication materialization phase. Registration
         // follows in PreparedNames::seal, outside this observation; both raw
         // allocations survive here, so no cumulative temporary is omitted.

@@ -159,7 +159,7 @@ fn original_toggle_cleanup_result_survives_native_checkpoint_work_refusal_withou
     .unwrap();
     let listener = registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::Toggle,
             DomEventCallback::new(|dom: &mut DomEventDom<'_>, _, context: &mut Cleanup, _| {

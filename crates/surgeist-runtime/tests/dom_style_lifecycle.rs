@@ -80,6 +80,10 @@ fn fixture() -> (DomSession, Context, DocumentId, NodeId, DocumentId, NodeId) {
             surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
         )
         .unwrap()
+        .with_event_recipients(
+            surgeist_dom::DomEventRecipientLimits::new(64, 16_000_000, 16_000_000, 4_000_000)
+                .unwrap(),
+        )
         .with_dispatch_custody(
             surgeist_dom::DomDispatchCustodyLimits::new(
                 64, 4096, 16_000_000, 16_000_000, 4_000_000,
@@ -205,7 +209,7 @@ fn listener() -> DomEventCallback<Context> {
         Ok(())
     })
 }
-fn listen(dom: &DomEventDom<'_>, dispatcher: &mut DomEventDispatcher<Context>, target: NodeId) {
+fn listen(dom: &mut DomEventDom<'_>, dispatcher: &mut DomEventDispatcher<Context>, target: NodeId) {
     for kind in [DomEventType::Load, DomEventType::Error] {
         dispatcher
             .add_listener(
@@ -271,7 +275,7 @@ fn imports_have_a_real_wait_and_no_networking_delivery_before_or_after_owner_rem
         Some((document.node(), old_sheet.id().clone()))
     );
     let mut dispatcher = registry();
-    listen(&dom, &mut dispatcher, style);
+    listen(&mut dom, &mut dispatcher, style);
     empty(&mut dom, &mut dispatcher, &mut context);
     drive(&mut dom, &mut context, DomSourceEdit::detach(style));
     assert!(association(&dom.snapshot(), style).is_none());
@@ -312,7 +316,7 @@ fn already_queued_parse_recovery_load_survives_detachment_and_retains_old_object
     assert_eq!(old_cssom.sheet(old.id()).unwrap().diagnostics().len(), 1);
     assert_eq!(context.styles.waiting_resources().unwrap(), 0);
     let mut dispatcher = registry();
-    listen(&dom, &mut dispatcher, style);
+    listen(&mut dom, &mut dispatcher, style);
     drive(&mut dom, &mut context, DomSourceEdit::detach(style));
     let removed = cssom(&context, document);
     assert!(removed.sheets().is_empty());
@@ -348,7 +352,7 @@ fn queued_old_and_replacement_sheets_each_deliver_without_replacing_current_asso
     assert!(current.sheet(first.id()).unwrap().inputs().owner.is_none());
     assert!(current.sheet(second.id()).unwrap().inputs().owner.is_some());
     let mut dispatcher = registry();
-    listen(&dom, &mut dispatcher, style);
+    listen(&mut dom, &mut dispatcher, style);
     let a = delivered(&mut dom, &mut dispatcher, &mut context);
     assert_eq!(association(&dom.snapshot(), style).unwrap(), second);
     let b = delivered(&mut dom, &mut dispatcher, &mut context);
@@ -381,7 +385,7 @@ fn queued_historical_load_uses_the_same_live_element_after_adoption() {
     connect(&mut dom, &mut context, style, parent);
     let old = association(&dom.snapshot(), style).unwrap();
     let mut dispatcher = registry();
-    listen(&dom, &mut dispatcher, style);
+    listen(&mut dom, &mut dispatcher, style);
     drive(
         &mut dom,
         &mut context,
@@ -418,7 +422,7 @@ fn explicit_target_destruction_skips_queued_load_without_dispatching_to_reuse() 
     let old_dom = dom.snapshot();
     let old = association(&old_dom, style).unwrap();
     let mut dispatcher = registry();
-    listen(&dom, &mut dispatcher, style);
+    listen(&mut dom, &mut dispatcher, style);
     drive(&mut dom, &mut context, DomSourceEdit::detach(style));
     let mut batch = DomBatch::new();
     batch.destroy(style);
@@ -544,7 +548,7 @@ fn callback_replacing_execution_access_recovers_exact_session_without_replaying_
     let mut dispatcher = registry();
     dispatcher
         .add_listener(
-            &dom,
+            &mut dom,
             style,
             DomEventType::Load,
             DomEventCallback::new(move |dom, _, context: &mut Context, event| {
@@ -641,7 +645,7 @@ fn graceful_pending_preserves_custody_and_terminal_drop_does_not_finish_observed
         let old_cssom = cssom(&context, document);
         dispatcher
             .add_listener(
-                &dom,
+                &mut dom,
                 style,
                 DomEventType::Load,
                 DomEventCallback::new(|_, _, context: &mut Context, event| {
@@ -653,7 +657,7 @@ fn graceful_pending_preserves_custody_and_terminal_drop_does_not_finish_observed
             .unwrap();
         dispatcher
             .add_listener(
-                &dom,
+                &mut dom,
                 style,
                 DomEventType::Load,
                 listener(),

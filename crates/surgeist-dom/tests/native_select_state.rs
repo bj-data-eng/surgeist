@@ -757,8 +757,8 @@ fn deep_selectedcontent_copy_is_iterative_and_reclaims_only_its_private_wrapper(
         node = s.node(node).unwrap().children()[0];
     }
     assert_eq!(
-        s.node(node).unwrap().kind(),
-        &DomNodeKind::Text("leaf".into())
+        s.node(node).unwrap().data(),
+        Some(&DocumentString::from("leaf"))
     );
 }
 

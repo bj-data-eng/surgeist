@@ -94,6 +94,16 @@ refusal cannot undo an already published phase. Resuming uses the same operation
 and retained resources. Current CSSOM disabled observations come from the actual
 store and its revision, independently of an older association receipt.
 
+For bound inline declarations, `apply_with_inline_styles` takes a
+`DomSourceInlineStyleEdit` and a borrowed admission resolver;
+`resume_with_inline_styles` continues the original operation. Both return each
+actual paired DOM/CSSOM publication before further service. `InlineSource`
+preserves the original request or completion; `InlineFullscreenHandoff` reports
+an already queued fullscreen exit whose Source continuation can resume. The
+fullscreen queue reserves its real slot before publication and releases an
+unissued reservation on refusal or unwind. Context-free entry points retain
+their precise refusal when reached inline work needs explicit inputs.
+
 `DomSourceRuntime::complete_select` validates the original Session owners before
 consuming a canonical Select task. Retirement returns
 `DomSelectCompletionProgress::Skipped` without requiring live Style services or
@@ -524,6 +534,22 @@ across quota refusal and resume; it cannot redirect to a replacement generation.
 The original queue association remains distinct from each listener's current
 eligibility. Configure explicit `DomDispatchCustodyLimits` on the DOM as well as
 the dispatcher's limits; the DOM's aggregate capacity defaults to zero.
+
+Load/Error registration additionally requires explicit `DomEventRecipientLimits`
+on the canonical DOM. `add_listener` takes mutable `DomEventDom` access and retains
+one DOM-issued recipient capability per new registration. Duplicate registration
+keeps its original capability; removal, once consumption and dispatcher destruction
+release it. These aggregate facts cover every registry using the owner, including
+ordinary DOM edits performed outside the Session. They let DOM refuse SVG Script
+processing whose omitted notification would have an applicable recipient, while
+Style continues to deliver its actual source events. See the
+[SVG processing contract](../../surgeist-dom/docs/scripts.md#svg-script).
+
+Positive recipient admission obeys canonical Source entry: a parked operation
+outside event observation refuses it, while genuine event-observer reentry uses
+that operation's original cumulative admission. Releasing an existing registration
+does not require entering or resuming Source. Recipient capabilities retain only
+operational accounting and endpoint facts; snapshots retain no callback authority.
 
 These operations implement bounded native orchestration. A retained sheet or
 completed canonical edit does not establish fetched-resource completion,
