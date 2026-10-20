@@ -26,7 +26,7 @@ use capture::validate_replacement_bindings;
 mod canonical;
 pub(crate) use canonical::{
     CanonicalExceptionKind, CanonicalExclusion, CanonicalSummary,
-    EXCEPTIONS as CANONICAL_EXCEPTIONS, compare_csstree_canonical_forms,
+    EXCEPTIONS as CANONICAL_EXCEPTIONS, canonically_equal, compare_csstree_canonical_forms,
     normalize as normalize_canonical_css,
 };
 
@@ -79,6 +79,7 @@ pub(crate) fn validate_shared_support_surface() -> bool {
     let _ = capture_csstree_oracle_from_public_parser as fn() -> Result<(), String>;
     let _ = compare_csstree_canonical_forms as fn() -> Result<CanonicalSummary, Vec<String>>;
     let _ = normalize_canonical_css as fn(&str) -> String;
+    let _ = canonically_equal as fn(&str, &str) -> bool;
     let _ = CANONICAL_EXCEPTIONS;
     let _ = CanonicalExclusion::name as fn(CanonicalExclusion) -> &'static str;
     // Defects are listed only while a known product defect remains open.

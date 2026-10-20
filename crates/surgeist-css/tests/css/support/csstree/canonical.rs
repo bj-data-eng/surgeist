@@ -16,6 +16,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use cssparser::{Parser, ParserInput, Token as CssToken};
+
 use super::{
     Adapter, EntryPoint, ExpectedClass, ExpectedUnsupportedPolicy, PropertyOrDescriptor, REGISTRY,
     UpstreamOutcome, ValidatedCase, corpus_namespace_context, load_neutral_csstree_inventory,
@@ -62,7 +64,9 @@ pub(crate) use exceptions::EXCEPTIONS;
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) enum CanonicalExclusion {
     /// The CSS-owned expected class records an adapterless panic-freedom-only
-    /// policy: no truthful public entry point exists, so no projection exists.
+    /// policy and the context has no truthful public entry point. Selector
+    /// fixtures are the exception: they are projected through the public
+    /// selector parser whatever their observation policy.
     NoPublicProjection,
     /// The public parser rejects the whole input and retains no syntax. The
     /// CSS-owned expected class records the strict rejection and its basis.
@@ -143,10 +147,11 @@ pub(crate) fn compare_csstree_canonical_forms() -> Result<CanonicalSummary, Vec<
             }
         };
         let (serialized, upstream) = projection;
+        let matches = canonically_equal(&serialized, &upstream);
         let surgeist = normalize(&serialized);
         let upstream = normalize(&upstream);
         let entry = summary.compared.entry(context).or_default();
-        match (surgeist == upstream, exceptions.get(case.id.as_str())) {
+        match (matches, exceptions.get(case.id.as_str())) {
             (true, None) => entry.0 += 1,
             (true, Some(listed)) => failures.push(format!(
                 "{}: stale {} exception now matches upstream `{upstream}`",
@@ -169,7 +174,8 @@ pub(crate) fn compare_csstree_canonical_forms() -> Result<CanonicalSummary, Vec<
         }
     }
     for listed in EXCEPTIONS {
-        if !used.contains(listed.id) && !failures.iter().any(|f| f.starts_with(listed.id)) {
+        let reported = format!("{}: ", listed.id);
+        if !used.contains(listed.id) && !failures.iter().any(|f| f.starts_with(&reported)) {
             let location = if parsed_ids.contains(listed.id) {
                 "is not a compared case"
             } else {
@@ -216,13 +222,18 @@ fn project(case: &ValidatedCase) -> Result<Projection, String> {
         .expected_class
         .as_ref()
         .ok_or("case has no validated expected class")?;
-    if matches!(
+    let panic_freedom_only = matches!(
         expected,
         ExpectedClass::Unsupported {
             policy: ExpectedUnsupportedPolicy::PanicFreedomOnly,
             ..
         }
-    ) {
+    );
+    // The registry observes the combinator fixtures only for panic freedom,
+    // but every selector fixture has a faithful public projection through
+    // `parse_selector`; other panic-freedom-only contexts have none.
+    let selector_projection = panic_freedom_only && case.context.as_str() == "selector";
+    if panic_freedom_only && !selector_projection {
         return Ok(Projection::Excluded(CanonicalExclusion::NoPublicProjection));
     }
     let registry = REGISTRY
@@ -235,7 +246,12 @@ fn project(case: &ValidatedCase) -> Result<Projection, String> {
     let upstream = case.canonical_css.as_deref().unwrap_or(input);
     let namespaces = corpus_namespace_context();
     let mut upstream = upstream.to_owned();
-    let surgeist = match registry.entry_point() {
+    let entry_point = if selector_projection {
+        EntryPoint::Selector
+    } else {
+        registry.entry_point()
+    };
+    let surgeist = match entry_point {
         EntryPoint::Sheet => Some(
             parse_sheet(input)
                 .syntax()
@@ -360,36 +376,61 @@ fn project(case: &ValidatedCase) -> Result<Projection, String> {
                 .to_owned(),
         ),
     };
-    debug_assert!(!matches!(
-        registry.adapter(),
-        Adapter::CustomPropertyContainment
-    ));
+    debug_assert!(
+        selector_projection || !matches!(registry.adapter(), Adapter::CustomPropertyContainment)
+    );
     Ok(match surgeist {
         Some(surgeist) => Projection::Compared { surgeist, upstream },
+        // A selector-projected rejection has no expected-class basis, so it is
+        // compared as empty output and must carry its own cited exception.
+        None if selector_projection => Projection::Compared {
+            surgeist: String::new(),
+            upstream,
+        },
         None => Projection::Excluded(CanonicalExclusion::NoRetainedSyntax),
     })
 }
 
 /// Normalizes canonical CSS text from either generator.
 ///
-/// The step removes only presentation choices on which CSSTree's compact
-/// generator and Surgeist's specified serializers legitimately differ:
+/// Both forms are tokenized by the crate's CSS Syntax 3 tokenizer dependency
+/// (cssparser, the Servo and Firefox tokenizer), so token boundaries, escapes,
+/// bad strings, bad urls, functions, CDO/CDC and input preprocessing follow the
+/// specification rather than a hand-written approximation. On that token
+/// sequence the step removes only presentation choices on which CSSTree's
+/// compact generator and Surgeist's specified serializers legitimately differ:
 ///
-/// 1. Comments are removed (neither generator's structure depends on them).
-/// 2. Strings are decoded and re-emitted with double quotes, escaping only
-///    `"` and `\`. A quoted or unquoted `url()` becomes `url("value")` with its
-///    decoded value, as CSSOM serializes URLs through strings.
-/// 3. Whitespace runs collapse to one space. They are dropped at either end,
-///    next to a string or URL, after `{ } ; , < > + ~ ( : [ = ! / |`, and before
-///    `{ } ; , < > + ~ ) ] = ! / |`. Whitespace before `:`, `[`, `.`, `#`, `*`,
-///    `&`, `(` and between words stays, so a descendant combinator remains
-///    distinct from a compound selector.
+/// 1. Comments are removed. They still separate the tokens around them, and
+///    whitespace runs separated only by comments are one run.
+/// 2. Identifiers, at-keywords, hashes, function names and strings compare by
+///    decoded value. A `url()`, quoted or unquoted, compares by its decoded
+///    value, as CSSOM serializes URLs through strings. A string or url that
+///    reaches end of input unterminated, and a block that is never closed,
+///    stay distinct from their terminated forms.
+/// 3. Whitespace runs are dropped at either end, next to a string, URL or
+///    attribute matcher, after `{ } ; , < > + ~ ( : [ = ! /` and a function, and
+///    before `{ } ; , < > + ~ ) ] = ! /`. Whitespace stays before `:`, `[`, `.`,
+///    `#`, `*`, `&`, `(` and `|`, between `<` or `>` and `=`, on only one side of
+///    a `+`, and between other tokens, so a descendant combinator remains
+///    distinct from a compound selector, `ns |a` from `ns|a`, `> =` from `>=`
+///    and `1px+ 2px` from `1px + 2px`.
 /// 4. A `;` immediately before `}` or at the end is dropped; both are optional
 ///    declaration terminators.
 ///
-/// Identifier case, escapes, numeric spelling, units, colors, punctuation and
-/// token order remain significant.
+/// Decoded identifier case, numeric spelling, units, colors, punctuation, token
+/// kinds, block closure and token order remain significant. [`normalize`] renders the same sequence
+/// for messages.
 pub(crate) fn normalize(css: &str) -> String {
+    render(&normalized_tokens(css))
+}
+
+/// Whether two forms are equal under the documented normalization, compared
+/// token by token rather than through their rendering.
+pub(crate) fn canonically_equal(left: &str, right: &str) -> bool {
+    normalized_tokens(left) == normalized_tokens(right)
+}
+
+fn normalized_tokens(css: &str) -> Vec<Token> {
     let tokens = tokenize(css);
     let mut out: Vec<Token> = Vec::with_capacity(tokens.len());
     for (index, token) in tokens.iter().enumerate() {
@@ -398,18 +439,25 @@ pub(crate) fn normalize(css: &str) -> String {
                 let Some(previous) = out.last() else {
                     continue;
                 };
-                let next = tokens[index + 1..]
-                    .iter()
-                    .find(|token| !matches!(token, Token::Whitespace));
-                let Some(next) = next else {
+                // Whitespace runs are merged, so neighbours are adjacent tokens.
+                let Some(next) = tokens.get(index + 1) else {
                     continue;
                 };
-                if previous.drops_whitespace_after() || next.drops_whitespace_before() {
+                let comparison_equals = matches!(previous, Token::Delim('<' | '>'))
+                    && matches!(next, Token::Delim('='));
+                // `a + b` and `a+b` are the same; `1px+ 2px` and `1px +2px` are
+                // not, since calc() needs whitespace on both sides of `+`.
+                let one_sided_plus = (matches!(next, Token::Delim('+'))
+                    && !matches!(tokens.get(index + 2), Some(Token::Whitespace)))
+                    || (matches!(previous, Token::Delim('+'))
+                        && !(index >= 2 && matches!(tokens[index - 2], Token::Whitespace)));
+                if !comparison_equals
+                    && !one_sided_plus
+                    && (previous.drops_whitespace_after() || next.drops_whitespace_before())
+                {
                     continue;
                 }
-                if !matches!(previous, Token::Whitespace) {
-                    out.push(Token::Whitespace);
-                }
+                out.push(Token::Whitespace);
             }
             Token::Delim('}') => {
                 while matches!(out.last(), Some(Token::Delim(';') | Token::Whitespace)) {
@@ -423,18 +471,50 @@ pub(crate) fn normalize(css: &str) -> String {
     while matches!(out.last(), Some(Token::Delim(';') | Token::Whitespace)) {
         out.pop();
     }
-    let mut text = String::with_capacity(css.len());
-    for token in out {
+    out
+}
+
+fn render(tokens: &[Token]) -> String {
+    let mut text = String::new();
+    for token in tokens {
         match token {
             Token::Whitespace => text.push(' '),
-            Token::Delim(delim) => text.push(delim),
-            Token::Word(word) => text.push_str(&word),
-            Token::String(value) => push_string(&mut text, &value),
+            Token::Delim(delim) => text.push(*delim),
+            Token::Ident(value) => text.push_str(value),
+            Token::AtKeyword(value) => {
+                text.push('@');
+                text.push_str(value);
+            }
+            Token::Hash(value) => {
+                text.push('#');
+                text.push_str(value);
+            }
+            Token::Numeric(spelling) => text.push_str(spelling),
+            Token::String(value) => push_string(&mut text, value),
             Token::Url(value) => {
                 text.push_str("url(");
-                push_string(&mut text, &value);
+                push_string(&mut text, value);
                 text.push(')');
             }
+            Token::BadUrl(raw) | Token::BadString(raw) => text.push_str(raw),
+            Token::UnterminatedString(value) => {
+                text.push('"');
+                text.push_str(value);
+            }
+            Token::UnterminatedUrl(value) => {
+                text.push_str("url(");
+                text.push_str(value);
+            }
+            Token::Function(name) => {
+                text.push_str(name);
+                text.push('(');
+            }
+            Token::Matcher(first) => {
+                text.push(*first);
+                text.push('=');
+            }
+            Token::Cdo => text.push_str("<!--"),
+            Token::Cdc => text.push_str("-->"),
         }
     }
     text
@@ -451,13 +531,30 @@ fn push_string(text: &mut String, value: &str) {
     text.push('"');
 }
 
+/// A comparison token. Kinds stay distinct, so an escaped identifier never
+/// equals an at-keyword, hash, number or string with the same text.
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum Token {
     Whitespace,
     Delim(char),
-    Word(String),
+    Ident(String),
+    AtKeyword(String),
+    Hash(String),
+    /// A number, percentage or dimension, by its source spelling.
+    Numeric(String),
     String(String),
+    /// A string that reaches end of input without its closing quote.
+    UnterminatedString(String),
     Url(String),
+    /// An unquoted url that reaches end of input without its `)`.
+    UnterminatedUrl(String),
+    BadUrl(String),
+    BadString(String),
+    Function(String),
+    /// An attribute matcher: `~=`, `|=`, `^=`, `$=` or `*=`, by its first char.
+    Matcher(char),
+    Cdo,
+    Cdc,
 }
 
 impl Token {
@@ -466,6 +563,8 @@ impl Token {
             self,
             Self::String(_)
                 | Self::Url(_)
+                | Self::Function(_)
+                | Self::Matcher(_)
                 | Self::Delim(
                     '{' | '}'
                         | ';'
@@ -480,7 +579,6 @@ impl Token {
                         | '='
                         | '!'
                         | '/'
-                        | '|'
                 )
         )
     }
@@ -490,194 +588,179 @@ impl Token {
             self,
             Self::String(_)
                 | Self::Url(_)
+                | Self::Matcher(_)
                 | Self::Delim(
-                    '{' | '}'
-                        | ';'
-                        | ','
-                        | '<'
-                        | '>'
-                        | '+'
-                        | '~'
-                        | ')'
-                        | ']'
-                        | '='
-                        | '!'
-                        | '/'
-                        | '|'
+                    '{' | '}' | ';' | ',' | '<' | '>' | '+' | '~' | ')' | ']' | '=' | '!' | '/'
                 )
         )
     }
 }
 
+/// Whether `source` ends with an unescaped `close` code point.
+fn closes_with(source: &str, close: char) -> bool {
+    let Some(rest) = source.strip_suffix(close) else {
+        return false;
+    };
+    rest.chars().rev().take_while(|&c| c == '\\').count() % 2 == 0
+}
+
 fn tokenize(css: &str) -> Vec<Token> {
-    let characters: Vec<char> = css.chars().collect();
+    let mut input = ParserInput::new(css);
+    let mut parser = Parser::new(&mut input);
     let mut tokens = Vec::new();
-    let mut index = 0;
-    while index < characters.len() {
-        let character = characters[index];
-        if is_whitespace(character) {
-            while index < characters.len() && is_whitespace(characters[index]) {
-                index += 1;
-            }
-            tokens.push(Token::Whitespace);
-        } else if character == '/' && characters.get(index + 1) == Some(&'*') {
-            index += 2;
-            while index < characters.len()
-                && !(characters[index] == '*' && characters.get(index + 1) == Some(&'/'))
-            {
-                index += 1;
-            }
-            index = (index + 2).min(characters.len());
-        } else if matches!(character, '"' | '\'') {
-            let (value, next) = consume_string(&characters, index + 1, character);
-            tokens.push(Token::String(value));
-            index = next;
-        } else if is_word_start(&characters, index) {
-            let start = index;
-            index += 1;
-            while index < characters.len() && is_word_continue(&characters, index) {
-                index += if characters[index] == '\\' { 2 } else { 1 };
-            }
-            index = index.min(characters.len());
-            let word: String = characters[start..index].iter().collect();
-            if word.eq_ignore_ascii_case("url") && characters.get(index) == Some(&'(') {
-                let (value, next) = consume_url(&characters, index + 1);
-                tokens.push(Token::Url(value));
-                index = next;
-            } else {
-                tokens.push(Token::Word(word));
-            }
-        } else {
-            tokens.push(Token::Delim(character));
-            index += 1;
-        }
-    }
+    collect_tokens(&mut parser, &mut tokens);
     tokens
 }
 
-const fn is_whitespace(character: char) -> bool {
-    matches!(character, ' ' | '\t' | '\n' | '\r' | '\u{c}')
-}
-
-const fn is_name(character: char) -> bool {
-    character.is_ascii_alphanumeric() || matches!(character, '_' | '-') || !character.is_ascii()
-}
-
-fn is_word_start(characters: &[char], index: usize) -> bool {
-    let character = characters[index];
-    let next = characters.get(index + 1).copied();
-    is_name(character)
-        || (character == '\\' && next.is_some())
-        || (matches!(character, '#' | '@')
-            && next.is_some_and(|next| is_name(next) || next == '\\'))
-        || (matches!(character, '+' | '.') && next.is_some_and(|next| next.is_ascii_digit()))
-}
-
-fn is_word_continue(characters: &[char], index: usize) -> bool {
-    let character = characters[index];
-    is_name(character)
-        || character == '%'
-        || (character == '\\' && index + 1 < characters.len())
-        || (character == '.'
-            && characters[index - 1].is_ascii_digit()
-            && characters.get(index + 1).is_some_and(char::is_ascii_digit))
-        || (matches!(character, '+' | '-')
-            && matches!(characters[index - 1], 'e' | 'E')
-            && characters.get(index + 1).is_some_and(char::is_ascii_digit)
-            && characters[..index - 1]
-                .last()
-                .is_some_and(char::is_ascii_digit))
-}
-
-/// Consumes `url(` contents: one string, or unquoted text through `)` with
-/// escapes decoded, both without surrounding whitespace.
-fn consume_url(characters: &[char], mut index: usize) -> (String, usize) {
-    while characters
-        .get(index)
-        .is_some_and(|&next| is_whitespace(next))
-    {
-        index += 1;
-    }
-    if let Some(&quote) = characters
-        .get(index)
-        .filter(|&&next| matches!(next, '"' | '\''))
-    {
-        let (value, mut next) = consume_string(characters, index + 1, quote);
-        while characters.get(next).is_some_and(|&close| close != ')') {
-            next += 1;
-        }
-        return (value, (next + 1).min(characters.len()));
-    }
-    let mut value = String::new();
-    while let Some(&character) = characters.get(index) {
-        index += 1;
-        match character {
-            ')' => break,
-            '\\' => {
-                let (decoded, next) = consume_escape(characters, index);
-                value.push(decoded);
-                index = next;
+/// Appends the tokens of one block level, descending into nested blocks and
+/// emitting their closing delimiter only when the source actually closes them.
+fn collect_tokens(parser: &mut Parser<'_, '_>, tokens: &mut Vec<Token>) {
+    loop {
+        let start = parser.position();
+        let Ok(token) = parser.next_including_whitespace_and_comments() else {
+            return;
+        };
+        let (opening, closing) = match token {
+            CssToken::WhiteSpace(_) => {
+                if !matches!(tokens.last(), Some(Token::Whitespace)) {
+                    tokens.push(Token::Whitespace);
+                }
+                continue;
             }
-            _ => value.push(character),
-        }
-    }
-    let trimmed = value.trim_end_matches(is_whitespace).len();
-    value.truncate(trimmed);
-    (value, index)
-}
-
-/// Consumes string contents after the opening quote. An unescaped newline ends
-/// a bad string without being consumed (CSS Syntax 3 §4.3.5).
-fn consume_string(characters: &[char], mut index: usize, quote: char) -> (String, usize) {
-    let mut value = String::new();
-    while let Some(&character) = characters.get(index) {
-        if matches!(character, '\n' | '\r' | '\u{c}') {
-            break;
-        }
-        index += 1;
-        if character == quote {
-            break;
-        }
-        if character != '\\' {
-            value.push(character);
-            continue;
-        }
-        match characters.get(index) {
-            None => break,
-            Some('\n' | '\r' | '\u{c}') => index += 1,
-            Some(_) => {
-                let (decoded, next) = consume_escape(characters, index);
-                value.push(decoded);
-                index = next;
+            CssToken::Comment(_) => continue,
+            CssToken::Ident(value) => {
+                tokens.push(Token::Ident(value.to_string()));
+                continue;
+            }
+            CssToken::AtKeyword(value) => {
+                tokens.push(Token::AtKeyword(value.to_string()));
+                continue;
+            }
+            CssToken::Hash(value) | CssToken::IDHash(value) => {
+                tokens.push(Token::Hash(value.to_string()));
+                continue;
+            }
+            CssToken::QuotedString(value) => {
+                let value = value.to_string();
+                let source = parser.slice_from(start);
+                let quote = source.chars().next().unwrap_or('"');
+                tokens.push(if source.len() > 1 && closes_with(source, quote) {
+                    Token::String(value)
+                } else {
+                    Token::UnterminatedString(value)
+                });
+                continue;
+            }
+            CssToken::UnquotedUrl(value) => {
+                let value = value.to_string();
+                tokens.push(if closes_with(parser.slice_from(start), ')') {
+                    Token::Url(value)
+                } else {
+                    Token::UnterminatedUrl(value)
+                });
+                continue;
+            }
+            CssToken::Number { .. } | CssToken::Percentage { .. } | CssToken::Dimension { .. } => {
+                tokens.push(Token::Numeric(parser.slice_from(start).to_owned()));
+                continue;
+            }
+            CssToken::Delim(delim) => {
+                tokens.push(Token::Delim(*delim));
+                continue;
+            }
+            CssToken::Colon => {
+                tokens.push(Token::Delim(':'));
+                continue;
+            }
+            CssToken::Semicolon => {
+                tokens.push(Token::Delim(';'));
+                continue;
+            }
+            CssToken::Comma => {
+                tokens.push(Token::Delim(','));
+                continue;
+            }
+            CssToken::IncludeMatch => {
+                tokens.push(Token::Matcher('~'));
+                continue;
+            }
+            CssToken::DashMatch => {
+                tokens.push(Token::Matcher('|'));
+                continue;
+            }
+            CssToken::PrefixMatch => {
+                tokens.push(Token::Matcher('^'));
+                continue;
+            }
+            CssToken::SuffixMatch => {
+                tokens.push(Token::Matcher('$'));
+                continue;
+            }
+            CssToken::SubstringMatch => {
+                tokens.push(Token::Matcher('*'));
+                continue;
+            }
+            CssToken::CDO => {
+                tokens.push(Token::Cdo);
+                continue;
+            }
+            CssToken::CDC => {
+                tokens.push(Token::Cdc);
+                continue;
+            }
+            CssToken::BadUrl(_) => {
+                tokens.push(Token::BadUrl(parser.slice_from(start).to_owned()));
+                continue;
+            }
+            CssToken::BadString(_) => {
+                tokens.push(Token::BadString(parser.slice_from(start).to_owned()));
+                continue;
+            }
+            CssToken::CloseParenthesis => {
+                tokens.push(Token::Delim(')'));
+                continue;
+            }
+            CssToken::CloseSquareBracket => {
+                tokens.push(Token::Delim(']'));
+                continue;
+            }
+            CssToken::CloseCurlyBracket => {
+                tokens.push(Token::Delim('}'));
+                continue;
+            }
+            CssToken::Function(name) => (Some(Token::Function(name.to_string())), ')'),
+            CssToken::ParenthesisBlock => (None, ')'),
+            CssToken::SquareBracketBlock => (Some(Token::Delim('[')), ']'),
+            CssToken::CurlyBracketBlock => (Some(Token::Delim('{')), '}'),
+        };
+        let mut nested = Vec::new();
+        let mut inner_end = None;
+        let _ = parser.parse_nested_block(|block| {
+            collect_tokens(block, &mut nested);
+            inner_end = Some(block.position());
+            Ok::<(), cssparser::ParseError<'_, ()>>(())
+        });
+        // The nested parser stops before the closing token; the block is closed
+        // exactly when the outer parser then consumed one beyond that point.
+        let closed = inner_end.is_some_and(|end| parser.position() != end);
+        // `url(` with one string argument is a URL compared by its value.
+        if let Some(Token::Function(name)) = &opening
+            && name.eq_ignore_ascii_case("url")
+            && closed
+        {
+            let argument: Vec<&Token> = nested
+                .iter()
+                .filter(|token| !matches!(token, Token::Whitespace))
+                .collect();
+            if let [Token::String(value)] = argument.as_slice() {
+                tokens.push(Token::Url(value.clone()));
+                continue;
             }
         }
+        tokens.push(opening.unwrap_or(Token::Delim('(')));
+        tokens.append(&mut nested);
+        if closed {
+            tokens.push(Token::Delim(closing));
+        }
     }
-    (value, index)
-}
-
-/// Decodes one escape whose backslash precedes `index` (CSS Syntax 3 §4.3.7).
-fn consume_escape(characters: &[char], mut index: usize) -> (char, usize) {
-    let Some(&escaped) = characters.get(index) else {
-        return ('\u{fffd}', index);
-    };
-    if !escaped.is_ascii_hexdigit() {
-        return (escaped, index + 1);
-    }
-    let start = index;
-    while index < characters.len() && index - start < 6 && characters[index].is_ascii_hexdigit() {
-        index += 1;
-    }
-    let digits: String = characters[start..index].iter().collect();
-    let decoded = u32::from_str_radix(&digits, 16)
-        .ok()
-        .and_then(char::from_u32)
-        .filter(|&decoded| decoded != '\0')
-        .unwrap_or('\u{fffd}');
-    if characters
-        .get(index)
-        .is_some_and(|&next| is_whitespace(next))
-    {
-        index += 1;
-    }
-    (decoded, index)
 }

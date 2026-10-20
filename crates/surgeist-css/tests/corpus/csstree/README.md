@@ -62,15 +62,34 @@ reconciliation records, and from the
 Surgeist's public parse result for each upstream-parsed case and compares it with
 CSSTree's own generator expectation: the case's `canonical_css`, or its input
 when that field is absent, as CSSTree's `lib/__tests/generate.js` requires at
-the pinned revision. Both sides pass through one documented normalization that
-removes comments, quote style, optional whitespace and optional final
-semicolons, but keeps combinators, declarations, values and rule structure.
-Of the 721 upstream-parsed cases, 452 are compared: 277 match and 175 are
+the pinned revision. Both sides are tokenized by the crate's CSS Syntax 3
+tokenizer dependency (cssparser, the Servo and Firefox tokenizer), so token
+boundaries, escapes, bad strings and urls, functions and input preprocessing
+follow the specification. One documented normalization then removes comments,
+quote style, optional whitespace and optional final semicolons, and the token
+sequences are compared. A removed comment still separates the tokens around it,
+identifiers and strings compare by decoded value, and whitespace stays
+significant before a namespace `|`, between `<` or `>` and `=`, and on only one
+side of a `+`, so combinators, declarations, values and rule structure remain
+distinct.
+
+Selector fixtures that the registry observes only for panic freedom, such as the
+combinator cases, are still projected through the public selector parser; a
+rejection there is compared as empty output and needs its own cited exception.
+
+Of the 721 upstream-parsed cases, 468 are compared: 298 match and 170 are
 listed in [`canonical_exceptions.rs`](../../css/support/csstree/canonical_exceptions.rs)
 as deliberate differences with a cited reason, or as known defects. The other
-269 have no public projection (108 panic-freedom-only cases) or retain no
-syntax after a whole-input rejection (161 cases, whose basis the expected
-classes record). A listed case that starts matching fails the comparison.
+253 have no public projection (92 panic-freedom-only value and prelude cases)
+or retain no syntax after a whole-input rejection (161 cases, whose basis the
+expected classes record). A listed case that starts matching fails the
+comparison, matched exactly by case ID.
+
+Some matches show only that retained tokens replay faithfully, because Surgeist
+keeps those values as tokens rather than typed syntax: custom properties,
+`var()`, general-enclosed conditions and `@supports` or `@container` condition
+text. They are structural evidence for the surrounding rule, not for a typed
+value grammar.
 
 A change to an expected class kind or expected diagnostic (code, recovery
 action or payload relation) in `tests/csstree/expected-classes.json` must cite
@@ -187,7 +206,10 @@ unknown dimension unit remains ordinary feature syntax with unknown semantics;
 it does not require a vendor-specific parser mode. These expectations exercise
 the real adapter and preserve source identities without refreshing the oracle.
 
-The adapterless Combinator fixtures retain their explicit panic-freedom policy.
+The adapterless Combinator fixtures retain their explicit panic-freedom policy
+in the registry and the oracle. The canonical comparison still projects them
+through the public selector parser, which parses the same single complex
+selector as CSSTree's `selector` context.
 The mixed `atrulePrelude` fixture resolves its adapter from validated options:
 `atrule: media` selects the raw media-query-list parser, while the unnamed generic
 prelude retains only a custom-property containment panic-freedom probe. Its text
