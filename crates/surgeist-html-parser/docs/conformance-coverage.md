@@ -37,7 +37,7 @@ operation; it is not public transport streaming or fragment feeding.
 | [Initial][initial], [in body EOF][inbody], [in table][intable], [in table text][intabletext], [in column group][incolgroup] and [in table body][intbody] | Tables01/1,4,6,19 have independent typed sequences of 3/7/14/5 records: missing doctype, implied-row/ignored-tag recovery, buffered-list and per-character foster errors, ignored late doctype and disallowed-open-element EOF. Both encodings, Complete execution and every cut. | [Conformance tests][conformance]: `table_recovery_literal_diagnostics_complete_utf8_utf16`, `table_recovery_literal_diagnostics_every_cut_and_unit_feed`. Eight Complete, 312 single-cut and eight unit-feed documents preserve literal trees, Quirks mode, chronological records and qualified ranges. Processing context records the actual outer emitter; a delegated InBody rule can retain InCell/InTable context. ASCII fixtures exercise both coordinate kinds, not surrogate/CRLF behavior. |
 | [Foreign-content rules][foreign] | Ordinary documents and captured SVG/MathML contexts: exact namespaces, adjusted SVG names/attributes, XML/XLink/XMLNS distinctions, HTML integration points, MathML text exceptions, CDATA, breakout and SVG script metadata. | [Tree tests][tree]: `ordinary_svg_adjusted_names_and_foreign_integration_preserve_native_namespaces_and_order`, `foreign_all_namespace_adjustments_unknown_colons_and_xmlns_errors_keep_original_values`. [Fragment tests][fragment]: `captured_integration_points_use_actual_qualified_encoding_and_math_text_exceptions`, `arbitrary_captured_namespace_is_copied_exactly_and_cdata_uses_adjusted_context`. Script metadata does not establish script execution. |
 | [In template][intemplate] and [template construction][template] | 111 ordinary template inputs in both encodings, actual inert template documents and separate hosted contents. Seven selected transitions run every cut in both encodings, totaling 670 progressive runs. | [Conformance tests][conformance]: `all_retained_ordinary_templates_match_independent_trees_in_both_encodings`, `template_transitions_every_cut_and_unit_feed_match_independent_trees`, `nested_template_eof_diagnostics_retain_two_distinct_source_invocations`. [Tree tests][tree]: `ordinary_template_routes_rows_into_separate_hosted_contents_and_keeps_body_sibling_order`, `template_selectedcontent_deep_clone_keeps_distinct_contents_and_adopts_real_documents`. EOF records at the same position remain separate invocations. |
-| [Fragment parsing][fragments] | Actual captured contexts select tokenizer state, insertion mode, namespace/integration attributes, document mode and nearest-form facts. Inert/Disabled profiles retain parser Document, context document, target document and output Fragment separately. Whole source only. | [Fragment tests][fragment]: `real_div_fragment_returns_only_parsed_children_and_inherits_parser_document_mode`, `real_table_context_selects_table_mode_without_context_wrapper_or_implied_table`, `real_utf16_rcdata_context_preserves_isolates_entity_cr_and_literal_end_like_units`. Corpus template/109 uses a real template capture, checked by [Conformance tests][conformance]: `retained_template_context_fragment_matches_actual_output_and_content_owner`. All 176 retained `#document-fragment` cases, including select, table, svg and math contexts, run in their actual contexts through [corpus replay][corpusreplay] (see [tree construction](#tree-construction)). No div wrapper or invented appropriate end tag substitutes for context. |
+| [Fragment parsing][fragments] | Actual captured contexts select tokenizer state, insertion mode, namespace/integration attributes, document mode and nearest-form facts. Inert/Disabled profiles retain parser Document, context document, target document and output Fragment separately. Whole source only. | [Fragment tests][fragment]: `real_div_fragment_returns_only_parsed_children_and_inherits_parser_document_mode`, `real_table_context_selects_table_mode_without_context_wrapper_or_implied_table`, `real_utf16_rcdata_context_preserves_isolates_entity_cr_and_literal_end_like_units`. Corpus template/109 uses a real template capture, checked by [Conformance tests][conformance]: `retained_template_context_fragment_matches_actual_output_and_content_owner`. All 192 retained `#document-fragment` cases, including select, table, svg and math contexts, run in their actual contexts through [corpus replay][corpusreplay] (see [tree construction](#tree-construction)). No div wrapper or invented appropriate end tag substitutes for context. |
 | [Template/shadow construction][template] and [fragment parsing][fragments] | Qualified declarative shadow decisions can create owned roots or retain captured attachment effects. Light children, separate shadow/template trees, captured identity and immutable output remain distinct. | [Fragment tests][fragment]: `captured_shadow_attachment_retains_actual_root_and_second_template_uses_planned_presence`, `local_shadow_host_keeps_light_children_and_qualified_root_separate`, `selectedcontent_clones_local_clonable_shadow_after_light_children`. [Public tests][public]: `fragment_parse_retains_actual_captured_attachment_and_fallback_after_cancel`. These are construction results/effects, not installation into a live DOM. |
 | [Script processing][scripts] and parser script states | Disabled ordinary HTML script preparation, Inert fragment scripts, raw/escaped text and separately selected SVG processed-state transitions. No JavaScript evaluation or network activity. | [Tree tests][tree]: `standalone_script_end_prepares_disabled_classic_and_restores_head_and_insertion_state`, `standalone_script_eof_marks_started_without_preparing_or_changing_initial_facts`, `svg_script_parser_end_defers_then_restores_wrapper_without_html_preparation`. [Fragment tests][fragment]: `inert_fragment_scripts_retain_parser_document_and_started_state_without_disabled_preparation`. Scripting-Enabled corpus replay is excluded. |
 
@@ -91,15 +91,15 @@ either way.
 ### Tree construction
 
 `all_complete_retained_files_decode_with_stable_ordinals_and_raw_sections`
-decodes all **1,495** cases of the 40 bundled `.dat` files as fixture-format
+decodes all **1,775** cases of the 56 bundled `.dat` files as fixture-format
 evidence. [Corpus replay tests][corpusreplay] then run every retained case in
 both UTF-8 and UTF-16:
 
 * `every_retained_ordinary_case_matches_its_corpus_tree_after_real_completion`
-  runs all **1,311** ordinary cases without `#script-on` through the actual
+  runs all **1,575** ordinary cases without `#script-on` through the actual
   ordinary driver and metered native comparison.
 * `every_retained_fragment_case_matches_its_corpus_tree_in_its_actual_context`
-  runs all **176** `#document-fragment` cases through the actual captured-context
+  runs all **192** `#document-fragment` cases through the actual captured-context
   fragment owner with the corpus context element: HTML (including table,
   select, frameset, raw-text and template contexts), `svg …` and `math …`. The
   capture is a NoQuirks, Disabled document whose root is the context element.
@@ -110,26 +110,37 @@ both UTF-8 and UTF-16:
 The corpus format does not carry document mode. Each ordinary case binds it in
 this order:
 
-1. The hand-derived HTML877d [initial][initial] table for the 56 previously
-   selected bindings and the template.dat table.
+1. The hand-derived HTML877d [initial][initial] table: 99 cases, including
+   every doctype01 case and tests2/19, 26–29, 62 and tests6/5, 47 derived from
+   the force-quirks flag, the doctype name and the listed public and system
+   identifiers; and the template.dat table: 111 cases.
 2. Quirks when the expected tree has no doctype record (Initial anything-else):
-   622 cases.
+   763 cases.
 3. NoQuirks when both the input and the first expected record are a plain
-   `<!DOCTYPE html>`: 514 cases.
-4. Otherwise the document mode is not compared: tests2/19, 26–29, 62 and
-   tests6/5, 47. Their trees, doctype records and all other fields are still
-   compared exactly.
+   `<!DOCTYPE html>`: 602 cases.
+
+The replay fails if any retained ordinary case falls outside these rules, so
+no case is compared with its document mode omitted.
 
 | Retained file | Ordinary cases run | Fragment cases run | Exclusions |
 | --- | --- | --- | --- |
 | adoption01.dat | 1–17 | 18 (div) | — |
 | adoption02.dat | 1–2 | — | — |
+| blocks.dat, doctype01.dat | 48, 37 | — | — |
 | comments01.dat | 1–16 | — | — |
+| domjs-unsafe.dat | 49 | — | — |
 | entities01.dat, entities02.dat | 75, 26 | — | — |
 | foreign-fragment.dat | — | 1–66 (svg, math, div) | — |
+| html5test-com.dat | 24 | — | 12 spec |
+| inbody01.dat, isindex.dat, main-element.dat | 4, 4, 3 | — | — |
+| math.dat, svg.dat | — | 8 each (td, tr, thead, tfoot, tbody) | — |
+| menuitem-element.dat | 20 | — | — |
 | namespace-sensitivity.dat, quirks01.dat | 1, 4 | — | — |
 | noscript01.dat | 1–18 (`#script-off`) | — | — |
-| ruby.dat, tables01.dat | 21, 19 | — | — |
+| pending-spec-changes.dat, pending-spec-changes-plain-text-unsafe.dat | 3, 1 | — | — |
+| plain-text-unsafe.dat | 33 | — | — |
+| ruby.dat, scriptdata01.dat, search-element.dat | 21, 26, 3 | — | — |
+| tables01.dat | 19 | — | — |
 | template.dat | 111 | 109 (template) | — |
 | tests1.dat | 112 | — | 40, 44, 47 spec |
 | tests2.dat–tests3.dat, tests8.dat–tests12.dat | 63, 24, 10, 27, 54, 13, 2 | — | — |
@@ -139,18 +150,32 @@ this order:
 | tests14.dat, tests15.dat | 7, 14 | — | — |
 | tests16.dat | 191 | — | 6 `#script-on` |
 | tests17.dat–tests26.dat | 13, 36, 103, 64, 23, 5, 5, 8, 26, 20 | — | — |
-| tests_innerHTML_1.dat | — | 81 | 79 defect |
+| tests_innerHTML_1.dat | — | 81 | 76 spec, 79 defect |
+| tricky01.dat | 9 | — | — |
 | webkit01.dat | 52 | — | — |
 | webkit02.dat | 41 | 4 | 1 `#script-on` |
 
-Counts in a cell are numbers of cases; ranges name ordinals. Tests1/40, 44 and
-47 are `<?` inputs: the HTML877d [tag open state][tokenization] enters the
-[processing-instruction states][pi], so Initial inserts a PI or, at EOF,
-nothing, instead of the historical bogus comment. Tests_innerHTML_1/79
+Counts in a cell are numbers of cases; ranges name ordinals. Every spec
+exclusion must still diverge from the corpus, and its actual rendering in both
+encodings must equal the tree derived from the pinned edition, so a stale
+record, a failed parse or any unrelated divergence fails. Tests1/40, 44 and 47
+and html5test-com/12 are `<?` inputs: the HTML877d
+[tag open state][tokenization] enters the [processing-instruction states][pi],
+so Initial inserts a PI (target `COMMENT`, `COM--MENT` or `import` with data
+`namespace="foo" implementation="#bar"`) or, at EOF, nothing, instead of the
+historical bogus comment, before html, head and body in quirks mode.
+Tests_innerHTML_1/76 (`<input><option>`, select context) follows the HTML877d
+in-body `input` rule: with a select fragment context element the tag is a parse
+error and is ignored, leaving only the `option`, while this corpus revision
+inserts it. Tests_innerHTML_1/79
 (`</html><!--abc-->`, html context) is a defect: in the fragment case the
 after-body `</html>` must be ignored, leaving the comment under the html root.
 The internal fragment comparison differs and the public request reports
 `Engine(Tree)`.
+
+The three `scripted/` files (adoption01, ark, webkit01) need script execution
+during parsing and are not bundled; the parser supports only the Disabled
+scripting profile.
 
 Comments01, tables01, template and adoption also keep their selected separate
 evidence: typed diagnostics and every-cut feeds for comments01, tables01/1,4,6,19

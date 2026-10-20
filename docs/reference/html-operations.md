@@ -3270,11 +3270,11 @@ with independently decoded expected data, and releases consumer storage and the
 completed owner through their existing cleanup paths.
 
 The bundled [html5lib-tests subset](../../crates/surgeist-html-parser/tests/fixtures/html5lib-f994590f/tree-construction/README.md)
-at revision `f994590f528ac8b6073665791ddb1ed85c66dfb2` contains 40 complete
-tree-construction data files with 1,495 cases and 13 complete tokenizer files
+at revision `f994590f528ac8b6073665791ddb1ed85c66dfb2` contains all 56 top-level
+tree-construction data files with 1,775 cases and 13 complete tokenizer files
 with 6,806 cases. Every retained tree-construction case except the eight
-`#script-on` cases runs in both encodings: 1,311 through the completed ordinary
-parser with scripting Disabled, and all 176 `#document-fragment` cases through
+`#script-on` cases runs in both encodings: 1,575 through the completed ordinary
+parser with scripting Disabled, and all 192 `#document-fragment` cases through
 the actual captured-context fragment owner with their corpus HTML, SVG or
 MathML context. Every tokenizer case runs through the private tokenizer in each
 listed initial state, comparing tokens and ordered error codes. The [coverage

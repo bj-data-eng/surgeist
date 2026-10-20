@@ -108,20 +108,27 @@ Geoffrey Sneddon, and other contributors. Its copyright, permission notice and
 disclaimer remain unchanged in the bundled LICENSE. Preserve LICENSE and
 AUTHORS.rst with redistributed copies or substantial portions.
 
-The 40 complete tree-construction data files under
+The 56 complete tree-construction data files under
 tests/fixtures/html5lib-f994590f/tree-construction/ are adoption01.dat,
-adoption02.dat, comments01.dat, entities01.dat, entities02.dat,
-foreign-fragment.dat, namespace-sensitivity.dat, noscript01.dat, quirks01.dat,
-ruby.dat, tables01.dat, template.dat, tests1.dat–tests12.dat,
-tests14.dat–tests26.dat, tests_innerHTML_1.dat, webkit01.dat and webkit02.dat;
-with their README they contain 386,921 bytes and 1,495 cases. The 13 complete
-tokenizer files under tests/fixtures/html5lib-f994590f/tokenizer/ are
+adoption02.dat, blocks.dat, comments01.dat, doctype01.dat, domjs-unsafe.dat,
+entities01.dat, entities02.dat, foreign-fragment.dat, html5test-com.dat,
+inbody01.dat, isindex.dat, main-element.dat, math.dat, menuitem-element.dat,
+namespace-sensitivity.dat, noscript01.dat, pending-spec-changes.dat,
+pending-spec-changes-plain-text-unsafe.dat, plain-text-unsafe.dat,
+quirks01.dat, ruby.dat, scriptdata01.dat, search-element.dat, svg.dat,
+tables01.dat, template.dat, tests1.dat–tests12.dat, tests14.dat–tests26.dat,
+tests_innerHTML_1.dat, tricky01.dat, webkit01.dat and webkit02.dat, every
+top-level tree-construction file at the pinned revision; with their README
+they contain 455,970 bytes and 1,775 cases. The upstream scripted/ directory
+is not bundled.
+
+The 13 complete tokenizer files under tests/fixtures/html5lib-f994590f/tokenizer/ are
 contentModelFlags.test, domjs.test, entities.test, escapeFlag.test,
 namedEntities.test, numericEntities.test, pendingSpecChanges.test,
 test1.test–test4.test, unicodeChars.test and unicodeCharsProblematic.test;
 with their README they contain 1,649,095 bytes and 6,806 cases. Upstream
 xmlViolation.test is not bundled. Together with LICENSE and AUTHORS.rst, the
-57 files contain 2,037,579 upstream bytes, each matching its upstream git blob
+73 files contain 2,106,628 upstream bytes, each matching its upstream git blob
 SHA-1 at the pinned revision. Retaining those cases does not mean all cases
 were executed or passed.
 The [crate overview](../../docs/reference/html-operations.md#private-conformance-observation) identifies the

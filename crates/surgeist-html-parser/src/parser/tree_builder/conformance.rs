@@ -942,8 +942,9 @@ struct Attr {
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum Kind {
     Document(HtmlDocumentMode),
-    /// A document whose mode the corpus binding does not carry; its mode is
-    /// not compared (declared in the coverage matrix).
+    /// A document compared without its mode. The corpus replay binds a mode
+    /// for every retained case and fails otherwise; this kind remains for the
+    /// self-test showing that an unbound mode still compares the whole tree.
     DocumentModeNotCarried,
     Fragment,
     Element(Name, Vec<Attr>),
@@ -2114,6 +2115,88 @@ const DATA: &[(&str, &str)] = &[
             "../../../tests/fixtures/html5lib-f994590f/tree-construction/tests_innerHTML_1.dat"
         ),
     ),
+    (
+        "blocks.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/blocks.dat"),
+    ),
+    (
+        "doctype01.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/doctype01.dat"),
+    ),
+    (
+        "domjs-unsafe.dat",
+        include_str!(
+            "../../../tests/fixtures/html5lib-f994590f/tree-construction/domjs-unsafe.dat"
+        ),
+    ),
+    (
+        "html5test-com.dat",
+        include_str!(
+            "../../../tests/fixtures/html5lib-f994590f/tree-construction/html5test-com.dat"
+        ),
+    ),
+    (
+        "inbody01.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/inbody01.dat"),
+    ),
+    (
+        "isindex.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/isindex.dat"),
+    ),
+    (
+        "main-element.dat",
+        include_str!(
+            "../../../tests/fixtures/html5lib-f994590f/tree-construction/main-element.dat"
+        ),
+    ),
+    (
+        "math.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/math.dat"),
+    ),
+    (
+        "menuitem-element.dat",
+        include_str!(
+            "../../../tests/fixtures/html5lib-f994590f/tree-construction/menuitem-element.dat"
+        ),
+    ),
+    (
+        "pending-spec-changes.dat",
+        include_str!(
+            "../../../tests/fixtures/html5lib-f994590f/tree-construction/pending-spec-changes.dat"
+        ),
+    ),
+    (
+        "pending-spec-changes-plain-text-unsafe.dat",
+        include_str!(
+            "../../../tests/fixtures/html5lib-f994590f/tree-construction/pending-spec-changes-plain-text-unsafe.dat"
+        ),
+    ),
+    (
+        "plain-text-unsafe.dat",
+        include_str!(
+            "../../../tests/fixtures/html5lib-f994590f/tree-construction/plain-text-unsafe.dat"
+        ),
+    ),
+    (
+        "scriptdata01.dat",
+        include_str!(
+            "../../../tests/fixtures/html5lib-f994590f/tree-construction/scriptdata01.dat"
+        ),
+    ),
+    (
+        "search-element.dat",
+        include_str!(
+            "../../../tests/fixtures/html5lib-f994590f/tree-construction/search-element.dat"
+        ),
+    ),
+    (
+        "svg.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/svg.dat"),
+    ),
+    (
+        "tricky01.dat",
+        include_str!("../../../tests/fixtures/html5lib-f994590f/tree-construction/tricky01.dat"),
+    ),
 ];
 
 #[cfg(test)]
@@ -2223,7 +2306,7 @@ mod tests {
             }
             total += cases.len();
         }
-        assert_eq!(total, 1495);
+        assert_eq!(total, 1775);
     }
 
     #[test]
