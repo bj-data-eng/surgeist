@@ -349,14 +349,16 @@ fn receiving_types_are_item_value_paths_not_dom_ancestors() {
         Some(DocumentString::from("TypeA").code_units())
     );
 }
-#[test]
-fn shared_itemref_routes_report_each_receiver_once() {
-    // HTML877d §5.2: "the relevant types of the item for which it is a
-    // property's value". The leaf is a property value of two receiving items,
-    // so it has two independent type contexts; the many routes above each
-    // receiver are that receiver's own context and are not enumerated again.
-    // This small cycle-free document must be answered, not refused.
-    const LEVELS: usize = 16;
+/// A cycle-free document whose leaf is reached from a typed root through
+/// `levels` doubling itemref levels: two receivers, `2^levels` routes.
+struct SharedItemrefDocument {
+    capture: HtmlCapture,
+    document: HtmlCaptureSubjectId,
+    root: HtmlCaptureSubjectId,
+    receivers: Vec<HtmlCaptureSubjectId>,
+    leaf: HtmlCaptureSubjectId,
+}
+fn shared_itemref_document(levels: usize) -> SharedItemrefDocument {
     let (mut b, d) = builder();
     let root = el(
         &mut b,
@@ -370,8 +372,8 @@ fn shared_itemref_routes_report_each_receiver_once() {
     );
     let mut children = vec![root.clone()];
     let mut receivers = Vec::new();
-    for level in 0..LEVELS {
-        let next = if level + 1 == LEVELS {
+    for level in 0..levels {
+        let next = if level + 1 == levels {
             "leaf".to_owned()
         } else {
             format!("a{} b{}", level + 1, level + 1)
@@ -390,7 +392,7 @@ fn shared_itemref_routes_report_each_receiver_once() {
                 ],
             );
             cs(&mut b, &item, &[]);
-            if level + 1 == LEVELS {
+            if level + 1 == levels {
                 receivers.push(item.clone());
             }
             children.push(item);
@@ -406,24 +408,374 @@ fn shared_itemref_routes_report_each_receiver_once() {
     cs(&mut b, &leaf, &[]);
     children.push(leaf.clone());
     cs(&mut b, &d, &children);
-    let c = b.finish().unwrap();
-    let id = c.subject_id(&leaf).unwrap();
-    let r = run(&c, &context(&c), &id, HtmlSemanticQuery::MicrodataItem);
+    let capture = b.finish().unwrap();
+    SharedItemrefDocument {
+        document: capture.subject_id(&d).unwrap(),
+        root: capture.subject_id(&root).unwrap(),
+        receivers: receivers
+            .iter()
+            .map(|r| capture.subject_id(r).unwrap())
+            .collect(),
+        leaf: capture.subject_id(&leaf).unwrap(),
+        capture,
+    }
+}
+#[test]
+fn shared_itemref_routes_report_each_receiver_once() {
+    // HTML877d §5.2: "the relevant types of the item for which it is a
+    // property's value". The leaf is a property value of two receiving items,
+    // so it has two independent type contexts; the many routes above each
+    // receiver are that receiver's own context and are not enumerated again.
+    // This small cycle-free document must be answered, not refused.
+    const LEVELS: usize = 16;
+    let doc = shared_itemref_document(LEVELS);
+    let c = &doc.capture;
+    let r = run(c, &context(c), &doc.leaf, HtmlSemanticQuery::MicrodataItem);
     assert_eq!(
         item(&r).type_context().typing(),
         &HtmlMicrodataTyping::Typed
     );
     let paths = known(item(&r).type_context().paths());
     assert_eq!(paths.len(), 2);
-    for (path, receiver) in paths.iter().zip(&receivers) {
+    for (path, receiver) in paths.iter().zip(&doc.receivers) {
         let items = path.items();
         assert_eq!(items.len(), LEVELS + 2);
-        assert_eq!(items[0], id);
-        assert_eq!(items[1], c.subject_id(receiver).unwrap());
-        assert_eq!(items.last(), Some(&c.subject_id(&root).unwrap()));
+        assert_eq!(items[0], doc.leaf);
+        assert_eq!(&items[1], receiver);
+        assert_eq!(items.last(), Some(&doc.root));
         assert_eq!(
             path.types().token_units(0),
             Some(DocumentString::from("Root").code_units())
+        );
+    }
+}
+#[test]
+fn itemref_resolution_reads_ids_only_up_to_the_first_match() {
+    // HTML877d §5.2 resolves an itemref token to the first element in tree
+    // order with that ID, so an oversized ID after the match is never read
+    // while one before it stops the session at its admission.
+    for refused_before_match in [false, true] {
+        let (mut b, d) = builder();
+        let owner = el(&mut b, &d, "div", &[("itemscope", ""), ("itemref", "a")]);
+        let target = el(&mut b, &d, "p", &[("id", "a"), ("itemprop", "x")]);
+        let oversized = el(&mut b, &d, "span", &[("id", "toolong")]);
+        cs(&mut b, &owner, &[]);
+        cs(&mut b, &target, &[]);
+        cs(&mut b, &oversized, &[]);
+        let children = if refused_before_match {
+            vec![owner.clone(), oversized, target]
+        } else {
+            vec![owner.clone(), target, oversized]
+        };
+        cs(&mut b, &d, &children);
+        let c = b.finish().unwrap();
+        let cx = context(&c);
+        for (subject, query) in [
+            (
+                c.subject_id(&owner).unwrap(),
+                HtmlSemanticQuery::MicrodataItem,
+            ),
+            (
+                c.subject_id(&d).unwrap(),
+                HtmlSemanticQuery::MicrodataDocumentAuthor,
+            ),
+        ] {
+            let mut s = HtmlSemanticSession::new(
+                &c,
+                &cx,
+                HtmlValueInterpreter::new(5),
+                limits(),
+                HtmlSemanticCancellation::new(),
+            )
+            .unwrap();
+            let result = s.query(&[HtmlSemanticRequest::new(subject, query)]);
+            if refused_before_match {
+                assert!(
+                    matches!(
+                        result.unwrap_err().kind(),
+                        HtmlSemanticFailureKind::Attribute(_)
+                    ),
+                    "{query:?}"
+                );
+            } else {
+                // The itemref resolves to the target, which contributes the
+                // item's only property and so is not an orphan.
+                let r = result.unwrap();
+                match query {
+                    HtmlSemanticQuery::MicrodataItem => {
+                        assert_eq!(known(item(&r).properties()).len(), 1);
+                    }
+                    _ => assert_eq!(document(&r).orphans(), &HtmlMicrodataCondition::Satisfied),
+                }
+            }
+        }
+    }
+}
+#[test]
+fn a_later_itemref_token_stops_at_a_refused_id_before_its_match() {
+    // Each token resolves by its own tree-order scan: `a` is matched before
+    // the oversized ID, while the scan for `b` reaches that ID first.
+    let (mut b, d) = builder();
+    let owner = el(&mut b, &d, "div", &[("itemscope", ""), ("itemref", "a b")]);
+    let first = el(&mut b, &d, "p", &[("id", "a"), ("itemprop", "x")]);
+    let oversized = el(&mut b, &d, "span", &[("id", "toolong")]);
+    let second = el(&mut b, &d, "p", &[("id", "b"), ("itemprop", "y")]);
+    for leaf in [&owner, &first, &oversized, &second] {
+        cs(&mut b, leaf, &[]);
+    }
+    cs(&mut b, &d, &[owner.clone(), first, oversized, second]);
+    let c = b.finish().unwrap();
+    let cx = context(&c);
+    let mut s = HtmlSemanticSession::new(
+        &c,
+        &cx,
+        HtmlValueInterpreter::new(5),
+        limits(),
+        HtmlSemanticCancellation::new(),
+    )
+    .unwrap();
+    let request = HtmlSemanticRequest::new(
+        c.subject_id(&d).unwrap(),
+        HtmlSemanticQuery::MicrodataDocumentAuthor,
+    );
+    assert!(matches!(
+        s.query(&[request]).unwrap_err().kind(),
+        HtmlSemanticFailureKind::Attribute(_)
+    ));
+}
+fn property_subjects(r: &HtmlSemanticReport) -> Vec<HtmlCaptureSubjectId> {
+    known(item(r).properties())
+        .iter()
+        .map(|p| p.subject().clone())
+        .collect()
+}
+#[test]
+fn itemref_target_orders_before_properties_beneath_an_unavailable_ancestor() {
+    // HTML877d §5.2 sorts the properties in tree order. The item sits below
+    // G, whose ordered children are unavailable, yet its parent chain is
+    // known; T precedes G among the document's children, so the reference
+    // resolves before any gap and T precedes the item's own properties.
+    let (mut b, d) = builder();
+    let t = el(
+        &mut b,
+        &d,
+        "meta",
+        &[("id", "t"), ("itemprop", "q"), ("content", "v")],
+    );
+    let g = el(&mut b, &d, "div", &[]);
+    let i = el(&mut b, &d, "div", &[("itemscope", ""), ("itemref", "t")]);
+    let p1 = el(&mut b, &d, "meta", &[("itemprop", "p"), ("content", "1")]);
+    let p2 = el(&mut b, &d, "meta", &[("itemprop", "p"), ("content", "2")]);
+    for leaf in [&t, &p1, &p2] {
+        cs(&mut b, leaf, &[]);
+    }
+    cs(&mut b, &i, &[p1.clone(), p2.clone()]);
+    b.establish_parent(&i, &g).unwrap();
+    cs(&mut b, &d, &[t.clone(), g]);
+    let c = b.finish().unwrap();
+    let id = |s: &HtmlCaptureBuilderSubject| c.subject_id(s).unwrap();
+    let r = run(&c, &context(&c), &id(&i), HtmlSemanticQuery::MicrodataItem);
+    assert_eq!(property_subjects(&r), vec![id(&t), id(&p1), id(&p2)]);
+    assert_eq!(item(&r).revisits(), &HtmlMicrodataCondition::Satisfied);
+}
+#[test]
+fn properties_beneath_an_unavailable_ancestor_keep_their_place_inside_a_target() {
+    // Tree order is T, S, (G, I, P1), P3: the item's property P1 lies inside
+    // the scoped property S of its target T and before T's later child P3,
+    // although the walk from the document cannot enter G.
+    let (mut b, d) = builder();
+    let t = el(&mut b, &d, "div", &[("id", "t"), ("itemprop", "q")]);
+    let s = el(&mut b, &d, "div", &[("itemscope", ""), ("itemprop", "s")]);
+    let p3 = el(&mut b, &d, "meta", &[("itemprop", "p"), ("content", "3")]);
+    let g = el(&mut b, &d, "div", &[]);
+    let i = el(&mut b, &d, "div", &[("itemscope", ""), ("itemref", "t")]);
+    let p1 = el(&mut b, &d, "meta", &[("itemprop", "p"), ("content", "1")]);
+    for leaf in [&p3, &p1] {
+        cs(&mut b, leaf, &[]);
+    }
+    cs(&mut b, &i, std::slice::from_ref(&p1));
+    b.establish_parent(&i, &g).unwrap();
+    cs(&mut b, &s, std::slice::from_ref(&g));
+    cs(&mut b, &t, &[s.clone(), p3.clone()]);
+    cs(&mut b, &d, std::slice::from_ref(&t));
+    let c = b.finish().unwrap();
+    let id = |s: &HtmlCaptureBuilderSubject| c.subject_id(s).unwrap();
+    let r = run(&c, &context(&c), &id(&i), HtmlSemanticQuery::MicrodataItem);
+    assert_eq!(
+        property_subjects(&r),
+        vec![id(&t), id(&s), id(&p1), id(&p3)]
+    );
+    assert_eq!(item(&r).revisits(), &HtmlMicrodataCondition::Satisfied);
+}
+#[test]
+fn item_beneath_unavailable_children_reports_the_tree_gap() {
+    // The item's parent is known but the parent's ordered children are not,
+    // so the item graph cannot contain it and its context stays Missing.
+    let (mut b, d) = builder();
+    let item_element = el(&mut b, &d, "div", &[("itemscope", "")]);
+    cs(&mut b, &item_element, &[]);
+    b.establish_parent(&item_element, &d).unwrap();
+    let c = b.finish().unwrap();
+    let id = c.subject_id(&item_element).unwrap();
+    let r = run(&c, &context(&c), &id, HtmlSemanticQuery::MicrodataItem);
+    let missing = HtmlSemanticMissing::OrderedChildren(c.subject_id(&d).unwrap());
+    assert_eq!(
+        item(&r).type_context().typing(),
+        &HtmlMicrodataTyping::Missing(missing.clone())
+    );
+    assert_eq!(
+        item(&r).type_context().paths(),
+        &HtmlSemanticValue::Missing(missing)
+    );
+}
+/// Two untyped items with flat property sets of `count` elements: `owner` has
+/// them as children, while `referrer` names sibling elements by itemref in
+/// reverse tree order. IDs have a fixed width below 1000 elements, so only the
+/// number of properties grows.
+struct FlatPropertyDocument {
+    capture: HtmlCapture,
+    document: HtmlCaptureSubjectId,
+    owner: HtmlCaptureSubjectId,
+    owned: Vec<HtmlCaptureSubjectId>,
+    referrer: HtmlCaptureSubjectId,
+    referenced: Vec<HtmlCaptureSubjectId>,
+}
+fn flat_property_document(count: usize) -> FlatPropertyDocument {
+    let (mut b, d) = builder();
+    let owner = el(&mut b, &d, "div", &[("itemscope", "")]);
+    let tokens = (0..count)
+        .rev()
+        .map(|i| format!("t{i:03}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let referrer = el(
+        &mut b,
+        &d,
+        "div",
+        &[("itemscope", ""), ("itemref", &tokens)],
+    );
+    let owned = (0..count)
+        .map(|_| el(&mut b, &d, "meta", &[("itemprop", "p"), ("content", "v")]))
+        .collect::<Vec<_>>();
+    let referenced = (0..count)
+        .map(|i| {
+            let id = format!("t{i:03}");
+            el(
+                &mut b,
+                &d,
+                "meta",
+                &[("id", &id), ("itemprop", "q"), ("content", "v")],
+            )
+        })
+        .collect::<Vec<_>>();
+    for leaf in owned.iter().chain(&referenced).chain([&referrer]) {
+        cs(&mut b, leaf, &[]);
+    }
+    cs(&mut b, &owner, &owned);
+    let mut children = vec![owner.clone(), referrer.clone()];
+    children.extend(referenced.iter().cloned());
+    cs(&mut b, &d, &children);
+    let capture = b.finish().unwrap();
+    let ids = |subjects: &[HtmlCaptureBuilderSubject]| {
+        subjects
+            .iter()
+            .map(|s| capture.subject_id(s).unwrap())
+            .collect::<Vec<_>>()
+    };
+    FlatPropertyDocument {
+        document: capture.subject_id(&d).unwrap(),
+        owner: capture.subject_id(&owner).unwrap(),
+        owned: ids(&owned),
+        referrer: capture.subject_id(&referrer).unwrap(),
+        referenced: ids(&referenced),
+        capture,
+    }
+}
+#[test]
+fn item_and_document_queries_scale_with_the_item_graph_not_its_routes() {
+    // Doubling the levels doubles the items, edges and itemref tokens. Work
+    // proportional to the graph (up to a logarithmic search factor) grows by
+    // about 2.3; enumerating routes or scanning the whole tree for every
+    // itemref token grows by 3 or more and exhausts caller budgets on large
+    // documents. The bound is a growth property, not a pinned cost.
+    let work =
+        |levels: usize,
+         query: fn(&SharedItemrefDocument) -> (HtmlSemanticQuery, HtmlCaptureSubjectId)| {
+            let doc = shared_itemref_document(levels);
+            let (q, subject) = query(&doc);
+            let r = run(&doc.capture, &context(&doc.capture), &subject, q);
+            r.usage().work() as f64
+        };
+    let item_query = |d: &SharedItemrefDocument| (HtmlSemanticQuery::MicrodataItem, d.leaf.clone());
+    let document_query = |d: &SharedItemrefDocument| {
+        (
+            HtmlSemanticQuery::MicrodataDocumentAuthor,
+            d.document.clone(),
+        )
+    };
+    for (name, query) in [
+        ("item", item_query as fn(&SharedItemrefDocument) -> _),
+        (
+            "document",
+            document_query as fn(&SharedItemrefDocument) -> _,
+        ),
+    ] {
+        let growth = work(64, query) / work(32, query);
+        assert!(
+            growth < 2.75,
+            "{name} work grew by {growth:.2} when the graph doubled"
+        );
+    }
+    // A flat property set grows one crawl rather than the graph. Doubling the
+    // properties an item owns, or the ones it references, stays within the
+    // same logarithmic bound; a membership scan over the visited elements or
+    // a pairwise tree-order insertion grows by 4 or more.
+    let flat_work =
+        |count: usize,
+         query: fn(&FlatPropertyDocument) -> (HtmlSemanticQuery, HtmlCaptureSubjectId)| {
+            let doc = flat_property_document(count);
+            let (q, subject) = query(&doc);
+            let r = run(&doc.capture, &context(&doc.capture), &subject, q);
+            // The properties stay in tree order whatever order they are visited.
+            if matches!(q, HtmlSemanticQuery::MicrodataItem) {
+                let expected = if subject == doc.owner {
+                    &doc.owned
+                } else {
+                    &doc.referenced
+                };
+                let subjects = known(item(&r).properties())
+                    .iter()
+                    .map(|p| p.subject().clone())
+                    .collect::<Vec<_>>();
+                assert_eq!(&subjects, expected);
+            }
+            r.usage().work() as f64
+        };
+    let owner_query =
+        |d: &FlatPropertyDocument| (HtmlSemanticQuery::MicrodataItem, d.owner.clone());
+    let referrer_query =
+        |d: &FlatPropertyDocument| (HtmlSemanticQuery::MicrodataItem, d.referrer.clone());
+    let flat_document_query = |d: &FlatPropertyDocument| {
+        (
+            HtmlSemanticQuery::MicrodataDocumentAuthor,
+            d.document.clone(),
+        )
+    };
+    for (name, query) in [
+        ("owned", owner_query as fn(&FlatPropertyDocument) -> _),
+        (
+            "referenced",
+            referrer_query as fn(&FlatPropertyDocument) -> _,
+        ),
+        (
+            "flat document",
+            flat_document_query as fn(&FlatPropertyDocument) -> _,
+        ),
+    ] {
+        let growth = flat_work(128, query) / flat_work(64, query);
+        assert!(
+            growth < 2.75,
+            "{name} work grew by {growth:.2} when the property set doubled"
         );
     }
 }
