@@ -6,6 +6,8 @@
 //! side is serialized from its public parse result, so a reinterpreted
 //! combinator, a dropped declaration or a changed value fails unless the case is
 //! listed with a cited reason in `css/support/csstree/canonical_exceptions.rs`.
+//! Each listed case also pins the Surgeist form its reason requires, so a
+//! different wrong serialization of an excepted case still fails.
 
 use crate::css::support;
 

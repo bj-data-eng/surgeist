@@ -12,16 +12,18 @@
 //! pass through one documented [`normalize`] step that removes only differences
 //! between two canonical generators. Combinators, retained declarations, values
 //! and rule structure remain significant. Mismatches must be listed in
-//! [`EXCEPTIONS`] with their kind and reason; stale exceptions also fail.
+//! [`EXCEPTIONS`] with their kind, reason and pinned expected Surgeist form;
+//! an excepted case whose serialization differs from its pinned form fails, as
+//! does a stale exception.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use cssparser::{Parser, ParserInput, Token as CssToken};
 
 use super::{
-    Adapter, EntryPoint, ExpectedClass, ExpectedUnsupportedPolicy, PropertyOrDescriptor, REGISTRY,
-    UpstreamOutcome, ValidatedCase, corpus_namespace_context, load_neutral_csstree_inventory,
-    resolve_case_registry,
+    Adapter, CssRecoveryActionName, EntryPoint, ExpectedClass, ExpectedUnsupportedPolicy,
+    PropertyOrDescriptor, REGISTRY, SyntaxCount, UpstreamOutcome, ValidatedCase,
+    corpus_namespace_context, load_neutral_csstree_inventory, resolve_case_registry,
 };
 use surgeist_css::{
     CssImportance, CssMediaSerializationError, CssPropertyNameRef, CssStyleSelector,
@@ -48,12 +50,17 @@ impl CanonicalExceptionKind {
     }
 }
 
-/// One explicit per-case difference with its one-line reason.
+/// One explicit per-case difference with its one-line reason and the
+/// Surgeist form that reason requires.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CanonicalException {
     id: &'static str,
     kind: CanonicalExceptionKind,
     reason: &'static str,
+    /// The expected Surgeist serialization in [`normalize`] rendering, or with
+    /// the whitespace that rendering would lose between tokens. It is compared
+    /// token by token with the actual serialization.
+    surgeist: &'static str,
 }
 
 #[path = "canonical_exceptions.rs"]
@@ -68,8 +75,11 @@ pub(crate) enum CanonicalExclusion {
     /// fixtures are the exception: they are projected through the public
     /// selector parser whatever their observation policy.
     NoPublicProjection,
-    /// The public parser rejects the whole input and retains no syntax. The
-    /// CSS-owned expected class records the strict rejection and its basis.
+    /// The public parser rejects the whole input and retains no syntax, and
+    /// the CSS-owned expected class records that whole-input rejection and its
+    /// basis: empty retained syntax with a `RejectInput` diagnostic, as a strict
+    /// rejection or a fully observed unsupported disposition. Retaining nothing
+    /// under any other expected class fails the comparison.
     NoRetainedSyntax,
 }
 
@@ -158,6 +168,13 @@ pub(crate) fn compare_csstree_canonical_forms() -> Result<CanonicalSummary, Vec<
                 listed.id,
                 listed.kind.name()
             )),
+            (false, Some(listed)) if !canonically_equal(&serialized, listed.surgeist) => failures
+                .push(format!(
+                    "{}: surgeist `{surgeist}` != pinned {} form `{}` (upstream `{upstream}`, serialized `{serialized}`)",
+                    listed.id,
+                    listed.kind.name(),
+                    listed.surgeist
+                )),
             (false, Some(listed)) => {
                 entry.1 += 1;
                 used.insert(listed.id);
@@ -205,6 +222,19 @@ fn exception_index(
         }
         if listed.reason.trim().is_empty() {
             failures.push(format!("{}: exception has no reason", listed.id));
+        }
+        // Pins are written as `normalize` renders them, so messages and pins
+        // read alike and a pin cannot hide trivia the comparison ignores. A pin
+        // differs from its rendering only where the rendering would tokenize
+        // differently, such as `1%+1.5em`, where `+1.5em` is a signed number,
+        // so a pin may keep only the whitespace or comment that separates
+        // tokens.
+        let rendered = normalize(listed.surgeist);
+        if rendered != listed.surgeist && canonically_equal(&rendered, listed.surgeist) {
+            failures.push(format!(
+                "{}: pinned form `{}` is not in normalized rendering `{rendered}`",
+                listed.id, listed.surgeist
+            ));
         }
         previous = Some(listed.id);
         index.insert(listed.id, listed);
@@ -387,8 +417,45 @@ fn project(case: &ValidatedCase) -> Result<Projection, String> {
             surgeist: String::new(),
             upstream,
         },
-        None => Projection::Excluded(CanonicalExclusion::NoRetainedSyntax),
+        None if records_whole_input_rejection(expected) => {
+            Projection::Excluded(CanonicalExclusion::NoRetainedSyntax)
+        }
+        None => {
+            return Err(format!(
+                "public parser retained no syntax, but the expected class is not a whole-input rejection: {expected:?}"
+            ));
+        }
     })
+}
+
+/// Whether the CSS-owned expected class requires the public parser to reject
+/// the whole input: it retains no syntax and expects a `RejectInput`
+/// diagnostic, either as a strict rejection or as a fully observed unsupported
+/// disposition (outside the selected profile, vendor syntax, or an upstream
+/// option without a public equivalent).
+fn records_whole_input_rejection(expected: &ExpectedClass) -> bool {
+    let (retained_syntax, diagnostics) = match expected {
+        ExpectedClass::StrictRejected {
+            retained_syntax,
+            diagnostics,
+        }
+        | ExpectedClass::Unsupported {
+            policy:
+                ExpectedUnsupportedPolicy::FullObservation {
+                    retained_syntax,
+                    is_clean: false,
+                    diagnostics,
+                },
+            ..
+        } => (retained_syntax, diagnostics),
+        _ => return false,
+    };
+    matches!(
+        retained_syntax.predicate,
+        SyntaxCount::Empty | SyntaxCount::Exact { value: 0 }
+    ) && diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.action == CssRecoveryActionName::RejectInput)
 }
 
 /// Normalizes canonical CSS text from either generator.

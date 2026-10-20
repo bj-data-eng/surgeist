@@ -79,11 +79,19 @@ rejection there is compared as empty output and needs its own cited exception.
 
 Of the 721 upstream-parsed cases, 468 are compared: 298 match and 170 are
 listed in [`canonical_exceptions.rs`](../../css/support/csstree/canonical_exceptions.rs)
-as deliberate differences with a cited reason, or as known defects. The other
+as deliberate differences with a cited reason, or as known defects. Each
+exception also pins its expected Surgeist form in the normalized rendering, and
+the actual serialization must equal that form token by token, so a different
+wrong serialization of an excepted case fails. Each pinned form was checked
+against its reason, not only captured from the parser. The other
 253 have no public projection (92 panic-freedom-only value and prelude cases)
-or retain no syntax after a whole-input rejection (161 cases, whose basis the
-expected classes record). A listed case that starts matching fails the
-comparison, matched exactly by case ID.
+or retain no syntax after a whole-input rejection (161 cases). A case is
+excluded as a whole-input rejection only when its expected class records one:
+empty retained syntax with a `RejectInput` diagnostic, as a strict rejection
+(142 cases) or a fully observed unsupported disposition (19 outside-profile,
+vendor or upstream-option cases). Retaining nothing under any other class
+fails. A listed case that starts matching fails the comparison, matched exactly
+by case ID.
 
 Some matches show only that retained tokens replay faithfully, because Surgeist
 keeps those values as tokens rather than typed syntax: custom properties,
