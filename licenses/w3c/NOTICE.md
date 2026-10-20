@@ -468,6 +468,14 @@ Copyright © 2021 W3C® (MIT, ERCIM, Keio, Beihang). W3C liability, trademark an
 
 ### CSS Syntax Module Level 3
 
+* Bundled copy: [css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md](../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md), with 28 passive railroad SVG assets extracted from the captured page
+* Original: [CSS Syntax Module Level 3](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/)
+* License: [software-license-2023](software-license-2023.txt)
+
+Copyright © 2026 World Wide Web Consortium. W3C® liability, trademark and permissive document license rules apply.
+
+### CSS Syntax Module Level 3
+
 * Bundled copy: [css-syntax-3-block-contents-definition--f971255463f01fb740e2a3a7ecfe83e319cddab9--Overview.bs--b3b69f509779.md](../../references/css-syntax-3-block-contents-definition--f971255463f01fb740e2a3a7ecfe83e319cddab9--Overview.bs--b3b69f509779.md)
 * Original: [CSS Syntax Module Level 3](https://raw.githubusercontent.com/w3c/csswg-drafts/f971255463f01fb740e2a3a7ecfe83e319cddab9/css-syntax-3/Overview.bs)
 * License: [software-license-2023](software-license-2023.txt)

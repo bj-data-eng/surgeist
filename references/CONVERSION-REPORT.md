@@ -1163,3 +1163,41 @@ No source scripts were executed. Other methods and event algorithms lie outside 
 The dated source, bounded native selection and explicit project retirement
 policy remain distinct. The [W3C attribution](../licenses/w3c/NOTICE.md#native-range-association-source)
 and complete local license accompany the conversion.
+
+## CSS Syntax 3 Candidate Recommendation Draft — 2026-10-20
+
+The [full conversion](css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md)
+captures the [1 October 2026 Candidate Recommendation Draft](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/),
+retrieved 2026-10-20. Original HTML SHA-256:
+`8dc3adcc2b4e8fd8fa73c0be85cec67f006874ab42010cdf4528af4aa83f2878`
+(657,320 bytes); declared source revision
+`4726b9562bc1a9679b4aacb68318e9b19c889fa8`.
+
+The tracked [html-to-markdown tools](tools/html-to-markdown/README.md) ran with
+Pandoc 3.1.11.1 from the verified release archive (SHA-256
+`fa38ad91d8f1f09549ae16830ade3a26650b03cb9a29c68b41b55ea7fab0aa2d`) and
+lxml 6.1.1 on Python 3.14.6, not the Python 3.12.14 of the earlier
+environment. No source scripts were executed. Verification passes for all
+1,407 body IDs, 21 literal blocks, the 12-by-13 token table, headings, inline
+code, variables, resolved links and whole-text order.
+
+Three tool changes support this source, and the
+[CSSOM planning capture](#cssom-planning-reference-refresh--2026-10-09) still
+reproduces byte-identically with them:
+
+- A dated publication is named by its edition label.
+- The 28 inline railroad diagrams become passive SVG assets under
+  `assets/`. Each keeps its source element tree, with SVG names restored to
+  exact case, and the capture's railroad stylesheet with light-theme custom
+  properties resolved. Verification compares each asset with its source SVG,
+  and each image is followed by its diagram text.
+- Pandoc 3.1.11.1's GFM writer mangles a backslash before ASCII punctuation
+  (`(\)` becomes `(\\`), so such text is written as character entities.
+
+The candidate writer takes this capture's selection, stability and report
+notes from `candidate-options.json`: `report_anchor` is this section, the
+stability note states that this is a dated publication identified by its byte
+hash, and the selection note names this edition as the selected Syntax 3
+reference superseding the 2021 draft. The [W3C attribution](../licenses/w3c/NOTICE.md)
+and the 2023 software and document license accompany the conversion.
+

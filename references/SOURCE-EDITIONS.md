@@ -28,12 +28,43 @@ Rows below distinguish the Snapshot bibliography from current selected/provenanc
 | Fonts 4 | [WD-css-fonts-4-20260422](https://www.w3.org/TR/2026/WD-css-fonts-4-20260422/); [local copy](css-fonts-4--WD-css-fonts-4-20260422--fbcd4e298b4c.md) | [WD-css-fonts-4-20260907](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/); [local copy](css-fonts-4--WD-css-fonts-4-20260907--03626a0c8565.md) | Most font-property dispatch, including font-palette, names I_FONTS4_20260907; I_FONTS4 still occurs in a descriptor record. Preserve both editions. [dispatch](https://github.com/bj-data-eng/surgeist/blob/104bff510075d1acb59c23bb9491c7a368b7d05a/crates/surgeist-css/src/conformance.rs#L2565-L2591), [older record](https://github.com/bj-data-eng/surgeist/blob/104bff510075d1acb59c23bb9491c7a368b7d05a/crates/surgeist-css/src/conformance.rs#L4389-L4400). |
 | Text 3 | [CRD-css-text-3-20240930](https://www.w3.org/TR/2024/CRD-css-text-3-20240930/); [local copy](css-text-3--CRD-css-text-3-20240930--61d133c34716.md) | [CRD-css-text-3-20260814](https://www.w3.org/TR/2026/CRD-css-text-3-20260814/); [local copy](css-text-3--CRD-css-text-3-20260814--17c26f1b4145.md) | S_TEXT3 and the catalog select August 2026; overflow-wrap dispatch names S_TEXT3. [source](https://github.com/bj-data-eng/surgeist/blob/104bff510075d1acb59c23bb9491c7a368b7d05a/crates/surgeist-css/src/conformance.rs#L974-L982), [dispatch](https://github.com/bj-data-eng/surgeist/blob/104bff510075d1acb59c23bb9491c7a368b7d05a/crates/surgeist-css/src/conformance.rs#L2642). |
 | Text 4 | [WD-css-text-4-20240529](https://www.w3.org/TR/2024/WD-css-text-4-20240529/); [local copy](css-text-4--WD-css-text-4-20240529--be6e92f95bd4.md) | [WD-css-text-4-20260814](https://www.w3.org/TR/2026/WD-css-text-4-20260814/); [local copy](css-text-4--WD-css-text-4-20260814--106c5cd086ab.md) | The Snapshot section 4 edition and current extension edition remain distinct; X_TEXT4 names August 2026. [dispatch](https://github.com/bj-data-eng/surgeist/blob/104bff510075d1acb59c23bb9491c7a368b7d05a/crates/surgeist-css/src/conformance.rs#L2643-L2675). |
+| Syntax 3 | [CRD-css-syntax-3-20211224](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/); [local copy](css-syntax-3--CRD-css-syntax-3-20211224--413b27acb4e1.md) | [CRD-css-syntax-3-20261001](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/); [local copy](css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md) | Selected 2026-10-20; see [CSS Syntax 3 edition](#css-syntax-3-edition). |
 
 Three implemented choices must remain visible beside those edition rows:
 
 - `palette-mix()` follows [Fonts 4, 2026-09-07 §9.1](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-palette-prop), beyond the April Snapshot grammar. [The implemented reference](../crates/surgeist-css/docs/reference.md#authored-font-palette) records the same edition.
 - Extended `text-shadow` is attributed to [Text Decoration 4, 2022-05-04](https://www.w3.org/TR/2022/WD-css-text-decor-4-20220504/#text-shadow-property), alongside the Snapshot's Text Decoration 3 baseline. [The dispatch](https://github.com/bj-data-eng/surgeist/blob/104bff510075d1acb59c23bb9491c7a368b7d05a/crates/surgeist-css/src/conformance.rs#L2676-L2694) and [parser](https://github.com/bj-data-eng/surgeist/blob/104bff510075d1acb59c23bb9491c7a368b7d05a/crates/surgeist-css/src/parser/text_decoration.rs#L213-L239) are evidence of this module difference.
 - `grid-auto-flow` has a symbolic `normal` initial rather than the frozen [Grid 2 `row` initial](https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#grid-auto-flow-property). The existing [implementation reference](../crates/surgeist-css/docs/reference.md#authored-grid-repetition-and-keyframe-structure) expressly cites [frozen WebKit](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/CSSProperties.json#L11479) and the unresolved [Grid 3 orientation issue](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#grid-lanes-orientation). Keep Grid 1/2 baseline, Grid 3 source, and browser witness separate; this is a recorded product/source difference.
+
+## CSS Syntax 3 edition
+
+The [1 October 2026 Candidate Recommendation Draft](css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md)
+is the selected CSS Syntax 3 edition from 2026-10-20 ([#1328](https://github.com/bj-data-eng/surgeist/issues/1328)).
+It supersedes the [24 December 2021 draft](css-syntax-3--CRD-css-syntax-3-20211224--413b27acb4e1.md),
+which remains the Snapshot baseline and the source of citations not yet moved.
+
+The selection was made to settle semicolon recovery in blocks. The 2026 draft
+parses every block with "consume a block's contents", which discards a
+`<semicolon-token>`, so `@media screen { ; .lost {} }` keeps `.lost`. A
+top-level stylesheet still consumes a qualified rule for anything other than
+whitespace, CDO/CDC and an at-keyword. The pinned WebKit
+`CSSParser::consumeRuleList` still follows the 2021 behavior; it is a lagging
+witness, not the governing text; this was read in the local WebKit checkout
+at the preferred pin `73aa6c89e2cb`, which is not retained here. The editor's
+draft dated 16 October 2026, read on 2026-10-20 and not retained, lists one
+change since this draft, replacing "parse a block's contents" with "parse a
+list of declarations"; it is not selected.
+
+The move is staged. Behavior and citations that depend on other differences
+between the two drafts move with failing tests first, under [#1356](https://github.com/bj-data-eng/surgeist/issues/1356).
+Until then a citation of the 2021 draft is accurate where the two drafts
+agree. The [catalog](../crates/surgeist-css/specs/catalog.json) records the
+2026 draft as the `block-contents-parsing-2026` definition; its Syntax 3
+module record stays on the 2021 publication until the CSSTree reconciliation
+records, which assert that publication, are re-audited against the 2026
+edition. The [block-contents import](css-syntax-3-block-contents-definition--f971255463f01fb740e2a3a7ecfe83e319cddab9--Overview.bs--b3b69f509779.md)
+for Nesting and Conditional stays until that audit reconciles it with this
+edition.
 
 ## Importer-selected witnesses
 

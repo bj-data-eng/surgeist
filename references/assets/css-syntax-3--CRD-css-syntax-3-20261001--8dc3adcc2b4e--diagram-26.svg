@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="railroad-diagram" height="122" viewBox="0 0 267.5 122" width="267.5" color="black">
+       <style type="text/css">svg.railroad-diagram {
+background-color: hsl(30, 20%, 95%);
+}
+svg.railroad-diagram path {
+stroke-width:3px;
+stroke: black;
+fill:transparent;
+}
+svg.railroad-diagram text {
+font: bold 14px monospace;
+fill: currentcolor;
+text-anchor:middle;
+}
+svg.railroad-diagram text.label {
+text-anchor:start;
+}
+svg.railroad-diagram text.comment {
+font:italic 12px monospace;
+}
+svg.railroad-diagram rect {
+stroke-width:3px;
+stroke: black;
+fill: hsl(120,100%,90%);
+}</style><g transform="translate(.5 .5)">
+        <g>
+         <path d="M20 21v20m10 -20v20m-10 -10h20"/>
+        </g>
+        <g>
+         <path d="M40 31h0.0"/>
+         <path d="M227.5 31h0.0"/>
+         <path d="M40.0 31h20"/>
+         <g class="non-terminal">
+          <path d="M60.0 31h0.0"/>
+          <path d="M207.5 31h0.0"/>
+          <rect height="22" width="147.5" x="60" y="20"/>
+          <text x="133.75" y="35">Preserved token</text>
+         </g>
+         <path d="M207.5 31h20"/>
+         <path d="M40.0 31a10 10 0 0 1 10 10v10a10 10 0 0 0 10 10"/>
+         <g class="non-terminal">
+          <path d="M60.0 61h12.75"/>
+          <path d="M194.75 61h12.75"/>
+          <rect height="22" width="122" x="72.75" y="50"/>
+          <text x="133.75" y="65">Simple block</text>
+         </g>
+         <path d="M207.5 61a10 10 0 0 0 10 -10v-10a10 10 0 0 1 10 -10"/>
+         <path d="M40.0 31a10 10 0 0 1 10 10v40a10 10 0 0 0 10 10"/>
+         <g class="non-terminal">
+          <path d="M60.0 91h4.25"/>
+          <path d="M203.25 91h4.25"/>
+          <rect height="22" width="139" x="64.25" y="80"/>
+          <text x="133.75" y="95">Function block</text>
+         </g>
+         <path d="M207.5 91a10 10 0 0 0 10 -10v-40a10 10 0 0 1 10 -10"/>
+        </g>
+        <path d="M 227.5 31 h 20 m -10 -10 v 20 m 10 -20 v 20"/>
+       </g>
+      </svg>
