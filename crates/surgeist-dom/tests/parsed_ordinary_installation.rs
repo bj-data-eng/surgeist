@@ -3652,6 +3652,43 @@ fn parsed_meta_history_survives_report_release_and_later_native_insertion_update
 }
 
 #[test]
+fn parsed_default_style_installs_structure_with_pending_association_processing() {
+    // Preferred-set execution belongs to the association owner. Complete
+    // original capture may transfer structurally while that execution is pending.
+    let report = parse(HtmlSource::utf8(
+        "<!doctype html><meta http-equiv=default-style content=chosen><p>retained",
+    ));
+    let (mut dom, environment) = setup();
+    let before = dom.snapshot().stamp();
+    let installed = dom
+        .install_parsed_html_document(
+            before,
+            report,
+            environment,
+            limits(),
+            &AtomicBool::new(false),
+        )
+        .expect("complete preferred-style capture permits pending structural transfer");
+    assert_eq!(
+        installed.association_readiness(),
+        DomParsedHtmlAssociationReadiness::Pending
+    );
+    assert_ne!(installed.snapshot().stamp(), before);
+    let meta = element(&installed, "meta");
+    assert_eq!(
+        installed
+            .snapshot()
+            .node(meta)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .attribute(&"content".into()),
+        Some(&DocumentString::from("chosen"))
+    );
+    assert!(installed.snapshot().document(installed.document()).is_ok());
+}
+
+#[test]
 fn every_unavailable_meta_domain_refuses_after_independent_history_without_publishing() {
     use surgeist_html_parser::HtmlParseMetaMissingKind as Missing;
     for (literal, expected) in [
