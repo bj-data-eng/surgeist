@@ -543,6 +543,70 @@ fn a_later_itemref_token_stops_at_a_refused_id_before_its_match() {
         HtmlSemanticFailureKind::Attribute(_)
     ));
 }
+fn property_subjects(r: &HtmlSemanticReport) -> Vec<HtmlCaptureSubjectId> {
+    known(item(r).properties())
+        .iter()
+        .map(|p| p.subject().clone())
+        .collect()
+}
+#[test]
+fn itemref_target_orders_before_properties_beneath_an_unavailable_ancestor() {
+    // HTML877d §5.2 sorts the properties in tree order. The item sits below
+    // G, whose ordered children are unavailable, yet its parent chain is
+    // known; T precedes G among the document's children, so the reference
+    // resolves before any gap and T precedes the item's own properties.
+    let (mut b, d) = builder();
+    let t = el(
+        &mut b,
+        &d,
+        "meta",
+        &[("id", "t"), ("itemprop", "q"), ("content", "v")],
+    );
+    let g = el(&mut b, &d, "div", &[]);
+    let i = el(&mut b, &d, "div", &[("itemscope", ""), ("itemref", "t")]);
+    let p1 = el(&mut b, &d, "meta", &[("itemprop", "p"), ("content", "1")]);
+    let p2 = el(&mut b, &d, "meta", &[("itemprop", "p"), ("content", "2")]);
+    for leaf in [&t, &p1, &p2] {
+        cs(&mut b, leaf, &[]);
+    }
+    cs(&mut b, &i, &[p1.clone(), p2.clone()]);
+    b.establish_parent(&i, &g).unwrap();
+    cs(&mut b, &d, &[t.clone(), g]);
+    let c = b.finish().unwrap();
+    let id = |s: &HtmlCaptureBuilderSubject| c.subject_id(s).unwrap();
+    let r = run(&c, &context(&c), &id(&i), HtmlSemanticQuery::MicrodataItem);
+    assert_eq!(property_subjects(&r), vec![id(&t), id(&p1), id(&p2)]);
+    assert_eq!(item(&r).revisits(), &HtmlMicrodataCondition::Satisfied);
+}
+#[test]
+fn properties_beneath_an_unavailable_ancestor_keep_their_place_inside_a_target() {
+    // Tree order is T, S, (G, I, P1), P3: the item's property P1 lies inside
+    // the scoped property S of its target T and before T's later child P3,
+    // although the walk from the document cannot enter G.
+    let (mut b, d) = builder();
+    let t = el(&mut b, &d, "div", &[("id", "t"), ("itemprop", "q")]);
+    let s = el(&mut b, &d, "div", &[("itemscope", ""), ("itemprop", "s")]);
+    let p3 = el(&mut b, &d, "meta", &[("itemprop", "p"), ("content", "3")]);
+    let g = el(&mut b, &d, "div", &[]);
+    let i = el(&mut b, &d, "div", &[("itemscope", ""), ("itemref", "t")]);
+    let p1 = el(&mut b, &d, "meta", &[("itemprop", "p"), ("content", "1")]);
+    for leaf in [&p3, &p1] {
+        cs(&mut b, leaf, &[]);
+    }
+    cs(&mut b, &i, std::slice::from_ref(&p1));
+    b.establish_parent(&i, &g).unwrap();
+    cs(&mut b, &s, std::slice::from_ref(&g));
+    cs(&mut b, &t, &[s.clone(), p3.clone()]);
+    cs(&mut b, &d, std::slice::from_ref(&t));
+    let c = b.finish().unwrap();
+    let id = |s: &HtmlCaptureBuilderSubject| c.subject_id(s).unwrap();
+    let r = run(&c, &context(&c), &id(&i), HtmlSemanticQuery::MicrodataItem);
+    assert_eq!(
+        property_subjects(&r),
+        vec![id(&t), id(&s), id(&p1), id(&p3)]
+    );
+    assert_eq!(item(&r).revisits(), &HtmlMicrodataCondition::Satisfied);
+}
 #[test]
 fn item_beneath_unavailable_children_reports_the_tree_gap() {
     // The item's parent is known but the parent's ordered children are not,
@@ -563,6 +627,69 @@ fn item_beneath_unavailable_children_reports_the_tree_gap() {
         item(&r).type_context().paths(),
         &HtmlSemanticValue::Missing(missing)
     );
+}
+/// Two untyped items with flat property sets of `count` elements: `owner` has
+/// them as children, while `referrer` names sibling elements by itemref in
+/// reverse tree order. IDs have a fixed width below 1000 elements, so only the
+/// number of properties grows.
+struct FlatPropertyDocument {
+    capture: HtmlCapture,
+    document: HtmlCaptureSubjectId,
+    owner: HtmlCaptureSubjectId,
+    owned: Vec<HtmlCaptureSubjectId>,
+    referrer: HtmlCaptureSubjectId,
+    referenced: Vec<HtmlCaptureSubjectId>,
+}
+fn flat_property_document(count: usize) -> FlatPropertyDocument {
+    let (mut b, d) = builder();
+    let owner = el(&mut b, &d, "div", &[("itemscope", "")]);
+    let tokens = (0..count)
+        .rev()
+        .map(|i| format!("t{i:03}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let referrer = el(
+        &mut b,
+        &d,
+        "div",
+        &[("itemscope", ""), ("itemref", &tokens)],
+    );
+    let owned = (0..count)
+        .map(|_| el(&mut b, &d, "meta", &[("itemprop", "p"), ("content", "v")]))
+        .collect::<Vec<_>>();
+    let referenced = (0..count)
+        .map(|i| {
+            let id = format!("t{i:03}");
+            el(
+                &mut b,
+                &d,
+                "meta",
+                &[("id", &id), ("itemprop", "q"), ("content", "v")],
+            )
+        })
+        .collect::<Vec<_>>();
+    for leaf in owned.iter().chain(&referenced).chain([&referrer]) {
+        cs(&mut b, leaf, &[]);
+    }
+    cs(&mut b, &owner, &owned);
+    let mut children = vec![owner.clone(), referrer.clone()];
+    children.extend(referenced.iter().cloned());
+    cs(&mut b, &d, &children);
+    let capture = b.finish().unwrap();
+    let ids = |subjects: &[HtmlCaptureBuilderSubject]| {
+        subjects
+            .iter()
+            .map(|s| capture.subject_id(s).unwrap())
+            .collect::<Vec<_>>()
+    };
+    FlatPropertyDocument {
+        document: capture.subject_id(&d).unwrap(),
+        owner: capture.subject_id(&owner).unwrap(),
+        owned: ids(&owned),
+        referrer: capture.subject_id(&referrer).unwrap(),
+        referenced: ids(&referenced),
+        capture,
+    }
 }
 #[test]
 fn item_and_document_queries_scale_with_the_item_graph_not_its_routes() {
@@ -597,6 +724,58 @@ fn item_and_document_queries_scale_with_the_item_graph_not_its_routes() {
         assert!(
             growth < 2.75,
             "{name} work grew by {growth:.2} when the graph doubled"
+        );
+    }
+    // A flat property set grows one crawl rather than the graph. Doubling the
+    // properties an item owns, or the ones it references, stays within the
+    // same logarithmic bound; a membership scan over the visited elements or
+    // a pairwise tree-order insertion grows by 4 or more.
+    let flat_work =
+        |count: usize,
+         query: fn(&FlatPropertyDocument) -> (HtmlSemanticQuery, HtmlCaptureSubjectId)| {
+            let doc = flat_property_document(count);
+            let (q, subject) = query(&doc);
+            let r = run(&doc.capture, &context(&doc.capture), &subject, q);
+            // The properties stay in tree order whatever order they are visited.
+            if matches!(q, HtmlSemanticQuery::MicrodataItem) {
+                let expected = if subject == doc.owner {
+                    &doc.owned
+                } else {
+                    &doc.referenced
+                };
+                let subjects = known(item(&r).properties())
+                    .iter()
+                    .map(|p| p.subject().clone())
+                    .collect::<Vec<_>>();
+                assert_eq!(&subjects, expected);
+            }
+            r.usage().work() as f64
+        };
+    let owner_query =
+        |d: &FlatPropertyDocument| (HtmlSemanticQuery::MicrodataItem, d.owner.clone());
+    let referrer_query =
+        |d: &FlatPropertyDocument| (HtmlSemanticQuery::MicrodataItem, d.referrer.clone());
+    let flat_document_query = |d: &FlatPropertyDocument| {
+        (
+            HtmlSemanticQuery::MicrodataDocumentAuthor,
+            d.document.clone(),
+        )
+    };
+    for (name, query) in [
+        ("owned", owner_query as fn(&FlatPropertyDocument) -> _),
+        (
+            "referenced",
+            referrer_query as fn(&FlatPropertyDocument) -> _,
+        ),
+        (
+            "flat document",
+            flat_document_query as fn(&FlatPropertyDocument) -> _,
+        ),
+    ] {
+        let growth = flat_work(128, query) / flat_work(64, query);
+        assert!(
+            growth < 2.75,
+            "{name} work grew by {growth:.2} when the property set doubled"
         );
     }
 }

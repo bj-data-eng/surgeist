@@ -1475,12 +1475,21 @@ enum EdgeEnd {
     From,
     To,
 }
+/// Indexes of one ordinary tree, built lazily and shared by every crawl that
+/// is bounded by that tree: the crawls of one item graph, or a single crawl.
+struct CrawlIndexes<'a> {
+    /// The indexed tree's root. A single crawl indexes its own bound, while a
+    /// graph fixes its own tree. Positions serve every crawl within the tree;
+    /// IDs serve only a crawl whose itemref bound is that tree.
+    tree: Option<HtmlCaptureSubjectId>,
+    ids: Option<IdIndex<'a>>,
+    positions: Option<PositionIndex>,
+}
 /// IDs of one ordinary tree sorted by value, ties kept in tree order. Each
 /// entry keeps the first coverage gap met before it, and the index keeps the
 /// first ID the interpreter would refuse, so a lookup answers exactly as a
 /// tree-order scan from the root would, including where that scan would stop.
 struct IdIndex<'a> {
-    root: HtmlCaptureSubjectId,
     entries: Vec<IdEntry<'a>>,
     missing: Option<HtmlSemanticMissing>,
     refused: Option<(usize, HtmlValueAdmissionError)>,
@@ -1490,6 +1499,38 @@ struct IdEntry<'a> {
     order: usize,
     subject: HtmlCaptureSubjectId,
     missing: Option<HtmlSemanticMissing>,
+}
+/// Tree-order positions from one ordinary walk, as `(ordinal, position)`
+/// sorted by capture ordinal. Positions are ranks in walk order, so they order
+/// the walked subjects as the tree does. Only possible properties (elements
+/// with an `itemprop` attribute) and nodes whose ordered children are
+/// unavailable are recorded; the latter stand for their unwalked subtrees.
+struct PositionIndex {
+    positions: Vec<(usize, usize)>,
+}
+impl PositionIndex {
+    fn get(&self, id: &HtmlCaptureSubjectId) -> Option<usize> {
+        self.positions
+            .binary_search_by_key(&id.ordinal(), |&(ordinal, _)| ordinal)
+            .ok()
+            .map(|at| self.positions[at].1)
+    }
+}
+/// Tree-order key of a crawled property: its walked position, or for a
+/// property beneath the walk's gap `anchor`, the anchor's position followed by
+/// its position in the separate walk of the crawled item.
+fn md_tree_key(
+    walked: &PositionIndex,
+    beneath: Option<(&PositionIndex, usize)>,
+    id: &HtmlCaptureSubjectId,
+) -> Option<(usize, usize)> {
+    match walked.get(id) {
+        Some(position) => Some((position, 0)),
+        None => {
+            let (local, anchor) = beneath?;
+            Some((anchor, local.get(id)? + 1))
+        }
+    }
 }
 #[derive(Clone, Copy)]
 enum UrlUse {
@@ -1602,19 +1643,6 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         self.charge(work)
     }
-    fn md_contains(
-        &mut self,
-        ids: &[HtmlCaptureSubjectId],
-        id: &HtmlCaptureSubjectId,
-    ) -> Result<bool, HtmlSemanticFailure> {
-        for other in ids {
-            self.charge(1)?;
-            if other == id {
-                return Ok(true);
-            }
-        }
-        Ok(false)
-    }
     fn md_push<T>(&mut self, values: &mut Vec<T>, value: T) -> Result<(), HtmlSemanticFailure> {
         self.reserve_scratch(values, 1)?;
         self.charge(1)?;
@@ -1690,7 +1718,6 @@ impl<'a> HtmlSemanticSession<'a> {
         root: &HtmlCaptureSubjectId,
     ) -> Result<IdIndex<'a>, HtmlSemanticFailure> {
         let mut index = IdIndex {
-            root: root.clone(),
             entries: Vec::new(),
             missing: None,
             refused: None,
@@ -1774,116 +1801,187 @@ impl<'a> HtmlSemanticSession<'a> {
             },
         })
     }
-    fn md_path(
-        &mut self,
-        id: &HtmlCaptureSubjectId,
-        bound: &HtmlCaptureSubjectId,
-        out: &mut Vec<HtmlCaptureSubjectId>,
-    ) -> Result<Option<HtmlSemanticMissing>, HtmlSemanticFailure> {
-        let mut at = id.clone();
-        loop {
-            self.md_push(out, at.clone())?;
-            if &at == bound {
-                return Ok(None);
-            }
-            let node = self.node(&at)?;
-            match self.parent(node)? {
-                Ok(Some(p)) => at = p,
-                Ok(None) => return Ok(Some(self.md_missing(id))),
-                Err(m) => return Ok(Some(m)),
-            }
+    fn md_release_crawl_indexes(&mut self, indexes: &CrawlIndexes<'a>) {
+        if let Some(index) = &indexes.ids {
+            self.md_release_id_index(index);
+        }
+        if let Some(index) = &indexes.positions {
+            self.release_scratch(index.positions.capacity());
         }
     }
-    fn md_before(
+    /// Record tree-order positions over the ordinary walk from `root`.
+    fn md_position_index(
         &mut self,
-        left: &HtmlCaptureSubjectId,
-        right: &HtmlCaptureSubjectId,
-        bound: &HtmlCaptureSubjectId,
-    ) -> Result<Result<bool, HtmlSemanticMissing>, HtmlSemanticFailure> {
-        let mut a = Vec::new();
-        let mut b = Vec::new();
+        root: &HtmlCaptureSubjectId,
+    ) -> Result<PositionIndex, HtmlSemanticFailure> {
+        let mut index = PositionIndex {
+            positions: Vec::new(),
+        };
+        let mut frames = Vec::new();
         let result = (|| {
-            if let Some(m) = self.md_path(left, bound, &mut a)? {
-                return Ok(Err(m));
-            }
-            if let Some(m) = self.md_path(right, bound, &mut b)? {
-                return Ok(Err(m));
-            }
-            let (mut ai, mut bi) = (a.len(), b.len());
-            while ai > 0 && bi > 0 {
-                self.charge(1)?;
-                if a[ai - 1] != b[bi - 1] {
-                    break;
-                }
-                ai -= 1;
-                bi -= 1;
-            }
-            if ai == 0 {
-                return Ok(Ok(true));
-            }
-            if bi == 0 {
-                return Ok(Ok(false));
-            }
-            let common = &a[ai];
-            let node = self.node(common)?;
-            self.charge(1)?;
-            let HtmlCapturedChildren::Complete(mut children) = node.children() else {
-                return Ok(Err(HtmlSemanticMissing::OrderedChildren(common.clone())));
-            };
-            loop {
-                self.charge(1)?;
-                let Some(child) = children.next() else {
-                    return Ok(Err(self.md_missing(common)));
+            let mut current = Some(root.clone());
+            while let Some(id) = current {
+                let node = self.node(&id)?;
+                let property = match node.kind() {
+                    HtmlCapturedNodeKind::Element(e) => self.attribute(e, "itemprop")?.is_some(),
+                    _ => false,
                 };
-                if child == a[ai - 1] {
-                    return Ok(Ok(true));
+                let next = self.ordinary_tree_next(node, &mut frames)?;
+                if property || next.is_err() {
+                    let position = index.positions.len();
+                    self.md_push(&mut index.positions, (id.ordinal(), position))?;
                 }
-                if child == b[bi - 1] {
-                    return Ok(Ok(false));
-                }
+                current = match next {
+                    Ok(next) => next,
+                    Err(_) => self.ordinary_tree_resume(&mut frames)?,
+                };
             }
+            let n = index.positions.len();
+            self.md_charge_product(&[n, md_log2(n)])?;
+            index.positions.sort_unstable();
+            Ok(())
         })();
-        self.release_scratch(a.capacity());
-        self.release_scratch(b.capacity());
+        self.release_scratch(frames.capacity());
+        if let Err(error) = result {
+            self.release_scratch(index.positions.capacity());
+            return Err(error);
+        }
+        Ok(index)
+    }
+    fn md_tree_position(
+        &mut self,
+        index: &PositionIndex,
+        id: &HtmlCaptureSubjectId,
+    ) -> Result<Option<usize>, HtmlSemanticFailure> {
+        self.charge(md_log2(index.positions.len()) + 1)?;
+        Ok(index.get(id))
+    }
+    /// Put the properties of a crawl that met no gap into tree order.
+    ///
+    /// Each property is below the item through complete ordered children, or
+    /// is an itemref target that the scan of `bound` reached before any gap,
+    /// or is below such a target through complete children. Ordinary parents
+    /// and complete children are reciprocal, so the walk of the indexed tree
+    /// (`bound`, or the graph's tree that contains it) records every property
+    /// unless the item's own ancestors have unavailable children. That walk
+    /// then stops at the item's deepest walked ancestor, beneath which it
+    /// records nothing else, so the item's properties follow that ancestor in
+    /// the order of the item's own walk. These keys order the properties
+    /// exactly as their pairwise tree-order comparison does, and since they
+    /// are distinct, an unstable sort gives the one tree order.
+    fn md_tree_order(
+        &mut self,
+        results: &mut [HtmlCaptureSubjectId],
+        root: &HtmlCaptureSubjectId,
+        bound: &HtmlCaptureSubjectId,
+        indexes: &mut CrawlIndexes<'a>,
+    ) -> Result<(), HtmlSemanticFailure> {
+        let tree = indexes.tree.get_or_insert_with(|| bound.clone()).clone();
+        let walked: &PositionIndex = match indexes.positions {
+            Some(ref walked) => walked,
+            None => indexes.positions.insert(self.md_position_index(&tree)?),
+        };
+        let mut all_walked = true;
+        for id in results.iter() {
+            if self.md_tree_position(walked, id)?.is_none() {
+                all_walked = false;
+            }
+        }
+        let mut local = None;
+        let result = (|| {
+            let beneath = if all_walked {
+                None
+            } else {
+                let mut at = root.clone();
+                let anchor = loop {
+                    if let Some(position) = self.md_tree_position(walked, &at)? {
+                        break position;
+                    }
+                    let node = self.node(&at)?;
+                    match self.parent(node)? {
+                        Ok(Some(parent)) => at = parent,
+                        // The indexed tree contains the item, so its walk
+                        // reaches one of the item's ancestors.
+                        _ => return Err(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable)),
+                    }
+                };
+                let index = &*local.insert(self.md_position_index(root)?);
+                for id in results.iter() {
+                    self.charge(md_log2(walked.positions.len()) + md_log2(index.positions.len()))?;
+                    if md_tree_key(walked, Some((index, anchor)), id).is_none() {
+                        // A property is either walked or below the item.
+                        return Err(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable));
+                    }
+                }
+                Some((index, anchor))
+            };
+            let n = results.len();
+            let lookup = md_log2(walked.positions.len())
+                + beneath.map_or(0, |(index, _)| md_log2(index.positions.len()))
+                + 2;
+            self.md_charge_product(&[n, md_log2(n) + 1, lookup])?;
+            // Every key is present and distinct, checked above.
+            results.sort_unstable_by_key(|id| md_tree_key(walked, beneath, id));
+            Ok(())
+        })();
+        if let Some(index) = &local {
+            self.release_scratch(index.positions.capacity());
+        }
         result
     }
-    /// Inside a graph, `ids` lazily holds the ID index of the graph's tree,
-    /// which is every crawled item's ordinary tree.
+    /// Crawl the properties of the item `root` (HTML §5.2).
+    ///
+    /// Only the item and its itemref targets can be reached twice: every other
+    /// element is reached only from its one ordinary parent, whose children
+    /// are pushed once, when it is first visited. So visited flags for these
+    /// entries, found by capture ordinal, detect every revisit, in the same
+    /// order as a membership test over all visited elements.
     fn md_crawl(
         &mut self,
         root: &HtmlCaptureSubjectId,
-        mut ids: Option<&mut Option<IdIndex<'a>>>,
+        indexes: &mut CrawlIndexes<'a>,
     ) -> Result<Crawl, HtmlSemanticFailure> {
         let mut pending = Vec::new();
-        let mut memory = Vec::new();
+        let mut entries: Vec<(usize, bool)> = Vec::new();
         let mut results = Vec::new();
         let result = (|| {
-            self.md_push(&mut memory, root.clone())?;
+            self.md_push(&mut entries, (root.ordinal(), true))?;
             let mut missing = self.md_children(root, &mut pending)?;
             let mut bound = root.clone();
             let mut revisit = None;
-            let e = self.md_element(root)?.expect("qualified item");
+            // Callers crawl only HTML items, and itemref tokens exist only in
+            // a present attribute; anything else is an inconsistent internal
+            // request, refused as an unavailable intrinsic result.
+            let Some(e) = self.md_element(root)? else {
+                return Err(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable));
+            };
             let refs = self.md_tokens(e, HtmlMicrodataTokenKind::ItemRef)?;
             if !refs.tokens().is_empty() {
                 match self.ordinary_tree_root(root)? {
                     Ok(tree) => {
                         bound = tree;
+                        let Some(raw) = refs.raw() else {
+                            return Err(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable));
+                        };
+                        // A graph indexes its own tree, which is the ordinary
+                        // tree of every item it walked. The ID index answers
+                        // only for the tree it describes; any other bound is
+                        // scanned directly.
+                        let indexed = *indexes.tree.get_or_insert_with(|| bound.clone()) == bound;
                         for t in refs.tokens() {
-                            let units =
-                                &refs.raw().expect("token raw").code_units()[t.start()..t.end()];
-                            let found = match ids.as_deref_mut() {
-                                Some(cache) => {
-                                    if cache.is_none() {
-                                        *cache = Some(self.md_id_index(&bound)?);
-                                    }
-                                    let index = cache.as_ref().expect("cached ID index");
-                                    debug_assert!(index.root == bound, "one graph, one tree");
-                                    self.md_lookup_id(index, units)?
-                                }
-                                None => self.md_find_id(&bound, units)?,
+                            let units = &raw.code_units()[t.start()..t.end()];
+                            let found = if indexed {
+                                let index: &IdIndex<'a> = match indexes.ids {
+                                    Some(ref index) => index,
+                                    None => indexes.ids.insert(self.md_id_index(&bound)?),
+                                };
+                                self.md_lookup_id(index, units)?
+                            } else {
+                                self.md_find_id(&bound, units)?
                             };
                             match found {
                                 HtmlSemanticValue::Known(Some(id)) => {
+                                    self.md_push(&mut entries, (id.ordinal(), false))?;
                                     self.md_push(&mut pending, id)?
                                 }
                                 HtmlSemanticValue::Missing(m) => {
@@ -1898,14 +1996,27 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                 }
             }
+            // One flag per entry; the item itself starts visited.
+            let n = entries.len();
+            self.md_charge_product(&[n, md_log2(n)])?;
+            entries.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
+            self.charge(n)?;
+            entries.dedup_by_key(|entry| entry.0);
             while !pending.is_empty() {
                 self.charge(1)?;
-                let current = pending.pop().expect("pending");
-                if self.md_contains(&memory, &current)? {
-                    revisit.get_or_insert(current);
-                    continue;
+                let Some(current) = pending.pop() else {
+                    break;
+                };
+                self.charge(md_log2(entries.len()))?;
+                if let Ok(at) =
+                    entries.binary_search_by_key(&current.ordinal(), |&(ordinal, _)| ordinal)
+                {
+                    if entries[at].1 {
+                        revisit.get_or_insert(current);
+                        continue;
+                    }
+                    entries[at].1 = true;
                 }
-                self.md_push(&mut memory, current.clone())?;
                 let e = self.md_element(&current)?;
                 let scope = if let Some(e) = e {
                     self.md_attribute(e, "itemscope")?.is_some()
@@ -1924,28 +2035,8 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                 }
             }
-            if missing.is_none() {
-                for i in 1..results.len() {
-                    let mut j = i;
-                    while j > 0 {
-                        self.charge(1)?;
-                        match self.md_before(&results[j], &results[j - 1], &bound)? {
-                            Ok(true) => {
-                                self.charge(2)?;
-                                results.swap(j, j - 1);
-                                j -= 1;
-                            }
-                            Ok(false) => break,
-                            Err(m) => {
-                                missing = Some(m);
-                                break;
-                            }
-                        }
-                    }
-                    if missing.is_some() {
-                        break;
-                    }
-                }
+            if missing.is_none() && results.len() > 1 {
+                self.md_tree_order(&mut results, root, &bound, indexes)?;
             }
             let error = if let Some(id) = revisit {
                 HtmlMicrodataCondition::Violated(id)
@@ -1961,7 +2052,7 @@ impl<'a> HtmlSemanticSession<'a> {
             })
         })();
         self.release_scratch(pending.capacity());
-        self.release_scratch(memory.capacity());
+        self.release_scratch(entries.capacity());
         result
     }
     fn md_url(
@@ -2110,7 +2201,11 @@ impl<'a> HtmlSemanticSession<'a> {
             revisit: None,
         };
         let mut frames = Vec::new();
-        let mut ids = None;
+        let mut indexes = CrawlIndexes {
+            tree: Some(root.clone()),
+            ids: None,
+            positions: None,
+        };
         let result = (|| {
             let mut current = Some(root.clone());
             while let Some(id) = current {
@@ -2129,7 +2224,7 @@ impl<'a> HtmlSemanticSession<'a> {
             for i in 0..graph.items.len() {
                 self.charge(1)?;
                 let item = graph.items[i].clone();
-                let crawl = self.md_crawl(&item, Some(&mut ids))?;
+                let crawl = self.md_crawl(&item, &mut indexes)?;
                 match crawl.revisit {
                     HtmlMicrodataCondition::Violated(id) => {
                         graph.revisit.get_or_insert(id);
@@ -2142,6 +2237,9 @@ impl<'a> HtmlSemanticSession<'a> {
                 if let Some(m) = crawl.missing {
                     graph.missing.get_or_insert(m);
                 }
+                // Each crawled element is walked above: it is below the item,
+                // or below an itemref target found in this tree, through
+                // complete ordered children. So every edge joins graph items.
                 for id in crawl.elements {
                     self.md_push(&mut graph.properties, (item.clone(), id.clone()))?;
                     if self.md_scope(&id)? {
@@ -2154,9 +2252,7 @@ impl<'a> HtmlSemanticSession<'a> {
             Ok(())
         })();
         self.release_scratch(frames.capacity());
-        if let Some(index) = &ids {
-            self.md_release_id_index(index);
-        }
+        self.md_release_crawl_indexes(&indexes);
         if let Err(error) = result {
             self.md_release_graph(&graph);
             return Err(error);
@@ -2170,16 +2266,21 @@ impl<'a> HtmlSemanticSession<'a> {
     }
     /// Capture-local position of a graph item, found by binary search over the
     /// item ordinals collected once per query.
+    ///
+    /// Every edge joins graph items (see `md_graph`), and a subject outside
+    /// the graph is walked alone, so a lookup always finds its item. A miss
+    /// would be an inconsistent internal graph, refused as an unavailable
+    /// intrinsic result rather than answered.
     fn md_position(
         &mut self,
         keys: &[(usize, usize)],
         id: &HtmlCaptureSubjectId,
     ) -> Result<usize, HtmlSemanticFailure> {
         self.charge(md_log2(keys.len()))?;
-        let at = keys
-            .binary_search_by_key(&id.ordinal(), |&(ordinal, _)| ordinal)
-            .expect("graph edge endpoint is a graph item");
-        Ok(keys[at].1)
+        match keys.binary_search_by_key(&id.ordinal(), |&(ordinal, _)| ordinal) {
+            Ok(at) => Ok(keys[at].1),
+            Err(_) => Err(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable)),
+        }
     }
     /// Edge index over one graph: `index[start[k]..start[k + 1]]` holds, in edge
     /// order, `(k, edge ordinal, other end)` for every edge whose `by` end is
@@ -2423,7 +2524,14 @@ impl<'a> HtmlSemanticSession<'a> {
                 _ => HtmlSemanticValue::Missing(self.md_missing(id)),
             }
         };
-        let crawl = self.md_crawl(id, None)?;
+        let mut indexes = CrawlIndexes {
+            tree: None,
+            ids: None,
+            positions: None,
+        };
+        let crawl = self.md_crawl(id, &mut indexes);
+        self.md_release_crawl_indexes(&indexes);
+        let crawl = crawl?;
         let properties = match crawl.missing {
             None => {
                 let mut rows = Vec::new();
