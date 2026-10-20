@@ -3271,12 +3271,13 @@ completed owner through their existing cleanup paths.
 
 The bundled [html5lib-tests subset](../../crates/surgeist-html-parser/tests/fixtures/html5lib-f994590f/tree-construction/README.md)
 at revision `f994590f528ac8b6073665791ddb1ed85c66dfb2` contains all 56 top-level
-tree-construction data files with 1,775 cases and 13 complete tokenizer files
-with 6,806 cases. Every retained tree-construction case except the eight
-`#script-on` cases runs in both encodings: 1,575 through the completed ordinary
+tree-construction data files with 1,775 cases and 13 complete tokenizer files,
+every top-level tokenizer file except `xmlViolation.test`, with 6,806 cases.
+Every retained tree-construction case except the eight `#script-on` cases runs
+in both encodings: 1,575 through the completed ordinary
 parser with scripting Disabled, and all 192 `#document-fragment` cases through
 the actual captured-context fragment owner with their corpus HTML, SVG or
-MathML context. Every tokenizer case runs through the private tokenizer in each
+MathML context. Every bundled tokenizer case runs through the private tokenizer in each
 listed initial state, comparing tokens and ordered error codes. The [coverage
 matrix](../../crates/surgeist-html-parser/docs/conformance-coverage.md#retained-corpus-bindings-and-differences)
 lists per-file counts, document-mode bindings and every exclusion with its

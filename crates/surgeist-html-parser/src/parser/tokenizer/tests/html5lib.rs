@@ -1,83 +1,164 @@
-//! Replay of the bundled html5lib-tests `f994590f` tokenizer `.test` files.
+//! Replay of the 13 bundled html5lib-tests `f994590f` tokenizer `.test` files:
+//! every top-level upstream tokenizer file except `xmlViolation.test`, which
+//! is not bundled because it describes infoset coercion, not this tokenizer.
 //!
 //! Each case runs through the actual private tokenizer with the shared
-//! [`collect`] owner checks. Expectations come only from the retained corpus:
+//! [`collect`] owner checks. Expectations come from the retained corpus:
 //! coalesced character data, start tags (attribute set and self-closing flag),
 //! end-tag names, comments, doctypes (force-quirks as corpus correctness) and
 //! the ordered error codes. Error line/column metadata is not compared. EOF is
 //! not a corpus token; processing-instruction tokens remain actual output, so a
 //! corpus bogus-comment expectation for `<?` diverges instead of being erased.
+//! Such a case is a spec exclusion whose tokens and ordered error codes are
+//! instead derived by hand from the pinned HTML877d tokenizer and asserted
+//! exactly. A tokenizer panic fails every case, excluded or not.
 //!
 //! Inputs keep exact UTF-16 code units, including isolated surrogates. Every
 //! case runs from UTF-16 code units, and also from UTF-8 when its input has
-//! only scalar values. `xmlViolation.test` is not bundled: it describes infoset
-//! coercion, not this tokenizer.
+//! only scalar values.
 
 use super::*;
 
 /// Why one bundled case is not asserted to match.
 #[derive(Clone, Copy, Debug)]
 enum Exclusion {
-    /// The pinned HTML edition defines different output; the case must
-    /// still diverge, so a stale record fails.
-    Spec(&'static str),
-    /// A divergence without a selected owner yet; not asserted either way.
+    /// The pinned HTML edition defines different output. The case must still
+    /// diverge from the corpus, and every run, in each listed initial state
+    /// and both encodings, must equal the tokens (rendered as
+    /// [`show_tokens`]) and ordered error codes derived from the pinned
+    /// edition, so a stale record, a panic or any unrelated divergence fails.
+    Spec {
+        reason: &'static str,
+        tokens: &'static str,
+        errors: &'static [&'static str],
+    },
+    /// A tracked divergence without a fix yet. Its output is not asserted
+    /// either way, but a panic still fails.
     Defect(&'static str),
 }
 
-/// Exclusions keyed by bundled file and one-based case ordinal.
-/// HTML877d tokenization: `<?` in the data state enters the processing
-/// instruction open state (raw PI states), not the historical bogus comment
+/// HTML877d tag open state: `<?` sets the temporary buffer to empty and enters
+/// the processing instruction open state, not the historical bogus comment
 /// with unexpected-question-mark-instead-of-tag-name the corpus expects.
-const PI_OPEN: Exclusion =
-    Exclusion::Spec("HTML877d tag open state: U+003F enters processing-instruction open state");
+/// Processing instruction open: ASCII alpha or `_` is reconsumed as the
+/// target; EOF is eof-in-processing-instruction and emits only end-of-file;
+/// anything else is invalid-first-character-of-processing-instruction-target,
+/// converts the temporary buffer to a comment whose data is `?` and reconsumes
+/// in the bogus comment state. A target runs over ASCII alphanumerics, `-`
+/// and `_` to whitespace, `?` or `>`; EOF in the target state also emits only
+/// end-of-file.
+const fn pi(tokens: &'static str, errors: &'static [&'static str]) -> Exclusion {
+    Exclusion::Spec {
+        reason: "HTML877d tag open state: U+003F enters processing-instruction open state",
+        tokens,
+        errors,
+    }
+}
+const INVALID_FIRST: &[&str] = &["invalid-first-character-of-processing-instruction-target"];
+const EOF_IN_PI: &[&str] = &["eof-in-processing-instruction"];
+/// Bogus comment state: U+0000 is unexpected-null-character, appending U+FFFD.
+const INVALID_FIRST_THEN_NULL: &[&str] = &[
+    "invalid-first-character-of-processing-instruction-target",
+    "unexpected-null-character",
+];
 
+/// Exclusions keyed by bundled file and one-based case ordinal. Every spec
+/// case lists only the data state. Spec renderings are [`show`] ASCII.
 const EXCLUSIONS: &[(&str, usize, Exclusion)] = &[
-    ("domjs.test", 1, PI_OPEN),
-    ("domjs.test", 2, PI_OPEN),
-    ("domjs.test", 3, PI_OPEN),
-    ("test2.test", 32, PI_OPEN),
-    ("test2.test", 33, PI_OPEN),
+    // Preprocessing normalizes CR and CRLF to LF before the PI open state.
+    ("domjs.test", 1, pi(r#"Comment("?\u{a}")"#, INVALID_FIRST)),
+    ("domjs.test", 2, pi(r#"Comment("?\u{a}")"#, INVALID_FIRST)),
+    (
+        "domjs.test",
+        3,
+        pi(r#"Comment("?\u{a}\u{a}")"#, INVALID_FIRST),
+    ),
+    // `>` ends the target; after-target reconsumes it in PI data, which emits.
+    ("test2.test", 32, pi(r#"Pi("namespace", "")"#, &[])),
+    ("test2.test", 33, pi(r#"Pi("foo--", "")"#, &[])),
     (
         "test3.test",
         80,
         Exclusion::Defect(
-            "control-character-in-input-stream for the character after `<!` is reported after incorrectly-opened-comment; the corpus reports it first",
+            "#1345: control-character-in-input-stream for the character after `<!` is reported after incorrectly-opened-comment; the corpus reports it first",
         ),
     ),
-    ("test3.test", 1159, PI_OPEN),
-    ("test3.test", 1160, PI_OPEN),
-    ("test3.test", 1161, PI_OPEN),
-    ("test3.test", 1162, PI_OPEN),
-    ("test3.test", 1163, PI_OPEN),
-    ("test3.test", 1164, PI_OPEN),
-    ("test3.test", 1165, PI_OPEN),
-    ("test3.test", 1166, PI_OPEN),
-    ("test3.test", 1167, PI_OPEN),
-    ("test3.test", 1168, PI_OPEN),
-    ("test3.test", 1169, PI_OPEN),
-    ("test3.test", 1170, PI_OPEN),
-    ("test3.test", 1171, PI_OPEN),
-    ("test3.test", 1172, PI_OPEN),
-    ("test3.test", 1173, PI_OPEN),
-    ("test3.test", 1174, PI_OPEN),
-    ("test3.test", 1175, PI_OPEN),
-    ("test3.test", 1176, PI_OPEN),
-    ("test3.test", 1177, PI_OPEN),
-    ("test3.test", 1178, PI_OPEN),
-    ("test3.test", 1179, PI_OPEN),
-    ("test3.test", 1180, PI_OPEN),
-    ("test3.test", 1181, PI_OPEN),
-    ("test3.test", 1182, PI_OPEN),
-    ("test3.test", 1183, PI_OPEN),
-    ("test3.test", 1184, PI_OPEN),
-    ("test3.test", 1185, PI_OPEN),
-    ("test3.test", 1186, PI_OPEN),
-    ("test3.test", 1187, PI_OPEN),
-    ("test3.test", 1188, PI_OPEN),
-    ("test3.test", 1189, PI_OPEN),
-    ("test3.test", 1190, PI_OPEN),
-    ("test3.test", 1191, PI_OPEN),
+    ("test3.test", 1159, pi("", EOF_IN_PI)),
+    (
+        "test3.test",
+        1160,
+        pi(r#"Comment("?\u{fffd}")"#, INVALID_FIRST_THEN_NULL),
+    ),
+    (
+        "test3.test",
+        1161,
+        pi(r#"Comment("?\u{9}")"#, INVALID_FIRST),
+    ),
+    (
+        "test3.test",
+        1162,
+        pi(r#"Comment("?\u{a}")"#, INVALID_FIRST),
+    ),
+    // The input-stream error for U+000B is reported when the PI open state
+    // consumes it, before that state's own error.
+    (
+        "test3.test",
+        1163,
+        pi(
+            r#"Comment("?\u{b}")"#,
+            &[
+                "control-character-in-input-stream",
+                "invalid-first-character-of-processing-instruction-target",
+            ],
+        ),
+    ),
+    (
+        "test3.test",
+        1164,
+        pi(r#"Comment("?\u{c}")"#, INVALID_FIRST),
+    ),
+    ("test3.test", 1165, pi(r#"Comment("? ")"#, INVALID_FIRST)),
+    (
+        "test3.test",
+        1166,
+        pi(r#"Comment("? \u{fffd}")"#, INVALID_FIRST_THEN_NULL),
+    ),
+    ("test3.test", 1167, pi(r#"Comment("?!")"#, INVALID_FIRST)),
+    (
+        "test3.test",
+        1168,
+        pi(r#"Comment("?\u{22}")"#, INVALID_FIRST),
+    ),
+    ("test3.test", 1169, pi(r#"Comment("?&")"#, INVALID_FIRST)),
+    ("test3.test", 1170, pi(r#"Comment("?'")"#, INVALID_FIRST)),
+    ("test3.test", 1171, pi(r#"Comment("?-")"#, INVALID_FIRST)),
+    ("test3.test", 1172, pi(r#"Comment("?/")"#, INVALID_FIRST)),
+    ("test3.test", 1173, pi(r#"Comment("?0")"#, INVALID_FIRST)),
+    ("test3.test", 1174, pi(r#"Comment("?1")"#, INVALID_FIRST)),
+    ("test3.test", 1175, pi(r#"Comment("?9")"#, INVALID_FIRST)),
+    ("test3.test", 1176, pi(r#"Comment("?<")"#, INVALID_FIRST)),
+    ("test3.test", 1177, pi(r#"Comment("?=")"#, INVALID_FIRST)),
+    // Bogus comment state: the reconsumed `>` emits the `?` comment.
+    ("test3.test", 1178, pi(r#"Comment("?")"#, INVALID_FIRST)),
+    ("test3.test", 1179, pi(r#"Comment("??")"#, INVALID_FIRST)),
+    ("test3.test", 1180, pi(r#"Comment("?@")"#, INVALID_FIRST)),
+    // An ASCII alpha starts the target; EOF there emits no token.
+    ("test3.test", 1181, pi("", EOF_IN_PI)),
+    ("test3.test", 1182, pi("", EOF_IN_PI)),
+    ("test3.test", 1183, pi("", EOF_IN_PI)),
+    ("test3.test", 1184, pi("", EOF_IN_PI)),
+    ("test3.test", 1185, pi(r#"Comment("?`")"#, INVALID_FIRST)),
+    ("test3.test", 1186, pi("", EOF_IN_PI)),
+    ("test3.test", 1187, pi("", EOF_IN_PI)),
+    ("test3.test", 1188, pi("", EOF_IN_PI)),
+    ("test3.test", 1189, pi("", EOF_IN_PI)),
+    ("test3.test", 1190, pi(r#"Comment("?{")"#, INVALID_FIRST)),
+    // U+100000 is a private-use scalar value, not a noncharacter.
+    (
+        "test3.test",
+        1191,
+        pi(r#"Comment("?\u{100000}")"#, INVALID_FIRST),
+    ),
 ];
 
 #[derive(Clone, Debug, PartialEq)]
@@ -444,11 +525,14 @@ fn actual_tokens(seen: Vec<Seen>) -> Vec<Token> {
     tokens
 }
 
+/// Printable ASCII other than `"` and `\` stays literal; every other scalar
+/// value is `\u{…}` and an isolated surrogate is `\u{HHHH}`, so a rendering is
+/// unambiguous ASCII.
 fn show(units: &[u16]) -> String {
     char::decode_utf16(units.iter().copied())
         .map(|r| match r {
-            Ok(c) if c.is_control() || c == '"' || c == '\\' => c.escape_unicode().to_string(),
-            Ok(c) => c.to_string(),
+            Ok(c @ ' '..='~') if c != '"' && c != '\\' => c.to_string(),
+            Ok(c) => c.escape_unicode().to_string(),
             Err(e) => format!("\\u{{{:04X}}}", e.unpaired_surrogate()),
         })
         .collect()
@@ -485,10 +569,18 @@ fn show_tokens(tokens: &[Token]) -> String {
         .join(" ")
 }
 
+/// One run of a case: its label and either the corpus-shaped tokens with the
+/// ordered error codes, or the panic message.
+struct Run {
+    label: String,
+    utf8: bool,
+    outcome: Result<(Vec<Token>, Vec<&'static str>), String>,
+}
+
 /// Every run of one case: each initial state, UTF-16 always and UTF-8 when the
-/// input is scalar-only. Returns the divergent runs.
-fn replay_case(case: &Case) -> Result<Vec<String>, String> {
-    let mut divergences = Vec::new();
+/// input is scalar-only.
+fn runs(case: &Case) -> Result<Vec<Run>, String> {
+    let mut runs = Vec::new();
     let scalar_input = String::from_utf16(&case.input).ok();
     for name in &case.states {
         let initial = state(name)?;
@@ -504,34 +596,53 @@ fn replay_case(case: &Case) -> Result<Vec<String>, String> {
             let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 collect(source, initial, last, initial == State::Cdata)
             }));
-            let diff = match run {
-                Err(panic) => Some(format!(
-                    "actual tokenizer panicked: {}",
-                    panic
-                        .downcast_ref::<String>()
-                        .cloned()
-                        .or_else(|| panic.downcast_ref::<&str>().map(|s| (*s).to_owned()))
-                        .unwrap_or_default()
+            let outcome = match run {
+                Err(panic) => Err(panic
+                    .downcast_ref::<String>()
+                    .cloned()
+                    .or_else(|| panic.downcast_ref::<&str>().map(|s| (*s).to_owned()))
+                    .unwrap_or_default()),
+                Ok((seen, codes)) => Ok((
+                    actual_tokens(seen),
+                    codes.iter().map(|code| code.name()).collect(),
                 )),
-                Ok((seen, codes)) => {
-                    let tokens = actual_tokens(seen);
-                    let codes: Vec<&str> = codes.iter().map(|code| code.name()).collect();
-                    (tokens != case.output || codes != case.errors).then(|| {
-                        format!(
-                            "expected tokens: {}\n    actual tokens:   {}\n    expected errors: {:?}\n    actual errors:   {codes:?}",
-                            show_tokens(&case.output),
-                            show_tokens(&tokens),
-                            case.errors,
-                        )
-                    })
-                }
             };
-            if let Some(diff) = diff {
-                divergences.push(format!("[{name}, {encoding}]\n    {diff}"));
-            }
+            runs.push(Run {
+                label: format!("[{name}, {encoding}]"),
+                utf8: *encoding == "utf8",
+                outcome,
+            });
         }
     }
-    Ok(divergences)
+    Ok(runs)
+}
+
+/// How one run differs from the expected rendering and error codes, if it does.
+fn differs(run: &Run, tokens: &str, errors: &[&str]) -> Option<String> {
+    match &run.outcome {
+        Err(panic) => Some(format!("{}\n    actual tokenizer panicked: {panic}", run.label)),
+        Ok((actual, codes)) => (show_tokens(actual) != tokens || codes != errors).then(|| {
+            format!(
+                "{}\n    expected tokens: {tokens}\n    actual tokens:   {}\n    expected errors: {errors:?}\n    actual errors:   {codes:?}",
+                run.label,
+                show_tokens(actual),
+            )
+        }),
+    }
+}
+
+/// The runs of one case that diverge from its corpus expectation.
+fn divergences(case: &Case, runs: &[Run]) -> Vec<String> {
+    let tokens = show_tokens(&case.output);
+    let errors: Vec<&str> = case.errors.iter().map(String::as_str).collect();
+    runs.iter()
+        .filter_map(|run| differs(run, &tokens, &errors))
+        .collect()
+}
+
+/// Every run of one case, returning the runs divergent from the corpus.
+fn replay_case(case: &Case) -> Result<Vec<String>, String> {
+    Ok(divergences(case, &runs(case)?))
 }
 
 fn replay(file: &str, raw: &str, count: usize) {
@@ -545,26 +656,57 @@ fn replay(file: &str, raw: &str, count: usize) {
         }
     }
     for case in &cases {
-        let divergences =
-            replay_case(case).unwrap_or_else(|e| panic!("{file}/{}: {e}", case.ordinal));
+        let runs = runs(case).unwrap_or_else(|e| panic!("{file}/{}: {e}", case.ordinal));
+        let divergences = divergences(case, &runs);
         let exclusion = EXCLUSIONS
             .iter()
             .find(|(f, o, _)| *f == file && *o == case.ordinal)
             .map(|(_, _, e)| *e);
-        match exclusion {
-            None if divergences.is_empty() => {}
-            None => failures.push(format!(
-                "{file}/{} {:?} input \"{}\"\n  {}",
+        let context = || {
+            format!(
+                "{file}/{} {:?} input \"{}\"",
                 case.ordinal,
                 case.description,
-                show(&case.input),
-                divergences.join("\n  ")
-            )),
-            Some(Exclusion::Spec(reason)) if divergences.is_empty() => failures.push(format!(
-                "{file}/{} now matches; stale spec exclusion: {reason}",
-                case.ordinal
-            )),
-            Some(Exclusion::Spec(_) | Exclusion::Defect(_)) => {}
+                show(&case.input)
+            )
+        };
+        match exclusion {
+            None if divergences.is_empty() => {}
+            None => failures.push(format!("{}\n  {}", context(), divergences.join("\n  "))),
+            Some(Exclusion::Spec { reason, .. }) if divergences.is_empty() => failures.push(
+                format!("{} now matches; stale spec exclusion: {reason}", context()),
+            ),
+            Some(Exclusion::Spec {
+                reason,
+                tokens,
+                errors,
+            }) => {
+                if !runs.iter().any(|run| run.utf8) {
+                    failures.push(format!("{}: spec exclusion has no UTF-8 run", context()));
+                }
+                let differences: Vec<String> = runs
+                    .iter()
+                    .filter_map(|run| differs(run, tokens, errors))
+                    .collect();
+                if !differences.is_empty() {
+                    failures.push(format!(
+                        "{} differs from its pinned output ({reason})\n  {}",
+                        context(),
+                        differences.join("\n  ")
+                    ));
+                }
+            }
+            Some(Exclusion::Defect(_)) => {
+                for run in &runs {
+                    if let Err(panic) = &run.outcome {
+                        failures.push(format!(
+                            "{} {}: actual tokenizer panicked: {panic}",
+                            context(),
+                            run.label
+                        ));
+                    }
+                }
+            }
         }
     }
     assert!(
@@ -614,7 +756,7 @@ bundled! {
 fn exclusions_name_only_bundled_files_once_with_reasons() {
     for (i, (file, ordinal, exclusion)) in EXCLUSIONS.iter().enumerate() {
         assert!(BUNDLED.contains(file), "{file}");
-        let (Exclusion::Spec(reason) | Exclusion::Defect(reason)) = exclusion;
+        let (Exclusion::Spec { reason, .. } | Exclusion::Defect(reason)) = exclusion;
         assert!(!reason.is_empty(), "{file}/{ordinal} has no reason");
         assert!(
             !EXCLUSIONS[..i]
@@ -638,6 +780,21 @@ fn reader_keeps_isolated_surrogate_escapes_and_double_unescapes_units() {
     assert_eq!(unescape(double), [0xdc00, 0x41]);
     assert_eq!(items[2], Json::String(vec![0xe9]));
     assert!(Reader::parse("[1, ]").is_err());
+}
+
+#[test]
+fn panicked_run_differs_from_every_expectation_and_renderings_are_ascii() {
+    let run = Run {
+        label: "[Data state, utf16]".into(),
+        utf8: false,
+        outcome: Err("boom".into()),
+    };
+    assert!(differs(&run, "", &[]).is_some());
+    let comment = [Token::Comment(vec![0x3f, 0x0a, 0x22, 0xfffd, 0xd800])];
+    assert_eq!(
+        show_tokens(&comment),
+        r#"Comment("?\u{a}\u{22}\u{fffd}\u{D800}")"#
+    );
 }
 
 #[test]

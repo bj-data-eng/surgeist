@@ -82,11 +82,13 @@ The [bundled html5lib fixtures](../tests/fixtures/html5lib-f994590f/tree-constru
 retain revision `f994590f528ac8b6073665791ddb1ed85c66dfb2`, complete files,
 format metadata and [MIT attribution](../NOTICE.md#html5lib-tests-fixtures).
 Expectations come only from the retained corpus records, never from actual
-output. An exclusion is keyed by file and one-based ordinal with its reason. A
-**spec** exclusion records a pinned HTML877d rule that the historical corpus
-predates; its case must still diverge, so a stale record fails. A **defect**
-exclusion records a divergence without a selected owner; it is not asserted
-either way.
+output, except that a spec exclusion's replacement expectation is derived by
+hand from the pinned edition. An exclusion is keyed by file and one-based
+ordinal with its reason. A **spec** exclusion records a pinned HTML877d rule
+that the historical corpus predates; its case must still diverge, so a stale
+record fails, and its actual output must equal the recorded pinned output. A
+**defect** exclusion records a divergence tracked by an open issue; its output
+is not asserted either way.
 
 ### Tree construction
 
@@ -111,7 +113,8 @@ The corpus format does not carry document mode. Each ordinary case binds it in
 this order:
 
 1. The hand-derived HTML877d [initial][initial] table: 99 cases, including
-   every doctype01 case and tests2/19, 26–29, 62 and tests6/5, 47 derived from
+   doctype01/3–37 (doctype01/1–2 bind through rule 3) and tests2/19, 26–29, 62
+   and tests6/5, 47 derived from
    the force-quirks flag, the doctype name and the listed public and system
    identifiers; and the template.dat table: 111 cases.
 2. Quirks when the expected tree has no doctype record (Initial anything-else):
@@ -168,7 +171,8 @@ Tests_innerHTML_1/76 (`<input><option>`, select context) follows the HTML877d
 in-body `input` rule: with a select fragment context element the tag is a parse
 error and is ignored, leaving only the `option`, while this corpus revision
 inserts it. Tests_innerHTML_1/79
-(`</html><!--abc-->`, html context) is a defect: in the fragment case the
+(`</html><!--abc-->`, html context) is a defect tracked by
+[#1344](https://github.com/bj-data-eng/surgeist/issues/1344): in the fragment case the
 after-body `</html>` must be ignored, leaving the comment under the html root.
 The internal fragment comparison differs and the public request reports
 `Engine(Tree)`.
@@ -186,6 +190,7 @@ Template/109 also runs separately through `retained_template_context_fragment_ma
 
 [Tokenizer replay tests][tokenizerreplay] run all **6,806** cases of the 13
 bundled `.test` files, one test per file, through the actual private tokenizer.
+They are every top-level upstream tokenizer file except `xmlViolation.test`.
 Each case runs in every listed initial state, from UTF-16 code units and also
 from UTF-8 when its input contains only scalar values. A test-only JSON reader
 keeps string escapes as exact UTF-16 units, so isolated surrogates survive, and
@@ -208,10 +213,19 @@ metadata are not compared. Processing-instruction tokens remain actual output.
 | unicodeChars.test, unicodeCharsProblematic.test | 323, 5 | — |
 
 The 38 spec exclusions are `<?` inputs that HTML877d tokenizes in the
-processing-instruction states, not as the historical bogus comment with
-`unexpected-question-mark-instead-of-tag-name`. Test3/80 (`<!` U+000B) is a
-defect: tokens match, but `control-character-in-input-stream` follows
-`incorrectly-opened-comment`, while the corpus reports it first.
+[processing-instruction states][pi], not as the historical bogus comment with
+`unexpected-question-mark-instead-of-tag-name`. Each records the tokens and
+ordered error codes derived by hand from those states, and every run must equal
+them: a PI for test2/32 and 33 (`namespace`, `foo--`); no token with
+`eof-in-processing-instruction` for `<?` and `<?` plus one ASCII letter; and
+otherwise a `?`-prefixed bogus comment with
+`invalid-first-character-of-processing-instruction-target`, preceded by
+`control-character-in-input-stream` for test3/1163 (U+000B) and followed by
+`unexpected-null-character` for test3/1160 and 1166 (U+0000). A tokenizer panic
+fails any case, excluded or not. Test3/80 (`<!` U+000B) is a defect tracked by
+[#1345](https://github.com/bj-data-eng/surgeist/issues/1345): tokens match, but
+`control-character-in-input-stream` follows `incorrectly-opened-comment`, while
+the corpus reports it first.
 `xmlViolation.test` is not bundled because it assumes infoset coercion rather
 than the HTML tokenizer.
 
