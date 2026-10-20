@@ -27,7 +27,7 @@ operation; it is not public transport streaming or fragment feeding.
 
 | Selected defining clauses | Actual context and independent expectations | Executable evidence and qualification |
 | --- | --- | --- |
-| [Preprocessing the input stream][preprocessing] and [tokenization][tokenization] | UTF-8 byte and UTF-16 unit coordinates remain tied to the original source; CR/CRLF processing, literal U+FEFF, NUL recovery, supplementary characters and isolated surrogates have distinct outcomes. | [Conformance tests][conformance]: `literal_utf16_surrogate_pair_crlf_and_reference_keep_distinct_source_origins`, `literal_initial_pi_and_leading_feff_preserve_source_defined_mode_and_errors`. [Public tests][public]: `successful_utf16_keeps_bom_surrogate_newline_origins_and_ordered_recovery_diagnostics`. Already-decoded U+FEFF is not external byte-BOM detection. |
+| [Preprocessing the input stream][preprocessing] and [tokenization][tokenization] | UTF-8 byte and UTF-16 unit coordinates remain tied to the original source; CR/CRLF processing, literal U+FEFF, NUL recovery, supplementary characters and isolated surrogates have distinct outcomes. | [Conformance tests][conformance]: `literal_utf16_surrogate_pair_crlf_and_reference_keep_distinct_source_origins`, `literal_initial_pi_and_leading_feff_preserve_source_defined_mode_and_errors`. [Public tests][public]: `successful_utf16_keeps_bom_surrogate_newline_origins_and_ordered_recovery_diagnostics`. [Tokenizer replay][tokenizerreplay]: all 6,806 retained html5lib tokenizer cases, tokens and ordered error codes, with the exclusions [below](#tokenizer). Already-decoded U+FEFF is not external byte-BOM detection. |
 | [Initial][initial], [in head][inhead], [in body][inbody] and [after head][afterhead] rules | Fresh ordinary documents, Disabled scripting: explicit/implied structure, mode selection, late head input, void elements, body recovery and exact source order. | [Tree tests][tree]: `owning_head_places_prehead_comment_pi_and_head_void_children_in_source_order`, `body_generic_names_void_recovery_rawtext_and_plaintext_follow_actual_source_rows`, `afterhead_template_removes_exact_head_identity_and_retains_source_diagnostic`. Corpus mode bindings are listed below; they are not derived from actual output. |
 | [Character-reference states][references] and [named reference table][names] | Selected named, decimal and hexadecimal references; longest match, attribute exception, failed numeric rewind, invalid scalars, C1/control/noncharacter recovery and semicolon chronology. UTF-8 and UTF-16, whole source and every cut. | [Conformance tests][conformance]: `reference_recovery_keeps_literal_typed_records_and_exact_utf8_utf16_output_spans`, `reference_recovery_every_cut_and_unit_feed_uses_independent_records_and_output_atoms`, `attribute_reference_exception_keeps_literal_quotes_and_two_output_value_atoms_at_every_cut`. [Public tests][public]: `recovered_references_public_reader_preserves_typed_chronology_and_exact_dual_coordinates`. Selected outputs, typed diagnostics and overlapping source maps are separate assertions. |
 | [Numeric-reference states][numericreferences] | Complete ordinary execution of 512-digit decimal and hexadecimal references in both encodings: out-of-range replacement, distinct native text identities, NoQuirks structure and the earlier NULL-reference diagnostic followed by the out-of-range diagnostic. Exact original-source intervals distinguish UTF-8 bytes from UTF-16 units. | [Tree tests][tree]: `decimal_and_hex_complete_partners_have_literal_replacement_and_retained_diagnostics`. This positive language oracle executes four Complete documents without instrumentation; it is separate from the cancellation/work-refusal partners below and does not certify every long reference or D1 row. |
@@ -37,7 +37,7 @@ operation; it is not public transport streaming or fragment feeding.
 | [Initial][initial], [in body EOF][inbody], [in table][intable], [in table text][intabletext], [in column group][incolgroup] and [in table body][intbody] | Tables01/1,4,6,19 have independent typed sequences of 3/7/14/5 records: missing doctype, implied-row/ignored-tag recovery, buffered-list and per-character foster errors, ignored late doctype and disallowed-open-element EOF. Both encodings, Complete execution and every cut. | [Conformance tests][conformance]: `table_recovery_literal_diagnostics_complete_utf8_utf16`, `table_recovery_literal_diagnostics_every_cut_and_unit_feed`. Eight Complete, 312 single-cut and eight unit-feed documents preserve literal trees, Quirks mode, chronological records and qualified ranges. Processing context records the actual outer emitter; a delegated InBody rule can retain InCell/InTable context. ASCII fixtures exercise both coordinate kinds, not surrogate/CRLF behavior. |
 | [Foreign-content rules][foreign] | Ordinary documents and captured SVG/MathML contexts: exact namespaces, adjusted SVG names/attributes, XML/XLink/XMLNS distinctions, HTML integration points, MathML text exceptions, CDATA, breakout and SVG script metadata. | [Tree tests][tree]: `ordinary_svg_adjusted_names_and_foreign_integration_preserve_native_namespaces_and_order`, `foreign_all_namespace_adjustments_unknown_colons_and_xmlns_errors_keep_original_values`. [Fragment tests][fragment]: `captured_integration_points_use_actual_qualified_encoding_and_math_text_exceptions`, `arbitrary_captured_namespace_is_copied_exactly_and_cdata_uses_adjusted_context`. Script metadata does not establish script execution. |
 | [In template][intemplate] and [template construction][template] | 111 ordinary template inputs in both encodings, actual inert template documents and separate hosted contents. Seven selected transitions run every cut in both encodings, totaling 670 progressive runs. | [Conformance tests][conformance]: `all_retained_ordinary_templates_match_independent_trees_in_both_encodings`, `template_transitions_every_cut_and_unit_feed_match_independent_trees`, `nested_template_eof_diagnostics_retain_two_distinct_source_invocations`. [Tree tests][tree]: `ordinary_template_routes_rows_into_separate_hosted_contents_and_keeps_body_sibling_order`, `template_selectedcontent_deep_clone_keeps_distinct_contents_and_adopts_real_documents`. EOF records at the same position remain separate invocations. |
-| [Fragment parsing][fragments] | Actual captured contexts select tokenizer state, insertion mode, namespace/integration attributes, document mode and nearest-form facts. Inert/Disabled profiles retain parser Document, context document, target document and output Fragment separately. Whole source only. | [Fragment tests][fragment]: `real_div_fragment_returns_only_parsed_children_and_inherits_parser_document_mode`, `real_table_context_selects_table_mode_without_context_wrapper_or_implied_table`, `real_utf16_rcdata_context_preserves_isolates_entity_cr_and_literal_end_like_units`. Corpus template/109 uses a real template capture, checked by [Conformance tests][conformance]: `retained_template_context_fragment_matches_actual_output_and_content_owner`. No div wrapper or invented appropriate end tag substitutes for context. |
+| [Fragment parsing][fragments] | Actual captured contexts select tokenizer state, insertion mode, namespace/integration attributes, document mode and nearest-form facts. Inert/Disabled profiles retain parser Document, context document, target document and output Fragment separately. Whole source only. | [Fragment tests][fragment]: `real_div_fragment_returns_only_parsed_children_and_inherits_parser_document_mode`, `real_table_context_selects_table_mode_without_context_wrapper_or_implied_table`, `real_utf16_rcdata_context_preserves_isolates_entity_cr_and_literal_end_like_units`. Corpus template/109 uses a real template capture, checked by [Conformance tests][conformance]: `retained_template_context_fragment_matches_actual_output_and_content_owner`. All 192 retained `#document-fragment` cases, including select, table, svg and math contexts, run in their actual contexts through [corpus replay][corpusreplay] (see [tree construction](#tree-construction)). No div wrapper or invented appropriate end tag substitutes for context. |
 | [Template/shadow construction][template] and [fragment parsing][fragments] | Qualified declarative shadow decisions can create owned roots or retain captured attachment effects. Light children, separate shadow/template trees, captured identity and immutable output remain distinct. | [Fragment tests][fragment]: `captured_shadow_attachment_retains_actual_root_and_second_template_uses_planned_presence`, `local_shadow_host_keeps_light_children_and_qualified_root_separate`, `selectedcontent_clones_local_clonable_shadow_after_light_children`. [Public tests][public]: `fragment_parse_retains_actual_captured_attachment_and_fallback_after_cancel`. These are construction results/effects, not installation into a live DOM. |
 | [Script processing][scripts] and parser script states | Disabled ordinary HTML script preparation, Inert fragment scripts, raw/escaped text and separately selected SVG processed-state transitions. No JavaScript evaluation or network activity. | [Tree tests][tree]: `standalone_script_end_prepares_disabled_classic_and_restores_head_and_insertion_state`, `standalone_script_eof_marks_started_without_preparing_or_changing_initial_facts`, `svg_script_parser_end_defers_then_restores_wrapper_without_html_preparation`. [Fragment tests][fragment]: `inert_fragment_scripts_retain_parser_document_and_started_state_without_disabled_preparation`. Scripting-Enabled corpus replay is excluded. |
 
@@ -81,32 +81,155 @@ nor infer live operations from the inventory's recognized names.
 The [bundled html5lib fixtures](../tests/fixtures/html5lib-f994590f/tree-construction/README.md)
 retain revision `f994590f528ac8b6073665791ddb1ed85c66dfb2`, complete files,
 format metadata and [MIT attribution](../NOTICE.md#html5lib-tests-fixtures).
+Expectations come only from the retained corpus records, never from actual
+output, except that a spec exclusion's replacement expectation is derived by
+hand from the pinned edition. An exclusion is keyed by file and one-based
+ordinal with its reason. A **spec** exclusion records a pinned HTML877d rule
+that the historical corpus predates; its case must still diverge, so a stale
+record fails, and its actual output must equal the recorded pinned output. A
+**defect** exclusion records a divergence tracked by an open issue; its output
+is not asserted either way.
+
+### Tree construction
+
 `all_complete_retained_files_decode_with_stable_ordinals_and_raw_sections`
-checks all **169** cases as fixture-format evidence. It does not execute all
-contexts or scripting variants. Exactly **167 distinct file/ordinal bindings**
-run as ordinary documents with Disabled scripting; dual encodings and feeds
-are additional executions of those bindings.
+decodes all **1,775** cases of the 56 bundled `.dat` files as fixture-format
+evidence. [Corpus replay tests][corpusreplay] then run every retained case in
+both UTF-8 and UTF-16:
 
-| Retained file | Selected ordinary ordinals | Additional selected evidence |
+* `every_retained_ordinary_case_matches_its_corpus_tree_after_real_completion`
+  runs all **1,575** ordinary cases without `#script-on` through the actual
+  ordinary driver and metered native comparison.
+* `every_retained_fragment_case_matches_its_corpus_tree_in_its_actual_context`
+  runs all **192** `#document-fragment` cases through the actual captured-context
+  fragment owner with the corpus context element: HTML (including table,
+  select, frameset, raw-text and template contexts), `svg …` and `math …`. The
+  capture is a NoQuirks, Disabled document whose root is the context element.
+* The eight `#script-on` ordinary cases (tests16 ×6, tests5 ×1, webkit02 ×1)
+  select Enabled scripting construction, an unsupported public profile, and
+  are not run. Cases without a scripting marker run with Disabled scripting.
+
+The corpus format does not carry document mode. Each ordinary case binds it in
+this order:
+
+1. The hand-derived HTML877d [initial][initial] table: 99 cases, including
+   doctype01/3–37 (doctype01/1–2 bind through rule 3) and tests2/19, 26–29, 62
+   and tests6/5, 47 derived from
+   the force-quirks flag, the doctype name and the listed public and system
+   identifiers; and the template.dat table: 111 cases.
+2. Quirks when the expected tree has no doctype record (Initial anything-else):
+   763 cases.
+3. NoQuirks when both the input and the first expected record are a plain
+   `<!DOCTYPE html>`: 602 cases.
+
+The replay fails if any retained ordinary case falls outside these rules, so
+no case is compared with its document mode omitted.
+
+| Retained file | Ordinary cases run | Fragment cases run | Exclusions |
+| --- | --- | --- | --- |
+| adoption01.dat | 1–17 | 18 (div) | — |
+| adoption02.dat | 1–2 | — | — |
+| blocks.dat, doctype01.dat | 48, 37 | — | — |
+| comments01.dat | 1–16 | — | — |
+| domjs-unsafe.dat | 49 | — | — |
+| entities01.dat, entities02.dat | 75, 26 | — | — |
+| foreign-fragment.dat | — | 1–66 (svg, math, div) | — |
+| html5test-com.dat | 24 | — | 12 spec |
+| inbody01.dat, isindex.dat, main-element.dat | 4, 4, 3 | — | — |
+| math.dat, svg.dat | — | 8 each (td, tr, thead, tfoot, tbody) | — |
+| menuitem-element.dat | 20 | — | — |
+| namespace-sensitivity.dat, quirks01.dat | 1, 4 | — | — |
+| noscript01.dat | 1–18 (`#script-off`) | — | — |
+| pending-spec-changes.dat, pending-spec-changes-plain-text-unsafe.dat | 3, 1 | — | — |
+| plain-text-unsafe.dat | 33 | — | — |
+| ruby.dat, scriptdata01.dat, search-element.dat | 21, 26, 3 | — | — |
+| tables01.dat | 19 | — | — |
+| template.dat | 111 | 109 (template) | — |
+| tests1.dat | 112 | — | 40, 44, 47 spec |
+| tests2.dat–tests3.dat, tests8.dat–tests12.dat | 63, 24, 10, 27, 54, 13, 2 | — | — |
+| tests4.dat | — | 1–9 | — |
+| tests5.dat | 16 | — | 1 `#script-on` |
+| tests6.dat, tests7.dat | 39, 33 | 13, 1 | — |
+| tests14.dat, tests15.dat | 7, 14 | — | — |
+| tests16.dat | 191 | — | 6 `#script-on` |
+| tests17.dat–tests26.dat | 13, 36, 103, 64, 23, 5, 5, 8, 26, 20 | — | — |
+| tests_innerHTML_1.dat | — | 81 | 76 spec, 79 defect |
+| tricky01.dat | 9 | — | — |
+| webkit01.dat | 52 | — | — |
+| webkit02.dat | 41 | 4 | 1 `#script-on` |
+
+Counts in a cell are numbers of cases; ranges name ordinals. Every spec
+exclusion must still diverge from the corpus, and its actual rendering in both
+encodings must equal the tree derived from the pinned edition, so a stale
+record, a failed parse or any unrelated divergence fails. Tests1/40, 44 and 47
+and html5test-com/12 are `<?` inputs: the HTML877d
+[tag open state][tokenization] enters the [processing-instruction states][pi],
+so Initial inserts a PI (target `COMMENT`, `COM--MENT` or `import` with data
+`namespace="foo" implementation="#bar"`) or, at EOF, nothing, instead of the
+historical bogus comment, before html, head and body in quirks mode.
+Tests_innerHTML_1/76 (`<input><option>`, select context) follows the HTML877d
+in-body `input` rule: with a select fragment context element the tag is a parse
+error and is ignored, leaving only the `option`, while this corpus revision
+inserts it. Tests_innerHTML_1/79
+(`</html><!--abc-->`, html context) is a defect tracked by
+[#1344](https://github.com/bj-data-eng/surgeist/issues/1344): in the fragment case the
+after-body `</html>` must be ignored, leaving the comment under the html root.
+The internal fragment comparison differs and the public request reports
+`Engine(Tree)`.
+
+The three `scripted/` files (adoption01, ark, webkit01) need script execution
+during parsing and are not bundled; the parser supports only the Disabled
+scripting profile.
+
+Comments01, tables01, template and adoption also keep their selected separate
+evidence: typed diagnostics and every-cut feeds for comments01, tables01/1,4,6,19
+and selected template transitions, and the hand-derived sink operations above.
+Template/109 also runs separately through `retained_template_context_fragment_matches_actual_output_and_content_owner`.
+
+### Tokenizer
+
+[Tokenizer replay tests][tokenizerreplay] run all **6,806** cases of the 13
+bundled `.test` files, one test per file, through the actual private tokenizer.
+They are every top-level upstream tokenizer file except `xmlViolation.test`.
+Each case runs in every listed initial state, from UTF-16 code units and also
+from UTF-8 when its input contains only scalar values. A test-only JSON reader
+keeps string escapes as exact UTF-16 units, so isolated surrogates survive, and
+`doubleEscaped` cases apply the second `\uHHHH` round. The comparison covers
+coalesced character data, start-tag names, attribute sets and self-closing
+flags, end-tag names, comments, doctypes with correctness as force-quirks, and
+the ordered error codes through their HTML877d names. Error line and column
+metadata are not compared. Processing-instruction tokens remain actual output.
+
+| Retained file | Cases | Exclusions |
 | --- | --- | --- |
-| adoption02.dat | 1 | Independent tree; selected hand-derived sink tests above cover separate adoption/foster operations. |
-| namespace-sensitivity.dat | 1 | Expanded namespace/name structure. |
-| quirks01.dat | 1–4 | Literal document-mode selection. |
-| tests14.dat | 1–7 | Independent structural expectations. |
-| tests24.dat | 1–8 | Independent structural expectations. |
-| tables01.dat | 1–19 | Independent structural expectations. Cases 1,4,6,19 additionally have 3/7/14/5 source-derived typed records, both encodings and every cut; the remaining historical error sections are not certified. |
-| comments01.dat | 1–16 | Both encodings, every cut, independent 27-record typed chronology plus separate Unicode literals. |
-| template.dat | 1–108, 110–112 | All 111 ordinary bindings in both encodings; 81, 94, 100, 108, 110–112 also contribute the 670 progressive runs. |
+| contentModelFlags.test | 14 | — |
+| domjs.test | 43 | 1–3 spec |
+| entities.test, escapeFlag.test | 80, 5 | — |
+| namedEntities.test, numericEntities.test | 4,210, 336 | — |
+| pendingSpecChanges.test | 1 | — |
+| test1.test, test2.test | 69, 45 | test2/32, 33 spec |
+| test3.test | 1,590 | 1159–1191 spec; 80 defect |
+| test4.test | 85 | — |
+| unicodeChars.test, unicodeCharsProblematic.test | 323, 5 | — |
 
-Template/109 is a separate, actual captured-template fragment in both encodings.
-The parser does not replace its context with an ordinary request. The corpus's
-`Both` scripting metadata is retained, while this ordinary selection explicitly
-executes Disabled. Enabled corpus replay and private fragment feeding are not
-covered by this selection.
+The 38 spec exclusions are `<?` inputs that HTML877d tokenizes in the
+[processing-instruction states][pi], not as the historical bogus comment with
+`unexpected-question-mark-instead-of-tag-name`. Each records the tokens and
+ordered error codes derived by hand from those states, and every run must equal
+them: a PI for test2/32 and 33 (`namespace`, `foo--`); no token with
+`eof-in-processing-instruction` for `<?` and `<?` plus one ASCII letter; and
+otherwise a `?`-prefixed bogus comment with
+`invalid-first-character-of-processing-instruction-target`, preceded by
+`control-character-in-input-stream` for test3/1163 (U+000B) and followed by
+`unexpected-null-character` for test3/1160 and 1166 (U+0000). A tokenizer panic
+fails any case, excluded or not. Test3/80 (`<!` U+000B) is a defect tracked by
+[#1345](https://github.com/bj-data-eng/surgeist/issues/1345): tokens match, but
+`control-character-in-input-stream` follows `incorrectly-opened-comment`, while
+the corpus reports it first.
+`xmlViolation.test` is not bundled because it assumes infoset coercion rather
+than the HTML tokenizer.
 
-Adoption02/2 remains outside the selected structural replay bindings: its input
-and expected format are decoded, but that does not credit an actual parser
-comparison. This selection limit is not a claim that the input is unsupported.
+### Corpus differences
 
 The historical corpus says HTML parsing cannot emit processing instructions;
 HTML877d and the independent PI literals above establish the selected contrary
@@ -218,6 +341,8 @@ expectations or certify all HTML behavior.
 [tableelements]: ../../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#the-table-element
 [tree]: ../src/parser/tree_builder/tests.rs
 [conformance]: ../src/parser/tree_builder/conformance.rs
+[corpusreplay]: ../src/parser/tree_builder/conformance/corpus_replay.rs
+[tokenizerreplay]: ../src/parser/tokenizer/tests/html5lib.rs
 [fragment]: ../src/parser/tree_builder/context.rs
 [public]: ../tests/parser/parse/reports.rs
 [construction]: ../../surgeist-html/tests/html/construction/builder.rs

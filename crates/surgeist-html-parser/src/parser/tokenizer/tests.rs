@@ -3955,3 +3955,5 @@ fn progressive_attribute_named_reference_waits_for_actual_equal_sign_exception()
         assert!(errors.is_empty());
     }
 }
+
+mod html5lib;

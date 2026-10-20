@@ -3270,21 +3270,18 @@ with independently decoded expected data, and releases consumer storage and the
 completed owner through their existing cleanup paths.
 
 The bundled [html5lib-tests subset](../../crates/surgeist-html-parser/tests/fixtures/html5lib-f994590f/tree-construction/README.md)
-at revision `f994590f528ac8b6073665791ddb1ed85c66dfb2` contains eight complete
-data files, with 169 cases. All 169 are decoded as fixture-format coverage.
-Exactly 167 stable file/ordinal bindings are replayed through the completed
-ordinary parser with scripting Disabled and no fragment context:
-
-| Whole retained file | Replayed one-based case ordinals |
-| --- | --- |
-| adoption02.dat | 1 |
-| namespace-sensitivity.dat | 1 |
-| quirks01.dat | 1–4 |
-| tests14.dat | 1–7 |
-| tests24.dat | 1–8 |
-| tables01.dat | 1–19 |
-| comments01.dat | 1–16 |
-| template.dat | 1–108, 110–112 |
+at revision `f994590f528ac8b6073665791ddb1ed85c66dfb2` contains all 56 top-level
+tree-construction data files with 1,775 cases and 13 complete tokenizer files,
+every top-level tokenizer file except `xmlViolation.test`, with 6,806 cases.
+Every retained tree-construction case except the eight `#script-on` cases runs
+in both encodings: 1,575 through the completed ordinary
+parser with scripting Disabled, and all 192 `#document-fragment` cases through
+the actual captured-context fragment owner with their corpus HTML, SVG or
+MathML context. Every bundled tokenizer case runs through the private tokenizer in each
+listed initial state, comparing tokens and ordered error codes. The [coverage
+matrix](../../crates/surgeist-html-parser/docs/conformance-coverage.md#retained-corpus-bindings-and-differences)
+lists per-file counts, document-mode bindings and every exclusion with its
+reason.
 
 All 111 ordinary template cases run through both UTF-8 and UTF-16 inputs. Case
 109 runs separately through the actual template-context fragment owner in both
@@ -3301,8 +3298,9 @@ Additional UTF-16 inputs cover isolated surrogates, surrogate pairs and CRLF.
 The nested-template EOF case separately checks two distinct diagnostic
 invocations at the same source position.
 
-The adapter compares native document mode, expanded names, prefixes, exact
-UTF-16 text and attributes, child order and parent/owner relationships.
+The adapter compares native document mode where the case binding carries it,
+expanded names, prefixes, exact UTF-16 text and attributes, child order and
+parent/owner relationships.
 Associated template contents remain separate fragment trees, and distinct equal
 siblings retain distinct identities. Native attribute order is preserved;
 comparison with the corpus's sorted attribute dump uses an explicit permutation
