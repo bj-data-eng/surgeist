@@ -1,4 +1,8 @@
-//! Syntax 3 §§5.4.1/5.4.3 keep a rule-list semicolon in the qualified prelude.
+//! Syntax 3 (2026 CRD) §§5.5.1/5.5.3 keep a stylesheet-root semicolon in the
+//! qualified prelude, while §5.5.5 discards one in every block's contents, at
+//! every depth, including bounded structural replay.
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-stylesheet-contents
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
 use surgeist_css::{
     CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSelector, CssSheet,
     CssTokenKind, ErrorKind, parse_sheet, validate_sheet,
@@ -52,7 +56,7 @@ fn assert_style_semicolon_control() {
     assert_eq!(validation.unwrap(), *report.syntax());
 }
 
-fn failed_unit(body_media_depth: usize) -> String {
+fn semicolon_prefixed_supports(body_media_depth: usize) -> String {
     format!(
         ";/**/@supports (color:red){{{}.hidden{{color:red}}{}}}",
         "@media all{".repeat(body_media_depth),
@@ -88,7 +92,13 @@ fn assert_semicolon_diagnostic(diagnostic: &CssRecoveryDiagnostic, source: &str,
     assert_eq!(encountered.authored(), ";");
 }
 
-fn assert_nested_siblings(sheet: &CssSheet, source: &str, ancestors: usize, max_depth: usize) {
+fn assert_nested_siblings(
+    sheet: &CssSheet,
+    source: &str,
+    ancestors: usize,
+    body_media_depth: usize,
+    max_depth: usize,
+) {
     let [CssRule::Media(first), after] = sheet.rules() else {
         panic!("Media chain and root sibling at maximum structural depth {max_depth}")
     };
@@ -102,19 +112,32 @@ fn assert_nested_siblings(sheet: &CssSheet, source: &str, ancestors: usize, max_
         };
         parent = nested;
     }
-    let [kept] = parent.rules() else {
+    let [CssRule::Supports(supports), kept] = parent.rules() else {
         panic!(
-            "failed qualified unit must leave only its later child at Media depth {ancestors}, maximum structural depth {max_depth}; got {} retained children",
+            "a discarded block semicolon must leave Supports and its later sibling at Media depth {ancestors}, maximum structural depth {max_depth}; got {} retained children",
             parent.rules().len()
         )
     };
+    let mut body = supports.rules();
+    for level in 0..body_media_depth {
+        let [CssRule::Media(nested)] = body else {
+            panic!(
+                "missing Supports-body Media at level {level}, maximum structural depth {max_depth}"
+            )
+        };
+        body = nested.rules();
+    }
+    let [hidden] = body else {
+        panic!("the Supports child is retained at maximum structural depth {max_depth}")
+    };
+    assert_style(hidden, source, "hidden", "red");
     assert_style(kept, source, "kept", "blue");
     assert_style(after, source, "after", "red");
 }
 
 fn check_nested(ancestors: usize, body_media_depth: usize) {
     let max_depth = ancestors + body_media_depth + 2;
-    let unit = failed_unit(body_media_depth);
+    let unit = semicolon_prefixed_supports(body_media_depth);
     let source = format!(
         "/*😀*/\r\n{}{unit}.kept{{color:blue}}{}.after{{color:red}}",
         "@media all{".repeat(ancestors),
@@ -122,42 +145,41 @@ fn check_nested(ancestors: usize, body_media_depth: usize) {
     );
     let report = parse_sheet(&source);
     let validation = validate_sheet(&source);
-    // This genuine distinct-grammar control completes before any failed-unit assertion.
+    // This genuine distinct-grammar control completes before any nested assertion.
     assert_style_semicolon_control();
-    assert_nested_siblings(report.syntax(), &source, ancestors, max_depth);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one complete semicolon-prefixed unit at maximum structural depth {max_depth}")
-    };
-    assert_semicolon_diagnostic(diagnostic, &source, &unit);
-    assert_eq!(validation.unwrap_err().diagnostics(), report.diagnostics());
-    assert_eq!(
-        report
-            .clone()
-            .into_validation_result()
-            .unwrap_err()
-            .diagnostics(),
+    assert_nested_siblings(
+        report.syntax(),
+        &source,
+        ancestors,
+        body_media_depth,
+        max_depth,
+    );
+    assert!(
+        report.is_clean(),
+        "a discarded block semicolon is not a parse error at maximum structural depth {max_depth}: {:?}",
         report.diagnostics()
     );
+    assert_eq!(validation.unwrap(), *report.syntax());
 }
 
 #[test]
-fn shallow_rule_list_semicolon_keeps_supports_in_one_failed_qualified_unit() {
+fn shallow_block_semicolon_is_discarded_before_supports() {
     check_nested(1, 0);
 }
 
 #[test]
-fn selected_chunk_semicolon_keeps_supports_in_one_failed_qualified_unit() {
+fn selected_chunk_block_semicolon_is_discarded_before_supports() {
     check_nested(63, 0);
 }
 
 #[test]
-fn bounded_deep_semicolon_keeps_supports_in_one_failed_qualified_unit() {
+fn bounded_deep_block_semicolon_is_discarded_before_supports() {
     check_nested(63, 64);
 }
 
 #[test]
 fn root_rule_list_semicolon_keeps_supports_in_one_failed_qualified_unit() {
-    let unit = failed_unit(0);
+    let unit = semicolon_prefixed_supports(0);
     let source = format!("/*😀*/\r\n{unit}.kept{{color:blue}}.after{{color:red}}");
     let report = parse_sheet(&source);
     let validation = validate_sheet(&source);

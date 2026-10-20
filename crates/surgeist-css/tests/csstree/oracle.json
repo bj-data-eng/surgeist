@@ -5,7 +5,7 @@
   "source_tree": "bfadc7a7a8d93dce59a27fa7df3bb0f6f6a623d8",
   "expectation_schema_version": 1,
   "generation_report_sha256": "ed8c70539c10effc254a8c2c4faa750396c7f3647996f5120e9e311bbe96d366",
-  "expected_class_registry_sha256": "169bb9dbc143368490345b27a0cb58e840fabf918610f180c676483b680f5089",
+  "expected_class_registry_sha256": "6e181d5752b9ed9bb5f2fb9c9f18acfd5cfe7822054698b8ab160979d04b913d",
   "records": [
     {
       "id": "atrule/atrule/container.json#/all together",
@@ -30083,9 +30083,27 @@
           {
             "code": "invalid_qualified_rule",
             "action": "drop_qualified_rule",
-            "byte_offset": 50,
+            "byte_offset": 31,
             "span_start": 26,
-            "span_end": 50,
+            "span_end": 31,
+            "multiplicity": 1,
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "byte_offset": 38,
+            "span_start": 32,
+            "span_end": 38,
+            "multiplicity": 1,
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "byte_offset": 49,
+            "span_start": 39,
+            "span_end": 49,
             "multiplicity": 1,
             "payload_relation": "intersects"
           }
@@ -30120,25 +30138,15 @@
         }
       },
       "outcome": {
-        "kind": "recovered"
+        "kind": "clean"
       },
       "observation": {
         "extractor": {
           "kind": "sheet_rules"
         },
         "syntax_count": 1,
-        "is_clean": false,
-        "diagnostics": [
-          {
-            "code": "invalid_selector",
-            "action": "drop_qualified_rule",
-            "byte_offset": 29,
-            "span_start": 29,
-            "span_end": 33,
-            "multiplicity": 1,
-            "payload_relation": "intersects"
-          }
-        ]
+        "is_clean": true,
+        "diagnostics": []
       }
     },
     {
@@ -30179,10 +30187,10 @@
         "is_clean": false,
         "diagnostics": [
           {
-            "code": "invalid_selector",
-            "action": "drop_qualified_rule",
-            "byte_offset": 29,
-            "span_start": 29,
+            "code": "unknown_at_rule",
+            "action": "drop_at_rule",
+            "byte_offset": 30,
+            "span_start": 30,
             "span_end": 34,
             "multiplicity": 1,
             "payload_relation": "intersects"

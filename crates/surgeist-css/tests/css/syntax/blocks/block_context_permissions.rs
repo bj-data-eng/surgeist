@@ -371,22 +371,35 @@ fn malformed_font_mixed_list_unit_consumes_an_unseparated_tail_only_to_child_eof
 #[test]
 fn same_conditional_body_rejects_top_level_declarations_and_retains_style_ancestor_ordered_runs() {
     let body = "height:2px; a{opacity:.5} width:1px;";
-    let top = parse_sheet(&format!("@media all{{{body}}} b{{color:red}}"));
+    let top_source = format!("@media all{{{body}}} b{{color:red}}");
+    let top = parse_sheet(&top_source);
     let [CssRule::Media(media), CssRule::Style(after)] = top.syntax().rules() else {
         panic!("top-level group and sibling")
     };
-    assert!(media.rules().is_empty());
+    let [CssRule::Style(child)] = media.rules() else {
+        panic!("only the nested style rule survives the rule-list grammar: {media:?}")
+    };
+    assert_eq!(
+        properties(child.declarations()),
+        [CssKnownProperty::Opacity]
+    );
     assert_eq!(properties(after.declarations()), [CssKnownProperty::Color]);
-    // §5.4.1's qualified prelude includes the root semicolon: the first
-    // declaration-looking text owns a{}; the final candidate ends at child EOF.
+    // Syntax 3 (2026 CRD) consume a block's contents: neither declaration is
+    // valid in @media's <rule-list>, so each is reconsumed as a qualified rule
+    // that returns nothing at its `;` stop token, leaving a{} its own unit.
+    // https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
     assert_eq!(
         top.diagnostics()
             .iter()
-            .map(|d| d.action())
+            .map(|d| (
+                d.action(),
+                &top_source
+                    [d.span().start().byte_offset().value()..d.span().end().byte_offset().value()]
+            ))
             .collect::<Vec<_>>(),
         [
-            CssRecoveryAction::DropQualifiedRule,
-            CssRecoveryAction::DropQualifiedRule
+            (CssRecoveryAction::DropQualifiedRule, "height:2px"),
+            (CssRecoveryAction::DropQualifiedRule, "width:1px")
         ]
     );
 

@@ -1,25 +1,40 @@
 //! Selected generic units bridged to existing contextual grammar callbacks.
 use super::*;
 use crate::syntax_consumption::{
-    self as syntax, GenericFaultKind, GenericRule, GenericRuleResult, RuleTermination,
-    SyntaxDocument,
+    self as syntax, GenericFaultKind, GenericRule, GenericRuleResult, RuleListSyntax,
+    RuleTermination, SyntaxDocument,
 };
 
 pub(super) fn rules(
     source: &str,
     input: &Parser<'_, '_>,
     recovery: &RecoveryState,
-    top_level: bool,
+    list: RuleListSyntax,
 ) -> Result<
     (std::rc::Rc<SyntaxDocument<'static>>, Vec<GenericRuleResult>),
     crate::CssComponentValueError,
 > {
     let document = recovery.syntax_document(source)?;
-    let list = document
+    let start = document
         .list_at_source_start(input.position().byte_index())
         .expect("source rule-list starts at its original root or block boundary");
-    let selected = syntax::consume_rules(&mut document.cursor(list), top_level);
+    let selected = syntax::consume_rules(&mut document.cursor(start), list);
     Ok((document, selected))
+}
+
+/// Discards the `;` and trivia that consume a block's contents leaves after
+/// its last selected unit, so the native nested block is exhausted.
+pub(super) fn discard_block_contents_tail(input: &mut Parser<'_, '_>) {
+    loop {
+        let state = input.state();
+        match input.next_including_whitespace_and_comments() {
+            Ok(Token::WhiteSpace(_) | Token::Comment(_) | Token::Semicolon) => {}
+            _ => {
+                input.reset(&state);
+                break;
+            }
+        }
+    }
 }
 
 pub(super) fn one<'i, 't, P, R>(
@@ -151,11 +166,63 @@ where
         Ok(GenericRule::Qualified(_)) => {
             parse_qualified_selected(source, input, parser, recovery, start, false)
         }
-        Err(error) => {
-            debug_assert_eq!(error.kind, GenericFaultKind::QualifiedRuleEndOfInput);
-            parse_qualified_selected(source, input, parser, recovery, start, true)
+        Err(error) => match error.kind {
+            GenericFaultKind::QualifiedRuleEndOfInput => {
+                parse_qualified_selected(source, input, parser, recovery, start, true)
+            }
+            GenericFaultKind::QualifiedRuleStopToken | GenericFaultKind::CustomPropertyRule => {
+                reject_bounded_qualified(input, document_offset(error), error.kind)
+            }
+            kind => unreachable!("rule-list consumers select no {kind:?} unit"),
+        },
+    }
+}
+
+fn document_offset(error: &syntax::GenericSyntaxFault) -> usize {
+    error
+        .at
+        .source
+        .as_ref()
+        .expect("source rule-list fault has its original boundary")
+        .offset
+}
+
+// Syntax 3 (2026 CRD) §5.5.3: a nested qualified rule that meets its `;`
+// stop token is a parse error and returns nothing, and one whose prelude
+// begins like a custom property consumes the remnants of a bad declaration.
+// Neither returns a rule, so no contextual grammar is admitted; the selected
+// range ends before the `;` that the enclosing block's contents discards.
+#[inline(never)]
+fn reject_bounded_qualified<'i, R>(
+    input: &mut Parser<'i, '_>,
+    end: usize,
+    kind: GenericFaultKind,
+) -> Result<R, ParseError<'i, Error>> {
+    let location = input.current_source_location();
+    while input.position().byte_index() < end {
+        let Ok(token) = input.next_including_whitespace_and_comments() else {
+            break;
+        };
+        if matches!(
+            token,
+            Token::Function(_)
+                | Token::ParenthesisBlock
+                | Token::SquareBracketBlock
+                | Token::CurlyBracketBlock
+        ) {
+            // A selected group is one component; finish it before comparing
+            // the following boundary, so the unit cannot absorb its `;`.
+            let _: Result<(), ParseError<'_, ()>> = input.parse_nested_block(|nested| {
+                while nested.next_including_whitespace_and_comments().is_ok() {}
+                Ok(())
+            });
         }
     }
+    Err(if kind == GenericFaultKind::QualifiedRuleStopToken {
+        input.new_unexpected_token_error(Token::Semicolon)
+    } else {
+        location.new_error(cssparser::BasicParseErrorKind::QualifiedRuleInvalid)
+    })
 }
 
 // Keep contextual prelude/error temporaries in their own dispatch branch. These

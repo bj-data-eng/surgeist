@@ -338,8 +338,10 @@ fn unstyled_scope_rule_list_recovery_does_not_admit_declarations() {
         assert!(values[0].selector_context().parent().is_none());
         scope(values[0].selector_context().scope_context().unwrap());
     }
-    // In a rule list, the declaration-looking prefix and following child form
-    // one invalid qualified rule. A semicolon does not end its prelude.
+    // Syntax 3 (2026 CRD) consume a block's contents: the unadmitted
+    // declaration is reconsumed as a qualified rule that returns nothing at
+    // its `;` stop token, so the following child is its own retained rule.
+    // https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
     for source in [
         "@scope{color:red;.child{color:blue}}",
         "@scope{@media screen{color:red;.child{color:blue}}}",
@@ -347,12 +349,24 @@ fn unstyled_scope_rule_list_recovery_does_not_admit_declarations() {
     ] {
         let report = parse_sheet(source);
         let [diagnostic] = report.diagnostics() else {
-            panic!("one invalid qualified rule")
+            panic!("one invalid qualified rule: {source}")
         };
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
+        let start = source.find("color:red").unwrap();
+        assert_eq!(diagnostic.span().start().byte_offset().value(), start);
+        assert_eq!(
+            diagnostic.span().end().byte_offset().value(),
+            start + "color:red".len()
+        );
         let normalized = normalize_report(&report).unwrap();
         assert_eq!(normalized.diagnostics(), report.diagnostics());
-        assert!(declarations(normalized.syntax()).is_empty());
+        let values = declarations(normalized.syntax());
+        assert_eq!(values.len(), 1, "{source}");
+        color(values[0], source, "blue", 0);
+        assert_eq!(
+            values[0].selector_context().selectors()[0].selector(),
+            &CssSelector::Class("child".into())
+        );
     }
 }
 

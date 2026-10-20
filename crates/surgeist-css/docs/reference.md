@@ -527,7 +527,9 @@ rejected with `UnknownAtRule`; they cannot produce a `CssRule`. The raw parser
 does not strip a BOM or stylesheet CDO/CDC sentinels. Top-level CDO/CDC tokens
 are cleanly ignored by `parse_sheet`, as required by
 [Syntax 3 §5.4.1](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-list-of-rules).
-Nested rule lists reconsume them as qualified-rule input. Encoding fallback
+Block contents reconsume them as qualified-rule input under the selected 2026
+[consume a block's contents](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents),
+which instead discards a `;`. Encoding fallback
 prefix recognition belongs to byte decoding and grants no parsed-rule validity.
 
 A valid outer rule survives inner declaration, selector, query and child-rule
@@ -5671,9 +5673,20 @@ declaration order. The [four-side shorthand policy](#four-side-shorthand-members
 continues to assign exactly the selected four logical or physical members with
 no complementary resets.
 
-Ordinary conditional and layer rule lists consume semicolon-prefixed input as
-a qualified rule. For example, `@media all { a {} ;b {} c {} }` retains `a` and
-`c`, with a `DropQualifiedRule` diagnostic for `;b {}`. Style bodies retain their
+Every at-rule and qualified-rule block, including ordinary conditional, layer,
+scope and `@keyframes` bodies, is consumed by
+[consume a block's contents](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents)
+in the selected 2026-10-01 Syntax 3 block parsing. It discards a `;` without
+a diagnostic, so `@media all { ; a {} ;b {} c {}; }` cleanly retains `a`, `b`
+and `c`. A rule-list grammar admits no declaration: the declaration attempt is
+reconsumed as a qualified rule that stops at its `;` stop token, so
+`@media all { color: red; a {} }` retains `a` with one `DropQualifiedRule`
+diagnostic spanning only `color: red`. A nested qualified-rule prelude that
+begins like a custom property, such as `--x: y {}`, instead consumes the
+remnants of a bad declaration through the next `;` or the end of the block.
+Only the stylesheet top level still follows
+[consume a stylesheet's contents](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-stylesheet-contents),
+where `;.x {}` is one invalid qualified rule. Style bodies retain their
 declaration grammar, where extra semicolons are valid separators.
 
 ```rust

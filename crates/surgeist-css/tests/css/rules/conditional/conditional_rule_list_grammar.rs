@@ -1,8 +1,15 @@
 //! Conditional Rules 3 section 3 permits page rules in conditional groups.
-//! Syntax 3 section 5.4.1 consumes a rule list: a semicolon starts a qualified
-//! rule prelude rather than being discarded as in a style declaration body.
+//! Syntax 3 (2026 CRD) §5.5.2 consumes every at-rule block with §5.5.4
+//! "consume a block", whose §5.5.5 "consume a block's contents" discards a
+//! `<semicolon-token>` and tries a declaration before a qualified rule that has
+//! `<semicolon-token>` as its stop token. A top-level conditional group's
+//! `<rule-list>` grammar rejects every declaration, so that attempt is
+//! reconsumed as a qualified rule which ends, invalid, at its `;`.
 //! https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#contents-of
-//! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-list-of-rules
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-at-rule
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#syntax
 use surgeist_css::{
     CssComponentValue, CssComponentValueRef, CssErrorCode, CssImportance, CssKnownProperty,
@@ -85,54 +92,171 @@ fn original_nested_page_recovers_its_declaration_without_dropping_page() {
     assert!(!report.is_clean());
 }
 
-fn assert_semicolon_recovery(source: &str, expected_tags: &[&str], discarded: &[&str]) {
+fn group_children(rule: &CssRule) -> &[CssRule] {
+    match rule {
+        CssRule::Media(media) => media.rules(),
+        CssRule::Supports(supports) => supports.rules(),
+        CssRule::Container(container) => container.rules(),
+        CssRule::LayerBlock(layer) => layer.rules(),
+        _ => panic!("expected a conditional or layer group: {rule:?}"),
+    }
+}
+
+/// Asserts one top-level group whose children are the expected style rules,
+/// and whose ordered diagnostics are exactly the dropped `(unit, action)`s.
+fn assert_block_contents(
+    source: &str,
+    expected_tags: &[&str],
+    dropped: &[(&str, CssRecoveryAction)],
+) {
     let report = parse_sheet(source);
-    let [CssRule::Media(media)] = report.syntax().rules() else {
-        panic!("one media: {report:?}")
+    let [group] = report.syntax().rules() else {
+        panic!("one group: {source}: {report:?}")
     };
-    assert_eq!(
-        media.rules().len(),
-        expected_tags.len(),
-        "{source}: {report:?}"
-    );
-    for (rule, tag) in media.rules().iter().zip(expected_tags) {
+    let children = group_children(group);
+    assert_eq!(children.len(), expected_tags.len(), "{source}: {report:?}");
+    for (rule, tag) in children.iter().zip(expected_tags) {
         assert_tag(rule, tag);
     }
-    assert!(!report.is_clean(), "{source}");
     assert_eq!(
         report.diagnostics().len(),
-        discarded.len(),
+        dropped.len(),
         "{source}: {report:?}"
     );
-    for (diagnostic, unit) in report.diagnostics().iter().zip(discarded) {
+    let mut searched = 0;
+    for (diagnostic, (unit, action)) in report.diagnostics().iter().zip(dropped) {
+        assert_eq!(diagnostic.action(), *action, "{source}: {unit}");
+        let start = searched + source[searched..].find(unit).unwrap();
+        searched = start + unit.len();
         assert_eq!(
-            diagnostic.action(),
-            CssRecoveryAction::DropQualifiedRule,
-            "{source}"
+            diagnostic.span().start().byte_offset().value(),
+            start,
+            "{source}: {unit}"
         );
-        let start = source.find(unit).unwrap();
-        assert_eq!(diagnostic.span().start().byte_offset().value(), start);
         assert_eq!(
             diagnostic.span().end().byte_offset().value(),
-            start + unit.len()
+            start + unit.len(),
+            "{source}: {unit}"
         );
     }
-    assert!(report.into_validation_result().is_err());
+    assert_eq!(report.is_clean(), dropped.is_empty(), "{source}");
+    assert_eq!(
+        report.into_validation_result().is_ok(),
+        dropped.is_empty(),
+        "{source}"
+    );
 }
+
+// CSSTree tolerant "correct fallback on error in at-rule block/1": the `;` is
+// discarded by consume a block's contents, so `b{}` is an ordinary sibling.
 #[test]
-fn original_semicolon_prefixed_qualified_rule_is_discarded() {
-    assert_semicolon_recovery("@media (max-width:1000px){a{};b{}}", &["a"], &[";b{}"]);
+fn semicolon_between_media_rules_is_discarded_and_keeps_the_next_rule() {
+    assert_block_contents("@media (max-width:1000px){a{};b{}}", &["a", "b"], &[]);
 }
+
+// CSSTree tolerant "/2": after the discarded `;`, `@b{}` is consumed as its own
+// nested at-rule; it is unknown, so only that at-rule is dropped.
 #[test]
-fn original_semicolon_prefixed_at_keyword_belongs_to_discarded_qualified_rule() {
-    assert_semicolon_recovery("@media (max-width:1000px){a{};@b{}}", &["a"], &[";@b{}"]);
+fn semicolon_before_an_at_keyword_leaves_an_independent_at_rule() {
+    assert_block_contents(
+        "@media (max-width:1000px){a{};@b{}}",
+        &["a"],
+        &[("@b{}", CssRecoveryAction::DropAtRule)],
+    );
 }
+
 #[test]
-fn rule_list_recovery_preserves_following_siblings_and_diagnostic_order() {
-    assert_semicolon_recovery(
+fn block_contents_recovery_preserves_following_siblings_and_diagnostic_order() {
+    assert_block_contents(
         "@media all{a{};b{}c{};@b{}d{}}",
-        &["a", "c", "d"],
-        &[";b{}", ";@b{}"],
+        &["a", "b", "c", "d"],
+        &[("@b{}", CssRecoveryAction::DropAtRule)],
+    );
+}
+
+#[test]
+fn semicolons_before_between_and_after_rules_are_discarded_in_every_group() {
+    // Each group's block is consumed by consume a block's contents.
+    for prefix in [
+        "@media screen",
+        "@supports (display:block)",
+        "@container (width > 1px)",
+        "@layer base",
+    ] {
+        for (body, tags) in [
+            ("; lost {}", &["lost"][..]),
+            (";;a{}", &["a"]),
+            ("a{};b{}", &["a", "b"]),
+            ("a{} ; ; b{}", &["a", "b"]),
+            ("a{};", &["a"]),
+            ("a{};;", &["a"]),
+            (";", &[]),
+        ] {
+            assert_block_contents(&format!("{prefix} {{ {body} }}"), tags, &[]);
+        }
+    }
+}
+
+#[test]
+fn declarations_in_a_top_level_media_rule_list_are_dropped_before_a_rule() {
+    // `color: red` is not valid in @media's <rule-list>, so it is reconsumed as
+    // a qualified rule that reaches its `;` stop token and returns nothing.
+    assert_block_contents(
+        "@media screen { color: red; a {} }",
+        &["a"],
+        &[("color: red", CssRecoveryAction::DropQualifiedRule)],
+    );
+    // CSSTree tolerant "correct fallback on error in at-rule block/0".
+    let source = "@media (max-width:1000px){top:0;left:0;width:100%;}*{color:red}";
+    let report = parse_sheet(source);
+    let [media, CssRule::Style(after)] = report.syntax().rules() else {
+        panic!("media and following style: {report:?}")
+    };
+    assert!(group_children(media).is_empty(), "{report:?}");
+    assert_eq!(after.declarations().len(), 1);
+    let units: Vec<_> = report
+        .diagnostics()
+        .iter()
+        .map(|diagnostic| {
+            assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
+            &source[diagnostic.span().start().byte_offset().value()
+                ..diagnostic.span().end().byte_offset().value()]
+        })
+        .collect();
+    assert_eq!(units, ["top:0", "left:0", "width:100%"]);
+}
+
+#[test]
+fn a_qualified_rule_ending_at_a_semicolon_drops_only_its_prelude() {
+    assert_block_contents(
+        "@media all{a{};b;c{}}",
+        &["a", "c"],
+        &[("b", CssRecoveryAction::DropQualifiedRule)],
+    );
+    assert_block_contents(
+        "@supports (display:block){x y;z{}}",
+        &["z"],
+        &[("x y", CssRecoveryAction::DropQualifiedRule)],
+    );
+}
+
+#[test]
+fn custom_property_shaped_rule_consumes_the_remnants_of_a_bad_declaration() {
+    // Nested consume a qualified rule meets `{` after `--x:`, so it consumes
+    // the remnants of a bad declaration up to the next `;` or block end.
+    assert_block_contents(
+        "@media all{--x:y{}lost{};kept{}}",
+        &["kept"],
+        &[("--x:y{}lost{}", CssRecoveryAction::DropQualifiedRule)],
+    );
+    // At the stylesheet top level the same prelude only consumes its block.
+    let report = parse_sheet("--x:y{}.kept{}");
+    let [CssRule::Style(kept)] = report.syntax().rules() else {
+        panic!("top-level custom-property-shaped rule drops only its block: {report:?}")
+    };
+    assert_eq!(
+        kept.selectors().selectors()[0].selector(),
+        &CssSelector::Class("kept".into())
     );
 }
 #[test]
@@ -264,39 +388,41 @@ fn nested_page_and_declaration_preserve_authored_unicode_coordinates() {
 }
 
 #[test]
-fn semicolon_recovery_span_preserves_comments_unicode_and_balanced_blocks() {
-    assert_semicolon_recovery(
-        "/*😀*/\n@media all{a{};/*😀*/b{--x:'}';}c{}}",
-        &["a", "c"],
-        &[";/*😀*/b{--x:'}';}"],
+fn discarded_semicolon_keeps_comments_unicode_and_balanced_block_siblings() {
+    let source = "/*😀*/\n@media all{a{};/*😀*/b{--x:'}';}c{}}";
+    assert_block_contents(source, &["a", "b", "c"], &[]);
+    let report = parse_sheet(source);
+    let [CssRule::Media(media)] = report.syntax().rules() else {
+        panic!("one media: {report:?}")
+    };
+    let CssRule::Style(b) = &media.rules()[1] else {
+        panic!("b style: {media:?}")
+    };
+    let offset = source.find("b{").unwrap();
+    assert_eq!(b.position().byte_offset().value(), offset);
+    assert_eq!(b.position().line().value(), 1);
+    assert_eq!(
+        b.position().column().value() as usize,
+        source[source.find('\n').unwrap() + 1..offset]
+            .encode_utf16()
+            .count()
+    );
+    let [declaration] = b.declarations().as_slice() else {
+        panic!("one custom declaration: {b:?}")
+    };
+    assert_eq!(
+        declaration.value_components().serialize().unwrap().as_css(),
+        "'}'"
     );
 }
 
 #[test]
-fn semicolon_in_supports_rule_list_discards_next_qualified_rule() {
-    let source = "@supports (display:block){a{};b{}c{}}";
-    let report = parse_sheet(source);
-    let [CssRule::Supports(supports)] = report.syntax().rules() else {
-        panic!("one supports: {report:?}")
-    };
-    let [a, c] = supports.rules() else {
-        panic!("two surviving siblings: {supports:?}")
-    };
-    assert_tag(a, "a");
-    assert_tag(c, "c");
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one recovery: {report:?}")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
-    assert_eq!(
-        diagnostic.span().start().byte_offset().value(),
-        source.find(';').unwrap()
+fn semicolon_in_supports_block_contents_keeps_every_sibling() {
+    assert_block_contents(
+        "@supports (display:block){a{};b{}c{}}",
+        &["a", "b", "c"],
+        &[],
     );
-    assert_eq!(
-        diagnostic.span().end().byte_offset().value(),
-        source.find("c{}").unwrap()
-    );
-    assert!(report.into_validation_result().is_err());
 }
 
 #[test]
@@ -322,15 +448,30 @@ fn style_nested_conditional_body_keeps_semicolon_declaration_separators() {
 }
 
 #[test]
-fn repeated_semicolons_and_missing_block_remain_qualified_rule_recovery_units() {
-    assert_semicolon_recovery("@media all{a{};;b{}c{}}", &["a", "c"], &[";;b{}"]);
-    assert_semicolon_recovery("@media all{a{};b}", &["a"], &[";b"]);
+fn repeated_semicolons_are_discarded_and_a_missing_block_drops_only_its_prelude() {
+    assert_block_contents("@media all{a{};;b{}c{}}", &["a", "b", "c"], &[]);
+    // Nested consume a qualified rule returns nothing at the block's `}`.
+    assert_block_contents(
+        "@media all{a{};b}",
+        &["a"],
+        &[("b", CssRecoveryAction::DropQualifiedRule)],
+    );
 }
 
 #[test]
-fn nested_rule_lists_do_not_discard_top_level_only_html_comment_tokens() {
-    assert_semicolon_recovery("@media all{a{}<!--b{}c{}}", &["a", "c"], &["<!--b{}"]);
-    assert_semicolon_recovery("@media all{a{}-->b{}c{}}", &["a", "c"], &["-->b{}"]);
+fn nested_block_contents_do_not_discard_top_level_only_html_comment_tokens() {
+    // Only consume a stylesheet's contents discards CDO/CDC; in a block they
+    // begin a qualified rule after the failed declaration attempt.
+    assert_block_contents(
+        "@media all{a{}<!--b{}c{}}",
+        &["a", "c"],
+        &[("<!--b{}", CssRecoveryAction::DropQualifiedRule)],
+    );
+    assert_block_contents(
+        "@media all{a{}-->b{}c{}}",
+        &["a", "c"],
+        &[("-->b{}", CssRecoveryAction::DropQualifiedRule)],
+    );
 }
 
 #[test]
@@ -361,38 +502,24 @@ fn nested_charset_is_recovered_without_losing_style_siblings() {
 }
 
 #[test]
-fn layer_and_container_rule_lists_retain_pages_and_recover_semicolon_preludes() {
-    // These grouping blocks use rule-list grammar when there is no style ancestor.
+fn layer_and_container_block_contents_retain_pages_and_discard_semicolons() {
+    // These grouping blocks use rule-list grammar when there is no style
+    // ancestor, after consume a block's contents has discarded the `;`.
     for prefix in ["@layer print", "@container (width > 1px)"] {
         let source = format!("{prefix}{{a{{}}@page :first{{}};b{{}}c{{}}}}");
         let report = parse_sheet(&source);
+        assert!(report.is_clean(), "{report:?}");
         let [group] = report.syntax().rules() else {
             panic!("one group: {report:?}")
         };
-        let rules = match group {
-            CssRule::LayerBlock(layer) => layer.rules(),
-            CssRule::Container(container) => container.rules(),
-            _ => panic!("expected layer or container: {group:?}"),
-        };
-        let [a, CssRule::Page(page), c] = rules else {
-            panic!("ordered style/page/style: {rules:?}")
+        let [a, CssRule::Page(page), b, c] = group_children(group) else {
+            panic!("ordered style/page/style/style: {group:?}")
         };
         assert_tag(a, "a");
+        assert_tag(b, "b");
         assert_tag(c, "c");
         assert_eq!(page_pseudo(page), Some(CssPagePseudo::First));
-        let [diagnostic] = report.diagnostics() else {
-            panic!("one semicolon recovery: {report:?}")
-        };
-        assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
-        assert_eq!(
-            diagnostic.span().start().byte_offset().value(),
-            source.find(';').unwrap()
-        );
-        assert_eq!(
-            diagnostic.span().end().byte_offset().value(),
-            source.find("c{}").unwrap()
-        );
-        assert!(report.into_validation_result().is_err());
+        assert!(report.into_validation_result().is_ok());
     }
 }
 

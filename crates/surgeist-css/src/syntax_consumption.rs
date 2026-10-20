@@ -130,9 +130,28 @@ pub(crate) fn rule_dispatch(kind: TokenKind<'_>) -> GenericRuleDispatch {
     }
 }
 
-pub(crate) fn ignored_rule_list_prefix(kind: TokenKind<'_>, top_level: bool) -> bool {
-    matches!(kind, TokenKind::Whitespace | TokenKind::Comment)
-        || top_level && matches!(kind, TokenKind::Cdo | TokenKind::Cdc)
+/// The selected Syntax 3 (CRD 2026-10-01) consumer of a list of rules.
+///
+/// <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-stylesheet-contents>
+/// <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents>
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RuleListSyntax {
+    /// §5.5.1: CDO/CDC are discarded and anything else, including `;`,
+    /// begins a qualified rule without a stop token.
+    Stylesheet,
+    /// §5.5.5 within a rule-only grammar: `;` is discarded, at-rules are
+    /// nested, and a qualified rule stops at `;`. A declaration attempt is
+    /// never valid in such a grammar, so it is always reconsumed as a rule.
+    BlockContents,
+}
+
+fn ignored_rule_list_prefix(kind: TokenKind<'_>, list: RuleListSyntax) -> bool {
+    match kind {
+        TokenKind::Whitespace | TokenKind::Comment => true,
+        TokenKind::Cdo | TokenKind::Cdc => list == RuleListSyntax::Stylesheet,
+        TokenKind::Semicolon => list == RuleListSyntax::BlockContents,
+        _ => false,
+    }
 }
 
 pub(crate) fn semicolon_terminates_rule(dispatch: GenericRuleDispatch) -> bool {
@@ -1219,6 +1238,12 @@ pub(crate) struct SyntaxRange {
 pub(crate) enum GenericFaultKind {
     AtRuleEndOfInput,
     QualifiedRuleEndOfInput,
+    /// A nested qualified rule reached its `<semicolon-token>` stop token,
+    /// which remains unconsumed for the enclosing block's contents.
+    QualifiedRuleStopToken,
+    /// A nested qualified-rule prelude began like a custom property, so its
+    /// range is the remnants of a bad declaration, ending before `;`.
+    CustomPropertyRule,
     EmptyInput,
     TrailingInput,
     InvalidDeclaration,
@@ -1410,14 +1435,18 @@ pub(crate) fn consume_qualified_rule_context(
     let start = cursor.position();
     let mut prelude = Vec::new();
     loop {
-        if nested
-            && (block_contents_end(cursor)
-                || matches!(cursor.peek(), CursorItem::Node(node) if cursor.document.nodes[node].token().kind() == TokenKind::Semicolon))
-        {
+        if nested && block_contents_end(cursor) {
             return Err(fault(
                 cursor,
                 start,
                 GenericFaultKind::QualifiedRuleEndOfInput,
+            ));
+        }
+        if nested && next_is_semicolon(cursor) {
+            return Err(fault(
+                cursor,
+                start,
+                GenericFaultKind::QualifiedRuleStopToken,
             ));
         }
         match cursor.consume() {
@@ -1445,10 +1474,20 @@ pub(crate) fn consume_qualified_rule_context(
         }
     }
 }
+fn next_is_semicolon(cursor: &SyntaxCursor<'_>) -> bool {
+    matches!(cursor.peek(), CursorItem::Node(node) if cursor.document.nodes[node].token().kind() == TokenKind::Semicolon)
+}
+
+/// Selects every rule unit of one list, in source order.
+///
+/// A [`RuleListSyntax::BlockContents`] qualified unit that ends at its `;`
+/// stop token, or at the block's end, is an `Err` fault whose range excludes
+/// the delimiter; the following `;` is then discarded as block contents.
 pub(crate) fn consume_rules(
     cursor: &mut SyntaxCursor<'_>,
-    top_level: bool,
+    list: RuleListSyntax,
 ) -> Vec<GenericRuleResult> {
+    let nested = list == RuleListSyntax::BlockContents;
     let mut rules = Vec::new();
     loop {
         cursor.skip_trivia();
@@ -1456,18 +1495,40 @@ pub(crate) fn consume_rules(
             break;
         };
         let kind = cursor.document.nodes[node].token().kind();
-        if ignored_rule_list_prefix(kind, top_level) {
+        if ignored_rule_list_prefix(kind, list) {
             continue;
         }
         cursor.reconsume_current();
         match rule_dispatch(kind) {
-            GenericRuleDispatch::At => rules.push(Ok(GenericRule::At(consume_at_rule(cursor)))),
+            GenericRuleDispatch::At => {
+                rules.push(Ok(GenericRule::At(consume_at_rule_context(cursor, nested))))
+            }
+            GenericRuleDispatch::Qualified if nested => {
+                rules.push(consume_nested_qualified_rule(cursor).map(GenericRule::Qualified))
+            }
             GenericRuleDispatch::Qualified => {
                 rules.push(consume_qualified_rule(cursor).map(GenericRule::Qualified))
             }
         }
     }
     rules
+}
+
+// Syntax 3 (2026 CRD) §5.5.3 with `nested` and a `;` stop token. A prelude
+// that begins like a custom property consumes the remnants of a bad
+// declaration: everything up to the next `;` or the end of the block.
+fn consume_nested_qualified_rule(
+    cursor: &mut SyntaxCursor<'_>,
+) -> Result<GenericQualifiedRule, GenericSyntaxFault> {
+    let start = cursor.position();
+    let rule = consume_qualified_rule_context(cursor, true)?;
+    if !custom_property_rule_prelude(cursor.document, &rule.prelude) {
+        return Ok(rule);
+    }
+    while !block_contents_end(cursor) && !next_is_semicolon(cursor) {
+        cursor.consume();
+    }
+    Err(fault(cursor, start, GenericFaultKind::CustomPropertyRule))
 }
 pub(crate) fn consume_one_rule(cursor: &mut SyntaxCursor<'_>) -> GenericRuleResult {
     cursor.skip_trivia();

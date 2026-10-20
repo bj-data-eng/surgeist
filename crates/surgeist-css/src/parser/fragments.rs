@@ -554,7 +554,7 @@ pub(crate) fn parse_keyframes_block_with_context(
         "baseline.rule.keyframes",
         parser_context,
         |source, input, diagnostics, state| {
-            Ok(keyframes::parse_body(source, input, diagnostics, state))
+            keyframes::parse_body(source, input, diagnostics, state)
         },
     )
 }

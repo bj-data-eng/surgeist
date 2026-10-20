@@ -503,20 +503,20 @@ fn rule_list_and_definition_bodies_do_not_become_style_declaration_groups() {
             ],
         );
         assert!(!normalized.items().iter().any(|item| matches!(item, CssNormalizedItem::Rule(rule) if matches!(rule.kind(), CssRuleContextKindRef::NestedDeclarations(_)))));
-        let [diagnostic] = report.diagnostics() else {
-            panic!(
-                "one ordinary rule-list tail recovery: {:?}",
-                report.diagnostics()
-            );
-        };
-        assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
-        let tail = "color:red;width:1px;";
-        let start = source.find(tail).unwrap();
-        assert_eq!(diagnostic.span().start().byte_offset().value(), start);
-        assert_eq!(
-            diagnostic.span().end().byte_offset().value(),
-            start + tail.len()
-        );
+        // Syntax 3 (2026 CRD) consume a block's contents: neither declaration
+        // is valid in this rule grammar, so each is reconsumed as a qualified
+        // rule that returns nothing at its `;` stop token.
+        // https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
+        let dropped: Vec<_> = report
+            .diagnostics()
+            .iter()
+            .map(|diagnostic| {
+                assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
+                &source[diagnostic.span().start().byte_offset().value()
+                    ..diagnostic.span().end().byte_offset().value()]
+            })
+            .collect();
+        assert_eq!(dropped, ["color:red", "width:1px"], "{header}");
     }
     for excluded in [
         "@font-face{font-family:Lost;src:url(x)}",

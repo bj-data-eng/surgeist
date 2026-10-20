@@ -61,13 +61,23 @@ fn bounded_report<T>(
 impl BoundedParseContext {
     fn list_context(&self) -> StructuralListContext {
         match self {
-            Self::Rules { top_level } => StructuralListContext::Rules {
-                top_level: *top_level,
-            },
-            Self::Candidate { .. } | Self::OneRule | Self::StyleBlock | Self::GroupBlock => {
-                StructuralListContext::Rules { top_level: false }
+            Self::Rules { top_level: true } => StructuralListContext::Stylesheet,
+            Self::Candidate { .. }
+            | Self::OneRule
+            | Self::StyleBlock
+            | Self::GroupBlock
+            | Self::ScopedBlock {
+                has_style_ancestor: false,
+                body: ScopedBodyKind::OrdinaryGroup,
+            } => StructuralListContext::OneRule,
+            // A non-top-level rule list is an isolated unit replayed from a
+            // group block, so it keeps that block's contents boundaries.
+            Self::Rules { top_level: false }
+            | Self::Scoped {
+                has_style_ancestor: false,
+                body: ScopedBodyKind::OrdinaryGroup,
             }
-            Self::Style
+            | Self::Style
             | Self::ScopedBlock {
                 has_style_ancestor: true,
                 ..
@@ -84,14 +94,6 @@ impl BoundedParseContext {
                 body: ScopedBodyKind::Scope,
                 ..
             } => StructuralListContext::BlockContents,
-            Self::Scoped {
-                has_style_ancestor: false,
-                body: ScopedBodyKind::OrdinaryGroup,
-            }
-            | Self::ScopedBlock {
-                has_style_ancestor: false,
-                body: ScopedBodyKind::OrdinaryGroup,
-            } => StructuralListContext::Rules { top_level: false },
         }
     }
 
@@ -261,8 +263,7 @@ fn parse_bounded_with_captures(
         matches!(
             context,
             BoundedParseContext::GroupBlock | BoundedParseContext::ScopedBlock { .. }
-        )
-        .then(|| context.list_context()),
+        ),
     ) else {
         let recovery = RecoveryState::at_depth_with_snapshot(
             source,
