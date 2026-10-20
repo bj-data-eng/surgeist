@@ -78,21 +78,7 @@ pub(crate) fn admit_prepared(
             })?;
         diagnostics.extend_from_slice(prepared.diagnostics());
         let admission = if prepared.candidates().is_empty() {
-            let mut current_inputs = Vec::new();
-            current_inputs
-                .try_reserve_exact(prepared.captured_context().inputs.len())
-                .map_err(|_| CssomError::Limit {
-                    resource: "object operation input inventory capacity",
-                    maximum: prepared.captured_context().inputs.len(),
-                })?;
-            current_inputs.extend(
-                prepared
-                    .captured_context()
-                    .inputs
-                    .iter()
-                    .filter(|input| input.version.role == CssomInputRole::Support)
-                    .map(|input| input.version.clone()),
-            );
+            let current_inputs = batch.current_declaration_inputs(prepared.block())?;
             CssomAdmission::new(Vec::new(), current_inputs)
         } else {
             resolver(&CssomAdmissionRequest {

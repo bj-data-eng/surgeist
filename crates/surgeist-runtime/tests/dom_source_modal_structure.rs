@@ -162,7 +162,7 @@ fn active_show_modal_publishes_modal_after_real_watcher_before_focusing_wait() {
     .unwrap();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(move |_, _, calls: &mut usize, event| {

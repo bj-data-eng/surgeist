@@ -171,7 +171,7 @@ impl Draft {
             if element.iframe_fullscreen_flag() == Some(true) {
                 break;
             }
-            current = self.node(container)?.document;
+            current = self.node(container)?.document();
             let mut seen = false;
             for old in documents.iter() {
                 self.source_step(cancel)?;
@@ -270,7 +270,7 @@ impl Draft {
                 kind: DomFullscreenEventKind::Change,
             };
             let mut found = false;
-            for old in self.node(frame.document)?.fullscreen_events.iter() {
+            for old in self.node(frame.document)?.fullscreen_events().iter() {
                 self.source_step(cancel)?;
                 found |= old == event;
             }

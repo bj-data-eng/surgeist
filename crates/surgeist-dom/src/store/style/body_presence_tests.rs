@@ -333,7 +333,7 @@ fn absent_render_blocking_removal_ignores_other_roles_and_preserves_duplicate_oc
         let before: Vec<_> = staged
             .node(owner)
             .unwrap()
-            .base_document
+            .base_document()
             .as_ref()
             .unwrap()
             .render_blocking
@@ -348,7 +348,7 @@ fn absent_render_blocking_removal_ignores_other_roles_and_preserves_duplicate_oc
             staged
                 .node(owner)
                 .unwrap()
-                .base_document
+                .base_document()
                 .as_ref()
                 .unwrap()
                 .render_blocking
@@ -362,7 +362,7 @@ fn absent_render_blocking_removal_ignores_other_roles_and_preserves_duplicate_oc
             staged
                 .node(owner)
                 .unwrap()
-                .base_document
+                .base_document()
                 .as_ref()
                 .unwrap()
                 .render_blocking

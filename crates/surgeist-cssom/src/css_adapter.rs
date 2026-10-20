@@ -72,7 +72,7 @@ impl State {
             id.clone(),
             CssomBlock {
                 parent,
-                owner,
+                binding: crate::inline_context::BlockBinding::Store(owner),
                 flags,
                 data: data.into(),
                 admission_inputs: std::sync::Arc::new(Vec::new()),

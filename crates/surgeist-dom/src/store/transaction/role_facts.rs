@@ -1,6 +1,7 @@
 //! Exact relation roles and sparse direct-body facts. Canonical sequences remain
 //! their semantic owners; this index records occurrences, never another order.
 use super::super::*;
+use super::KindRead;
 use super::counted_relations::{Change, Changed, Custody as MapCustody, Delta, Index as Map};
 use super::ordered_members::{OrderPair, OrderView};
 use super::{NodeChange, NodeRead, RelationChange, RelationField, SequenceView};
@@ -352,16 +353,16 @@ impl Version {
 }
 
 fn showing(node: NodeRead<'_>) -> bool {
-    matches!(node.kind, DomNodeKind::Element(element) if element.common_state().html().is_some_and(|state| !state.popover_is_hidden()))
+    matches!(node.kind(), KindRead::Element(element) if element.common_state().html().is_some_and(|state| !state.popover_is_hidden()))
 }
 fn flagged(node: NodeRead<'_>) -> bool {
-    matches!(node.kind, DomNodeKind::Element(element) if element.fullscreen_flag())
+    matches!(node.kind(), KindRead::Element(element) if element.fullscreen_flag())
 }
 fn body_child(
     node: NodeRead<'_>,
     step: &mut dyn FnMut() -> Result<(), DomError>,
 ) -> Result<bool, DomError> {
-    let DomNodeKind::Element(element) = node.kind else {
+    let KindRead::Element(element) = node.kind() else {
         return Ok(false);
     };
     Ok(
@@ -371,13 +372,13 @@ fn body_child(
 }
 fn role_list<'a>(node: NodeRead<'a>, role: Role) -> Option<SequenceView<'a, NodeId, Key>> {
     match role {
-        Role::RenderBlocking => node.base_document.map(|base| base.render_blocking),
-        Role::AutofocusCandidates => match node.autofocus_document {
+        Role::RenderBlocking => node.base_document().map(|base| base.render_blocking),
+        Role::AutofocusCandidates => match node.autofocus_document() {
             Some(super::AutofocusRead::Known { candidates, .. }) => Some(candidates),
             _ => None,
         },
         Role::OpenDialogs | Role::TopLayer | Role::PendingTopLayerRemovals => {
-            match node.interactive_document {
+            match node.interactive_document() {
                 Some(super::InteractiveRead::Known {
                     open_dialogs,
                     top_layer,
@@ -483,8 +484,8 @@ impl Roles {
                         if body_child(node, edit.step)? {
                             next.change(Role::BodyChild, owner, key, add, edit)?;
                         }
-                        if matches!(view.node(owner)?.kind, DomNodeKind::Document(_))
-                            && matches!(node.kind, DomNodeKind::Element(_))
+                        if matches!(view.node(owner)?.kind(), KindRead::Document(_))
+                            && matches!(node.kind(), KindRead::Element(_))
                         {
                             next.change(Role::DocumentElement, owner, key, add, edit)?;
                         }
@@ -543,8 +544,8 @@ impl Roles {
             };
             let new_body = body_child(after, edit.step)?;
             let old_element =
-                before.is_some_and(|node| matches!(node.kind, DomNodeKind::Element(_)));
-            let new_element = matches!(after.kind, DomNodeKind::Element(_));
+                before.is_some_and(|node| matches!(node.kind(), KindRead::Element(_)));
+            let new_element = matches!(after.kind(), KindRead::Element(_));
             for (role, old, new) in [
                 (Role::BodyChild, old_body, new_body),
                 (Role::DocumentElement, old_element, new_element),
@@ -583,7 +584,7 @@ impl Roles {
                 if new && let Some(position) = order.after.position(key) {
                     let parent = draft.live_key(position.parent);
                     if role != Role::DocumentElement
-                        || matches!(order.after.node(parent)?.kind, DomNodeKind::Document(_))
+                        || matches!(order.after.node(parent)?.kind(), KindRead::Document(_))
                     {
                         next.set(role, parent, key, 1, edit)?;
                     }

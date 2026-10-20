@@ -148,7 +148,7 @@ fn mapped_output_excess_has_an_exact_source_body_gate_and_sealed_receipt() {
         assert_eq!(formed.value.capacity(), capacity);
         assert_eq!(formed.value.own_usage(), expected);
         assert_eq!(
-            formed.custody.as_ref().unwrap().inspect_payload_usage(),
+            formed._custody.as_ref().unwrap().inspect_payload_usage(),
             expected
         );
         assert_eq!(

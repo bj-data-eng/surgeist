@@ -775,7 +775,7 @@ mod payload_tests {
             for index in 0..LISTENERS {
                 dispatcher
                     .add_listener(
-                        &DomEventDom::borrow(&mut dom),
+                        &mut DomEventDom::borrow(&mut dom),
                         subject,
                         DomEventType::BeforeToggle,
                         DomEventCallback::new(move |_, _, calls: &mut Vec<usize>, event| {

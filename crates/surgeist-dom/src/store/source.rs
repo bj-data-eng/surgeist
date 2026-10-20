@@ -146,7 +146,7 @@ impl Draft {
         next.set(index, value, &registry, |usage| {
             self.admit_custody_usage(usage, cancel)
         })?;
-        let units = self.records_for(key).fields.value().logical_units()?;
+        let units = self.node(key)?.logical_units()?;
         self.set_created_dirty(index, !value, cancel)?;
         let nodes = if value {
             self.private_nodes.checked_add(1)
@@ -215,12 +215,12 @@ impl Draft {
             self.effect_step(cancel)?;
             self.set_source_privacy(key, false, cancel)?;
             let n = self.node(key)?;
-            self.select_reserve(&mut pending, n.children.len() + 2, cancel)?;
-            for child in n.children.iter() {
+            self.select_reserve(&mut pending, n.children().len() + 2, cancel)?;
+            for child in n.children().iter() {
                 self.source_step(cancel)?;
                 pending.push(child);
             }
-            pending.extend(n.shadow_root);
+            pending.extend(n.shadow_root());
             pending.extend(self.owned_template_contents(key, cancel)?);
         }
         Ok(())

@@ -746,6 +746,21 @@ pub(crate) fn source_document_with_limits(
     text: &str,
     limits: crate::CssComponentValueLimits,
 ) -> Result<SyntaxDocument<'static>, CssComponentValueError> {
+    source_document_with_optional_snapshot(text, None, limits)
+}
+
+pub(crate) fn source_document_snapshot_with_limits(
+    original: &CssSourceSnapshot,
+    limits: crate::CssComponentValueLimits,
+) -> Result<SyntaxDocument<'static>, CssComponentValueError> {
+    source_document_with_optional_snapshot(original.as_str(), Some(original), limits)
+}
+
+fn source_document_with_optional_snapshot(
+    text: &str,
+    original: Option<&CssSourceSnapshot>,
+    limits: crate::CssComponentValueLimits,
+) -> Result<SyntaxDocument<'static>, CssComponentValueError> {
     if text.len() > limits.max_css_bytes() {
         return Err(CssComponentValueError::new(
             CssComponentValueErrorKind::ByteLimit,
@@ -754,7 +769,9 @@ pub(crate) fn source_document_with_limits(
             },
         ));
     }
-    let original = CssSourceSnapshot::new(text);
+    let original = original
+        .cloned()
+        .unwrap_or_else(|| CssSourceSnapshot::new(text));
     normalize(
         SyntaxInput::Source(SourceWindow {
             text: Cow::Owned(text.to_owned()),

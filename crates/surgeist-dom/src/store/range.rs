@@ -1,4 +1,5 @@
 //! The one live Range bank. Node references follow the Draft's ordinary mapping.
+use super::transaction::KindRead;
 use super::*;
 use crate::range::{Boundary, Record};
 use crate::{DomActiveRangeState, DomRangeId, DomRangeOperand};
@@ -103,17 +104,17 @@ impl Draft {
     }
     fn range_node_length(&self, key: Key) -> Result<usize, DomError> {
         let node = self.node(key)?;
-        Ok(match &node.kind {
-            DomNodeKind::DocumentType(_) => 0,
-            DomNodeKind::Text(data) | DomNodeKind::Comment(data) => data.len(),
-            DomNodeKind::ProcessingInstruction(data) => data.data().len(),
-            _ => node.children.len(),
+        Ok(match node.kind() {
+            KindRead::DocumentType(_) => 0,
+            KindRead::Text(data) | KindRead::Comment(data) => data.len(),
+            KindRead::ProcessingInstruction(data) => data.data().len(),
+            _ => node.children().len(),
         })
     }
     fn range_root(&self, mut key: Key, cancel: &AtomicBool) -> Result<Key, DomError> {
         loop {
             self.source_step(cancel)?;
-            match self.node(key)?.parent {
+            match self.node(key)?.parent() {
                 Some(parent) => key = parent,
                 None => return Ok(key),
             }
@@ -130,7 +131,7 @@ impl Draft {
             if node == ancestor {
                 return Ok(true);
             }
-            match self.node(node)?.parent {
+            match self.node(node)?.parent() {
                 Some(parent) => node = parent,
                 None => return Ok(false),
             }
@@ -144,7 +145,10 @@ impl Draft {
     ) -> Result<Key, DomError> {
         loop {
             self.source_step(cancel)?;
-            let parent = self.node(child)?.parent.ok_or(DomError::HierarchyRequest)?;
+            let parent = self
+                .node(child)?
+                .parent()
+                .ok_or(DomError::HierarchyRequest)?;
             if parent == ancestor {
                 return Ok(child);
             }
@@ -159,7 +163,7 @@ impl Draft {
     ) -> Result<usize, DomError> {
         let parent = self.live_key(parent);
         let child = self.live_key(child);
-        let children = self.node(parent)?.children;
+        let children = self.node(parent)?.children();
         self.source_step(cancel)?;
         self.slot_index
             .position(child)
@@ -198,7 +202,10 @@ impl Draft {
         let mut child = a.container;
         loop {
             self.source_step(cancel)?;
-            let parent = self.node(child)?.parent.ok_or(DomError::HierarchyRequest)?;
+            let parent = self
+                .node(child)?
+                .parent()
+                .ok_or(DomError::HierarchyRequest)?;
             if self.range_inclusive_ancestor(parent, b.container, cancel)? {
                 let other = self.range_child_under(parent, b.container, cancel)?;
                 return Ok(Some(
@@ -218,7 +225,7 @@ impl Draft {
         child: Key,
         cancel: &AtomicBool,
     ) -> Result<usize, DomError> {
-        for (index, candidate) in self.node(parent)?.children.iter().enumerate() {
+        for (index, candidate) in self.node(parent)?.children().iter().enumerate() {
             self.source_step(cancel)?;
             if candidate == child {
                 return Ok(index);
@@ -256,7 +263,10 @@ impl Draft {
         let mut child = a.container;
         loop {
             self.source_step(cancel)?;
-            let parent = self.node(child)?.parent.ok_or(DomError::HierarchyRequest)?;
+            let parent = self
+                .node(child)?
+                .parent()
+                .ok_or(DomError::HierarchyRequest)?;
             if self.range_inclusive_ancestor(parent, b.container, cancel)? {
                 let other = self.range_child_under(parent, b.container, cancel)?;
                 return Ok(Some(
@@ -274,7 +284,7 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if !matches!(self.node(document)?.kind, DomNodeKind::Document(_)) {
+        if !matches!(self.node(document)?.kind(), KindRead::Document(_)) {
             return Err(DomError::WrongNodeKind);
         }
         if ticket != self.range_tickets.len() {
@@ -340,7 +350,7 @@ impl Draft {
         start: bool,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if matches!(self.node(container)?.kind, DomNodeKind::DocumentType(_)) {
+        if matches!(self.node(container)?.kind(), KindRead::DocumentType(_)) {
             return Err(DomError::WrongNodeKind);
         }
         if offset > self.range_node_length(container)? {
@@ -373,10 +383,10 @@ impl Draft {
         id: Option<DomRangeId>,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if !matches!(self.node(document)?.kind, DomNodeKind::Document(_)) {
+        if !matches!(self.node(document)?.kind(), KindRead::Document(_)) {
             return Err(DomError::WrongNodeKind);
         }
-        if self.node(document)?.active_range == DomActiveRangeState::Known(id) {
+        if self.node(document)?.active_range() == DomActiveRangeState::Known(id) {
             return Ok(());
         }
         if let Some(id) = id {
@@ -387,10 +397,9 @@ impl Draft {
                 return Err(DomError::RangeAssociationIneligible);
             }
         }
-        self.with_node_fields(document, cancel, |fields| {
-            fields.active_range = DomActiveRangeState::Known(id);
-            Ok(())
-        })?
+        let mut active = self.active_range_mut(document, cancel)?;
+        *active = DomActiveRangeState::Known(id);
+        active.commit(cancel)
     }
     pub(super) fn retire_range(
         &mut self,
@@ -406,10 +415,10 @@ impl Draft {
         for document in documents.value() {
             self.source_step(cancel)?;
             match self.node(*document) {
-                Ok(node) if node.active_range == DomActiveRangeState::Known(Some(id)) => {
-                    self.with_node_fields(*document, cancel, |fields| {
-                        fields.active_range = DomActiveRangeState::Known(None);
-                    })?;
+                Ok(node) if node.active_range() == DomActiveRangeState::Known(Some(id)) => {
+                    let mut active = self.active_range_mut(*document, cancel)?;
+                    *active = DomActiveRangeState::Known(None);
+                    active.commit(cancel)?;
                 }
                 Err(DomError::StaleNode) => {
                     self.update_active_range_dependency(
@@ -447,7 +456,7 @@ impl Draft {
         while let Some(container) = pending.value_mut().pop() {
             self.source_step(cancel)?;
             self.add_range_participants(container, &mut participants, cancel)?;
-            for child in self.node(container)?.children.iter() {
+            for child in self.node(container)?.children().iter() {
                 self.range_temporary_push(&mut pending, child, cancel)?;
             }
         }
@@ -625,7 +634,7 @@ impl Draft {
                 continue;
             };
             let Ok(node) = self.node(key) else { continue };
-            if let DomActiveRangeState::Known(Some(id)) = node.active_range {
+            if let DomActiveRangeState::Known(Some(id)) = node.active_range() {
                 self.range_record(id)?;
             }
         }
@@ -634,7 +643,7 @@ impl Draft {
             let Ok(node) = self.node(Key::Created(index)) else {
                 continue;
             };
-            if let DomActiveRangeState::Known(Some(id)) = node.active_range {
+            if let DomActiveRangeState::Known(Some(id)) = node.active_range() {
                 self.range_record(id)?;
             }
         }
@@ -690,7 +699,7 @@ mod tests {
                 .state
                 .node(dom.owner, document.0)
                 .unwrap()
-                .active_range,
+                .active_range(),
             DomActiveRangeState::Known(None)
         );
         assert!(prepared.changes.contains(&DomChange::RangeRetired(range)));

@@ -4,6 +4,7 @@
 use super::*;
 use std::collections::BTreeMap;
 mod empty_sequence_tests;
+pub(in crate::store) mod typed_graph;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) struct AllocationGraph(BTreeMap<(usize, bool), (&'static str, usize)>);
@@ -65,7 +66,7 @@ impl AllocationGraph {
     fn count(&self, kind: &str) -> usize {
         self.0.values().filter(|(k, _)| *k == kind).count()
     }
-    fn summary(&self) -> BTreeMap<&'static str, (usize, usize)> {
+    pub(in crate::store) fn summary(&self) -> BTreeMap<&'static str, (usize, usize)> {
         let mut out = BTreeMap::<_, (usize, usize)>::new();
         for (kind, bytes) in self.0.values() {
             let entry = out.entry(*kind).or_default();
@@ -109,7 +110,7 @@ fn nonzero_allocation_aliases_reject_conflicting_extents() {
     );
 }
 
-fn limits() -> DomLimits {
+pub(in crate::store) fn limits() -> DomLimits {
     DomLimits::new(
         32,
         100_000,
@@ -131,64 +132,14 @@ fn document(dom: &mut Dom) -> DocumentId {
         .unwrap()
 }
 
-fn node_storage(state: &Arc<State>) -> AllocationGraph {
+pub(in crate::store) fn node_storage(state: &Arc<State>) -> AllocationGraph {
     let mut graph = AllocationGraph::default();
     graph.target(state, "state.target");
     state.slots.inspect_raw_allocations(&mut graph);
     for (_, slot) in state.slots.iter() {
-        let Some(node) = &slot.node else {
-            continue;
-        };
-        match &node.kind {
-            DomNodeKind::Document(value) => value.inspect_compact_baseline(&mut graph),
-            DomNodeKind::Element(value) => value.inspect_compact_baseline(&mut graph),
-            DomNodeKind::Text(value) | DomNodeKind::Comment(value) => graph.string(value),
-            DomNodeKind::ProcessingInstruction(value) => value.inspect_compact_baseline(&mut graph),
-            DomNodeKind::DocumentType(value) => {
-                for string in [value.name(), value.public_id(), value.system_id()] {
-                    graph.string(string);
-                }
-            }
-            _ => panic!("compact baseline must describe this kind"),
+        if let Some(node) = &slot.node {
+            typed_graph::inspect_node(node, &mut graph);
         }
-        for values in [&node.children, &node.manual_nodes, &node.assigned_nodes] {
-            values.inspect_raw_allocations(&mut graph);
-        }
-        node.fullscreen_events.inspect_raw_allocations(&mut graph);
-        if let Some(names) = &node.form_past_names {
-            names.inspect_allocations(&mut graph);
-            for entry in names.entries().iter() {
-                graph.string(&entry.name);
-            }
-        }
-        if let Some(document) = &node.base_document {
-            assert!(document.facts.is_none());
-            document.render_blocking.inspect_raw_allocations(&mut graph);
-        }
-        if let Some(canonical::Autofocus::Known { candidates, .. }) = &node.autofocus_document {
-            candidates.inspect_raw_allocations(&mut graph);
-        }
-        if let Some(canonical::Interactive::Known {
-            open_dialogs,
-            top_layer,
-            pending_top_layer_removals,
-        }) = &node.interactive_document
-        {
-            for values in [open_dialogs, top_layer, pending_top_layer_removals] {
-                values.inspect_raw_allocations(&mut graph);
-            }
-        }
-        assert!(
-            node.encoding_url_document
-                .as_ref()
-                .is_none_or(|value| value.facts.is_none())
-        );
-        assert!(
-            node.base.is_none()
-                && node.link.is_none()
-                && node.image.is_none()
-                && node.hyperlink.is_none()
-        );
     }
     state.signal_slots.inspect_raw_allocations(&mut graph);
     state.native_tasks.inspect_raw_allocations(&mut graph);
@@ -216,17 +167,323 @@ fn report(label: &str, dom: &Dom, graph: &AllocationGraph) {
     assert!(controls.count("control.debit") > 0);
 }
 
+// Bounded public fixtures for raw before/after representation diagnostics.
+// The graph report excludes opaque Arc/allocator metadata and derived-index
+// semantic pages; its totals are observations, never byte quotas.
+fn plain_graph_dom() -> (Dom, DocumentId) {
+    let mut dom = Dom::new(
+        DomLimits::new(
+            256,
+            1_000_000,
+            16_384,
+            0,
+            0,
+            16,
+            64_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let document = document(&mut dom);
+    (dom, document)
+}
+
+fn plain_graph_snapshot(label: &str, dom: &Dom) -> (DomSnapshot, AllocationGraph) {
+    let held = dom.snapshot();
+    assert_eq!(held.nodes().count(), 129);
+    let before = node_storage(&held.state);
+    let mut clone_union = before.clone();
+    clone_union.merge(&node_storage(&held.clone().state));
+    assert_eq!(clone_union, before);
+    report(label, dom, &before);
+    (held, before)
+}
+
+fn plain_graph_after_edit(label: &str, dom: &Dom, held: &DomSnapshot, before: &AllocationGraph) {
+    assert_eq!(&node_storage(&held.state), before);
+    let mut union = before.clone();
+    union.merge(&node_storage(&dom.state));
+    report(label, dom, &union);
+}
+
+fn assert_plain_element(
+    snapshot: &DomSnapshot,
+    id: NodeId,
+    document: DocumentId,
+    parent: Option<NodeId>,
+    children: &[NodeId],
+    attribute: Option<(&str, &str)>,
+) {
+    let node = snapshot.node(id).unwrap();
+    assert_eq!(node.id(), id);
+    assert_eq!(node.owner_document(), Some(document));
+    assert_eq!(node.parent(), parent);
+    assert_eq!(node.children(), children);
+    let element = node.as_element().unwrap();
+    assert_eq!(element.name().namespace_uri(), None);
+    assert_eq!(element.name().prefix(), None);
+    assert_eq!(element.name().local_name(), &DocumentString::from("plain"));
+    match attribute {
+        None => assert!(element.attributes().is_empty()),
+        Some((name, value)) => {
+            assert_eq!(element.attributes().len(), 1);
+            let actual = &element.attributes()[0];
+            assert_eq!(actual.name().namespace_uri(), None);
+            assert_eq!(actual.name().local_name(), &DocumentString::from(name));
+            assert_eq!(actual.value(), &DocumentString::from(value));
+        }
+    }
+}
+
+fn assert_plain_text(
+    snapshot: &DomSnapshot,
+    id: NodeId,
+    document: DocumentId,
+    parent: Option<NodeId>,
+    data: &str,
+) {
+    let node = snapshot.node(id).unwrap();
+    assert_eq!(node.id(), id);
+    assert_eq!(node.owner_document(), Some(document));
+    assert_eq!(node.parent(), parent);
+    assert!(node.children().is_empty());
+    assert!(node.as_element().is_none());
+    assert!(matches!(node.kind(), DomNodeKind::Text(_)));
+    assert_eq!(node.data(), Some(&DocumentString::from(data)));
+}
+
+#[test]
+fn detached_plain_xml_element_graph_keeps_values_and_snapshot_isolation() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, document) = plain_graph_dom();
+    let mut batch = DomBatch::new();
+    let tickets: Vec<_> = (0..128)
+        .map(|_| batch.create_element(document, "plain"))
+        .collect();
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let ids: Vec<_> = tickets
+        .iter()
+        .map(|ticket| commit.created(ticket).unwrap().unwrap())
+        .collect();
+    let (held, before) = plain_graph_snapshot("128 detached XML Elements before edit", &dom);
+    for (index, &id) in ids.iter().enumerate() {
+        assert!(!ids[..index].contains(&id));
+        assert_plain_element(&held, id, document, None, &[], None);
+    }
+    assert!(held.node(document.node()).unwrap().children().is_empty());
+    let mut batch = DomBatch::new();
+    batch.set_attribute(ids[64], "data-local", "changed");
+    dom.apply(batch, &cancel).unwrap();
+    let current = dom.snapshot();
+    for (index, &id) in ids.iter().enumerate() {
+        assert_plain_element(&held, id, document, None, &[], None);
+        assert_plain_element(
+            &current,
+            id,
+            document,
+            None,
+            &[],
+            (index == 64).then_some(("data-local", "changed")),
+        );
+    }
+    plain_graph_after_edit(
+        "128 detached XML Elements after one attribute edit with held snapshot",
+        &dom,
+        &held,
+        &before,
+    );
+}
+
+#[test]
+fn detached_plain_text_graph_keeps_values_and_snapshot_isolation() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, document) = plain_graph_dom();
+    let mut batch = DomBatch::new();
+    let tickets: Vec<_> = (0..128)
+        .map(|_| batch.create_text(document, "plain text"))
+        .collect();
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let ids: Vec<_> = tickets
+        .iter()
+        .map(|ticket| commit.created(ticket).unwrap().unwrap())
+        .collect();
+    let (held, before) = plain_graph_snapshot("128 detached Text before edit", &dom);
+    for (index, &id) in ids.iter().enumerate() {
+        assert!(!ids[..index].contains(&id));
+        assert_plain_text(&held, id, document, None, "plain text");
+    }
+    assert!(held.node(document.node()).unwrap().children().is_empty());
+    let mut batch = DomBatch::new();
+    batch.replace_data(ids[64], 0, 5, "updated");
+    dom.apply(batch, &cancel).unwrap();
+    let current = dom.snapshot();
+    for (index, &id) in ids.iter().enumerate() {
+        assert_plain_text(&held, id, document, None, "plain text");
+        assert_plain_text(
+            &current,
+            id,
+            document,
+            None,
+            if index == 64 {
+                "updated text"
+            } else {
+                "plain text"
+            },
+        );
+    }
+    plain_graph_after_edit(
+        "128 detached Text after one data edit with held snapshot",
+        &dom,
+        &held,
+        &before,
+    );
+}
+
+#[test]
+fn attached_plain_element_text_graph_keeps_order_and_snapshot_isolation() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, document) = plain_graph_dom();
+    let mut batch = DomBatch::new();
+    let elements: Vec<_> = (0..64)
+        .map(|_| batch.create_element(document, "plain"))
+        .collect();
+    let texts: Vec<_> = (0..64)
+        .map(|_| batch.create_text(document, "plain text"))
+        .collect();
+    for index in 0..64 {
+        if index == 0 {
+            batch.insert_before(&elements[index], document, None);
+        } else {
+            batch.insert_before(&elements[index], &elements[index - 1], None);
+        }
+        batch.insert_before(&texts[index], &elements[index], None);
+    }
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let elements: Vec<_> = elements
+        .iter()
+        .map(|ticket| commit.created(ticket).unwrap().unwrap())
+        .collect();
+    let texts: Vec<_> = texts
+        .iter()
+        .map(|ticket| commit.created(ticket).unwrap().unwrap())
+        .collect();
+    let (held, before) =
+        plain_graph_snapshot("64 XML Elements + 64 Text attached before edit", &dom);
+    assert_eq!(
+        held.node(document.node()).unwrap().children(),
+        [elements[0]]
+    );
+    for index in 0..64 {
+        assert!(!elements[..index].contains(&elements[index]));
+        assert!(!texts[..index].contains(&texts[index]));
+        assert!(!elements.contains(&texts[index]));
+        let parent = if index == 0 {
+            document.node()
+        } else {
+            elements[index - 1]
+        };
+        let children = if index == 63 {
+            vec![texts[index]]
+        } else {
+            vec![texts[index], elements[index + 1]]
+        };
+        assert_plain_element(
+            &held,
+            elements[index],
+            document,
+            Some(parent),
+            &children,
+            None,
+        );
+        assert_plain_text(
+            &held,
+            texts[index],
+            document,
+            Some(elements[index]),
+            "plain text",
+        );
+    }
+    let mut batch = DomBatch::new();
+    batch.insert_before(texts[63], elements[0], Some(texts[0].into()));
+    dom.apply(batch, &cancel).unwrap();
+    let current = dom.snapshot();
+    assert_eq!(
+        current.node(document.node()).unwrap().children(),
+        [elements[0]]
+    );
+    for index in 0..64 {
+        let parent = if index == 0 {
+            document.node()
+        } else {
+            elements[index - 1]
+        };
+        let old_children = if index == 63 {
+            vec![texts[index]]
+        } else {
+            vec![texts[index], elements[index + 1]]
+        };
+        let children = if index == 0 {
+            vec![texts[63], texts[0], elements[1]]
+        } else if index == 63 {
+            vec![]
+        } else {
+            old_children.clone()
+        };
+        assert_plain_element(
+            &held,
+            elements[index],
+            document,
+            Some(parent),
+            &old_children,
+            None,
+        );
+        assert_plain_element(
+            &current,
+            elements[index],
+            document,
+            Some(parent),
+            &children,
+            None,
+        );
+        assert_plain_text(
+            &held,
+            texts[index],
+            document,
+            Some(elements[index]),
+            "plain text",
+        );
+        assert_plain_text(
+            &current,
+            texts[index],
+            document,
+            Some(if index == 63 {
+                elements[0]
+            } else {
+                elements[index]
+            }),
+            "plain text",
+        );
+    }
+    plain_graph_after_edit(
+        "64 XML Elements + 64 Text attached after one move with held snapshot",
+        &dom,
+        &held,
+        &before,
+    );
+}
+
 #[test]
 fn native_node_graphs_retain_real_banks_payloads_and_snapshot_union() {
     let cancel = AtomicBool::new(false);
     let mut dom = Dom::new(limits()).unwrap();
     let document = document(&mut dom);
     eprintln!(
-        "compact_baseline layout Slot={} Node={} NodeFields={} DomNodeKind={} DomElement={} Document={} PI={} doctype={}; layouts accompany raw allocation graphs, not size quotas",
+        "compact_baseline layout Slot={} Node={} DraftNodeHandle={} DomNodeKind={} DomElement={} Document={} PI={} doctype={}; layouts accompany raw allocation graphs, not size quotas",
         size_of::<Slot>(),
         size_of::<Node>(),
-        size_of::<transaction::NodeFields>(),
-        size_of::<DomNodeKind>(),
+        size_of::<DraftNode>(),
+        size_of::<DomNodeKind<'_>>(),
         size_of::<DomElement>(),
         size_of::<DomDocumentMetadata>(),
         size_of::<DomProcessingInstruction>(),
@@ -353,12 +610,27 @@ fn native_known_empty_form_history_has_no_target_allocation() {
             .len(),
         0
     );
+    let node = dom.state.slots[form.slot].node.as_ref().unwrap();
+    assert!(
+        matches!(node.associations(), Some(canonical::ElementAssociations::FormEmpty(names)) if names.payload().is_none())
+    );
+    let mut roots = AllocationGraph::default();
+    typed_graph::inspect_node(node, &mut roots);
+    assert_eq!(
+        roots.count("node.form"),
+        0,
+        "applicable absent history has no association target"
+    );
+    assert_eq!(
+        payload::inspect_slot_form_custody(&dom.state_custody.slots).len(),
+        0
+    );
     let mut graph = AllocationGraph::default();
     if let Some(names) = &dom.state.slots[form.slot]
         .node
         .as_ref()
         .unwrap()
-        .form_past_names
+        .form_past_names()
     {
         names.inspect_allocations(&mut graph);
     }
@@ -539,21 +811,27 @@ fn known_empty_form_snapshot_and_source_rollback_keep_original_root() {
         )
         .unwrap();
     assert_eq!(
-        draft.node(Key::Existing(form)).unwrap().children.first(),
+        draft.node(Key::Existing(form)).unwrap().children().first(),
         Some(Key::Existing(text))
     );
     assert_eq!(
         draft
             .node(Key::Existing(form))
             .unwrap()
-            .form_past_names
+            .form_past_names()
             .unwrap()
             .len(),
         0
     );
     let spent = draft.source_work.load(Ordering::Relaxed);
     mark.restore(&mut draft);
-    assert!(draft.node(Key::Existing(form)).unwrap().children.is_empty());
+    assert!(
+        draft
+            .node(Key::Existing(form))
+            .unwrap()
+            .children()
+            .is_empty()
+    );
     assert_eq!(draft.source_work.load(Ordering::Relaxed), spent);
     let prepared = draft.finish(&dom, &cancel).unwrap();
     let done = dom.publish(prepared, &cancel).unwrap();

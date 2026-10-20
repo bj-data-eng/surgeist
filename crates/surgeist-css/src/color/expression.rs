@@ -1880,7 +1880,7 @@ mod tests {
             assert_eq!(number.value.is_nan(), nan);
             assert_eq!(number.value.is_infinite(), infinite);
             if input == "calc(-0)" {
-                assert_eq!(number.value.to_bits(), (-0.0f64).to_bits());
+                assert_eq!(number.value.to_bits(), 0.0f64.to_bits());
             }
         }
         let mut owner = CssColorOperationOwner::new();

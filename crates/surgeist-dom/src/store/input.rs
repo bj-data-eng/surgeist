@@ -60,10 +60,13 @@ impl Draft {
         self.input_sanitize(key, limits, cancel)
     }
     pub(super) fn input_state(&self, key: Key) -> Result<&crate::DomInputState, DomError> {
-        let DomNodeKind::Element(element) = self.node(key)?.kind else {
+        let transaction::KindRead::Element(element) = self.node(key)?.kind() else {
             return Err(DomError::InputInapplicable);
         };
-        element.input_state().ok_or(DomError::InputInapplicable)
+        element
+            .language()
+            .input_state()
+            .ok_or(DomError::InputInapplicable)
     }
     fn with_input_state<R>(
         &mut self,
@@ -71,10 +74,10 @@ impl Draft {
         cancel: &AtomicBool,
         edit: impl FnOnce(&mut crate::DomInputState) -> R,
     ) -> Result<R, DomError> {
-        self.prepare_family_mutation(key, cancel)?;
-        self.with_element_fields(key, cancel, |element| {
-            edit(element.input_state_mut().expect("checked Input"))
-        })
+        let mut state = self.input_state_mut(key, cancel)?;
+        let result = edit(&mut state);
+        state.commit(cancel)?;
+        Ok(result)
     }
     fn with_input_state_charged<R>(
         &mut self,
@@ -83,10 +86,10 @@ impl Draft {
         payload: Option<source::checkpoint::Charge>,
         edit: impl FnOnce(&mut crate::DomInputState) -> R,
     ) -> Result<R, DomError> {
-        self.prepare_family_mutation(key, cancel)?;
-        self.with_element_fields_charged(key, cancel, payload, |element| {
-            edit(element.input_state_mut().expect("checked Input"))
-        })
+        let mut state = self.input_state_mut(key, cancel)?;
+        let result = edit(&mut state);
+        state.commit_charged(payload, cancel)?;
+        Ok(result)
     }
     fn input_raw(
         &self,
@@ -117,7 +120,7 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         let platform = self
-            .document_metadata(self.node(key)?.document)?
+            .document_metadata(self.node(key)?.document())?
             .document_environment()
             .input_platform();
         let units = (self.units - self.input_state(key)?.current.len())
@@ -367,7 +370,7 @@ impl Draft {
                 ) == HtmlTextControlValueSetterFinish::SetEndCursorUnselectAndNoneDirection
                 {
                     let platform = self
-                        .document_metadata(self.node(key)?.document)?
+                        .document_metadata(self.node(key)?.document())?
                         .document_environment()
                         .input_platform();
                     let len = state.current.len();
@@ -505,7 +508,7 @@ impl Draft {
                 Effect::Sanitize(_) => self.input_sanitize(key, limits, cancel)?,
                 Effect::SetInitialCursorAndNoneDirection => {
                     let platform = self
-                        .document_metadata(self.node(key)?.document)?
+                        .document_metadata(self.node(key)?.document())?
                         .document_environment()
                         .input_platform();
                     self.with_input_state(key, cancel, |state| {
@@ -543,7 +546,7 @@ impl Draft {
         );
         let guard = if guard == surgeist_html::HtmlInputImageUpdateGuard::NeedsImageEnvironment {
             guard.with_disabled_images(
-                self.document_metadata(self.node(key)?.document)?
+                self.document_metadata(self.node(key)?.document())?
                     .document_environment()
                     .input_images(),
             )
@@ -920,12 +923,12 @@ mod tests {
             b.set_input_value(second, "prefix");
             let prepared = dom.prepare(b, &cancel).unwrap();
             let first_state = prepared.state.node(dom.owner, first).unwrap();
-            let DomNodeKind::Element(first_state) = &first_state.kind else {
+            let DomNodeKind::Element(first_state) = &first_state.kind() else {
                 unreachable!()
             };
             assert!(!first_state.input_state().unwrap().flags().checkedness());
             let second_state = prepared.state.node(dom.owner, second).unwrap();
-            let DomNodeKind::Element(second_state) = &second_state.kind else {
+            let DomNodeKind::Element(second_state) = &second_state.kind() else {
                 unreachable!()
             };
             assert!(second_state.input_state().unwrap().flags().checkedness());

@@ -324,7 +324,8 @@ fn actual_formation_and_unformed_reserves_report_allocated_capacity_and_moved_me
 }
 
 #[test]
-fn actual_family_targets_count_replacements_and_cow_but_not_unique_mutation() {
+fn actual_typed_family_targets_preserve_snapshot_identity_and_release_after_last_owner() {
+    use crate::element::ElementFormation;
     use scale_metrics::{Hooks, Measurement};
     if !scale_metrics::ENABLED {
         return;
@@ -355,31 +356,136 @@ fn actual_family_targets_count_replacements_and_cow_but_not_unique_mutation() {
             )
             .unwrap()
     };
-    let mut input = native("input");
-    let original = input.clone();
-    let measurement = Measurement::begin().unwrap();
-    input.make_family_unique();
-    let counters = measurement.finish(Hooks::default()).unwrap();
-    assert_eq!(counters.structural_allocations, 1);
-    assert_eq!(counters.structural_bytes, size_of::<crate::DomInputState>());
-    assert_eq!(input.input_state(), original.input_state());
-    let measurement = Measurement::begin().unwrap();
-    input.make_family_unique();
-    input.input_state_mut().unwrap();
-    let counters = measurement.finish(Hooks::default()).unwrap();
-    assert_eq!(counters.structural_allocations, 0);
-
-    let mut dialog = native("dialog");
-    let dialog_state = dialog.dialog_state().unwrap().clone();
-    let mut style = native("style");
-    let style_state = style.style_state().unwrap().clone();
-    let measurement = Measurement::begin().unwrap();
-    dialog.set_dialog_state(dialog_state);
-    style.set_style_state(style_state);
-    let counters = measurement.finish(Hooks::default()).unwrap();
-    assert_eq!(counters.structural_allocations, 2);
-    assert_eq!(
-        counters.structural_bytes,
-        size_of::<crate::dialog::DomDialogState>() + size_of::<crate::DomStyleState>()
+    let input = native("input");
+    let old = input.value.input_payload().unwrap();
+    let mut extra = storage::Payload::default();
+    for text in [
+        old.value.current_value(),
+        old.value.custom_validity_message(),
+    ] {
+        let capacity = text.shared_code_units().capacity();
+        extra.bytes += size_of::<Vec<u16>>() + capacity * size_of::<u16>();
+        extra.units += capacity;
+    }
+    let expected = custody::Usage::new(
+        size_of::<payload::Payload<crate::DomInputState>>() + extra.bytes,
+        extra.units,
     );
+    let baseline = draft.custody_ledger().total();
+    let mut admission = |next| draft.admit_custody_usage(next, &cancel);
+    let mut context =
+        ElementFormation::new(draft.custody_registry(), None, &cancel, &mut admission);
+    let measurement = Measurement::begin().unwrap();
+    let next = context
+        .native(extra, storage::Payload::default(), || {
+            let mut next = old.value.clone();
+            next.flags = surgeist_html::HtmlInputFlags::from_retained(
+                surgeist_html::HtmlInputType::Text,
+                true,
+                false,
+                false,
+                false,
+                false,
+            );
+            Ok(next)
+        })
+        .unwrap();
+    let counters = measurement.finish(Hooks::default()).unwrap();
+    assert!(counters.structural_allocations >= 1);
+    assert!(counters.structural_bytes >= size_of::<payload::Payload<crate::DomInputState>>());
+    assert_eq!(
+        std::mem::size_of_val(&*next),
+        size_of::<payload::Payload<crate::DomInputState>>()
+    );
+    assert_eq!(next.own_usage, expected);
+    assert_ne!(next.identity, old.identity);
+    assert!(!Arc::ptr_eq(&next, old));
+    assert!(!input.value.input_state().unwrap().flags().dirty_value());
+    assert!(next.value.flags().dirty_value());
+    assert!(Arc::ptr_eq(
+        next.value.current_value().shared_code_units(),
+        old.value.current_value().shared_code_units()
+    ));
+    let weak = Arc::downgrade(&next);
+    let controls = context.into_children();
+    let mut edited = input.value.clone();
+    edited.set_input_payload(next);
+    assert!(!input.value.input_state().unwrap().flags().dirty_value());
+    assert!(edited.input_state().unwrap().flags().dirty_value());
+    drop(edited);
+    assert!(
+        weak.upgrade().is_none(),
+        "native data dies before its forming controls"
+    );
+    assert!(draft.custody_ledger().total().bytes() >= baseline.bytes() + expected.bytes());
+    drop(controls);
+    draft.custody_registry().reconcile_releases();
+    assert_eq!(draft.custody_ledger().total(), baseline);
+
+    let dialog = native("dialog");
+    let style = native("style");
+    let dialog_old = dialog.value.dialog_payload().unwrap();
+    let style_old = style.value.style_payload().unwrap();
+    let mut extra = storage::Payload::default();
+    let text = dialog_old.value.return_value();
+    let capacity = text.shared_code_units().capacity();
+    extra.bytes = size_of::<Vec<u16>>() + capacity * size_of::<u16>();
+    extra.units = capacity;
+    let mut admission = |next| draft.admit_custody_usage(next, &cancel);
+    let mut context =
+        ElementFormation::new(draft.custody_registry(), None, &cancel, &mut admission);
+    let measurement = Measurement::begin().unwrap();
+    let dialog_next = context
+        .native(extra, storage::Payload::default(), || {
+            Ok(dialog_old.value.clone())
+        })
+        .unwrap();
+    let dialog_controls = context.into_children();
+    let mut admission = |next| draft.admit_custody_usage(next, &cancel);
+    let mut context =
+        ElementFormation::new(draft.custody_registry(), None, &cancel, &mut admission);
+    let style_next = context
+        .native(
+            storage::Payload::default(),
+            storage::Payload::default(),
+            || Ok(style_old.value.clone()),
+        )
+        .unwrap();
+    let style_controls = context.into_children();
+    let counters = measurement.finish(Hooks::default()).unwrap();
+    // Generic counters include actual shared-debit and custody administration;
+    // exact native target geometry is independently observed below.
+    assert!(counters.structural_allocations >= 2);
+    assert!(
+        counters.structural_bytes
+            >= size_of::<payload::Payload<crate::dialog::DomDialogState>>()
+                + size_of::<payload::Payload<crate::DomStyleState>>()
+    );
+    assert_ne!(dialog_next.identity, dialog_old.identity);
+    assert_ne!(style_next.identity, style_old.identity);
+    assert_eq!(dialog_next.value, dialog_old.value);
+    assert_eq!(style_next.value, style_old.value);
+    assert_eq!(
+        std::mem::size_of_val(&*dialog_next),
+        size_of::<payload::Payload<crate::dialog::DomDialogState>>()
+    );
+    assert_eq!(
+        std::mem::size_of_val(&*style_next),
+        size_of::<payload::Payload<crate::DomStyleState>>()
+    );
+    assert_eq!(
+        dialog_next.own_usage,
+        custody::Usage::new(
+            size_of::<payload::Payload<crate::dialog::DomDialogState>>() + extra.bytes,
+            extra.units
+        )
+    );
+    assert_eq!(
+        style_next.own_usage,
+        custody::Usage::new(size_of::<payload::Payload<crate::DomStyleState>>(), 0)
+    );
+    drop(dialog_next);
+    drop(style_next);
+    drop(dialog_controls);
+    drop(style_controls);
 }

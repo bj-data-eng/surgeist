@@ -88,13 +88,13 @@ fn fixture(unrelated: usize, populated: bool) -> Fixture {
             (containers[2], light),
             (containers[4], other_parent),
         ] {
-            let mut element = draft
-                .element_fields_mut(Key::Existing(container), &cancel())
+            draft
+                .establish_child_navigable(
+                    Key::Existing(container),
+                    Some(child.navigable),
+                    &cancel(),
+                )
                 .unwrap();
-            element
-                .establish_child_navigable(Some(child.navigable))
-                .unwrap();
-            element.commit(&cancel()).unwrap();
         }
     }
     let prepared = draft.finish(&f.dom, &cancel()).unwrap();
@@ -190,11 +190,9 @@ fn container_order_is_shadow_before_light_and_historical_views_keep_old_edges() 
             .collect::<Vec<_>>()
     );
     let mut draft = Draft::new(&f.inner.dom, DomBatch::new().owner, &cancel()).unwrap();
-    let mut element = draft
-        .element_fields_mut(Key::Existing(f.containers[1]), &cancel())
+    draft
+        .establish_child_navigable(Key::Existing(f.containers[1]), None, &cancel())
         .unwrap();
-    element.establish_child_navigable(None).unwrap();
-    element.commit(&cancel()).unwrap();
     // The actual removal publication couples the cleared live container edge
     // with Graph retiring/unlinking; it is not a standalone field-only edit.
     let cancelled = cancel();

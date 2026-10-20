@@ -628,6 +628,11 @@ impl<'source> HeadStage<'source> {
                     unreachable!("actual token variant inspected")
                 };
                 state.pending = Some(PendingToken::from_token(event.into_token(c)?));
+                // HTML877d pre/listing/textarea: the initial-LF rule applies to the
+                // token immediately after the start tag, whichever mode handles it.
+                if state.ignore_first_lf && state.first_lf(c)? {
+                    return state.finish(c);
+                }
             } else {
                 state.lexical.reserve_geometric(c, 1)?;
                 write(size_of::<Option<Event>>(), 1, c)?;

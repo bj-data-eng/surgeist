@@ -79,7 +79,7 @@ fn show_beforetoggle_capture_and_both_target_invocations_can_cancel() {
         ] {
             registry
                 .add_listener(
-                    &DomEventDom::borrow(&mut f.dom),
+                    &mut DomEventDom::borrow(&mut f.dom),
                     node,
                     DomEventType::BeforeToggle,
                     listener(label, label == cancel_at),
@@ -135,7 +135,7 @@ fn noncancelable_details_toggle_ignores_prevention_and_keeps_exact_payload() {
     let mut registry = registry();
     registry
         .add_listener(
-            &DomEventDom::borrow(&mut f.dom),
+            &mut DomEventDom::borrow(&mut f.dom),
             details,
             DomEventType::Toggle,
             listener(0, true),
@@ -179,7 +179,7 @@ fn retained_beforetoggle_keeps_cancellation_and_never_replays_delivered_capture(
     ] {
         registry
             .add_listener(
-                &DomEventDom::borrow(&mut f.dom),
+                &mut DomEventDom::borrow(&mut f.dom),
                 node,
                 DomEventType::BeforeToggle,
                 listener(label, label == 0),
@@ -252,7 +252,7 @@ fn beforetoggle_listener_error_and_unwind_are_independent_from_cancellation() {
         let mut registry = registry();
         registry
             .add_listener(
-                &DomEventDom::borrow(&mut f.dom),
+                &mut DomEventDom::borrow(&mut f.dom),
                 f.target,
                 DomEventType::BeforeToggle,
                 DomEventCallback::new(move |_, _, _: &mut Vec<Seen>, event| {
@@ -266,7 +266,7 @@ fn beforetoggle_listener_error_and_unwind_are_independent_from_cancellation() {
             .unwrap();
         registry
             .add_listener(
-                &DomEventDom::borrow(&mut f.dom),
+                &mut DomEventDom::borrow(&mut f.dom),
                 f.target,
                 DomEventType::BeforeToggle,
                 DomEventCallback::new(|_, _, _: &mut Vec<Seen>, _| {
@@ -277,7 +277,7 @@ fn beforetoggle_listener_error_and_unwind_are_independent_from_cancellation() {
             .unwrap();
         registry
             .add_listener(
-                &DomEventDom::borrow(&mut f.dom),
+                &mut DomEventDom::borrow(&mut f.dom),
                 f.target,
                 DomEventType::BeforeToggle,
                 listener(2, false),

@@ -38,7 +38,7 @@ pub enum MetaMissingKind {
     PreferredStyle,
     Csp,
     ThemeColor,
-    ColorScheme,
+    ThemeColorProcessing(crate::parser::control::HtmlColorProcessingError),
 }
 impl MetaMissingKind {
     pub(super) fn domain(&self) -> MetaDomain {
@@ -46,8 +46,7 @@ impl MetaMissingKind {
             Self::RefreshUrl(_) => MetaDomain::Refresh,
             Self::PreferredStyle => MetaDomain::PreferredStyle,
             Self::Csp => MetaDomain::Csp,
-            Self::ThemeColor => MetaDomain::ThemeColor,
-            Self::ColorScheme => MetaDomain::ColorScheme,
+            Self::ThemeColor | Self::ThemeColorProcessing(_) => MetaDomain::ThemeColor,
         }
     }
 }
@@ -59,6 +58,8 @@ pub(super) struct MetaHistory {
     pub(super) language: Option<usize>,
     pub(super) referrer: HtmlReferrerPolicy,
     pub(super) refresh: bool,
+    pub(super) theme: Option<surgeist_color::Color>,
+    pub(super) scheme: Option<crate::parser::control::CssSchemeValue>,
     pub(super) gaps: [Option<usize>; 5],
     pub(super) first: Option<MetaDomain>,
 }
@@ -68,6 +69,8 @@ impl MetaHistory {
             language: None,
             referrer: default_document_referrer_policy(),
             refresh: false,
+            theme: None,
+            scheme: None,
             gaps: [None; 5],
             first: None,
         }
@@ -78,6 +81,8 @@ impl MetaHistory {
 enum CancelPoint {
     Language,
     Gap,
+    Theme,
+    Scheme,
 }
 #[cfg(test)]
 std::thread_local! {
@@ -379,29 +384,106 @@ impl SessionStorage {
         theme: bool,
         scheme: bool,
     ) -> Result<(), SessionError> {
-        for (enabled, expected, kind) in [
-            (theme, "theme-color", MetaMissingKind::ThemeColor),
-            (scheme, "color-scheme", MetaMissingKind::ColorScheme),
+        let slot = self.document_slot(c, document)?;
+        for (enabled, expected, domain) in [
+            (theme, "theme-color", MetaDomain::ThemeColor),
+            (scheme, "color-scheme", MetaDomain::ColorScheme),
         ] {
-            if !enabled {
+            if !enabled || self.meta_history(slot).gaps[domain.index()].is_some() {
                 continue;
             }
+            let mut selected_theme = None;
+            let mut selected_scheme = None;
             let mut next = Some(document);
             while let Some(node) = next {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 if self.html_local(c, node, "meta")?
                     && let Some(name) = self.meta_attribute(c, node, "name")?
                     && meta_ascii(c, &name, expected)?
-                    && self.form_attribute(c, node, "content")?.is_some()
+                    && let Some(content) = self.meta_attribute(c, node, "content")?
                 {
-                    // Actual first candidate reaches unavailable CSS/media
-                    // parsing. No-UI does not skip this dependency or call it
-                    // invalid. Keep the first missing operation and stop only
-                    // this semantic pass; later independent fields still run.
-                    self.meta_missing(c, document, node, kind)?;
-                    break;
+                    if domain == MetaDomain::ThemeColor {
+                        if let Some(media) = self.meta_attribute(c, node, "media")? {
+                            let mut known_match = true;
+                            for unit in media.code_units() {
+                                c.charge(WorkCategory::InspectByte, 2)?;
+                                if !bounded::is_ascii_whitespace(*unit) {
+                                    known_match = false;
+                                    break;
+                                }
+                            }
+                            if !known_match {
+                                self.meta_missing(c, document, node, MetaMissingKind::ThemeColor)?;
+                                break;
+                            }
+                        }
+                        match theme_color(c, content.code_units())? {
+                            Ok(Some(color)) => {
+                                selected_theme = Some(color);
+                                break;
+                            }
+                            Ok(None) => (),
+                            Err(error) => {
+                                self.meta_missing(
+                                    c,
+                                    document,
+                                    node,
+                                    MetaMissingKind::ThemeColorProcessing(error),
+                                )?;
+                                break;
+                            }
+                        }
+                    } else {
+                        let HtmlNodeKind::Document(mode) = self
+                            .construction
+                            .node_at(document)
+                            .ok_or(SessionError::ForeignNode)?
+                            .kind()
+                        else {
+                            return Err(SessionError::NotDocument);
+                        };
+                        let candidate = c.parse_meta_color_scheme(content.code_units(), *mode)?;
+                        if let Err(stop) = c.charge(WorkCategory::ProviderCall, 1) {
+                            candidate.release(c);
+                            return Err(stop.into());
+                        }
+                        if candidate.report().result().is_ok() {
+                            selected_scheme = Some(candidate);
+                            break;
+                        }
+                        candidate.release(c);
+                    }
                 }
                 next = self.next_view_node(c, document, node, detached)?;
+            }
+            if domain == MetaDomain::ThemeColor {
+                payload_write::<Option<surgeist_color::Color>>(c, 1)?;
+                self.meta_history_mut(slot).theme = selected_theme;
+                // This original constructor has no associated UI recipients.
+                // Selection above still performed all reached CSS work.
+                #[cfg(test)]
+                if self.meta_history(slot).theme.is_some() {
+                    after_commit(CancelPoint::Theme);
+                }
+            } else {
+                // Preserve the admitted new graph on a refused field write.
+                if let Err(stop) =
+                    payload_write::<Option<crate::parser::control::CssSchemeValue>>(c, 1)
+                {
+                    if let Some(candidate) = selected_scheme {
+                        candidate.release(c);
+                    }
+                    return Err(stop);
+                }
+                let old =
+                    std::mem::replace(&mut self.meta_history_mut(slot).scheme, selected_scheme);
+                #[cfg(test)]
+                if self.meta_history(slot).scheme.is_some() {
+                    after_commit(CancelPoint::Scheme);
+                }
+                if let Some(old) = old {
+                    old.release(c);
+                }
             }
         }
         Ok(())
@@ -507,6 +589,55 @@ impl SessionStorage {
             self.meta_candidates(c, document, None, true, name_or_content)?;
         }
         Ok(())
+    }
+}
+/// HTML selects the ASCII-whitespace subrange; CSS owns preprocessing, grammar
+/// and used-color resolution. A genuine syntax rejection has no input fallback.
+fn theme_color(
+    c: &mut ParseControl,
+    mut input: &[u16],
+) -> Result<
+    Result<Option<surgeist_color::Color>, crate::parser::control::HtmlColorProcessingError>,
+    SessionError,
+> {
+    while let Some(unit) = input.first() {
+        c.charge(WorkCategory::InspectByte, 2)?;
+        if !bounded::is_ascii_whitespace(*unit) {
+            break;
+        }
+        input = &input[1..];
+    }
+    while let Some(unit) = input.last() {
+        c.charge(WorkCategory::InspectByte, 2)?;
+        if !bounded::is_ascii_whitespace(*unit) {
+            break;
+        }
+        input = &input[..input.len() - 1];
+    }
+    let mut owner = surgeist_css::CssColorOperationOwner::new();
+    let facts = surgeist_css::CssColorFacts::new(
+        surgeist_css::CssColorFactIdentity::new(0x5041_5253_4d45_5441, 1),
+        surgeist_css::CssColorPropertyFacts::InitialProperties,
+        surgeist_css::CssColorSchemeFact::Unavailable,
+        &[],
+        &[],
+        &[],
+        surgeist_css::CssDeviceColorFact::Unknown,
+    );
+    match css_color::parse(
+        c,
+        input,
+        &mut owner,
+        &facts,
+        css_color::source_processing,
+        0,
+        #[cfg(test)]
+        || {},
+    ) {
+        Ok(surgeist_css::CssColorParseOutcome::Used(color)) => Ok(Ok(Some(color.value()))),
+        Ok(surgeist_css::CssColorParseOutcome::StandardFailure(_)) => Ok(Ok(None)),
+        Err(css_color::Failure::Session(error)) => Err(error),
+        Err(css_color::Failure::Processing(error)) => Ok(Err(error)),
     }
 }
 fn meta_ascii(
@@ -646,8 +777,88 @@ mod tests {
         }
     }
     #[test]
-    fn cancellation_after_language_replacement_or_first_gap_keeps_original_stop_and_cleans_storage()
-    {
+    fn css_selection_tracks_original_removal_and_reinsertion_and_releases_replaced_reports() {
+        let limits = super::super::tests::limits();
+        let source = crate::HtmlSource::utf8(
+            "<meta name=color-scheme content=dark><meta name=color-scheme content=light><meta name=theme-color content=red>",
+        );
+        let mut c = ParseControl::new(limits, crate::HtmlParseCancellation::new());
+        c.admit_source(&source).unwrap();
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        let root = session.root(&mut c).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let first = next_node(&mut session, &mut c, &mut lexer);
+        let second = next_node(&mut session, &mut c, &mut lexer);
+        let theme = next_node(&mut session, &mut c, &mut lexer);
+        for node in [&first, &second, &theme] {
+            session
+                .active_mut()
+                .unwrap()
+                .insert(&mut c, &root, node, None, InsertionCause::NonParser)
+                .unwrap();
+        }
+        let selected = |session: &ParserArenaSession| {
+            let storage = session.active().unwrap();
+            let meta = storage
+                .payloads
+                .values
+                .iter()
+                .find_map(|p| {
+                    if let RetainedPayload::Document { meta, .. } = p {
+                        Some(meta)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap();
+            meta.scheme
+                .as_ref()
+                .unwrap()
+                .report()
+                .source()
+                .source()
+                .original_utf16()
+                .unwrap()
+                .as_slice()
+                .to_vec()
+        };
+        assert_eq!(
+            selected(&session),
+            "dark".encode_utf16().collect::<Vec<_>>()
+        );
+        session
+            .active_mut()
+            .unwrap()
+            .remove(&mut c, &first)
+            .unwrap();
+        assert_eq!(
+            selected(&session),
+            "light".encode_utf16().collect::<Vec<_>>()
+        );
+        session
+            .active_mut()
+            .unwrap()
+            .insert(
+                &mut c,
+                &root,
+                &first,
+                Some(&second),
+                InsertionCause::NonParser,
+            )
+            .unwrap();
+        assert_eq!(
+            selected(&session),
+            "dark".encode_utf16().collect::<Vec<_>>()
+        );
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        super::super::tests::storage_zero(&c);
+    }
+
+    #[test]
+    fn cancellation_after_committed_meta_fields_keeps_original_stop_and_cleans_storage() {
         for (point, skip, source) in [
             (
                 CancelPoint::Language,
@@ -658,6 +869,16 @@ mod tests {
                 CancelPoint::Gap,
                 0,
                 "<!doctype html><meta http-equiv=default-style content=chosen>",
+            ),
+            (
+                CancelPoint::Theme,
+                0,
+                "<!doctype html><meta name=theme-color content=red>",
+            ),
+            (
+                CancelPoint::Scheme,
+                0,
+                "<!doctype html><meta name=color-scheme content=dark>",
             ),
         ] {
             let request = crate::HtmlDocumentParseRequest::offline(

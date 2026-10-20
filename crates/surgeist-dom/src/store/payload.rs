@@ -1,7 +1,16 @@
 //! Immutable typed materializations. Semantics contain identity and shallow
 //! receipts; controlled owners keep the matching custody separately.
+mod children;
+pub(in crate::store) use children::{
+    data_dependency, document_dependency, element_node_dependency, form_dependency,
+    fragment_dependency, image_association_dependency, shadow_dependency, text_dependency,
+};
+#[cfg(test)]
+pub(in crate::store) use children::{form_dependency_refusal, inspect_slot_typed_custody};
 #[cfg(test)]
 mod encoding_tests;
+#[cfg(test)]
+mod group_tests;
 use super::{DomError, bank, custody};
 pub(crate) use custody::Usage;
 use std::sync::Arc;
@@ -82,16 +91,34 @@ pub(in crate::store) mod destruction_observation {
         identity: custody::MaterializationId,
         ledger: custody::Ledger,
         observed: Rc<Cell<Option<Usage>>>,
+        control: Option<Box<dyn Fn() -> bool>>,
+        control_observed: Rc<Cell<Option<bool>>>,
     }
     thread_local! { static WATCH: RefCell<Option<Watch>> = const { RefCell::new(None) }; }
 
     pub(in crate::store) struct Observation {
         observed: Rc<Cell<Option<Usage>>>,
+        control_observed: Rc<Cell<Option<bool>>>,
         _thread: PhantomData<Rc<()>>,
     }
     impl Observation {
         pub fn begin(identity: custody::MaterializationId, ledger: &custody::Ledger) -> Self {
+            Self::start(identity, ledger, None)
+        }
+        pub fn begin_with_control(
+            identity: custody::MaterializationId,
+            ledger: &custody::Ledger,
+            control: impl Fn() -> bool + 'static,
+        ) -> Self {
+            Self::start(identity, ledger, Some(Box::new(control)))
+        }
+        fn start(
+            identity: custody::MaterializationId,
+            ledger: &custody::Ledger,
+            control: Option<Box<dyn Fn() -> bool>>,
+        ) -> Self {
             let observed = Rc::new(Cell::new(None));
+            let control_observed = Rc::new(Cell::new(None));
             WATCH.with(|slot| {
                 let mut slot = slot.borrow_mut();
                 assert!(
@@ -102,15 +129,21 @@ pub(in crate::store) mod destruction_observation {
                     identity,
                     ledger: ledger.clone(),
                     observed: observed.clone(),
+                    control,
+                    control_observed: control_observed.clone(),
                 });
             });
             Self {
                 observed,
+                control_observed,
                 _thread: PhantomData,
             }
         }
         pub fn observed(&self) -> Option<Usage> {
             self.observed.get()
+        }
+        pub fn control_alive_at_destruction(&self) -> Option<bool> {
+            self.control_observed.get()
         }
     }
     impl Drop for Observation {
@@ -124,19 +157,38 @@ pub(in crate::store) mod destruction_observation {
                 && watch.identity == identity
             {
                 watch.observed.set(Some(watch.ledger.total()));
+                if let Some(control) = &watch.control {
+                    watch.control_observed.set(Some(control()));
+                }
             }
         });
     }
 }
 
-/// The only mutable phase. Its fresh identity is never copied from an alias.
-/// Both the affine and shared receipt follow data in destruction order.
+/// A freshly materialized body awaiting controlled registration. Its identity
+/// is never copied from an alias. Both the affine and shared receipt follow
+/// data in destruction order; selected mutation finishes before this phase.
 pub(crate) struct Pending<T> {
     value: Arc<Payload<T>>,
     debit: custody::Debit,
     shared: Option<custody::SharedDebit>,
 }
 impl<T> Pending<T> {
+    /// Transfer an unregistered target and its original affine receipt into
+    /// the one enclosing Slot owner. This does not publish a semantic alias.
+    pub(in crate::store) fn into_unregistered(self) -> custody::Held<Arc<Payload<T>>> {
+        assert!(
+            self.shared.is_none(),
+            "unregistered target has no shared receipt"
+        );
+        let Self {
+            value,
+            debit,
+            shared: _,
+        } = self;
+        custody::Held::new(value, debit)
+    }
+
     pub fn new(
         incoming: custody::Held<T>,
         own_usage: custody::Usage,
@@ -234,6 +286,47 @@ pub(in crate::store) mod identity_refusal {
 pub(crate) struct Sealed<T> {
     pub value: Arc<Payload<T>>,
     pub custody: bank::ObjectCustody,
+}
+
+/// Construct one exact leaf under its original allocation credit. The caller
+/// identifies already formed occurrences separately from genuinely new storage.
+/// Both original and added credit stay live until the factory's owned inputs
+/// have been destroyed, including refusal before the factory can run.
+pub(crate) fn form_group<T>(
+    registry: &bank::CustodyRegistry,
+    budget: Option<&super::source::formation::Formation>,
+    original: super::source::storage::Payload,
+    own_usage: Usage,
+    admit: &mut dyn FnMut(Usage) -> Result<(), DomError>,
+    build: impl FnOnce() -> Result<T, DomError>,
+) -> Result<Sealed<T>, DomError> {
+    let reserved = Reserved::new()?;
+    struct Building<F> {
+        build: F,
+        debit: custody::Debit,
+    }
+    let debit = match budget {
+        Some(budget) => {
+            let available = budget.owned_payload();
+            Usage::new(available.bytes, available.units)
+                .checked_sub(Usage::new(original.bytes, original.units))?;
+            budget.split_payload(original).into_debit()
+        }
+        None => None,
+    }
+    .map_or_else(|| registry.ledger().retain(Usage::ZERO, &mut *admit), Ok)?;
+    let mut building = Building { build, debit };
+    assert!(
+        building.debit.belongs_to(registry.ledger()),
+        "formed leaf retains its original custody ledger"
+    );
+    let extra = own_usage.checked_sub(building.debit.usage())?;
+    building.debit.grow(extra, &mut *admit)?;
+    let Building { build, debit } = building;
+    let incoming = custody::Held::new(build()?, debit);
+    reserved
+        .materialize(incoming, own_usage, &mut *admit)?
+        .seal(registry, admit)
 }
 
 struct NameChildren {
@@ -392,32 +485,229 @@ pub(in crate::store) fn attach_attribute_extent(
         .expect("new bank has explicit name-operation custody")
         .absorb(bank);
 }
-struct SlotChildren {
-    _form_names: Option<bank::ObjectCustody>,
-    _element_name: Option<NameChildren>,
+struct ElementNameChildren {
+    _names: NameChildren,
+    _attribution: Option<super::name_registry::Attribution>,
+}
+struct AttributeBindingChildren {
+    _bank: Option<bank::ObjectCustody>,
+    _attribution: Option<super::name_registry::Attribution>,
+}
+struct ElementLanguageChildren {
+    _name: bank::ObjectCustody,
     _attributes: Option<bank::ObjectCustody>,
+    _native: Option<bank::ObjectCustody>,
+    _custom: Option<bank::ObjectCustody>,
+    _nonce: Option<bank::ObjectCustody>,
+    _focus: Option<bank::ObjectCustody>,
+    _hosted: Option<bank::ObjectCustody>,
+    // The actual dedicated language/name-containing capsule remains local;
+    // generic exact-kind and Slot capsules are global storage only.
     _attribution: Option<super::name_registry::Attribution>,
 }
 
+fn containing_attribution<T, D>(
+    names: Option<&super::name_registry::Operation>,
+) -> Result<Option<super::name_registry::Attribution>, DomError> {
+    let bytes = size_of::<Payload<T>>()
+        .checked_add(size_of::<D>())
+        .and_then(|bytes| bytes.checked_add(2 * size_of::<custody::Debit>()))
+        .ok_or(DomError::RepresentationExhausted)?;
+    // Conservative text occurrences stay in the global shallow receipt; the
+    // local ceiling follows only actual dedicated containing target/metadata.
+    names.map(|names| names.attribute(bytes)).transpose()
+}
+
+pub(in crate::store) fn element_name_dependency(
+    value: &crate::element::ElementName,
+    registry: &bank::CustodyRegistry,
+    names: Option<&super::name_registry::Operation>,
+    mut admit: impl FnMut(Usage) -> Result<(), DomError>,
+) -> Result<Option<bank::Dependency>, DomError> {
+    let attribution =
+        containing_attribution::<crate::element::ElementName, ElementNameChildren>(names)?;
+    let children = NameChildren::adopt(&value.value, registry, names, &mut admit)?;
+    bank::Dependency::new(
+        ElementNameChildren {
+            _names: children,
+            _attribution: attribution,
+        },
+        registry.ledger(),
+        admit,
+    )
+    .map(Some)
+}
+
+pub(in crate::store) fn attribute_binding_dependency(
+    value: &crate::element::AttributeBinding,
+    registry: &bank::CustodyRegistry,
+    names: Option<&super::name_registry::Operation>,
+    mut admit: impl FnMut(Usage) -> Result<(), DomError>,
+) -> Result<Option<bank::Dependency>, DomError> {
+    let attribution = containing_attribution::<
+        crate::element::AttributeBinding,
+        AttributeBindingChildren,
+    >(names)?;
+    let bank = adopt_attributes(&value.storage, registry, names, &mut admit)?;
+    bank::Dependency::new(
+        AttributeBindingChildren {
+            _bank: bank,
+            _attribution: attribution,
+        },
+        registry.ledger(),
+        admit,
+    )
+    .map(Some)
+}
+
+pub(in crate::store) fn element_dependency(
+    element: &crate::DomElement,
+    registry: &bank::CustodyRegistry,
+    names: Option<&super::name_registry::Operation>,
+    mut admit: impl FnMut(Usage) -> Result<(), DomError>,
+) -> Result<Option<bank::Dependency>, DomError> {
+    let local = size_of::<ElementLanguageChildren>()
+        .checked_add(custody::SharedDebit::administration_usage().bytes())
+        .ok_or(DomError::RepresentationExhausted)?;
+    let attribution = names.map(|names| names.attribute(local)).transpose()?;
+    let value = element.name_payload();
+    let name = registry.adopt_object_with_children(
+        value.identity,
+        value.own_usage,
+        |admit| element_name_dependency(&value.value, registry, names, admit),
+        &mut admit,
+    )?;
+    let attributes = element
+        .attribute_binding()
+        .map(|value| {
+            registry.adopt_object_with_children(
+                value.identity,
+                value.own_usage,
+                |admit| attribute_binding_dependency(&value.value, registry, names, admit),
+                &mut admit,
+            )
+        })
+        .transpose()?;
+    let native = match element.native_family() {
+        crate::element::NativeFamily::Dialog(value) => {
+            Some(children::leaf(value, registry, &mut admit)?)
+        }
+        crate::element::NativeFamily::Style(value) => {
+            Some(children::leaf(value, registry, &mut admit)?)
+        }
+        crate::element::NativeFamily::Fieldset(value) => {
+            Some(children::leaf(value, registry, &mut admit)?)
+        }
+        crate::element::NativeFamily::Button(value) => {
+            Some(children::leaf(value, registry, &mut admit)?)
+        }
+        crate::element::NativeFamily::Input(value) => {
+            Some(children::leaf(value, registry, &mut admit)?)
+        }
+        crate::element::NativeFamily::Textarea(value) => {
+            Some(children::leaf(value, registry, &mut admit)?)
+        }
+        crate::element::NativeFamily::Output(value) => {
+            Some(children::leaf(value, registry, &mut admit)?)
+        }
+        crate::element::NativeFamily::Select(value) => {
+            Some(children::leaf(value, registry, &mut admit)?)
+        }
+        crate::element::NativeFamily::Canvas(value) => {
+            Some(children::leaf(value, registry, &mut admit)?)
+        }
+        _ => None,
+    };
+    let custom = element
+        .custom_payload()
+        .map(|value| children::leaf(value, registry, &mut admit))
+        .transpose()?;
+    let nonce = element
+        .nonce_payload()
+        .map(|value| children::leaf(value, registry, &mut admit))
+        .transpose()?;
+    let focus = element
+        .focus_payload()
+        .map(|value| children::leaf(value, registry, &mut admit))
+        .transpose()?;
+    let hosted = element
+        .hosted_payload()
+        .map(|value| children::leaf(value, registry, &mut admit))
+        .transpose()?;
+    bank::Dependency::new(
+        ElementLanguageChildren {
+            _name: name,
+            _attributes: attributes,
+            _native: native,
+            _custom: custom,
+            _nonce: nonce,
+            _focus: focus,
+            _hosted: hosted,
+            _attribution: attribution,
+        },
+        registry.ledger(),
+        admit,
+    )
+    .map(Some)
+}
+
+pub(in crate::store) fn slot_dependency(
+    slot: &super::Slot,
+    registry: &bank::CustodyRegistry,
+    names: Option<&super::name_registry::Operation>,
+    mut admit: impl FnMut(Usage) -> Result<(), DomError>,
+) -> Result<Option<bank::Dependency>, DomError> {
+    match slot.node.as_ref() {
+        Some(node) => children::node_children(node, registry, names, &mut admit),
+        None => Ok(None),
+    }
+}
+
 #[cfg(test)]
-pub(in crate::store) fn inspect_slot_child_extent() -> usize {
-    size_of::<SlotChildren>() + size_of::<custody::Debit>()
+pub(in crate::store) fn inspect_element_language_child_extent() -> usize {
+    size_of::<ElementLanguageChildren>() + size_of::<custody::Debit>()
+}
+
+/// Raw concrete target layout for independent name-local quota witnesses.
+/// Receipt metadata and the name payload target are enumerated by the caller.
+#[cfg(test)]
+pub(in crate::store) fn inspect_element_name_children_body_bytes() -> usize {
+    size_of::<ElementNameChildren>()
 }
 
 #[cfg(test)]
 pub(in crate::store) fn inspect_slot_form_custody(
     slots: &bank::BankCustody<super::Slot>,
 ) -> Vec<(custody::MaterializationId, Usage)> {
-    slots
-        .inspect_dependencies::<SlotChildren>()
-        .iter()
-        .filter_map(|dependency| {
-            dependency
-                ._form_names
-                .as_ref()
-                .map(|names| (names.identity(), names.inspect_payload_usage()))
-        })
-        .collect()
+    let mut out = Vec::new();
+    for dependency in children::inspect_slot_dependencies(slots) {
+        if let children::SlotDependency::Element(element) = dependency
+            && let Some(association) = &element._association
+            && let Some(form) = association.inspect_dependency::<children::FormChildren>()
+        {
+            out.push((
+                form._past_names.identity(),
+                form._past_names.inspect_payload_usage(),
+            ));
+        }
+    }
+    out
+}
+#[cfg(test)]
+fn inspect_element_children(
+    slots: &bank::BankCustody<super::Slot>,
+) -> Vec<bank::Retained<ElementLanguageChildren>> {
+    let mut out = Vec::new();
+    for dependency in children::inspect_slot_dependencies(slots) {
+        if let children::SlotDependency::Element(element) = dependency
+            && let Some(language) = element
+                ._element
+                .inspect_dependency::<ElementLanguageChildren>()
+        {
+            out.push(language);
+        }
+    }
+    out
 }
 #[cfg(test)]
 pub(in crate::store) fn inspect_slot_name_custody(
@@ -429,13 +719,16 @@ pub(in crate::store) fn inspect_slot_name_custody(
         }
     }
     let mut out = Vec::new();
-    for slot in slots.inspect_dependencies::<SlotChildren>() {
-        if let Some(value) = &slot._element_name {
-            names(value, &mut out);
+    for element in inspect_element_children(slots) {
+        if let Some(value) = element._name.inspect_dependency::<ElementNameChildren>() {
+            names(&value._names, &mut out);
         }
-        if let Some(value) = &slot._attributes {
-            out.push((value.identity(), value.inspect_payload_usage()));
-            if let Some(children) = value.inspect_dependency::<AttributeChildren>() {
+        if let Some(binding) = &element._attributes
+            && let Some(binding) = binding.inspect_dependency::<AttributeBindingChildren>()
+            && let Some(bank) = &binding._bank
+        {
+            out.push((bank.identity(), bank.inspect_payload_usage()));
+            if let Some(children) = bank.inspect_dependency::<AttributeChildren>() {
                 for value in &children._names {
                     names(value, &mut out);
                 }
@@ -449,9 +742,11 @@ pub(in crate::store) fn inspect_attribute_child_allocations(
     slots: &bank::BankCustody<super::Slot>,
     graph: &mut super::compact_tests::AllocationGraph,
 ) {
-    for slot in slots.inspect_dependencies::<SlotChildren>() {
-        if let Some(value) = &slot._attributes
-            && let Some(children) = value.inspect_dependency::<AttributeChildren>()
+    for element in inspect_element_children(slots) {
+        if let Some(binding) = &element._attributes
+            && let Some(binding) = binding.inspect_dependency::<AttributeBindingChildren>()
+            && let Some(bank) = &binding._bank
+            && let Some(children) = bank.inspect_dependency::<AttributeChildren>()
         {
             graph.allocation(
                 &*children as *const AttributeChildren as usize,
@@ -463,70 +758,18 @@ pub(in crate::store) fn inspect_attribute_child_allocations(
     }
 }
 
-pub(in crate::store) fn element_dependency(
-    kind: &crate::DomNodeKind,
-    registry: &bank::CustodyRegistry,
-    names: Option<&super::name_registry::Operation>,
-    admit: impl FnMut(Usage) -> Result<(), DomError>,
-) -> Result<Option<bank::Dependency>, DomError> {
-    let element = match kind {
-        crate::DomNodeKind::Element(element) => Some(element),
-        _ => None,
-    };
-    children_dependency(None, element, registry, names, admit)
-}
-
-pub(in crate::store) fn slot_dependency(
-    slot: &super::Slot,
+/// Adopt the one actual immutable attribute target and its qualified name
+/// children. Existing controlled targets reuse their original custody; callers
+/// never reconstruct or charge another attribute-child graph for that alias.
+pub(in crate::store) fn adopt_attributes(
+    storage: &crate::name::AttributeStorage,
     registry: &bank::CustodyRegistry,
     names: Option<&super::name_registry::Operation>,
     mut admit: impl FnMut(Usage) -> Result<(), DomError>,
-) -> Result<Option<bank::Dependency>, DomError> {
-    let Some(node) = &slot.node else {
-        return Ok(None);
-    };
-    let form = node
-        .form_past_names
-        .as_ref()
-        .and_then(crate::form::FormPastNames::payload)
-        .map(|value| registry.adopt_object(value.identity, value.own_usage, &mut admit))
-        .transpose()?;
-    let element = match &node.kind {
-        crate::DomNodeKind::Element(element) => Some(element),
-        _ => None,
-    };
-    children_dependency(form, element, registry, names, admit)
-}
-
-fn children_dependency(
-    form: Option<bank::ObjectCustody>,
-    element: Option<&crate::DomElement>,
-    registry: &bank::CustodyRegistry,
-    names: Option<&super::name_registry::Operation>,
-    mut admit: impl FnMut(Usage) -> Result<(), DomError>,
-) -> Result<Option<bank::Dependency>, DomError> {
-    if form.is_none() && element.is_none() {
-        return Ok(None);
-    }
-    let attribution = if element.is_some() {
-        let bytes = size_of::<SlotChildren>()
-            .checked_add(custody::SharedDebit::administration_usage().bytes())
-            .ok_or(DomError::RepresentationExhausted)?;
-        names.map(|names| names.attribute(bytes)).transpose()?
-    } else {
-        None
-    };
-    let element_name = element
-        .map(|element| NameChildren::adopt(element.name(), registry, names, &mut admit))
-        .transpose()?;
-    let attributes = element
-        .and_then(|element| {
-            element
-                .attributes_backing()
-                .payload()
-                .map(|value| (element.attributes_backing(), value))
-        })
-        .map(|(storage, value)| {
+) -> Result<Option<bank::ObjectCustody>, DomError> {
+    storage
+        .payload()
+        .map(|value| {
             registry.adopt_object_with_children(
                 value.identity,
                 storage.own_usage(),
@@ -534,18 +777,7 @@ fn children_dependency(
                 &mut admit,
             )
         })
-        .transpose()?;
-    bank::Dependency::new(
-        SlotChildren {
-            _form_names: form,
-            _element_name: element_name,
-            _attributes: attributes,
-            _attribution: attribution,
-        },
-        registry.ledger(),
-        admit,
-    )
-    .map(Some)
+        .transpose()
 }
 
 pub(in crate::store) fn describe_slot(
@@ -554,11 +786,7 @@ pub(in crate::store) fn describe_slot(
     names: Option<&super::name_registry::Operation>,
     mut admit: impl FnMut(Usage) -> Result<(), DomError>,
 ) -> Result<bank::RecordDescription, DomError> {
-    let usage = Usage::new(size_of::<super::Slot>(), 0).checked_add(
-        slot.node
-            .as_ref()
-            .map_or(Usage::ZERO, |node| node.receipts.payload),
-    )?;
+    let usage = super::source::storage::slot_usage(slot)?;
     Ok(match slot_dependency(slot, registry, names, &mut admit)? {
         Some(dependency) => bank::RecordDescription::with_dependency(usage, dependency),
         None => usage.into(),
@@ -782,6 +1010,7 @@ mod tests {
             .as_element()
             .unwrap()
             .attributes_backing()
+            .unwrap()
             .clone();
         let mut edit = crate::DomBatch::new();
         edit.set_nonce(element, "ordinary");
@@ -820,6 +1049,7 @@ mod tests {
                     .as_element()
                     .unwrap()
                     .attributes_backing()
+                    .unwrap()
             )
         );
         let snapshot = dom.snapshot();

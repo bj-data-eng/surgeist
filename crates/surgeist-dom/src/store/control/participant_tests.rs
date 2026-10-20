@@ -102,9 +102,9 @@ fn form_recipients_stay_bounded(same_tree: bool) {
         let result = draft.id_recipients(source, same_tree, &cancel);
         let after = draft.source_work.load(Ordering::Relaxed);
         if result.is_ok() {
-            assert!(draft.node(subject).unwrap().control_owner.is_none());
+            assert!(draft.node(subject).unwrap().control_owner().is_none());
             assert!(
-                !state(draft.node(subject).unwrap().kind)
+                !state(draft.node(subject).unwrap().kind())
                     .unwrap()
                     .0
                     .parser_inserted

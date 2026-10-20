@@ -510,7 +510,7 @@ impl DomSnapshot {
                 slot: index,
                 generation: slot.generation,
             };
-            if value.document == document {
+            if value.document() == document {
                 control.include(&mut planned, node, true)?;
             }
         }
@@ -530,23 +530,27 @@ impl DomSnapshot {
             let entry = planned[index];
             planned[index].expanded = true;
             let node = self.node(entry.node)?;
-            control.include(&mut planned, node.node.document.node(), false)?;
+            control.include(&mut planned, node.node.document().node(), false)?;
             if let Some(parent) = node.parent() {
                 control.include(&mut planned, parent, false)?;
             }
             if let Some(host) = node.fragment_host() {
                 control.include(&mut planned, host, false)?;
             }
-            if let Some(contents) = node.node.template_contents {
+            if let Some(contents) = node.node.template_contents() {
                 control.include(&mut planned, contents, true)?;
             }
-            if let Some(inert) = node.node.template_document.and_then(|state| state.inert()) {
+            if let Some(inert) = node
+                .node
+                .template_document()
+                .and_then(|state| state.inert())
+            {
                 control.include(&mut planned, inert, false)?;
             }
             if let Some(root) = node.hosted_shadow_root() {
                 control.include(&mut planned, root, true)?;
             }
-            if let Some(targets) = node.node.reflected_targets {
+            if let Some(targets) = node.node.reflected_targets() {
                 for key in [
                     crate::reflected::ReflectedTarget::CommandFor,
                     crate::reflected::ReflectedTarget::PopoverTarget,
@@ -558,13 +562,13 @@ impl DomSnapshot {
                     control.include(&mut planned, target, false)?;
                 }
             }
-            if let Some(owner) = node.node.control_owner {
+            if let Some(owner) = node.node.control_owner() {
                 control.include(&mut planned, owner, false)?;
             }
-            if let Some(parsed) = node.node.hyperlink.as_ref().and_then(|h| h.parsed.as_ref()) {
+            if let Some(parsed) = node.node.hyperlink().and_then(|h| h.parsed.as_ref()) {
                 control.include(&mut planned, parsed.document, false)?;
             }
-            if let Some(script) = node.node.script {
+            if let Some(script) = node.node.script() {
                 for document in [script.parser_document, script.preparation_document]
                     .into_iter()
                     .flatten()
@@ -573,7 +577,7 @@ impl DomSnapshot {
                     control.include(&mut planned, document, false)?;
                 }
             }
-            if let Some(map) = &node.node.form_past_names {
+            if let Some(map) = node.node.form_past_names() {
                 for entry in map.entries().iter() {
                     control.charge(1)?;
                     control.include(&mut planned, entry.target, false)?;
@@ -657,7 +661,7 @@ impl DomSnapshot {
             ) {
                 continue;
             }
-            let root = control.subject(&staged, node.node.document.node())?;
+            let root = control.subject(&staged, node.node.document().node())?;
             control.reserve(&mut staged, 1)?;
             let subject = match node.kind() {
                 DomNodeKind::Document(_) | DomNodeKind::ShadowRoot(_) => {
@@ -773,7 +777,7 @@ impl DomSnapshot {
             control.charge(1)?;
             let node = self.node(entry.node)?;
             if let DomNodeKind::ShadowRoot(state) = node.kind() {
-                let document = control.subject(&staged, node.node.document.node())?;
+                let document = control.subject(&staged, node.node.document().node())?;
                 let host = control.subject(&staged, self.shadow_root(entry.node)?.host())?;
                 let registry = registry_input(
                     &mut builder,

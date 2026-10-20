@@ -6,8 +6,26 @@ use crate::{
 };
 use std::sync::{Arc, atomic::AtomicBool};
 
+/// Language facts actually needed by the shared slot queries.
+#[derive(Clone, Copy)]
+pub(crate) enum TreeKind<'a> {
+    Element(&'a crate::DomElement),
+    Text,
+    ShadowRoot(&'a crate::DomShadowRootState),
+    Other,
+}
+impl<'a> From<DomNodeKind<'a>> for TreeKind<'a> {
+    fn from(kind: DomNodeKind<'a>) -> Self {
+        match kind {
+            DomNodeKind::Element(element) => Self::Element(element),
+            DomNodeKind::Text(_) => Self::Text,
+            DomNodeKind::ShadowRoot(state) => Self::ShadowRoot(state),
+            _ => Self::Other,
+        }
+    }
+}
 pub(crate) struct TreeNode<'a, K> {
-    pub kind: &'a DomNodeKind,
+    pub kind: TreeKind<'a>,
     pub parent: Option<K>,
     pub ordinal: Option<usize>,
     pub children: TreeRelations<'a, K>,
@@ -117,15 +135,15 @@ impl Tree for DomSnapshot {
     fn get(&self, key: NodeId) -> Result<TreeNode<'_, NodeId>, DomError> {
         let n = self.node(key)?.node;
         Ok(TreeNode {
-            kind: &n.kind,
-            parent: n.parent,
+            kind: n.kind().into(),
+            parent: n.parent(),
             ordinal: n
-                .parent
+                .parent()
                 .and_then(|parent| self.state.slot_ordinal(key, parent)),
-            children: TreeRelations::Direct(&n.children),
-            shadow_root: n.shadow_root,
-            host: n.host,
-            manual: TreeRelations::Direct(&n.manual_nodes),
+            children: TreeRelations::Direct(n.children()),
+            shadow_root: n.shadow_root(),
+            host: n.host(),
+            manual: TreeRelations::Direct(n.manual_nodes()),
         })
     }
     fn slot_after(
@@ -137,19 +155,19 @@ impl Tree for DomSnapshot {
         self.state.slot_after(root, after, work)
     }
 }
-pub(crate) fn is_slot(kind: &DomNodeKind) -> bool {
-    matches!(kind, DomNodeKind::Element(e) if e.is_slot())
+pub(crate) fn is_slot(kind: TreeKind<'_>) -> bool {
+    matches!(kind, TreeKind::Element(e) if e.is_slot())
 }
-pub(crate) fn is_slottable(kind: &DomNodeKind) -> bool {
-    matches!(kind, DomNodeKind::Element(_) | DomNodeKind::Text(_))
+pub(crate) fn is_slottable(kind: TreeKind<'_>) -> bool {
+    matches!(kind, TreeKind::Element(_) | TreeKind::Text)
 }
 pub(crate) fn name_admitted<'a, E>(
-    kind: &'a DomNodeKind,
+    kind: TreeKind<'a>,
     attr: &str,
     step: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Option<&'a DocumentString>, E> {
     match kind {
-        DomNodeKind::Element(e) => {
+        TreeKind::Element(e) => {
             for a in e.attributes().iter() {
                 step()?;
                 if a.name().namespace_uri().is_some() {
@@ -273,7 +291,7 @@ pub(crate) fn find_slot<T: Tree>(
     let Some(root) = tree.get(parent)?.shadow_root else {
         return Ok(None);
     };
-    let DomNodeKind::ShadowRoot(state) = tree.get(root)?.kind else {
+    let TreeKind::ShadowRoot(state) = tree.get(root)?.kind else {
         unreachable!("hosted root")
     };
     if open && state.mode() == crate::HtmlShadowRootMode::Closed {
@@ -335,7 +353,7 @@ pub(crate) fn visit_slottables<T: Tree>(
     }
     let r = root(tree, slot, cancel)?;
     let rn = tree.get(r)?;
-    let DomNodeKind::ShadowRoot(state) = rn.kind else {
+    let TreeKind::ShadowRoot(state) = rn.kind else {
         return Ok(());
     };
     let host = rn.host.expect("shadow host");
@@ -402,11 +420,11 @@ impl<'a> DomSlot<'a> {
         self.node.id()
     }
     pub fn manual_assignments(self) -> &'a [NodeId] {
-        &self.node.node.manual_nodes
+        self.node.node.manual_nodes()
     }
     /// Source assignedNodes(false), not fresh find-slottables.
     pub fn assigned_nodes(self) -> &'a [NodeId] {
-        &self.node.node.assigned_nodes
+        self.node.node.assigned_nodes()
     }
     pub fn assigned_elements(self) -> impl Iterator<Item = NodeId> + 'a {
         self.assigned_nodes().iter().copied().filter(move |id| {
@@ -443,7 +461,7 @@ impl<'a> DomSlot<'a> {
                 .snapshot
                 .get(root(self.node.snapshot, self.id(), cancel)?)?
                 .kind,
-            DomNodeKind::ShadowRoot(_)
+            TreeKind::ShadowRoot(_)
         ) {
             check_cancel(cancel)?;
             return Ok(DomSlotNodes {
@@ -503,7 +521,7 @@ impl<'a> DomSlot<'a> {
                             .snapshot
                             .get(root(self.node.snapshot, node, cancel)?)?
                             .kind,
-                        DomNodeKind::ShadowRoot(_)
+                        TreeKind::ShadowRoot(_)
                     )
                 {
                     pending = Some(node);
@@ -557,19 +575,19 @@ impl DomSlotNodes {
 }
 impl<'a> DomNode<'a> {
     pub fn as_slot(self) -> Option<DomSlot<'a>> {
-        is_slot(self.kind()).then_some(DomSlot { node: self })
+        is_slot(self.kind().into()).then_some(DomSlot { node: self })
     }
     pub fn manual_assignment(self) -> Result<Option<NodeId>, DomError> {
-        if !is_slottable(self.kind()) {
+        if !is_slottable(self.kind().into()) {
             return Err(DomError::WrongNodeKind);
         }
-        Ok(self.node.manual_slot)
+        Ok(self.node.manual_slot())
     }
     pub fn stored_assigned_slot(self) -> Result<Option<NodeId>, DomError> {
-        if !is_slottable(self.kind()) {
+        if !is_slottable(self.kind().into()) {
             return Err(DomError::WrongNodeKind);
         }
-        Ok(self.node.assigned_slot)
+        Ok(self.node.assigned_slot())
     }
     pub fn assigned_slot(self, cancel: &AtomicBool) -> Result<Option<NodeId>, DomError> {
         find_slot(self.snapshot, self.id(), true, cancel)

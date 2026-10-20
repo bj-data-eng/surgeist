@@ -341,6 +341,18 @@ pub struct CssomBatch {
     pub(crate) terminal_replacement: Option<CssomReplaceToken>,
 }
 impl CssomBatch {
+    pub(crate) fn created_block_id(
+        &self,
+        ticket: &CssomBlockTicket,
+    ) -> Result<&CssomBlockId, CssomError> {
+        if !Arc::ptr_eq(&self.token, &ticket.token) {
+            return Err(CssomError::ForeignTicket);
+        }
+        match self.created.get(ticket.index) {
+            Some(Created::Block(id)) => Ok(id),
+            _ => Err(CssomError::ForeignTicket),
+        }
+    }
     /// Resolve a construction ticket against this exact staged owner before publication.
     pub(crate) fn created_sheet_id(
         &self,
@@ -354,15 +366,19 @@ impl CssomBatch {
             _ => Err(CssomError::ForeignTicket),
         }
     }
-    pub(crate) fn apply<T>(
+    pub(crate) fn apply<T, E: From<CssomError>>(
         &mut self,
-        operation: impl FnOnce(&mut Self) -> Result<T, CssomError>,
-    ) -> Result<T, CssomError> {
+        operation: impl FnOnce(&mut Self) -> Result<T, E>,
+    ) -> Result<T, E> {
         if self.poisoned {
-            return Err(CssomError::BatchAborted);
+            return Err(CssomError::BatchAborted.into());
         }
-        let result = operation(self)
-            .and_then(|value| self.staged.check_limits(&self.limits).map(|()| value));
+        let result = operation(self).and_then(|value| {
+            self.staged
+                .check_limits(&self.limits)
+                .map(|()| value)
+                .map_err(E::from)
+        });
         if result.is_err() {
             self.poisoned = true;
         }
@@ -563,6 +579,147 @@ impl CssomBatch {
                 token: this.token.clone(),
                 index,
             })
+        })
+    }
+    /// Creates an empty inline declaration with stable identity, null parent,
+    /// and computed/readonly/updating flags unset. No owner write is requested.
+    pub fn create_inline_declarations(
+        &mut self,
+        context: CssomInlineDeclarationContext,
+    ) -> Result<CssomBlockTicket, CssomError> {
+        self.apply(|this| {
+            let declarations = CssDeclarationList::try_new_with_limits(Vec::new(), this.limits.css)
+                .map_err(CssomError::Value)?;
+            let selected = projection(
+                CssSpecifiedDeclarationBlock::try_from_declarations_with_limits(
+                    &declarations,
+                    this.limits.css,
+                ),
+            )?;
+            let id = this.staged.block_record(
+                CssomBlockData::Properties {
+                    domain: CssomPropertyDomain::Ordinary,
+                    authored: CssomPropertyOccurrences::Ordinary(declarations),
+                    selected,
+                },
+                None,
+                None,
+                CssomBlockFlags::default(),
+                &this.limits,
+            )?;
+            this.staged
+                .blocks
+                .get_mut(&id)
+                .expect("new inline block")
+                .binding = crate::inline_context::BlockBinding::Inline(context);
+            let index = this.created.len();
+            this.created.push(Created::Block(id.clone()));
+            this.affect(
+                CssomObjectId::Block(id),
+                &[
+                    CssomChange::Declarations,
+                    CssomChange::Provenance,
+                    CssomChange::Parser,
+                    CssomChange::Support,
+                    CssomChange::Owner,
+                    CssomChange::Base,
+                    CssomChange::Origin,
+                    CssomChange::Layer,
+                    CssomChange::ImportLinks,
+                ],
+            );
+            Ok(CssomBlockTicket {
+                token: this.token.clone(),
+                index,
+            })
+        })
+    }
+    /// Replaces current facts for the same inline owner, preserving its block
+    /// identity and existing checked declarations and parse-time provenance.
+    /// Identical packets are no-ops. No owner synchronization effect is emitted.
+    pub fn update_inline_declaration_context(
+        &mut self,
+        id: &CssomBlockId,
+        context: CssomInlineDeclarationContext,
+    ) -> Result<bool, CssomError> {
+        self.apply(|this| {
+            let previous = this
+                .staged
+                .block(id)?
+                .inline_context()
+                .ok_or(CssomError::WrongKind)?;
+            if previous.owner().identity != context.owner().identity {
+                return Err(CssomError::InvalidInput(
+                    "inline declaration owner identity changed",
+                ));
+            }
+            if previous == &context {
+                return Ok(false);
+            }
+            this.staged
+                .blocks
+                .get_mut(id)
+                .expect("validated inline block")
+                .binding = crate::inline_context::BlockBinding::Inline(context);
+            this.affect(
+                CssomObjectId::Block(id.clone()),
+                &[
+                    CssomChange::Provenance,
+                    CssomChange::Parser,
+                    CssomChange::Support,
+                    CssomChange::Owner,
+                    CssomChange::Base,
+                    CssomChange::Origin,
+                    CssomChange::Layer,
+                    CssomChange::ImportLinks,
+                ],
+            );
+            Ok(true)
+        })
+    }
+    /// Explicitly retire an inline declaration after its owning Element is
+    /// destroyed. Detach or adoption alone does not authorize retirement.
+    /// Historical captures retain their record; current handles become missing.
+    /// Externally held effects keep their own status and reservation lifecycle.
+    pub fn retire_inline_declarations(
+        &mut self,
+        id: &CssomBlockId,
+        expected_owner: &CssomInputVersion,
+    ) -> Result<(), CssomError> {
+        self.apply(|this| {
+            let block = this.staged.block(id)?;
+            if block.inline_context().is_none()
+                || block.parent().is_some()
+                || !matches!(
+                    block.data(),
+                    CssomBlockData::Properties {
+                        domain: CssomPropertyDomain::Ordinary,
+                        ..
+                    }
+                )
+            {
+                return Err(CssomError::WrongKind);
+            }
+            if block.owner() != Some(expected_owner) {
+                return Err(CssomError::StaleContext);
+            }
+            this.staged.blocks.remove(id);
+            this.owner_updates.retain(|(old, _)| old != id);
+            this.affect(
+                CssomObjectId::Block(id.clone()),
+                &[
+                    CssomChange::Declarations,
+                    CssomChange::Provenance,
+                    CssomChange::Parser,
+                    CssomChange::Support,
+                    CssomChange::Owner,
+                    CssomChange::Base,
+                    CssomChange::Origin,
+                    CssomChange::Layer,
+                    CssomChange::ImportLinks,
+                ],
+            );
+            Ok(())
         })
     }
     /// Removes a selected terminal directly; this is a product operation, not the
@@ -1008,9 +1165,13 @@ impl CssomBatch {
                     }
             }
             CssomObjectId::Block(id) => {
-                let a = &self.staged.blocks[id];
-                let b = &self.base.blocks[id];
-                a.flags != b.flags
+                let (a, b) = match (self.staged.blocks.get(id), self.base.blocks.get(id)) {
+                    (None, None) => return false,
+                    (Some(a), Some(b)) => (a, b),
+                    _ => return true,
+                };
+                a.binding != b.binding
+                    || a.flags != b.flags
                     || match (a.data(), b.data()) {
                         (
                             CssomBlockData::Properties {

@@ -12,10 +12,10 @@ impl Draft {
     ) -> Result<transaction::SequenceView<'_, NodeId, Key>, DomError> {
         self.source_step(cancel)?;
         let node = self.node(document)?;
-        if !matches!(node.kind, DomNodeKind::Document(_)) {
+        if !matches!(node.kind(), transaction::KindRead::Document(_)) {
             return Err(DomError::WrongNodeKind);
         }
-        match node.interactive_document {
+        match node.interactive_document() {
             Some(transaction::InteractiveRead::Known { top_layer, .. }) => Ok(top_layer),
             _ => Err(DomError::FullscreenModelUnavailable {
                 step: Step::ReadTopLayer,
@@ -29,7 +29,7 @@ impl Draft {
     ) -> Result<Option<Key>, DomError> {
         for key in self.fullscreen_raw_members(document, cancel)?.iter().rev() {
             self.source_step(cancel)?;
-            if self.element(key)?.fullscreen_flag() {
+            if self.element(key)?.language().fullscreen_flag() {
                 return Ok(Some(key));
             }
         }
@@ -42,7 +42,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
         self.element(node)?;
-        let document = self.node(node)?.document;
+        let document = self.node(node)?.document();
         if !self.known_empty_popover_lists(document, cancel)? {
             return Err(DomError::FullscreenModelUnavailable {
                 step: Step::ReadTopLayer,
@@ -61,7 +61,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
         self.element(node)?;
-        self.fullscreen_raw_members(self.node(node)?.document, cancel)?;
+        self.fullscreen_raw_members(self.node(node)?.document(), cancel)?;
         self.with_element_fields(node, cancel, |element| element.clear_fullscreen_flags())?;
         self.remove_top_layer_immediately(node, cancel)
     }
@@ -82,7 +82,7 @@ impl Draft {
         let mut flagged = self.effect_vec();
         for key in self.fullscreen_raw_members(document, cancel)?.iter() {
             self.source_step(cancel)?;
-            if self.element(key)?.fullscreen_flag() {
+            if self.element(key)?.language().fullscreen_flag() {
                 self.select_reserve(&mut flagged, 1, cancel)?;
                 flagged.push(key);
             }
@@ -104,16 +104,17 @@ impl Draft {
         while let Some(key) = pending.pop() {
             self.source_step(cancel)?;
             let node = self.node(key)?;
-            if matches!(&node.kind, DomNodeKind::Element(element) if element.fullscreen_flag()) {
+            if matches!(&node.kind(), transaction::KindRead::Element(element) if element.fullscreen_flag())
+            {
                 self.select_reserve(&mut flagged, 1, cancel)?;
                 flagged.push(key);
             }
-            self.select_reserve(&mut pending, node.children.len(), cancel)?;
-            for child in node.children.iter().rev() {
+            self.select_reserve(&mut pending, node.children().len(), cancel)?;
+            for child in node.children().iter().rev() {
                 self.source_step(cancel)?;
                 pending.push(child);
             }
-            if let Some(shadow) = node.shadow_root {
+            if let Some(shadow) = node.shadow_root() {
                 self.select_reserve(&mut pending, 1, cancel)?;
                 pending.push(shadow);
             }
@@ -126,10 +127,10 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
-        if matches!(self.node(key)?.kind, DomNodeKind::Element(_)) {
-            let document = self.node(key)?.document;
+        if matches!(self.node(key)?.kind(), transaction::KindRead::Element(_)) {
+            let document = self.node(key)?.document();
             if matches!(
-                self.node(document)?.interactive_document,
+                self.node(document)?.interactive_document(),
                 Some(transaction::InteractiveRead::Known { .. })
             ) {
                 self.remove_top_layer_immediately(key, cancel)?;
@@ -149,7 +150,7 @@ impl Draft {
         self.source_step(cancel)?;
         // Only the actual adoption root has this whole-call fast return.
         // Matching intermediate node-documents do not prune its descendants.
-        if self.node(root)?.document == document {
+        if self.node(root)?.document() == document {
             return Ok(());
         }
         let mut pending = self.effect_vec();
@@ -157,41 +158,41 @@ impl Draft {
         pending.push((
             root,
             Some(document),
-            early && self.node(root)?.parent.is_some(),
+            early && self.node(root)?.parent().is_some(),
         ));
         while let Some((key, target, removal_covers)) = pending.pop() {
             self.source_step(cancel)?;
             let node = self.node(key)?;
-            if target != Some(node.document)
+            if target != Some(node.document())
                 && !removal_covers
-                && matches!(node.kind, DomNodeKind::Element(_))
+                && matches!(node.kind(), transaction::KindRead::Element(_))
                 && let Some(transaction::InteractiveRead::Known { .. }) =
-                    self.node(node.document)?.interactive_document
+                    self.node(node.document())?.interactive_document()
             {
                 self.source_step(cancel)?;
                 if self.role_facts.count(
                     transaction::role_facts::Role::TopLayer,
-                    self.live_key(node.document),
+                    self.live_key(node.document()),
                     self.live_key(key),
                 ) != 0
                     || self.role_facts.count(
                         transaction::role_facts::Role::PendingTopLayerRemovals,
-                        self.live_key(node.document),
+                        self.live_key(node.document()),
                         self.live_key(key),
                     ) != 0
                 {
                     return Err(DomError::TopLayerAdoptionUnavailable {
                         subject: self.published_id(key),
-                        old_document: self.published_id(node.document).map(DocumentId),
+                        old_document: self.published_id(node.document()).map(DocumentId),
                     });
                 }
             }
-            self.select_reserve(&mut pending, node.children.len(), cancel)?;
-            for child in node.children.iter().rev() {
+            self.select_reserve(&mut pending, node.children().len(), cancel)?;
+            for child in node.children().iter().rev() {
                 self.source_step(cancel)?;
                 pending.push((child, target, removal_covers));
             }
-            if let Some(shadow) = node.shadow_root {
+            if let Some(shadow) = node.shadow_root() {
                 self.select_reserve(&mut pending, 1, cancel)?;
                 pending.push((shadow, target, removal_covers));
             }
@@ -206,7 +207,7 @@ impl Draft {
                 // when its selected appropriate owner differs. Unlike an
                 // intermediate ordinary/shadow node, a matching contents root
                 // therefore excludes this entire separate adoption call.
-                if target != Some(self.node(contents)?.document) {
+                if target != Some(self.node(contents)?.document()) {
                     self.select_reserve(&mut pending, 1, cancel)?;
                     pending.push((contents, target, false));
                 }
@@ -229,7 +230,7 @@ pub(super) fn captured_facts(
     budget: Option<&source::formation::Formation>,
     cancel: &AtomicBool,
 ) -> Result<Option<(Option<NodeId>, bool, bool)>, DomError> {
-    let Some(canonical::Interactive::Known { top_layer, .. }) = &document.interactive_document
+    let Some(canonical::InteractiveView::Known { top_layer, .. }) = document.interactive_document()
     else {
         return Ok(None);
     };
@@ -238,7 +239,7 @@ pub(super) fn captured_facts(
     let mut locked = false;
     for &id in top_layer {
         source::formation::step(budget, cancel)?;
-        let DomNodeKind::Element(element) = &state.node(owner, id)?.kind else {
+        let DomNodeKind::Element(element) = state.node(owner, id)?.kind() else {
             return Err(DomError::WrongNodeKind);
         };
         if element.fullscreen_flag() {

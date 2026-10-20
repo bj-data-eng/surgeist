@@ -50,7 +50,7 @@ impl<'a> DomOutput<'a> {
     }
     pub fn form_owner(self) -> Result<Option<NodeId>, crate::DomError> {
         self.node.snapshot.require_complete_source()?;
-        Ok(self.node.node.control_owner)
+        Ok(self.node.node.control_owner())
     }
 }
 #[derive(Clone, Debug)]

@@ -3,42 +3,12 @@ use crate::{model::State, *};
 
 impl State {
     pub(crate) fn check_limits(&self, limits: &CssomLimits) -> Result<(), CssomError> {
-        if self
-            .context
-            .inputs
-            .iter()
-            .filter(|input| matches!(input.data, CssomInputData::ParserMode(_)))
-            .count()
-            > 1
-        {
-            return Err(CssomError::InvalidInput("ambiguous parser mode input"));
+        for context in std::iter::once(self.context.as_ref()).chain(self.inline_contexts()) {
+            context.validate()?;
         }
-        if self
-            .context
-            .inputs
-            .iter()
-            .filter(|input| matches!(input.data, CssomInputData::Support(_)))
-            .count()
-            > 1
-        {
-            return Err(CssomError::InvalidInput("ambiguous declaration support"));
-        }
-        for (i, input) in self.context.inputs.iter().enumerate() {
-            if input.version.role != input.data.role() {
-                return Err(CssomError::InvalidInput("supplied input role mismatch"));
-            }
-            if self.context.inputs[..i].iter().any(|v| {
-                v.version.role == input.version.role && v.version.identity == input.version.identity
-            }) {
-                return Err(CssomError::InvalidInput(
-                    "duplicate supplied input identity",
-                ));
-            }
-        }
-        let mut linked = self
-            .context
-            .linked
-            .iter()
+        let mut linked = std::iter::once(self.context.as_ref())
+            .chain(self.inline_contexts())
+            .flat_map(|context| &context.linked)
             .map(|v| (&v.snapshot, 1usize))
             .collect::<Vec<_>>();
         let mut visited = 0usize;
@@ -60,10 +30,9 @@ impl State {
                 });
             }
             linked.extend(
-                snapshot
-                    .context()
-                    .linked
-                    .iter()
+                std::iter::once(snapshot.context())
+                    .chain(snapshot.state.inline_contexts())
+                    .flat_map(|context| &context.linked)
                     .map(|v| (&v.snapshot, depth + 1)),
             );
         }
@@ -89,6 +58,7 @@ impl State {
                     .values()
                     .filter_map(|rule| rule.selector_inputs.as_deref()),
             )
+            .chain(self.inline_contexts())
             .flat_map(|context| &context.inputs)
         {
             version(&mut strings, &input.version);
@@ -144,6 +114,7 @@ impl State {
                     .values()
                     .filter_map(|rule| rule.selector_inputs.as_deref()),
             )
+            .chain(self.inline_contexts())
             .flat_map(|context| &context.linked)
         {
             version(&mut strings, &linked.version);
@@ -204,14 +175,16 @@ impl State {
                 add(&mut entries, selected.entries().len());
             }
             if let Some(input) = &block.replacement_input {
-                add(&mut strings, input.source.len());
-                add(&mut entries, input.diagnostics.len());
+                add(&mut strings, input.source().len());
+                add(&mut entries, input.diagnostics().len());
             }
             add(&mut entries, block.admission_inputs.len());
             for input in block.admission_inputs.iter() {
                 version(&mut strings, input);
             }
-            if let Some(owner) = &block.owner {
+            if block.inline_context().is_none()
+                && let Some(owner) = block.owner()
+            {
                 version(&mut strings, owner);
             }
             match block.data() {

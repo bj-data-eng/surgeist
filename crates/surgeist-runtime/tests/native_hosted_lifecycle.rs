@@ -128,7 +128,7 @@ fn registry() -> DomEventDispatcher<Context> {
 }
 fn listen(
     registry: &mut DomEventDispatcher<Context>,
-    dom: &DomEventDom<'_>,
+    dom: &mut DomEventDom<'_>,
     target: DomEventTarget,
     label: &'static str,
     capture: bool,
@@ -408,7 +408,7 @@ fn nonbubbling_toggle_captures_global_then_document_and_real_ancestors() {
             (DomEventTarget::Node(target), "target", false),
             (DomEventTarget::Global(top.global()), "global-bubble", false),
         ] {
-            listen(&mut registry, &dom, recipient, label, capture);
+            listen(&mut registry, &mut dom, recipient, label, capture);
         }
         let mut batch = DomBatch::new();
         batch.set_attribute(target, "open", "");
@@ -536,21 +536,21 @@ fn queued_toggle_keeps_its_identity_but_adoption_uses_the_current_global_event_p
         let mut dom = session.dom();
         listen(
             &mut registry,
-            &dom,
+            &mut dom,
             DomEventTarget::Global(first.global()),
             "original-global",
             true,
         );
         listen(
             &mut registry,
-            &dom,
+            &mut dom,
             DomEventTarget::Global(second.global()),
             "current-global",
             true,
         );
         listen(
             &mut registry,
-            &dom,
+            &mut dom,
             DomEventTarget::Node(second.document().node()),
             "current-document",
             true,
@@ -750,7 +750,7 @@ fn destroying_recorded_task_document_cancels_toggle_after_target_adoption() {
                 "current-document",
             ),
         ] {
-            listen(&mut registry, &dom, recipient, label, true);
+            listen(&mut registry, &mut dom, recipient, label, true);
         }
         let mut batch = DomBatch::new();
         let details = batch.create_element_ns(first.document(), Namespace::html(), "details");
@@ -760,7 +760,7 @@ fn destroying_recorded_task_document_cancels_toggle_after_target_adoption() {
         let target = commit.created(&details).unwrap().unwrap();
         listen(
             &mut registry,
-            &dom,
+            &mut dom,
             DomEventTarget::Node(target),
             "target",
             false,
@@ -933,7 +933,7 @@ fn destroying_one_top_level_preserves_another_top_level_in_the_same_host() {
         let mut dom = session.dom();
         listen(
             &mut registry,
-            &dom,
+            &mut dom,
             DomEventTarget::Global(second.global()),
             "surviving-global",
             true,
@@ -996,7 +996,7 @@ fn pending_slot_checkpoint_retains_delivered_task_without_replaying_toggle() {
         assert_eq!(snapshot.pending_slot_signals(), &[slot]);
         listen(
             &mut registry,
-            &dom,
+            &mut dom,
             DomEventTarget::Node(target),
             "target",
             false,
@@ -1582,7 +1582,7 @@ fn live_original_task_refuses_a_retired_adoption_destination_before_callbacks() 
             ),
             (DomEventTarget::Node(target), "target", false),
         ] {
-            listen(&mut registry, &dom, recipient, label, capture);
+            listen(&mut registry, &mut dom, recipient, label, capture);
         }
         (target, queued)
     };
@@ -1750,7 +1750,7 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
         dom.apply(batch, &cancel()).unwrap();
         registry
             .add_listener(
-                &dom,
+                &mut dom,
                 DomEventTarget::Global(second.global()),
                 DomEventType::Toggle,
                 DomEventCallback::new(|dom, _, context: &mut RetireContext, event| {
@@ -1787,7 +1787,7 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
         ] {
             registry
                 .add_listener(
-                    &dom,
+                    &mut dom,
                     recipient,
                     DomEventType::Toggle,
                     DomEventCallback::new(move |_, _, context: &mut RetireContext, _| {
@@ -1947,10 +1947,10 @@ fn adopted_target_retirement_delivers_once_using_its_active_destination_document
     })
     .unwrap();
     let target_once = {
-        let dom = session.dom();
+        let mut dom = session.dom();
         registry
             .add_listener(
-                &dom,
+                &mut dom,
                 DomEventTarget::Global(second.global()),
                 DomEventType::Toggle,
                 DomEventCallback::new(|dom, _, context: &mut DestroyTargetContext, _| {
@@ -1969,7 +1969,7 @@ fn adopted_target_retirement_delivers_once_using_its_active_destination_document
             .unwrap();
         registry
             .add_listener(
-                &dom,
+                &mut dom,
                 DomEventTarget::Node(target),
                 DomEventType::Toggle,
                 DomEventCallback::new(|_, _, context: &mut DestroyTargetContext, _| {

@@ -63,7 +63,7 @@ fn ancestor(cap: u64) -> Result<Ancestor, Failure> {
         nested_dispatches: 2,
     })?;
     registry.add_listener(
-        &session.dom(),
+        &mut session.dom(),
         parent,
         DomEventType::BeforeToggle,
         DomEventCallback::new(|dom, _, context: &mut Child, _| {
@@ -537,9 +537,12 @@ fn observing_parent_prices_old_and_replacement_host_backings_until_physical_rele
 
 #[test]
 fn finite_parent_work_refusals_name_the_actual_parent_budget() {
-    // Fresh owners qualify finite policy behavior only. No measured setup
-    // threshold is transferred between their materialization identities.
-    for cap in [0, 64, 1024, 16_384] {
+    // Fresh owners qualify finite policy behavior, without transferring a
+    // measured setup threshold. The existing ample child policy supplies the
+    // success control; smaller policies may refuse at any reached stage.
+    let ample = child_limits().work();
+    let mut ample_completed = false;
+    for cap in [0, 64, 1024, 16_384, ample] {
         let Ancestor {
             mut session,
             parent,
@@ -551,7 +554,7 @@ fn finite_parent_work_refusals_name_the_actual_parent_budget() {
                     exhausted(error.as_ref(), cap),
                     "wrong setup refusal: {error:?}"
                 );
-                assert_ne!(cap, 16_384, "generous finite parent must reach focus");
+                assert_ne!(cap, ample, "ample finite parent must reach focus");
                 eprintln!("focus finite parent cap={cap}: setup refused");
                 continue;
             }
@@ -586,7 +589,7 @@ fn finite_parent_work_refusals_name_the_actual_parent_budget() {
                     exhausted(error.as_ref(), cap),
                     "wrong parent refusal: {error:?}"
                 );
-                assert_ne!(cap, 16_384, "generous finite parent must service focus");
+                assert_ne!(cap, ample, "ample finite parent must service focus");
                 assert_eq!(session.snapshot().stamp(), basis);
                 eprintln!(
                     "focus finite parent cap={cap}: service/resume refused; pending={}",
@@ -631,15 +634,54 @@ fn finite_parent_work_refusals_name_the_actual_parent_budget() {
                 match exposure {
                     Err(error) => {
                         assert!(exhausted(&error, cap), "wrong exposure refusal: {error:?}");
-                        assert_ne!(
-                            cap, 16_384,
-                            "generous finite parent must expose allow-focus"
+                        assert_ne!(cap, ample, "ample finite parent must expose allow-focus");
+                        assert_eq!(owner.borrow().work - before_work, 3);
+                        assert!(owner.borrow().focus.pending.is_none());
+                        session
+                            .source_execution()
+                            .raise_event_limits(
+                                &mut session.dom(),
+                                &parent,
+                                source_limits(ample),
+                                &AtomicBool::new(false),
+                            )
+                            .unwrap();
+                        {
+                            let mut dom = session.dom();
+                            let mut lease = dom
+                                .raw_mut()
+                                .resume_source_edit(
+                                    child.operation(),
+                                    child_limits(),
+                                    &AtomicBool::new(false),
+                                )
+                                .unwrap();
+                            assert_eq!(lease.status().operation(), child.operation());
+                            assert_eq!(lease.status().parent_operation(), Some(parent.operation()));
+                            assert_eq!(lease.snapshot().stamp(), basis);
+                            let request = allow_request(&mut lease);
+                            assert_eq!(request.operation(), child.operation());
+                            assert_eq!(request.subject(), child.subject());
+                            assert_eq!(lease.snapshot().stamp(), basis);
+                        }
+                        assert_eq!(
+                            owner.borrow().work - before_work,
+                            3,
+                            "same-parent retry must not repeat Runtime service or observation"
                         );
+                        assert!(owner.borrow().focus.pending.is_none());
+                        let pending = session.dom().pending_source_edit().unwrap();
+                        assert_eq!(pending.operation(), child.operation());
+                        assert_eq!(pending.parent_operation(), Some(parent.operation()));
+                        assert_eq!(session.snapshot().stamp(), basis);
                         eprintln!(
-                            "focus finite parent cap={cap}: post-service resume/advance refused"
+                            "focus finite parent cap={cap}: post-service refusal recovered by raising the same parent"
                         );
                     }
                     Ok(()) => {
+                        ample_completed |= cap == ample;
+                        assert_eq!(owner.borrow().work - before_work, 3);
+                        assert!(owner.borrow().focus.pending.is_none());
                         eprintln!(
                             "focus finite parent cap={cap}: three actual Runtime visits serviced and allow-focus exposed"
                         );
@@ -648,4 +690,8 @@ fn finite_parent_work_refusals_name_the_actual_parent_budget() {
             }
         }
     }
+    assert!(
+        ample_completed,
+        "ample finite policy must complete the exposure control"
+    );
 }

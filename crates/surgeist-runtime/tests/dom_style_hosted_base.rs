@@ -70,6 +70,10 @@ fn new_session() -> DomSession {
                 surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
             )
             .unwrap()
+            .with_event_recipients(
+                surgeist_dom::DomEventRecipientLimits::new(64, 16_000_000, 16_000_000, 4_000_000)
+                    .unwrap(),
+            )
             .with_dispatch_custody(
                 DomDispatchCustodyLimits::new(16, 1024, 16_000_000, 16_000_000, 4_000_000).unwrap(),
             ),
@@ -142,7 +146,7 @@ fn deliver_load(session: &mut DomSession, style: NodeId) {
     .unwrap();
     let once = dispatcher
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             style,
             DomEventType::Load,
             DomEventCallback::new(move |_, _, context: &mut Notifications, event| {

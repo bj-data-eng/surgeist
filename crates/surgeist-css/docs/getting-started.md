@@ -50,10 +50,10 @@ From the `surgeist-css` crate directory, this focused public-API test checks
 stylesheet and style-attribute recovery without running the corpus capture:
 
 ```sh
-cargo test --offline -p surgeist-css --no-default-features --test initiative_i01_audit recovery_front_doors_retain_valid_siblings -- --exact
+cargo test --offline -p surgeist-css --no-default-features --test css css::conformance::initiative_i01_audit::recovery_front_doors_retain_valid_siblings -- --exact
 ```
 
 The expected result is one passing test. Its assertions are in
-[tests/initiative_i01_audit.rs](../tests/initiative_i01_audit.rs).
+[tests/css/conformance/initiative_i01_audit.rs](../tests/css/conformance/initiative_i01_audit.rs).
 
 Continue with [declaration inspection and clean-input validation](how-to.md).

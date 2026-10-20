@@ -6329,6 +6329,185 @@ mod comment_diagnostic_corpus {
             result
         }
 
+        fn html_context_request(name: &str, input: &str, utf16: bool) -> HtmlFragmentParseRequest {
+            let mut builder = HtmlCaptureBuilder::new(
+                HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
+                HtmlHostFactsRevision::fresh(),
+            );
+            let document = builder
+                .add_document(
+                    HtmlDocumentMode::NoQuirks,
+                    HtmlScriptingStatus::Disabled,
+                    HtmlCaptureRegistryInput::Null,
+                )
+                .unwrap();
+            builder
+                .establish_document_template_facts(
+                    &document,
+                    HtmlDocumentClass::Html,
+                    HtmlTemplateDocumentRole::Ordinary,
+                    HtmlCaptureTemplateCacheInput::Absent,
+                )
+                .unwrap();
+            let element = builder
+                .add_element(
+                    &document,
+                    QualifiedName::new(Namespace::html(), None, name),
+                    OrderedAttributes::default(),
+                    HtmlCapturedIsValue::Absent,
+                    HtmlCaptureRegistryInput::Null,
+                )
+                .unwrap();
+            builder.establish_root(&element).unwrap();
+            let capture = builder.finish().unwrap();
+            let context =
+                HtmlFragmentContext::element(&capture, &capture.subject_id(&element).unwrap())
+                    .unwrap();
+            HtmlFragmentParseRequest::new(
+                source(input, utf16),
+                context,
+                super::super::super::tests::limits(1_000),
+            )
+            .unwrap()
+        }
+
+        #[test]
+        fn select_context_fragment_ignores_input_and_select_start_tags() {
+            // HTML877d "in body" input and select start tags: "If the parser's
+            // fragment context element is a select element (fragment case):
+            // parse error; ignore the token." Expected trees follow that rule,
+            // not current output.
+            for (input, raw) in [
+                (
+                    "<option>a",
+                    "#data\n<option>a\n#errors\n#document-fragment\nselect\n#document\n| <option>\n|   \"a\"\n",
+                ),
+                (
+                    "<option>a<input>b",
+                    "#data\n<option>a<input>b\n#errors\n#document-fragment\nselect\n#document\n| <option>\n|   \"ab\"\n",
+                ),
+                (
+                    "x<select>y",
+                    "#data\nx<select>y\n#errors\n#document-fragment\nselect\n#document\n| \"xy\"\n",
+                ),
+                (
+                    "<input>",
+                    "#data\n<input>\n#errors\n#document-fragment\nselect\n#document\n",
+                ),
+            ] {
+                let fixture = decode(raw).unwrap().into_iter().next().unwrap();
+                let expected = parsed_expected(&fixture, HtmlDocumentMode::NoQuirks).unwrap();
+                for utf16 in [false, true] {
+                    check_fragment(html_context_request("select", input, utf16), &expected)
+                        .unwrap_or_else(|error| panic!("{input:?} utf16={utf16}: {error}"));
+                }
+            }
+        }
+
+        #[test]
+        fn select_context_fragment_reports_each_ignored_input_and_select() {
+            // The same rule's "parse error" is the recoverable unexpected-token
+            // diagnostic for exactly the ignored tags; the control has none.
+            for (input, ignored_inputs, ignored_selects) in [
+                ("<option>a", 0, 0),
+                ("<option>a<input>b", 1, 0),
+                ("x<select>y", 0, 1),
+                ("<input><select><input>", 2, 1),
+            ] {
+                for utf16 in [false, true] {
+                    let report = html_context_request("select", input, utf16)
+                        .parse()
+                        .unwrap();
+                    let diagnostics = report.diagnostics();
+                    let mut counts = (0, 0);
+                    for index in 0..diagnostics.len() {
+                        let (record, _) = diagnostics.retained_record(index).unwrap();
+                        let branch = record.rule().branch();
+                        if branch.ends_with("/select-fragment-context") {
+                            assert_eq!(
+                                record.kind(),
+                                crate::HtmlParseDiagnosticKind::Tree(
+                                    crate::HtmlTreeDiagnostic::UnexpectedBodyToken
+                                ),
+                                "{input:?}"
+                            );
+                            assert_eq!(record.rule().anchor(), "parsing-main-inbody");
+                            match branch {
+                                "input-start/select-fragment-context" => counts.0 += 1,
+                                "select-start/select-fragment-context" => counts.1 += 1,
+                                other => panic!("{input:?}: unexpected branch {other}"),
+                            }
+                        }
+                    }
+                    assert_eq!(
+                        counts,
+                        (ignored_inputs, ignored_selects),
+                        "{input:?} utf16={utf16}"
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn non_select_context_fragment_still_inserts_input_and_select() {
+            for (input, raw) in [(
+                "<input>x<select>y",
+                "#data\n<input>x<select>y\n#errors\n#document-fragment\ndiv\n#document\n| <input>\n| \"x\"\n| <select>\n|   \"y\"\n",
+            )] {
+                let fixture = decode(raw).unwrap().into_iter().next().unwrap();
+                let expected = parsed_expected(&fixture, HtmlDocumentMode::NoQuirks).unwrap();
+                for utf16 in [false, true] {
+                    check_fragment(html_context_request("div", input, utf16), &expected)
+                        .unwrap_or_else(|error| panic!("{input:?} utf16={utf16}: {error}"));
+                }
+            }
+        }
+
+        #[test]
+        fn initial_lf_is_ignored_only_when_it_is_the_next_token() {
+            // HTML877d pre/listing and textarea start tags: "If the next token is
+            // a U+000A LINE FEED (LF) character token, then ignore that token and
+            // move on to the next one." Only the immediately following token is
+            // affected; a later text token keeps its leading LF.
+            for (input, raw) in [
+                (
+                    "<pre>\nX",
+                    "#data\n<pre>\nX\n#errors\n#document\n| <html>\n|   <head>\n|   <body>\n|     <pre>\n|       \"X\"\n",
+                ),
+                (
+                    "<listing>\nX",
+                    "#data\n<listing>\nX\n#errors\n#document\n| <html>\n|   <head>\n|   <body>\n|     <listing>\n|       \"X\"\n",
+                ),
+                (
+                    "<textarea>\nX</textarea>",
+                    "#data\n<textarea>\nX</textarea>\n#errors\n#document\n| <html>\n|   <head>\n|   <body>\n|     <textarea>\n|       \"X\"\n",
+                ),
+                (
+                    "<pre></pre>\nX",
+                    "#data\n<pre></pre>\nX\n#errors\n#document\n| <html>\n|   <head>\n|   <body>\n|     <pre>\n|     \"\nX\"\n",
+                ),
+                (
+                    "<table><caption><pre></caption></table>\nX",
+                    "#data\n<table><caption><pre></caption></table>\nX\n#errors\n#document\n| <html>\n|   <head>\n|   <body>\n|     <table>\n|       <caption>\n|         <pre>\n|     \"\nX\"\n",
+                ),
+                (
+                    "<table><tr><td><pre></td><td>\nX",
+                    "#data\n<table><tr><td><pre></td><td>\nX\n#errors\n#document\n| <html>\n|   <head>\n|   <body>\n|     <table>\n|       <tbody>\n|         <tr>\n|           <td>\n|             <pre>\n|           <td>\n|             \"\nX\"\n",
+                ),
+            ] {
+                let fixture = decode(raw).unwrap().into_iter().next().unwrap();
+                let expected = parsed_expected(&fixture, HtmlDocumentMode::Quirks).unwrap();
+                for utf16 in [false, true] {
+                    let request = HtmlDocumentParseRequest::offline(
+                        source(input, utf16),
+                        super::super::super::tests::limits(1_000),
+                    );
+                    check(&request, &expected)
+                        .unwrap_or_else(|error| panic!("{input:?} utf16={utf16}: {error:?}"));
+                }
+            }
+        }
+
         #[test]
         fn retained_template_context_fragment_matches_actual_output_and_content_owner() {
             let fixture = &fixtures()[108];

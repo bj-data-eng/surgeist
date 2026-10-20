@@ -1,5 +1,7 @@
 //! Terminal report promotion. No mutable parser session can acquire these pools.
 use super::*;
+#[cfg(test)]
+use crate::request::ValueSharingMode;
 use surgeist_html::bounded::{
     HtmlAttributePool, HtmlAttributePoolOperation, HtmlAttributePoolResult, HtmlStringPool,
     HtmlStringPoolOperation, HtmlStringPoolResult, HtmlValuePoolActionKind, HtmlValuePoolError,
@@ -120,8 +122,15 @@ pub(super) struct Sharing<'c> {
     control: &'c mut ParseControl,
 }
 impl<'c> Sharing<'c> {
-    fn new(control: &'c mut ParseControl) -> Result<Self, SessionError> {
-        let pools = Pools::new(control)?;
+    fn new(
+        control: &'c mut ParseControl,
+        #[cfg(test)] mode: ValueSharingMode,
+    ) -> Result<Self, SessionError> {
+        let pools = Pools::new(
+            control,
+            #[cfg(test)]
+            mode,
+        )?;
         let mut result = Self {
             pools: Some(pools),
             control,
@@ -160,6 +169,8 @@ struct Pools {
     attributes_usage: Usage,
     strings_root: Authority,
     attributes_root: Authority,
+    #[cfg(test)]
+    mode: ValueSharingMode,
     #[cfg(test)]
     string_insertions: usize,
     #[cfg(test)]
@@ -258,7 +269,10 @@ impl Temporary for AttributeOperation<'_> {
     }
 }
 impl Pools {
-    fn new(c: &mut ParseControl) -> Result<Self, SessionError> {
+    fn new(
+        c: &mut ParseControl,
+        #[cfg(test)] mode: ValueSharingMode,
+    ) -> Result<Self, SessionError> {
         // This fixed producer envelope covers final destruction even if a
         // later admission refuses. No terminal cleanup callback is required.
         work(c, HtmlStringPool::disposal_work())?;
@@ -275,6 +289,8 @@ impl Pools {
             attributes_usage: Usage::default(),
             strings_root: Authority::Closed,
             attributes_root: Authority::Closed,
+            #[cfg(test)]
+            mode,
             #[cfg(test)]
             string_insertions: 0,
             #[cfg(test)]
@@ -306,12 +322,11 @@ impl Pools {
         input: &DocumentString,
         c: &mut ParseControl,
     ) -> Result<Option<Selected<DocumentString>>, SessionError> {
-        if !self.enabled() {
+        if !self.strings_enabled() {
             return Ok(None);
         }
-        if let Some(hit) = self.drive_string(input, false, c)? {
-            return Ok(Some(hit));
-        }
+        // Offer returns existing hits before preparing any mutation. A miss
+        // keeps its qualified fingerprint and scan through the insertion.
         self.drive_string(input, true, c)
     }
     fn offer_attributes(
@@ -319,7 +334,7 @@ impl Pools {
         input: &OrderedAttributes,
         c: &mut ParseControl,
     ) -> Result<(), SessionError> {
-        if !self.enabled() {
+        if !self.attributes_enabled() {
             return Ok(());
         }
         if let Some(hit) = self.drive_attributes(input, true, c)? {
@@ -330,6 +345,20 @@ impl Pools {
     fn enabled(&self) -> bool {
         matches!(self.strings_root, Authority::Open(_))
             && matches!(self.attributes_root, Authority::Open(_))
+    }
+    fn strings_enabled(&self) -> bool {
+        #[cfg(test)]
+        if self.mode != ValueSharingMode::Combined {
+            return false;
+        }
+        self.enabled()
+    }
+    fn attributes_enabled(&self) -> bool {
+        #[cfg(test)]
+        if self.mode == ValueSharingMode::Off {
+            return false;
+        }
+        self.enabled()
     }
     fn open(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
         work(c, HtmlStringPool::root_work())?;
@@ -759,7 +788,7 @@ impl Finalizing {
             return Ok(());
         };
         let element = *element;
-        if let Some(selected) = if pools.enabled() {
+        if let Some(selected) = if pools.attributes_enabled() {
             pools.drive_attributes(original, false, c)?
         } else {
             None
@@ -1264,6 +1293,7 @@ impl FrozenArena {
     pub(super) fn share_values<'c>(
         &mut self,
         c: &'c mut ParseControl,
+        #[cfg(test)] mode: ValueSharingMode,
     ) -> Result<Sharing<'c>, SessionError> {
         if self.sharing_started || self.finalizing.is_some() {
             return Err(SessionError::Consumed);
@@ -1329,7 +1359,11 @@ impl FrozenArena {
             .unwrap()
             .construction
             .recovered(c, recovery)?;
-        let mut sharing = Sharing::new(c)?;
+        let mut sharing = Sharing::new(
+            c,
+            #[cfg(test)]
+            mode,
+        )?;
         self.finalizing
             .as_mut()
             .unwrap()
@@ -1373,6 +1407,76 @@ impl FrozenArena {
 mod tests {
     use super::*;
 
+    fn assert_cold_string_inspection(repetitions: usize, expected_units: usize) {
+        let input = DocumentString::from_utf16([65, 0xd800, 0, 0xdc00].repeat(repetitions));
+        let equal = DocumentString::from_utf16([65, 0xd800, 0, 0xdc00].repeat(repetitions));
+        assert_eq!(input.len(), expected_units);
+        assert!(!Arc::ptr_eq(
+            input.shared_code_units(),
+            equal.shared_code_units()
+        ));
+        let capacity = input.shared_code_units().capacity();
+        let mut c = ParseControl::new(
+            crate::parser::tree_builder::tests::limits(100),
+            crate::HtmlParseCancellation::new(),
+        );
+        let inspected = {
+            let mut sharing = Sharing::new(&mut c, ValueSharingMode::Combined).unwrap();
+            let pools = sharing.pools.as_mut().unwrap();
+            assert_eq!(pools.strings.heap_usage().bytes(), 0);
+            let before = sharing.control.usage().work(WorkCategory::InspectByte);
+            assert!(pools.string(&input, sharing.control).unwrap().is_none());
+            let inspected = sharing.control.usage().work(WorkCategory::InspectByte) - before;
+            assert!(sharing.control.stop().is_none());
+            assert!(pools.strings.heap_usage().bytes() > 0);
+            assert_eq!(pools.attributes.heap_usage().bytes(), 0);
+
+            // A subsequent independently backed equal operand must really hit
+            // the offered original, so an early bypass cannot satisfy the cut.
+            let selected = pools
+                .string(&equal, sharing.control)
+                .unwrap()
+                .expect("cold miss retained an eligible string");
+            assert!(Arc::ptr_eq(
+                selected.value.shared_code_units(),
+                input.shared_code_units()
+            ));
+            assert_eq!(selected.value.len(), expected_units);
+            for chunk in selected.value.code_units().chunks_exact(4) {
+                assert_eq!(chunk, [65, 0xd800, 0, 0xdc00]);
+            }
+            selected.release(sharing.control);
+            inspected
+        };
+        // This is the same original controller and real paired-root Drop,
+        // including pool data-before-credit cleanup; work is never refunded.
+        super::super::tests::storage_zero(&c);
+        assert!(c.stop().is_none());
+        assert_eq!(input.shared_code_units().capacity(), capacity);
+        assert_eq!(input.len(), expected_units);
+        assert_eq!(equal.len(), expected_units);
+        for value in [&input, &equal] {
+            for chunk in value.code_units().chunks_exact(4) {
+                assert_eq!(chunk, [65, 0xd800, 0, 0xdc00]);
+            }
+        }
+        // On an empty pool there are no candidate payload comparisons. The
+        // successful input hash admits two InspectByte credits per raw UTF-16
+        // unit. Promoting its qualified immutable miss must not hash it again.
+        // This observes original-controller work, not CPU or allocator reads.
+        assert_eq!(inspected, (expected_units * 2) as u64);
+    }
+
+    #[test]
+    fn cold_string_miss_charges_one_inspection_of_nonempty_raw_utf16() {
+        assert_cold_string_inspection(1, 4);
+    }
+
+    #[test]
+    fn cold_string_miss_charges_one_inspection_of_longer_raw_utf16() {
+        assert_cold_string_inspection(17, 68);
+    }
+
     #[test]
     fn second_pool_prepare_refusal_retains_both_abort_authorities_and_releases_custody() {
         // This is the concrete consumer guard over the producers' real public
@@ -1388,7 +1492,7 @@ mod tests {
         )])
         .unwrap();
         {
-            let mut sharing = Sharing::new(&mut c).unwrap();
+            let mut sharing = Sharing::new(&mut c, ValueSharingMode::Combined).unwrap();
             let pools = sharing.pools.as_mut().unwrap();
             assert!(pools.string(&text, sharing.control).unwrap().is_none());
             pools.offer_attributes(&bank, sharing.control).unwrap();

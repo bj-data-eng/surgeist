@@ -2015,6 +2015,8 @@ mod source_retention;
 pub use source_retention::*;
 mod utf16_input;
 pub use utf16_input::*;
+mod utf16_declaration_block;
+pub use utf16_declaration_block::CssDeclarationBlockParseReport;
 mod syntax;
 mod tokenization;
 pub use numeric::{

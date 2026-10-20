@@ -130,7 +130,7 @@ impl CssParserContext {
     }
 }
 
-fn parse_utf16<E, T>(
+pub(crate) fn parse_utf16<E, T>(
     original: Arc<Vec<u16>>,
     limits: CssUtf16InputLimits,
     poll: impl FnMut() -> Result<(), E>,

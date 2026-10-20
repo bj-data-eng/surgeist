@@ -45,7 +45,7 @@ fn removed_record_stays_in_original_invocation_and_resets_without_touching_repla
         global_callbacks: 0,
     };
     let mut registry = dispatcher();
-    registry.add_listener(&session.dom(), subject, DomEventType::Cancel, DomEventCallback::new(move |dom,listeners,context: &mut Context,event| {
+    registry.add_listener(&mut session.dom(), subject, DomEventType::Cancel, DomEventCallback::new(move |dom,listeners,context: &mut Context,event| {
         event.prevent_default();
         let published_parent = dom.snapshot().incomplete_source_operation();
         assert!(published_parent.is_some());
@@ -198,7 +198,7 @@ fn source_cancellation_after_force_publication_still_finishes_authentic_cancel_a
     let mut registry = dispatcher::<usize>();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::Cancel,
             DomEventCallback::new(|_, _, calls: &mut usize, event| {
@@ -329,7 +329,7 @@ fn history_consumption_prepays_both_actual_window_walks_and_write_before_effect(
         let mut registry = dispatcher::<()>();
         registry
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 subject,
                 DomEventType::Cancel,
                 DomEventCallback::new(|_, _, _, event| {
@@ -518,7 +518,7 @@ fn canceled_request_history_capture_uses_shadow_tree_order_and_actual_child_docu
     let mut registry = dispatcher::<()>();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::Cancel,
             DomEventCallback::new(|_, _, _, event| {
@@ -643,7 +643,7 @@ fn retired_nested_close_cleanup_parks_at_settle_and_source_tail_without_replay()
     let mut registry = dispatcher::<RetirementContext>();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(move |dom, _, context: &mut RetirementContext, event| {
@@ -678,7 +678,7 @@ fn retired_nested_close_cleanup_parks_at_settle_and_source_tail_without_replay()
         .unwrap();
     let late = registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(move |_, _, context: &mut RetirementContext, event| {
@@ -950,7 +950,7 @@ fn finish_canceled_native_request(
     let mut registry = dispatcher::<()>();
     registry
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::Cancel,
             DomEventCallback::new(|_, _, _, event| {

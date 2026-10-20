@@ -33,7 +33,7 @@ impl Draft {
         &self,
         document: Key,
     ) -> Result<&DomDocumentMetadata, DomError> {
-        let DomNodeKind::Document(metadata) = &self.node(document)?.kind else {
+        let transaction::KindRead::Document(metadata) = self.node(document)?.kind() else {
             return Err(DomError::WrongNodeKind);
         };
         Ok(metadata)
@@ -73,7 +73,7 @@ impl Draft {
             })?;
         let document = Key::Created(self.created.len());
         let document = self.allocate_formed(
-            DomNodeKind::Document(metadata),
+            NewNode::Document(metadata),
             document,
             limits,
             cancel,
@@ -91,13 +91,8 @@ impl Draft {
                 formation.as_ref(),
                 cancel,
             )?;
-            let root = self.allocate_formed(
-                DomNodeKind::Element(element),
-                document,
-                limits,
-                cancel,
-                formation,
-            )?;
+            let root =
+                self.allocate_element_formed(element, document, limits, cancel, formation)?;
             self.initialize_native_element(root, limits, cancel)?;
             Some(root)
         };
@@ -107,7 +102,10 @@ impl Draft {
             .map(|operand| {
                 self.source_step(cancel)?;
                 let key = self.resolve(operand.clone())?;
-                if !matches!(self.node(key)?.kind, DomNodeKind::DocumentType(_)) {
+                if !matches!(
+                    self.node(key)?.kind(),
+                    transaction::KindRead::DocumentType(_)
+                ) {
                     return Err(DomError::WrongNodeKind);
                 }
                 Ok(key)
@@ -175,16 +173,14 @@ impl Draft {
                 Ok(())
             }
             2 => {
-                let DomNodeKind::Document(source) = &self.node(frame.associated)?.kind else {
+                let transaction::KindRead::Document(source) = &self.node(frame.associated)?.kind()
+                else {
                     unreachable!("qualified associated Document")
                 };
                 let origin = source.origin().clone();
-                self.with_node_fields(frame.document, cancel, |fields| {
-                    let DomNodeKind::Document(metadata) = &mut fields.kind else {
-                        unreachable!("created XML Document")
-                    };
-                    metadata.finish_xml_origin(origin);
-                })?;
+                let mut metadata = self.document_metadata_mut(frame.document, cancel)?;
+                metadata.finish_xml_origin(origin);
+                metadata.commit(cancel)?;
                 self.source_step(cancel)?;
                 let content_type = match frame.namespace.uri() {
                     Some(uri)
@@ -199,7 +195,8 @@ impl Draft {
                     }
                     _ => "application/xml",
                 };
-                let DomNodeKind::Document(metadata) = &self.node(frame.document)?.kind else {
+                let transaction::KindRead::Document(metadata) = &self.node(frame.document)?.kind()
+                else {
                     unreachable!("created XML Document")
                 };
                 let units = self
@@ -215,12 +212,9 @@ impl Draft {
                     source::formation::string(content_type, formation.as_ref(), cancel)?;
                 #[cfg(test)]
                 xml_observation::retained(mime_before, &content_type, self, cancel);
-                self.with_node_fields_formed(frame.document, cancel, formation, |fields| {
-                    let DomNodeKind::Document(metadata) = &mut fields.kind else {
-                        unreachable!("created XML Document")
-                    };
-                    metadata.finish_xml_content_type(content_type);
-                })?;
+                let mut metadata = self.document_metadata_mut(frame.document, cancel)?;
+                metadata.finish_xml_content_type(content_type);
+                metadata.commit_formed(formation, cancel)?;
                 self.units = units;
                 // The namespace occurrence remains live until its original
                 // frame drops. Ticket exposure is the final source action.
@@ -240,7 +234,8 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<Key, DomError> {
         check_cancel(cancelled)?;
-        let DomNodeKind::Document(source) = &self.node(associated_document)?.kind else {
+        let transaction::KindRead::Document(source) = &self.node(associated_document)?.kind()
+        else {
             return Err(DomError::WrongNodeKind);
         };
         // Origin follows the source operation; the selected immutable native
@@ -254,7 +249,7 @@ impl Draft {
         )?;
         let document = Key::Created(self.created.len());
         let document = self.allocate_formed(
-            DomNodeKind::Document(metadata),
+            NewNode::Document(metadata),
             document,
             limits,
             cancelled,
@@ -269,7 +264,7 @@ impl Draft {
         drop((name, public, system));
         drop(operands);
         let doctype = self.allocate_formed(
-            DomNodeKind::DocumentType(doctype),
+            NewNode::DocumentType(doctype),
             document,
             limits,
             cancelled,
@@ -284,13 +279,8 @@ impl Draft {
             let element = self.html_skeleton_element(document, "title", limits, cancelled)?;
             self.pre_insert(element, head, None, limits, cancelled)?;
             let (title, payload) = source::formation::shared_string(self, title, cancelled)?;
-            let text = self.allocate_charged(
-                DomNodeKind::Text(title),
-                document,
-                limits,
-                cancelled,
-                payload,
-            )?;
+            let text =
+                self.allocate_charged(NewNode::Text(title), document, limits, cancelled, payload)?;
             self.pre_insert(text, element, None, limits, cancelled)?;
         }
         let body = self.html_skeleton_element(document, "body", limits, cancelled)?;
@@ -305,7 +295,7 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<Key, DomError> {
         check_cancel(cancelled)?;
-        let DomNodeKind::Document(metadata) = &self.node(document)?.kind else {
+        let transaction::KindRead::Document(metadata) = self.node(document)?.kind() else {
             unreachable!("canonical skeleton Document")
         };
         let operand = source::formation::Formation::new(self, cancelled)?;
@@ -314,21 +304,15 @@ impl Draft {
         let element = self.native_element(&local_name, metadata, formation.as_ref(), cancelled)?;
         drop(local_name);
         drop(operand);
-        let key = self.allocate_formed(
-            DomNodeKind::Element(element),
-            document,
-            limits,
-            cancelled,
-            formation,
-        )?;
+        let key = self.allocate_element_formed(element, document, limits, cancelled, formation)?;
         Ok(key)
     }
     pub(super) fn html_element_in_html_document(&self, key: Key) -> Result<bool, DomError> {
         let node = self.node(key)?;
-        let DomNodeKind::Element(element) = &node.kind else {
+        let transaction::KindRead::Element(element) = &node.kind() else {
             return Err(DomError::WrongNodeKind);
         };
-        let DomNodeKind::Document(document) = &self.node(node.document)?.kind else {
+        let transaction::KindRead::Document(document) = &self.node(node.document())?.kind() else {
             unreachable!("canonical node document")
         };
         Ok(crate::names::in_html_namespace(element.name())
@@ -374,7 +358,7 @@ mod tests {
         assert_eq!(prepared.state.nodes, 8);
         let document = prepared.created[created.index].unwrap();
         let node = prepared.state.node(dom.owner, document).unwrap();
-        let DomNodeKind::Document(metadata) = &node.kind else {
+        let DomNodeKind::Document(metadata) = node.kind() else {
             panic!("prepared Document")
         };
         assert_eq!(metadata.class(), crate::DomDocumentClass::Html);

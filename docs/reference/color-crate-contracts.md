@@ -583,8 +583,10 @@ one-pass cursor over each node's actual retained syntax admits each inspected
 item and obtains operator/strategy origins in original order without repeated
 prefix scans. This is a narrow private numeric-owner adapter, not a new public
 AST service. Leaves read original exact numeric tokens and admitted
-representation/digit units, retaining signed zero and coefficients beyond
-finite f64; typed values are not formatted then parsed again.
+representation/digit units, retaining the authored spelling and coefficients
+beyond finite f64; typed values are not formatted then parsed again. An
+authored zero (`0`, `+0` or `-0`) resolves as the unsigned zero, as Values 4
+requires; a nonzero coefficient that underflows keeps its sign.
 
 Canonical lowering has these ordered stages:
 

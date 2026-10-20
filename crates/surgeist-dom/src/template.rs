@@ -112,7 +112,7 @@ impl DomTemplate<'_> {
     pub fn contents(self) -> Result<NodeId, crate::DomError> {
         self.node
             .node
-            .template_contents
+            .template_contents()
             .ok_or(crate::DomError::TemplateContentsUnavailable)
     }
     pub fn insertion_state(self) -> DomTemplatePatch {
@@ -120,7 +120,7 @@ impl DomTemplate<'_> {
             state: self
                 .node
                 .node
-                .template_patch
+                .template_patch()
                 .expect("actual Template patch slots"),
         }
     }
@@ -135,7 +135,7 @@ impl<'a> DomNode<'a> {
     /// Actual DocumentFragment host, including Template contents and ShadowRoots.
     /// This ownership relation does not imply shadow connectedness.
     pub fn fragment_host(self) -> Option<NodeId> {
-        self.node.host
+        self.node.host()
     }
 }
 impl DomDocument<'_> {
@@ -150,7 +150,7 @@ impl DomDocument<'_> {
             .node(self.id.node())
             .expect("captured Document")
             .node
-            .template_document
+            .template_document()
             .expect("actual Document role")
     }
 }

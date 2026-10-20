@@ -1,3 +1,4 @@
+use super::transaction::KindRead;
 use super::*;
 
 pub(super) struct Insertion {
@@ -170,13 +171,13 @@ impl Insertion {
     }
 }
 
-pub(super) fn parent_can_have_children(kind: &DomNodeKind) -> bool {
+pub(super) fn parent_can_have_children(kind: KindRead<'_>) -> bool {
     matches!(
         kind,
-        DomNodeKind::Document(_)
-            | DomNodeKind::DocumentFragment
-            | DomNodeKind::ShadowRoot(_)
-            | DomNodeKind::Element(_)
+        KindRead::Document(_)
+            | KindRead::DocumentFragment
+            | KindRead::ShadowRoot(_)
+            | KindRead::Element(_)
     )
 }
 
@@ -194,15 +195,9 @@ impl Draft {
             drop(input);
             None
         } else {
-            let document = self.node(key)?.document;
+            let document = self.node(key)?.document();
             let (raw, payload) = input;
-            Some(self.allocate_charged(
-                DomNodeKind::Text(raw),
-                document,
-                limits,
-                cancel,
-                payload,
-            )?)
+            Some(self.allocate_charged(NewNode::Text(raw), document, limits, cancel, payload)?)
         };
         // The replacement Text owns the operand before any nested hook can allocate.
         self.push_effect(
@@ -226,7 +221,7 @@ impl Draft {
             self.effect_step(cancel)?;
             match self.shadow_including_parent(key)? {
                 Some(parent) => key = parent,
-                None => return Ok(matches!(self.node(key)?.kind, DomNodeKind::Document(_))),
+                None => return Ok(matches!(self.node(key)?.kind(), KindRead::Document(_))),
             }
         }
     }
@@ -254,12 +249,12 @@ impl Draft {
             self.select_reserve(&mut list, 1, cancel)?;
             list.push(key);
             let node = self.node(key)?;
-            self.select_reserve(&mut pending, node.children.len(), cancel)?;
-            for child in node.children.iter().rev() {
+            self.select_reserve(&mut pending, node.children().len(), cancel)?;
+            for child in node.children().iter().rev() {
                 self.source_step(cancel)?;
                 pending.push(child);
             }
-            if let Some(root) = node.shadow_root {
+            if let Some(root) = node.shadow_root() {
                 self.select_reserve(&mut pending, 1, cancel)?;
                 pending.push(root);
             }
@@ -299,7 +294,7 @@ impl Draft {
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
-        if self.node(node)?.document == document {
+        if self.node(node)?.document() == document {
             return Ok(());
         }
         self.preflight_top_layer_adoption(node, document, false, cancelled)?;
@@ -310,31 +305,30 @@ impl Draft {
             self.source_step(cancelled)?;
             let (node, document) = pending.pop().expect("admitted pending adoption");
             self.effect_step(cancelled)?;
-            let children = self.node(node)?.children;
+            let children = self.node(node)?.children();
             self.select_reserve(&mut pending, children.len(), cancelled)?;
             for child in children.iter().rev() {
                 self.source_step(cancelled)?;
                 pending.push((child, document));
             }
-            if let Some(root) = self.node(node)?.shadow_root {
+            if let Some(root) = self.node(node)?.shadow_root() {
                 self.select_reserve(&mut pending, 1, cancelled)?;
                 pending.push((root, document));
             }
-            self.with_node_fields(node, cancelled, |fields| fields.document = document)?;
+            let mut common = self.common_fields_mut(node, cancelled)?;
+            common.document = document;
+            common.commit(cancelled)?;
             self.select_element_registry(node, cancelled)?;
-            let binding = match &self.node(document)?.kind {
-                DomNodeKind::Document(metadata) => metadata.custom_element_registry(),
+            let binding = match self.node(document)?.kind() {
+                KindRead::Document(metadata) => metadata.custom_element_registry(),
                 _ => return Err(DomError::WrongDocument),
             };
-            if matches!(self.node(node)?.kind, DomNodeKind::ShadowRoot(_)) {
-                self.with_node_fields(node, cancelled, |fields| {
-                    let DomNodeKind::ShadowRoot(state) = &mut fields.kind else {
-                        unreachable!("qualified shadow root")
-                    };
-                    state.select_global_registry(binding);
-                })?;
+            if matches!(self.node(node)?.kind(), KindRead::ShadowRoot(_)) {
+                let mut state = self.shadow_state_mut(node, cancelled)?;
+                state.select_global_registry(binding);
+                state.commit(cancelled)?;
             }
-            if self.node(node)?.image.is_some() {
+            if self.node(node)?.image().is_some() {
                 self.start_image_update(
                     node,
                     surgeist_html::HtmlImageUpdateFlags::new(false, false),
@@ -354,8 +348,8 @@ impl Draft {
     }
 
     fn next_sibling(&self, node: Key) -> Option<Key> {
-        let parent = self.node(node).expect("staged node").parent?;
-        let children = self.node(parent).expect("staged parent").children;
+        let parent = self.node(node).expect("staged node").parent()?;
+        let children = self.node(parent).expect("staged parent").children();
         let position = children
             .iter()
             .position(|child| child == node)
@@ -371,7 +365,7 @@ impl Draft {
         exclude: Option<Key>,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
-        if !parent_can_have_children(self.node(parent)?.kind) {
+        if !parent_can_have_children(self.node(parent)?.kind()) {
             return Err(DomError::HierarchyRequest);
         }
         let mut ancestor = Some(parent);
@@ -383,31 +377,31 @@ impl Draft {
             ancestor = self.host_including_parent(key)?;
         }
         if child
-            .is_some_and(|child| self.node(child).expect("resolved child").parent != Some(parent))
+            .is_some_and(|child| self.node(child).expect("resolved child").parent() != Some(parent))
         {
             return Err(DomError::NotFound);
         }
-        let kind = &self.node(node)?.kind;
-        if matches!(kind, DomNodeKind::Document(_)) {
+        let kind = self.node(node)?.kind();
+        if matches!(kind, KindRead::Document(_)) {
             return Err(DomError::HierarchyRequest);
         }
-        if !matches!(self.node(parent)?.kind, DomNodeKind::Document(_)) {
-            return if matches!(kind, DomNodeKind::DocumentType(_)) {
+        if !matches!(self.node(parent)?.kind(), KindRead::Document(_)) {
+            return if matches!(kind, KindRead::DocumentType(_)) {
                 Err(DomError::HierarchyRequest)
             } else {
                 Ok(())
             };
         }
         match kind {
-            DomNodeKind::Text(_) => return Err(DomError::HierarchyRequest),
-            DomNodeKind::Comment(_) | DomNodeKind::ProcessingInstruction(_) => return Ok(()),
-            DomNodeKind::DocumentFragment | DomNodeKind::ShadowRoot(_) => {
+            KindRead::Text(_) => return Err(DomError::HierarchyRequest),
+            KindRead::Comment(_) | KindRead::ProcessingInstruction(_) => return Ok(()),
+            KindRead::DocumentFragment | KindRead::ShadowRoot(_) => {
                 let mut elements = 0;
-                for child in self.node(node)?.children.iter() {
+                for child in self.node(node)?.children().iter() {
                     self.effect_step(cancelled)?;
-                    match self.node(child)?.kind {
-                        DomNodeKind::Text(_) => return Err(DomError::HierarchyRequest),
-                        DomNodeKind::Element(_) => elements += 1,
+                    match self.node(child)?.kind() {
+                        KindRead::Text(_) => return Err(DomError::HierarchyRequest),
+                        KindRead::Element(_) => elements += 1,
                         _ => {}
                     }
                     if elements > 1 {
@@ -420,7 +414,7 @@ impl Draft {
             }
             _ => {}
         }
-        let children = self.node(parent)?.children;
+        let children = self.node(parent)?.children();
         let reference = child.map(|child| {
             children
                 .iter()
@@ -429,16 +423,15 @@ impl Draft {
         });
         for (position, candidate) in children.iter().enumerate() {
             self.effect_step(cancelled)?;
-            let candidate_kind = &self.node(candidate)?.kind;
-            let invalid = if matches!(kind, DomNodeKind::DocumentType(_)) {
-                (matches!(candidate_kind, DomNodeKind::DocumentType(_))
-                    && Some(candidate) != exclude)
-                    || (matches!(candidate_kind, DomNodeKind::Element(_))
+            let candidate_kind = self.node(candidate)?.kind();
+            let invalid = if matches!(kind, KindRead::DocumentType(_)) {
+                (matches!(candidate_kind, KindRead::DocumentType(_)) && Some(candidate) != exclude)
+                    || (matches!(candidate_kind, KindRead::Element(_))
                         && reference
                             .map_or(Some(candidate) != exclude, |reference| position < reference))
             } else {
-                (matches!(candidate_kind, DomNodeKind::Element(_)) && Some(candidate) != exclude)
-                    || (matches!(candidate_kind, DomNodeKind::DocumentType(_))
+                (matches!(candidate_kind, KindRead::Element(_)) && Some(candidate) != exclude)
+                    || (matches!(candidate_kind, KindRead::DocumentType(_))
                         && reference.is_some_and(|reference| {
                             position > reference
                                 || position == reference && Some(candidate) != exclude
@@ -502,14 +495,14 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         let fragment = matches!(
-            self.node(node)?.kind,
-            DomNodeKind::DocumentFragment | DomNodeKind::ShadowRoot(_)
+            self.node(node)?.kind(),
+            KindRead::DocumentFragment | KindRead::ShadowRoot(_)
         );
         #[cfg(test)]
         let ledger_before_moving = self.select_temporary_bytes.load(Ordering::Relaxed);
         let mut moving = self.effect_vec();
         if fragment {
-            let children = self.node(node)?.children;
+            let children = self.node(node)?.children();
             self.select_reserve(&mut moving, children.len(), cancelled)?;
             moving.extend(children.iter());
         } else {
@@ -545,7 +538,7 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let document = self.node(root)?.document;
+        let document = self.node(root)?.document();
         let flagged = self.fullscreen_removing_members(root, cancel)?;
         let mut pending = source::effects::ScratchStack::new(self);
         pending.push(root, self, cancel)?;
@@ -634,7 +627,7 @@ impl Draft {
                     if stage == 0 {
                         // Every real child removal finishes its source hooks
                         // before the next child or retirement cancellation.
-                        if let Some(child) = self.node(key)?.children.first() {
+                        if let Some(child) = self.node(key)?.children().first() {
                             self.push_effect(
                                 select::Effect::Tree(Frame::Destroy {
                                     closure,
@@ -674,9 +667,10 @@ impl Draft {
                         self.retire_template_contents_target(key, cancel)?;
                         if let Some(target) = self.published_id(key) {
                             self.source_step(cancel)?;
-                            let document = self.node(key)?.document;
+                            let document = self.node(key)?.document();
                             self.record_dispatch_retirement(target, document, cancel)?;
                         }
+                        self.inline_retirement(key, cancel)?;
                         self.retire_autofocus_candidate(key, cancel)?;
                         self.retire_fullscreen_membership(key, cancel)?;
                         self.retire_range_container(key, cancel)?;
@@ -734,7 +728,7 @@ impl Draft {
                         self.effect_scoped,
                         cancel,
                     )?;
-                    self.adopt(node, self.node(parent)?.document, limits, cancel)?;
+                    self.adopt(node, self.node(parent)?.document(), limits, cancel)?;
                 } else if stage == 1 {
                     self.push_effect(
                         select::Effect::Tree(Frame::Replace {
@@ -757,7 +751,7 @@ impl Draft {
                 replacement,
                 inserted,
             } => {
-                if let Some(child) = self.node(key)?.children.first().filter(|_| !inserted) {
+                if let Some(child) = self.node(key)?.children().first().filter(|_| !inserted) {
                     self.push_effect(
                         select::Effect::Tree(Frame::ReplaceAll {
                             key,
@@ -789,10 +783,10 @@ impl Draft {
                     }
                     self.effect_step(cancel)?;
                     let node = self.node(key)?;
-                    for child in node.children.iter().rev() {
+                    for child in node.children().iter().rev() {
                         pending.push(child, self, cancel)?;
                     }
-                    if let Some(shadow) = node.shadow_root {
+                    if let Some(shadow) = node.shadow_root() {
                         pending.push(shadow, self, cancel)?;
                     }
                     self.push_effect(
@@ -852,7 +846,7 @@ impl Draft {
                         7 => self.style_tree_change(key, old_parent, limits, cancel)?,
                         9 => self.dialog_removal(key, limits, cancel)?,
                         8 => {
-                            if matches!(&self.node(key)?.kind, DomNodeKind::Element(element) if element.is_meta())
+                            if matches!(self.node(key)?.kind(), KindRead::Element(element) if element.is_meta())
                             {
                                 // The shadow-inclusive removal walk also visits
                                 // hosted trees. Only a Meta whose ORDINARY root
@@ -868,8 +862,8 @@ impl Draft {
                                                 self.meta_step(cancel)
                                             })?;
                                         matches!(
-                                            self.node(former_root)?.kind,
-                                            DomNodeKind::Document(_)
+                                            self.node(former_root)?.kind(),
+                                            KindRead::Document(_)
                                         )
                                         .then_some(former_root)
                                     } else {
@@ -947,7 +941,7 @@ impl Draft {
                 } else if let Some(&child) = frame.moving.get(frame.index) {
                     if frame.stage == 1 {
                         frame.stage = 2;
-                        let document = self.node(frame.parent)?.document;
+                        let document = self.node(frame.parent)?.document();
                         self.push_effect(
                             select::Effect::Tree(Frame::Insert(frame)),
                             self.effect_scoped,
@@ -956,9 +950,9 @@ impl Draft {
                         self.adopt(child, document, limits, cancel)?;
                     } else {
                         let target = self.node(frame.parent)?;
-                        let index = frame.before.map_or(target.children.len(), |reference| {
+                        let index = frame.before.map_or(target.children().len(), |reference| {
                             target
-                                .children
+                                .children()
                                 .iter()
                                 .position(|key| key == reference)
                                 .expect("retained reference")
@@ -970,9 +964,9 @@ impl Draft {
                             &[child],
                             cancel,
                         )?;
-                        self.with_node_fields(child, cancel, |fields| {
-                            fields.parent = Some(frame.parent)
-                        })?;
+                        let mut common = self.common_fields_mut(child, cancel)?;
+                        common.parent = Some(frame.parent);
+                        common.commit(cancel)?;
                         if !self.is_private(frame.parent) {
                             self.expose_source_subtree(child, cancel)?;
                         }
@@ -1029,10 +1023,10 @@ impl Draft {
             HtmlNonceInsertionEffect,
         };
         let node = self.node(key)?;
-        let DomNodeKind::Element(element) = &node.kind else {
+        let KindRead::Element(element) = node.kind() else {
             return Ok(());
         };
-        let DomNodeKind::Document(document) = &self.node(node.document)?.kind else {
+        let KindRead::Document(document) = self.node(node.document())?.kind() else {
             unreachable!("canonical node document")
         };
         // This is an established native environment fact, independent of
@@ -1126,7 +1120,7 @@ mod tests {
             visited: 0,
             cancel_after: 2,
         });
-        let document = draft.node(key).unwrap().document;
+        let document = draft.node(key).unwrap().document();
         assert_eq!(
             draft.pre_insert(key, document, None, dom.limits(), &cancel),
             Err(DomError::Cancelled)
@@ -1256,10 +1250,10 @@ mod scratch_lifetime_tests {
                     for _ in 0..32 {
                         node = s.node(node).unwrap().children()[0];
                     }
-                    assert_eq!(s.node(node).unwrap().kind(), &DomNodeKind::Text("x".into()));
+                    assert_eq!(s.node(node).unwrap().kind(), DomNodeKind::Text(&"x".into()));
                 } else {
                     for id in s.node(content).unwrap().children() {
-                        assert_eq!(s.node(*id).unwrap().kind(), &DomNodeKind::Text("x".into()));
+                        assert_eq!(s.node(*id).unwrap().kind(), DomNodeKind::Text(&"x".into()));
                     }
                 }
             }

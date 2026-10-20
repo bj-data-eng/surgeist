@@ -55,6 +55,7 @@ impl<K> BaseState<K> {
             }),
         }
     }
+    #[cfg(test)]
     pub(crate) fn units(&self) -> usize {
         self.frozen
             .as_ref()
@@ -79,20 +80,6 @@ impl<K: PartialEq> PartialEq for BaseDocument<K> {
     }
 }
 impl<K: Eq> Eq for BaseDocument<K> {}
-impl<K> BaseDocument<K> {
-    pub(crate) fn fresh() -> Self {
-        Self {
-            facts: None,
-            first: None,
-            render_blocking: Vec::new(),
-        }
-    }
-    pub(crate) fn units(&self) -> usize {
-        self.facts
-            .as_ref()
-            .map_or(0, |f| f.formation_usage().utf16_extent())
-    }
-}
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct LinkState<K> {
     pub(crate) flags: HtmlLinkFlags,
@@ -133,8 +120,7 @@ impl<'a> DomBase<'a> {
     pub fn frozen(self) -> Option<DomFrozenBase<'a>> {
         self.node
             .node
-            .base
-            .as_ref()?
+            .base()?
             .frozen
             .as_ref()
             .map(|value| DomFrozenBase { value })
@@ -168,13 +154,12 @@ impl DomLink<'_> {
         self.node.id()
     }
     pub fn flags(self) -> HtmlLinkFlags {
-        self.node.node.link.as_ref().expect("checked Link").flags
+        self.node.node.link().expect("checked Link").flags
     }
     pub fn parser_document(self) -> Option<DocumentId> {
         self.node
             .node
-            .link
-            .as_ref()
+            .link()
             .expect("checked Link")
             .parser_document
             .map(DocumentId)
@@ -188,11 +173,11 @@ impl DomLink<'_> {
 }
 impl<'a> DomNode<'a> {
     pub fn as_base(self) -> Option<DomBase<'a>> {
-        self.node.base.as_ref()?;
+        self.node.base()?;
         Some(DomBase { node: self })
     }
     pub fn as_link(self) -> Option<DomLink<'a>> {
-        self.node.link.as_ref()?;
+        self.node.link()?;
         Some(DomLink { node: self })
     }
 }
@@ -217,8 +202,7 @@ impl<'a> crate::DomDocument<'a> {
             .node(self.snapshot.owner, self.id.node())?;
         Ok(
             match node
-                .base_document
-                .as_ref()
+                .base_document()
                 .ok_or(crate::DomError::WrongDocument)?
                 .first
             {
@@ -227,8 +211,7 @@ impl<'a> crate::DomDocument<'a> {
                     self.snapshot
                         .state
                         .node(self.snapshot.owner, base)?
-                        .base
-                        .as_ref()
+                        .base()
                         .and_then(|state| state.frozen.as_ref())
                         .map(|frozen| &frozen.value),
                 ),
@@ -265,10 +248,8 @@ impl<'a> crate::DomDocument<'a> {
             .node(self.id.node())
             .expect("Document")
             .node
-            .base_document
-            .as_ref()?
+            .base_document()?
             .facts
-            .as_ref()
     }
     pub fn first_base(self) -> Result<Option<NodeId>, crate::DomError> {
         self.snapshot.require_complete_source()?;
@@ -277,8 +258,7 @@ impl<'a> crate::DomDocument<'a> {
             .node(self.id.node())
             .expect("Document")
             .node
-            .base_document
-            .as_ref()
+            .base_document()
             .and_then(|state| state.first))
     }
 }

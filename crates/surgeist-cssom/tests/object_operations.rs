@@ -647,7 +647,7 @@ fn binding_applies_exact_owner_write_and_host_failure_is_postpublication_status(
         owner: application.effect().owner().clone(),
         local_name: "style".into(),
         namespace: None,
-        value: Some(host_attribute.clone()),
+        value: Some(host_attribute.as_str().into()),
         echo: Some(application.effect().id().clone()),
     };
     assert_eq!(host_attribute, "width: 2px;");

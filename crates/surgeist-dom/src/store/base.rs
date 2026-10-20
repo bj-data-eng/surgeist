@@ -1,6 +1,6 @@
 //! Qualified native facts and source-time first-Base changes, without a URL engine.
 use super::*;
-use crate::base::{DomBaseFactsError as Failure, Frozen, Response};
+use crate::base::{BaseState, DomBaseFactsError as Failure, Frozen, Response};
 use surgeist_html::{HtmlScriptResult, KnownHtmlAttribute};
 use surgeist_html_semantics::{
     HtmlAboutBaseUrl, HtmlBaseMissing, HtmlBaseUrlScheme, HtmlParseBaseFacts,
@@ -45,7 +45,7 @@ impl Draft {
         self.source_step(cancel)?;
         let first = self
             .node(document)?
-            .base_document
+            .base_document()
             .as_ref()
             .ok_or(DomError::WrongDocument)?
             .first;
@@ -55,7 +55,7 @@ impl Draft {
                 self.source_step(cancel)?;
                 HtmlDocumentFirstBase::Present(
                     self.node(key)?
-                        .base
+                        .base()
                         .and_then(|state| state.frozen)
                         .map(|frozen| frozen.value),
                 )
@@ -164,10 +164,10 @@ impl Draft {
         name: KnownHtmlAttribute,
         cancel: &AtomicBool,
     ) -> Result<Option<&DocumentString>, DomError> {
-        let DomNodeKind::Element(e) = &self.node(key)?.kind else {
+        let transaction::KindRead::Element(e) = &self.node(key)?.kind() else {
             return Ok(None);
         };
-        for attr in e.attributes().iter() {
+        for attr in e.language().attributes().iter() {
             self.base_step(cancel)?;
             if attr.name().namespace_uri().is_none()
                 && self.base_ascii(attr.name().local_name(), name.local_name(), cancel)?
@@ -191,7 +191,7 @@ impl Draft {
             return Err(failure(Failure::BasisRevisionMismatch));
         }
         let key = self.resolve(basis.document().into())?;
-        let DomNodeKind::Document(metadata) = &self.node(key)?.kind else {
+        let transaction::KindRead::Document(metadata) = &self.node(key)?.kind() else {
             return Err(DomError::WrongNodeKind);
         };
         self.base_step(cancel)?;
@@ -224,7 +224,7 @@ impl Draft {
                 url,
                 encoding,
                 self.node(key)?
-                    .base_document
+                    .base_document()
                     .and_then(|base| base.facts)
                     .map(|facts| facts.document()),
             )
@@ -234,7 +234,7 @@ impl Draft {
             return Err(failure(Failure::EnvironmentMismatch));
         }
         let fallback = env.fallback().map_err(|e| failure(Failure::Missing(e)))?;
-        if let Some(previous) = self.node(key)?.base_document.and_then(|d| d.facts) {
+        if let Some(previous) = self.node(key)?.base_document().and_then(|d| d.facts) {
             self.base_step(cancel)?;
             if previous.document().revision().producer() != env.revision().producer() {
                 return Err(failure(Failure::ForeignProducer));
@@ -254,7 +254,7 @@ impl Draft {
         }
         let previous_records = self
             .node(key)?
-            .base_document
+            .base_document()
             .as_ref()
             .and_then(|document| document.facts)
             .map_or(0, |facts| facts.formation_usage().record_capacity());
@@ -271,7 +271,7 @@ impl Draft {
         )?;
         let old = self
             .node(key)?
-            .base_document
+            .base_document()
             .as_ref()
             .expect("native Document base state")
             .units();
@@ -286,21 +286,29 @@ impl Draft {
             cancel,
         )?;
         let formation = source::formation::Formation::new(self, cancel)?;
-        if let Some(budget) = formation.as_ref() {
-            let mut payload = source::storage::Payload::default();
-            payload.producer(facts.retained_storage_usage())?;
-            budget.retain_payload(payload, cancel)?;
-        }
-        let facts = facts.clone();
-        #[cfg(test)]
-        source::formation::mutation_observation::grew_payload(
-            growth,
-            facts.retained_storage_usage().retained_bytes(),
-            facts.retained_storage_usage().utf16_extent(),
-        );
-        self.with_node_fields_formed(key, cancel, formation, |fields| {
-            fields.base_document.as_mut().expect("Document").facts = Some(facts)
-        })?;
+        let mut payload = source::storage::Payload::default();
+        payload.producer(facts.retained_storage_usage())?;
+        let first = self.node(key)?.base_document().expect("Document").first;
+        self.replace_base_document_formed_from(
+            key,
+            payload,
+            formation,
+            |_| {
+                let facts = facts.clone();
+                #[cfg(test)]
+                source::formation::mutation_observation::grew_payload(
+                    growth,
+                    facts.retained_storage_usage().retained_bytes(),
+                    facts.retained_storage_usage().utf16_extent(),
+                );
+                Ok(Some(crate::base::BaseDocument {
+                    facts: Some(facts),
+                    first,
+                    render_blocking: Vec::new(),
+                }))
+            },
+            cancel,
+        )?;
         self.units = units;
         Ok(())
     }
@@ -308,7 +316,7 @@ impl Draft {
         let mut next = Some(document);
         while let Some(key) = next {
             self.base_step(cancel)?;
-            if self.node(key)?.base.is_some()
+            if self.node(key)?.base().is_some()
                 && self
                     .base_attribute(key, KnownHtmlAttribute::Href, cancel)?
                     .is_some()
@@ -322,7 +330,7 @@ impl Draft {
     fn base_root(&self, mut key: Key, cancel: &AtomicBool) -> Result<Key, DomError> {
         loop {
             self.base_step(cancel)?;
-            match self.node(key)?.parent {
+            match self.node(key)?.parent() {
                 Some(p) => key = p,
                 None => return Ok(key),
             }
@@ -335,10 +343,10 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.native_link_guard(key, cancel)?;
-        if self.node(key)?.base.is_none() {
+        if self.node(key)?.base().is_none() {
             return Ok(());
         }
-        let document = self.node(key)?.document;
+        let document = self.node(key)?.document();
         self.update_first_base(document, None, limits, cancel)
     }
     pub(super) fn base_attribute_change(
@@ -357,45 +365,43 @@ impl Draft {
         if name.namespace_uri().is_none()
             && (name.local_name().code_units() == [105, 100]
                 || (name.local_name().code_units() == [110, 97, 109, 101]
-                    && matches!(&self.node(key)?.kind,DomNodeKind::Element(e) if e.common_state().html().is_some() && e.name().local_name().code_units()==[97])))
+                    && matches!(&self.node(key)?.kind(),transaction::KindRead::Element(e) if e.common_state().html().is_some() && e.name().local_name().code_units()==[97])))
         {
             let doc = self
-                .node(self.node(key)?.document)?
-                .base_document
+                .node(self.node(key)?.document())?
+                .base_document()
                 .ok_or(DomError::WrongNodeKind)?;
             for target in doc.render_blocking.iter() {
                 self.base_step(cancel)?;
-                if !matches!(&self.node(target)?.kind, DomNodeKind::Element(element)
+                if !matches!(&self.node(target)?.kind(), transaction::KindRead::Element(element)
                     if element.style_state().is_some_and(|state| state.availability == crate::DomStyleSheetAvailability::Established))
                 {
                     return Err(DomError::LinkProcessingUnavailable);
                 }
             }
         }
-        if self.node(key)?.link.is_some()
+        if self.node(key)?.link().is_some()
             && name.local_name().code_units() == [100, 105, 115, 97, 98, 108, 101, 100]
         {
-            self.with_node_fields(key, cancel, |fields| {
-                fields
-                    .link
-                    .as_mut()
-                    .expect("checked Link")
-                    .flags
-                    .disabled_attribute_changed(
-                        &name
-                            .namespace_uri()
-                            .cloned()
-                            .map_or_else(crate::Namespace::none, crate::Namespace::from_uri),
-                        old,
-                        new,
-                    )
-            })?;
+            let mut link = self.link_fields_mut(key, cancel)?;
+            link.as_mut()
+                .expect("checked Link")
+                .flags
+                .disabled_attribute_changed(
+                    &name
+                        .namespace_uri()
+                        .cloned()
+                        .map_or_else(crate::Namespace::none, crate::Namespace::from_uri),
+                    old,
+                    new,
+                );
+            link.commit(cancel)?;
         }
-        if self.node(key)?.base.is_some()
+        if self.node(key)?.base().is_some()
             && name.namespace_uri().is_none()
             && name.local_name().code_units() == [104, 114, 101, 102]
         {
-            let document = self.node(key)?.document;
+            let document = self.node(key)?.document();
             if self.base_root(key, cancel)? == document {
                 self.update_first_base(document, Some(key), limits, cancel)?;
             }
@@ -403,12 +409,12 @@ impl Draft {
         Ok(())
     }
     fn native_link_guard(&self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
-        let Some(link) = self.node(key)?.link else {
+        let Some(link) = self.node(key)?.link() else {
             return Ok(());
         };
         check_cancel(cancel)?;
-        let doc = self.node(self.node(key)?.document)?;
-        let DomNodeKind::Document(metadata) = &doc.kind else {
+        let doc = self.node(self.node(key)?.document())?;
+        let transaction::KindRead::Document(metadata) = &doc.kind() else {
             return Err(DomError::WrongNodeKind);
         };
         // Native creation, clone/import and native authoring installation all
@@ -439,15 +445,17 @@ impl Draft {
         let first = self.first_base(document, cancel)?;
         let state = self
             .node(document)?
-            .base_document
+            .base_document()
             .ok_or(DomError::WrongNodeKind)?;
         if first == state.first && !(first.is_some() && first == changed_href) {
             return Ok(());
         }
         let Some(first) = first else {
-            self.with_node_fields(document, cancel, |fields| {
-                fields.base_document.as_mut().expect("Document").first = None
-            })?;
+            {
+                let mut fields = self.base_document_mut(document, cancel)?;
+                (*fields).as_mut().expect("Document").first = None;
+                fields.commit(cancel)
+            }?;
             return Ok(());
         };
         let facts = state
@@ -462,62 +470,83 @@ impl Draft {
             .base_attribute(first, KnownHtmlAttribute::Href, cancel)?
             .expect("selected href");
         let mut outcome = None;
-        for observation in facts.observations() {
+        for (index, observation) in facts.observations().iter().enumerate() {
             self.base_step(cancel)?;
             if observation.inputs_match(fallback, encoding, env.revision())
                 && self.base_equal(observation.raw(), raw, cancel)?
             {
-                outcome = Some(observation.outcome());
+                outcome = Some((index, observation.outcome()));
                 break;
             }
         }
-        let outcome =
+        let (observation_index, outcome) =
             outcome.ok_or_else(|| failure(Failure::Missing(HtmlBaseMissing::ParseObservation)))?;
         self.base_step(cancel)?;
         let (value, respond) = surgeist_html_semantics::select_frozen_base(fallback, outcome)
             .map_err(|e| failure(Failure::Missing(e)))?;
-        let old = self.node(first)?.base.as_ref().expect("Base").units();
+        let old = self.node(first)?.base().as_ref().expect("Base").units();
         let units = (self.units - old)
             .checked_add(value.serialization().len())
             .ok_or(DomError::RepresentationExhausted)?;
         admit(units, limits.units, DomResource::StringCodeUnits)?;
         let formation = source::formation::Formation::new(self, cancel)?;
-        if let Some(budget) = formation.as_ref() {
-            let mut payload = source::storage::Payload::default();
-            payload.producer(value.retained_storage_usage())?;
-            budget.retain_payload(payload, cancel)?;
-        }
-        let frozen = Frozen {
-            value: value.clone(),
-            document,
-            revision: env.revision().clone(),
-            response: if respond {
-                Response::Pending
-            } else {
-                Response::Returned
+        let mut payload = source::storage::Payload::default();
+        payload.producer(value.retained_storage_usage())?;
+        self.replace_base_formed_from(
+            first,
+            payload,
+            formation,
+            |draft| {
+                let facts = draft
+                    .node(document)?
+                    .base_document()
+                    .and_then(|state| state.facts)
+                    .ok_or_else(|| failure(Failure::Missing(HtmlBaseMissing::DocumentFacts)))?;
+                let env = facts.document();
+                let fallback = env
+                    .fallback()
+                    .map_err(|error| failure(Failure::Missing(error)))?;
+                let (value, _) = surgeist_html_semantics::select_frozen_base(
+                    fallback,
+                    facts.observations()[observation_index].outcome(),
+                )
+                .map_err(|error| failure(Failure::Missing(error)))?;
+                Ok(Some(BaseState {
+                    frozen: Some(Frozen {
+                        value: value.clone(),
+                        document,
+                        revision: env.revision().clone(),
+                        response: if respond {
+                            Response::Pending
+                        } else {
+                            Response::Returned
+                        },
+                    }),
+                }))
             },
-        };
-        self.with_node_fields_formed(first, cancel, formation, |fields| {
-            fields.base.as_mut().expect("Base").frozen = Some(frozen)
-        })?;
-        self.with_node_fields(document, cancel, |fields| {
-            fields.base_document.as_mut().expect("Document").first = Some(first)
-        })?;
+            cancel,
+        )?;
+        {
+            let mut fields = self.base_document_mut(document, cancel)?;
+            (*fields).as_mut().expect("Document").first = Some(first);
+            fields.commit(cancel)
+        }?;
         self.units = units;
         // Real assignment precedes response. Any cancellation/refusal below
         // leaves this private candidate unpublished.
         if respond {
             self.respond_to_base_change(document, cancel)?;
-            self.with_node_fields(first, cancel, |fields| {
-                fields
-                    .base
+            {
+                let mut fields = self.base_fields_mut(first, cancel)?;
+                (*fields)
                     .as_mut()
                     .expect("Base")
                     .frozen
                     .as_mut()
                     .expect("assigned")
-                    .response = Response::FactsPublished
-            })?;
+                    .response = Response::FactsPublished;
+                fields.commit(cancel)
+            }?;
         }
         Ok(())
     }
@@ -530,10 +559,10 @@ impl Draft {
     ) -> Result<Option<Key>, DomError> {
         self.base_step(cancel)?;
         let node = self.node(key)?;
-        if let Some(shadow) = node.shadow_root {
+        if let Some(shadow) = node.shadow_root() {
             return Ok(Some(shadow));
         }
-        if let Some(child) = node.children.first() {
+        if let Some(child) = node.children().first() {
             return Ok(Some(child));
         }
         loop {
@@ -542,19 +571,19 @@ impl Draft {
                 return Ok(None);
             }
             let node = self.node(key)?;
-            if let Some(parent) = node.parent {
-                for (i, sibling) in self.node(parent)?.children.iter().enumerate() {
+            if let Some(parent) = node.parent() {
+                for (i, sibling) in self.node(parent)?.children().iter().enumerate() {
                     self.base_step(cancel)?;
                     if sibling == key {
-                        if let Some(next) = self.node(parent)?.children.get(i + 1) {
+                        if let Some(next) = self.node(parent)?.children().get(i + 1) {
                             return Ok(Some(next));
                         }
                         break;
                     }
                 }
                 key = parent;
-            } else if let Some(host) = node.host {
-                if let Some(child) = self.node(host)?.children.first() {
+            } else if let Some(host) = node.host() {
+                if let Some(child) = self.node(host)?.children().first() {
                     return Ok(Some(child));
                 }
                 key = host;
@@ -565,7 +594,7 @@ impl Draft {
     }
     fn respond_to_base_change(&self, document: Key, cancel: &AtomicBool) -> Result<(), DomError> {
         self.base_step(cancel)?;
-        let DomNodeKind::Document(metadata) = &self.node(document)?.kind else {
+        let transaction::KindRead::Document(metadata) = &self.node(document)?.kind() else {
             return Err(DomError::WrongNodeKind);
         };
         // Supported commands/host captures admit canonical values and selection
@@ -575,7 +604,7 @@ impl Draft {
         let mut next = Some(document);
         while let Some(key) = next {
             self.base_step(cancel)?;
-            if let Some(script) = self.node(key)?.script {
+            if let Some(script) = self.node(key)?.script() {
                 match script.result {
                     HtmlScriptResult::Uninitialized => {}
                 }
@@ -724,11 +753,12 @@ mod tests {
         let base = draft.resolve(base.into()).unwrap();
         // Explicit private unavailable-input guard: this does not claim a
         // completed public Base freeze or install missing external evidence.
-        draft
-            .with_node_fields(base, &cancel, |fields| {
-                fields.base.as_mut().unwrap().frozen = None
-            })
-            .unwrap();
+        {
+            let mut fields = draft.base_fields_mut(base, &cancel).unwrap();
+            (*fields).as_mut().unwrap().frozen = None;
+            fields.commit(&cancel)
+        }
+        .unwrap();
         for result in [
             draft
                 .document_base_record(key, &cancel)
@@ -915,7 +945,7 @@ mod tests {
             DomError::BaseWorkLimit { limit: exact - 1 }
         );
         let key = d.resolve(base.into()).unwrap();
-        let frozen = d.node(key).unwrap().base.unwrap().frozen.unwrap();
+        let frozen = d.node(key).unwrap().base().unwrap().frozen.unwrap();
         assert_eq!(frozen.response, Response::Pending);
         assert_eq!(frozen.document, d.resolve(doc.into()).unwrap());
         assert_eq!(

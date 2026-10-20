@@ -38,7 +38,7 @@ fn draft(dom: &Dom) -> Draft {
     .unwrap()
     .0
 }
-fn publish(dom: &mut Dom, draft: Draft) {
+fn publish(dom: &mut Dom, mut draft: Draft) {
     let prepared = draft.finish(dom, &AtomicBool::new(false)).unwrap();
     dom.publish(prepared, &AtomicBool::new(false)).unwrap();
 }
@@ -65,16 +65,14 @@ fn nullable_request_storage_preserves_utf16_snapshot_and_counts_each_occurrence(
         before_units + 10,
         "two independent five-unit language slots"
     );
-    let state = staged.dialog_state(key).unwrap();
-    let family = crate::element::NativeFamily::Dialog(Arc::new(state.clone()));
-    let retained = source::storage::family_payload(&family, || Ok(())).unwrap();
+    let family = staged.element(key).unwrap().language().native_family();
+    let retained = source::storage::family_payload(family, || Ok(())).unwrap();
     assert_eq!(retained.units, value.shared_code_units().capacity() * 2);
     assert_eq!(
         retained.bytes,
-        size_of::<DomDialogState>()
+        size_of::<payload::Payload<DomDialogState>>()
             + 2 * (size_of::<Vec<u16>>() + value.shared_code_units().capacity() * size_of::<u16>())
     );
-    drop(family);
     publish(&mut dom, staged);
     let saved = dom.snapshot();
     let view = saved.node(dialog).unwrap().as_dialog().unwrap();
@@ -260,7 +258,7 @@ fn supplied_empty_request_is_distinct_from_null_and_can_be_cleared_without_chang
 }
 
 #[test]
-fn force_flag_candidate_admits_both_live_request_backings_before_replacing_the_body() {
+fn force_flag_admits_native_target_header_before_replacing_the_body() {
     let (dom, _, dialog) = fixture();
     for short in [true, false] {
         let cancel = AtomicBool::new(false);
@@ -270,8 +268,11 @@ fn force_flag_candidate_admits_both_live_request_backings_before_replacing_the_b
         staged
             .set_dialog_request_return_value(key, Some(&value), dom.limits, &cancel)
             .unwrap();
-        let expected = transaction::queues::admission_observation::dialog_fields(&staged, key);
-        let boundary = transaction::queues::admission_observation::Binding::fields(
+        // Both string occurrences and the raw body already have credit; the
+        // selected boundary admits the remaining native target header.
+        let expected =
+            transaction::queues::admission_observation::dialog_native_target(&staged, key);
+        let boundary = transaction::queues::admission_observation::Binding::native_target(
             key,
             expected,
             DomResource::SourceRetainedBytes,

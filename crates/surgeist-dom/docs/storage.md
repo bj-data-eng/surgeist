@@ -14,6 +14,19 @@ sequence actually changed; unrelated sequences remain shared. Range and other
 dependency indices identify the affected participants without enumerating every
 registered object.
 
+Each occupied Slot holds a private handle to an exact-kind root. Common
+node-document, Global and parent relations stay inline in that root; vacant
+Slots retain generation and retirement bookkeeping without a node body.
+Character data, Element language values and Document metadata have separate
+immutable typed targets. Container children and applicable feature groups retain
+their own targets, so a topology edit shares unchanged values and an attribute
+edit shares unchanged native state and children. Leaves own no child-list target.
+The transaction retains selected typed groups and reversible edits. Publication
+maps changed identity operands and adopts unchanged children under their original
+controls. The Slot's custodian retains its exact-kind root within the Slot's
+receipt; the root has no independent registry custodian. Publication consumes
+the fresh root into its Slot, and unchanged snapshots share that same Slot record.
+
 ## What the admission budget counts
 
 The retained-byte budget is a conservative representation budget, rather than
@@ -40,8 +53,9 @@ pages shared by snapshots. These receipts grant no host execution authority.
 | --- | --- |
 | Canonical State | Its body and retained queue-field backing occurrences. Absent queues add no out-of-line storage. Bank records, pages and auxiliary graphs have their own custody. |
 | Persistent page or record | Actual new page storage, or record body and its payload-field occurrences, admitted before controlled retention. Shared descendants keep their existing debit. |
+| Node root and typed children | The Slot receipt includes its exact-kind root body. Independently materialized language, relation and feature targets retain their own custody; a new parent root aliases unchanged children. |
 | Canonical names | Owner-qualified immutable records with weak index entries. Strong tokens retain text independently of the owner; admitted objects retain the corresponding child custody. |
-| Ordered attributes | One immutable DOM-owned typed payload and actual attribute-array capacity. Scalar-only record changes share that payload; text occurrences and name-record child custody remain distinct charges. Fresh empty attributes have no bank allocation. |
+| Element name and attributes | A name occurrence has its own typed child. Attribute banks own their typed body and actual array capacity; each independent Element binding retains its conservative text occurrence. Unrelated edits share those same children. Equal banks can share array storage without merging independent Element occurrence charges. Fresh empty attributes have no bank or binding target. |
 | Retained Form history | One typed payload body, actual entry capacity and conservative name-field occurrences. Known-empty history has no payload. Slot controls own its child custody; another Slot or staged alias of that payload does not charge its contents again. |
 | Additional bank-root or savepoint alias | Actual holder and control storage. Sharing a root or copying record handles does not materialize its reachable records again. |
 | Changed transaction field or selected sequence | The new materialized field/backing, while the previous occurrence remains charged for as long as canonical state or rollback still retains it. |
@@ -59,9 +73,11 @@ own admitted storage. Cleanup releases only objects whose controlled ownership
 has actually ended.
 
 `DomNameLimits` bounds directly owned name records, text, index capacity and
-operation receipts, plus canonical attribute-array storage and the directly
-owned name-custody capsules. Attribute-value text keeps its existing payload
-admission. Pending and dead entries count until removal; a live record
+operation receipts, plus dedicated Element-name and attribute-binding targets,
+canonical attribute-array storage and directly owned name-custody capsules.
+Containing targets keep conservative text occurrences in global and Source
+admission; their local attribution counts actual target and control storage.
+Pending and dead entries count until removal; a live record
 is never evicted to escape admission. Name work and scratch have separate finite
 operation allowances. Shared custody-registry administration keeps its existing
 global and Source admission rather than acquiring a second name debit. The name
@@ -72,12 +88,47 @@ includes these separately accounted resources.
 
 The [typed payload owner](../src/store/payload.rs) reserves a fresh identity
 before retaining or allocating a new body. Its pending holder keeps incoming
-Formation credits beside the data through refusal, then transfers them into the
-existing registry. Form history uses this owner; its receipt is excluded from
-the Slot's shallow descriptor. Projecting changed identity-bearing entries
+Formation credits beside the data through refusal. Language and feature groups
+transfer into the registry independently. A fresh node root instead transfers
+its affine body credit and child dependency into its one containing Slot;
+historical Slot adoption includes that same root body. Independent child
+receipts are excluded from the Slot's shallow descriptor.
+Form history remains a child of its applicable Form association. Projecting
+changed identity-bearing entries
 creates a new payload while the staged and previous versions remain controlled.
 Historical adoption borrows that same immutable payload and its cached receipt;
 the external semantic handle itself carries no custody.
+
+Optional owner-local pools reuse equal ordered attribute banks and immutable
+UTF-16 strings during creation, import, installation and actual edits. Whole-bank
+lookup follows required name resolution and precedes optional component sharing.
+Text replacement offers the completed value. Namespace/local-name atoms keep
+their required identity; sharing prefixes, values or Text never merges node
+identity, native state or parser provenance. A semantic no-op keeps its original
+backing and history, including deliberately reserved capacity.
+
+The pools live outside snapshots and retain bounded weak entries. Their bucket,
+inverse and known weak-target storage is admitted separately. A strong candidate
+upgrade admits its full retained graph before selection; sharing does not reduce
+the established per-field occurrence charges. Fresh zero-capacity attribute banks
+have no target to pool. String reuse can avoid duplicate empty UTF-16 targets;
+reserved empty backing still contributes its actual capacity. Installation keeps
+the producer report and receipt intact while forming canonical DOM arrays, so
+retained producer and DOM arrays remain separate storage.
+
+The session attachment retains its admitted weak-owner storage, but pool roots
+remain dormant until eligible value work starts. Value-free edits pay no pool
+root, mark or seal work. A Source checkpoint predating activation restores by
+aborting that session's late root; an existing active root uses paired marks to
+undo the selected suffix. Both preserve spent work. Resumed formation uses the
+current admission envelope after external retained data has been reconciled.
+
+Publication prepares all closing work before accepting marks and freezing the
+paired pools; the final seal is infallible. Refusal, cancellation and
+whole-operation no-ops abort their session. Discarding a Draft for reentrant
+observation ends its uncommitted session before child edits use the current
+owner. Bounded eviction and optional qualifier exhaustion affect reuse, never
+semantic identity.
 
 Revision history uses closed chunks of 32 entries with direct oldest and newest
 access. Publication prepares its insertion, actual oldest-entry evictions and

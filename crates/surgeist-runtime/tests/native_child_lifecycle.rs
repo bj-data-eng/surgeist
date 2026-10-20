@@ -350,7 +350,7 @@ fn details_callback_inserts_both_siblings_without_waiting_on_its_own_window_loop
         let details = commit.created(&details).unwrap().unwrap();
         registry
             .add_listener(
-                &dom,
+                &mut dom,
                 details,
                 DomEventType::Toggle,
                 DomEventCallback::new(|dom, _, context: &mut Context, _| {
@@ -1793,7 +1793,7 @@ fn child_details_blocks_shared_parent_loop_but_not_another_group_in_same_host() 
         let details = commit.created(&details).unwrap().unwrap();
         registry
             .add_listener(
-                &dom,
+                &mut dom,
                 details,
                 DomEventType::Toggle,
                 DomEventCallback::new(|dom, _, context: &mut Context, _| {

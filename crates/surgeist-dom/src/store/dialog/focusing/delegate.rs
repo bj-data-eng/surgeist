@@ -58,7 +58,7 @@ impl Walk {
         }
         while let Some(level) = self.levels.last() {
             draft.source_step(cancel)?;
-            if let Some(child) = draft.node(level.parent)?.children.get(level.next_child) {
+            if let Some(child) = draft.node(level.parent)?.children().get(level.next_child) {
                 draft.source_step(cancel)?;
                 draft.node(child)?;
                 let next_child = level
@@ -136,8 +136,10 @@ impl DelegateFrame {
                     AA::ReadAutofocus => {
                         let node = self.walk.current.ok_or(DomError::InvalidSourceOperation)?;
                         draft.source_step(cancel)?;
-                        AR::Autofocus(match &draft.node(node)?.kind {
-                            DomNodeKind::Element(_) => draft.autofocus_presence(node, cancel)?,
+                        AR::Autofocus(match &draft.node(node)?.kind() {
+                            transaction::KindRead::Element(_) => {
+                                draft.autofocus_presence(node, cancel)?
+                            }
                             _ => false,
                         })
                     }
@@ -159,11 +161,13 @@ impl DelegateFrame {
             let reply = match self.cursor.action() {
                 FA::ReadShadowRoot => {
                     draft.source_step(cancel)?;
-                    let shadow = match draft.node(subject)?.shadow_root {
+                    let shadow = match draft.node(subject)?.shadow_root() {
                         None => Shadow::Absent,
                         Some(root) => {
                             draft.source_step(cancel)?;
-                            let DomNodeKind::ShadowRoot(state) = &draft.node(root)?.kind else {
+                            let transaction::KindRead::ShadowRoot(state) =
+                                &draft.node(root)?.kind()
+                            else {
                                 return Err(DomError::WrongNodeKind);
                             };
                             if state.properties().delegates_focus() {

@@ -53,7 +53,7 @@ impl Draft {
     ) -> Result<(), DomError> {
         self.effect_step(cancel)?;
         let node = self.node(key)?;
-        let image = node.image.as_ref().expect("actual Img");
+        let image = node.image().expect("actual Img");
         let invocation = image
             .high_water
             .checked_add(1)
@@ -61,7 +61,7 @@ impl Draft {
         // The actual current node Document owns activity independently of the
         // later images-disabled decision. Retired hosted and closed Documents
         // take the same original inactive wait; unavailable authority refuses.
-        let activity = if self.document_fully_active(node.document, cancel)? {
+        let activity = if self.document_fully_active(node.document(), cancel)? {
             HtmlImageDocumentActivity::FullyActive
         } else {
             HtmlImageDocumentActivity::NotFullyActive
@@ -83,11 +83,13 @@ impl Draft {
             }
         }
         self.effect_step(cancel)?;
-        self.with_node_fields(key, cancel, |fields| {
-            let image = fields.image.as_mut().expect("Img");
+        {
+            let mut fields = self.image_fields_mut(key, cancel)?;
+            let image = (*fields).as_mut().expect("Img");
             image.high_water = invocation;
             image.waiting = Some(crate::image::Waiting { invocation, flags });
-        })?;
+            fields.commit(cancel)
+        }?;
         Ok(())
     }
     pub(super) fn cancel_image_update(
@@ -99,7 +101,7 @@ impl Draft {
         self.effect_step(cancel)?;
         let Some(waiting) = self
             .node(key)?
-            .image
+            .image()
             .as_ref()
             .and_then(|image| image.waiting)
         else {
@@ -158,14 +160,16 @@ impl Draft {
                     .push_prepared(transaction::Undo::Image(inverse));
             }
         }
-        self.with_node_fields(key, cancel, |fields| {
-            fields.image.as_mut().expect("Img").waiting = None
-        })?;
+        {
+            let mut fields = self.image_fields_mut(key, cancel)?;
+            (*fields).as_mut().expect("Img").waiting = None;
+            fields.commit(cancel)
+        }?;
         Ok(())
     }
     fn image_tag(&self, key: Key) -> Result<Option<KnownHtmlElement>, DomError> {
-        Ok(match &self.node(key)?.kind {
-            DomNodeKind::Element(element) => element.image_tree_element(),
+        Ok(match &self.node(key)?.kind() {
+            transaction::KindRead::Element(element) => element.image_tree_element(),
             _ => None,
         })
     }
@@ -177,10 +181,10 @@ impl Draft {
     ) -> Result<(), DomError> {
         let mut following = after.is_none();
         let mut index = 0;
-        while let Some(child) = self.node(picture)?.children.get(index) {
+        while let Some(child) = self.node(picture)?.children().get(index) {
             self.effect_step(cancel)?;
             index += 1;
-            if following && self.node(child)?.image.is_some() {
+            if following && self.node(child)?.image().is_some() {
                 self.start_image_update(child, HtmlImageUpdateFlags::new(false, false), cancel)?;
             }
             if after == Some(child) {
@@ -203,7 +207,7 @@ impl Draft {
             return Ok(());
         };
         self.effect_step(cancel)?;
-        let parent = self.node(key)?.parent;
+        let parent = self.node(key)?.parent();
         let parent_tag = parent.map(|p| self.image_tag(p)).transpose()?.flatten();
         let old_tag = old_parent.map(|p| self.image_tag(p)).transpose()?.flatten();
         let effect =
@@ -233,7 +237,7 @@ impl Draft {
             // ingress exists. The actual closed tuple is already null.
             if !self
                 .node(key)?
-                .image
+                .image()
                 .as_ref()
                 .expect("Img")
                 .native
@@ -375,7 +379,7 @@ impl Draft {
                     .cloned()
                     .map_or_else(crate::Namespace::none, crate::Namespace::from_uri),
                 attribute,
-            ) && let Some(parent) = self.node(key)?.parent
+            ) && let Some(parent) = self.node(key)?.parent()
                 && self.image_tag(parent)? == Some(KnownHtmlElement::Picture)
             {
                 self.update_picture_images(parent, Some(key), cancel)?;
@@ -469,7 +473,7 @@ impl Draft {
             .map_or(0, DocumentString::len)
             .max(new.map_or(0, DocumentString::len));
         self.image_comparison_reads(old, new, cancel)?;
-        let DomNodeKind::Element(element) = &self.node(key)?.kind else {
+        let transaction::KindRead::Element(element) = &self.node(key)?.kind() else {
             unreachable!("Img")
         };
         let interpreter = HtmlValueInterpreter::new(bound);
@@ -515,7 +519,7 @@ impl Draft {
                 if surgeist_html::image_loading_became_eager(old, new)
                     && !self
                         .node(key)?
-                        .image
+                        .image()
                         .as_ref()
                         .expect("Img")
                         .native
@@ -792,7 +796,7 @@ mod tests {
             draft
                 .node(Key::Existing(img))
                 .unwrap()
-                .image
+                .image()
                 .as_ref()
                 .unwrap()
                 .waiting
@@ -860,7 +864,7 @@ mod tests {
         let waiting = draft
             .node(Key::Existing(second))
             .unwrap()
-            .image
+            .image()
             .as_ref()
             .unwrap()
             .waiting
@@ -887,7 +891,7 @@ mod tests {
             draft
                 .node(Key::Existing(second))
                 .unwrap()
-                .image
+                .image()
                 .as_ref()
                 .unwrap()
                 .waiting
@@ -1018,7 +1022,7 @@ mod tests {
         let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
         let key = Key::Existing(img);
         let graph = || {
-            let DomNodeKind::Element(element) = &draft.node(key).unwrap().kind else {
+            let transaction::KindRead::Element(element) = &draft.node(key).unwrap().kind() else {
                 unreachable!()
             };
             let raw = element
@@ -1049,7 +1053,7 @@ mod tests {
         let (bytes, units) = graph();
         source_budget(&mut draft, bytes, units);
         {
-            let DomNodeKind::Element(element) = &draft.node(key).unwrap().kind else {
+            let transaction::KindRead::Element(element) = &draft.node(key).unwrap().kind() else {
                 unreachable!()
             };
             let raw = element.attributes().iter().next().unwrap();
@@ -1073,7 +1077,7 @@ mod tests {
             (bytes, units - 1, DomResource::SourceRetainedUnits),
         ] {
             source_budget(&mut draft, b, u);
-            let DomNodeKind::Element(element) = &draft.node(key).unwrap().kind else {
+            let transaction::KindRead::Element(element) = &draft.node(key).unwrap().kind() else {
                 unreachable!()
             };
             let raw = element.attributes().iter().next().unwrap();
@@ -1214,13 +1218,17 @@ mod tests {
     #[test]
     fn checked_invocation_exhaustion_refuses_without_wrapping_or_publishing_attributes() {
         let (mut dom, img) = fixture();
-        Arc::get_mut(&mut dom.state)
-            .unwrap()
-            .mutate_slot(img.slot, |slot| {
-                let image = slot.node.as_mut().unwrap().image.as_mut().unwrap();
-                image.high_water = u64::MAX;
-                image.waiting.as_mut().unwrap().invocation = u64::MAX;
-            });
+        let cancel = AtomicBool::new(false);
+        let mut draft = Draft::new(&dom, DomBatch::new().owner, &cancel).unwrap();
+        {
+            let mut image = draft.image_fields_mut(Key::Existing(img), &cancel).unwrap();
+            let state = image.as_mut().unwrap();
+            state.high_water = u64::MAX;
+            state.waiting.as_mut().unwrap().invocation = u64::MAX;
+            image.commit(&cancel).unwrap();
+        }
+        let prepared = draft.finish(&dom, &cancel).unwrap();
+        dom.publish(prepared, &cancel).unwrap();
         let before = dom.snapshot();
         let usage = dom.usage();
         let mut b = DomBatch::new();
@@ -1298,8 +1306,7 @@ mod tests {
                 .node
                 .as_ref()
                 .unwrap()
-                .image
-                .as_ref()
+                .image()
                 .unwrap()
                 .high_water,
             2

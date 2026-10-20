@@ -36,7 +36,7 @@ impl Draft {
                     self.effect_scoped,
                     cancel,
                 )?;
-                if self.node(parent)?.script.is_some() && self.shadow_connected(parent, cancel)? {
+                if self.node(parent)?.script().is_some() && self.shadow_connected(parent, cancel)? {
                     self.script_post_connection(parent, cancel)?;
                 }
             }

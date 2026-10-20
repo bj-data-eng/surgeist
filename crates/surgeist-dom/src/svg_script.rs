@@ -19,7 +19,7 @@ pub(crate) struct SvgScriptState {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ProcessingQualification {
-    Native(crate::document::ClosedSvgScriptProcessing),
+    Native(crate::document::NativeSvgScriptEnvironment),
     Parsed(crate::store::parsed_installation::ParsedSvgQualification),
 }
 impl SvgScriptState {
@@ -28,7 +28,7 @@ impl SvgScriptState {
             flags: SvgScriptFlags::fresh(),
             origin: DomSvgScriptOrigin::Native,
             qualification: ProcessingQualification::Native(
-                crate::document::ClosedSvgScriptProcessing::native_creation(),
+                crate::document::NativeSvgScriptEnvironment::native_creation(),
             ),
         }
     }

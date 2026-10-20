@@ -135,6 +135,7 @@ pub struct DomDialogTaskQueueCommit<'a, 'dom> {
     lease: &'a mut DomSourceLease<'dom>,
     prepared: Option<crate::store::PreparedPublication>,
     rebase: Option<transaction::PreparedRebase>,
+    sharing: Option<value_sharing::CloseReady>,
     plan: DomDialogTaskQueuePlan,
     task: Option<DomDialogTask>,
     outputs: usize,
@@ -145,11 +146,22 @@ impl DomDialogTaskQueueCommit<'_, '_> {
     /// Publish the already admitted canonical tracker after the actual owner
     /// removes/clears/appends/stores its prepared task. This fence cannot fail.
     pub fn publish(mut self) -> (DomDialogTask, DomDialogTaskQueuePublication) {
-        let prepared = self.prepared.take().expect("prepared fence");
+        let mut prepared = self.prepared.take().expect("prepared fence");
         let rebase = self
             .rebase
             .take()
             .expect("prepared current-root continuation");
+        self.lease
+            .dom
+            .source_operation
+            .as_mut()
+            .expect("exclusive original operation")
+            .draft
+            .close_sharing_publication(
+                &mut prepared,
+                self.sharing.take(),
+                self.checkpoint.as_ref(),
+            );
         let crate::store::CommittedPublication { commit, committed } =
             self.lease.dom.publish_prepared_with_proof(prepared);
         let op = self
@@ -336,15 +348,6 @@ impl<'dom> DomSourceLease<'dom> {
                 formation.retain_bytes(
                     size_of::<DomDialogTaskQueueCommit<'_, '_>>()
                         .checked_sub(size_of::<checkpoint::Checkpoint>())
-                        .and_then(|header| {
-                            header.checked_add(
-                                if matches!(plan.info, DomDialogTaskInfo::Toggle(_)) {
-                                    size_of::<crate::dialog::DomDialogState>()
-                                } else {
-                                    0
-                                },
-                            )
-                        })
                         .ok_or(DomError::RepresentationExhausted)?,
                     cancel,
                 )?;
@@ -357,24 +360,18 @@ impl<'dom> DomSourceLease<'dom> {
                 (frame.subject, frame.locals)
             };
             if let DomDialogTaskInfo::Toggle(info) = plan.info {
-                if let Some(value) = &op.draft.dialog_state(subject)?.request_return_value {
-                    let mut payload = storage::Payload::default();
-                    payload.string(value)?;
-                    if let Some(formation) = &formation {
-                        formation.retain_payload(payload, cancel)?;
-                    }
-                }
-                let mut state = op.draft.dialog_state(subject)?.clone();
+                // The selected guard owns the complete new native body and
+                // its actual string occurrences. The outer formation owns
+                // only the queue fence wrapper, never a second native copy.
+                let mut state = op.draft.dialog_state_mut(subject, cancel)?;
                 state.toggle_tracker = Some(crate::dialog::DomDialogToggleTracker {
                     task: info.id,
                     old: info.old,
                 });
-                let mut element = op.draft.element_fields_mut(subject, cancel)?;
-                element.set_dialog_state(state);
-                element.commit(cancel)?;
+                state.commit(cancel)?;
             }
             op.draft.queue_details_clear(cancel)?;
-            let mut prepared = op.draft.finish(self.dom, cancel)?;
+            let mut prepared = op.draft.finish_segment(self.dom, cancel)?;
             prepared.state.incomplete_source = Some(self.id);
             if self.dom.state.incomplete_source != Some(self.id) {
                 formation::reserve(
@@ -393,8 +390,8 @@ impl<'dom> DomSourceLease<'dom> {
                     let modal = state.is_modal();
                     op.draft
                         .admit_dialog_occurrences(u64::from(watcher), cancel)?;
-                    let document = op.draft.node(subject)?.document;
-                    let member = match op.draft.node(document)?.interactive_document.as_ref() {
+                    let document = op.draft.node(subject)?.document();
+                    let member = match op.draft.node(document)?.interactive_document() {
                         Some(transaction::InteractiveRead::Known { open_dialogs, .. }) => {
                             let mut found = false;
                             for item in open_dialogs.iter() {
@@ -429,7 +426,7 @@ impl<'dom> DomSourceLease<'dom> {
                             top_layer,
                             pending_top_layer_removals,
                             ..
-                        }) = document_node.interactive_document.as_ref()
+                        }) = document_node.interactive_document()
                         else {
                             return Err(DomError::DialogDocumentStateUnavailable);
                         };
@@ -464,7 +461,7 @@ impl<'dom> DomSourceLease<'dom> {
                     crate::store::dialog::MethodLocals::RequestClose { .. },
                 ) => return Err(DomError::InvalidSourceOperation),
                 (DomDialogTaskInfo::Toggle(_), crate::store::dialog::MethodLocals::Show { .. }) => {
-                    let document = op.draft.node(subject)?.document;
+                    let document = op.draft.node(subject)?.document();
                     let original_window_active = match self
                         .dom
                         .snapshot()
@@ -504,7 +501,7 @@ impl<'dom> DomSourceLease<'dom> {
                     };
                     let modal_outputs = if structural_modal {
                         let document_node = op.draft.node(document)?;
-                        let raw = match document_node.interactive_document.as_ref() {
+                        let raw = match document_node.interactive_document() {
                             Some(transaction::InteractiveRead::Known { top_layer, .. }) => {
                                 top_layer
                             }
@@ -554,14 +551,19 @@ impl<'dom> DomSourceLease<'dom> {
                 return Err(DomError::SourceOutputLimit);
             }
             // Checkpoint already admits its fixed header. The wrapper's remaining
-            // inline fields and actual new Dialog Arc body were admitted above;
-            // keep that same relative formation through the exclusive fence.
+            // inline fields were admitted above; the selected Dialog guard
+            // owns its separate native body through the exclusive fence.
             if let (Some(destination), Some(formation)) = (prepared.formation.as_ref(), formation) {
                 destination.absorb(formation);
             }
             let mut prepared = self.dom.prepare_publication(prepared, cancel)?;
             let rebase = op.draft.prepare_rebase(&mut prepared, cancel)?;
-            Ok((prepared, rebase, outputs, required_phases - 1))
+            let sharing = op.draft.prepare_sharing_publication(
+                prepared.changed,
+                Some(&checkpoint),
+                cancel,
+            )?;
+            Ok((prepared, rebase, sharing, outputs, required_phases - 1))
         })();
         if result.is_err() {
             checkpoint.restore(&mut op.draft);
@@ -569,11 +571,13 @@ impl<'dom> DomSourceLease<'dom> {
             return Err(result.err().expect("failure"));
         }
         self.dom.source_operation = Some(op);
-        let (prepared, rebase, outputs, remaining_phases) = result.expect("formed publication");
+        let (prepared, rebase, sharing, outputs, remaining_phases) =
+            result.expect("formed publication");
         Ok(DomDialogTaskQueueCommit {
             lease: self,
             prepared: Some(prepared),
             rebase: Some(rebase),
+            sharing,
             plan,
             task: Some(DomDialogTask {
                 info: plan.info,

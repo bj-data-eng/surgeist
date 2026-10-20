@@ -47,7 +47,7 @@ policies. Across all 935 retained records, outcomes are 351 clean, 337 strict
 rejections, 94 recoveries, and 153 explicit unsupported dispositions. The
 unsupported count includes all 115 panic-freedom-only records and 38 active
 records; it is not an additional set of cases. The
-[census contract](../../csstree_oracle.rs) independently asserts this partition.
+[census contract](../../css/corpora/csstree/csstree_oracle.rs) independently asserts this partition.
 These corpus results do not establish complete grammar coverage of the selected
 standards profile.
 
@@ -58,7 +58,7 @@ behavior change. The I01 observables fixture
 (`tests/fixtures/i01-c01-observables.tsv`) is characterization on the same
 terms. Independent evidence comes from the CSS-owned expected classes and
 reconciliation records, and from the
-[canonical comparison](../../csstree_canonical.rs). That comparison serializes
+[canonical comparison](../../css/corpora/csstree/csstree_canonical.rs). That comparison serializes
 Surgeist's public parse result for each upstream-parsed case and compares it with
 CSSTree's own generator expectation: the case's `canonical_css`, or its input
 when that field is absent, as CSSTree's `lib/__tests/generate.js` requires at
@@ -66,7 +66,7 @@ the pinned revision. Both sides pass through one documented normalization that
 removes comments, quote style, optional whitespace and optional final
 semicolons, but keeps combinators, declarations, values and rule structure.
 Of the 721 upstream-parsed cases, 452 are compared: 277 match and 175 are
-listed in [`canonical_exceptions.rs`](../../support/csstree/canonical_exceptions.rs)
+listed in [`canonical_exceptions.rs`](../../css/support/csstree/canonical_exceptions.rs)
 as deliberate differences with a cited reason, or as known defects. The other
 269 have no public projection (108 panic-freedom-only cases) or retain no
 syntax after a whole-input rejection (161 cases, whose basis the expected

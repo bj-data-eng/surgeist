@@ -52,6 +52,9 @@ the actual current target and materializes a detached fragment in that Document.
 It applies the report's ordered Template-cache and shadow-attachment effects;
 it does not implicitly append the fragment to its context. Retained auxiliary
 parser Documents remain distinct from the captured target and template owners.
+ShadowRoot captures also preserve the root's actual node Document separately
+from its host's Document. Installation resolves both through their qualified
+bindings and materializes the fragment in the target Document.
 `DomParsedHtmlInstallation` keeps the report, installed snapshot, changes and
 separate construction-subject and captured-subject bindings as historical data.
 Subsequent edits cannot extend or rewrite those bindings.
@@ -71,6 +74,33 @@ the ordered construction effects. Missing or changed required facts receive
 `CurrentPolicyUnavailable`. Auxiliary parser and inert-owner history keep their
 original roles. An optional unused whole captured Base bank remains fully charged
 historical request data; it does not override the current canonical bindings.
+
+## Meta Document history
+
+Installation transfers qualified per-Document language, referrer, refresh,
+theme-color and authored color-scheme history. The original parser selects CSS
+values under its own finite admission; installation retains the sealed result
+without parsing CSS or replaying native Meta hooks. Selected color-scheme backing
+also consumes the canonical retained-report allowance. Untouched Template-owner
+Documents retain their own known absence. Reached unavailable media/CSS facts,
+preferred-style or CSP processing still refuse the entire installation.
+
+## Control state and form associations
+
+Installation transfers the report's current values, dirty/checked/selected flags,
+control state and qualified associations. Result-local Form and Option/Select
+references map to their fresh canonical identities. Parser-special nonancestor
+Form associations from ordinary document parsing retain their actual owner and
+parser-inserted flag through installation.
+
+A captured nearest Form supplies fragment parsing context. It does not itself
+establish a parser-special external owner: the pinned
+[create-element algorithm](../../../references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md)
+requires a null fragment context for that association. Detached installation
+preserves the actual report state. Later explicit insertion, clone/import,
+removal and adoption apply their ordinary copy/reset rules against the current
+canonical tree. Retained reports and installation snapshots preserve their
+historical values and associations after those edits.
 
 ## Contextual SVG Script and Dialog history
 

@@ -32,10 +32,13 @@ impl Frame {
 
 impl Draft {
     fn output_state(&self, key: Key) -> Result<&crate::DomOutputState, DomError> {
-        let DomNodeKind::Element(element) = &self.node(key)?.kind else {
+        let transaction::KindRead::Element(element) = &self.node(key)?.kind() else {
             return Err(DomError::OutputInapplicable);
         };
-        element.output_state().ok_or(DomError::OutputInapplicable)
+        element
+            .language()
+            .output_state()
+            .ok_or(DomError::OutputInapplicable)
     }
     fn output_override(
         &mut self,
@@ -56,17 +59,13 @@ impl Draft {
         let retained = value
             .map(|value| source::formation::shared_string(self, value, cancel))
             .transpose()?;
-        self.prepare_family_mutation(key, cancel)?;
         let (value, payload) = match retained {
             Some((value, payload)) => (Some(value), payload),
             None => (None, None),
         };
-        self.with_element_fields_charged(key, cancel, payload, |element| {
-            element
-                .output_state_mut()
-                .expect("checked Output")
-                .default_override = value;
-        })?;
+        let mut state = self.output_state_mut(key, cancel)?;
+        state.default_override = value;
+        state.commit_charged(payload, cancel)?;
         self.units = units;
         Ok(())
     }
@@ -83,10 +82,10 @@ impl Draft {
         loop {
             self.source_step(cancel)?;
             let node = self.node(key)?;
-            if let DomNodeKind::Text(text) = &node.kind {
+            if let transaction::KindRead::Text(text) = &node.kind() {
                 visit(text)?;
             }
-            if let Some(child) = node.children.first() {
+            if let Some(child) = node.children().first() {
                 key = child;
                 continue;
             }
@@ -97,11 +96,11 @@ impl Draft {
                 }
                 let parent = self
                     .node(key)?
-                    .parent
+                    .parent()
                     .expect("ordinary descendant has parent");
                 let mut found = false;
                 let mut next = None;
-                for child in self.node(parent)?.children.iter() {
+                for child in self.node(parent)?.children().iter() {
                     self.source_step(cancel)?;
                     if found {
                         next = Some(child);
@@ -491,7 +490,12 @@ mod tests {
             let key = draft.resolve(output.into()).unwrap();
             let input_key = draft.resolve(input.into()).unwrap();
             let form_key = draft.resolve(form.into()).unwrap();
-            let old_children = draft.node(key).unwrap().children.iter().collect::<Vec<_>>();
+            let old_children = draft
+                .node(key)
+                .unwrap()
+                .children()
+                .iter()
+                .collect::<Vec<_>>();
             let mut actions = Vec::new();
             let stop = if reset {
                 Action::ClearDefaultOverride
@@ -529,12 +533,12 @@ mod tests {
                         Action::ClearDefaultOverride
                     ]
                 );
-                assert_eq!(draft.node(input_key).unwrap().control_owner, None);
-                assert_eq!(draft.node(input_key).unwrap().parent, None);
-                assert_eq!(draft.node(key).unwrap().children.len(), 1);
-                let child = draft.node(key).unwrap().children.get(0).unwrap();
+                assert_eq!(draft.node(input_key).unwrap().control_owner(), None);
+                assert_eq!(draft.node(input_key).unwrap().parent(), None);
+                assert_eq!(draft.node(key).unwrap().children().len(), 1);
+                let child = draft.node(key).unwrap().children().get(0).unwrap();
                 assert!(
-                    matches!(&draft.node(child).unwrap().kind,DomNodeKind::Text(v) if v == &DocumentString::from("old"))
+                    matches!(draft.node(child).unwrap().kind(),transaction::KindRead::Text(v) if v.code_units() == [111,108,100])
                 );
             } else {
                 assert_eq!(
@@ -546,10 +550,18 @@ mod tests {
                     ]
                 );
                 assert_eq!(
-                    draft.node(key).unwrap().children.iter().collect::<Vec<_>>(),
+                    draft
+                        .node(key)
+                        .unwrap()
+                        .children()
+                        .iter()
+                        .collect::<Vec<_>>(),
                     old_children
                 );
-                assert_eq!(draft.node(input_key).unwrap().control_owner, Some(form_key));
+                assert_eq!(
+                    draft.node(input_key).unwrap().control_owner(),
+                    Some(form_key)
+                );
             }
             drop(draft);
             assert_eq!(*dom.state, *before.state);
@@ -603,18 +615,18 @@ mod tests {
             b.adopt(output, &newdoc);
             let prepared = dom.prepare(b, &cancel).unwrap();
             let actual = prepared.state.node(dom.owner, output).unwrap();
-            let DomNodeKind::Element(element) = &actual.kind else {
+            let DomNodeKind::Element(element) = &actual.kind() else {
                 unreachable!()
             };
             assert_eq!(
                 element.output_state().unwrap().default_value_override(),
                 Some(&DocumentString::from("new default"))
             );
-            assert_eq!(actual.control_owner, None);
-            assert_eq!(actual.parent, None);
-            assert_eq!(actual.children.len(), 1);
+            assert_eq!(actual.control_owner(), None);
+            assert_eq!(actual.parent(), None);
+            assert_eq!(actual.children().len(), 1);
             assert_eq!(
-                actual.document.node(),
+                actual.document().node(),
                 prepared.created[newdoc.index].unwrap()
             );
             if !exhausted {

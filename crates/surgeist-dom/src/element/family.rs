@@ -1,9 +1,8 @@
 //! Actual native family state; cloning this storage preserves snapshots, while
 //! DOM single-node cloning selects fresh initialization before copied attrs.
-use crate::store::source::{
-    formation::Formation,
-    storage::{self, Payload},
-};
+use super::ElementFormation;
+use crate::store::payload::Payload as Materialized;
+use crate::store::source::{formation::Formation, storage::Payload};
 #[cfg(test)]
 use crate::{Attribute, QualifiedName};
 use crate::{DocumentString, DomError};
@@ -46,9 +45,9 @@ pub(super) struct AttributeMutation<'a, N: HtmlNameInput + ?Sized, A: HtmlAttrib
 pub(crate) enum NativeFamily {
     Common,
     Details,
-    Dialog(Arc<crate::dialog::DomDialogState>),
+    Dialog(Arc<Materialized<crate::dialog::DomDialogState>>),
     Meta,
-    Style(Arc<crate::DomStyleState>),
+    Style(Arc<Materialized<crate::DomStyleState>>),
     Base,
     Link,
     Img,
@@ -57,19 +56,19 @@ pub(crate) enum NativeFamily {
     Hyperlink,
     Template,
     Form(surgeist_html::HtmlFormNativeState),
-    Fieldset(crate::DomFieldsetState),
-    Button(crate::DomButtonState),
-    Input(Arc<crate::DomInputState>),
-    Textarea(Arc<crate::DomTextareaState>),
-    Output(Arc<crate::DomOutputState>),
-    Select(Arc<crate::DomSelectState>),
+    Fieldset(Arc<Materialized<crate::DomFieldsetState>>),
+    Button(Arc<Materialized<crate::DomButtonState>>),
+    Input(Arc<Materialized<crate::DomInputState>>),
+    Textarea(Arc<Materialized<crate::DomTextareaState>>),
+    Output(Arc<Materialized<crate::DomOutputState>>),
+    Select(Arc<Materialized<crate::DomSelectState>>),
     Option(crate::DomOptionState),
     Optgroup,
     Selectedcontent(bool),
     Slot,
     Script,
     SvgScript(crate::svg_script::SvgScriptState),
-    Canvas(Arc<HtmlCanvasNoneState>),
+    Canvas(Arc<Materialized<HtmlCanvasNoneState>>),
     Marquee(HtmlMarqueeState),
     Frame,
     Iframe(IframeState),
@@ -84,14 +83,16 @@ impl NativeFamily {
             }
         }
         match self {
-            Self::Dialog(state) => state.units(),
-            Self::Fieldset(state) => Some(state.control.message.len()),
-            Self::Button(state) => Some(state.control.message.len()),
-            Self::Input(state) => state.units(),
-            Self::Textarea(state) => state.units(),
-            Self::Output(state) => state.units(),
-            Self::Select(state) => Some(state.control.message.len()),
-            Self::Canvas(state) => units(state.width()).checked_add(units(state.height())),
+            Self::Dialog(state) => state.value.units(),
+            Self::Fieldset(state) => Some(state.value.control.message.len()),
+            Self::Button(state) => Some(state.value.control.message.len()),
+            Self::Input(state) => state.value.units(),
+            Self::Textarea(state) => state.value.units(),
+            Self::Output(state) => state.value.units(),
+            Self::Select(state) => Some(state.value.control.message.len()),
+            Self::Canvas(state) => {
+                units(state.value.width()).checked_add(units(state.value.height()))
+            }
             Self::Form(_)
             | Self::Common
             | Self::Details
@@ -120,9 +121,10 @@ impl NativeFamily {
         &self,
         change: AttributeMutation<'_, N, A>,
         admit: &mut impl FnMut() -> Result<(), DomError>,
-        budget: Option<&Formation>,
-        cancel: &AtomicBool,
+        formation: &mut ElementFormation<'_>,
     ) -> Result<Self, DomError> {
+        let budget = formation.budget;
+        let cancel = formation.cancel;
         let AttributeMutation {
             element_name,
             name,
@@ -196,15 +198,12 @@ impl NativeFamily {
         if !matches!(self, Self::Canvas(_)) || dimension(name, budget, cancel)?.is_none() {
             return self.shared(budget, cancel);
         }
-        Self::canvas_from_attributes(attributes, admit, budget, cancel)
+        Self::canvas_from_attributes(attributes, admit, formation)
     }
-    fn shared(&self, budget: Option<&Formation>, cancel: &AtomicBool) -> Result<Self, DomError> {
-        if let Some(budget) = budget {
-            budget.retain_payload(
-                storage::family_payload(self, || budget.step(cancel))?,
-                cancel,
-            )?;
-        }
+    fn shared(&self, _budget: Option<&Formation>, cancel: &AtomicBool) -> Result<Self, DomError> {
+        crate::store::check_cancel(cancel)?;
+        // These are aliases of the same materializations. Their original
+        // identities and child custody survive; no body/string is formed here.
         Ok(self.clone())
     }
     /// Pure owned Canvas dimension interpretation shared with actual retained
@@ -212,9 +211,10 @@ impl NativeFamily {
     pub(crate) fn canvas_from_attributes<A: HtmlAttributeInput>(
         attributes: &[A],
         admit: &mut impl FnMut() -> Result<(), DomError>,
-        budget: Option<&Formation>,
-        cancel: &AtomicBool,
+        formation: &mut ElementFormation<'_>,
     ) -> Result<Self, DomError> {
+        let budget = formation.budget;
+        let cancel = formation.cancel;
         let mut width = None;
         let mut height = None;
         for attribute in attributes {
@@ -269,9 +269,22 @@ impl NativeFamily {
                 bytes: released,
                 units: released,
             });
-            budget.retain_bytes(std::mem::size_of::<HtmlCanvasNoneState>(), cancel)?;
         }
-        Ok(Self::Canvas(Arc::new(state)))
+        let mut extra = Payload::default();
+        for dimension in [state.width(), state.height()] {
+            if let HtmlCanvasBitmapDimension::Parsed(value) = dimension {
+                extra.add_bytes(value.retained_buffer_bytes())?;
+                extra.add_units(value.retained_buffer_bytes())?;
+            }
+        }
+        let original = if budget.is_some() {
+            extra
+        } else {
+            Payload::default()
+        };
+        Ok(Self::Canvas(
+            formation.native(extra, original, || Ok(state))?,
+        ))
     }
 }
 
@@ -468,10 +481,30 @@ fn parse_dimension(
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, Ordering};
+    fn registry() -> crate::store::bank::CustodyRegistry {
+        crate::store::bank::CustodyRegistry::new(&crate::store::custody::Ledger::default(), |_| {
+            Ok(())
+        })
+        .unwrap()
+    }
+    fn canvas() -> NativeFamily {
+        let registry = registry();
+        let cancel = AtomicBool::new(false);
+        let mut admit = |_| Ok(());
+        let mut formation = ElementFormation::new(&registry, None, &cancel, &mut admit);
+        NativeFamily::Canvas(
+            formation
+                .native(Payload::default(), Payload::default(), || {
+                    Ok(HtmlCanvasNoneState::fresh())
+                })
+                .unwrap(),
+        )
+    }
     #[test]
     fn iframe_sandbox_mutation_updates_only_the_actual_nonnull_content_slot() {
         use surgeist_html::{HtmlChildNavigablePresence as Presence, HtmlSandboxFlag};
         let cancel = AtomicBool::new(false);
+        let registry = registry();
         let element = QualifiedName::new(crate::Namespace::html(), None, "iframe");
         let name = QualifiedName::new(crate::Namespace::none(), None, "sandbox");
         let update = |family: &NativeFamily, attributes: &[Attribute], content| {
@@ -485,8 +518,7 @@ mod tests {
                         content: Some(content),
                     },
                     &mut || crate::store::check_cancel(&cancel),
-                    None,
-                    &cancel,
+                    &mut ElementFormation::new(&registry, None, &cancel, &mut |_| Ok(())),
                 )
                 .unwrap()
         };
@@ -522,6 +554,7 @@ mod tests {
             "allow-same-origin allow-scripts",
         )];
         let cancel = AtomicBool::new(false);
+        let registry = registry();
         let element = QualifiedName::new(crate::Namespace::html(), None, "iframe");
         let mut reads = 0;
         let result = family.after_attribute(
@@ -539,8 +572,7 @@ mod tests {
                 }
                 crate::store::check_cancel(&cancel)
             },
-            None,
-            &cancel,
+            &mut ElementFormation::new(&registry, None, &cancel, &mut |_| Ok(())),
         );
         assert_eq!(result, Err(DomError::Cancelled));
         assert_eq!(reads, 8);
@@ -548,10 +580,11 @@ mod tests {
     }
     #[test]
     fn cancellation_during_actual_dimension_scan_stops_without_mutating_family() {
-        let family = NativeFamily::Canvas(Arc::new(HtmlCanvasNoneState::fresh()));
+        let family = canvas();
         let name = QualifiedName::new(crate::Namespace::none(), None, "width");
         let attributes = [Attribute::new(name.clone(), "123456789")];
         let cancel = AtomicBool::new(false);
+        let registry = registry();
         let mut reads = 0;
         let element = QualifiedName::new(crate::Namespace::html(), None, "canvas");
         let result = family.after_attribute(
@@ -569,15 +602,11 @@ mod tests {
                 }
                 crate::store::check_cancel(&cancel)
             },
-            None,
-            &cancel,
+            &mut ElementFormation::new(&registry, None, &cancel, &mut |_| Ok(())),
         );
         assert_eq!(result, Err(DomError::Cancelled));
         assert_eq!(reads, 5);
         assert_eq!(family.units(), Some(0));
-        assert_eq!(
-            family,
-            NativeFamily::Canvas(Arc::new(HtmlCanvasNoneState::fresh()))
-        );
+        assert_eq!(family, canvas());
     }
 }

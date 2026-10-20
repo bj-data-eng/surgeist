@@ -444,7 +444,7 @@ fn callback_adoption_preserves_original_host_scope_in_both_dispositions() {
         .unwrap();
         registry
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 subject,
                 DomEventType::BeforeToggle,
                 DomEventCallback::new(move |dom, _, context: &mut Context, _| {
@@ -614,7 +614,7 @@ fn nested_native_show_selects_its_own_scope_instead_of_inheriting_parent_absence
         .unwrap();
         registry
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 parent,
                 DomEventType::BeforeToggle,
                 DomEventCallback::new(move |dom, _, context: &mut Context, event| {

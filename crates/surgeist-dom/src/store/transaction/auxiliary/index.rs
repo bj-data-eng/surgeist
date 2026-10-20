@@ -116,11 +116,22 @@ fn chunk(value: u64, level: u32) -> usize {
 }
 impl<T> U64Bank<T> {
     pub fn get(&self, key: u64) -> Option<&T> {
+        self.get_with(key, &mut || Ok::<(), std::convert::Infallible>(()))
+            .expect("infallible observation")
+    }
+    fn get_with<E>(
+        &self,
+        key: u64,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<&T>, E> {
         let mut current = self;
         for level in (1..=3).rev() {
-            current = &current.branches.get(chunk(key, level))?.next;
+            let Some(branch) = current.branches.get_with(chunk(key, level), step)? else {
+                return Ok(None);
+            };
+            current = &branch.next;
         }
-        current.values.get(chunk(key, 0))
+        current.values.get_with(chunk(key, 0), step)
     }
     pub fn usage(&self) -> Result<custody::Usage, DomError> {
         bank_usage(&self.branches)?.checked_add(bank_usage(&self.values)?)
@@ -330,14 +341,23 @@ pub(in crate::store) fn bank_usage<T>(bank: &bank::Bank<T>) -> Result<custody::U
 }
 impl<T> Index<T> {
     pub fn get(&self, key: Key) -> Result<Option<&T>, DomError> {
+        self.get_with(key, &mut || Ok(()))
+    }
+    pub fn get_with<E: From<DomError>>(
+        &self,
+        key: Key,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<&T>, E> {
         if self.owner.is_some_and(|owner| owner != key.source.owner) {
-            return Err(DomError::ForeignOwner);
+            return Err(DomError::ForeignOwner.into());
         }
-        Ok(self
-            .sources
-            .get(key.source.serial)
-            .and_then(|source| source.slots.get(key.slot))
-            .and_then(|slot| slot.values.get(key.generation)))
+        let Some(source) = self.sources.get_with(key.source.serial, step)? else {
+            return Ok(None);
+        };
+        let Some(slot) = source.slots.get_with(key.slot, step)? else {
+            return Ok(None);
+        };
+        slot.values.get_with(key.generation, step)
     }
     pub fn usage(&self) -> Result<custody::Usage, DomError> {
         self.sources.usage()

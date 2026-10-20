@@ -189,7 +189,7 @@ fn actual_handoff_and_outer_tail_rollback_share_the_original_cumulative_work_cap
             .state
             .node(retry.dom.owner, document.node())
             .unwrap()
-            .fullscreen_events
+            .fullscreen_events()
             .len(),
         1
     );
@@ -256,7 +256,7 @@ fn dropped_prepared_handoff_restores_its_prefix_and_reuses_only_the_same_exposed
             .state
             .node(lease.dom.owner, document.node())
             .unwrap()
-            .fullscreen_events
+            .fullscreen_events()
             .is_empty()
     );
     drop(lease);
@@ -398,4 +398,353 @@ fn work_custody_lookup_does_not_visit_unrelated_retained_invocations() {
     for id in ids {
         assert_eq!(dom.fullscreen_exit_status(id).unwrap().document(), document);
     }
+}
+
+#[test]
+fn recorded_bound_descendant_context_refuses_context_free_handoff_before_either_publication() {
+    use crate::{
+        DomInlineStyleChange, DomInlineStyleInputs, DomInlineStyleLimits, DomInlineStyleProfile,
+        DomInlineStyleRequestLimits, DomInlineStyleSourceContext,
+    };
+    use surgeist_css::{CssParserContext, CssParserMode, CssUtf16InputLimits};
+    use surgeist_cssom::{
+        CssomDeclarationRequestLimits, CssomDeclarationSupport, CssomInputRole, CssomInputVersion,
+        CssomLimits,
+    };
+    let cancel = AtomicBool::new(false);
+    let (mut dom, source, document, subject) = fixture();
+    let mut batch = DomBatch::new();
+    let descendant = batch.create_element_ns(document, crate::Namespace::html(), "div");
+    batch.insert_before(&descendant, subject, None);
+    let descendant = dom
+        .apply(batch, &cancel)
+        .unwrap()
+        .created(&descendant)
+        .unwrap()
+        .unwrap();
+    dom.configure_inline_styles(
+        DomInlineStyleLimits::new(CssomLimits::default(), 8, 64_000_000, 8_000_000, 4_000_000)
+            .unwrap(),
+        &cancel,
+    )
+    .unwrap();
+    let snapshot = dom.snapshot();
+    let document_view = snapshot.document(document).unwrap();
+    let parser = CssParserContext::new(
+        if document_view.metadata().mode() == crate::HtmlDocumentMode::Quirks {
+            CssParserMode::Quirks
+        } else {
+            CssParserMode::Standards
+        },
+    );
+    let version = CssomInputVersion {
+        role: CssomInputRole::Support,
+        identity: "fullscreen-inline-empty".into(),
+        revision: 1,
+    };
+    let inputs = DomInlineStyleInputs::new(
+        document_view.stamp(),
+        parser,
+        version.clone(),
+        CssomDeclarationSupport::default(),
+    )
+    .unwrap();
+    let requests = DomInlineStyleRequestLimits {
+        input: CssUtf16InputLimits::default(),
+        declaration: CssomDeclarationRequestLimits::default(),
+    };
+    let properties = dom
+        .inline_style(
+            descendant,
+            &inputs,
+            requests,
+            |_, _| panic!("empty attribute"),
+            &cancel,
+        )
+        .unwrap();
+    let old = dom.capture_inline_style(descendant).unwrap().unwrap();
+    let before = dom.snapshot();
+    let context = DomInlineStyleSourceContext::new(
+        before.stamp(),
+        vec![
+            DomInlineStyleProfile::new(
+                descendant,
+                document,
+                parser,
+                version,
+                CssomDeclarationSupport::default(),
+            )
+            .unwrap(),
+        ],
+    )
+    .unwrap();
+    let mut lease = dom
+        .begin_source_edit_with_inline_styles(
+            DomSourceEdit::detach(subject),
+            context,
+            policy(1024),
+            requests,
+            &cancel,
+        )
+        .unwrap();
+    let operation = lease.operation();
+    let progress = lease
+        .advance_with_inline_styles(|_, _| panic!("context changes never reparse"), &cancel)
+        .unwrap();
+    assert!(progress.inline().is_none());
+    let DomSourceProgress::Request(DomSourceRequest::FullscreenExitHandoff(request)) =
+        progress.into_parts().0
+    else {
+        panic!("actual removing-step handoff")
+    };
+    assert_eq!(lease.snapshot().stamp(), before.stamp());
+    assert_eq!(
+        lease.snapshot().node(subject).unwrap().parent(),
+        before.node(subject).unwrap().parent()
+    );
+    let work = lease.status().spent_work();
+    match lease.prepare_fullscreen_exit_handoff(&request, &source, &cancel) {
+        Err(error) => assert_eq!(
+            error,
+            DomError::InlineStyleContextRequired {
+                element: descendant,
+                change: DomInlineStyleChange::Context
+            }
+        ),
+        Ok(_) => panic!("a context-free handoff cannot publish the recorded context"),
+    }
+    assert_eq!(lease.operation(), operation);
+    assert!(lease.status().spent_work() > work);
+    assert!(!lease.status().has_published());
+    assert_eq!(lease.snapshot().stamp(), before.stamp());
+    assert_eq!(
+        lease.snapshot().node(subject).unwrap().parent(),
+        before.node(subject).unwrap().parent()
+    );
+    assert!(
+        lease
+            .snapshot()
+            .node(subject)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .fullscreen_flag()
+    );
+    assert!(lease.dom.fullscreen_exits.is_empty());
+    assert!(matches!(
+        lease.dom.capture_inline_style(descendant),
+        Err(crate::DomInlineStyleError::Dom(
+            DomError::IncompleteSourceOperation
+        ))
+    ));
+    let snapshot = lease.dom.inline_snapshot_for_test().unwrap();
+    let current = properties.capture(&snapshot).unwrap();
+    assert_eq!(current.handle(), &properties);
+    assert_eq!(
+        current.snapshot().revision(),
+        old.properties().snapshot().revision()
+    );
+    assert_eq!(
+        lease.snapshot().node(descendant).unwrap().tree_scope(),
+        old.tree_scope()
+    );
+    assert_eq!(current.length(requests.declaration).unwrap(), 0);
+    assert_eq!(old.properties().length(requests.declaration).unwrap(), 0);
+    drop(lease);
+    assert_eq!(dom.pending_source_edit().unwrap().operation(), operation);
+    // The exposed service request parks the original tail, without claiming a
+    // completed orientation service or dropping its mandatory continuation.
+}
+
+#[test]
+fn bound_descendant_handoff_commits_context_once_and_resumes_original_removal() {
+    use crate::{
+        DomInlineStyleInputs, DomInlineStyleLimits, DomInlineStyleProfile,
+        DomInlineStyleRequestLimits, DomInlineStyleSourceContext,
+    };
+    use surgeist_css::{CssParserContext, CssParserMode, CssUtf16InputLimits};
+    use surgeist_cssom::{
+        CssomDeclarationRequestLimits, CssomDeclarationSupport, CssomInputRole, CssomInputVersion,
+        CssomLimits, CssomUsabilityRequirement,
+    };
+    let cancel = AtomicBool::new(false);
+    let (mut dom, source, document, subject) = fixture();
+    let mut batch = DomBatch::new();
+    let descendant = batch.create_element_ns(document, crate::Namespace::html(), "div");
+    batch.insert_before(&descendant, subject, None);
+    batch.set_attribute(&descendant, "style", "width: 5px");
+    let descendant = dom
+        .apply(batch, &cancel)
+        .unwrap()
+        .created(&descendant)
+        .unwrap()
+        .unwrap();
+    dom.configure_inline_styles(
+        DomInlineStyleLimits::new(CssomLimits::default(), 8, 64_000_000, 8_000_000, 4_000_000)
+            .unwrap(),
+        &cancel,
+    )
+    .unwrap();
+    let snapshot = dom.snapshot();
+    let document_view = snapshot.document(document).unwrap();
+    let parser = CssParserContext::new(
+        if document_view.metadata().mode() == crate::HtmlDocumentMode::Quirks {
+            CssParserMode::Quirks
+        } else {
+            CssParserMode::Standards
+        },
+    );
+    let version = CssomInputVersion {
+        role: CssomInputRole::Support,
+        identity: "fullscreen-inline-width".into(),
+        revision: 1,
+    };
+    let support = CssomDeclarationSupport::try_new(vec![(
+        surgeist_css::CssPropertyGrammar::from_name("width").unwrap(),
+        CssomUsabilityRequirement::AllCheckedValues,
+    )])
+    .unwrap();
+    let inputs = DomInlineStyleInputs::new(
+        document_view.stamp(),
+        parser,
+        version.clone(),
+        support.clone(),
+    )
+    .unwrap();
+    let requests = DomInlineStyleRequestLimits {
+        input: CssUtf16InputLimits::default(),
+        declaration: CssomDeclarationRequestLimits::default(),
+    };
+    let properties = dom
+        .inline_style(
+            descendant,
+            &inputs,
+            requests,
+            |_, _| panic!("checked width requires no external decision"),
+            &cancel,
+        )
+        .unwrap();
+    let old = dom.capture_inline_style(descendant).unwrap().unwrap();
+    let before = dom.snapshot();
+    let context = DomInlineStyleSourceContext::new(
+        before.stamp(),
+        vec![DomInlineStyleProfile::new(descendant, document, parser, version, support).unwrap()],
+    )
+    .unwrap();
+    let mut lease = dom
+        .begin_source_edit_with_inline_styles(
+            DomSourceEdit::detach(subject),
+            context,
+            policy(1024),
+            requests,
+            &cancel,
+        )
+        .unwrap();
+    let operation = lease.operation();
+    let progress = lease
+        .advance_with_inline_styles(|_, _| panic!("context changes never reparse"), &cancel)
+        .unwrap();
+    assert!(progress.inline().is_none());
+    let DomSourceProgress::Request(DomSourceRequest::FullscreenExitHandoff(request)) =
+        progress.into_parts().0
+    else {
+        panic!("actual removing-step handoff")
+    };
+    assert_eq!(lease.snapshot().stamp(), before.stamp());
+    assert_eq!(
+        lease.snapshot().node(subject).unwrap().parent(),
+        before.node(subject).unwrap().parent()
+    );
+    let work = lease.status().spent_work();
+    cancel.store(true, Ordering::Relaxed);
+    assert!(matches!(
+        lease.commit_fullscreen_exit_handoff_with_inline_styles(
+            &request,
+            &source,
+            |_, _| panic!("context changes never reparse"),
+            &cancel
+        ),
+        Err(crate::DomInlineStyleError::Dom(DomError::Cancelled))
+    ));
+    cancel.store(false, Ordering::Relaxed);
+    assert_eq!(lease.snapshot().stamp(), before.stamp());
+    assert!(lease.dom.fullscreen_exits.is_empty());
+    let (job, publication) = lease
+        .commit_fullscreen_exit_handoff_with_inline_styles(
+            &request,
+            &source,
+            |_, _| panic!("context changes never reparse"),
+            &cancel,
+        )
+        .unwrap();
+    let publication = publication.expect("actual bound context publication");
+    assert_eq!(job.id(), request.invocation());
+    assert_eq!(publication.dom().from(), before.stamp());
+    assert_eq!(publication.dom().to(), lease.snapshot().stamp());
+    assert!(publication.inline().owner_effects().is_empty());
+    assert!(lease.status().spent_work() > work);
+    assert_eq!(lease.operation(), operation);
+    assert_eq!(lease.snapshot().node(subject).unwrap().parent(), None);
+    assert!(
+        !lease
+            .snapshot()
+            .node(subject)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .fullscreen_flag()
+    );
+    let current_snapshot = lease.dom.inline_snapshot_for_test().unwrap();
+    let current = properties.capture(&current_snapshot).unwrap();
+    assert_eq!(current.handle(), &properties);
+    assert_ne!(
+        current.snapshot().revision(),
+        old.properties().snapshot().revision()
+    );
+    assert_eq!(current.length(requests.declaration).unwrap(), 1);
+    assert_eq!(
+        current
+            .get_property_value("width", requests.declaration)
+            .unwrap(),
+        "5px"
+    );
+    assert_eq!(
+        old.properties()
+            .get_property_value("width", requests.declaration)
+            .unwrap(),
+        "5px"
+    );
+    assert_eq!(old.properties().length(requests.declaration).unwrap(), 1);
+    assert!(matches!(
+        lease.commit_fullscreen_exit_handoff_with_inline_styles(
+            &request,
+            &source,
+            |_, _| panic!("stale handoff never resolves"),
+            &cancel
+        ),
+        Err(crate::DomInlineStyleError::Dom(
+            DomError::InvalidSourceOperation
+        ))
+    ));
+    drop(lease);
+    let mut lease = dom
+        .resume_source_edit(operation, policy(1024), &cancel)
+        .unwrap();
+    let completed = lease
+        .advance_with_inline_styles(|_, _| panic!("removal tail never reparses"), &cancel)
+        .unwrap();
+    assert!(completed.inline().is_none());
+    assert!(matches!(
+        completed.into_parts().0,
+        DomSourceProgress::Complete(_)
+    ));
+    drop(lease);
+    assert!(dom.pending_source_edit().is_none());
+    assert_eq!(
+        dom.fullscreen_exit_status(job.id()).unwrap().operation(),
+        operation
+    );
+    let capture = dom.capture_inline_style(descendant).unwrap().unwrap();
+    assert_eq!(capture.properties().handle(), &properties);
+    assert_eq!(capture.tree_scope().root(), subject);
 }

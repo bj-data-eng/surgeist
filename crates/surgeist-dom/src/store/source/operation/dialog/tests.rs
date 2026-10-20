@@ -221,6 +221,12 @@ fn request_close_called_boundary_reserves_nested_close_before_request_state_publ
             focusing: None,
         },
     ));
+    operation.refresh_admission(&cancel).unwrap();
+    let input_bytes = operation.input_bytes().unwrap();
+    let checkpoint = operation
+        .draft
+        .source_checkpoint(input_bytes, 0, &cancel)
+        .unwrap();
     let Command::RequestCloseDialog { result, .. } = &operation.commands[0] else {
         panic!("original requestClose input");
     };
@@ -261,7 +267,12 @@ fn request_close_called_boundary_reserves_nested_close_before_request_state_publ
     // Toggle tracking, open-removal/watcher-stop, Close queue, and final reset
     // publications. Two remaining revisions cannot cover the initial request
     // publication plus that tail; refuse before force/request fields escape.
-    let called = lease.begin_request_close(&mut operation, false, &cancel);
+    let called = lease.begin_request_close(&mut operation, false, &checkpoint, &cancel);
+    if called.is_err() {
+        checkpoint.restore(&mut operation.draft);
+    } else {
+        drop(checkpoint);
+    }
     lease.dom.source_operation = Some(operation);
     assert!(
         matches!(called, Err(DomError::RevisionExhausted)),

@@ -1092,7 +1092,7 @@ impl Dom {
             .filter(|row| row.target == target)
             .ok_or(DomError::InvalidDispatchCustody)?;
         match self.state.node(self.owner, target) {
-            Ok(node) => Ok(DomDispatchAssociation::Current(node.document)),
+            Ok(node) => Ok(DomDispatchAssociation::Current(node.document())),
             Err(DomError::StaleNode) => row
                 .retired
                 .get()

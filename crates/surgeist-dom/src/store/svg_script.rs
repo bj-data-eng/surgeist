@@ -14,8 +14,8 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         check_cancel(cancel)?;
-        let Some(state) = (match &self.node(key)?.kind {
-            DomNodeKind::Element(element) => element.svg_script_state(),
+        let Some(state) = (match &self.node(key)?.kind() {
+            transaction::KindRead::Element(element) => element.language().svg_script_state(),
             _ => None,
         }) else {
             return Ok(());
@@ -25,18 +25,20 @@ impl Draft {
         }
         // Connection follows shadow topology; qualification follows the actual
         // node document, which need not be the connected host document.
-        let document = self.node(key)?.document;
+        let document = self.node(key)?.document();
         let environment = self
             .document_metadata(document)?
             .document_environment()
             .clone();
+        self.require_svg_notification_closed(key, cancel)?;
         check_cancel(cancel)?;
-        self.with_element_fields(key, cancel, |element| {
+        let result = self.with_element_fields(key, cancel, |element| {
             element
                 .svg_script_state_mut()
-                .expect("checked SVG Script")
+                .expect("qualified SVG Script")
                 .mark_processed_in(environment)
-        })??;
+        })?;
+        result?;
         #[cfg(test)]
         if let Some(trace) = &mut self.svg_processing_trace {
             // Private deterministic observer of the real write, absent from
@@ -55,7 +57,7 @@ mod tests {
     use super::*;
 
     fn processed(draft: &Draft, key: Key) -> bool {
-        let DomNodeKind::Element(element) = &draft.node(key).unwrap().kind else {
+        let transaction::KindRead::Element(element) = &draft.node(key).unwrap().kind() else {
             unreachable!()
         };
         element
@@ -153,7 +155,7 @@ mod tests {
             draft
                 .node(draft.resolve(fragment.into()).unwrap())
                 .unwrap()
-                .children
+                .children()
                 .is_empty()
         );
         drop(draft);
@@ -272,7 +274,7 @@ mod tests {
             b.detach(script);
             let prepared = dom.prepare(b, &cancel).unwrap();
             let actual = prepared.state.node(dom.owner, script).unwrap();
-            let DomNodeKind::Element(element) = &actual.kind else {
+            let DomNodeKind::Element(element) = &actual.kind() else {
                 unreachable!()
             };
             assert!(
@@ -282,7 +284,7 @@ mod tests {
                     .flags
                     .already_processed()
             );
-            assert_eq!(actual.parent, None);
+            assert_eq!(actual.parent(), None);
             if !exhausted {
                 cancel.store(true, Ordering::Release);
             }

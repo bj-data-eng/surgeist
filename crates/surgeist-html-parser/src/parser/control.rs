@@ -14,7 +14,9 @@ use std::{
 
 mod attributes;
 mod construction;
+mod css_value;
 mod finalization;
+pub(crate) use css_value::CssSchemeValue;
 #[cfg(test)]
 pub(crate) use finalization::{
     FinalizationCut, FinalizationObservation, FinalizationTransferObservation,
@@ -79,6 +81,12 @@ pub enum ParseStop {
     InvalidAssociatedFacts,
     /// Reached CSS processing/fact failure, distinct from invalid CSS syntax.
     ColorProcessing(HtmlColorProcessingError),
+    /// A finite CSS property owner refused its actual reached resource.
+    CssPropertyLimit {
+        resource: &'static str,
+    },
+    /// A CSS-owned allocation failed; its private layout is not fabricated here.
+    CssPropertyAllocationFailed,
     BaseFacts(crate::HtmlBaseMissing),
 }
 /// Processing error from HTML's source-only CSS color adapter. Numerical
@@ -120,7 +128,9 @@ impl std::error::Error for HtmlColorProcessingError {
 impl HtmlColorProcessingError {
     /// Only a source operation can enter HTML's current adapter. A future
     /// non-source site is an adapter invariant failure, never fabricated source.
-    fn from_source(error: surgeist_css::CssColorOperationError) -> Result<Self, Invariant> {
+    pub(crate) fn from_source(
+        error: surgeist_css::CssColorOperationError,
+    ) -> Result<Self, Invariant> {
         use surgeist_css::{CssColorOperationError as E, CssColorResolutionSite as Site};
         Ok(match error {
             E::Protocol(error) => Self::Protocol(error),

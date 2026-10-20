@@ -24,10 +24,10 @@ impl Draft {
         selected: &str,
         cancel: &AtomicBool,
     ) -> Result<Option<&DocumentString>, DomError> {
-        let DomNodeKind::Element(element) = &self.node(node)?.kind else {
+        let transaction::KindRead::Element(element) = &self.node(node)?.kind() else {
             unreachable!("actual Script family requires Element")
         };
-        for attribute in element.attributes().iter() {
+        for attribute in element.language().attributes().iter() {
             check_cancel(cancel)?;
             if attribute_name_is(attribute.name(), selected) {
                 return Ok(Some(attribute.value()));
@@ -70,7 +70,7 @@ impl Draft {
         node: Key,
         cancel: &AtomicBool,
     ) -> Result<HtmlScriptPreparationResult, DomError> {
-        let mut state = self.node(node)?.script.expect("actual HTML Script");
+        let mut state = self.node(node)?.script().expect("actual HTML Script");
         let mut cursor = HtmlScriptPreparationCursor::new();
         let mut saved_document = None;
         loop {
@@ -79,7 +79,11 @@ impl Draft {
                 Action::ReadAlreadyStarted => Reply::AlreadyStarted(state.flags.already_started()),
                 Action::SaveAndClearParserDocument => {
                     saved_document = state.parser_document.take();
-                    self.with_node_fields(node, cancel, |fields| fields.script = Some(state))?;
+                    {
+                        let mut fields = self.script_fields_mut(node, cancel)?;
+                        (*fields) = Some(state);
+                        fields.commit(cancel)
+                    }?;
                     Reply::ParserDocumentSaved(saved_document.is_some())
                 }
                 Action::ReadAsyncPresence => Reply::AsyncPresent(
@@ -88,14 +92,18 @@ impl Draft {
                 ),
                 Action::SetForceAsync => {
                     state.flags.parser_document_cleared_without_async();
-                    self.with_node_fields(node, cancel, |fields| fields.script = Some(state))?;
+                    {
+                        let mut fields = self.script_fields_mut(node, cancel)?;
+                        (*fields) = Some(state);
+                        fields.commit(cancel)
+                    }?;
                     Reply::Applied
                 }
                 Action::ReadChildTextEmpty => {
                     let mut empty = true;
-                    for child in self.node(node)?.children.iter() {
+                    for child in self.node(node)?.children().iter() {
                         check_cancel(cancel)?;
-                        if let DomNodeKind::Text(text) = &self.node(child)?.kind
+                        if let transaction::KindRead::Text(text) = &self.node(child)?.kind()
                             && !text.is_empty()
                         {
                             empty = false;
@@ -112,31 +120,48 @@ impl Draft {
                 Action::ClassifyType => Reply::Classified(self.script_kind(node, cancel)?),
                 Action::StoreType(kind) => {
                     state.kind = Some(kind);
-                    self.with_node_fields(node, cancel, |fields| fields.script = Some(state))?;
+                    {
+                        let mut fields = self.script_fields_mut(node, cancel)?;
+                        (*fields) = Some(state);
+                        fields.commit(cancel)
+                    }?;
                     Reply::Applied
                 }
                 Action::RestoreParserDocument => {
                     state.parser_document = saved_document.take();
                     state.flags.parser_document_restored();
-                    self.with_node_fields(node, cancel, |fields| fields.script = Some(state))?;
+                    {
+                        let mut fields = self.script_fields_mut(node, cancel)?;
+                        (*fields) = Some(state);
+                        fields.commit(cancel)
+                    }?;
                     Reply::Applied
                 }
                 Action::MarkAlreadyStarted => {
                     state.flags.mark_already_started();
-                    self.with_node_fields(node, cancel, |fields| fields.script = Some(state))?;
+                    {
+                        let mut fields = self.script_fields_mut(node, cancel)?;
+                        (*fields) = Some(state);
+                        fields.commit(cancel)
+                    }?;
                     Reply::Applied
                 }
                 Action::StorePreparationDocument => {
-                    state.preparation_document = Some(self.node(node)?.document);
-                    self.with_node_fields(node, cancel, |fields| fields.script = Some(state))?;
+                    state.preparation_document = Some(self.node(node)?.document());
+                    {
+                        let mut fields = self.script_fields_mut(node, cancel)?;
+                        (*fields) = Some(state);
+                        fields.commit(cancel)
+                    }?;
                     Reply::Applied
                 }
                 Action::CompareDocuments => {
                     Reply::DocumentsEqual(state.parser_document == state.preparation_document)
                 }
                 Action::RequireDisabledScripting => {
-                    let document = self.node(node)?.document;
-                    let DomNodeKind::Document(metadata) = &self.node(document)?.kind else {
+                    let document = self.node(node)?.document();
+                    let transaction::KindRead::Document(metadata) = &self.node(document)?.kind()
+                    else {
                         unreachable!("canonical Script node document")
                     };
                     match metadata.document_environment().scripting() {
@@ -159,7 +184,7 @@ impl Draft {
         node: Key,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if let Some(state) = self.node(node)?.script
+        if let Some(state) = self.node(node)?.script()
             && state.parser_document.is_none()
         {
             self.prepare_html_script(node, cancel)?;
@@ -174,7 +199,7 @@ impl Draft {
         removed: bool,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if self.node(node)?.script.is_none() {
+        if self.node(node)?.script().is_none() {
             return Ok(());
         }
         check_cancel(cancel)?;
@@ -182,14 +207,15 @@ impl Draft {
             && !old_present
             && attribute_name_is(name, KnownHtmlAttribute::Async.local_name())
         {
-            self.with_node_fields(node, cancel, |fields| {
-                fields
-                    .script
+            {
+                let mut fields = self.script_fields_mut(node, cancel)?;
+                (*fields)
                     .as_mut()
                     .expect("actual Script")
                     .flags
-                    .async_attribute_added()
-            })?;
+                    .async_attribute_added();
+                fields.commit(cancel)
+            }?;
         }
         if !removed
             && attribute_name_is(name, KnownHtmlAttribute::Src.local_name())
@@ -205,7 +231,7 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         check_cancel(cancel)?;
-        if let Some(state) = self.node(node)?.script {
+        if let Some(state) = self.node(node)?.script() {
             // Only the actual closed Uninitialized result is admitted. The
             // source speculation-result unregister/reset branch does not apply;
             // detach/adopt never resets actual started/preparation history.
@@ -265,7 +291,7 @@ mod tests {
                 .node
                 .as_ref()
                 .unwrap()
-                .script
+                .script()
                 .unwrap();
             assert!(actual.flags.already_started());
             assert_eq!(actual.kind, Some(HtmlScriptKind::Classic));

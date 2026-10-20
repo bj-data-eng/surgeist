@@ -425,9 +425,8 @@ fn qualify_captured_hyperlinks(
         }
         let facts = draft
             .node(key)?
-            .encoding_url_document
-            .as_ref()
-            .and_then(|document| document.facts.as_ref())
+            .encoding_url_document()
+            .and_then(|document| document.facts)
             .ok_or(Error::CurrentPolicyUnavailable)?;
         let outcome = facts
             .lookup_units_with(
@@ -753,18 +752,19 @@ fn apply_fragment_effects(
             HtmlParseEffect::TemplateCache { document, inert } => {
                 let document = source.captured_key(&document.id(), c)?;
                 let inert = source.key(&inert.id(), c)?;
-                if !matches!(draft.node(document)?.kind, DomNodeKind::Document(_))
-                    || draft.node(document)?.template_document
-                        != Some(crate::template::TemplateDocument::Ordinary { inert: None })
-                    || draft.node(inert)?.template_document
+                if !matches!(
+                    draft.node(document)?.kind(),
+                    transaction::KindRead::Document(_)
+                ) || draft.node(document)?.template_document()
+                    != Some(crate::template::TemplateDocument::Ordinary { inert: None })
+                    || draft.node(inert)?.template_document()
                         != Some(crate::template::TemplateDocument::InertTemplate)
                 {
                     return Err(Error::CapturedStateUnavailable);
                 }
-                draft.with_node_fields(document, c.cancel, |fields| {
-                    fields.template_document =
-                        Some(crate::template::TemplateDocument::Ordinary { inert: Some(inert) })
-                })?;
+                let mut role = draft.template_document_mut(document, c.cancel)?;
+                *role = Some(crate::template::TemplateDocument::Ordinary { inert: Some(inert) });
+                role.commit(c.cancel)?;
             }
             HtmlParseEffect::AttachShadow {
                 host,
@@ -782,7 +782,7 @@ fn apply_fragment_effects(
                 let contents_key = source.key(&contents.id(), c)?;
                 if template.template_contents_kind()
                     != Some(surgeist_html::HtmlTemplateContentsKind::ShadowReference)
-                    || draft.node(template_key)?.template_contents != Some(contents_key)
+                    || draft.node(template_key)?.template_contents() != Some(contents_key)
                 {
                     return Err(Error::UnsupportedState {
                         subject: template.id(),
@@ -983,16 +983,21 @@ impl Dom {
             }
             let interaction = state::document_interaction(&source, node, &mut c)?;
             let own = Key::Created(draft.created.len());
-            let key =
-                draft.allocate(DomNodeKind::Document(metadata), own, self.limits, cancelled)?;
+            let key = draft.allocate(NewNode::Document(metadata), own, self.limits, cancelled)?;
             // Only this genuinely new owned Document receives its original
             // qualified history. Captured current Documents are never reset.
-            let interaction = match interaction {
+            match interaction {
                 crate::dialog::DocumentInteractiveState::Known {
                     open_dialogs,
                     top_layer,
                     pending_top_layer_removals,
                 } => {
+                    // The report qualified this new Document's history. Make
+                    // that availability explicit before the relation barriers
+                    // select its actual lists; Parsed creation starts unknown.
+                    let mut history = draft.interactive_document_mut(key, cancelled)?;
+                    *history = Some(crate::dialog::DocumentInteractiveState::native_closed());
+                    history.commit(cancelled)?;
                     for (field, values) in [
                         (transaction::RelationField::OpenDialogs, open_dialogs),
                         (transaction::RelationField::TopLayer, top_layer),
@@ -1003,15 +1008,13 @@ impl Dom {
                     ] {
                         draft.relations_replace(key, field, values, cancelled)?;
                     }
-                    crate::dialog::DocumentInteractiveState::native_closed()
                 }
                 crate::dialog::DocumentInteractiveState::Unavailable => {
-                    crate::dialog::DocumentInteractiveState::Unavailable
+                    let mut history = draft.interactive_document_mut(key, cancelled)?;
+                    *history = Some(crate::dialog::DocumentInteractiveState::Unavailable);
+                    history.commit(cancelled)?;
                 }
-            };
-            draft.with_node_fields(key, cancelled, |fields| {
-                fields.interactive_document = Some(interaction)
-            })?;
+            }
             source.rows[i].key = Some(key);
         }
         for i in 0..source.rows.len() {
@@ -1024,7 +1027,8 @@ impl Dom {
                 .observation(&node.id(), &mut c, |r| r.node_document())?
                 .ok_or_else(|| Error::MissingMetadata { subject: node.id() })?;
             let document = source.document_key(document, &mut c)?;
-            let DomNodeKind::Document(document_metadata) = &draft.node(document)?.kind else {
+            let transaction::KindRead::Document(document_metadata) = draft.node(document)?.kind()
+            else {
                 return Err(Error::UnsupportedState { subject: node.id() });
             };
             // Existing captured Documents retain their own current platform.
@@ -1055,13 +1059,30 @@ impl Dom {
                 #[cfg(test)]
                 written.pushed::<Key>();
             }
-            draft.with_node_fields(key, cancelled, |fields| fields.parent = parent)?;
-            draft.relations_replace(
-                key,
-                transaction::RelationField::Children,
-                children,
-                cancelled,
-            )?;
+            let mut common = draft.common_fields_mut(key, cancelled)?;
+            common.parent = parent;
+            common.commit(cancelled)?;
+            match draft.node(key)?.kind() {
+                transaction::KindRead::Document(_)
+                | transaction::KindRead::Element(_)
+                | transaction::KindRead::DocumentFragment
+                | transaction::KindRead::ShadowRoot(_) => draft.relations_replace(
+                    key,
+                    transaction::RelationField::Children,
+                    children,
+                    cancelled,
+                )?,
+                transaction::KindRead::Text(_)
+                | transaction::KindRead::Comment(_)
+                | transaction::KindRead::ProcessingInstruction(_)
+                | transaction::KindRead::DocumentType(_) => {
+                    if !children.is_empty() {
+                        return Err(Error::UnsupportedState {
+                            subject: row.source.id(),
+                        });
+                    }
+                }
+            }
         }
         state::metadata(&source, &mut draft, self.limits, &mut c)?;
         if capture.is_some() {
@@ -1149,7 +1170,7 @@ impl Dom {
         for binding in &source.captured_bindings {
             c.step(1)?;
             let node = self.state.node(self.owner, binding.node)?;
-            if let DomNodeKind::Document(metadata) = &node.kind {
+            if let DomNodeKind::Document(metadata) = node.kind() {
                 qualify_svg_destination(metadata)?;
                 if metadata.meta_state().is_none()
                     || metadata.policy_container().referrer_policy().is_none()

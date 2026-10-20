@@ -24,8 +24,7 @@ impl<'a> DomForm<'a> {
     pub fn past_names(self) -> impl ExactSizeIterator<Item = (&'a DocumentString, NodeId)> {
         self.node
             .node
-            .form_past_names
-            .as_ref()
+            .form_past_names()
             .expect("checked Form")
             .entries()
             .iter()

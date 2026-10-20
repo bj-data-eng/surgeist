@@ -40,6 +40,43 @@ decisions with the independently sampled current input inventory. CSSOM stores
 no resolver or host callback. An error or unwind aborts staging; an advanced
 declaration editor lets a caller stage multiple operations in its own batch.
 
+Inline declaration blocks can carry an immutable, independently current
+`CssomInlineDeclarationContext`. Its packet requires explicit Owner, ParserMode
+and Support inputs; an empty support profile is a valid unsupported selection.
+`create_inline_declarations` starts an empty ordinary block with null parent and
+all flags unset. `update_inline_declaration_context` keeps that block's identity
+and owner identity while replacing current versions and facts. Existing checked
+declarations and their parse-time inputs remain unchanged. Other declarations
+continue to use the store context, including its existing `update_context` flow.
+
+Inline preparation and usability requests use the block packet. Advanced
+`apply_declaration_with_inputs` calls supply every independently current packet
+input/linked version, plus any separate Support decision versions. Context changes
+stale prepared work for that block; unrelated block updates within the same batch
+do not. Live getters read the current block, captures read their original block,
+and manifests distinguish current packets from historical admission versions.
+Context rebinding emits no owner synchronization effect. Existing owner effects
+still require the exact whole-store revision and manifest, so even an unrelated
+inline commit can stale a pending effect. These producer APIs do not implement a
+DOM binding or change the existing post-publication owner-write contract.
+
+`validate_pending_owner_effect` and `classify_pending_owner_notification` let a
+binding prepare fallible owner work while the original effect remains Pending.
+They share application validation and exact echo matching without setting the
+updating flag. `begin_owner_application` revalidates before the actual write;
+dropping its guard still marks an unfinished application Abandoned. Terminal
+effects cannot be replayed. `request_owner_synchronization` explicitly reserves
+a fresh effect for current selected entries, without reparsing or editing them;
+an unchanged CSSOM publication can therefore carry a new owner obligation.
+
+`retire_inline_declarations` removes a current inline block after its owner
+Element is explicitly destroyed, checking its exact current owner version.
+Live reads then return `MissingObject`; historical captures retain their old
+declarations and context. Detach and adoption preserve the block. Retirement
+releases current-state object, packet and source reachability while IDs remain
+unreused. It drops queued writes for that block but does not cancel effects held
+by callers. Bindings own pending-effect coordination and actual Element lifetime.
+
 `CssStyleProperties` provides generated Rust getters/setters for CSS-owned
 canonical spellings, vendor aliases and distinct legacy grammars. Captures have
 only getters. Reflections delegate the common declaration operations with empty
@@ -404,6 +441,28 @@ including when all declarations are discarded. Source setters use actual value-o
 CSS-owned values expose, with no invented parsed name position; retained survivors
 keep their original checked occurrences. Parsed/typed ingress remains
 honest about its original parser context.
+
+Owner style-attribute notifications accept borrowed UTF8 or shared original UTF16
+through `CssomStyleAttributeInput`. Both enter CSS's lossless preprocessing and
+raw declaration-block grammar in the block's current context. Preparation takes
+explicit UTF16 input limits, declaration-request limits and an interruption poll;
+input failures retain their typed cause and poison the batch. UTF8 encoding is
+bounded by original units/source backing and polls per scalar. CSS preparation
+work and cumulative component/depth/byte admission remain separate from the
+opaque general grammar between boundary polls. This is not a whole-operation
+live-memory receipt. Unrelated/computed/updating notifications do no input work;
+absence keeps the existing parsed empty-replacement branch.
+
+`prepare_created_style_attribute_change` resolves an exact batch-local block
+ticket for initialization before the same commit exposes its live ID. Notifications
+request no echo owner write. Effect classification compares raw UTF16 units to
+the serialized effect without preprocessing; absent and present-empty differ.
+`CssomDeclarationInput` readbacks expose text, parser context, diagnostics and an
+optional complete parse source. Notification inputs retain that mandatory source
+even when empty or entirely discarded, under the canonical source quota, without
+an extra String copy. Existing cssText/property setters keep their own UTF8
+semantics. Later selected-entry edits preserve the original replacement source
+without reconstructing declarations from historical shorthands.
 
 Readonly errors precede source mutation branches. Computed remains independent:
 reads/no-ops follow their selected source branches, while a reached owner-update

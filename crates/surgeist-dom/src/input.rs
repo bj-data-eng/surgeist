@@ -88,7 +88,7 @@ impl<'a> DomInput<'a> {
     }
     pub fn form_owner(self) -> Result<Option<NodeId>, crate::DomError> {
         self.node.snapshot.require_complete_source()?;
-        Ok(self.node.node.control_owner)
+        Ok(self.node.node.control_owner())
     }
     /// HTML's value-mode getter: exact current/default/on/empty-file readback.
     pub fn value(self) -> &'a [u16] {
@@ -120,7 +120,7 @@ impl<'a> DomInput<'a> {
     pub fn explicit_popover_target(self) -> Option<NodeId> {
         self.node
             .node
-            .reflected_targets
+            .reflected_targets()
             .expect("checked Input")
             .get(crate::reflected::ReflectedTarget::PopoverTarget)
             .expect("Input has popover slot")

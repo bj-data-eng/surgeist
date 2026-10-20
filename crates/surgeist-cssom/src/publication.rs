@@ -33,6 +33,8 @@ pub struct CssomInputManifest {
     pub context: CssomContext,
     pub sheets: Vec<(CssomSheetId, CssomInputVersion)>,
     pub blocks: Vec<(CssomBlockId, CssomInputVersion)>,
+    /// Current per-inline-block inputs, distinct from historical admissions.
+    pub inline_declarations: Vec<(CssomBlockId, CssomInlineDeclarationContext)>,
     pub imports: Vec<(CssomRuleId, CssomInputVersion)>,
     pub declaration_admissions: Vec<(CssomBlockId, Vec<CssomInputVersion>)>,
     pub font_family_admissions: Vec<(CssomRuleId, Vec<CssomInputVersion>)>,
@@ -48,8 +50,19 @@ impl crate::model::State {
         let mut blocks = self
             .blocks
             .iter()
-            .filter_map(|(id, v)| v.owner.clone().map(|v| (id.clone(), v)))
+            .filter_map(|(id, v)| v.owner().cloned().map(|v| (id.clone(), v)))
             .collect::<Vec<_>>();
+        let mut inline_declarations = self
+            .blocks
+            .iter()
+            .filter_map(|(id, block)| {
+                block
+                    .inline_context()
+                    .cloned()
+                    .map(|context| (id.clone(), context))
+            })
+            .collect::<Vec<_>>();
+        inline_declarations.sort_by_key(|(id, _)| id.serial);
         let mut imports = self
             .rules
             .iter()
@@ -99,6 +112,7 @@ impl crate::model::State {
             .collect::<Vec<_>>();
         selector_admissions.sort_by_key(|(id, _)| id.serial);
         CssomInputManifest {
+            inline_declarations,
             declaration_admissions,
             font_family_admissions,
             selector_admissions,

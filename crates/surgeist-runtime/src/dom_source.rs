@@ -73,14 +73,25 @@ pub enum DomSourceUnavailable {
 }
 
 /// The requested operation returned, or its exact next request remains parked.
-#[expect(
-    clippy::large_enum_variant,
-    reason = "Move the original Source completion inline without allocating after canonical publication"
-)]
 #[derive(Debug)]
 pub enum DomSourceDriveProgress {
     /// The one command or named feature operation completed its mandatory hooks.
     Complete(DomSourceCompletion),
+    /// Original Source progress returned with its actual inline publication.
+    /// Requests are unserviced; Complete preserves the completed operation.
+    InlineSource {
+        /// The exact unserviced request or completed original operation.
+        source: DomSourceProgress,
+        /// Original paired DOM and CSSOM publication evidence.
+        publication: surgeist_dom::DomInlineStyleSourcePublication,
+    },
+    /// The fullscreen handoff was serviced and its original tail remains live.
+    InlineFullscreenHandoff {
+        /// The original operation whose mandatory continuation remains live.
+        operation: DomSourceOperationId,
+        /// Evidence committed before the actual Runtime row became runnable.
+        publication: surgeist_dom::DomInlineStyleSourcePublication,
+    },
     /// Original canonical custody remains live for this unacknowledged request.
     Pending {
         /// Exact yielded request, not execution or publication authority.
@@ -108,6 +119,8 @@ pub enum DomSelectCompletionProgress {
 pub enum DomSourceRuntimeError {
     /// The durable Source event adapter refused admission or execution.
     SourceEvent(DomSourceEventRuntimeError),
+    /// The inline producer refused the still-unpublished canonical segment.
+    Inline(surgeist_dom::DomInlineStyleError),
     /// Canonical Source validation or finite admission refused the operation.
     Dom(DomError),
     /// The original Style resource or processing owner refused its step.
@@ -129,6 +142,7 @@ impl std::error::Error for DomSourceRuntimeError {
         match self {
             Self::SourceEvent(error) => Some(error),
             Self::Dom(error) => Some(error),
+            Self::Inline(error) => Some(error),
             Self::Style(error) => Some(error),
             Self::ElementTasks(error) => Some(error),
             Self::Hosted(error) => Some(error),
@@ -145,6 +159,45 @@ impl From<DomStyleRuntimeError> for DomSourceRuntimeError {
     fn from(error: DomStyleRuntimeError) -> Self {
         Self::Style(error)
     }
+}
+
+impl From<DomHostedRuntimeError> for DomSourceRuntimeError {
+    fn from(error: DomHostedRuntimeError) -> Self {
+        Self::Hosted(error)
+    }
+}
+
+pub(crate) type InlineResolver<'a> = dyn FnMut(
+        &[surgeist_cssom::CssomDeclarationCandidate],
+        &surgeist_cssom::CssomContext,
+    ) -> Result<surgeist_cssom::CssomAdmission, surgeist_cssom::CssomError>
+    + 'a;
+
+/// One requested edit with its original immutable inline qualifications.
+/// Controller limits remain separate; the callback belongs to each execution.
+pub struct DomSourceInlineStyleEdit {
+    edit: DomSourceEdit,
+    context: surgeist_dom::DomInlineStyleSourceContext,
+    limits: surgeist_dom::DomInlineStyleRequestLimits,
+}
+impl DomSourceInlineStyleEdit {
+    /// Qualify one edit with its explicit profiles and producer request limits.
+    pub fn new(
+        edit: DomSourceEdit,
+        context: surgeist_dom::DomInlineStyleSourceContext,
+        limits: surgeist_dom::DomInlineStyleRequestLimits,
+    ) -> Self {
+        Self {
+            edit,
+            context,
+            limits,
+        }
+    }
+}
+
+struct SourceDrive<'a, 'b> {
+    guard: StyleSourceGuard,
+    resolver: Option<&'a mut InlineResolver<'b>>,
 }
 
 /// Weak permission to route one operation through the same session's owners.
@@ -321,6 +374,119 @@ impl DomSourceRuntime {
             cancel,
         )
     }
+    /// Execute one Source edit with the original inline context and a borrowed
+    /// pure resolver. Actual inline publications return before further service.
+    pub fn apply_with_inline_styles(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        edit: DomSourceInlineStyleEdit,
+        limits: DomSourceLimits,
+        services: &mut DomSourceServices<'_>,
+        mut resolver: impl FnMut(
+            &[surgeist_cssom::CssomDeclarationCandidate],
+            &surgeist_cssom::CssomContext,
+        )
+            -> Result<surgeist_cssom::CssomAdmission, surgeist_cssom::CssomError>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+        let mut drive = SourceDrive {
+            guard: self.prepare(dom, cancel)?,
+            resolver: Some(&mut resolver),
+        };
+        if let Some(scope) = services.execution_scope {
+            self.hosted
+                .qualify_execution_scope(scope)
+                .map_err(DomSourceRuntimeError::Hosted)?;
+        }
+        let progress = {
+            let mut lease = dom
+                .raw_mut()
+                .begin_source_edit_with_inline_styles(
+                    edit.edit,
+                    edit.context,
+                    limits,
+                    edit.limits,
+                    cancel,
+                )
+                .map_err(DomSourceRuntimeError::Inline)?;
+            if let Some(scope) = services.execution_scope {
+                self.hosted
+                    .bind_execution_scope(&mut lease, scope, true, cancel)
+                    .map_err(DomSourceRuntimeError::Hosted)?;
+            }
+            self.drive_lease_execution(
+                &drive.guard,
+                &mut lease,
+                services.url.as_ref().map(|s| s.revision),
+                &mut drive.resolver,
+                cancel,
+            )?
+        };
+        self.finish_or_supply_execution(
+            dom,
+            DriveRoot {
+                limits,
+                select: None,
+            },
+            drive,
+            progress,
+            services,
+            cancel,
+        )
+    }
+
+    /// Resume the same inline-qualified operation, retaining its original
+    /// profiles, producer limits, work and acknowledged continuation.
+    pub fn resume_with_inline_styles(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        operation: DomSourceOperationId,
+        limits: DomSourceLimits,
+        services: &mut DomSourceServices<'_>,
+        mut resolver: impl FnMut(
+            &[surgeist_cssom::CssomDeclarationCandidate],
+            &surgeist_cssom::CssomContext,
+        )
+            -> Result<surgeist_cssom::CssomAdmission, surgeist_cssom::CssomError>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+        let mut drive = SourceDrive {
+            guard: self.prepare(dom, cancel)?,
+            resolver: Some(&mut resolver),
+        };
+        if let Some(scope) = services.execution_scope {
+            self.hosted
+                .qualify_execution_scope(scope)
+                .map_err(DomSourceRuntimeError::Hosted)?;
+        }
+        let progress = {
+            let mut lease = dom.resume_source_edit(operation, limits, cancel)?;
+            if let Some(scope) = services.execution_scope {
+                self.hosted
+                    .bind_execution_scope(&mut lease, scope, false, cancel)
+                    .map_err(DomSourceRuntimeError::Hosted)?;
+            }
+            self.drive_lease_execution(
+                &drive.guard,
+                &mut lease,
+                services.url.as_ref().map(|s| s.revision),
+                &mut drive.resolver,
+                cancel,
+            )?
+        };
+        self.finish_or_supply_execution(
+            dom,
+            DriveRoot {
+                limits,
+                select: None,
+            },
+            drive,
+            progress,
+            services,
+            cancel,
+        )
+    }
+
     /// Install one immutable native fragment using its original feature root.
     pub fn install_native_html(
         &mut self,
@@ -475,19 +641,61 @@ impl DomSourceRuntime {
         url_revision: Option<&surgeist_html_semantics::HtmlBaseFactsRevision>,
         cancel: &AtomicBool,
     ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+        self.drive_lease_execution(guard, lease, url_revision, &mut None, cancel)
+    }
+
+    fn drive_lease_execution(
+        &self,
+        guard: &StyleSourceGuard,
+        lease: &mut DomSourceLease<'_>,
+        url_revision: Option<&surgeist_html_semantics::HtmlBaseFactsRevision>,
+        resolver: &mut Option<&mut InlineResolver<'_>>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
         loop {
             guard.flush(lease, cancel)?;
             let settlement = self
                 .hosted
                 .prepare_watcher_settlement(lease, cancel)
                 .map_err(DomSourceRuntimeError::Hosted)?;
-            let advanced = lease.advance(cancel);
+            let advanced = if let Some(resolver) = resolver.as_deref_mut() {
+                lease
+                    .advance_with_inline_styles(resolver, cancel)
+                    .map(|progress| progress.into_parts())
+                    .map_err(DomSourceRuntimeError::Inline)
+            } else {
+                lease
+                    .advance(cancel)
+                    .map(|progress| (progress, None))
+                    .map_err(DomSourceRuntimeError::Dom)
+            };
             settlement.finish(&lease.snapshot());
-            match advanced? {
+            let (source, publication) = advanced?;
+            if let Some(publication) = publication {
+                return Ok(DomSourceDriveProgress::InlineSource {
+                    source,
+                    publication,
+                });
+            }
+            match source {
                 DomSourceProgress::Request(DomSourceRequest::FullscreenExitHandoff(request)) => {
-                    self.hosted
-                        .service_fullscreen_exit_handoff(lease, &request, cancel)
-                        .map_err(DomSourceRuntimeError::Hosted)?;
+                    if let Some(resolver) = resolver.as_deref_mut() {
+                        if let Some(publication) = self
+                            .hosted
+                            .service_fullscreen_exit_handoff_with_inline_styles(
+                                lease, &request, resolver, cancel,
+                            )?
+                        {
+                            return Ok(DomSourceDriveProgress::InlineFullscreenHandoff {
+                                operation: lease.operation(),
+                                publication,
+                            });
+                        }
+                    } else {
+                        self.hosted
+                            .service_fullscreen_exit_handoff(lease, &request, cancel)
+                            .map_err(DomSourceRuntimeError::Hosted)?;
+                    }
                 }
                 DomSourceProgress::Request(DomSourceRequest::Event(request)) => {
                     return Ok(DomSourceDriveProgress::Pending {
@@ -645,6 +853,28 @@ impl DomSourceRuntime {
         dom: &mut DomEventDom<'_>,
         root: DriveRoot<'_>,
         guard: StyleSourceGuard,
+        progress: DomSourceDriveProgress,
+        services: &mut DomSourceServices<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+        self.finish_or_supply_execution(
+            dom,
+            root,
+            SourceDrive {
+                guard,
+                resolver: None,
+            },
+            progress,
+            services,
+            cancel,
+        )
+    }
+
+    fn finish_or_supply_execution(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        root: DriveRoot<'_>,
+        mut drive: SourceDrive<'_, '_>,
         mut progress: DomSourceDriveProgress,
         services: &mut DomSourceServices<'_>,
         cancel: &AtomicBool,
@@ -652,8 +882,12 @@ impl DomSourceRuntime {
         let DriveRoot { limits, select } = root;
         loop {
             match progress {
-                DomSourceDriveProgress::Complete(_) => {
-                    guard.finish(&dom.snapshot());
+                DomSourceDriveProgress::Complete(_)
+                | DomSourceDriveProgress::InlineSource {
+                    source: DomSourceProgress::Complete(_),
+                    ..
+                } => {
+                    drive.guard.finish(&dom.snapshot());
                     return Ok(progress);
                 }
                 DomSourceDriveProgress::Pending {
@@ -676,10 +910,11 @@ impl DomSourceRuntime {
                         dom.resume_source_edit(operation, limits, cancel)?
                     };
                     lease.accept_inline_csp(&request, &observation, cancel)?;
-                    progress = self.drive_lease(
-                        &guard,
+                    progress = self.drive_lease_execution(
+                        &drive.guard,
                         &mut lease,
                         services.url.as_ref().map(|service| service.revision),
+                        &mut drive.resolver,
                         cancel,
                     )?;
                 }
@@ -730,10 +965,11 @@ impl DomSourceRuntime {
                         &mut Some(observation),
                         cancel,
                     )?;
-                    progress = self.drive_lease(
-                        &guard,
+                    progress = self.drive_lease_execution(
+                        &drive.guard,
                         &mut lease,
                         services.url.as_ref().map(|service| service.revision),
+                        &mut drive.resolver,
                         cancel,
                     )?;
                 }
@@ -856,3 +1092,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod inline_tests;

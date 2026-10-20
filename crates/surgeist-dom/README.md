@@ -65,6 +65,75 @@ original continuations and mandatory tails across publication and retry.
 Each topic keeps its exact supported paths, limits and failure behavior beside
 the relevant API.
 
+Inline-style identity is an explicit lazy capability. After installing
+`DomInlineStyleLimits`, `Dom::inline_style` binds a live HTML, SVG or MathML
+Element to the actual same-object `CssStyleProperties` in this DOM owner's
+private CSSOM store. DOM checks the current Document observation and parser
+mode, derives canonical owner/base facts, and supplies the untouched UTF-16
+attribute to CSSOM. The caller supplies explicit support/profile inputs and any
+required declaration decisions. `capture_inline_style` couples immutable DOM
+and declaration observations, which remain readable after owner destruction.
+
+`apply_with_inline_styles` synchronizes ordinary batches with explicit
+Element/Document profiles qualified by that exact batch and canonical basis.
+Actual attribute notifications and relevant context barriers retain invocation
+order, so moving a block changes its current packet without reparsing earlier
+checked values. One CSSOM batch commits after all fallible DOM formation and
+sharing, followed by infallible canonical publication. The result retains both
+owners' actual publication evidence. Created Document operands use real batch
+tickets; DOM derives their staged mode and base without a tentative public ID.
+
+`begin_source_edit_with_inline_styles` retains published-Element/Document
+profiles for one authentic Source root. Each `advance_with_inline_styles` borrows
+its pure resolver for that call. Actual hooks record inputs during speculative
+admission; parsing and resolution run only after full segment/rebase/sharing
+formation. The single CSSOM commit precedes infallible DOM publication, and the
+advance returns the original `DomChanges`/`CssomCommit` pair once at that boundary.
+Drop/resume preserves the original invocation, profiles, cumulative work and
+mandatory tails. An authenticated callback can create the first binding without
+replacing the original Source capability. The context-bearing fullscreen handoff
+service joins an admitted scheduling job with the original paired publication;
+the context-free service refuses reached inline inputs before publishing that
+prefix. DOM admits wrapper and continuation custody; CSSOM receipts retain their
+independent producer output contract, with no composed physical-memory bound.
+
+Context-bearing destruction retires bound declarations in the same CSSOM batch
+as its canonical destruction segment. Real child-removal hooks run first and
+retain their live context profiles; retirement itself requires no parsing or
+declaration decision. Current retired handles become missing, surviving bindings
+keep their identities, and released binding capacity can be reused. Historical
+captures remain readable; a reused node slot never inherits a retired binding.
+
+A context-free ordinary or Source operation that reaches a bound style
+notification, a relevant context change or retirement returns
+`InlineStyleContextRequired` before that publication. Same-value style setters
+still reach the notification barrier; missing removals and unrelated attributes
+retain their ordinary behavior. Same-scope moves maintain sparse membership.
+The standard `set_inline_style_css_text`, `set_inline_style_property` and
+`remove_inline_style_property` fronts operate on the same bound Properties
+object with its checked current inputs. They run CSSOM's actual standard
+executor, then synchronously prepare and publish canonical feedback. A refusal
+after CSSOM commits returns `DomInlineStyleMutation::Incomplete`, retaining the
+original return value, publication, diagnostics, effect and cumulative feedback
+work. Dropping the operation parks it; `resume_inline_style_feedback` retries
+only the owner write. Its consuming `complete` returns either the original
+completed components or the same incomplete operation. Effect-free standard
+no-ops complete without a DOM publication or changing raw attribute spelling.
+
+Pending feedback serializes inline-store commits and refuses reached bound
+context/attribute changes before a Source request can escape. Unrelated DOM and
+root stylesheet work remain independent, and other bindings can still be
+captured. If feedback originated in a genuine Source callback, its exact dormant
+observation can finish that retained owner write after dispatch scope ends; that
+observation's mandatory tail cannot advance until its feedback drains. This
+does not grant general caller reentry. Only an exactly classified echo skips
+inline ingestion; other native hooks still execute. Historical captures remain
+readable, while the incomplete binding refuses a latest coupled capture.
+Terminal owner effects remain terminal and retained; explicit reconciliation or
+bound retirement while such an outcome is resident is unavailable. Inline
+formation has explicit original DOM custody and work limits alongside CSSOM's
+independent logical/source quotas; neither is a process memory measurement.
+
 For contribution routing and focused verification commands, read the
 [crate guide](AGENTS.md). The [source](src/lib.rs) and [tests](tests/) establish
 current behavior; [source editions](../../references/SOURCE-EDITIONS.md) and the

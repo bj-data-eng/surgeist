@@ -3836,6 +3836,7 @@ dependencies = [
  "surgeist-html",
  "surgeist-html-parser",
  "surgeist-html-semantics",
+ "surgeist-test",
 ]
 
 [[package]]
@@ -3897,6 +3898,7 @@ dependencies = [
  "surgeist-css",
  "surgeist-html",
  "surgeist-html-semantics",
+ "surgeist-test",
 ]
 
 [[package]]

@@ -2348,6 +2348,10 @@ mod tests {
                 surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
             )
             .unwrap()
+            .with_event_recipients(
+                surgeist_dom::DomEventRecipientLimits::new(64, 16_000_000, 16_000_000, 4_000_000)
+                    .unwrap(),
+            )
             .with_dispatch_custody(
                 surgeist_dom::DomDispatchCustodyLimits::new(
                     64, 4096, 16_000_000, 16_000_000, 4_000_000,
@@ -2776,7 +2780,7 @@ mod tests {
         .unwrap();
         dispatcher
             .add_listener(
-                &dom,
+                &mut dom,
                 document,
                 DomEventType::Load,
                 DomEventCallback::new(move |dom, _dispatcher, context: &mut Context, event| {
@@ -3029,7 +3033,7 @@ mod tests {
         .unwrap();
         dispatcher
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 target,
                 DomEventType::Load,
                 DomEventCallback::new(|_, _, context: &mut Context, event| {
@@ -3659,7 +3663,7 @@ mod tests {
         .unwrap();
         dispatcher
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 target,
                 DomEventType::Load,
                 DomEventCallback::new(|_, _, context: &mut Context, event| {
@@ -4525,7 +4529,7 @@ mod tests {
         .unwrap();
         dispatcher
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 target,
                 DomEventType::Load,
                 DomEventCallback::new(|_, _, context: &mut Context, event| {
@@ -4582,7 +4586,18 @@ mod tests {
     fn target_destroyed_after_prestart_dispatch_refusal_is_skipped_without_trying_a_retired_generation()
      {
         let cancel = AtomicBool::new(false);
-        let (mut session, document) = bound_session();
+        let mut owner = dom();
+        owner
+            .set_limits(
+                owner.limits().with_event_recipients(
+                    surgeist_dom::DomEventRecipientLimits::new(
+                        64, 16_000_000, 16_000_000, 4_000_000,
+                    )
+                    .unwrap(),
+                ),
+            )
+            .unwrap();
+        let (mut session, document) = bound_session_from(owner, CssomContext::default());
         let target = append_style(&mut session, document, None);
         let mut context = Context {
             styles: session.style_execution(),
@@ -4597,7 +4612,7 @@ mod tests {
         .unwrap();
         dispatcher
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 target,
                 DomEventType::Load,
                 DomEventCallback::new(|_, _, context: &mut Context, event| {
@@ -4716,7 +4731,7 @@ mod tests {
         .unwrap();
         dispatcher
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 target,
                 DomEventType::Load,
                 DomEventCallback::new(|dom, _, context: &mut NestedContext, _| {
@@ -4963,7 +4978,7 @@ mod tests {
         .unwrap();
         dispatcher
             .add_listener(
-                &session.dom(),
+                &mut session.dom(),
                 target,
                 DomEventType::Load,
                 DomEventCallback::new(|_, _, context: &mut PanicContext, _| {
@@ -5301,6 +5316,10 @@ mod replacement_test {
                 surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
             )
             .unwrap()
+            .with_event_recipients(
+                surgeist_dom::DomEventRecipientLimits::new(64, 16_000_000, 16_000_000, 4_000_000)
+                    .unwrap(),
+            )
             .with_dispatch_custody(
                 surgeist_dom::DomDispatchCustodyLimits::new(
                     64, 4096, 16_000_000, 16_000_000, 4_000_000,
@@ -5383,7 +5402,7 @@ mod replacement_test {
         .unwrap();
         dispatcher
             .add_listener(
-                &dom,
+                &mut dom,
                 style,
                 DomEventType::Load,
                 DomEventCallback::new(|_, _, context: &mut Context, _| {

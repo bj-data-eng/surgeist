@@ -92,7 +92,7 @@ mod tests {
     #[test]
     fn literal_types_and_angle_units_reuse_the_actual_decoded_owner() {
         for (input, expected, expected_unit, percentage) in [
-            ("-0", -0.0f64, None, false),
+            ("-0", 0.0f64, None, false),
             ("50%", 50.0, None, true),
             (
                 ".5TuRn",

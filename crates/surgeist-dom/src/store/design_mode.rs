@@ -55,7 +55,10 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
-        if !matches!(self.node(document)?.kind, DomNodeKind::Document(_)) {
+        if !matches!(
+            self.node(document)?.kind(),
+            transaction::KindRead::Document(_)
+        ) {
             return Err(DomError::WrongNodeKind);
         }
         self.prepare_method_edit(cancel)?;
@@ -99,22 +102,20 @@ impl Draft {
             self.source_step(cancel)?;
             let reply = match frame.cursor.action() {
                 Action::ReadEnabled => {
-                    let DomNodeKind::Document(metadata) = &self.node(frame.document)?.kind else {
+                    let transaction::KindRead::Document(metadata) =
+                        &self.node(frame.document)?.kind()
+                    else {
                         return Err(DomError::WrongNodeKind);
                     };
                     Reply::Enabled(metadata.design_mode_enabled())
                 }
                 Action::SetEnabled { enabled } => {
-                    self.with_node_fields(frame.document, cancel, |fields| {
-                        let DomNodeKind::Document(metadata) = &mut fields.kind else {
-                            return Err(DomError::WrongNodeKind);
-                        };
-                        metadata.set_design_mode_enabled(enabled);
-                        Ok(())
-                    })??;
+                    let mut metadata = self.document_metadata_mut(frame.document, cancel)?;
+                    metadata.set_design_mode_enabled(enabled);
+                    metadata.commit(cancel)?;
                     Reply::Applied
                 }
-                Action::ReadActiveRange => match self.node(frame.document)?.active_range {
+                Action::ReadActiveRange => match self.node(frame.document)?.active_range() {
                     crate::DomActiveRangeState::Unavailable => {
                         return Err(DomError::DesignModeProcessingUnavailable {
                             step: DomSourceDesignModeStep::ReadActiveRange,
@@ -141,9 +142,9 @@ impl Draft {
                 }
                 Action::ReadDocumentElement => {
                     frame.target = None;
-                    for child in self.node(frame.document)?.children.iter() {
+                    for child in self.node(frame.document)?.children().iter() {
                         self.source_step(cancel)?;
-                        if matches!(self.node(child)?.kind, DomNodeKind::Element(_)) {
+                        if matches!(self.node(child)?.kind(), transaction::KindRead::Element(_)) {
                             frame.target = Some(child);
                             break;
                         }
@@ -181,10 +182,13 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
-        if !matches!(self.node(document)?.kind, DomNodeKind::Document(_)) {
+        if !matches!(
+            self.node(document)?.kind(),
+            transaction::KindRead::Document(_)
+        ) {
             return Err(DomError::WrongNodeKind);
         }
-        if self.node(document)?.active_range != crate::DomActiveRangeState::Known(Some(range)) {
+        if self.node(document)?.active_range() != crate::DomActiveRangeState::Known(Some(range)) {
             return Err(DomError::InvalidSourceOperation);
         }
         self.range_record(range)?;

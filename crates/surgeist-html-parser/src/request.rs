@@ -8,6 +8,17 @@ use crate::{
 };
 use std::{error::Error, fmt};
 
+/// Private qualification selection. Every mode still executes terminal
+/// promotion and both pools' fixed lifecycle; only optional reuse differs.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) enum ValueSharingMode {
+    Off,
+    BankOnly,
+    #[default]
+    Combined,
+}
+
 /// Captured facts rejected during request selection, before parse execution.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlParseRequestError {
@@ -91,8 +102,15 @@ pub struct HtmlDocumentParseRequest {
     context: DocumentContext,
     base_facts: Option<crate::HtmlParseBaseFacts>,
     associated: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
+    #[cfg(test)]
+    value_sharing: ValueSharingMode,
 }
 impl HtmlDocumentParseRequest {
+    #[cfg(test)]
+    pub(crate) fn with_value_sharing(mut self, mode: ValueSharingMode) -> Self {
+        self.value_sharing = mode;
+        self
+    }
     /// Parse the owned decoded source into a complete immutable report.
     #[expect(
         clippy::result_large_err,
@@ -111,6 +129,8 @@ impl HtmlDocumentParseRequest {
             context: self.context,
             base_facts: self.base_facts,
             associated: self.associated,
+            #[cfg(test)]
+            value_sharing: self.value_sharing,
         }
     }
     /// Selects the no-browsing-context operation: scripting is Disabled and
@@ -123,6 +143,8 @@ impl HtmlDocumentParseRequest {
             context: DocumentContext::Offline,
             base_facts: None,
             associated: None,
+            #[cfg(test)]
+            value_sharing: ValueSharingMode::Combined,
         }
     }
     /// Selects one document from the supplied immutable capture. Enabled
@@ -162,6 +184,8 @@ impl HtmlDocumentParseRequest {
             context: DocumentContext::Captured { capture, document },
             base_facts: None,
             associated: None,
+            #[cfg(test)]
+            value_sharing: ValueSharingMode::Combined,
         })
     }
     /// Supplies actual ordinary-document URL/encoding/CSP observations. This
@@ -260,8 +284,14 @@ pub(crate) struct DocumentRequestParts {
     context: DocumentContext,
     base_facts: Option<crate::HtmlParseBaseFacts>,
     associated: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
+    #[cfg(test)]
+    value_sharing: ValueSharingMode,
 }
 impl DocumentRequestParts {
+    #[cfg(test)]
+    pub(crate) fn value_sharing(&self) -> ValueSharingMode {
+        self.value_sharing
+    }
     pub(crate) fn associated_inputs(
         &self,
     ) -> Option<&std::sync::Arc<crate::construction::associated::Inputs>> {
@@ -315,8 +345,15 @@ pub struct HtmlFragmentParseRequest {
     allow_declarative_shadow_roots: bool,
     base_facts: Option<std::sync::Arc<crate::HtmlCapturedBaseFacts>>,
     associated: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
+    #[cfg(test)]
+    value_sharing: ValueSharingMode,
 }
 impl HtmlFragmentParseRequest {
+    #[cfg(test)]
+    pub(crate) fn with_value_sharing(mut self, mode: ValueSharingMode) -> Self {
+        self.value_sharing = mode;
+        self
+    }
     /// Capture/revision-qualified attestation for this entry Document's parser
     /// creation environment. Target-only image support is insufficient.
     pub fn image_support(&self) -> crate::HtmlImageSupport {
@@ -353,6 +390,8 @@ impl HtmlFragmentParseRequest {
             allow_declarative_shadow_roots: self.allow_declarative_shadow_roots,
             base_facts: self.base_facts,
             associated: self.associated,
+            #[cfg(test)]
+            value_sharing: self.value_sharing,
         }
     }
     /// Selects Inert mode and disallows declarative shadow roots. A disabled
@@ -390,6 +429,8 @@ impl HtmlFragmentParseRequest {
             allow_declarative_shadow_roots,
             base_facts: None,
             associated: None,
+            #[cfg(test)]
+            value_sharing: ValueSharingMode::Combined,
         })
     }
     /// Execution-only observations, resolved against the actual reached Document.
@@ -501,8 +542,14 @@ pub(crate) struct FragmentRequestParts {
     allow_declarative_shadow_roots: bool,
     base_facts: Option<std::sync::Arc<crate::HtmlCapturedBaseFacts>>,
     associated: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
+    #[cfg(test)]
+    value_sharing: ValueSharingMode,
 }
 impl FragmentRequestParts {
+    #[cfg(test)]
+    pub(crate) fn value_sharing(&self) -> ValueSharingMode {
+        self.value_sharing
+    }
     pub(crate) fn associated_inputs(
         &self,
     ) -> Option<&std::sync::Arc<crate::construction::associated::Inputs>> {

@@ -194,7 +194,7 @@ fn replacement_priority_pairs_keep_winning_encounter_order_and_losing_raw_occurr
                 .unwrap()
                 .replacement_input()
                 .unwrap()
-                .source,
+                .source(),
             text
         );
         assert_eq!(
@@ -295,7 +295,12 @@ fn rejected_domain_occurrences_do_not_mask_admitted_duplicate_neighbors() {
         assert_eq!(rule_block(&after, rule), *id);
         assert_eq!(replacement_occurrences(&after, id).len(), 3);
         assert_eq!(
-            after.block(id).unwrap().replacement_input().unwrap().source,
+            after
+                .block(id)
+                .unwrap()
+                .replacement_input()
+                .unwrap()
+                .source(),
             text
         );
     }
@@ -1374,7 +1379,13 @@ fn inline_external_attribute_changes_bypass_readonly_without_echoing_owner() {
         echo: None,
     };
     let prepared = edit
-        .prepare_style_attribute_change(&id, &change, CssomDeclarationRequestLimits::default())
+        .prepare_style_attribute_change(
+            &id,
+            &change,
+            surgeist_css::CssUtf16InputLimits::default(),
+            CssomDeclarationRequestLimits::default(),
+            || Ok::<_, ()>(()),
+        )
         .unwrap()
         .unwrap();
     edit.apply_declaration(prepared, &[]).unwrap();
@@ -1390,7 +1401,13 @@ fn inline_external_attribute_changes_bypass_readonly_without_echoing_owner() {
     let mut null = change.clone();
     null.value = None;
     let prepared = edit
-        .prepare_style_attribute_change(&id, &null, CssomDeclarationRequestLimits::default())
+        .prepare_style_attribute_change(
+            &id,
+            &null,
+            surgeist_css::CssUtf16InputLimits::default(),
+            CssomDeclarationRequestLimits::default(),
+            || Ok::<_, ()>(()),
+        )
         .unwrap()
         .unwrap();
     edit.apply_declaration(prepared, &[]).unwrap();
@@ -1420,10 +1437,12 @@ fn nonqualifying_inline_notifications_do_not_parse_and_stale_owner_is_atomic() {
             edit.prepare_style_attribute_change(
                 &id,
                 &change,
+                surgeist_css::CssUtf16InputLimits::default(),
                 CssomDeclarationRequestLimits {
                     max_input_bytes: 0,
                     ..Default::default()
-                }
+                },
+                || Ok::<_, ()>(())
             )
             .unwrap()
             .is_none()
@@ -1442,8 +1461,16 @@ fn nonqualifying_inline_notifications_do_not_parse_and_stale_owner_is_atomic() {
         echo: None,
     };
     assert!(matches!(
-        edit.prepare_style_attribute_change(&id, &change, CssomDeclarationRequestLimits::default()),
-        Err(CssomError::StaleOwnerNotification)
+        edit.prepare_style_attribute_change(
+            &id,
+            &change,
+            surgeist_css::CssUtf16InputLimits::default(),
+            CssomDeclarationRequestLimits::default(),
+            || Ok::<_, ()>(())
+        ),
+        Err(CssomStyleAttributeError::Cssom(
+            CssomError::StaleOwnerNotification
+        ))
     ));
     assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
     assert_eq!(store.snapshot().revision(), before.revision());
@@ -1948,9 +1975,9 @@ fn descriptor_whole_decisions_are_correlated_and_recovery_keeps_real_raw_input()
         "letter"
     );
     let input = after.block(&font).unwrap().replacement_input().unwrap();
-    assert!(input.source.contains("invalid()"));
-    assert!(!input.diagnostics.is_empty());
-    assert_eq!(input.parser_context, CssParserContext::default());
+    assert!(input.source().contains("invalid()"));
+    assert!(!input.diagnostics().is_empty());
+    assert_eq!(input.parser_context(), CssParserContext::default());
     let mut edit = batch(&store);
     replace(&mut edit, &font, "font-family:;width:2px;}");
     store.commit(edit).unwrap();
@@ -1965,7 +1992,7 @@ fn descriptor_whole_decisions_are_correlated_and_recovery_keeps_real_raw_input()
             .unwrap()
             .replacement_input()
             .unwrap()
-            .source,
+            .source(),
         "font-family:;width:2px;}"
     );
     assert!(
@@ -1974,7 +2001,7 @@ fn descriptor_whole_decisions_are_correlated_and_recovery_keeps_real_raw_input()
             .unwrap()
             .replacement_input()
             .unwrap()
-            .diagnostics
+            .diagnostics()
             .is_empty()
     );
     assert_eq!(

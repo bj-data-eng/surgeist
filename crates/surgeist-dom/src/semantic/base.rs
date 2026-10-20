@@ -41,12 +41,7 @@ pub(super) fn with_facts(
     for entry in entries {
         control.charge(1)?;
         let node = source.node(entry.node)?;
-        if let Some(facts) = node
-            .node
-            .base_document
-            .as_ref()
-            .and_then(|d| d.facts.as_ref())
-        {
+        if let Some(facts) = node.node.base_document().and_then(|d| d.facts) {
             let observed = facts.document().revision();
             if revision.as_ref().is_some_and(|r| r != observed) {
                 return Err(DomHtmlCaptureError::BaseFacts(
@@ -60,7 +55,7 @@ pub(super) fn with_facts(
                 facts.clone(),
             ));
         }
-        if let Some(value) = node.node.base.as_ref().and_then(|b| b.frozen.as_ref()) {
+        if let Some(value) = node.node.base().and_then(|b| b.frozen.as_ref()) {
             let mut href = None;
             for attr in node.as_element().expect("Base").attributes().iter() {
                 control.charge(1)?;
@@ -77,7 +72,11 @@ pub(super) fn with_facts(
                 // canonical freezing Document remains separate historical state.
                 frozen.push(HtmlCapturedFrozenBase::new(
                     entry.subject.clone(),
-                    capture.document_id(&subject(entries, node.node.document.node(), control)?)?,
+                    capture.document_id(&subject(
+                        entries,
+                        node.node.document().node(),
+                        control,
+                    )?)?,
                     href,
                     Some(value.value.clone()),
                     value.revision.clone(),
@@ -97,8 +96,7 @@ pub(super) fn with_facts(
                 if let Some(f) = source
                     .node(entry.node)?
                     .node
-                    .base
-                    .as_ref()
+                    .base()
                     .and_then(|b| b.frozen.as_ref())
                 {
                     found = Some(f.revision.clone());

@@ -2014,10 +2014,17 @@ impl<'a> HtmlSemanticSession<'a> {
         let mut paths = Vec::new();
         let mut path = Vec::new();
         let mut frames = Vec::new();
+        // Relevant types come from each item for which the subject is a
+        // property's value, so every immediate receiver keeps its own paths.
+        // Above a receiver each item is entered once: further routes to the
+        // same ancestor are that receiver's own context, not another one, and
+        // the walk stays proportional to the item graph per receiver.
+        let mut explored = Vec::new();
         let mut cycle = None;
         let result = (|| {
             self.md_push(&mut path, id.clone())?;
             self.md_push(&mut frames, (id.clone(), 0usize, false))?;
+            self.md_push(&mut explored, id.clone())?;
             while !frames.is_empty() {
                 self.charge(1)?;
                 let index = frames.len() - 1;
@@ -2072,6 +2079,15 @@ impl<'a> HtmlSemanticSession<'a> {
                         cycle.get_or_insert(parent);
                         continue;
                     }
+                    if path.len() == 1 {
+                        // A new immediate receiver starts its own exploration.
+                        self.charge(1)?;
+                        explored.truncate(1);
+                    }
+                    if self.md_contains(&explored, &parent)? {
+                        continue;
+                    }
+                    self.md_push(&mut explored, parent.clone())?;
                     self.md_push(&mut path, parent.clone())?;
                     self.md_push(&mut frames, (parent, 0, false))?;
                 } else {
@@ -2103,6 +2119,7 @@ impl<'a> HtmlSemanticSession<'a> {
         })();
         self.release_scratch(path.capacity());
         self.release_scratch(frames.capacity());
+        self.release_scratch(explored.capacity());
         result
     }
     pub(super) fn microdata_item(

@@ -65,7 +65,8 @@ impl ContainerUndo {
     }
 }
 fn participant(node: NodeRead<'_>) -> bool {
-    matches!(node.kind, DomNodeKind::Element(element) if element.child_navigable().is_some())
+    node.element()
+        .is_some_and(|element| element.child_navigable().is_some())
 }
 fn hosted_work<T>(
     work: &crate::hosted::Work,
@@ -304,10 +305,10 @@ impl Containers {
     ) -> Result<Option<ContainerPlan>, DomError> {
         let old = change.before.is_some_and(participant);
         let new = change.after.is_some_and(participant);
-        let old_shadow = change.before.and_then(|n| n.shadow_root);
-        let new_shadow = change.after.and_then(|n| n.shadow_root);
-        let old_host = change.before.and_then(|n| n.host);
-        let new_host = change.after.and_then(|n| n.host);
+        let old_shadow = change.before.and_then(|n| n.shadow_root());
+        let new_shadow = change.after.and_then(|n| n.shadow_root());
+        let old_host = change.before.and_then(|n| n.host());
+        let new_host = change.after.and_then(|n| n.host());
         if old == new && old_shadow == new_shadow && old_host == new_host {
             return Ok(None);
         }

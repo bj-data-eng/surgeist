@@ -1,0 +1,30 @@
+//! `@font-face` descriptors and font sources.
+
+mod font_env_matched_blocks_existing_fronts;
+mod font_face_authored_validity;
+mod font_face_env_contract;
+mod font_face_env_foundation;
+mod font_face_env_origins;
+mod font_face_equal_range_serialization;
+mod font_face_grammars;
+mod font_face_named_language_metrics_lifecycle;
+mod font_face_named_language_metrics_values;
+mod font_face_selected_declarations;
+mod font_face_style_contract;
+mod font_face_style_foundation;
+mod font_face_weight_contract;
+mod font_face_weight_foundation;
+mod font_face_width_contract;
+mod font_face_width_foundation;
+mod font_loading_descriptor_providers;
+mod font_loading_grammar_providers;
+mod font_rule_checked_construction;
+mod font_rules_specified_lifecycle;
+mod font_source_compatibility;
+mod font_source_compatibility_contract;
+mod font_source_empty_urls;
+mod font_source_format_identity;
+mod font_source_hint_grammars;
+mod font_source_provenance;
+mod font_source_recovery;
+mod font_source_specified_lifecycle;

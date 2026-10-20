@@ -42,6 +42,15 @@ impl<K: Eq + Hash + Clone, V: Clone> SharedTable<K, V> {
         Arc::make_mut(&mut self.0).insert(key, Arc::new(value));
     }
 }
+impl<K: Eq + Hash + Clone, V> SharedTable<K, V> {
+    pub(crate) fn remove(&mut self, key: &K) {
+        // Retained captures keep their original index and record. Removing a
+        // current entry copies only the index; no retired payload clone escapes.
+        if self.0.contains_key(key) {
+            Arc::make_mut(&mut self.0).remove(key);
+        }
+    }
+}
 impl<K: Eq + Hash, V> Index<&K> for SharedTable<K, V> {
     type Output = V;
     fn index(&self, key: &K) -> &Self::Output {

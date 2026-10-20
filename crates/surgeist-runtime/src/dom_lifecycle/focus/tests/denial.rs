@@ -161,7 +161,7 @@ fn parked(
             nested_dispatches: 1,
         })?;
         registry.add_listener(
-            &session.dom(),
+            &mut session.dom(),
             parent_subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(|dom, _, context: &mut Child, _| {
@@ -242,7 +242,7 @@ fn parked(
         nested_dispatches: 1,
     })?;
     registry.add_listener(
-        &session.dom(),
+        &mut session.dom(),
         subject,
         DomEventType::BeforeToggle,
         DomEventCallback::new(move |dom, _, context: &mut Adopt, _| {

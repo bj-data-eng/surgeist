@@ -6,14 +6,14 @@ use surgeist_html::bounded::{
     form_owner_reset_trigger,
 };
 
-fn state(
-    kind: &DomNodeKind,
+fn state<'a>(
+    kind: transaction::KindRead<'a>,
 ) -> Option<(
-    &crate::control::NativeControlState,
+    &'a crate::control::NativeControlState,
     surgeist_html::HtmlNativeFormAssociationKind,
 )> {
     match kind {
-        DomNodeKind::Element(element) => element.native_control(),
+        transaction::KindRead::Element(element) => element.language().native_control(),
         _ => None,
     }
 }
@@ -23,10 +23,10 @@ fn state(
 fn association(
     node: &transaction::NodeRead<'_>,
 ) -> Option<(bool, surgeist_html::HtmlNativeFormAssociationKind)> {
-    state(node.kind)
+    state(node.kind())
         .map(|(control, kind)| (control.parser_inserted, kind))
         .or_else(|| {
-            node.image.as_ref().map(|image| {
+            node.image().map(|image| {
                 (
                     image.parser_inserted,
                     surgeist_html::HtmlNativeFormAssociationKind::Image,
@@ -35,20 +35,42 @@ fn association(
         })
 }
 impl Draft {
-    fn with_control<R>(
+    pub(in crate::store) fn with_control<R>(
         &mut self,
         key: Key,
         cancel: &AtomicBool,
         edit: impl FnOnce(&mut crate::control::NativeControlState) -> R,
     ) -> Result<R, DomError> {
-        self.prepare_family_mutation(key, cancel)?;
-        self.with_element_fields(key, cancel, |element| {
-            edit(
-                element
-                    .native_control_mut()
-                    .expect("checked native control"),
-            )
-        })
+        self.with_control_formed(key, cancel, None, edit)
+    }
+    fn with_control_formed<R>(
+        &mut self,
+        key: Key,
+        cancel: &AtomicBool,
+        formation: Option<source::formation::Formation>,
+        edit: impl FnOnce(&mut crate::control::NativeControlState) -> R,
+    ) -> Result<R, DomError> {
+        use surgeist_html::HtmlNativeFormAssociationKind as Kind;
+        let kind = state(self.node(key)?.kind())
+            .expect("checked native control")
+            .1;
+        macro_rules! edit_control {
+            ($guard:ident) => {{
+                let mut state = self.$guard(key, cancel)?;
+                let result = edit(&mut state.control);
+                state.commit_formed(formation, cancel)?;
+                Ok(result)
+            }};
+        }
+        match kind {
+            Kind::Fieldset => edit_control!(fieldset_state_mut),
+            Kind::Button => edit_control!(button_state_mut),
+            Kind::Input => edit_control!(input_state_mut),
+            Kind::Textarea => edit_control!(textarea_state_mut),
+            Kind::Output => edit_control!(output_state_mut),
+            Kind::Select => edit_control!(select_state_mut),
+            _ => unreachable!("actual custom-validity native control"),
+        }
     }
     pub(super) fn set_custom_validity(
         &mut self,
@@ -57,7 +79,7 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        let old = state(self.node(key)?.kind)
+        let old = state(self.node(key)?.kind())
             .ok_or(DomError::CustomValidityInapplicable)?
             .0
             .message
@@ -112,12 +134,8 @@ impl Draft {
             growth,
             size_of::<Vec<u16>>() + normalized.shared_code_units().capacity() * size_of::<u16>(),
         );
-        self.prepare_family_mutation(key, cancel)?;
-        self.with_element_fields_formed(key, cancel, formation, |element| {
-            element
-                .native_control_mut()
-                .expect("checked native control")
-                .message = normalized;
+        self.with_control_formed(key, cancel, formation, |control| {
+            control.message = normalized;
         })?;
         self.units = units;
         Ok(())
@@ -128,10 +146,10 @@ impl Draft {
         name: KnownHtmlAttribute,
         cancel: &AtomicBool,
     ) -> Result<Option<&DocumentString>, DomError> {
-        let DomNodeKind::Element(element) = &self.node(key)?.kind else {
+        let transaction::KindRead::Element(element) = &self.node(key)?.kind() else {
             return Ok(None);
         };
-        for attribute in element.attributes().iter() {
+        for attribute in element.language().attributes().iter() {
             self.source_step(cancel)?;
             if attribute.name().namespace_uri().is_none()
                 && self.source_ascii(attribute.name().local_name(), name.local_name(), cancel)?
@@ -147,19 +165,19 @@ impl Draft {
             .is_some_and(|id| !id.is_empty()))
     }
     fn is_form(&self, key: Key) -> Result<bool, DomError> {
-        let DomNodeKind::Element(element) = &self.node(key)?.kind else {
+        let transaction::KindRead::Element(element) = &self.node(key)?.kind() else {
             return Ok(false);
         };
         Ok(element.form_state().is_some())
     }
     fn nearest_form(&self, key: Key, cancel: &AtomicBool) -> Result<Option<Key>, DomError> {
-        let mut next = self.node(key)?.parent;
+        let mut next = self.node(key)?.parent();
         while let Some(key) = next {
             self.source_step(cancel)?;
             if self.is_form(key)? {
                 return Ok(Some(key));
             }
-            next = self.node(key)?.parent;
+            next = self.node(key)?.parent();
         }
         Ok(None)
     }
@@ -172,7 +190,12 @@ impl Draft {
             self.source_step(cancel)?;
             match self.shadow_including_parent(key)? {
                 Some(parent) => key = parent,
-                None => return Ok(matches!(self.node(key)?.kind, DomNodeKind::Document(_))),
+                None => {
+                    return Ok(matches!(
+                        self.node(key)?.kind(),
+                        transaction::KindRead::Document(_)
+                    ));
+                }
             }
         }
     }
@@ -200,7 +223,7 @@ impl Draft {
         };
         let (_, kind) =
             association(&self.node(key)?).expect("actual native form-associated element");
-        let owner = self.node(key)?.control_owner;
+        let owner = self.node(key)?.control_owner();
         let mut former_owner = None;
         let mut found = None;
         let mut cursor = HtmlFormOwnerResetCursor::new(kind.listed(), owner.is_some());
@@ -208,10 +231,10 @@ impl Draft {
             self.source_step(cancel)?;
             let reply = match cursor.action() {
                 A::ClearParserInserted => {
-                    if self.node(key)?.image.is_some() {
-                        self.with_node_fields(key, cancel, |fields| {
-                            fields.image.as_mut().expect("checked Img").parser_inserted = false
-                        })?;
+                    if self.node(key)?.image().is_some() {
+                        let mut image = self.image_fields_mut(key, cancel)?;
+                        image.as_mut().expect("checked Img").parser_inserted = false;
+                        image.commit(cancel)?;
                     } else {
                         self.with_control(key, cancel, |control| control.parser_inserted = false)?;
                     }
@@ -226,8 +249,9 @@ impl Draft {
                     R::CurrentOwnerIsNearestAncestor(self.nearest_form(key, cancel)? == Some(owner))
                 }
                 A::ClearOwner => {
-                    former_owner =
-                        self.with_node_fields(key, cancel, |fields| fields.control_owner.take())?;
+                    let mut association = self.control_fields_mut(key, cancel)?;
+                    former_owner = association.control_owner.take();
+                    association.commit(cancel)?;
                     R::Applied
                 }
                 A::ReadConnectedness => R::Connected(self.control_connected(key, cancel)?),
@@ -241,9 +265,9 @@ impl Draft {
                 }
                 A::AssociateFoundOwner => {
                     let candidate = found.expect("preceding lookup found an actual Form");
-                    former_owner = self.with_node_fields(key, cancel, |fields| {
-                        fields.control_owner.replace(candidate)
-                    })?;
+                    let mut association = self.control_fields_mut(key, cancel)?;
+                    former_owner = association.control_owner.replace(candidate);
+                    association.commit(cancel)?;
                     R::Applied
                 }
                 A::ApplyOwnerChangeEffects => {
@@ -289,7 +313,7 @@ impl Draft {
             Decision::ResetIfOwnerInDifferentTree => {
                 let owner = self
                     .node(key)?
-                    .control_owner
+                    .control_owner()
                     .expect("trigger requires owner");
                 crate::slot::root(self, key, cancel)? != crate::slot::root(self, owner, cancel)?
             }
@@ -335,8 +359,8 @@ impl Draft {
         }
         if self.has_control_id(key, cancel)?
             && matches!(
-                self.node(crate::slot::root(self, key, cancel)?)?.kind,
-                DomNodeKind::Document(_)
+                self.node(crate::slot::root(self, key, cancel)?)?.kind(),
+                transaction::KindRead::Document(_)
             )
         {
             self.id_recipients(key, false, cancel)?;
@@ -353,7 +377,7 @@ impl Draft {
             self.reset_control_for(
                 key,
                 Trigger::RemovingOrMoving {
-                    has_owner: self.node(key)?.control_owner.is_some(),
+                    has_owner: self.node(key)?.control_owner().is_some(),
                 },
                 cancel,
             )?;
@@ -362,8 +386,8 @@ impl Draft {
         // without an old-connected prerequisite.
         if self.has_control_id(key, cancel)?
             && !matches!(
-                self.node(crate::slot::root(self, key, cancel)?)?.kind,
-                DomNodeKind::Document(_)
+                self.node(crate::slot::root(self, key, cancel)?)?.kind(),
+                transaction::KindRead::Document(_)
             )
         {
             self.id_recipients(key, false, cancel)?;

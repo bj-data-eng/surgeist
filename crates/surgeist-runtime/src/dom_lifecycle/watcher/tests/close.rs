@@ -54,7 +54,7 @@ fn close_at_removal() -> (
     let mut listeners = dispatcher();
     listeners
         .add_listener(
-            &session.dom(),
+            &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
             DomEventCallback::new(|_, _, calls: &mut usize, event| {

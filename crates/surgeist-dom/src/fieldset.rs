@@ -48,6 +48,6 @@ impl<'a> DomFieldset<'a> {
     /// Actual established relation, independently of current content attributes.
     pub fn form_owner(self) -> Result<Option<NodeId>, crate::DomError> {
         self.node.snapshot.require_complete_source()?;
-        Ok(self.node.node.control_owner)
+        Ok(self.node.node.control_owner())
     }
 }

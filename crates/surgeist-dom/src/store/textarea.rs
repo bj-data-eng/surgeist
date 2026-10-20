@@ -3,10 +3,11 @@ use super::*;
 
 impl Draft {
     pub(super) fn textarea_state(&self, key: Key) -> Result<&crate::DomTextareaState, DomError> {
-        let DomNodeKind::Element(element) = self.node(key)?.kind else {
+        let transaction::KindRead::Element(element) = self.node(key)?.kind() else {
             return Err(DomError::TextareaInapplicable);
         };
         element
+            .language()
             .textarea_state()
             .ok_or(DomError::TextareaInapplicable)
     }
@@ -16,10 +17,10 @@ impl Draft {
         cancel: &AtomicBool,
         edit: impl FnOnce(&mut crate::DomTextareaState) -> R,
     ) -> Result<R, DomError> {
-        self.prepare_family_mutation(key, cancel)?;
-        self.with_element_fields(key, cancel, |element| {
-            edit(element.textarea_state_mut().expect("checked Textarea"))
-        })
+        let mut state = self.textarea_state_mut(key, cancel)?;
+        let result = edit(&mut state);
+        state.commit(cancel)?;
+        Ok(result)
     }
     fn with_textarea_state_charged<R>(
         &mut self,
@@ -28,10 +29,10 @@ impl Draft {
         payload: Option<source::checkpoint::Charge>,
         edit: impl FnOnce(&mut crate::DomTextareaState) -> R,
     ) -> Result<R, DomError> {
-        self.prepare_family_mutation(key, cancel)?;
-        self.with_element_fields_charged(key, cancel, payload, |element| {
-            edit(element.textarea_state_mut().expect("checked Textarea"))
-        })
+        let mut state = self.textarea_state_mut(key, cancel)?;
+        let result = edit(&mut state);
+        state.commit_charged(payload, cancel)?;
+        Ok(result)
     }
     fn textarea_put_raw(
         &mut self,
@@ -57,7 +58,7 @@ impl Draft {
             self.source_step(cancel)
         })?;
         let platform = self
-            .document_metadata(self.node(key)?.document)?
+            .document_metadata(self.node(key)?.document())?
             .document_environment()
             .input_platform();
         let selection = self
@@ -82,9 +83,9 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(DocumentString, Option<source::checkpoint::Charge>), DomError> {
         let mut length = 0usize;
-        for child in self.node(key)?.children.iter() {
+        for child in self.node(key)?.children().iter() {
             self.source_step(cancel)?;
-            if let DomNodeKind::Text(text) = &self.node(child)?.kind {
+            if let transaction::KindRead::Text(text) = &self.node(child)?.kind() {
                 length = length
                     .checked_add(text.len())
                     .ok_or(DomError::RepresentationExhausted)?;
@@ -98,9 +99,9 @@ impl Draft {
         #[cfg(test)]
         let mut output_writes = crate::store::CopyObservation::default();
         let mut output = crate::textarea::output(length, limits.units, formation.as_ref(), cancel)?;
-        for child in self.node(key)?.children.iter() {
+        for child in self.node(key)?.children().iter() {
             self.source_step(cancel)?;
-            if let DomNodeKind::Text(text) = &self.node(child)?.kind {
+            if let transaction::KindRead::Text(text) = &self.node(child)?.kind() {
                 for unit in text.code_units() {
                     self.source_step(cancel)?;
                     output.push(*unit);
@@ -189,7 +190,7 @@ impl Draft {
             == surgeist_html::HtmlTextControlValueSetterFinish::SetEndCursorUnselectAndNoneDirection
         {
             let platform = self
-                .document_metadata(self.node(key)?.document)?
+                .document_metadata(self.node(key)?.document())?
                 .document_environment()
                 .input_platform();
             self.with_textarea_state(key, cancel, |state| {
@@ -461,7 +462,7 @@ mod tests {
             b.adopt(textarea, &newdoc);
             let prepared = dom.prepare(b, &cancel).unwrap();
             let actual = prepared.state.node(dom.owner, textarea).unwrap();
-            let DomNodeKind::Element(element) = &actual.kind else {
+            let DomNodeKind::Element(element) = &actual.kind() else {
                 unreachable!()
             };
             let state = element.textarea_state().unwrap();
@@ -471,11 +472,11 @@ mod tests {
                 state.custom_validity_message(),
                 &DocumentString::from("error")
             );
-            assert_eq!(actual.control_owner, None);
-            assert_eq!(actual.parent, None);
-            assert_eq!(actual.children.len(), 1);
+            assert_eq!(actual.control_owner(), None);
+            assert_eq!(actual.parent(), None);
+            assert_eq!(actual.children().len(), 1);
             assert_eq!(
-                actual.document.node(),
+                actual.document().node(),
                 prepared.created[newdoc.index].unwrap()
             );
             if !exhausted {

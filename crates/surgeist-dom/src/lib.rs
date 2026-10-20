@@ -40,8 +40,9 @@
 //! or executing; attributes, children and CharacterData invoke their real hooks.
 //! Native SVG Script separately retains the exact processed flag and Native/Clone
 //! cause. The shared static shadow-including insertion walk consumes the actual
-//! node Document's private closed acquisition/execution/notification witness.
-//! This makes the processed write without a loader, executor or SVG event output.
+//! node Document's private acquisition/execution qualification and a fresh
+//! operational recipient check. Processing refuses applicable Rust Load/Error
+//! listeners without adding a loader, executor or SVG event output.
 //! Explicit native HTML fragment installation preserves immutable component
 //! fields and UTF-16 through that same canonical owner, including real native
 //! Template contents and Script hooks. It returns a source-qualified historical
@@ -127,6 +128,11 @@ mod dialog;
 mod dispatch;
 mod document;
 mod element;
+mod event;
+pub use event::{
+    DomEventParent, DomEventParentQuery, DomEventRecipient, DomEventRecipientLimits,
+    DomEventTarget, DomEventType,
+};
 mod fieldset;
 mod form;
 mod fullscreen;
@@ -135,7 +141,17 @@ mod hosted;
 mod hyperlink;
 mod identity;
 mod image;
+mod inline_style;
 mod input;
+pub use inline_style::{
+    DomInlineStyleBatchContext, DomInlineStyleCapture, DomInlineStyleChange, DomInlineStyleCommit,
+    DomInlineStyleCompletion, DomInlineStyleError, DomInlineStyleFeedbackLimits,
+    DomInlineStyleInputs, DomInlineStyleLimits, DomInlineStyleMutation,
+    DomInlineStyleMutationLimits, DomInlineStyleProfile, DomInlineStyleProperty,
+    DomInlineStyleRequestLimits, DomInlineStyleReturn, DomInlineStyleSourceContext,
+    DomInlineStyleSourceProgress, DomInlineStyleSourcePublication,
+};
+pub use store::DomInlineStyleOperation;
 mod installation;
 mod meta;
 mod name;

@@ -1,6 +1,7 @@
 //! Exact named Slot groups and direct named-host slottables. Names are cached
 //! only for actual Slot/host relationships; unchanged ordinary nodes add none.
 use super::super::*;
+use super::KindRead;
 use super::exact_forest::{self, Forest, KeyView, Suffix};
 use super::ordered_members::{
     Edit, Map, MapCustody, Members, MembersCustody, Membership, Mode, OrderPair, OrderView,
@@ -140,7 +141,7 @@ fn encoded(name: &Name) -> KeyView<'_, 3> {
     }
 }
 fn read_name(
-    kind: &DomNodeKind,
+    kind: KindRead<'_>,
     attribute: &str,
     cached: Option<&Name>,
     reuse: bool,
@@ -149,7 +150,7 @@ fn read_name(
     if reuse && let Some(cached) = cached {
         return Ok((cached.value.clone(), cached.usage));
     }
-    let name = crate::slot::name_admitted(kind, attribute, &mut || step())?
+    let name = crate::slot::name_admitted(kind.into(), attribute, &mut || step())?
         .filter(|name| !name.is_empty())
         .cloned();
     let mut payload = source::storage::Payload::default();
@@ -167,9 +168,9 @@ fn fact(
 ) -> Result<Option<Fact>, DomError> {
     let key = order.normalize(key);
     let node = order.node(key)?;
-    let slot = if crate::slot::is_slot(node.kind) {
+    let slot = if crate::slot::is_slot(node.kind().into()) {
         let (value, usage) = read_name(
-            node.kind,
+            node.kind(),
             "name",
             cached.and_then(|v| v.slot.as_ref()),
             reuse,
@@ -184,17 +185,17 @@ fn fact(
         None
     };
     let mut light = None;
-    if crate::slot::is_slottable(node.kind)
+    if crate::slot::is_slottable(node.kind().into())
         && let Some(position) = order.position(key)
     {
         let parent = order.node(position.parent)?;
-        if let Some(shadow) = parent.shadow_root {
+        if let Some(shadow) = parent.shadow_root() {
             let root = order.node(shadow)?;
-            if matches!(root.kind,DomNodeKind::ShadowRoot(state) if state.slot_assignment()==crate::HtmlSlotAssignment::Named)
-                && root.host.map(|host| order.normalize(host)) == Some(position.parent)
+            if matches!(root.kind(),KindRead::ShadowRoot(state) if state.slot_assignment()==crate::HtmlSlotAssignment::Named)
+                && root.host().map(|host| order.normalize(host)) == Some(position.parent)
             {
                 let (value, usage) = read_name(
-                    node.kind,
+                    node.kind(),
                     "slot",
                     cached.and_then(|v| v.light.as_ref()),
                     reuse,
@@ -576,9 +577,9 @@ impl Names {
                     before: Some(before),
                     after: Some(after),
                     ..
-                }) => match (before.kind, after.kind) {
-                    (DomNodeKind::Element(a), DomNodeKind::Element(b)) => {
-                        a.attributes_backing().same_storage(b.attributes_backing())
+                }) => match (before.kind(), after.kind()) {
+                    (KindRead::Element(a), KindRead::Element(b)) => {
+                        a.language().same_attribute_storage(b.language())
                     }
                     _ => false,
                 },
@@ -623,18 +624,18 @@ impl Names {
         cancel: &AtomicBool,
     ) -> Result<Option<Plan>, DomError> {
         let key = draft.live_key(change.key);
-        let shadow_changed = change.before.and_then(|n| n.shadow_root)
-            != change.after.and_then(|n| n.shadow_root)
-            || change.before.and_then(|n| n.host) != change.after.and_then(|n| n.host);
+        let shadow_changed = change.before.and_then(|n| n.shadow_root())
+            != change.after.and_then(|n| n.shadow_root())
+            || change.before.and_then(|n| n.host()) != change.after.and_then(|n| n.host());
         let indexed = self.current.value.facts.get(key).is_some();
         let relevant = change
             .after
-            .is_some_and(|node| crate::slot::is_slot(node.kind))
+            .is_some_and(|node| crate::slot::is_slot(node.kind().into()))
             || order.after.position(key).is_some_and(|p| {
                 order
                     .after
                     .node(p.parent)
-                    .is_ok_and(|node| node.shadow_root.is_some())
+                    .is_ok_and(|node| node.shadow_root().is_some())
             });
         if !indexed && !relevant && !shadow_changed {
             return Ok(None);
@@ -653,15 +654,15 @@ impl Names {
         let after = change.after;
         if shadow_changed {
             for node in [before, after].into_iter().flatten() {
-                if node.shadow_root.is_some() {
-                    for child in node.children.iter() {
+                if node.shadow_root().is_some() {
+                    for child in node.children().iter() {
                         let key = draft.live_key(child);
                         keys.values
                             .change(&mut keys.custody, key, Some(key), &mut edit)?;
                     }
                 }
-                if matches!(node.kind, DomNodeKind::ShadowRoot(_))
-                    && let Some(host) = node.host
+                if matches!(node.kind(), KindRead::ShadowRoot(_))
+                    && let Some(host) = node.host()
                 {
                     // Destroy removes every ordinary child before retiring
                     // its closure in preorder. A host can therefore already
@@ -671,7 +672,7 @@ impl Names {
                         Err(DomError::StaleNode) => continue,
                         Err(error) => return Err(error),
                     };
-                    for child in host.children.iter() {
+                    for child in host.children().iter() {
                         let key = draft.live_key(child);
                         keys.values
                             .change(&mut keys.custody, key, Some(key), &mut edit)?;
@@ -716,7 +717,7 @@ impl Names {
                     order
                         .after
                         .node(p.parent)
-                        .is_ok_and(|node| node.shadow_root.is_some())
+                        .is_ok_and(|node| node.shadow_root().is_some())
                 });
             let root = order.before.root(key, Mode::Ordinary, edit.step)?;
             let mut current = draft.slot_index.index().lower_bound(root, key, edit.step)?;
