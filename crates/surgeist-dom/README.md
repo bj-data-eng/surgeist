@@ -129,10 +129,28 @@ observation's mandatory tail cannot advance until its feedback drains. This
 does not grant general caller reentry. Only an exactly classified echo skips
 inline ingestion; other native hooks still execute. Historical captures remain
 readable, while the incomplete binding refuses a latest coupled capture.
-Terminal owner effects remain terminal and retained; explicit reconciliation or
-bound retirement while such an outcome is resident is unavailable. Inline
-formation has explicit original DOM custody and work limits alongside CSSOM's
-independent logical/source quotas; neither is a process memory measurement.
+Terminal owner effects remain failed. The consuming operation's `reconcile`
+returns the exact displaced terminal evidence plus a fresh Pending lease before
+attempting canonical feedback. It requests a real CSSOM synchronization commit
+for the current exact binding; it never repeats the standard setter, parser or
+resolver. `DomInlineStyleOutcome` distinguishes the original `Standard` return,
+publication and diagnostics from a `Synchronization` commit and its detached
+affine effects. Completing the fresh lease applies only that new effect; it does
+not report the old failed attempt as applied. A refused reconciliation parks the
+same old outcome for `resume_inline_style_feedback`.
+
+Reconciliation preserves the original work counter, observer custody and inline
+policy. Its four DOM feedback limits may only increase. Each emitted terminal
+outcome consumes one cumulative output, and admission reserves the eventual
+completion as well; completion also counts its actual DOM change records. Actual
+work spent on refused attempts remains spent. Old terminal custody and the
+replacement holder overlap during admission, before the final fallible CSSOM
+commit. There is one resident attempt and no retained receipt history. Returned
+terminal evidence reports work at displacement. Pending and terminal residents
+continue to gate bound retirement and inline-store commits. Inline formation has
+explicit DOM custody and work limits alongside CSSOM's independent logical/source
+quotas; CSSOM private receipt backing has no DOM physical tariff, and neither
+limit is a process memory measurement.
 
 For contribution routing and focused verification commands, read the
 [crate guide](AGENTS.md). The [source](src/lib.rs) and [tests](tests/) establish

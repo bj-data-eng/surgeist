@@ -1,4 +1,4 @@
-//! Resident standard-operation outcome and exact Pending-effect feedback.
+//! Resident producer evidence, exact Pending feedback and terminal reconciliation.
 use super::*;
 use surgeist_cssom::{
     CssomAdmissionRequest, CssomOperationOutcome, CssomOwnerEffectStatus, CssomOwnerNotification,
@@ -9,16 +9,10 @@ pub(in crate::store) struct Echo {
     pub(in crate::store) element: NodeId,
     pub(in crate::store) value: DocumentString,
 }
-struct Original {
-    value: DomInlineStyleReturn,
-    publication: surgeist_cssom::CssomPublication,
-    diagnostics: Vec<surgeist_css::CssRecoveryDiagnostic>,
-    effects: Vec<surgeist_cssom::CssomOwnerEffect>,
-}
-impl Original {
+impl DomInlineStyleOutcome {
     fn unit(outcome: CssomOperationOutcome<()>) -> Self {
         let ((), publication, diagnostics, effects) = outcome.into_parts();
-        Self {
+        Self::Standard {
             value: DomInlineStyleReturn::Unit,
             publication,
             diagnostics,
@@ -27,7 +21,7 @@ impl Original {
     }
     fn removed(outcome: CssomOperationOutcome<String>) -> Self {
         let (value, publication, diagnostics, effects) = outcome.into_parts();
-        Self {
+        Self::Standard {
             value: DomInlineStyleReturn::Removed(value),
             publication,
             diagnostics,
@@ -37,11 +31,12 @@ impl Original {
 }
 pub(super) struct Resident {
     element: NodeId,
-    original: Option<Original>,
+    original: Option<DomInlineStyleOutcome>,
     limits: DomInlineStyleFeedbackLimits,
     work: source::formation::SourceWorkCustody,
     policy: Arc<custody::Held<DomInlineStyleLimits>>,
     observation: Option<crate::DomSourceEventId>,
+    emitted_outputs: usize,
 }
 impl Owner {
     pub(super) fn feedback_target(&self) -> Option<NodeId> {
@@ -58,7 +53,8 @@ impl Owner {
         }
     }
 }
-/// Exclusive access to one committed standard operation. Dropping this handle
+/// Exclusive access to a committed standard mutation or fresh synchronization.
+/// Dropping this handle
 /// parks the same outcome and effect with its original DOM owner.
 pub struct DomInlineStyleOperation<'a> {
     dom: &'a mut Dom,
@@ -68,23 +64,32 @@ impl<'a> DomInlineStyleOperation<'a> {
     pub fn element(&self) -> NodeId {
         self.resident().element
     }
-    /// Original standard return value, even while feedback remains incomplete.
-    pub fn value(&self) -> &DomInlineStyleReturn {
-        &self.original().value
+    /// Authentic standard or synchronization result of this attempt.
+    pub fn outcome(&self) -> &DomInlineStyleOutcome {
+        self.original()
     }
-    /// Original committed producer publication.
+    /// Actual producer publication.
     pub fn publication(&self) -> &surgeist_cssom::CssomPublication {
-        &self.original().publication
+        self.original().publication()
     }
-    /// Original diagnostics, retained without replaying their producer.
-    pub fn diagnostics(&self) -> &[surgeist_css::CssRecoveryDiagnostic] {
-        &self.original().diagnostics
-    }
-    /// Actual single-use effect status. Terminal states are not revived.
+    /// Actual single-use effects. Terminal states are not revived.
     pub fn owner_effects(&self) -> &[surgeist_cssom::CssomOwnerEffect] {
-        &self.original().effects
+        self.original().owner_effects()
     }
-    /// Cumulative DOM work already spent by this original operation.
+    /// Obtain a fresh current-state synchronization effect after terminal failure.
+    /// Success returns the failed evidence and a new Pending lease before any
+    /// canonical feedback. An error parks the unchanged attempt with its owner;
+    /// resume it through `Dom::resume_inline_style_feedback`. Feedback limits
+    /// may only increase. Actual spent work is retained even on refusal.
+    pub fn reconcile(
+        self,
+        limits: DomInlineStyleMutationLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(DomInlineStyleTerminal, Self), DomInlineStyleError> {
+        let terminal = self.dom.reconcile_inline_feedback(limits, cancel)?;
+        Ok((terminal, self))
+    }
+    /// Cumulative DOM work already spent by this original feedback lineage.
     pub fn spent_work(&self) -> u64 {
         self.resident().work.work().load(Ordering::Relaxed)
     }
@@ -109,7 +114,7 @@ impl<'a> DomInlineStyleOperation<'a> {
             .expect("retained feedback")
             .value()
     }
-    fn original(&self) -> &Original {
+    fn original(&self) -> &DomInlineStyleOutcome {
         self.resident()
             .original
             .as_ref()
@@ -164,7 +169,7 @@ impl Dom {
         self.mutate_inline(element, inputs, limits, cancel, |object, store| {
             object
                 .set_css_text(store, text, limits.declaration, resolver)
-                .map(Original::unit)
+                .map(DomInlineStyleOutcome::unit)
         })
     }
     /// Standard setProperty, including its original name/priority/no-op rules.
@@ -189,7 +194,7 @@ impl Dom {
                     limits.declaration,
                     resolver,
                 )
-                .map(Original::unit)
+                .map(DomInlineStyleOutcome::unit)
         })
     }
     /// Standard removeProperty and its original removed serialized value.
@@ -204,7 +209,7 @@ impl Dom {
         self.mutate_inline(element, inputs, limits, cancel, |object, store| {
             object
                 .remove_property(store, name, limits.declaration)
-                .map(Original::removed)
+                .map(DomInlineStyleOutcome::removed)
         })
     }
     /// Borrow the original parked feedback operation, without changing its
@@ -231,7 +236,7 @@ impl Dom {
         mutate: impl FnOnce(
             &CssStyleProperties,
             &mut CssomStore,
-        ) -> Result<Original, surgeist_cssom::CssomError>,
+        ) -> Result<DomInlineStyleOutcome, surgeist_cssom::CssomError>,
     ) -> Result<DomInlineStyleMutation<'a>, DomInlineStyleError> {
         self.require_source_entry()?;
         check_cancel(cancel)?;
@@ -283,7 +288,8 @@ impl Dom {
         let debit = self.custody_registry.ledger().retain(
             custody::Usage::new(
                 size_of::<Resident>()
-                    .checked_add(size_of::<DomInlineStyleCompletion>())
+                    .checked_add(size_of::<DomInlineStyleTerminal>())
+                    .and_then(|n| n.checked_add(size_of::<DomInlineStyleCompletion>()))
                     .and_then(|n| n.checked_add(size_of::<DomInlineStyleMutation<'_>>()))
                     .ok_or(DomError::RepresentationExhausted)?,
                 0,
@@ -307,6 +313,7 @@ impl Dom {
                 work,
                 policy,
                 observation,
+                emitted_outputs: 0,
             }),
             debit,
         );
@@ -329,16 +336,7 @@ impl Dom {
             }),
         }
     }
-    fn prepare_inline_feedback(
-        &mut self,
-        cancel: &AtomicBool,
-    ) -> Result<Option<PreparedPublication>, DomInlineStyleError> {
-        let owner = self.inline_styles.as_ref().expect("resident owner");
-        let resident = owner.feedback.as_ref().expect("resident feedback").value();
-        let original = resident.original.as_ref().expect("committed outcome");
-        if original.effects.is_empty() {
-            return Ok(None);
-        }
+    fn require_inline_feedback_entry(&self, resident: &Resident) -> Result<(), DomError> {
         let same_observation = resident.observation.is_some()
             && self.state.incomplete_hosted.is_none()
             && self
@@ -349,13 +347,170 @@ impl Dom {
         if !same_observation {
             self.require_source_entry()?;
         }
+        Ok(())
+    }
+    fn reconcile_inline_feedback(
+        &mut self,
+        limits: DomInlineStyleMutationLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomInlineStyleTerminal, DomInlineStyleError> {
+        let owner = self.inline_styles.as_ref().expect("resident owner");
+        let resident = owner.feedback.as_ref().expect("resident feedback").value();
+        self.require_inline_feedback_entry(resident)?;
+        check_cancel(cancel)?;
+        let original = resident.original.as_ref().expect("committed outcome");
+        let effect = original
+            .owner_effects()
+            .first()
+            .ok_or(DomInlineStyleError::ReconciliationNotRequired)?;
+        if !matches!(
+            effect.status(),
+            CssomOwnerEffectStatus::Canceled
+                | CssomOwnerEffectStatus::HostFailed
+                | CssomOwnerEffectStatus::Abandoned
+        ) {
+            return Err(DomInlineStyleError::ReconciliationRequiresTerminal {
+                status: effect.status(),
+            });
+        }
+        let previous = resident.limits;
+        let proposed = limits.feedback;
+        if proposed.retained_bytes < previous.retained_bytes
+            || proposed.retained_units < previous.retained_units
+            || proposed.work < previous.work
+            || proposed.outputs < previous.outputs
+        {
+            return Err(DomError::SourceLimitReduction.into());
+        }
+        let emitted_outputs = resident
+            .emitted_outputs
+            .checked_add(1)
+            .ok_or(DomError::RepresentationExhausted)?;
+        if emitted_outputs
+            .checked_add(1)
+            .ok_or(DomError::RepresentationExhausted)?
+            > proposed.outputs
+        {
+            return Err(DomError::SourceOutputLimit.into());
+        }
+        let work = resident.work.clone();
+        let (draft, _) = Draft::new_source_root_with_work(
+            self,
+            Arc::new(BatchIdentity),
+            source::initial::CommandStorage {
+                commands: &[],
+                capacity: 0,
+            },
+            crate::DomSourceLimits::new(
+                proposed.retained_bytes,
+                proposed.retained_units,
+                proposed.work,
+                1,
+                proposed.outputs,
+                0,
+                1,
+            ),
+            source::initial::Replay {
+                work: work.work().clone(),
+                identity: work.identity(),
+                names: None,
+            },
+            cancel,
+        )?;
+        let formation = source::formation::Formation::new(&draft, cancel)?;
+        let p = processing(resident.policy.value(), formation.as_ref(), cancel);
+        p.step()?;
+        let element = resident.element;
+        self.state
+            .node(self.owner, element)?
+            .element()
+            .ok_or(DomError::WrongNodeKind)?;
+        let binding = owner
+            .index
+            .membership
+            .bindings
+            .get_with(element.slot, &mut || p.step())?
+            .filter(|b| b.element == element)
+            .ok_or(DomInlineStyleError::Unbound)?;
+        let object = &owner.objects[binding.ordinal];
+        if object.element != element || object.properties.id() != effect.block() {
+            return Err(DomInlineStyleError::Unbound);
+        }
+        let store = owner.store.as_ref().expect("bound store");
+        let snapshot = store.snapshot();
+        let block = snapshot.block(object.properties.id())?;
+        for _ in 0..effect.owner().identity.len() {
+            p.step()?;
+        }
+        if block.owner() != Some(effect.owner()) {
+            return Err(DomInlineStyleError::StaleContext);
+        }
+        // The old holder remains charged while this complete replacement and
+        // the returned terminal wrapper coexist. Producer payloads retain their
+        // independent CSSOM accounting; this admits DOM-owned representations.
+        let debit = self.custody_registry.ledger().retain(
+            custody::Usage::new(
+                size_of::<Resident>()
+                    .checked_add(size_of::<DomInlineStyleTerminal>())
+                    .and_then(|n| n.checked_add(size_of::<DomInlineStyleCompletion>()))
+                    .and_then(|n| n.checked_add(size_of::<DomInlineStyleMutation<'_>>()))
+                    .ok_or(DomError::RepresentationExhausted)?,
+                0,
+            ),
+            |usage| p.admit(usage),
+        )?;
+        let mut replacement = custody::Held::new(
+            Box::new(Resident {
+                element,
+                original: None,
+                limits: proposed,
+                work,
+                policy: resident.policy.clone(),
+                observation: resident.observation,
+                emitted_outputs,
+            }),
+            debit,
+        );
+        let mut batch = store.batch(CssomEditGuard::from_snapshot(&snapshot))?;
+        batch.request_owner_synchronization(object.properties.id(), limits.declaration)?;
+        check_cancel(cancel)?;
+        // Final fallible producer operation. No canonical feedback is attempted
+        // here, and no admission/allocation follows this committed identity.
+        let owner = self.inline_styles.as_mut().expect("resident owner");
+        let mut commit = owner.store.as_mut().expect("bound store").commit(batch)?;
+        let effects = commit.take_owner_effects();
+        replacement.value_mut().original =
+            Some(DomInlineStyleOutcome::Synchronization { commit, effects });
+        let old = std::mem::replace(
+            owner.feedback.as_mut().expect("resident feedback"),
+            replacement,
+        );
+        let (mut old, debit) = old.into_parts();
+        Ok(DomInlineStyleTerminal {
+            element,
+            outcome: old.original.take().expect("committed terminal outcome"),
+            spent_work: old.work.work().load(Ordering::Relaxed),
+            _custody: debit,
+        })
+    }
+    fn prepare_inline_feedback(
+        &mut self,
+        cancel: &AtomicBool,
+    ) -> Result<Option<PreparedPublication>, DomInlineStyleError> {
+        let owner = self.inline_styles.as_ref().expect("resident owner");
+        let resident = owner.feedback.as_ref().expect("resident feedback").value();
+        let original = resident.original.as_ref().expect("committed outcome");
+        if original.owner_effects().is_empty() {
+            return Ok(None);
+        }
+        self.require_inline_feedback_entry(resident)?;
         check_cancel(cancel)?;
         assert_eq!(
-            original.effects.len(),
+            original.owner_effects().len(),
             1,
             "one actual bound standard mutation"
         );
-        let effect = &original.effects[0];
+        let effect = &original.owner_effects()[0];
         if effect.status() != CssomOwnerEffectStatus::Pending {
             return Err(DomInlineStyleError::TerminalEffect {
                 status: effect.status(),
@@ -364,6 +519,7 @@ impl Dom {
         let store = owner.store.as_ref().expect("bound store");
         store.validate_pending_owner_effect(effect)?;
         let limits = resident.limits;
+        let emitted_outputs = resident.emitted_outputs;
         let element = resident.element;
         self.state.node(self.owner, element)?;
         let work = resident.work.clone();
@@ -443,6 +599,7 @@ impl Dom {
             .changes
             .len()
             .checked_add(1)
+            .and_then(|n| n.checked_add(emitted_outputs))
             .ok_or(DomError::RepresentationExhausted)?
             > limits.outputs
         {
@@ -481,7 +638,7 @@ impl Dom {
                 .original
                 .as_mut()
                 .expect("committed outcome")
-                .effects[0];
+                .effects_mut()[0];
             let application = store
                 .as_mut()
                 .expect("bound store")
@@ -511,22 +668,16 @@ impl Dom {
             .take()
             .expect("resident feedback");
         let (resident, debit) = held.into_parts();
-        let Original {
-            value,
-            publication,
-            diagnostics,
-            effects,
-        } = resident.original.expect("committed outcome");
         Ok(DomInlineStyleCompletion {
-            value,
-            publication,
-            diagnostics,
-            effects,
+            outcome: resident.original.expect("committed outcome"),
             dom,
             _custody: debit,
         })
     }
 }
+
+#[cfg(test)]
+mod reconciliation_tests;
 
 #[cfg(test)]
 mod tests {
@@ -618,7 +769,7 @@ mod tests {
             .original
             .as_mut()
             .unwrap()
-            .effects[0];
+            .effects_mut()[0];
         let id = effect.id().clone();
         effect.cancel().unwrap(); // Actual CSSOM transition, no status fabrication.
         let revision = owner.store.as_ref().unwrap().snapshot().revision().clone();

@@ -147,9 +147,10 @@ pub use inline_style::{
     DomInlineStyleBatchContext, DomInlineStyleCapture, DomInlineStyleChange, DomInlineStyleCommit,
     DomInlineStyleCompletion, DomInlineStyleError, DomInlineStyleFeedbackLimits,
     DomInlineStyleInputs, DomInlineStyleLimits, DomInlineStyleMutation,
-    DomInlineStyleMutationLimits, DomInlineStyleProfile, DomInlineStyleProperty,
-    DomInlineStyleRequestLimits, DomInlineStyleReturn, DomInlineStyleSourceContext,
-    DomInlineStyleSourceProgress, DomInlineStyleSourcePublication,
+    DomInlineStyleMutationLimits, DomInlineStyleOutcome, DomInlineStyleProfile,
+    DomInlineStyleProperty, DomInlineStyleRequestLimits, DomInlineStyleReturn,
+    DomInlineStyleSourceContext, DomInlineStyleSourceProgress, DomInlineStyleSourcePublication,
+    DomInlineStyleTerminal,
 };
 pub use store::DomInlineStyleOperation;
 mod installation;
