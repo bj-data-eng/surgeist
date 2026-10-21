@@ -265,3 +265,114 @@ fn focused_designation_subtree_transfer_preserves_documents_and_cannot_clone_doc
         assert_eq!(dom.snapshot().stamp(), after.stamp());
     }
 }
+
+fn attached_original_focus_candidate() -> (Dom, DocumentId, NodeId, NodeId) {
+    use surgeist_html_parser::{
+        HtmlParseAssociationCaptureDisposition, HtmlParsePendingAssociationStep,
+    };
+    let report = parse(HtmlSource::utf8("<!doctype html><div tabindex=0></div>"));
+    let mut cursor = report.pending_associations();
+    let mut documents = 0;
+    loop {
+        match cursor.advance() {
+            HtmlParsePendingAssociationStep::Document(row) => {
+                documents += 1;
+                assert_eq!(
+                    row.disposition(),
+                    HtmlParseAssociationCaptureDisposition::PendingComplete
+                );
+                assert!(!row.has_obligations());
+            }
+            HtmlParsePendingAssociationStep::Occurrence(row) => {
+                assert!(!row.requires_processing());
+            }
+            HtmlParsePendingAssociationStep::Skipped => {}
+            HtmlParsePendingAssociationStep::Complete => break,
+        }
+    }
+    assert!(documents > 0);
+    let (mut dom, environment) = setup();
+    let installed = install(&mut dom, report, environment);
+    let document = installed.document();
+    let subject = element(&installed, "div");
+    let parent = element(&installed, "body");
+    let snapshot = installed.snapshot();
+    assert_eq!(snapshot.node(subject).unwrap().parent(), Some(parent));
+    assert_eq!(
+        snapshot.node(subject).unwrap().owner_document(),
+        Some(document)
+    );
+    assert_eq!(
+        snapshot
+            .node(subject)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .attribute(&"tabindex".into()),
+        Some(&"0".into())
+    );
+    assert_eq!(
+        snapshot
+            .document(document)
+            .unwrap()
+            .focused_area_designation(),
+        Unavailable
+    );
+    assert!(installed.pending_association().is_none());
+    assert_eq!(dom.pending_parsed_html_association(document).unwrap(), None);
+    assert!(dom.pending_parsed_html_associations().next().is_none());
+    assert!(dom.pending_source_edit().is_none());
+    (dom, document, subject, parent)
+}
+
+#[test]
+fn focus_removal_unavailable_original_element_atomic_detach_refuses() {
+    let (mut dom, document, subject, parent) = attached_original_focus_candidate();
+    let before = dom.snapshot();
+    let mut batch = DomBatch::new();
+    batch.detach(subject);
+    let result = dom.apply(batch, &AtomicBool::new(false));
+    assert!(
+        result.is_err(),
+        "removing an original potentially-area Element cannot complete an unavailable focused-area comparison; atomic detach succeeded"
+    );
+    let after = dom.snapshot();
+    assert_eq!(after.stamp(), before.stamp());
+    assert_eq!(after.node(subject).unwrap().parent(), Some(parent));
+    assert_eq!(
+        after.document(document).unwrap().focused_area_designation(),
+        Unavailable
+    );
+}
+
+#[test]
+fn focus_removal_unavailable_original_element_source_detach_refuses() {
+    let (mut dom, document, subject, parent) = attached_original_focus_candidate();
+    let before = dom.snapshot();
+    let limits = DomSourceLimits::new(128_000_000, 1_000_000, 20_000_000, 64, 4096, 4096, 4);
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::detach(subject),
+            limits,
+            &AtomicBool::new(false),
+        )
+        .expect("the authentic plain Element has no competing Source or parsed obligation");
+    assert!(!lease.status().has_published());
+    let result = lease.advance(&AtomicBool::new(false));
+    let outcome = match &result {
+        Ok(DomSourceProgress::Complete(_)) => "Complete",
+        Ok(DomSourceProgress::Request(_)) => "external request",
+        Err(_) => "refusal",
+    };
+    assert!(
+        result.is_err(),
+        "removing an original potentially-area Element cannot complete an unavailable focused-area comparison; Source advance returned {outcome}"
+    );
+    let after = lease.snapshot();
+    assert_eq!(after.stamp(), before.stamp());
+    assert_eq!(after.node(subject).unwrap().parent(), Some(parent));
+    assert_eq!(
+        after.document(document).unwrap().focused_area_designation(),
+        Unavailable
+    );
+}
