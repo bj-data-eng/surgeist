@@ -99,4 +99,5 @@ fn parsed_pending_associations_return_original_dom_before_session_owner_adoption
 }
 
 mod consumption;
+mod style_decision;
 mod style_prefix;

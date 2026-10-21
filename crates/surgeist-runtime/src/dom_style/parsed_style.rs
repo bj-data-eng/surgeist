@@ -1,17 +1,18 @@
-//! Original Style preparation; language transitions and retained inputs belong to DOM/HTML.
+//! Original Style preparation and decisions; retained inputs and transitions belong to DOM/HTML.
 use super::*;
 use surgeist_dom::{
     DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits, DomParsedHtmlStyleError,
-    DomParsedHtmlStyleInitialPolicyRequest, DomParsedHtmlStylePhase, DomParsedHtmlStylePrefixView,
+    DomParsedHtmlStyleInitialPolicyRequest, DomParsedHtmlStyleInlinePolicyObservation,
+    DomParsedHtmlStylePhase, DomParsedHtmlStylePrefixView,
 };
 use surgeist_html::HtmlCspAssociation;
 
-/// The actual Session or original parsed Style prefix refused preparation.
+/// The actual Session or original parsed Style prefix refused a command.
 #[derive(Debug)]
 pub enum DomStyleParsedPrefixError {
     /// Runtime owner, phase, cancellation or finite work refused.
     Runtime(DomStyleRuntimeError),
-    /// Canonical original-input qualification or prefix admission refused.
+    /// Canonical original-input qualification, phase or admission refused.
     Style(DomParsedHtmlStyleError),
 }
 impl std::fmt::Display for DomStyleParsedPrefixError {
@@ -93,6 +94,35 @@ impl DomStyleRuntime {
         hold.step(cancel).map_err(DomStyleRuntimeError::from)?;
         state.step(cancel)?;
         Ok(hold.bind_initial_policy(qualification, policy, cancel)?)
+    }
+
+    /// Accept one externally evaluated decision for the exact retained original
+    /// request. Evaluate through the separate immutable Session query, then drop
+    /// that view before calling this command. Refusal keeps the actual input;
+    /// retry it without evaluating again. Neither outcome creates a sheet or
+    /// acknowledges the whole contribution.
+    pub fn accept_parsed_style_inline_policy(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        contribution: DomParsedHtmlAssociationId,
+        input: &mut Option<DomParsedHtmlStyleInlinePolicyObservation>,
+        limits: DomParsedHtmlAssociationLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomParsedHtmlStylePhase, DomStyleParsedPrefixError> {
+        let owner = self.original()?;
+        let state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomStyleRuntimeError::Binding)?;
+        if state.dom != dom.owner() {
+            return Err(DomStyleRuntimeError::WrongSession.into());
+        }
+        drop(state.require_sheet_set_idle(dom)?);
+        let mut hold = dom
+            .raw_mut()
+            .begin_parsed_html_style(contribution, limits, cancel)?;
+        hold.step(cancel).map_err(DomStyleRuntimeError::from)?;
+        state.step(cancel)?;
+        Ok(hold.accept_inline_policy(input, cancel)?)
     }
 }
 

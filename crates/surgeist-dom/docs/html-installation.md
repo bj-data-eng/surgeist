@@ -239,6 +239,32 @@ release the query before issuing a binding command. Runtime's Session forwards
 this canonical query and orchestrates short commands without retaining another
 policy owner or cloning a report graph.
 
+An external supplier can inspect that immutable request after all mutable
+Runtime and DOM command loans end. `DomParsedHtmlStyleInlinePolicyObservation`
+records its actual allow/block decision; DOM provides no evaluator. An absent
+supplier leaves `InlinePolicyPending`, including for an opaque native artifact.
+Genuine InitialEmpty is an explicitly supplied policy state, not an inference
+from missing policy or browsing context. HTML's Meta CSP processor attests Meta
+insertion, not this inline decision.
+
+The observation constructor accepts only the actual stored request. Its fixed
+stamp retains the original qualification and every bound CSP identity,
+generation, revision and profile; it retains no text, nonce, artifact or report
+backing. The one formed request is immutable and never replaced or reset, so
+those identities qualify its exact original text and nonce. The observation
+does not grant canonical currentness by itself.
+
+`accept_inline_policy` takes an Option input only after validating that stamp
+against the still-pending `CheckInlineCsp` request and admitting original work,
+cancellation and one cumulative durable decision output. Refusal preserves the
+same input, binding and cursor, allowing raised-limit retry without another
+evaluation. The same HTML cursor consumes `InlineAllowed` once: allow reaches
+`CreateSheetPending`; block reaches `InlinePolicyBlocked` for this occurrence.
+The inline-policy query then returns no pending request, and repeated advance
+only observes the reached phase. Repeated acceptance is refused. Both branches
+retain the same graph, policy, cleanup reservation and debit until normal entry
+disposal; no large backing is retired inside the decision transition.
+
 The one original parsed-association control retains finite work, outputs,
 limits and peaks. Work includes prepaid native last-owner disposal credits;
 those credits are not refunded on retry. The artifact's cached independent
@@ -250,8 +276,9 @@ The graph drops before its debit. Canonical pending usage includes the persisten
 graph even when an older disposal-only retirement shares its entry; future
 installs/removals preserve that accounting.
 
-No inline-policy evaluation, reply, CreateSheet acknowledgement, preference
-update or whole-contribution completion occurs here. URL, Base, media and other
+No policy evaluation, CreateSheet acknowledgement, preference update or
+whole-contribution completion occurs here. Both decision branches leave the
+contribution Pending and do not execute its next occurrence. URL, Base, media and other
 external contexts are not requested before their actual later branches. Use the
 Session structural-installation route; raw Session admission keeps its existing
 influencing-Style refusal.

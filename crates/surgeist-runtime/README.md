@@ -64,9 +64,23 @@ view before binding or advancing. Original work, phase and raise-only limits
 remain canonical across retries. Raw `admit_parsed` still refuses influencing
 Style histories.
 
-Policy evaluation, captured-context recovery, historical sheet creation and
-resource completion remain unavailable. No unused URL/Base/media binder is
-introduced, and reaching a request does not acknowledge its contribution.
+An external evaluator can inspect that immutable request and construct a
+`DomParsedHtmlStyleInlinePolicyObservation` from the same request. Drop the view
+before passing the decision envelope to `accept_parsed_style_inline_policy`.
+The fixed observation qualifies the original request and exact bound policy;
+it retains no text, nonce or policy graph. A missing evaluator supplies no
+observation and never implies permission. No CSP parser or evaluator is selected
+by Runtime. Explicit constructor-empty policy differs from an opaque external
+artifact and from unbound or unavailable authority.
+
+Acceptance feeds HTML's retained cursor once: allow stops at
+`CreateSheetPending`, while block records `InlinePolicyBlocked` for only that
+original occurrence. Both keep the whole contribution Pending. Cancellation or
+admission refusal keeps the caller's actual decision envelope for retry without
+evaluating again; original work, policy and output accounting remain cumulative.
+Captured-context recovery, historical sheet creation and resource completion
+remain unavailable. No unused URL/Base/media binder is introduced, and accepting
+a decision does not acknowledge its contribution.
 Meta change-preferred does not read those external context slots. Read-only
 captures remain historical; standalone enable/select/change-preferred mutations
 refuse an affected Document while its original contribution is pending.

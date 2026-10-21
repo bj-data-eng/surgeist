@@ -429,3 +429,184 @@ fn original_work_refusal_keeps_unstarted_graph_and_raised_retry_keeps_spent_work
         DomParsedHtmlStylePhase::AwaitingInitialPolicy
     );
 }
+
+fn inline_with_policy(dom: &mut Dom, id: DomParsedHtmlAssociationId, policy: HtmlCspAssociation) {
+    inline_with_policy_under(dom, id, policy, envelope());
+}
+fn inline_with_policy_under(
+    dom: &mut Dom,
+    id: DomParsedHtmlAssociationId,
+    policy: HtmlCspAssociation,
+    limits: DomParsedHtmlAssociationLimits,
+) {
+    begin_await(dom, id, limits);
+    let q = qualifier(dom, id);
+    let mut input = Some(policy);
+    let mut hold = dom.begin_parsed_html_style(id, limits, &flag()).unwrap();
+    hold.bind_initial_policy(&q, &mut input, &flag()).unwrap();
+    hold.advance(&flag()).unwrap();
+}
+fn decision(
+    dom: &Dom,
+    id: DomParsedHtmlAssociationId,
+    allowed: bool,
+) -> DomParsedHtmlStyleInlinePolicyObservation {
+    DomParsedHtmlStyleInlinePolicyObservation::evaluated(
+        dom.parsed_html_style_prefix(id)
+            .unwrap()
+            .inline_policy_request()
+            .unwrap(),
+        allowed,
+    )
+}
+#[test]
+fn decision_rejects_each_foreign_bound_policy_stamp_before_accepting_one_output() {
+    let (mut dom, env) = setup();
+    let (_, id) = install(
+        &mut dom,
+        parse("<!doctype html><style nonce='n'>later</style>"),
+        env,
+    );
+    let (policy, _, _) = native_policy(1024);
+    inline_with_policy(&mut dom, id, policy);
+    let (foreign, _, _) = native_policy(1024);
+    let mut allow = |_: HtmlCspLayout| Ok::<_, ()>(());
+    let mut owner = HtmlCspOwner::new_with(&mut allow).unwrap();
+    let empty = owner.initial_document_with(&mut allow).unwrap();
+    for field in 0..5 {
+        // Start with an actual observation, then corrupt one private stamp
+        // component to test validation rather than inventing a policy artifact.
+        let mut observation = decision(&dom, id, true);
+        match field {
+            0 => observation.document = foreign.document().clone(),
+            1 => observation.generation = foreign.generation().clone(),
+            2 => observation.policy = foreign.policy().id().clone(),
+            3 => observation.revision = empty.policy().revision(),
+            4 => observation.profile = foreign.policy().profile().cloned(),
+            _ => unreachable!(),
+        }
+        let mut input = Some(observation);
+        let mut hold = dom
+            .begin_parsed_html_style(id, envelope(), &flag())
+            .unwrap();
+        assert!(matches!(
+            hold.accept_inline_policy(&mut input, &flag()),
+            Err(DomParsedHtmlStyleError::WrongRequest)
+        ));
+        assert!(input.is_some());
+        assert_eq!(
+            hold.advance(&flag()).unwrap(),
+            DomParsedHtmlStylePhase::InlinePolicyPending
+        );
+    }
+    let mut input = Some(decision(&dom, id, true));
+    assert_eq!(
+        dom.begin_parsed_html_style(id, envelope(), &flag())
+            .unwrap()
+            .accept_inline_policy(&mut input, &flag())
+            .unwrap(),
+        DomParsedHtmlStylePhase::CreateSheetPending
+    );
+}
+#[test]
+fn selected_decision_retains_exact_graph_debit_and_native_cleanup_until_entry_disposal() {
+    for allowed in [false, true] {
+        let (mut dom, env) = setup();
+        let (_, id) = install(
+            &mut dom,
+            parse("<!doctype html><style nonce='n'>later</style>"),
+            env,
+        );
+        let (policy, drops, descriptors) = native_policy(131072);
+        inline_with_policy(&mut dom, id, policy);
+        let ledger = dom.custody_registry.ledger().clone();
+        let before = ledger.total();
+        let usage = dom.pending_associations.usage;
+        let record = dom.pending_associations.controlled_entry(id).unwrap();
+        let graph = {
+            let view = dom.parsed_html_style_prefix(id).unwrap();
+            view.inline_policy_request().unwrap() as *const _ as usize
+        };
+        let mut input = Some(decision(&dom, id, allowed));
+        {
+            let mut hold = dom
+                .begin_parsed_html_style(id, envelope(), &flag())
+                .unwrap();
+            hold.accept_inline_policy(&mut input, &flag()).unwrap();
+        }
+        assert!(input.is_none());
+        assert_eq!(ledger.total(), before);
+        assert_eq!(dom.pending_associations.usage, usage);
+        assert_eq!(drops.load(Ordering::Relaxed), 0);
+        assert_eq!(descriptors.load(Ordering::Relaxed), 1);
+        {
+            let guard = lock(record.value()).unwrap();
+            let Graph::Inline(request) = guard.as_ref().unwrap().value().as_ref() else {
+                panic!("actual selected request retained")
+            };
+            assert_eq!(request as *const _ as usize, graph);
+            assert_eq!(
+                request.action(),
+                if allowed {
+                    Action::CreateSheet
+                } else {
+                    Action::Complete
+                }
+            );
+        }
+        drop(record);
+        drop(dom);
+        assert_eq!(drops.load(Ordering::Relaxed), 1);
+        assert_eq!(ledger.total(), custody::Usage::ZERO);
+    }
+}
+#[test]
+fn decision_work_frontier_refusal_preserves_original_input_and_same_cursor_for_raised_retry() {
+    let (mut dom, env) = setup();
+    let (_, id) = install(&mut dom, parse("<!doctype html><style>later</style>"), env);
+    let mut allow = |_: HtmlCspLayout| Ok::<_, ()>(());
+    let mut owner = HtmlCspOwner::new_with(&mut allow).unwrap();
+    let limits = DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 1024, 1024).unwrap();
+    inline_with_policy_under(
+        &mut dom,
+        id,
+        owner.initial_document_with(&mut allow).unwrap(),
+        limits,
+    );
+    let mut input = Some(decision(&dom, id, true));
+    let record = dom.pending_associations.controlled_entry(id).unwrap();
+    let before = record.value().control.spent_work();
+    // The existing original policy is raised only. Exhaust its current work
+    // allowance by real steps, leaving exactly the begin admission plus the
+    // first acceptance step. The final acceptance step must then refuse.
+    {
+        let hold = dom.begin_parsed_html_style(id, limits, &flag()).unwrap();
+        while hold.spent_work() < limits.work() - 2 {
+            hold.step(&flag()).unwrap();
+        }
+    }
+    {
+        let mut hold = dom.begin_parsed_html_style(id, limits, &flag()).unwrap();
+        assert!(matches!(
+            hold.accept_inline_policy(&mut input, &flag()),
+            Err(DomParsedHtmlStyleError::Admission(
+                crate::DomParsedHtmlAssociationAdmissionError::Dom(DomError::WorkLimit {
+                    resource: DomResource::ParsedAssociationProcessingWork,
+                    limit: 1024
+                })
+            ))
+        ));
+    }
+    assert!(record.value().control.spent_work() > before);
+    assert!(input.is_some());
+    assert_eq!(
+        dom.parsed_html_style_prefix(id).unwrap().phase(),
+        DomParsedHtmlStylePhase::InlinePolicyPending
+    );
+    let raised = DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 1034, 1024).unwrap();
+    let mut hold = dom.begin_parsed_html_style(id, raised, &flag()).unwrap();
+    assert_eq!(
+        hold.accept_inline_policy(&mut input, &flag()).unwrap(),
+        DomParsedHtmlStylePhase::CreateSheetPending
+    );
+}

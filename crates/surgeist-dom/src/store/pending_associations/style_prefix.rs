@@ -1,4 +1,4 @@
-//! Only the authentic fresh original Style's synchronous prefix, never a reply.
+//! The authentic original Style prefix and its one external inline decision.
 use super::control::Meter;
 use super::*;
 use crate::parsed_style::*;
@@ -32,7 +32,12 @@ impl Graph {
     fn phase(&self) -> DomParsedHtmlStylePhase {
         match self {
             Self::Awaiting { .. } => DomParsedHtmlStylePhase::AwaitingInitialPolicy,
-            Self::Inline(_) => DomParsedHtmlStylePhase::InlinePolicyPending,
+            Self::Inline(request) => match request.cursor.action() {
+                Action::CheckInlineCsp => DomParsedHtmlStylePhase::InlinePolicyPending,
+                Action::CreateSheet => DomParsedHtmlStylePhase::CreateSheetPending,
+                Action::Complete => DomParsedHtmlStylePhase::InlinePolicyBlocked,
+                _ => unreachable!("only the selected inline decision can advance this cursor"),
+            },
             Self::Transition => unreachable!("private infallible transition"),
         }
     }
@@ -90,7 +95,7 @@ impl DomParsedHtmlStylePrefixView<'_> {
     }
     pub fn inline_policy_request(&self) -> Option<&DomParsedHtmlStyleInlinePolicyRequest> {
         match self.state.as_ref().map(|s| s.value().as_ref()) {
-            Some(Graph::Inline(r)) => Some(r),
+            Some(Graph::Inline(r)) if r.action() == Action::CheckInlineCsp => Some(r),
             _ => None,
         }
     }
@@ -217,7 +222,13 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
         self.meter.step(cancel)?;
         let mut state = lock(self.meter.entry())?;
         match state.as_ref().map(|s| s.value().as_ref()) {
-            Some(Graph::Inline(_)) => return Ok(DomParsedHtmlStylePhase::InlinePolicyPending),
+            Some(Graph::Inline(_)) => {
+                return Ok(state
+                    .as_ref()
+                    .expect("stored inline request")
+                    .value()
+                    .phase());
+            }
             Some(Graph::Awaiting { policy: None, .. }) => {
                 return Ok(DomParsedHtmlStylePhase::AwaitingInitialPolicy);
             }
@@ -293,6 +304,51 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
         self.dom.pending_associations.usage = next;
         *state = Some(custody::Held::new(graph, debit));
         Ok(DomParsedHtmlStylePhase::AwaitingInitialPolicy)
+    }
+    /// Accept one actual external observation. Refusal retains the exact input;
+    /// no evaluator is called while this exclusive command is live.
+    pub fn accept_inline_policy(
+        &mut self,
+        input: &mut Option<DomParsedHtmlStyleInlinePolicyObservation>,
+        cancel: &AtomicBool,
+    ) -> Result<DomParsedHtmlStylePhase, DomParsedHtmlStyleError> {
+        self.meter.step(cancel)?;
+        let mut state = lock(self.meter.entry())?;
+        let Some(held) = state.as_mut() else {
+            return Err(DomParsedHtmlStyleError::WrongRequest);
+        };
+        let Graph::Inline(request) = held.value_mut().as_mut() else {
+            return Err(DomParsedHtmlStyleError::WrongRequest);
+        };
+        if request.cursor.action() != Action::CheckInlineCsp {
+            return Err(DomParsedHtmlStyleError::DecisionAlreadyAccepted {
+                contribution: self.meter.entry().id,
+            });
+        }
+        let observation = input
+            .as_ref()
+            .ok_or(DomParsedHtmlStyleError::MissingObservation)?;
+        // The immutable one-request/no-reset phase binds these exact original
+        // identities to its text and nonce. The observation cannot supply or
+        // replace either backing, policy, cursor or historical qualification.
+        if observation.qualification != request.qualification
+            || observation.document != *request.policy.document()
+            || observation.generation != *request.policy.generation()
+            || observation.policy != *request.policy.policy().id()
+            || observation.revision != request.policy.policy().revision()
+            || observation.profile.as_ref() != request.policy.policy().profile()
+        {
+            return Err(DomParsedHtmlStyleError::WrongRequest);
+        }
+        self.meter.step(cancel)?;
+        // This is the one newly durable selected-occurrence decision. All
+        // fallible work ends before its same-cursor transition and input take.
+        self.meter.retain(0, 0, 1, cancel)?;
+        request
+            .cursor
+            .reply(Reply::InlineAllowed(observation.allowed))?;
+        let _accepted = input.take();
+        Ok(held.value().phase())
     }
     pub fn bind_initial_policy(
         &mut self,

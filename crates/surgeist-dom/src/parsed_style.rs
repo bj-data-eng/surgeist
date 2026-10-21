@@ -1,4 +1,4 @@
-//! Original parsed Style prefix; no inline-policy decision or sheet publication.
+//! Original parsed Style prefix and external inline decision; no sheet publication.
 use crate::{
     DocumentId, DocumentString, DomError, DomParsedHtmlAssociationAdmissionError,
     DomParsedHtmlAssociationId, DomParsedHtmlHistoricalDocument,
@@ -17,6 +17,8 @@ pub enum DomParsedHtmlStylePhase {
     Unstarted,
     AwaitingInitialPolicy,
     InlinePolicyPending,
+    CreateSheetPending,
+    InlinePolicyBlocked,
 }
 #[derive(Debug)]
 pub enum DomParsedHtmlStyleError {
@@ -33,6 +35,10 @@ pub enum DomParsedHtmlStyleError {
     WrongRequest,
     AlreadyBound,
     MissingPolicy,
+    MissingObservation,
+    DecisionAlreadyAccepted {
+        contribution: DomParsedHtmlAssociationId,
+    },
     PolicyContext {
         requirement: HtmlParseAssociationContextRequirement,
     },
@@ -111,7 +117,7 @@ impl DomParsedHtmlStyleInitialPolicyRequest {
     }
 }
 /// One stored historical inline-policy request, not native current Style source
-/// or a Meta CSP insertion request. There is deliberately no reply method.
+/// or a Meta CSP insertion request. The canonical hold consumes observations.
 pub struct DomParsedHtmlStyleInlinePolicyRequest {
     pub(crate) qualification: DomParsedHtmlStyleInitialPolicyRequest,
     pub(crate) text: DocumentString,
@@ -138,5 +144,66 @@ impl DomParsedHtmlStyleInlinePolicyRequest {
     }
     pub fn action(&self) -> HtmlStyleUpdateAction {
         self.cursor.action()
+    }
+}
+
+/// An external supplier's decision for the exact immutable historical request.
+/// This records an actual evaluation, not evaluator availability or a Meta CSP
+/// processor attestation. No policy is evaluated by this constructor.
+///
+/// A reached request is formed once and never replaced or reset. Its original
+/// qualification and immutable bound policy therefore identify its exact text
+/// and nonce, without retaining those backings outside canonical custody.
+/// Identity copies grant no execution or currentness authority.
+///
+/// Invoke an external supplier using the canonical read loan, then end that loan
+/// before beginning the accepting command. `None` explicitly leaves evaluation
+/// unavailable; it never means permission:
+/// ```no_run
+/// use surgeist_dom::*;
+/// use std::sync::atomic::AtomicBool;
+/// fn supply(dom: &mut Dom, id: DomParsedHtmlAssociationId,
+///           limits: DomParsedHtmlAssociationLimits, cancel: &AtomicBool,
+///           evaluate: impl FnOnce(&DomParsedHtmlStyleInlinePolicyRequest) -> Option<bool>) {
+///     let mut input = {
+///         let view = dom.parsed_html_style_prefix(id).unwrap();
+///         let request = view.inline_policy_request().unwrap();
+///         evaluate(request).map(|allowed|
+///             DomParsedHtmlStyleInlinePolicyObservation::evaluated(request, allowed))
+///     };
+///     if input.is_some() {
+///         let mut hold = dom.begin_parsed_html_style(id, limits, cancel).unwrap();
+///         let _ = hold.accept_inline_policy(&mut input, cancel);
+///         // A refused command leaves this same input available for retry.
+///     }
+/// }
+/// ```
+#[derive(Debug)]
+pub struct DomParsedHtmlStyleInlinePolicyObservation {
+    pub(crate) qualification: DomParsedHtmlStyleInitialPolicyRequest,
+    pub(crate) document: surgeist_html::HtmlCspDocumentId,
+    pub(crate) generation: surgeist_html::HtmlCspAssociationGeneration,
+    pub(crate) policy: surgeist_html::HtmlCspPolicyId,
+    pub(crate) revision: surgeist_html::HtmlCspPolicyRevision,
+    pub(crate) profile: Option<surgeist_html::HtmlCspProcessorProfile>,
+    pub(crate) allowed: bool,
+}
+impl DomParsedHtmlStyleInlinePolicyObservation {
+    pub fn evaluated(request: &DomParsedHtmlStyleInlinePolicyRequest, allowed: bool) -> Self {
+        Self {
+            qualification: request.qualification.clone(),
+            document: request.policy.document().clone(),
+            generation: request.policy.generation().clone(),
+            policy: request.policy.policy().id().clone(),
+            revision: request.policy.policy().revision(),
+            profile: request.policy.policy().profile().cloned(),
+            allowed,
+        }
+    }
+    pub fn qualification(&self) -> &DomParsedHtmlStyleInitialPolicyRequest {
+        &self.qualification
+    }
+    pub fn allowed(&self) -> bool {
+        self.allowed
     }
 }
