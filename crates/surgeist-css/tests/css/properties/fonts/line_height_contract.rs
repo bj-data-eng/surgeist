@@ -341,11 +341,13 @@ fn recovered_math_is_retained_by_raw_parse_but_rejected_by_strict_construction_a
                         .kind(),
                     &CssNumericConstructionErrorKind::RecoveredComponent
                 );
-                let transferred =
+                assert_eq!(
                     CssSpecifiedNonNegativeNumber::try_from_calculation(calculation.clone())
-                        .unwrap();
-                assert_eq!(transferred.origin(), admitted.origin());
-                assert_eq!(transferred.serialize_specified().unwrap(), "calc(1)");
+                        .unwrap_err()
+                        .kind(),
+                    &CssNumericConstructionErrorKind::RecoveredComponent
+                );
+                assert_eq!(admitted.serialize_specified().unwrap(), "calc(1)");
             }
             CssLineHeight::LengthPercentage(admitted) if !number => {
                 let calculation = admitted.calculation().expect("length math");
@@ -357,12 +359,15 @@ fn recovered_math_is_retained_by_raw_parse_but_rejected_by_strict_construction_a
                     .kind(),
                     &CssNumericConstructionErrorKind::RecoveredComponent
                 );
-                let transferred = CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-                    calculation.clone(),
-                )
-                .unwrap();
-                assert_eq!(transferred.origin(), admitted.origin());
-                assert_eq!(transferred.serialize_specified().unwrap(), "calc(1px)");
+                assert_eq!(
+                    CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
+                        calculation.clone(),
+                    )
+                    .unwrap_err()
+                    .kind(),
+                    &CssNumericConstructionErrorKind::RecoveredComponent
+                );
+                assert_eq!(admitted.serialize_specified().unwrap(), "calc(1px)");
             }
             _ => panic!("retained math domain {text}"),
         }

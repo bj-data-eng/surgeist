@@ -79,21 +79,25 @@ impl CssFontObliqueAngle {
             ));
         };
         let spelling = number.representation();
-        let in_range = match unit.to_ascii_lowercase().as_str() {
-            "deg" => crate::exact_decimal::LexicalDecimal::new(spelling).absolute_at_most("9", 1),
-            "grad" => crate::exact_decimal::LexicalDecimal::new(spelling).absolute_at_most("1", 2),
-            "turn" => {
+        let Some(crate::CssNumericUnit::Angle(unit)) = crate::numeric::units::parse(unit) else {
+            return Err(CssNumericConstructionError::at(
+                CssNumericConstructionErrorKind::RootDomainMismatch,
+                Some(&component),
+            ));
+        };
+        let in_range = match unit {
+            CssAngleUnit::Degrees => {
+                crate::exact_decimal::LexicalDecimal::new(spelling).absolute_at_most("9", 1)
+            }
+            CssAngleUnit::Gradians => {
+                crate::exact_decimal::LexicalDecimal::new(spelling).absolute_at_most("1", 2)
+            }
+            CssAngleUnit::Turns => {
                 crate::exact_decimal::LexicalDecimal::new(spelling).absolute_at_most("25", -2)
             }
-            "rad" => spelling
+            CssAngleUnit::Radians => spelling
                 .parse::<f64>()
                 .is_ok_and(|value| value.abs() <= std::f64::consts::FRAC_PI_2),
-            _ => {
-                return Err(CssNumericConstructionError::at(
-                    CssNumericConstructionErrorKind::RootDomainMismatch,
-                    Some(&component),
-                ));
-            }
         };
         if !in_range {
             return Err(CssNumericConstructionError::at(
@@ -109,19 +113,16 @@ impl CssFontObliqueAngle {
     /// Retains already-admitted symbolic angle math and its recovery provenance;
     /// a bare dimension root reenters literal bounds.
     pub fn try_from_calculation(calculation: CssAngleCalculation) -> ConstructionResult<Self> {
-        let root = crate::specified_numeric::significant_root(calculation.components())?;
-        if matches!(root.view(), CssComponentValueRef::Token(_)) {
-            return Self::try_from_component(root.clone());
-        }
-        if !matches!(root.view(), CssComponentValueRef::Function(_)) {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::RootDomainMismatch,
-                Some(root),
-            ));
-        }
-        Ok(Self {
-            value: ObliqueAngleValue::Calculation(calculation),
-        })
+        // This domain still retains recovered syntax from checked construction.
+        crate::specified_numeric::admit_calculation(
+            calculation,
+            CssAngleCalculation::components,
+            crate::specified_numeric::CalculationAdmission::Recovering,
+            Self::try_from_component,
+            |calculation| Self {
+                value: ObliqueAngleValue::Calculation(calculation),
+            },
+        )
     }
 
     /// Borrows the original literal, including its unit and source origin.
@@ -190,18 +191,11 @@ impl CssFontObliqueAngle {
                 else {
                     unreachable!("checked literal angle")
                 };
-                let canonical_unit = match unit.to_ascii_lowercase().as_str() {
-                    "deg" => CssAngleUnit::Degrees,
-                    "grad" => CssAngleUnit::Gradians,
-                    "rad" => CssAngleUnit::Radians,
-                    "turn" => CssAngleUnit::Turns,
+                let suffix = match crate::numeric::units::parse(unit) {
+                    Some(unit @ crate::CssNumericUnit::Angle(_)) => {
+                        crate::numeric::units::suffix(unit)
+                    }
                     _ => unreachable!("checked angle unit"),
-                };
-                let suffix = match canonical_unit {
-                    CssAngleUnit::Degrees => "deg",
-                    CssAngleUnit::Gradians => "grad",
-                    CssAngleUnit::Radians => "rad",
-                    CssAngleUnit::Turns => "turn",
                 };
                 let coefficient_limit = context
                     .remaining_bytes()

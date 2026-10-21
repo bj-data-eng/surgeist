@@ -103,15 +103,17 @@ impl Unit {
         if ty.is(CssNumericDimension::Percentage) {
             return Self::Percentage;
         }
-        for (dimension, unit) in [
-            (CssNumericDimension::Length, "px"),
-            (CssNumericDimension::Angle, "deg"),
-            (CssNumericDimension::Time, "s"),
-            (CssNumericDimension::Frequency, "hz"),
-            (CssNumericDimension::Resolution, "dppx"),
+        for dimension in [
+            CssNumericDimension::Length,
+            CssNumericDimension::Angle,
+            CssNumericDimension::Time,
+            CssNumericDimension::Frequency,
+            CssNumericDimension::Resolution,
         ] {
             if ty.is(dimension) {
-                return Self::Canonical(unit);
+                return Self::Canonical(
+                    super::units::canonical_suffix(dimension).expect("intrinsic dimension"),
+                );
             }
         }
         // Flex magnitudes require their owning layout context.
@@ -1052,7 +1054,7 @@ fn prepare_specified_scaled_with_mode(
                         (number, Unit::Percentage)
                     }
                     CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) => {
-                        let (mut unit, factor) = canonical_unit(unit);
+                        let (mut unit, projection_scale) = canonical_unit(unit);
                         if projection.mode == ProjectionMode::KeyframeMatching
                             && node.ty.is(CssNumericDimension::Flex)
                         {
@@ -1061,9 +1063,13 @@ fn prepare_specified_scaled_with_mode(
                         let value = if projection.mode == ProjectionMode::SpecifiedOutput
                             && unit == Unit::Canonical("deg")
                         {
-                            finite_angle_leaf(number.representation(), factor)
+                            finite_angle_leaf(
+                                number.representation(),
+                                projection_scale.expect("intrinsic angle"),
+                            )
                         } else {
-                            lexical_value(number.representation()) * factor
+                            let coefficient = lexical_value(number.representation());
+                            projection_scale.map_or(coefficient, |scale| scale.apply(coefficient))
                         };
                         let id = projection.value(value, unit, node.ty)?;
                         results.push(id);
@@ -1237,8 +1243,9 @@ fn lexical_value(representation: &str) -> f64 {
     }
 }
 
-fn finite_angle_leaf(representation: &str, factor: f64) -> f64 {
+fn finite_angle_leaf(representation: &str, scale: super::units::Binary64Projection) -> f64 {
     let coefficient = lexical_value(representation);
+    let factor = scale.unit_value();
     let converted = if coefficient.is_infinite() && factor < 1.0 {
         // A grad coefficient outside binary64 can still fit in degrees. Read
         // a bounded normalized decimal prefix before applying its 9/10 scale;
@@ -1260,20 +1267,20 @@ fn finite_angle_leaf(representation: &str, factor: f64) -> f64 {
             coefficient
         }
     } else {
-        coefficient * factor
+        scale.apply(coefficient)
     };
     // Dimension tokens are authored finite decimals. Genuine infinities are
     // constants or calculation results and never enter this leaf conversion.
     finite_angle_overflow(converted, true)
 }
 
-fn canonical_unit(unit: &str) -> (Unit, f64) {
-    if let Some((canonical, factor)) =
-        super::CssNumericUnit::parse(unit).and_then(super::CssNumericUnit::intrinsic_scale)
+fn canonical_unit(unit: &str) -> (Unit, Option<super::units::Binary64Projection>) {
+    if let Some(scale) =
+        super::CssNumericUnit::parse(unit).and_then(super::CssNumericUnit::intrinsic_projection)
     {
-        (Unit::Canonical(canonical), factor)
+        (Unit::Canonical(scale.canonical()), Some(scale))
     } else {
-        (Unit::Context(unit.to_ascii_lowercase()), 1.0)
+        (Unit::Context(unit.to_ascii_lowercase()), None)
     }
 }
 

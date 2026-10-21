@@ -1,16 +1,13 @@
 //! Shared exact line-width and unordered width/style/color grammar for borders and column rules.
 
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
-use cssparser::Token;
+use crate::error::property::{Error, ParseError, unexpected_at};
 
 use super::border_style::parse_border_style;
 use super::parse_color;
-use super::values::{CalculationRoot, is_math_function, parse_numeric_function};
 use crate::numeric::NumericInputContext;
 use crate::{
     CssBorderStyle, CssBorderWidth, CssBorderWidthPair, CssBorderWidthShorthand, CssBoxSideKind,
-    CssLengthCalculation, CssSpecifiedNonNegativeLength,
 };
 
 type ParsedLineTriple = (
@@ -48,30 +45,7 @@ pub(super) fn parse_exact_line_width<'i, 't>(
     {
         return Ok(CssBorderWidth::Thick);
     }
-    input.skip_whitespace();
-    let state = input.state();
-    let location = input.current_source_location();
-    let root_site = input.position();
-    let length = match input.next().map_err(basic)? {
-        Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
-            input.reset(&state);
-            let component = input
-                .collect_numeric_component(numeric)
-                .map_err(|_| unexpected_at(location))?;
-            CssSpecifiedNonNegativeLength::from_property_component(component, numeric)
-        }
-        Token::Function(name) if is_math_function(name) => {
-            let expression =
-                parse_numeric_function(input, &state, numeric, CalculationRoot::Length)?;
-            CssSpecifiedNonNegativeLength::try_from_calculation(
-                CssLengthCalculation::from_expression(expression),
-            )
-        }
-        token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    };
-    length.map(CssBorderWidth::Length).map_err(|error| {
-        unexpected_at(numeric.property_error_location(&error, location, root_site))
-    })
+    super::values::parse_nonnegative_length(input, numeric).map(CssBorderWidth::Length)
 }
 
 pub(super) fn parse_exact_border_width_pair<'i, 't>(

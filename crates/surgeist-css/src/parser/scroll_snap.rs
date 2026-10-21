@@ -2,16 +2,15 @@
 
 use super::property_input::Parser;
 use crate::error::property::{Error, ParseError, basic, unexpected_at};
-use cssparser::{Token, match_ignore_ascii_case};
+use cssparser::match_ignore_ascii_case;
 
-use super::values::{CalculationRoot, is_math_function, parse_numeric_function};
+use super::values::{parse_length, parse_nonnegative_length_percentage};
 use crate::numeric::NumericInputContext;
 use crate::{
-    CssLengthCalculation, CssLengthPercentageCalculation, CssScrollMarginPair,
-    CssScrollMarginShorthand, CssScrollPaddingPair, CssScrollPaddingShorthand,
+    CssScrollMarginPair, CssScrollMarginShorthand, CssScrollPaddingPair, CssScrollPaddingShorthand,
     CssScrollPaddingValue, CssScrollSideKind, CssScrollSnapAlign, CssScrollSnapAlignment,
     CssScrollSnapAxis, CssScrollSnapStop, CssScrollSnapStrictness, CssScrollSnapType,
-    CssSpecifiedLength, CssSpecifiedNonNegativeLengthPercentage,
+    CssSpecifiedLength,
 };
 
 pub(super) fn parse_scroll_snap_type<'i, 't>(
@@ -80,58 +79,20 @@ pub(super) fn parse_scroll_margin_length<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssSpecifiedLength, ParseError<'i, Error>> {
-    let state = input.state();
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
-            input.reset(&state);
-            let component = input
-                .collect_numeric_component(numeric)
-                .map_err(|_| unexpected_at(location))?;
-            CssSpecifiedLength::try_from_component(component).map_err(|_| unexpected_at(location))
-        }
-        Token::Function(name) if is_math_function(name) => {
-            let expression =
-                parse_numeric_function(input, &state, numeric, CalculationRoot::Length)?;
-            CssSpecifiedLength::try_from_calculation(CssLengthCalculation::from_expression(
-                expression,
-            ))
-            .map_err(|_| unexpected_at(location))
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
+    parse_length(input, numeric)
 }
 
 pub(super) fn parse_scroll_padding_value<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssScrollPaddingValue, ParseError<'i, Error>> {
-    let state = input.state();
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Ident(ident) if ident.eq_ignore_ascii_case("auto") => {
-            Ok(CssScrollPaddingValue::Auto)
-        }
-        Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
-            input.reset(&state);
-            let component = input
-                .collect_numeric_component(numeric)
-                .map_err(|_| unexpected_at(location))?;
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(component)
-                .map(CssScrollPaddingValue::LengthPercentage)
-                .map_err(|_| unexpected_at(location))
-        }
-        Token::Function(name) if is_math_function(name) => {
-            let expression =
-                parse_numeric_function(input, &state, numeric, CalculationRoot::LengthPercentage)?;
-            CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-                CssLengthPercentageCalculation::from_expression(expression),
-            )
-            .map(CssScrollPaddingValue::LengthPercentage)
-            .map_err(|_| unexpected_at(location))
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
+    if input
+        .try_parse(|input| input.expect_ident_matching("auto"))
+        .is_ok()
+    {
+        return Ok(CssScrollPaddingValue::Auto);
     }
+    parse_nonnegative_length_percentage(input, numeric).map(CssScrollPaddingValue::LengthPercentage)
 }
 
 pub(super) fn parse_scroll_margin_pair<'i, 't>(

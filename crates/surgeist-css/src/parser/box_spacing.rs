@@ -1,15 +1,13 @@
 //! Authored margin and padding from Box 3 and Logical Properties 1.
 
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
-use cssparser::Token;
+use crate::error::property::{Error, ParseError, unexpected_at};
 
-use super::values::{CalculationRoot, is_math_function, parse_numeric_function};
+use super::values::{parse_length_percentage, parse_nonnegative_length_percentage};
 use crate::numeric::NumericInputContext;
 use crate::{
-    CssBoxSideKind, CssLengthPercentageCalculation, CssMarginPair, CssMarginShorthand,
-    CssMarginValue, CssPaddingPair, CssPaddingShorthand, CssPaddingValue,
-    CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeLengthPercentage,
+    CssBoxSideKind, CssMarginPair, CssMarginShorthand, CssMarginValue, CssPaddingPair,
+    CssPaddingShorthand, CssPaddingValue,
 };
 
 pub(super) fn parse_box_margin_value<'i, 't>(
@@ -22,7 +20,7 @@ pub(super) fn parse_box_margin_value<'i, 't>(
     {
         return Ok(CssMarginValue::Auto);
     }
-    parse_signed_length_percentage(input, numeric).map(CssMarginValue::LengthPercentage)
+    parse_length_percentage(input, numeric).map(CssMarginValue::LengthPercentage)
 }
 
 pub(super) fn parse_box_padding_value<'i, 't>(
@@ -30,71 +28,6 @@ pub(super) fn parse_box_padding_value<'i, 't>(
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssPaddingValue, ParseError<'i, Error>> {
     parse_nonnegative_length_percentage(input, numeric).map(CssPaddingValue::new)
-}
-
-fn parse_signed_length_percentage<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
-) -> Result<CssSpecifiedLengthPercentage, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let state = input.state();
-    let location = input.current_source_location();
-    let root_site = input.position();
-    match input.next().map_err(basic)? {
-        Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
-            input.reset(&state);
-            let component = input
-                .collect_numeric_component(numeric)
-                .map_err(|_| unexpected_at(location))?;
-            CssSpecifiedLengthPercentage::from_property_component(component, numeric).map_err(
-                |error| unexpected_at(numeric.property_error_location(&error, location, root_site)),
-            )
-        }
-        Token::Function(name) if is_math_function(name) => {
-            let expression =
-                parse_numeric_function(input, &state, numeric, CalculationRoot::LengthPercentage)?;
-            CssSpecifiedLengthPercentage::try_from_calculation(
-                CssLengthPercentageCalculation::from_expression(expression),
-            )
-            .map_err(|error| {
-                unexpected_at(numeric.property_error_location(&error, location, root_site))
-            })
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
-}
-
-fn parse_nonnegative_length_percentage<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
-) -> Result<CssSpecifiedNonNegativeLengthPercentage, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let state = input.state();
-    let location = input.current_source_location();
-    let root_site = input.position();
-    match input.next().map_err(basic)? {
-        Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
-            input.reset(&state);
-            let component = input
-                .collect_numeric_component(numeric)
-                .map_err(|_| unexpected_at(location))?;
-            CssSpecifiedNonNegativeLengthPercentage::from_property_component(component, numeric)
-                .map_err(|error| {
-                    unexpected_at(numeric.property_error_location(&error, location, root_site))
-                })
-        }
-        Token::Function(name) if is_math_function(name) => {
-            let expression =
-                parse_numeric_function(input, &state, numeric, CalculationRoot::LengthPercentage)?;
-            CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-                CssLengthPercentageCalculation::from_expression(expression),
-            )
-            .map_err(|error| {
-                unexpected_at(numeric.property_error_location(&error, location, root_site))
-            })
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
 }
 
 pub(super) fn parse_box_margin_pair<'i, 't>(

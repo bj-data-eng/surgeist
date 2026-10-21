@@ -1159,7 +1159,7 @@ fn validate_radial_size<'i>(
                             let expression = numeric
                                 .admit(components, CalculationRoot::Length)
                                 .map_err(|_| unexpected_at(radius_location))?;
-                            CssSpecifiedNonNegativeLength::try_from_calculation(
+                            CssSpecifiedNonNegativeLength::from_parser_calculation(
                                 crate::CssLengthCalculation::from_expression(expression),
                             )
                         } else {
@@ -1181,7 +1181,7 @@ fn validate_radial_size<'i>(
                                 let expression = numeric
                                     .admit(components, CalculationRoot::LengthPercentage)
                                     .map_err(|_| unexpected_at(component_location))?;
-                                CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
+                                CssSpecifiedNonNegativeLengthPercentage::from_parser_calculation(
                                     crate::CssLengthPercentageCalculation::from_expression(
                                         expression,
                                     ),

@@ -402,9 +402,13 @@ fn recovered_math_requires_parser_admission_before_typed_transfer() {
         error.kind(),
         &CssNumericConstructionErrorKind::RecoveredComponent
     );
-    let transferred = SizeLengthPercentage::try_from_calculation(calculation.clone()).unwrap();
-    assert_eq!(transferred.origin(), admitted.origin());
-    assert_eq!(transferred.serialize_specified().unwrap(), "calc(1px)");
+    assert_eq!(
+        SizeLengthPercentage::try_from_calculation(calculation.clone())
+            .unwrap_err()
+            .kind(),
+        &CssNumericConstructionErrorKind::RecoveredComponent
+    );
+    assert_eq!(admitted.serialize_specified().unwrap(), "calc(1px)");
 }
 
 #[test]

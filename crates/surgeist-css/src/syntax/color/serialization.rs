@@ -2089,20 +2089,15 @@ fn hue_projection(
 }
 
 fn angle_factor(unit: CssAngleUnit) -> Factor {
-    match unit {
-        CssAngleUnit::Degrees => Factor::ONE,
-        CssAngleUnit::Gradians => Factor {
-            numerator: 9,
-            denominator: 10,
-        },
-        CssAngleUnit::Radians => Factor {
-            numerator: 1_007_958_012_753_983,
-            denominator: 17_592_186_044_416,
-        },
-        CssAngleUnit::Turns => Factor {
-            numerator: 360,
-            denominator: 1,
-        },
+    use crate::numeric::units::{self, UnitRatio};
+    let factor = match units::ratio(crate::CssNumericUnit::Angle(unit)) {
+        UnitRatio::Exact(factor) => factor,
+        UnitRatio::Radian => units::RADIAN_BINARY64,
+        UnitRatio::Contextual => unreachable!("angles convert intrinsically"),
+    };
+    Factor {
+        numerator: factor.numerator,
+        denominator: factor.denominator,
     }
 }
 

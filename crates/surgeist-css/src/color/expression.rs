@@ -114,9 +114,9 @@ pub(crate) fn converted_literal(
     token: OperandReference,
     ty: Type,
 ) -> NumericLeaf {
-    let factor = match value.unit {
-        Some(unit) => match unit.intrinsic_scale() {
-            Some((_, scale)) => scale,
+    let value_in_canonical = match value.unit {
+        Some(unit) => match unit.intrinsic_projection() {
+            Some(scale) => scale.apply(value.value),
             None => {
                 return NumericLeaf::Contextual {
                     token,
@@ -128,10 +128,10 @@ pub(crate) fn converted_literal(
                 };
             }
         },
-        None => 1.0,
+        None => value.value,
     };
     NumericLeaf::Literal(Number {
-        value: value.value * factor,
+        value: value_in_canonical,
         ty,
     })
 }

@@ -1,38 +1,21 @@
 //! Exact nonnegative ordinary resolution and strict Resolution-root value admission.
 use crate::{
-    CssComponentValue, CssComponentValueError, CssComponentValueErrorKind, CssComponentValueRef,
-    CssNumericConstructionError, CssNumericConstructionErrorKind, CssNumericTokenRef,
-    CssResolutionCalculation, CssResolutionUnit, CssSpecifiedValueSerializationError,
+    CssComponentValue, CssNumericConstructionError, CssNumericConstructionErrorKind,
+    CssNumericTokenRef, CssResolutionUnit, CssSpecifiedValueSerializationError,
     CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
-    CssValueTokenRef, specified_serialization::SpecifiedSerializationContext,
+    specified_serialization::SpecifiedSerializationContext,
 };
 
 type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
 
 const fn suffix(unit: CssResolutionUnit) -> &'static str {
-    match unit {
-        CssResolutionUnit::Dpi => "dpi",
-        CssResolutionUnit::Dpcm => "dpcm",
-        CssResolutionUnit::Dppx => "dppx",
-    }
+    crate::numeric::units::suffix(crate::CssNumericUnit::Resolution(unit))
 }
 pub(crate) const fn exact_factor(unit: CssResolutionUnit) -> crate::exact_decimal::ExactFactor {
-    let (numerator, denominator) = match unit {
-        CssResolutionUnit::Dpi => (1, 96),
-        CssResolutionUnit::Dpcm => (127, 4800),
-        CssResolutionUnit::Dppx => (1, 1),
-    };
-    crate::exact_decimal::ExactFactor {
-        numerator,
-        denominator,
+    match crate::numeric::units::exact_factor(crate::CssNumericUnit::Resolution(unit)) {
+        Some(factor) => factor,
+        None => panic!("Values 4 fixes an exact ratio for every resolution unit"),
     }
-}
-
-fn invalid(component: &CssComponentValue) -> CssNumericConstructionError {
-    CssNumericConstructionError::component(CssComponentValueError::new(
-        CssComponentValueErrorKind::InvalidToken,
-        component.origin().clone(),
-    ))
 }
 
 /// An exact nonnegative ordinary resolution, retaining coefficient, unit and provenance.
@@ -43,6 +26,20 @@ fn invalid(component: &CssComponentValue) -> CssNumericConstructionError {
 pub struct CssResolutionLiteral {
     component: Box<CssComponentValue>,
     unit: CssResolutionUnit,
+}
+impl crate::dimension::DimensionRoot for CssResolutionLiteral {
+    fn from_root(component: CssComponentValue) -> Result<Self, CssNumericConstructionError> {
+        Self::try_from_component(component)
+    }
+    fn origin(&self) -> &CssValueOrigin {
+        self.component.origin()
+    }
+    fn structural_eq(&self, other: &Self) -> bool {
+        self.unit == other.unit
+            && self
+                .component
+                .structural_eq_ignoring_origin(&other.component)
+    }
 }
 impl CssResolutionLiteral {
     /// Constructs an exact ordinary coefficient, rejecting only negative nonzero values.
@@ -59,18 +56,13 @@ impl CssResolutionLiteral {
     pub fn try_from_component(
         component: CssComponentValue,
     ) -> Result<Self, CssNumericConstructionError> {
-        let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
-            component.view()
-        else {
-            return Err(invalid(&component));
-        };
-        let unit = match unit.to_ascii_lowercase().as_str() {
-            "dpi" => CssResolutionUnit::Dpi,
-            "dpcm" => CssResolutionUnit::Dpcm,
-            "dppx" | "x" => CssResolutionUnit::Dppx,
-            _ => return Err(invalid(&component)),
-        };
-        if crate::exact_decimal::LexicalDecimal::new(number.representation()).negative {
+        let unit = crate::dimension::decode_unit(&component)
+            .map_err(CssNumericConstructionError::component)?;
+        if crate::exact_decimal::LexicalDecimal::new(
+            crate::dimension::dimension_number(&component).representation(),
+        )
+        .negative
+        {
             return Err(CssNumericConstructionError::at_origin(
                 CssNumericConstructionErrorKind::OutOfRange,
                 component.origin().clone(),
@@ -83,12 +75,7 @@ impl CssResolutionLiteral {
     }
     /// Borrows the exact authored numeric token.
     pub fn numeric(&self) -> CssNumericTokenRef<'_> {
-        let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, .. }) =
-            self.component.view()
-        else {
-            unreachable!("checked resolution dimension")
-        };
-        number
+        crate::dimension::dimension_number(&self.component)
     }
     /// Returns the selected decoded unit without coefficient conversion.
     pub const fn unit(&self) -> CssResolutionUnit {
@@ -174,114 +161,66 @@ impl CssResolutionLiteral {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum ResolutionValue {
-    Literal(CssResolutionLiteral),
-    Calculation(CssResolutionCalculation),
-}
-/// An authored ordinary resolution with a nonnegative range, retaining actual math symbolically.
-///
-/// This does not replace the signed media Resolution-root domain or evaluate/clamp calculations.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssResolutionValue {
-    value: ResolutionValue,
-}
-impl CssResolutionValue {
-    /// Retains an already checked nonnegative ordinary literal.
-    pub fn from_literal(literal: CssResolutionLiteral) -> Self {
-        Self {
-            value: ResolutionValue::Literal(literal),
-        }
-    }
-    /// Rejects original recovery first, checks an actual ordinary root's range and retains math.
-    pub fn try_from_calculation(
-        calculation: CssResolutionCalculation,
-    ) -> Result<Self, CssNumericConstructionError> {
-        if let Some(origin) = calculation.components().first_implicit_origin() {
-            return Err(CssNumericConstructionError::at_origin(
-                CssNumericConstructionErrorKind::RecoveredComponent,
-                origin.clone(),
-            ));
-        }
-        if let Some(component) = calculation.literal_root_component() {
-            return CssResolutionLiteral::try_from_component(component.clone())
-                .map(Self::from_literal);
-        }
-        Ok(Self {
-            value: ResolutionValue::Calculation(calculation),
-        })
-    }
-    /// Borrows the ordinary branch, when present.
-    pub fn literal(&self) -> Option<&CssResolutionLiteral> {
-        match &self.value {
-            ResolutionValue::Literal(value) => Some(value),
-            ResolutionValue::Calculation(_) => None,
-        }
-    }
-    /// Borrows the original symbolic math branch, when present.
-    pub fn calculation(&self) -> Option<&CssResolutionCalculation> {
-        match &self.value {
-            ResolutionValue::Calculation(value) => Some(value),
-            ResolutionValue::Literal(_) => None,
-        }
-    }
-    /// Borrows the selected branch's original provenance.
-    pub fn origin(&self) -> &CssValueOrigin {
-        match &self.value {
-            ResolutionValue::Literal(value) => value.origin(),
-            ResolutionValue::Calculation(value) => value.origin(),
-        }
-    }
-
-    /// Emits an ordinary resolution in `dppx` or projects retained numeric math.
+crate::dimension::dimension_value_owner!(
+    /// An authored ordinary resolution with a nonnegative range, retaining actual math symbolically.
     ///
-    /// Calculations use the existing shared finite/structural simplifier. Their
-    /// original components and type remain unchanged; this does not resolve a
-    /// media query or apply the ordinary literal's range to a calculated result.
-    pub fn serialize_specified(&self) -> SerializationResult<String> {
-        self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
-    }
+    /// This does not replace the signed media Resolution-root domain or evaluate/clamp calculations.
+    CssResolutionValue,
+    CssResolutionLiteral,
+    CssResolutionCalculation,
+    {
+        /// Emits an ordinary resolution in `dppx` or projects retained numeric math.
+        ///
+        /// Calculations use the existing shared finite/structural simplifier. Their
+        /// original components and type remain unchanged; this does not resolve a
+        /// media query or apply the ordinary literal's range to a calculated result.
+        pub fn serialize_specified(&self) -> SerializationResult<String> {
+            self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
+        }
 
-    /// Shares cumulative visits, numeric projection work and UTF-8 output bytes.
-    /// Failure is atomic; no raw-component fallback or contextual evaluation occurs.
-    pub fn serialize_specified_with_limits(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> SerializationResult<String> {
-        let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
-        self.append_to_rule_writer(&mut writer)?;
-        Ok(writer.css)
-    }
+        /// Shares cumulative visits, numeric projection work and UTF-8 output bytes.
+        /// Failure is atomic; no raw-component fallback or contextual evaluation occurs.
+        pub fn serialize_specified_with_limits(
+            &self,
+            limits: CssSpecifiedValueSerializationLimits,
+        ) -> SerializationResult<String> {
+            let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
+            self.append_to_rule_writer(&mut writer)?;
+            Ok(writer.css)
+        }
 
-    pub(crate) fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.append_specified(context, output)?;
-        Ok(())
-    }
+        pub(crate) fn append_to_rule_writer(
+            &self,
+            writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+        ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
+            let context = &mut writer.context;
+            let output = &mut writer.css;
+            self.append_specified(context, output)?;
+            Ok(())
+        }
 
-    pub(crate) fn append_specified(
-        &self,
-        context: &mut SpecifiedSerializationContext,
-        output: &mut String,
-    ) -> SerializationResult<()> {
-        match &self.value {
-            ResolutionValue::Literal(value) => value.append_specified(context, output),
-            ResolutionValue::Calculation(value) => {
-                crate::numeric::project_specified_into(&value.expression, context, output)
-                    .map(|_| ())
+        pub(crate) fn append_specified(
+            &self,
+            context: &mut SpecifiedSerializationContext,
+            output: &mut String,
+        ) -> SerializationResult<()> {
+            match &self.value {
+                crate::dimension::DimensionValue::Literal(value) => {
+                    value.append_specified(context, output)
+                }
+                crate::dimension::DimensionValue::Calculation(value) => {
+                    crate::numeric::project_specified_into(&value.expression, context, output)
+                        .map(|_| ())
+                }
             }
         }
     }
-}
+);
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CssComponentValueRef, parse_component_values};
+    use crate::{CssComponentValueRef, CssResolutionCalculation, parse_component_values};
     use std::error::Error;
 
     #[test]

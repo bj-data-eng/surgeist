@@ -10,9 +10,9 @@ use super::box_model::parse_drop_shadow;
 use super::position::parse_full_position;
 use super::url::parse_url;
 use super::values::{
-    next_is_delim, next_is_ident, parse_angle_or_zero, parse_angle_value,
-    parse_hinted_number_calculation, parse_nonnegative_number, parse_nonnegative_percentage,
-    parse_specified_number, parse_specified_percentage,
+    next_is_ident, parse_angle_or_zero, parse_angle_value, parse_hinted_number_calculation,
+    parse_nonnegative_number, parse_nonnegative_percentage, parse_specified_number,
+    parse_specified_percentage,
 };
 use crate::CssValueOrigin;
 use crate::syntax::*;
@@ -657,37 +657,14 @@ fn parse_optional_rectangle_round<'i, 't>(
     parse_shape_radii(input, numeric).map(Some)
 }
 
+/// Shapes 1 `[ round <'border-radius'> ]?` reuses the one `<'border-radius'>` grammar.
 fn parse_shape_radii<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<crate::CssBorderRadiusShorthand, ParseError<'i, Error>> {
-    let horizontal = parse_shape_radius_list(input, numeric)?;
-    let vertical = if input.try_parse(|input| input.expect_delim('/')).is_ok() {
-        Some(parse_shape_radius_list(input, numeric)?)
-    } else {
-        None
-    };
+    let radii = super::border_radius::parse_exact_border_radius(input, numeric)?;
     input.expect_exhausted().map_err(basic)?;
-    crate::CssBorderRadiusShorthand::try_new(horizontal, vertical)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
-}
-
-fn parse_shape_radius_list<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<Vec<CssSpecifiedNonNegativeLengthPercentage>, ParseError<'i, Error>> {
-    let mut values = Vec::new();
-    while !input.is_exhausted() && !next_is_delim(input, '/') {
-        if values.len() == 4 {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-        values.push(parse_non_negative_shape_length_percentage(input, numeric)?);
-    }
-    if values.is_empty() {
-        Err(unexpected_at(input.current_source_location()))
-    } else {
-        Ok(values)
-    }
+    Ok(radii)
 }
 
 fn parse_polygon_shape<'i, 't>(
