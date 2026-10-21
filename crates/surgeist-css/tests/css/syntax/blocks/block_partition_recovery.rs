@@ -1,7 +1,7 @@
 //! Failed complete rules partition pending declaration lists, while a no-rule
 //! result preserves the list. The first nonempty transfer occupies the leading
 //! slot even when a rejected child leaves no rule in the retained tree.
-//! https://github.com/w3c/csswg-drafts/blob/f971255463f01fb740e2a3a7ecfe83e319cddab9/css-syntax-3/Overview.bs
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
 use surgeist_css::*;
 
 fn assert_color(declaration: &CssDeclaration, expected: &str) {

@@ -325,7 +325,7 @@ fn free_else_after_complete_rule_units_is_discarded_without_body_promotion() {
 
 #[test]
 fn root_semicolon_keeps_else_in_one_failed_qualified_unit_without_body_promotion() {
-    // Syntax 3 §§5.4.1/5.4.3: the semicolon starts qualified input;
+    // Syntax 3 §§5.5.1/5.5.3: the semicolon starts qualified input;
     // an at-keyword in that prelude does not start a separate at-rule.
     let prefix = "@media all{.Before{color:red}}";
     let failed = ";@else{.Leak{height:1px}}";

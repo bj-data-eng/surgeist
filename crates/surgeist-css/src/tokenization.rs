@@ -1,7 +1,7 @@
 //! Source-preserving lexical corrections for the pinned cssparser provider.
 //!
 //! CSS Syntax 3 §4.3.6 leaves the first non-whitespace character pending for
-//! §4.3.14. cssparser 0.37 consumes that character first. Only when that character
+//! §4.3.15. cssparser 0.37 consumes that character first. Only when that character
 //! starts a backslash run immediately before ')' does this change the boundary.
 //! The grammar receives a same-length mask inside an already-bad URL; authored
 //! spellings and positions always come from the unmodified source snapshot.

@@ -122,10 +122,11 @@ fn empty_source_members_use_delimiting_comma_spans() {
     let report = parse_sheet(source);
 
     assert_sources(font_face(&report), &[("url", "first"), ("local", "Last")]);
+    // The final comma before `;` adds no member: Fonts 4 "parse a list" uses
+    // Syntax 3 (2026-10-01) §5.4.10, which stops once its input is empty.
     let expected_commas = [
         source.find("src:,").unwrap() + "src:".len(),
         source.find(",,").unwrap() + 1,
-        source.find(",;").unwrap(),
     ];
     assert_eq!(report.diagnostics().len(), expected_commas.len());
     for (diagnostic, start) in report.diagnostics().iter().zip(expected_commas) {

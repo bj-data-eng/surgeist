@@ -381,7 +381,7 @@ fn whole_pending_values_reenter_strictly_without_changing_source_or_replacement_
         "env(palette)",
         "var(--palette, {fallback})",
         "palette-mix(var(--palette), dark)",
-        // Syntax 3 (2021) §8.2 permits balanced blocks; Variables 1 §3
+        // Syntax 3 (2026) §7.2 permits balanced blocks; Variables 1 §3
         // defers the entire known-property grammar for a valid var() reference.
         "{} var(--palette)",
     ] {

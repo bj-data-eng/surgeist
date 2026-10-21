@@ -6,7 +6,7 @@ The current collection contains **391 source identities: 260 full documents/sour
 
 - 126 retained source identities in the public catalog: 119 captured-HTML conversions, five generated renderings of pinned Bikeshed sources, one JSON source-history witness, and one Unicode URL/hash-only exception
 - Full source-based content for 125 entries; the normative Unicode report text is not distributed
-- 80 passive SVG assets: 52 extracted from captured HTML and 28 railroad diagrams generated from the pinned CSS Syntax 3 source
+- 80 passive SVG assets: 52 extracted from captured HTML and 28 railroad diagrams generated from the pinned CSS Syntax 3 source (that rendering and its diagrams were retired on 2026-10-21; see the [CSS Syntax 3 capture](#css-syntax-3-candidate-recommendation-draft--2026-10-20))
 - Eight redundant extracted-text copies were removed after whole-document comparison with their retained exact HTML counterparts. No distinct specification edition was removed
 - Original source inputs and legal texts remain unchanged. Source scripts/JavaScript were not executed
 
@@ -24,7 +24,7 @@ Pandoc's HTML writer adds text-presentation variation selectors to some arrows; 
 
 - Source Note, Example, Advisement, Issue and Warning classes become visible labels, including standalone examples and unresolved algorithm-list issues
 - Tables use readable Markdown grids, explicit span expansions, and labeled field/case/code layouts. The 808 originally flattened table transcriptions have been replaced; no raw HTML table layouts or structured row/cell dumps remain in that original collection. The later DOM captures preserve complex semantic HTML tables as disclosed below. Original HTML header-scope and span accessibility semantics are not expressible in GFM; source structural models and explicit relationships are retained as described below
-- 80 passive SVG assets are included: 52 extracted from captured HTML and 28 railroad diagrams generated from the pinned CSS Syntax 3 source. Source geometry, internal IDs, text labels, exact-case attributes and required passive railroad CSS are retained. XML/geometry/CSS checks pass; representative generated diagrams were raster-checked, but complete visual or browser-rendering equivalence is not certified
+- 80 passive SVG assets are included: 52 extracted from captured HTML and 28 railroad diagrams generated from the pinned CSS Syntax 3 source (that rendering and its diagrams were retired on 2026-10-21; see the [CSS Syntax 3 capture](#css-syntax-3-candidate-recommendation-draft--2026-10-20)). Source geometry, internal IDs, text labels, exact-case attributes and required passive railroad CSS are retained. XML/geometry/CSS checks pass; representative generated diagrams were raster-checked, but complete visual or browser-rendering equivalence is not certified
 - All 17 MathML expressions have checked portable fenced TeX transcriptions. Independent round trips preserve mathematical tokens, matrix dimensions/ordering and role-preserving script/fraction/root/limit structures. Exact MathML remains in private verification records; visual equivalence is not certified
 - Small semantic inline HTML anchors/emphasis/variables/subscripts/superscripts are retained where GFM otherwise corrupts delimiter or notation meaning. They are content semantics, not original website layout
 - Escape-sensitive characters and the unstable Greek question-mark/combining-mark cases use numeric entities where needed. Adjacent literal code, code in tables and quoted/URL-valued link labels are explicitly handled
@@ -1200,4 +1200,11 @@ stability note states that this is a dated publication identified by its byte
 hash, and the selection note names this edition as the selected Syntax 3
 reference superseding the 2021 draft. The [W3C attribution](../licenses/w3c/NOTICE.md)
 and the 2023 software and document license accompany the conversion.
+
+On 2026-10-21 ([#1356](https://github.com/bj-data-eng/surgeist/issues/1356)) the
+generated rendering of the CSS Syntax 3 source at csswg-drafts
+`f971255463f01fb740e2a3a7ecfe83e319cddab9` and its 28 generated railroad
+diagrams were retired: this capture's parsing sections match that source's
+imported block-contents text apart from formatting. The earlier batch records
+in this report describe that rendering historically.
 

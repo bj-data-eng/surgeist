@@ -43,8 +43,8 @@ the same reviewed change; the ordinary offline tests validate the complete
 
 The [committed oracle](../../csstree/oracle.json) binds the reconciled CSS-owned registry: 820 cases
 have full public-parser observations and 115 retain explicit panic-freedom-only
-policies. Across all 935 retained records, outcomes are 352 clean, 337 strict
-rejections, 93 recoveries, and 153 explicit unsupported dispositions. The
+policies. Across all 935 retained records, outcomes are 354 clean, 337 strict
+rejections, 91 recoveries, and 153 explicit unsupported dispositions. The
 unsupported count includes all 115 panic-freedom-only records and 38 active
 records; it is not an additional set of cases. The
 [census contract](../../css/corpora/csstree/csstree_oracle.rs) independently asserts this partition.
@@ -139,7 +139,7 @@ otherwise unknown pseudo name.
 The Nth fixtures preserve token-level `An+B` grammar. In particular, `3 n`,
 `+ 2n`, and `+ 2` are invalid; permitted whitespace around a later offset does
 not join a coefficient, sign, or integer across tokens
-([Syntax 3](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#anb-syntax)).
+([Syntax 3](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#anb-syntax)).
 The corpus checks verify the coefficients, pseudo-class kind, and authored
 `of` filter for 25 clean inputs, and raw rejection for 39 invalid inputs.
 
@@ -149,7 +149,7 @@ is inserted. Ten original inputs retain independently checked numeric ranges;
 twenty are rejected. The incomplete values `U+` and `u` report original EOF with
 `RecoveryEndsAt`; other rejected values identify an original token. In particular,
 `u+?` is the valid range 0–15 and the original representation `u+12e-130` denotes
-302–304 ([Syntax 3](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#urange)).
+302–304 ([Syntax 3](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-unicode-range-value)).
 
 Declaration fixtures use the singular raw declaration parser, retaining at most
 one declaration and preserving the original source. Their upstream AST options
@@ -159,7 +159,7 @@ punctuation hacks, and proprietary IE filter functions are rejected under the
 selected grammar. Bare `--` is not a custom property name, and unmatched nested
 closers remain invalid even when an enclosing block reaches EOF
 ([Variables 1](https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#defining-variables),
-[Syntax 3](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value),
+[Syntax 3](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value),
 [Filter Effects 1](https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#FilterFunctions)).
 Raw rejections use `RejectInput`; declaration-list fixtures retain their separate
 list parser and recovery contract.
@@ -204,7 +204,7 @@ through the public parser and the real corpus adapter.
 The 45 original `:is`, `:where`, `:not`, and `:has` records use the raw
 single-selector adapter. Their independently derived
 [`logical-selector-reconciliation.json`](../../csstree/logical-selector-reconciliation.json)
-contracts distinguish 17 clean, ten recovered, and 18 rejected selectors.
+contracts distinguish 19 clean, eight recovered, and 18 rejected selectors.
 Forgiving lists retain the outer pseudo even when no inner member survives;
 unforgiving failures reject the input. Ordered diagnostics preserve repeated
 invalid members. The tests bind original identity and source hashes and exercise

@@ -69,11 +69,11 @@ fn assert_group(present: bool, clean: bool, count: usize) {
 }
 #[test]
 fn clean_original_logical_selectors() {
-    assert_group(true, true, 17);
+    assert_group(true, true, 19);
 }
 #[test]
 fn recovered_original_logical_selectors_retain_meaningful_members() {
-    assert_group(true, false, 10);
+    assert_group(true, false, 8);
 }
 #[test]
 fn invalid_original_logical_selectors_reject_whole_input() {

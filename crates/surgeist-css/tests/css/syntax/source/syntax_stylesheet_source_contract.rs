@@ -1,5 +1,5 @@
-//! CSS Syntax 3 (2021-12-24), sections 3, 3.2, 5.4.1 and 9.3.
-//! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/
+//! CSS Syntax 3 (2026-10-01), sections 3, 3.2, 5.5.1 and 8.3.
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/
 //! These UTF-8 string fronts do not run the byte-stream fallback algorithm.
 use surgeist_css::{
     CssErrorCode, CssNamespaceContext, CssParseReport, CssRecoveryAction, CssRecoveryDiagnostic,

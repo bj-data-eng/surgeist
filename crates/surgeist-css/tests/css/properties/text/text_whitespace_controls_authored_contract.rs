@@ -1,7 +1,7 @@
 //! Existing-public-API authored whitespace controls contract.
 //! Text4 WD20260814 #propdef-word-space-transform (374–422) and #propdef-tab-size
 //! (1472–1494), Values4 WD20240312 §2.2, typed math §10 and range §10.12,
-//! Syntax3 CRD20211224 and existing checked original-closure/resource contracts.
+//! Syntax3 CRD20261001 and existing checked original-closure/resource contracts.
 //! Independent word grammar has five states, mandatory base and optional flag;
 //! canonical base→auto-phrase follows grammar. Tab retains Number versus Length,
 //! Number-first literal zero policy, exact literal range and deferred math range.

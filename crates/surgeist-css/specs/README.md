@@ -59,10 +59,10 @@ Filter Effects 2 in full.
 uses the latest published editions available at that cutoff, which can be newer
 than editions cited in the Snapshot bibliography or the existing runtime
 conformance registry. One exception is recorded after the cutoff: the
-`css-syntax-3-2026-block-parsing` source selects the 1 October 2026 Syntax 3
-draft for block parsing by the [#1328](https://github.com/bj-data-eng/surgeist/issues/1328)
-decision, and the remaining move from the 2021 edition is tracked by
-[#1356](https://github.com/bj-data-eng/surgeist/issues/1356).
+1 October 2026 Syntax 3 draft, selected by the [#1328](https://github.com/bj-data-eng/surgeist/issues/1328)
+decision, is the `css-syntax-3` module publication and the
+`css-syntax-3-2026-block-parsing` definition source; the move from the 2021
+edition was completed by [#1356](https://github.com/bj-data-eng/surgeist/issues/1356).
 
 W3C module publications use dated URLs. Fullscreen is the single full-module
 publication-model exception: W3C discontinued its document and explicitly
@@ -197,9 +197,10 @@ grammar. Only this name definition is imported. The two public name types remain
 distinct. Definition environments, duplicate selection, cycle handling,
 evaluation and live APIs remain with style and root integration.
 
-Selected Conditional Rules 5 and Nesting 1 reference `block-contents`, absent
-from the selected published Syntax 3 edition. A separate immutable pre-cutoff
-Syntax source pins this production and its scoped block-parsing dependencies.
+Selected Conditional Rules 5 and Nesting 1 reference `block-contents`. The
+selected 2026 Syntax 3 edition defines this production and its block-parsing
+dependencies; the earlier pre-cutoff csswg-drafts import of the same text is
+retired.
 The production is category-neutral: each consuming rule still defines valid
 children and declarations. It does not itself imply style ancestry or admit
 page rules. `@container` and `@supports-condition` are recorded consumers. The
@@ -207,7 +208,7 @@ named-supports definition retains an ordered tree of generic test candidates;
 its declarations and child rules inspect authored feature syntax and do not
 render or become style declarations.
 
-The pinned block consumer omits transferring its final accepted declaration run
+The selected block consumer omits transferring its final accepted declaration run
 before returning at a closing brace or EOF. The definition's
 `localized_reconciliation` records this exact source conflict and the selected
 Nesting retention requirements that control style and style-nested group bodies:

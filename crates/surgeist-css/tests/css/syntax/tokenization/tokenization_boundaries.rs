@@ -1,10 +1,10 @@
-//! Literal expectations follow the pinned CSS Syntax 3 CRD (2021-12-24):
-//! §§3.3, 4.3.1, 4.3.3–4.3.11 and 4.3.14. Token values and hash flags are
+//! Literal expectations follow the selected CSS Syntax 3 CRD (2026-10-01):
+//! §§3.3, 4.3.1, 4.3.3–4.3.10, 4.3.12 and 4.3.15. Token values and hash flags are
 //! public component contracts; lexical parse errors must also make an authored
 //! recovery report non-clean. In particular, an escaped EOF returns U+FFFD
 //! *and* a parse error (§4.3.7), whereas backslash-newline returns a delimiter
 //! and a parse error (§4.3.1).
-//! <https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/>
+//! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/>
 
 use surgeist_css::{
     CssComponentValueErrorKind, CssComponentValueRef, CssDeclarationList, CssHashFlag,

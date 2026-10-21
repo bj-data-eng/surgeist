@@ -253,6 +253,16 @@ fn construct_import_media(
             continue;
         }
         let member = &items[start..end];
+        // Syntax 3 (2026 CRD) §5.4.10: a final comma followed by no token,
+        // only comments, appends no member.
+        if end == items.len()
+            && start > 0
+            && member
+                .iter()
+                .all(|value| matches!(value.view(), crate::CssComponentValueRef::Comment(_)))
+        {
+            break;
+        }
         if member.iter().all(crate::supports::trivia) {
             let origin = items
                 .get(end)

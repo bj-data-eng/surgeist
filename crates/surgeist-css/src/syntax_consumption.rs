@@ -137,7 +137,8 @@ pub(crate) fn rule_dispatch(kind: TokenKind<'_>) -> GenericRuleDispatch {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RuleListSyntax {
     /// §5.5.1: CDO/CDC are discarded and anything else, including `;`,
-    /// begins a qualified rule without a stop token.
+    /// begins a qualified rule without a stop token. A custom-property-shaped
+    /// prelude consumes its block and returns nothing (§5.5.3).
     Stylesheet,
     /// §5.5.5 within a rule-only grammar: `;` is discarded, at-rules are
     /// nested, and a qualified rule stops at `;`. A declaration attempt is
@@ -1507,11 +1508,25 @@ pub(crate) fn consume_rules(
                 rules.push(consume_nested_qualified_rule(cursor).map(GenericRule::Qualified))
             }
             GenericRuleDispatch::Qualified => {
-                rules.push(consume_qualified_rule(cursor).map(GenericRule::Qualified))
+                rules.push(consume_stylesheet_qualified_rule(cursor).map(GenericRule::Qualified))
             }
         }
     }
     rules
+}
+
+// Syntax 3 (2026 CRD) §5.5.3 without `nested`: a prelude that begins like a
+// custom property has already consumed its block and returns nothing, even
+// when the prelude would otherwise be a valid selector.
+fn consume_stylesheet_qualified_rule(
+    cursor: &mut SyntaxCursor<'_>,
+) -> Result<GenericQualifiedRule, GenericSyntaxFault> {
+    let start = cursor.position();
+    let rule = consume_qualified_rule(cursor)?;
+    if custom_property_rule_prelude(cursor.document, &rule.prelude) {
+        return Err(fault(cursor, start, GenericFaultKind::CustomPropertyRule));
+    }
+    Ok(rule)
 }
 
 // Syntax 3 (2026 CRD) §5.5.3 with `nested` and a `;` stop token. A prelude

@@ -1,4 +1,4 @@
-//! Pinned Syntax 3 (2021-12-24) §§5, 5.3.5, 5.4.1–5.4.3.
+//! Selected Syntax 3 (2026-10-01) §§5, 5.4.6, 5.5.1–5.5.3.
 //! Existing string fronts only; supplied token/component consumers are separate.
 use surgeist_css::{
     CssErrorCode, CssImportTarget, CssImportance, CssNamespaceContext, CssRecoveryAction, CssRule,

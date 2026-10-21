@@ -52,8 +52,10 @@ pub(super) fn parse<'i, Item>(
             Err((error, unit)) => {
                 let action = if unit.trim_start().starts_with('@') {
                     CssRecoveryAction::DropAtRule
-                } else {
+                } else if super::is_declaration_recovery_unit(unit) {
                     CssRecoveryAction::DropDescriptor
+                } else {
+                    CssRecoveryAction::DropQualifiedRule
                 };
                 if let Some(diagnostic) = structural_rule_diagnostic(
                     context.source,

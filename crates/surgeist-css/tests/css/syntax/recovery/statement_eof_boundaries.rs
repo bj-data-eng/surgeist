@@ -1,4 +1,4 @@
-//! Existing-callable Syntax 3 §5.4.2 EOF/semicolon boundaries, with the adopted
+//! Existing-callable Syntax 3 §5.5.2 EOF/semicolon boundaries, with the adopted
 //! UnexpectedEnd + RetainNonconformingRule diagnostic contract.
 use surgeist_css::{
     CssCustomMediaBody, CssErrorCode, CssImportTarget, CssNamespaceContext, CssParseReport,

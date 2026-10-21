@@ -1,5 +1,5 @@
 //! Authored component construction through public source fronts.
-//! Syntax 3 CRD20211224 §§5.3.9–11, 5.4.7–9 and source-entry contracts.
+//! Syntax 3 CRD20261001 §§5.4.8–10, 5.5.7–10 and source-entry contracts.
 use surgeist_css::{
     CssBlockKind, CssComponentValue, CssComponentValueErrorKind, CssComponentValueLimits,
     CssComponentValueRef, CssErrorCode, CssParsedOrigin, CssRecoveryAction, CssRecoveryDiagnostic,

@@ -1608,6 +1608,10 @@ fn parse_forgiving_pseudo_selector_list<'i, 't>(
         let Some(comma) = following_comma else {
             break;
         };
+        // Selectors 4 "parse a list" splits with Syntax 3 (2026 CRD) §5.4.10.
+        if super::at_final_comma(input) {
+            break;
+        }
         preceding_comma = Some(comma);
     }
     Ok(CssPseudoSelectorList::from_parsed_items(items))

@@ -1,10 +1,10 @@
 //! Positive dispatch characterization from the pinned CSS Syntax 3 CRD
-//! (2021-12-24), §§4.3.1–4.3.2 and §5.4.8. Comments are consumed before
+//! (2026-10-01), §§4.3.1–4.3.2 and §5.5.9. Comments are consumed before
 //! dispatch; a contiguous whitespace run yields one token; punctuation has
 //! dedicated tokens or delimiter fallback. The public component model retains
 //! comments and folds matched brackets into blocks. Its strict unmatched-closer
 //! error remains the owning observable contract.
-//! <https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-token>
+//! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-token>
 
 use std::ops::Range;
 
@@ -100,7 +100,7 @@ fn punctuation_dispatch_uses_dedicated_tokens_and_delimiter_fallback() {
 
 #[test]
 fn bracket_dispatch_matches_all_block_kinds_and_rejects_unmatched_closers() {
-    // §4.3.1 dispatches all six bracket characters. §5.4.8 groups each opener
+    // §4.3.1 dispatches all six bracket characters. §5.5.9 groups each opener
     // with its matching closer; closers are structural, not leaf token variants.
     let source = "()[]{}";
     let values = parse_component_values(source).expect("three complete empty blocks");

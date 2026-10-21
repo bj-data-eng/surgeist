@@ -4,10 +4,10 @@
   "entry_contract": "parse_media_query(original), exactly one raw media query with default options; retained count includes Never. Grammar and authored retention are separate from downstream matching.",
   "specifications": [
     {
-      "url": "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
-      "sha256": "413b27acb4e16721d28b487456359ecbcecba472c4310bd2f6a4939ad393738b",
-      "bytes": 511620,
-      "date": "2021-12-24",
+      "url": "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
+      "sha256": "8dc3adcc2b4e8fd8fa73c0be85cec67f006874ab42010cdf4528af4aa83f2878",
+      "bytes": 657320,
+      "date": "2026-10-01",
       "kind": "w3c-dated-publication",
       "id": "css-syntax-3",
       "hash_status": "catalog pin; web representation read without independently rehashing body"
@@ -52,7 +52,7 @@
       "rationale": "Earlier branches fail; a balanced any-value enclosure succeeds.",
       "urls": [
         "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value"
       ]
     },
     "conjoined-enclosed": {
@@ -78,7 +78,7 @@
     "implicit-eof": {
       "rationale": "EOF returns the unfinished block with a parse error; the retained identifier is a boolean feature.",
       "urls": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-simple-block",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-simple-block",
         "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
       ]
     },
@@ -100,8 +100,8 @@
     "escaped-unknown-unit": {
       "rationale": "Zero escape becomes replacement-character unit in a dimension token. This value is unknown for width; no host syntax is necessary.",
       "urls": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-escaped-code-point",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-numeric-token",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-escaped-code-point",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-numeric-token",
         "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
       ]
     }
@@ -148,7 +148,7 @@
       "rationale_rule": "enclosed-fallback",
       "sources": [
         "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value"
       ]
     },
     {
@@ -181,7 +181,7 @@
       "rationale_rule": "enclosed-fallback",
       "sources": [
         "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value"
       ]
     },
     {
@@ -214,7 +214,7 @@
       "rationale_rule": "enclosed-fallback",
       "sources": [
         "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value"
       ]
     },
     {
@@ -313,7 +313,7 @@
       "rationale_rule": "enclosed-fallback",
       "sources": [
         "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value"
       ]
     },
     {
@@ -581,7 +581,7 @@
       "rationale_rule": "enclosed-fallback",
       "sources": [
         "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value"
       ]
     },
     {
@@ -614,7 +614,7 @@
       "rationale_rule": "enclosed-fallback",
       "sources": [
         "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value"
       ]
     },
     {
@@ -647,7 +647,7 @@
       "rationale_rule": "enclosed-fallback",
       "sources": [
         "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value"
       ]
     },
     {
@@ -750,7 +750,7 @@
       "rationale_rule": "enclosed-fallback",
       "sources": [
         "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value"
       ]
     },
     {
@@ -866,7 +866,7 @@
       "rationale_rule": "enclosed-fallback",
       "sources": [
         "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value"
       ]
     },
     {
@@ -899,7 +899,7 @@
       "rationale_rule": "enclosed-fallback",
       "sources": [
         "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value"
       ]
     },
     {
@@ -932,7 +932,7 @@
       "rationale_rule": "enclosed-fallback",
       "sources": [
         "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value"
       ]
     },
     {
@@ -981,7 +981,7 @@
       },
       "rationale_rule": "implicit-eof",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-simple-block",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-simple-block",
         "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax"
       ]
     },
@@ -1262,8 +1262,8 @@
       },
       "rationale_rule": "escaped-unknown-unit",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-escaped-code-point",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-numeric-token",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-escaped-code-point",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-numeric-token",
         "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#error-handling"
       ]
     },
@@ -1397,7 +1397,7 @@
       "rationale_rule": "enclosed-fallback",
       "sources": [
         "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value"
       ]
     },
     {

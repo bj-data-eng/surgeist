@@ -41,7 +41,7 @@ Three implemented choices must remain visible beside those edition rows:
 The [1 October 2026 Candidate Recommendation Draft](css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md)
 is the selected CSS Syntax 3 edition from 2026-10-20 ([#1328](https://github.com/bj-data-eng/surgeist/issues/1328)).
 It supersedes the [24 December 2021 draft](css-syntax-3--CRD-css-syntax-3-20211224--413b27acb4e1.md),
-which remains the Snapshot baseline and the source of citations not yet moved.
+which remains the Snapshot baseline and the basis of the deferred items below.
 
 The selection was made to settle semicolon recovery in blocks. The 2026 draft
 parses every block with "consume a block's contents", which discards a
@@ -55,16 +55,27 @@ draft dated 16 October 2026, read on 2026-10-20 and not retained, lists one
 change since this draft, replacing "parse a block's contents" with "parse a
 list of declarations"; it is not selected.
 
-The move is staged. Behavior and citations that depend on other differences
-between the two drafts move with failing tests first, under [#1356](https://github.com/bj-data-eng/surgeist/issues/1356).
-Until then a citation of the 2021 draft is accurate where the two drafts
-agree. The [catalog](../crates/surgeist-css/specs/catalog.json) records the
-2026 draft as the `block-contents-parsing-2026` definition; its Syntax 3
-module record stays on the 2021 publication until the CSSTree reconciliation
-records, which assert that publication, are re-audited against the 2026
-edition. The [block-contents import](css-syntax-3-block-contents-definition--f971255463f01fb740e2a3a7ecfe83e319cddab9--Overview.bs--b3b69f509779.md)
-for Nesting and Conditional stays until that audit reconciles it with this
-edition.
+The move is complete ([#1356](https://github.com/bj-data-eng/surgeist/issues/1356)).
+The [implemented reference](../crates/surgeist-css/docs/reference.md#css-syntax-3-edition-differences)
+inventories every difference between the two drafts that reaches surgeist-css.
+The behavior changes (unicode-range tokens, top-level custom-property-shaped
+rules, declaration-list block contents and the final comma of a
+comma-separated list) moved with failing tests first. The
+[catalog](../crates/surgeist-css/specs/catalog.json) `css-syntax-3` module
+record and the re-audited CSSTree reconciliation records name the 2026
+publication, and its `block-contents-parsing-2026` and `block-contents-production`
+definitions both draw on this edition. The csswg-drafts `f9712554` block-contents
+import is retired: the 2026 draft's parsing sections match its text apart from
+formatting, and the localized terminal-declaration and named-supports
+reconciliations now apply to the 2026 text.
+
+Four items still rest on the 2021 draft and are deferred: the non-ASCII ident
+code point restriction, a non-trivial change to the crate's lexical correction
+over the pinned `cssparser` tokenizer, tracked separately; the
+public `parse_declaration_list_text` front, which implements the removed
+"parse a list of declarations"; the style-attribute front's handling of a root
+`}`; and the Snapshot-official `O-SYNTAX3` identity in the public conformance
+registry. Public API decisions go to [#1353](https://github.com/bj-data-eng/surgeist/issues/1353).
 
 ## Importer-selected witnesses
 

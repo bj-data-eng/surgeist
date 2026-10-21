@@ -2,7 +2,7 @@
 //! reaching EOF before `*/` is a parse error. Recovery therefore preserves the
 //! surrounding grammar while making the report unclean, independently of whether
 //! a surrounding rule survives. Token payloads are not comments.
-//! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-comments
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-comments
 
 use surgeist_css::{
     CssCustomMediaBody, CssFontFaceDescriptorKind, CssImportance, CssKnownProperty, CssMediaQuery,

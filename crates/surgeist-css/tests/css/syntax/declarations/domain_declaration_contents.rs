@@ -131,7 +131,7 @@ fn font_face_recovers_invalid_neighbors_priority_and_duplicate_order() {
 }
 
 #[test]
-fn font_face_raw_structural_recovery_keeps_braced_fragment_policy_distinct() {
+fn font_face_raw_and_braced_structural_recovery_drop_only_the_child() {
     use CssFontFaceDescriptorKind as K;
     let raw = "font-family:Example; @unknown {src:local(Bad)} src:local(Good); .x {font-display:swap} font-display:optional";
     let report = parse_font_face_declaration_block_contents(raw);
@@ -140,10 +140,21 @@ fn font_face_raw_structural_recovery_keeps_braced_fragment_policy_distinct() {
         [K::FontFamily, K::Src, K::FontDisplay]
     );
     assert!(!report.is_clean());
-    assert!(
-        parse_font_face_block("{font-family:Example; @unknown {src:local(Bad)} src:local(Good)}")
-            .syntax()
-            .is_none()
+    // Syntax 3 (2026-10-01) §5.5.5 consumes every block as block contents;
+    // the at-rule is invalid in the `<declaration-list>` and dropped alone.
+    let braced =
+        parse_font_face_block("{font-family:Example; @unknown {src:local(Bad)} src:local(Good)}");
+    assert_eq!(
+        face_kinds(braced.syntax().as_ref().unwrap().body()),
+        [K::FontFamily, K::Src]
+    );
+    assert_eq!(
+        braced
+            .diagnostics()
+            .iter()
+            .map(|d| d.action())
+            .collect::<Vec<_>>(),
+        [CssRecoveryAction::DropAtRule]
     );
 }
 

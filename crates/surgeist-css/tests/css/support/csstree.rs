@@ -2782,7 +2782,7 @@ mod tests {
 
     #[test]
     fn raw_rule_observation_rejects_extra_outer_input() {
-        // Pinned Syntax 3 section 5.3.5 requires EOF after one rule, even when
+        // Selected Syntax 3 section 5.4.6 requires EOF after one rule, even when
         // stylesheet recovery could retain exactly one surviving sibling.
         for source in [
             "a{} b{}",
@@ -2991,7 +2991,7 @@ mod tests {
 
     #[test]
     fn raw_font_face_value_observation_keeps_incomplete_range_eof_in_payload() {
-        // Original UnicodeRange fixtures: Syntax 3 section 7.1 requires a
+        // Original UnicodeRange fixtures: Syntax 3 sections 4.3.11 and 4.3.14 require a
         // continuation after u and +. Missing input belongs to the raw EOF,
         // not an injected descriptor terminator or surrounding font-face rule.
         let path = "expectations/value/UnicodeRange.json";

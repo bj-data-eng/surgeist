@@ -11492,7 +11492,7 @@
       "id": "selector/functional-pseudo/is.json#/error/2",
       "expectation_sha256": "b83c826039585f0307c96bc08e776264bbb121403fab2edeae5e8e48b7f90f4e",
       "class": {
-        "kind": "recovered",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
@@ -11500,14 +11500,7 @@
           "predicate": {
             "relation": "nonempty"
           }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_selector",
-            "action": "drop_selector_list_item",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       }
     },
     {
@@ -11524,11 +11517,6 @@
           }
         },
         "diagnostics": [
-          {
-            "code": "invalid_selector",
-            "action": "drop_selector_list_item",
-            "payload_relation": "intersects"
-          },
           {
             "code": "invalid_selector",
             "action": "drop_selector_list_item",
@@ -12546,7 +12534,7 @@
       "id": "selector/functional-pseudo/where.json#/error/2",
       "expectation_sha256": "a4eefdd9e655c9290360b998c455c785f1f2f42fc3712aeb40cdf4a270924bd0",
       "class": {
-        "kind": "recovered",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
@@ -12554,14 +12542,7 @@
           "predicate": {
             "relation": "nonempty"
           }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_selector",
-            "action": "drop_selector_list_item",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       }
     },
     {
@@ -12578,11 +12559,6 @@
           }
         },
         "diagnostics": [
-          {
-            "code": "invalid_selector",
-            "action": "drop_selector_list_item",
-            "payload_relation": "intersects"
-          },
           {
             "code": "invalid_selector",
             "action": "drop_selector_list_item",

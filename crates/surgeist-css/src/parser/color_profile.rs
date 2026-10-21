@@ -122,8 +122,10 @@ impl<'i> RuleBodyItemParser<'i, CssColorProfileDescriptor, Error> for BodyParser
         true
     }
 
+    // Syntax 3 (2026 CRD) §5.5.5 reconsumes a failed declaration, and any
+    // other non-at-rule unit, as a nested qualified rule with a `;` stop token.
     fn parse_qualified(&self) -> bool {
-        false
+        true
     }
 }
 

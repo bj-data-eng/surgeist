@@ -1,9 +1,13 @@
 //! Unicode-string input is distinct from a byte stream requiring BOM decoding.
 //!
-//! CSS Syntax 3 (2021-12-24), sections 3.3, 4.2, 5.2 and 5.3.3, preserves
-//! U+FEFF and U+FFFE in string input as identifier code points. Section 5.4.3
+//! CSS Syntax 3 (2026-10-01), sections 3.3, 4.2, 5.3 and 5.4.3, preserves
+//! U+FEFF in string input as an identifier code point. Section 5.5.3
 //! discards a qualified rule whose prelude reaches EOF without a block.
-//! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/
+//! That edition's §4.2 excludes U+FFFE from non-ASCII ident code points; the
+//! U+FFFE rows still follow the 2021-12-24 §4.2 classification, a deferred
+//! tokenizer difference (docs/reference.md#css-syntax-3-edition-differences).
+//! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#non-ascii-code-point
 
 use surgeist_css::{
     CssErrorCode, CssRecoveryAction, CssRule, CssSelector, CssSourcePosition, parse_sheet,

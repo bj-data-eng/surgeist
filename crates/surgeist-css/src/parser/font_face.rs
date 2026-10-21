@@ -19,7 +19,10 @@ use super::typography::{
 };
 use super::url::parse_url;
 use super::values::parse_nonnegative_percentage;
-use super::{block_item_diagnostic, is_declaration_recovery_unit, parse_descriptor_boundary};
+use super::{
+    consume_failed_rule_block, is_declaration_recovery_unit, parse_descriptor_boundary,
+    structural_rule_diagnostic,
+};
 use crate::error::{
     CssFeatureId, Error, basic, descriptor_name_error, from_parse_error, incomplete_descriptor_at,
     unexpected_at, with_descriptor_context,
@@ -85,11 +88,24 @@ pub(super) fn parse_body<'i>(
     };
 
     let mut items = RuleBodyParser::new(input, &mut descriptor_parser);
+    let mut previous_end = items.input.position().byte_index();
     loop {
         let progress = RecoveryProgress::record(items.input);
         let Some(item) = items.next() else {
             break;
         };
+        // A failed nested rule leaves its block pending; consume it as part
+        // of the dropped unit so the recovery span covers the whole unit.
+        let failed_block_error = item.as_ref().err().and_then(|_| {
+            consume_failed_rule_block(
+                source,
+                items.input,
+                true,
+                &items.parser.recovery,
+                "baseline.rule.font-face",
+            )
+            .1
+        });
         let retained = item.is_ok();
         let progress_outcome = progress.finish(items.input, retained);
         let unit_end = items.input.position().byte_index();
@@ -97,19 +113,29 @@ pub(super) fn parse_body<'i>(
             Ok(descriptor) => {
                 descriptors.push(descriptor);
             }
-            Err((error, failed_unit)) if is_declaration_recovery_unit(failed_unit) => {
-                if let Some(diagnostic) = block_item_diagnostic(
+            // Syntax 3 (2026 CRD) §7.1: qualified rules and at-rules are
+            // invalid in this `<declaration-list>` and are dropped one by one.
+            Err((error, failed_unit)) => {
+                let action = if is_declaration_recovery_unit(failed_unit) {
+                    crate::CssRecoveryAction::DropDescriptor
+                } else if failed_unit.trim_start().starts_with('@') {
+                    crate::CssRecoveryAction::DropAtRule
+                } else {
+                    crate::CssRecoveryAction::DropQualifiedRule
+                };
+                if let Some(diagnostic) = structural_rule_diagnostic(
                     source,
-                    error,
+                    failed_block_error.unwrap_or(error),
                     failed_unit,
+                    previous_end,
                     unit_end,
-                    crate::CssRecoveryAction::DropDescriptor,
+                    action,
                 ) {
                     diagnostics.push(diagnostic);
                 }
             }
-            Err((error, _)) => return Err(error),
         }
+        previous_end = unit_end;
         if progress_outcome == RecoveryLoopOutcome::Terminated {
             break;
         }
@@ -194,8 +220,10 @@ impl<'i> RuleBodyItemParser<'i, CssFontFaceDescriptor, Error> for FontFaceDescri
         true
     }
 
+    // Syntax 3 (2026 CRD) §5.5.5 reconsumes a failed declaration, and any
+    // other non-at-rule unit, as a nested qualified rule with a `;` stop token.
     fn parse_qualified(&self) -> bool {
-        false
+        true
     }
 }
 
@@ -409,7 +437,7 @@ pub(super) fn parse_font_face_value<'i, 't>(
                 CssFontFaceDescriptorValue::FontDisplay(parse_font_display(input)?)
             }
             CssFontFaceDescriptorKind::UnicodeRange => {
-                CssFontFaceDescriptorValue::UnicodeRange(parse_unicode_range_list(input)?)
+                CssFontFaceDescriptorValue::UnicodeRange(parse_unicode_range_list(input, numeric)?)
             }
             CssFontFaceDescriptorKind::FontFeatureSettings => {
                 CssFontFaceDescriptorValue::FontFeatureSettings(adapt_native(
@@ -568,6 +596,10 @@ fn parse_font_face_source_list<'i, 't>(
         let Some(comma) = following_comma else {
             break;
         };
+        // Fonts 4 "parse a list" splits with Syntax 3 (2026 CRD) §5.4.10.
+        if super::at_final_comma(input) {
+            break;
+        }
         preceding_comma = Some(comma);
     }
 
@@ -801,10 +833,11 @@ pub(super) fn parse_font_display<'i, 't>(
 
 fn parse_unicode_range_list<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssUnicodeRangeList, ParseError<'i, Error>> {
     let mut ranges = Vec::new();
     loop {
-        ranges.push(unicode_range::parse(input)?);
+        ranges.push(unicode_range::parse(input, numeric)?);
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
         }

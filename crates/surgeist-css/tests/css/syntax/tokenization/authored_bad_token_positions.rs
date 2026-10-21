@@ -5,7 +5,7 @@
 //! 4.3.6, and 8.2 reject newline-terminated strings, bad URLs, and unmatched
 //! closers. These expectations come from the literal source below; recovery
 //! spans still cover the complete discarded declaration, including its semicolon.
-//! Pinned grammar: <https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value>.
+//! Pinned grammar: <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value>.
 
 use std::ops::Range;
 

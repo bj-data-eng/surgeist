@@ -1,7 +1,7 @@
 //! Authored nesting follows CSS Nesting WD20260122 sections 3.1 and 4, plus
-//! the selected Syntax 3 block-contents definition at revision f971255463f01fb.
+//! the selected Syntax 3 (2026-10-01) block-contents definition.
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/
-//! https://github.com/w3c/csswg-drafts/blob/f971255463f01fb740e2a3a7ecfe83e319cddab9/css-syntax-3/Overview.bs
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#block-contents
 //! Public normalization retains complete parent lists and symbolic anchor identity;
 //! these characterizations exercise syntax and context without evaluating matching
 //! or specificity.

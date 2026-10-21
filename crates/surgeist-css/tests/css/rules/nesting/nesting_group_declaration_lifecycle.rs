@@ -1,6 +1,6 @@
 //! Composed authored lifecycle qualification for #527 on accepted #642.
 //! Independent oracles: Nesting WD20260122 §§3.3, 3.3.1, 3.4, 5 and 6.1;
-//! selected Syntax block-contents supplement f9712554. Eligibility follows
+//! selected Syntax 3 (2026-10-01) block contents. Eligibility follows
 //! style-containing grammars, rather than an exhaustive at-rule name list.
 //! Conditions, ancestry and pseudo-element identities remain symbolic.
 use surgeist_css::*;

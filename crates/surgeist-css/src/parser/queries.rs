@@ -207,6 +207,9 @@ pub(super) fn parse_media_query_list_with_closures<'i, 't>(
         let Some(comma) = following_comma else {
             break;
         };
+        if super::at_final_comma(input) {
+            break;
+        }
         preceding_comma = Some(comma);
     }
     Ok(ParsedMediaQueryList {

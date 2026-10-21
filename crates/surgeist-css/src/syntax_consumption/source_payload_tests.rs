@@ -1,4 +1,7 @@
-//! Literal source oracles for Syntax 3 (2021-12-24) §§3.3, 4, 4.2, and 5.2.
+//! Literal source oracles for Syntax 3 (2026-10-01) §§3.3, 4 and 5.3. The name
+//! classes follow the 2021-12-24 §4.2 non-ASCII code point; the 2026 non-ASCII
+//! ident code point restriction is a deferred tokenizer difference
+//! (docs/reference.md#css-syntax-3-edition-differences).
 //! Matching closers are group ends; bad tokens remain ordered error entries.
 use super::*;
 

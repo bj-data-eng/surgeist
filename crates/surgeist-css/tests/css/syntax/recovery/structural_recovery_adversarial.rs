@@ -905,7 +905,7 @@ fn structural_recovery_never_unwinds_on_bounded_adversarial_text() {
             );
         }
         if source == repeated_semicolon {
-            // Syntax 3 §§5.4.1/5.4.3: each semicolon begins qualified
+            // Syntax 3 §§5.5.1/5.5.3: each semicolon begins qualified
             // input, so the final one includes .after and its curly block.
             assert!(report.syntax().rules().is_empty());
             let diagnostic = report.diagnostics().last().unwrap();

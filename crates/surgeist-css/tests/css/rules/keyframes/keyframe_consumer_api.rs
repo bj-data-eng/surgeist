@@ -164,6 +164,31 @@ fn detached_rule_recovers_declarations_but_rejects_invalid_outer_or_trailing_inp
             .all(|d| d.action() == CssRecoveryAction::DropDeclaration)
     );
     assert!(report.into_validation_result().is_err());
+    // Syntax 3 (2026-10-01) §5.5.5 and §7.1: a nested rule is invalid in the
+    // keyframe's `<declaration-list>` and dropped alone.
+    for (source, action) in [
+        (
+            "from{.x{opacity:0} opacity:1}",
+            CssRecoveryAction::DropQualifiedRule,
+        ),
+        (
+            "from{@media all{opacity:0} opacity:1}",
+            CssRecoveryAction::DropAtRule,
+        ),
+    ] {
+        let report = parse_keyframe_rule(source);
+        let rule = report.syntax().as_ref().expect("recovered keyframe rule");
+        assert_eq!(rule.block().declarations().len(), 1, "{source}");
+        assert_eq!(
+            report
+                .diagnostics()
+                .iter()
+                .map(|d| d.action())
+                .collect::<Vec<_>>(),
+            [action],
+            "{source}"
+        );
+    }
     for source in [
         "",
         "from",
@@ -173,8 +198,6 @@ fn detached_rule_recovers_declarations_but_rejects_invalid_outer_or_trailing_inp
         "from{} ;",
         "from{} }",
         "101%{}",
-        "from{.x{opacity:0}}",
-        "from{@media all{opacity:0}}",
         "from{opacity:bad} to{}",
     ] {
         let report = parse_keyframe_rule(source);

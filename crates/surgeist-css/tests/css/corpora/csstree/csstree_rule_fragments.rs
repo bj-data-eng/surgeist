@@ -1,8 +1,8 @@
 //! Independent pinned Syntax/Selectors/Nesting rule admissions and owned recovery.
 //! Transitions 2 starting-style is outside the selected profile; its parent survives.
-//! Admission sources: Syntax 3 (2021-12-24), Selectors 4 (2026-01-22),
+//! Admission sources: Syntax 3 (2026-10-01), Selectors 4 (2026-01-22),
 //! and Nesting 1 (2026-01-22), as pinned in the standards catalog.
-//! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-a-rule
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-a-rule
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/
 use surgeist_css::{

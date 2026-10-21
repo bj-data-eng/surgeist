@@ -1,5 +1,5 @@
 //! Fonts 4 (2026-09-07) §§4, 9.2; Counter Styles 3 (2021-07-27) §3;
-//! Color 5 (2026-09-08) §5.3; Syntax 3 (2021) component/declaration recovery.
+//! Color 5 (2026-09-08) §5.3; Syntax 3 (2026) component/declaration recovery.
 
 use crate::css::support::descriptor_phases;
 use descriptor_phases::*;
@@ -425,9 +425,18 @@ fn complete_value_errors_drop_only_the_bad_descriptor() {
 }
 
 #[test]
-fn structural_child_is_fatal_for_font_face_and_recoverable_for_other_families() {
-    let source = "{font-family:A;@unknown{}src:url(a)}";
-    rejected(&parse_font_face_block(source), source);
+fn structural_child_is_recoverable_for_every_descriptor_family() {
+    // Syntax 3 (2026-10-01) §5.5.5 and §7.1: an at-rule in a
+    // `<declaration-list>` is invalid and dropped alone.
+    let face = parse_font_face_block("{font-family:A;@unknown{}src:url(a)}");
+    assert_eq!(
+        face_kinds(body(&face).body()),
+        [
+            CssFontFaceDescriptorKind::FontFamily,
+            CssFontFaceDescriptorKind::Src
+        ]
+    );
+    recovered(&face, CssRecoveryAction::DropAtRule);
     let counter = parse_counter_style_block("{prefix:\"a\";@unknown{}suffix:\"b\"}");
     assert_eq!(body(&counter).body().occurrences().len(), 2);
     symbol(

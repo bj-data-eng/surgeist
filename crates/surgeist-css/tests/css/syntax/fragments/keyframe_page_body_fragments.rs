@@ -242,21 +242,37 @@ fn keyframe_importance_is_invalid_for_known_and_custom_declarations() {
 }
 
 #[test]
-fn structural_failure_rejects_direct_keyframe_declarations_but_only_the_owning_outer_child() {
-    for child in [".bad{color:red}", "@media all{color:red}"] {
+fn structural_child_is_dropped_alone_from_keyframe_declarations() {
+    // Syntax 3 (2026-10-01) §5.5.5 and §7.1: a qualified rule or at-rule in a
+    // keyframe's `<declaration-list>` is invalid and dropped on its own; the
+    // declarations around it and the keyframe block survive.
+    for (child, action) in [
+        (".bad{color:red}", CssRecoveryAction::DropQualifiedRule),
+        ("@media all{color:red}", CssRecoveryAction::DropAtRule),
+    ] {
         let source = format!("{{opacity:.5;{child}opacity:1}}");
-        rejected(&parse_keyframe_declaration_block(&source), &source);
+        let report = parse_keyframe_declaration_block(&source);
+        let declarations = body(&report).body();
+        assert_eq!(declarations.len(), 2, "{source}");
+        opacity(&declarations[0], ".5");
+        opacity(&declarations[1], "1");
+        recovered(&report, action);
         let source = format!("{{from{{opacity:.5;{child}opacity:1}}to{{opacity:1}}}}");
         let report = parse_keyframes_block(&source);
-        let [last] = body(&report).body().as_slice() else {
-            panic!("only later complete child")
+        let [first, last] = body(&report).body().as_slice() else {
+            panic!("both keyframe blocks survive: {source}")
         };
+        assert!(matches!(
+            first.selectors().selectors(),
+            [CssKeyframeSelector::From]
+        ));
+        assert_eq!(first.declarations().len(), 2);
         assert!(matches!(
             last.selectors().selectors(),
             [CssKeyframeSelector::To]
         ));
         opacity(&last.declarations()[0], "1");
-        recovered(&report, CssRecoveryAction::DropKeyframeBlock);
+        recovered(&report, action);
     }
 }
 

@@ -1,6 +1,6 @@
 //! Existing-public-API composition witnesses, independently authored.
 //! Values4 WD20240312 §§2.2–2.6, 4.2, 5–6, 8.3, 10.11; Syntax3
-//! CRD20211224 §§3.3, 4.3.5; selected Fonts4 WD20260907 §§2.1.1, 2.7;
+//! CRD20261001 §§3.3, 4.3.5; selected Fonts4 WD20260907 §§2.1.1, 2.7;
 //! Motion1 WD20241105 §2.1.1; CSSOM WD20210826 §2.1 and the public
 //! immutable provenance/resource/whole-production contracts supply the oracles.
 

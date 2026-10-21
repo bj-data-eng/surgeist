@@ -16,11 +16,11 @@ use surgeist_css::{
 
 const FIXTURE: &str = include_str!("../../fixtures/i01-c01-observables.tsv");
 // Case inputs and feature labels retain their capture provenance. Syntax 3
-// (2021-12-24) §§3, 5.4.1 and 9.3 supersede captured charset metadata and
+// (2026-10-01) §§3, 5.5.1 and 8.3 supersede captured charset metadata and
 // top-level CDO/CDC diagnostics. The explicit archived-sheet cohort below binds
 // each historical input/outcome and asserts independent current expectations.
-// https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#charset-rule
-// https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-list-of-rules
+// https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#charset-rule
+// https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-stylesheet-contents
 // Selectors 4 (2026-01-22) §16 and Nesting 1 (2026-01-22) §§3.1, 4
 // supersede the one archived nested Column rejection. The closed Column cohort
 // binds all nine historical fields and directly inspects the newly retained
@@ -40,7 +40,7 @@ const FIXTURE: &str = include_str!("../../fixtures/i01-c01-observables.tsv");
 // Deep style inputs retain each authored ancestor through parse_sheet's public
 // depth-256 boundary; dropping level 257 does not flatten its retained parents.
 // The Unicode-range boundary case identifies its original out-of-domain end
-// endpoint token, following Syntax 3 §7.1 and the descriptor token-origin contract.
+// endpoint token, following Syntax 3 §§4.3.14 and 5.5.11 and the descriptor token-origin contract.
 // Fonts 4 §6.9.1 also retains named font-feature-values rules and their valid
 // styleset entries, without projecting descriptors into property declarations.
 // CSS Text 4 §8.2 retains 0.1em exactly; its historical rounded f32 I01
@@ -867,6 +867,10 @@ fn authored_css_cases_match_selected_public_report_observables() {
             assert_strict_parity(&row);
             continue;
         }
+        if assert_archived_keyframe_nested_child_recovery(&row) {
+            assert_strict_parity(&row);
+            continue;
+        }
         if assert_archived_flow_tolerance_rejection(&row) {
             migrated_tolerance_cases += 1;
             assert_strict_parity(&row);
@@ -1237,7 +1241,7 @@ fn assert_archived_sheet_source_contract(row: &Row) -> bool {
     true
 }
 
-// Syntax 3 (2021-12-24) §§5.4.1/5.4.3 dispatch root semicolons and
+// Syntax 3 (2026-10-01) §§5.5.1/5.5.3 dispatch root semicolons and
 // unmatched closers into a qualified prelude. They are not standalone dropped
 // rules: the first curly body or actual EOF closes the whole recovery unit.
 // Bind these eight captures verbatim, then derive current expectations from
@@ -1866,6 +1870,45 @@ fn assert_archived_inline_display_rejection(row: &Row) -> bool {
 // Syntax 3 string input preserves U+FEFF as an identifier code point. The
 // following at-keyword remains in that qualified rule's prelude, invalidating
 // the complete rule through its block. Preserve the historical capture verbatim.
+// Syntax 3 (2026-10-01) §5.5.5 and §7.1: a nested at-rule in a keyframe's
+// `<declaration-list>` is invalid and dropped alone, so the 25% keyframe keeps
+// the declarations around it. The archive captured the whole-block drop; keep it
+// unchanged and assert the selected recovery through the public report.
+fn assert_archived_keyframe_nested_child_recovery(row: &Row) -> bool {
+    if row.case_id != "focused.nested-structural.keyframes-balanced" {
+        return false;
+    }
+    assert_eq!(row.entry, "sheet");
+    assert_eq!(
+        row.input,
+        "@keyframes fade { from { opacity: 0; } 25% { opacity: .25; @media fn(a, b) { width: 1px; } height: 2px; } fn(a, b) { opacity: .5; } to { opacity: 1; } }"
+    );
+    assert_eq!(row.clean, "false");
+    assert_eq!(
+        row.diagnostics,
+        "InvalidAtRulePlacement/InvalidAtRulePlacement:media:a keyframe declaration list/DropKeyframeBlock@59:0:59>39:0:39-105:0:105:105~UnexpectedToken/UnexpectedToken:valid CSS syntax:Function:fn(/DropKeyframeBlock@106:0:106>106:0:106-131:0:131:131"
+    );
+    let report = parse_sheet(&row.input);
+    assert!(!report.is_clean());
+    let [CssRule::Keyframes(keyframes)] = report.syntax().rules() else {
+        panic!("{} keyframes rule", row.case_id)
+    };
+    let counts: Vec<_> = keyframes
+        .blocks()
+        .iter()
+        .map(|block| block.declarations().len())
+        .collect();
+    assert_eq!(counts, [1, 2, 1], "{} keyframe declarations", row.case_id);
+    assert_eq!(
+        diagnostics_observable(report.diagnostics()),
+        [
+            "InvalidAtRulePlacement/InvalidAtRulePlacement:media:a keyframe declaration list/DropAtRule@59:0:59>59:0:59-90:0:90:90",
+            "UnexpectedToken/UnexpectedToken:valid CSS syntax:Function:fn(/DropKeyframeBlock@106:0:106>106:0:106-131:0:131:131",
+        ]
+    );
+    true
+}
+
 fn assert_archived_unicode_feff_rejection(row: &Row) -> bool {
     if row.case_id != "focused.stylesheet-recovery.13" {
         return false;

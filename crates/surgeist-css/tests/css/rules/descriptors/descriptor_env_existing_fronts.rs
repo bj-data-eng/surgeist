@@ -1,5 +1,5 @@
-//! Independent existing-front draft: Env1 WD20250923 §3; Syntax3 CRD20211224
-//! §§5.4, 9.2; selected Fonts4 WD20260907 §6.9.1 and Counter Styles3 §3.
+//! Independent existing-front draft: Env1 WD20250923 §3; Syntax3 CRD20261001
+//! §§5.5, 8.2; selected Fonts4 WD20260907 §6.9.1 and Counter Styles3 §3.
 //! This file deliberately uses existing names so admission RED can precede a
 //! functional phase extension. New phase views/reentry are separate tests.
 

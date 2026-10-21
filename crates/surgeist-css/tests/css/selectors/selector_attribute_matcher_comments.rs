@@ -1,5 +1,5 @@
 //! Selected Selectors 4 <attr-matcher> consists of optional ~ | ^ $ * then =.
-//! Its components forbid whitespace; Syntax 3 section 10 makes comments inert.
+//! Its components forbid whitespace; Syntax 3 section 9 makes comments inert.
 
 use surgeist_css::{
     CssAttributeCaseSensitivity as Case, CssAttributeMatcher as Matcher,

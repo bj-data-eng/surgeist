@@ -1044,6 +1044,17 @@ pub(super) fn block_item_diagnostic_from_start(
     crate::CssRecoveryDiagnostic::new(error, span, action)
 }
 
+/// Syntax 3 (2026 CRD) §5.4.10 appends a group only while its input is not
+/// empty: a discarded comma followed by no token ends the list. Whitespace is
+/// a token; a comment is not.
+/// <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-comma-separated-list-of-component-values>
+pub(super) fn at_final_comma(input: &mut Parser<'_, '_>) -> bool {
+    let state = input.state();
+    let ends = input.next_including_whitespace().is_err();
+    input.reset(&state);
+    ends
+}
+
 pub(super) fn consume_failed_rule_block<'i, 't>(
     source: &'i str,
     input: &mut Parser<'i, 't>,

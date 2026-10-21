@@ -1,8 +1,8 @@
 //! CSS Syntax 3 §4.3.6 consumes unquoted URL payload as one token: brackets,
 //! braces, and comment-looking text remain URL code points, while an unescaped
 //! closing parenthesis terminates the token. EOF closes that token and any
-//! retained enclosing blocks (§5.4.8), not delimiters within its payload.
-//! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-url-token
+//! retained enclosing blocks (§5.5.9), not delimiters within its payload.
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-url-token
 
 use surgeist_css::{
     CssErrorCode, CssFontFaceSource, CssParseReport, CssRecoveryAction, CssRule, CssSheet,

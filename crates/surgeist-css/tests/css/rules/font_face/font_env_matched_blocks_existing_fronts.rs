@@ -1,5 +1,5 @@
 //! CSS Env 1 WD 2025-09-23 §3 assumes the entire descriptor grammar valid
-//! when its env functions are syntactically valid. Syntax 3 CRD 2021-12-24 §8.2
+//! when its env functions are syntactically valid. Syntax 3 CRD 2026-10-01 §7.2
 //! permits matched blocks in declaration-value, while excluding unmatched
 //! closers and root semicolons/bangs. These tests use existing public fronts.
 

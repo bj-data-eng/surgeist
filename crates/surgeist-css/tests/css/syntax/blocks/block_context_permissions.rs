@@ -1,6 +1,6 @@
 //! Composed context permissions through public parsing interfaces.
-//! Selected Syntax 3 CRD20211224 §§5.3.7–8, 8.1; Nesting WD20260122 §§3–5;
-//! catalog's narrow block-contents import and terminal-run reconciliation;
+//! Selected Syntax 3 CRD20261001 §§5.4.5, 5.5.5, 7.1; Nesting WD20260122 §§3–5;
+//! catalog's block-contents definition and terminal-run reconciliation;
 //! Conditional 3 CRD20240815 §3; Animations 1 WD20230302 §3;
 //! CSS2 REC20110607 §13.2; Fonts 4 WD20260907 §6.9.1.
 //! Shared exhaustive property authority remains common/property_expectations/records.rs.
@@ -323,15 +323,16 @@ fn font_feature_values_mixed_body_retains_defined_blocks_and_display_while_remov
             .collect::<Vec<_>>(),
         [
             CssRecoveryAction::DropAtRule,
-            CssRecoveryAction::DropDescriptor
+            CssRecoveryAction::DropQualifiedRule
         ]
     );
 }
 
 #[test]
-fn malformed_font_mixed_list_unit_consumes_an_unseparated_tail_only_to_child_eof() {
-    // Syntax 2021 §5.4.5 discards a nonident component unit through the next
-    // root semicolon or bounded EOF. A nested brace does not end that unit.
+fn malformed_font_mixed_list_unit_is_one_nested_qualified_rule() {
+    // Syntax 3 (2026-10-01) §5.5.5 reconsumes a nonident unit as a nested
+    // qualified rule with a `;` stop token, so its block ends the unit and the
+    // following feature block survives.
     let source = "@font-feature-values Demo{font-display:swap; @stylistic{first:1} @unknown{lost:2} .nested{color:red} @swash{last:3}} a{width:1px}";
     let report = parse_sheet(source);
     let [CssRule::FontFeatureValues(features), CssRule::Style(after)] = report.syntax().rules()
@@ -341,10 +342,13 @@ fn malformed_font_mixed_list_unit_consumes_an_unseparated_tail_only_to_child_eof
     let [
         CssFontFeatureValuesItem::FontDisplay(display),
         CssFontFeatureValuesItem::Block(stylistic),
+        CssFontFeatureValuesItem::Block(swash),
     ] = features.items()
     else {
-        panic!("only the two members before the malformed unit")
+        panic!("the members around the malformed unit")
     };
+    assert_eq!(swash.kind(), CssFontFeatureValueKind::Swash);
+    assert_eq!(swash.definitions()[0].name().as_str(), "last");
     assert_eq!(display.value().ordinary_display(), CssFontDisplay::Swap);
     assert_eq!(stylistic.kind(), CssFontFeatureValueKind::Stylistic);
     let [first] = stylistic.definitions() else {
@@ -357,8 +361,8 @@ fn malformed_font_mixed_list_unit_consumes_an_unseparated_tail_only_to_child_eof
         panic!("one unknown child and one complete malformed unit")
     };
     assert_eq!(unknown.action(), CssRecoveryAction::DropAtRule);
-    assert_eq!(malformed.action(), CssRecoveryAction::DropDescriptor);
-    let unit = ".nested{color:red} @swash{last:3}";
+    assert_eq!(malformed.action(), CssRecoveryAction::DropQualifiedRule);
+    let unit = ".nested{color:red}";
     let start = source.find(unit).unwrap();
     assert_eq!(malformed.span().start().byte_offset().value(), start);
     assert_eq!(

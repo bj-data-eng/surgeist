@@ -1,4 +1,4 @@
-//! Raw ordinary-property declaration lists, with CSS Syntax 3 §5.4.5 synchronization.
+//! Raw ordinary-property declaration lists, with CSS Syntax 3 (2021-12-24) §5.4.5 synchronization.
 use super::*;
 
 /// Parses raw declaration-list text with recovery and ordinary property grammar.

@@ -1,5 +1,7 @@
-//! Independent raw-list oracles: selected CSS Syntax 3 CRD20211224 §§5.3.8,
+//! Independent raw-list oracles: CSS Syntax 3 CRD20211224 §§5.3.8,
 //! 5.4.2 and 5.4.5, followed by the ordinary property consumer contract.
+//! The selected 2026-10-01 edition removes "parse a list of declarations";
+//! reconciling this historical front is deferred (docs/reference.md#css-syntax-3-edition-differences).
 //! This wholly new front has functional tests alongside implementation;
 //! no executable preimplementation RED is claimed.
 use surgeist_css::*;

@@ -1,6 +1,6 @@
 //! Public custom-name boundary tests. Variables1
 //! CR20220616 §2 defines decoded dashed-ident identity and reserved `--`;
-//! Syntax3 CRD20211224 §§4.3.7/4.3.9/4.3.11 define the escape decoding.
+//! Syntax3 CRD20261001 §§4.3.7/4.3.9/4.3.12 define the escape decoding.
 //! CssCustomPropertyName::try_new publicly accepts one authored identifier
 //! token, whereas as_str returns its decoded identity.
 
