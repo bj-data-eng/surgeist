@@ -157,7 +157,7 @@ fn standalone_checked_percentage_functions_reject_implicit_closures() {
 }
 
 #[test]
-fn recovering_parsed_percentage_child_can_be_reused_without_erasing_implicit_origin() {
+fn checked_constructors_refuse_a_recovered_parsed_percentage_child() {
     let source = "opacity:calc(25%";
     let report = parse_style_attribute(source);
     assert!(!report.is_clean());
@@ -172,20 +172,25 @@ fn recovering_parsed_percentage_child_can_be_reused_without_erasing_implicit_ori
     let CssOpacityValue::PercentageCalculation(original) = wrapper.value() else {
         panic!("recovering percentage function");
     };
-    let percent = CssKeyframePercent::try_from_calculation(original.clone()).unwrap();
-    assert_eq!(percent.calculation(), Some(original));
-    let CssComponentValueRef::Function(function) =
-        percent.calculation().unwrap().components().items()[0].view()
-    else {
+    // Checked public construction rejects implicit closure; only
+    // parser admission retains recovered syntax, which the report records.
+    assert!(CssKeyframePercent::try_from_calculation(original.clone()).is_none());
+    assert_eq!(
+        CssSpecifiedPercentage::try_from_calculation(original.clone())
+            .unwrap_err()
+            .kind(),
+        &CssNumericConstructionErrorKind::RecoveredComponent
+    );
+    assert!(CssPercentageCalculation::try_from_components(original.components().clone()).is_err());
+    // Refusal leaves the parsed child and its implicit origin intact.
+    let CssComponentValueRef::Function(function) = original.components().items()[0].view() else {
         panic!("retained function graph");
     };
     assert!(matches!(
         function.closing_origin(),
         CssValueOrigin::ImplicitClosure { .. }
     ));
-    let CssValueOrigin::Parsed(origin) =
-        percent.calculation().unwrap().components().items()[0].origin()
-    else {
+    let CssValueOrigin::Parsed(origin) = original.components().items()[0].origin() else {
         panic!("original parsed function origin");
     };
     assert_eq!(origin.source().as_str(), source);
@@ -193,12 +198,6 @@ fn recovering_parsed_percentage_child_can_be_reused_without_erasing_implicit_ori
         origin.span().start().byte_offset().value(),
         "opacity:".len()
     );
-    let specified =
-        CssSpecifiedPercentage::try_from_calculation(percent.calculation().unwrap().clone())
-            .unwrap();
-    assert_eq!(specified.serialize_specified().unwrap(), "calc(25%)");
-    assert_eq!(percent.calculation(), Some(original));
-    assert!(CssPercentageCalculation::try_from_components(original.components().clone()).is_err());
 }
 
 #[test]
