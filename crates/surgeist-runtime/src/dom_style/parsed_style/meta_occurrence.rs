@@ -146,7 +146,7 @@ impl DomStyleRuntime {
             root: document.node(),
         })?;
         steps.prefix(&hold)?;
-        let cap = state.roots[index].store.clone();
+        let cap = state.roots[index].bound()?.clone();
         let mut prep = hold.prepare_meta_occurrence(occurrence, &cap, cancel)?;
         let StyleState {
             roots,

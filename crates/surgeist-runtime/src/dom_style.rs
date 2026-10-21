@@ -7,6 +7,7 @@
 mod meta;
 mod parsed_style;
 mod sheet_sets;
+mod withdrawal;
 pub use meta::parsed::{
     DomStyleParsedAdmissionError, DomStyleParsedInstallError, DomStyleParsedMetaError,
     DomStyleParsedMetaOutcome, DomStyleParsedMetaPreference,
@@ -23,6 +24,9 @@ pub use parsed_style::{
     DomStyleParsedTerminalError,
 };
 pub use sheet_sets::{DomStyleSheetSetCommit, DomStyleSheetSetObservation};
+pub use withdrawal::{
+    DomStyleRootWithdrawal, DomStyleRootWithdrawalError, DomStyleWithdrawnSheetSetHistory,
+};
 
 use crate::dom_event::{
     DomEventDispatchLimits, DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher,
@@ -124,6 +128,21 @@ pub enum DomStyleRuntimeError {
         /// Actual non-Document root supplied by the caller.
         root: NodeId,
     },
+    /// Execution custody was withdrawn for this exact hosted cleanup. Retained
+    /// history and withdrawal-time observations do not grant current authority.
+    RootReleasedForHostedDestruction {
+        /// Exact retained root generation.
+        root: NodeId,
+        /// Actual original hosted cleanup for which custody was withdrawn.
+        cleanup: surgeist_dom::DomHostedOperationId,
+        /// Authenticated historical producer revision at withdrawal, not current authority.
+        withdrawal_revision: surgeist_cssom::CssomRevision,
+    },
+    /// Actual processing, notification or cleanup still needs this capability.
+    RootWorkPending {
+        /// Exact root whose retained processing, task or cleanup still needs execution custody.
+        root: NodeId,
+    },
     /// The canonical, preference or actual producer revision changed.
     StaleSheetSetObservation,
     /// An actual staged or committed Source publication retains exclusive custody.
@@ -181,9 +200,32 @@ pub(crate) enum DomStyleServiceProgress {
 struct Root {
     node: NodeId,
     label: String,
-    store: std::rc::Rc<DomStyleCssomRoot>,
+    resource: RootResource,
     serial: u64,
     sheet_sets: sheet_sets::RootSets,
+}
+enum RootResource {
+    Bound(std::rc::Rc<DomStyleCssomRoot>),
+    ReleasedForHostedDestruction {
+        cleanup: surgeist_dom::DomHostedOperationId,
+        at_withdrawal: surgeist_cssom::CssomRevision,
+    },
+}
+impl Root {
+    /// Current execution authority, never a historical withdrawal capture.
+    fn bound(&self) -> Result<&std::rc::Rc<DomStyleCssomRoot>, DomStyleRuntimeError> {
+        match &self.resource {
+            RootResource::Bound(owner) => Ok(owner),
+            RootResource::ReleasedForHostedDestruction {
+                cleanup,
+                at_withdrawal,
+            } => Err(DomStyleRuntimeError::RootReleasedForHostedDestruction {
+                root: self.node,
+                cleanup: *cleanup,
+                withdrawal_revision: at_withdrawal.clone(),
+            }),
+        }
+    }
 }
 /// Qualified processing output. Media diagnostics keep their own source
 /// coordinate context; body diagnostics remain on the actual CSSOM sheet.
@@ -639,6 +681,22 @@ impl StyleState {
         }
         Ok(())
     }
+    // A failed multi-root producer lookup may name a deliberately released
+    // history row. Qualify only that reached root; unrelated history is inert.
+    fn require_bound_if_registered(
+        &self,
+        node: NodeId,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomStyleRuntimeError> {
+        for root in &self.roots {
+            self.step(cancel)?;
+            if root.node == node {
+                root.bound()?;
+                break;
+            }
+        }
+        Ok(())
+    }
     fn processing(
         &self,
         candidate: Option<&StagedPublication>,
@@ -700,7 +758,9 @@ impl StyleState {
             step()?;
             add(&mut bytes, root.label.capacity())?;
             add(&mut bytes, root.sheet_sets.backing_bytes()?)?;
-            add(&mut bytes, size_of::<DomStyleCssomRoot>())?;
+            if matches!(root.resource, RootResource::Bound(_)) {
+                add(&mut bytes, size_of::<DomStyleCssomRoot>())?;
+            }
         }
         for (index, completion) in self.completions.iter().enumerate() {
             step()?;
@@ -711,7 +771,8 @@ impl StyleState {
             let mut counted = false;
             for root in &self.roots {
                 step()?;
-                if std::rc::Rc::ptr_eq(&root.store, owner) {
+                if matches!(&root.resource, RootResource::Bound(bound) if std::rc::Rc::ptr_eq(bound, owner))
+                {
                     counted = true;
                     break;
                 }
@@ -1036,7 +1097,7 @@ impl StyleState {
         self.roots.push(Root {
             node: root,
             label,
-            store,
+            resource: RootResource::Bound(store),
             serial: 0,
             sheet_sets: sheet_sets::RootSets::new(document),
         });
@@ -1047,7 +1108,7 @@ impl StyleState {
         self.roots
             .iter()
             .find(|r| r.node == root)
-            .map(|r| r.store.snapshot().map_err(Into::into))
+            .map(|r| r.bound()?.snapshot().map_err(Into::into))
             .transpose()
     }
     /// Critical-resource waits, distinct from networking tasks already queued.
@@ -1127,7 +1188,7 @@ impl StyleState {
             .roots
             .get(staged.root_index)
             .ok_or(DomStyleRuntimeError::Binding)?;
-        if root.node != staged.root || !std::rc::Rc::ptr_eq(&root.store, &staged.owner) {
+        if root.node != staged.root || !std::rc::Rc::ptr_eq(root.bound()?, &staged.owner) {
             return Err(DomStyleRuntimeError::Binding);
         }
         // Busy/Poisoned never consumes the actual unattempted producer batch.
@@ -1288,11 +1349,11 @@ impl StyleState {
                         reason: DomStyleUnavailable::RootList,
                     });
                 };
-                lease.bind_cssom_root(&request, &self.roots[index].store, cancel)?;
-                let snapshot = self.roots[index].store.snapshot()?;
+                lease.bind_cssom_root(&request, self.roots[index].bound()?.as_ref(), cancel)?;
+                let snapshot = self.roots[index].bound()?.snapshot()?;
                 let request = lease.qualify_cssom(&request, root, &snapshot)?;
                 let mut batch = self.roots[index]
-                    .store
+                    .bound()?
                     .batch(CssomEditGuard::from_snapshot(&snapshot))?;
                 let mut sheet_sets = None;
                 let created = if request.action()
@@ -1426,7 +1487,7 @@ impl StyleState {
                     request,
                     root,
                     root_index: index,
-                    owner: self.roots[index].store.clone(),
+                    owner: self.roots[index].bound()?.clone(),
                     batch: Some(batch),
                     serial: created.as_ref().map(|_| self.roots[index].serial + 1),
                     created,
@@ -1446,19 +1507,19 @@ impl StyleState {
                         reason: DomStyleUnavailable::RootList,
                     });
                 };
-                lease.bind_cssom_root(&request, &self.roots[index].store, cancel)?;
-                let snapshot = self.roots[index].store.snapshot()?;
+                lease.bind_cssom_root(&request, self.roots[index].bound()?.as_ref(), cancel)?;
+                let snapshot = self.roots[index].bound()?.snapshot()?;
                 let request = lease.qualify_cssom(&request, root, &snapshot)?;
                 let sheet = request.sheet().ok_or(DomStyleRuntimeError::Protocol)?;
                 let mut batch = self.roots[index]
-                    .store
+                    .bound()?
                     .batch(CssomEditGuard::from_snapshot(&snapshot))?;
                 batch.set_disabled(sheet.id(), disabled)?;
                 let staged = StagedPublication {
                     request,
                     root,
                     root_index: index,
-                    owner: self.roots[index].store.clone(),
+                    owner: self.roots[index].bound()?.clone(),
                     batch: Some(batch),
                     serial: None,
                     created: None,
@@ -1479,9 +1540,9 @@ impl StyleState {
                     });
                 };
                 self.reserve_reports(size_of::<DomStyleProcessedSheet>(), cancel)?;
-                lease.bind_cssom_root(&request, &self.roots[index].store, cancel)?;
+                lease.bind_cssom_root(&request, self.roots[index].bound()?.as_ref(), cancel)?;
                 let root = &self.roots[index];
-                let snapshot = root.store.snapshot()?;
+                let snapshot = root.bound()?.snapshot()?;
                 let request = lease.qualify_cssom(&request, root_id, &snapshot)?;
                 let sheet_id = request
                     .sheet()
@@ -1505,7 +1566,9 @@ impl StyleState {
                     DomStyleCssomOwnerBinding::new(&request, version.clone(), owner.clone())?,
                     cancel,
                 )?;
-                let mut batch = root.store.batch(CssomEditGuard::from_snapshot(&snapshot))?;
+                let mut batch = root
+                    .bound()?
+                    .batch(CssomEditGuard::from_snapshot(&snapshot))?;
                 let context = self.source_parser_context(
                     &snapshot,
                     request.source(),
@@ -1546,7 +1609,7 @@ impl StyleState {
                     request,
                     root: root_id,
                     root_index: index,
-                    owner: root.store.clone(),
+                    owner: root.bound()?.clone(),
                     batch: Some(batch),
                     serial: None,
                     created: None,
@@ -1971,7 +2034,10 @@ impl DomSession {
                     } else {
                         let mut access = None;
                         for root in &state.roots {
-                            match root.store.snapshot() {
+                            let RootResource::Bound(owner) = &root.resource else {
+                                continue;
+                            };
+                            match owner.snapshot() {
                                 Err(DomStyleCssomRootError::Busy) => {
                                     access = Some(DomShutdownReason::Busy);
                                     break;
@@ -1988,7 +2054,10 @@ impl DomSession {
                             }
                         }
                         access.or_else(|| {
-                            (!state.roots.is_empty()
+                            (state
+                                .roots
+                                .iter()
+                                .any(|root| matches!(root.resource, RootResource::Bound(_)))
                                 || state.publication.is_some()
                                 || state.staged.is_some()
                                 || self.dom.has_style_cssom_roots()
@@ -2078,7 +2147,8 @@ impl DomStyleRuntime {
             .map_err(|_| DomStyleRuntimeError::Binding)?;
         state.bind_root(&dom.snapshot(), label, input, cancel)
     }
-    /// Historical CSSOM capture, without a current DOM-association certificate.
+    /// Capture the current bound producer without a joined readiness claim.
+    /// Released history refuses; it is never substituted as current authority.
     pub fn snapshot(&self, root: NodeId) -> Result<Option<CssomSnapshot>, DomStyleRuntimeError> {
         let state = self.original()?;
         let state = state
@@ -2151,7 +2221,7 @@ impl DomStyleRuntime {
             .iter()
             .find(|root| root.node == association.root())
             .ok_or(DomStyleRuntimeError::Binding)?;
-        let current = root.store.snapshot()?;
+        let current = root.bound()?.snapshot()?;
         let sheet = current.sheet(association.id())?;
         Ok(DomStyleDisabledObservation {
             stamp: snapshot.stamp(),
@@ -2720,6 +2790,7 @@ mod tests {
     mod parsed_associations;
     mod preferred_sets;
     mod waiting_retirement;
+    mod withdrawal;
     pub(super) fn session_limits(style: super::DomStyleRuntimeLimits) -> super::DomSessionLimits {
         super::DomSessionLimits {
             source_events: crate::dom_dialog::DomSourceEventRuntimeLimits {
@@ -3568,7 +3639,10 @@ mod tests {
             };
             assert_eq!(request.action(), DomStyleAction::SetDisabled(true));
             assert!(lease.status().has_published());
-            let root = styles.original().unwrap().borrow().roots[0].store.clone();
+            let root = styles.original().unwrap().borrow().roots[0]
+                .bound()
+                .unwrap()
+                .clone();
             // These are genuine, nonmutating producer qualifications on this
             // SAME retained request. Their spent work is never reset/refunded.
             // Warm the revision qualification before measuring its stable cost.
@@ -4589,7 +4663,7 @@ mod tests {
             panic!("real canonical pending source request");
         };
         let original = styles.original().unwrap();
-        let cap = original.borrow().roots[0].store.clone();
+        let cap = original.borrow().roots[0].bound().unwrap().clone();
         let dom_stamp = session.snapshot().stamp();
         let surgeist_dom::DomSourceRequest::Style(request) = request else {
             panic!("Style fixture cannot request a hosted child");

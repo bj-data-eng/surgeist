@@ -372,7 +372,7 @@ impl DomHostedHistoryEntry {
 pub(crate) struct HostedOwner {
     state: Rc<RefCell<HostedState>>,
 }
-struct HostedState {
+pub(crate) struct HostedState {
     dom: DomOwnerId,
     source: DomHostedSource,
     clock: clock::Clock,

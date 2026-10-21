@@ -80,7 +80,8 @@ fn owner(session: &DomSession) -> std::rc::Rc<DomStyleCssomRoot> {
         .iter()
         .find(|root| root.label == "original-root")
         .unwrap()
-        .store
+        .bound()
+        .unwrap()
         .clone()
 }
 fn next(

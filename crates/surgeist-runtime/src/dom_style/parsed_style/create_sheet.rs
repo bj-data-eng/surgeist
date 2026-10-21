@@ -283,7 +283,7 @@ impl DomStyleRuntime {
             root: document.node(),
         })?;
         steps.prefix(&hold)?;
-        let cap = state.roots[index].store.clone();
+        let cap = state.roots[index].bound()?.clone();
         let serial = state.roots[index]
             .serial
             .checked_add(1)

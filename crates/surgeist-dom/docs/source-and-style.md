@@ -88,6 +88,23 @@ retirement releases canonical custody; independently held access capabilities
 may outlive it without pinning the tree. Snapshots preserve historical identities
 but do not keep a mutable CSSOM owner alive.
 
+An idle registered root can also release canonical custody at its original
+[hosted Document destruction cleanup](hosted-documents.md#activity-children-and-lifecycle-retirement).
+`DomHostedDestructionLease::prepare_style_root_withdrawal` authenticates that
+cleanup and issuer, checks the actual locked producer and the Document's
+canonical associations and obligations, and prepares the custody change.
+Another registered root for the same Document still prevents this withdrawal.
+The composing adapter must separately establish that its own tasks, resources
+and publications no longer need the selected mutable capability.
+
+Preparation retains the DOM and issuer loans and producer lock. Dropping it
+leaves custody unchanged. `publish()` removes canonical custody; `finish()`
+releases the lock after the adapter's preformed, infallible resource move.
+Withdrawal changes no tree or CSSOM revision and acknowledges no destruction:
+the same cleanup publication must still complete normally. The result's
+snapshot records withdrawal-time history; independently escaped mutable
+capabilities retain their own lifetime and may subsequently change that producer.
+
 `set_style_disabled` changes the existing associated sheet's flag through this
 source protocol. A null-sheet assignment does nothing and cannot become a flag
 for a later-created sheet. The operation preserves sheet identity and association

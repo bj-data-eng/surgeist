@@ -599,7 +599,9 @@ impl DomStyleRuntime {
         backing.reserve(&mut references, state.roots.len())?;
         for root in &state.roots {
             StyleState::step_counter(&state.work, cancel, prefix_maximum)?;
-            capabilities.push(root.store.clone());
+            if let RootResource::Bound(owner) = &root.resource {
+                capabilities.push(owner.clone());
+            }
         }
         for capability in &capabilities {
             StyleState::step_counter(&state.work, cancel, prefix_maximum)?;
@@ -611,9 +613,17 @@ impl DomStyleRuntime {
         // returned producer guards have been extracted and released.
         let prefix = DomMetaRuntimePrefix::new(backing.native_usage()?, formation_work, limits)
             .map_err(DomStyleRuntimeError::from)?;
-        let mut preparation =
-            dom.raw_mut()
-                .prepare_meta_batch(batch, &references, inline, limits, prefix, cancel)?;
+        let mut preparation = dom
+            .raw_mut()
+            .prepare_meta_batch(batch, &references, inline, limits, prefix, cancel)
+            .map_err(|error| {
+                if let surgeist_dom::DomMetaAtomicError::MissingOwner { root } = &error
+                    && let Err(reason) = state.require_bound_if_registered(*root, cancel)
+                {
+                    return DomStyleMetaError::Runtime(reason);
+                }
+                DomStyleMetaError::Meta(error)
+            })?;
         let StyleState {
             roots,
             work,
@@ -887,29 +897,41 @@ impl DomStyleRuntime {
         backing.reserve_prefix(&mut references, state.roots.len(), &mut hold, &steps)?;
         for root in &state.roots {
             steps.prefix(&hold)?;
-            capabilities.push(root.store.clone());
+            if let RootResource::Bound(owner) = &root.resource {
+                capabilities.push(owner.clone());
+            }
         }
         for capability in &capabilities {
             steps.prefix(&hold)?;
             references.push(capability.as_ref());
         }
         steps.prefix(&hold)?;
-        let mut preparation = match hold.prepare(&references, resolver, cancel)? {
-            surgeist_dom::DomMetaSourceStep::Prepared(preparation) => preparation,
-            surgeist_dom::DomMetaSourceStep::Progress(progress) => {
-                let (source, inline) = progress.into_parts();
-                let outcome = DomStyleMetaSourceOutcome {
-                    source,
-                    inline,
-                    roots: Vec::new(),
-                    preferences: Vec::new(),
-                };
-                // This is the infallible original-output ownership frontier.
-                // Reverse declaration order disposes both external banks before
-                // the hold releases their actual Source charges.
-                return Ok(outcome);
-            }
-        };
+        let mut preparation =
+            match hold
+                .prepare(&references, resolver, cancel)
+                .map_err(|error| {
+                    if let surgeist_dom::DomMetaAtomicError::MissingOwner { root } = &error
+                        && let Err(reason) = state.require_bound_if_registered(*root, cancel)
+                    {
+                        return DomStyleMetaError::Runtime(reason);
+                    }
+                    DomStyleMetaError::Meta(error)
+                })? {
+                surgeist_dom::DomMetaSourceStep::Prepared(preparation) => preparation,
+                surgeist_dom::DomMetaSourceStep::Progress(progress) => {
+                    let (source, inline) = progress.into_parts();
+                    let outcome = DomStyleMetaSourceOutcome {
+                        source,
+                        inline,
+                        roots: Vec::new(),
+                        preferences: Vec::new(),
+                    };
+                    // This is the infallible original-output ownership frontier.
+                    // Reverse declaration order disposes both external banks before
+                    // the hold releases their actual Source charges.
+                    return Ok(outcome);
+                }
+            };
         let StyleState {
             roots,
             work,

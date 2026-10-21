@@ -783,7 +783,7 @@ fn add_external_sheet(
         .iter()
         .position(|root| root.node == document)
         .unwrap();
-    let root = state.roots[index].store.clone();
+    let root = state.roots[index].bound().unwrap().clone();
     let snapshot = root.snapshot().unwrap();
     let mut batch = root
         .batch(CssomEditGuard::from_snapshot(&snapshot))

@@ -229,6 +229,9 @@ extend existing exhaustive enums, so exhaustive callers must handle the parsed
 case. Retaining or structurally installing history does not by itself establish
 association readiness.
 
+The [hosted Style custody withdrawal](docs/explanation.md#hosted-style-custody-withdrawal)
+front joins an idle bound root to its original hosted destruction Cleanup.
+
 ## Start
 
 From a prepared checkout with the [prerequisites](docs/getting-started.md#prerequisites),

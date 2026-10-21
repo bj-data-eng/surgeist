@@ -420,14 +420,23 @@ impl DomStyleRuntime {
         backing.reserve_initial(&mut references, state.roots.len(), &mut hold, &steps)?;
         for root in &state.roots {
             steps.prefix(&hold)?;
-            capabilities.push(root.store.clone());
+            if let RootResource::Bound(owner) = &root.resource {
+                capabilities.push(owner.clone());
+            }
         }
         for capability in &capabilities {
             steps.prefix(&hold)?;
             references.push(capability.as_ref());
         }
         steps.prefix(&hold)?;
-        let mut preparation = hold.prepare(&references, cancel)?;
+        let mut preparation = hold.prepare(&references, cancel).map_err(|error| {
+            if let surgeist_dom::DomParsedHtmlMetaError::MissingOwner { root } = &error
+                && let Err(reason) = state.require_bound_if_registered(*root, cancel)
+            {
+                return DomStyleParsedMetaError::Runtime(reason);
+            }
+            DomStyleParsedMetaError::Meta(error)
+        })?;
         let StyleState {
             roots,
             work,

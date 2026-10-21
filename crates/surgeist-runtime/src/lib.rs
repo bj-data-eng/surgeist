@@ -243,8 +243,9 @@ pub use dom_style::{
     DomStyleParsedNotificationError, DomStyleParsedNotificationProgress, DomStyleParsedPrefixError,
     DomStyleParsedSheetError, DomStyleParsedSheetOutcome, DomStyleParsedSubjectError,
     DomStyleParsedSuccessorError, DomStyleParsedTerminalError, DomStyleProcessedSheet,
-    DomStyleRuntime, DomStyleRuntimeError, DomStyleRuntimeLimits, DomStyleSheetSetCommit,
-    DomStyleSheetSetObservation, DomStyleUnavailable,
+    DomStyleRootWithdrawal, DomStyleRootWithdrawalError, DomStyleRuntime, DomStyleRuntimeError,
+    DomStyleRuntimeLimits, DomStyleSheetSetCommit, DomStyleSheetSetObservation,
+    DomStyleUnavailable, DomStyleWithdrawnSheetSetHistory,
 };
 pub use effect::{
     AppEffect, AppEffectPayload, CallServiceEffect, CancelTaskEffect, DiagnosticEffect,

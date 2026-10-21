@@ -122,10 +122,25 @@ missing service. Positive generic focus execution is unavailable.
 Style capture uses the canonical Document's current Base selection, including
 the actual inherited about-base of an initial child Document. An empty bound
 CSSOM root still retains lifecycle custody: native hosted Document destruction
-refuses while that binding remains. The current public surface has no root
+refuses while that binding remains. The current public surface has no general root
 unbind operation. With a live Host, graceful Session shutdown reports
 `HostedLifecycle`; terminal Session drop releases custody without claiming
 destruction or completion.
+
+### Hosted Style custody withdrawal
+
+`DomStyleRuntime::withdraw_root_for_hosted_destruction` withdraws an idle bound
+stylesheet resource only for its actual retained hosted destruction Cleanup task.
+The producer list must be empty, canonical associations and all retained Style
+processing/notification work must be settled, and the original lifecycle guards
+remain in force. Canonical withdrawal and the original Runtime root's released
+phase publish together; the ordinary hosted pump then resumes the same operation.
+The root retains its label, creation serial and sole preference history. Current
+snapshot, sheet-set and writer fronts refuse that released phase; the returned
+CSSOM/name observations are explicitly historical. Independently escaped mutable
+capabilities can still change their own producer and are not revoked. Other
+Documents' active roots remain independent. Released history alone is not mutable
+resource custody for shutdown; general unbind or rebind is not supplied.
 
 ### Document stylesheet-set preferences
 

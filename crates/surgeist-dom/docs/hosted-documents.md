@@ -73,6 +73,11 @@ platform policy. XML creation copies the associated origin and policy into a
 fresh closed Document. None of these facts restores execution permission or
 supplies unavailable family/resource services.
 
+Idle mutable Style custody has a
+[qualified withdrawal](source-and-style.md#mutable-cssom-custody-and-disabled-state)
+at the original destruction cleanup. Ordinary detach or an empty producer list
+alone does not release that custody.
+
 Current staged activity is false
 for actual retired participation; expired or unknown live authority remains an
 error. Dialog hooks and standalone Img use that same activity decision.

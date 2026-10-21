@@ -1,6 +1,7 @@
 //! Actual parallel destruction invocations and one cleanup task per generation.
 //! Canonical DOM owns every request, captured list, cursor, proof and Work. The
 //! original Runtime owns native registration, loop/task and checkpoint custody.
+mod style_root;
 use super::*;
 use surgeist_dom::{
     DomHostedDestructionInvocation, DomHostedDestructionLease, DomHostedDestructionPublication,

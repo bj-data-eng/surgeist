@@ -48,6 +48,15 @@ impl RootSets {
     }
 }
 impl State {
+    pub(super) fn preferred(&self) -> &DocumentString {
+        &self.preferred
+    }
+    pub(super) fn last_selected(&self) -> Option<&DocumentString> {
+        self.last_selected.as_ref()
+    }
+    pub(super) fn revision(&self) -> u64 {
+        self.revision
+    }
     pub(super) fn names(&self) -> impl Iterator<Item = &DocumentString> {
         std::iter::once(&self.preferred).chain(self.last_selected.iter())
     }
@@ -447,7 +456,7 @@ impl StyleState {
         let index = self.sheet_set_root(&snapshot, document, cancel)?;
         self.admit(size_of::<DomStyleSheetSetObservation>(), cancel)?;
         let root = &self.roots[index];
-        let current = root.store.snapshot()?;
+        let current = root.bound()?.snapshot()?;
         let state = root.sheet_sets.state().expect("qualified Document root");
         Ok(DomStyleSheetSetObservation {
             stamp: snapshot.stamp(),
@@ -483,7 +492,7 @@ impl StyleState {
         }
         let index = self.sheet_set_root(&snapshot, basis.document, cancel)?;
         let root = &self.roots[index];
-        let current = root.store.snapshot()?;
+        let current = root.bound()?.snapshot()?;
         let state = root.sheet_sets.state().expect("qualified Document root");
         if snapshot.stamp() != basis.stamp
             || state.revision != basis.revision
@@ -507,7 +516,9 @@ impl StyleState {
                 .ok_or(DomStyleRuntimeError::Admission)?,
             cancel,
         )?;
-        let mut batch = root.store.batch(CssomEditGuard::from_snapshot(&current))?;
+        let mut batch = root
+            .bound()?
+            .batch(CssomEditGuard::from_snapshot(&current))?;
         if enable {
             self.enable_named_sheets(&current, &mut batch, name.code_units(), cancel)?;
         }
@@ -516,7 +527,7 @@ impl StyleState {
             document: basis.document,
             stamp: snapshot.stamp(),
             revision: state.revision,
-            owner: root.store.clone(),
+            owner: root.bound()?.clone(),
             next,
             batch: Some(batch),
         })
@@ -530,7 +541,7 @@ impl StyleState {
         let index = self.sheet_set_root(snapshot, prepared.document, cancel)?;
         let root = &self.roots[index];
         if snapshot.stamp() != prepared.stamp
-            || !std::rc::Rc::ptr_eq(&root.store, &prepared.owner)
+            || !std::rc::Rc::ptr_eq(root.bound()?, &prepared.owner)
             || root.sheet_sets.state().expect("Document").revision != prepared.revision
         {
             return Err(DomStyleRuntimeError::StaleSheetSetObservation);

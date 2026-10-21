@@ -100,7 +100,7 @@ impl DomStyleRuntime {
                 root: document.node(),
             })?;
             steps.prefix(&hold)?;
-            cap = Some(root.store.clone());
+            cap = Some(root.bound()?.clone());
         }
         let mut prep = hold.prepare_successor(cap.as_deref(), cancel)?;
         prep.step(cancel).map_err(DomStyleRuntimeError::from)?;
