@@ -16,6 +16,7 @@ use cssparser::{
     BasicParseErrorKind, Delimiter, ParseError, Parser, Token, match_ignore_ascii_case,
 };
 
+use super::boolean_condition::{BooleanConditionGrammar, parse_boolean_condition};
 #[cfg(test)]
 use super::recovery::StyleContextCaptures;
 use super::recovery::{
@@ -410,43 +411,69 @@ fn parse_media_condition_with_or<'i, 't>(
     allow_or: bool,
     numeric: &MediaInput<'_>,
 ) -> Result<CssMediaCondition, ParseError<'i, Error>> {
-    if let Some(origin) = take_media_keyword(input, numeric, "not")? {
-        return Ok(CssMediaCondition::new(
-            CssMediaConditionKind::Not(Box::new(parse_media_in_parens(source, input, numeric)?)),
-            origin,
+    parse_boolean_condition(
+        &mut MediaConditionGrammar {
+            source,
+            input,
+            numeric,
+        },
+        allow_or,
+    )
+}
+// Media Queries 4 §3 `<media-condition>`: each operator keyword keeps its
+// original origin, and a combined condition starts at its first operand.
+struct MediaConditionGrammar<'s, 'i, 't, 'n> {
+    source: &'s str,
+    input: &'s mut Parser<'i, 't>,
+    numeric: &'s MediaInput<'n>,
+}
+impl<'i> BooleanConditionGrammar for MediaConditionGrammar<'_, 'i, '_, '_> {
+    type Operator = CssValueOrigin;
+    type Node = CssMediaCondition;
+    type Error = ParseError<'i, Error>;
+
+    fn keyword(&mut self, keyword: &'static str) -> Result<Option<CssValueOrigin>, Self::Error> {
+        take_media_keyword(self.input, self.numeric, keyword)
+    }
+    fn operand(&mut self) -> Result<CssMediaCondition, Self::Error> {
+        parse_media_in_parens(self.source, self.input, self.numeric)
+    }
+    // The enclosing query owns what follows a media condition.
+    fn finish(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn negation(
+        &mut self,
+        operator: CssValueOrigin,
+        operand: CssMediaCondition,
+    ) -> CssMediaCondition {
+        CssMediaCondition::new(
+            CssMediaConditionKind::Not(Box::new(operand)),
+            operator,
             MediaConditionSyntax::Not,
-        ));
+        )
     }
-    let first = parse_media_in_parens(source, input, numeric)?;
-    let origin = first.origin().clone();
-    let and = take_media_keyword(input, numeric, "and")?;
-    let (keyword, operator) = if let Some(operator) = and {
-        ("and", Some(operator))
-    } else if allow_or {
-        ("or", take_media_keyword(input, numeric, "or")?)
-    } else {
-        ("and", None)
-    };
-    let Some(operator) = operator else {
-        return Ok(first);
-    };
-    let mut operators = vec![operator];
-    let mut children = vec![first, parse_media_in_parens(source, input, numeric)?];
-    while let Some(operator) = take_media_keyword(input, numeric, keyword)? {
-        operators.push(operator);
-        children.push(parse_media_in_parens(source, input, numeric)?);
+    fn single(&mut self, operand: CssMediaCondition) -> CssMediaCondition {
+        operand
     }
-    let children = CssMediaConditionList::new(children);
-    let kind = if keyword == "and" {
-        CssMediaConditionKind::And(children)
-    } else {
-        CssMediaConditionKind::Or(children)
-    };
-    Ok(CssMediaCondition::new(
-        kind,
-        origin,
-        MediaConditionSyntax::Junction(operators),
-    ))
+    fn junction(
+        &mut self,
+        conjunction: bool,
+        operators: Vec<CssValueOrigin>,
+        operands: Vec<CssMediaCondition>,
+    ) -> CssMediaCondition {
+        let origin = operands[0].origin().clone();
+        let operands = CssMediaConditionList::new(operands);
+        CssMediaCondition::new(
+            if conjunction {
+                CssMediaConditionKind::And(operands)
+            } else {
+                CssMediaConditionKind::Or(operands)
+            },
+            origin,
+            MediaConditionSyntax::Junction(operators),
+        )
+    }
 }
 fn parse_media_in_parens<'i, 't>(
     source: &str,

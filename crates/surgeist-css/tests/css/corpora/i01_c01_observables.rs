@@ -809,6 +809,7 @@ fn authored_css_cases_match_selected_public_report_observables() {
     let mut migrated_text_wrap_cases = 0;
     let mut selected_sheet_source_cases = 0;
     let mut selected_column_source_cases = 0;
+    let mut migrated_closer_cases = 0;
     for row in rows {
         // Fixture feature labels record the original capture profile. Validation is
         // now unconditional, so every historical profile runs through the same API.
@@ -891,6 +892,11 @@ fn authored_css_cases_match_selected_public_report_observables() {
             assert_strict_parity(&row);
             continue;
         }
+        if assert_archived_style_attribute_closer_recovery(&row) {
+            migrated_closer_cases += 1;
+            assert_strict_parity(&row);
+            continue;
+        }
         let actual = observe(&row);
         assert_eq!(actual.clean, row.clean, "{} clean report", row.case_id);
         assert_eq!(
@@ -935,6 +941,85 @@ fn authored_css_cases_match_selected_public_report_observables() {
         removed_track_cases, 8,
         "all eight obsolete track-property captures have current rejection witnesses"
     );
+    assert_eq!(migrated_closer_cases, 2);
+}
+
+// CSS Style Attributes REC 2013-11-07 §3: a style attribute's `}` is an
+// invalid token, and any unit that starts with neither an identifier nor an
+// at-keyword is a malformed declaration (CSS 2.1 §4.2) whose remnants Syntax 3
+// (2026 CRD) §5.5.6 consumes, not nested, through the next root `;`. The two
+// captures discarded only each closer or qualified-rule prefix; keep their
+// bytes and assert the current drop of each whole malformed declaration.
+// https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-the-remnants-of-a-bad-declaration
+fn assert_archived_style_attribute_closer_recovery(row: &Row) -> bool {
+    let (input, retained, kept, units): (_, _, &[&str], &[(&str, CssErrorCode, usize)]) = match row
+        .case_id
+        .as_str()
+    {
+        "focused.style-attribute.closers" => (
+            "@unknown screen { color: red; } } color: red; ) width: 2px; ] height: 3px;",
+            "property:baseline.property.color~property:baseline.property.width~property:baseline.property.height",
+            &[],
+            &[
+                (
+                    "@unknown screen { color: red; }",
+                    CssErrorCode::UnknownAtRule,
+                    0,
+                ),
+                ("} color: red", CssErrorCode::UnexpectedToken, 0),
+                (") width: 2px", CssErrorCode::UnexpectedToken, 0),
+                ("] height: 3px", CssErrorCode::UnexpectedToken, 0),
+            ],
+        ),
+        "focused.style-attribute.non-declarations" => (
+            "@unknown x; color: red; .nested { width: 1px; } opacity: 1; broken; height: 2px; ,; --kept: yes;",
+            "property:baseline.property.color~property:baseline.property.opacity~property:baseline.property.height~property:custom:--kept",
+            &["color", "height", "--kept"],
+            &[
+                ("@unknown x;", CssErrorCode::UnknownAtRule, 0),
+                (
+                    ".nested { width: 1px; } opacity: 1",
+                    CssErrorCode::UnexpectedToken,
+                    0,
+                ),
+                ("broken;", CssErrorCode::UnexpectedEnd, "broken".len()),
+                (",", CssErrorCode::UnexpectedToken, 0),
+            ],
+        ),
+        _ => return false,
+    };
+    assert_eq!(row.input, input);
+    assert_eq!(row.clean, "false");
+    assert_eq!(row.retained, retained);
+    let report = parse_style_attribute(&row.input);
+    let names = report
+        .syntax()
+        .iter()
+        .map(|declaration| match declaration.property_name() {
+            CssPropertyNameRef::Known(property) => property.canonical_name().to_owned(),
+            CssPropertyNameRef::Custom(name) => name.as_str().to_owned(),
+            _ => panic!("ordinary declaration name"),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(names, kept, "{report:?}");
+    assert_eq!(report.diagnostics().len(), units.len(), "{report:?}");
+    let mut search = 0;
+    for (diagnostic, &(unit, code, responsible)) in report.diagnostics().iter().zip(units) {
+        let start = search + row.input[search..].find(unit).expect("authored unit");
+        assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
+        assert_eq!(diagnostic.error().code(), code);
+        assert_eq!(
+            diagnostic.error().position().byte_offset().value(),
+            start + responsible
+        );
+        assert_eq!(diagnostic.span().start().byte_offset().value(), start);
+        assert_eq!(
+            diagnostic.span().end().byte_offset().value(),
+            start + unit.len()
+        );
+        search = start + unit.len();
+    }
+    true
 }
 
 // Only this archived input changes under the published Column/class-adjacency/

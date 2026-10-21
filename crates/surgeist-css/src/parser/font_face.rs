@@ -88,9 +88,9 @@ pub(super) fn parse_body<'i>(
     };
 
     let mut items = RuleBodyParser::new(input, &mut descriptor_parser);
-    let mut previous_end = items.input.position().byte_index();
     loop {
         let progress = RecoveryProgress::record(items.input);
+        let unit_start = super::rule_list::skip_block_contents_trivia(items.input);
         let Some(item) = items.next() else {
             break;
         };
@@ -127,7 +127,7 @@ pub(super) fn parse_body<'i>(
                     source,
                     failed_block_error.unwrap_or(error),
                     failed_unit,
-                    previous_end,
+                    unit_start,
                     unit_end,
                     action,
                 ) {
@@ -135,7 +135,6 @@ pub(super) fn parse_body<'i>(
                 }
             }
         }
-        previous_end = unit_end;
         if progress_outcome == RecoveryLoopOutcome::Terminated {
             break;
         }

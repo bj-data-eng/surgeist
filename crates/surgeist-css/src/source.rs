@@ -807,8 +807,24 @@ impl fmt::Debug for CssSourceSnapshot {
     }
 }
 
+// Test-only work counter: source bytes compared by snapshot equality.
+#[cfg(test)]
+thread_local! {
+    pub(crate) static SNAPSHOT_TEXT_BYTES_COMPARED: std::cell::Cell<usize> =
+        const { std::cell::Cell::new(0) };
+}
+
+// Snapshots are equal when their parser input text is. One shared immutable
+// owner has one text, so identity answers without reading it.
 impl PartialEq for CssSourceSnapshot {
     fn eq(&self, other: &Self) -> bool {
+        if self.same_snapshot(other) {
+            return true;
+        }
+        #[cfg(test)]
+        SNAPSHOT_TEXT_BYTES_COMPARED.with(|compared| {
+            compared.set(compared.get() + self.as_str().len().min(other.as_str().len()));
+        });
         self.as_str() == other.as_str()
     }
 }
@@ -1210,3 +1226,7 @@ mod secondary_admission_tests {
 #[cfg(test)]
 #[path = "source_payload_tests.rs"]
 mod payload_tests;
+
+#[cfg(test)]
+#[path = "source_equality_tests.rs"]
+mod equality_tests;

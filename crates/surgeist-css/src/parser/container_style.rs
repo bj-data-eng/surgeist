@@ -1,35 +1,39 @@
 //! Component-native style grammar; probes select regions of one lexical root.
+use super::boolean_condition::{
+    BooleanModel, BooleanNode, BooleanNodeKind, ComponentOperands, ConditionFailure,
+    parse_component_condition,
+};
 use super::query_components::ComponentCursor as Cursor;
 use crate::container_style::StyleRangeKind;
 use crate::supports::{SupportsLexical, trivia};
 use crate::*;
 use std::ops::Range;
 
-pub(super) struct StyleNode {
-    range: Range<usize>,
-    kind: StyleNodeKind,
-}
-enum StyleNodeKind {
+/// A style query, as regions of its lexical root.
+pub(super) type StyleNode = BooleanNode<StyleLeaf>;
+
+pub(super) enum StyleLeaf {
     Boolean(CssContainerStyleFeatureName),
     Plain(CssContainerStyleFeatureName, Range<usize>),
     Range(Vec<Range<usize>>, Vec<CssQueryComparison>),
-    Parenthesized(Box<StyleNode>),
-    Not(Box<StyleNode>),
-    And(Vec<StyleNode>),
-    Or(Vec<StyleNode>),
     Opaque,
 }
-impl StyleNode {
-    pub(super) fn into_query(self, parent: SupportsLexical) -> CssContainerStyleQuery {
-        let lexical = parent.select(self.range);
+
+struct StyleModel;
+
+impl BooleanModel<StyleLeaf> for StyleModel {
+    type Condition = CssContainerStyleQuery;
+    type Kind = CssContainerStyleQueryKind;
+
+    fn leaf(leaf: StyleLeaf, lexical: &SupportsLexical) -> Self::Kind {
         let feature = |value| CssContainerStyleQueryKind::Feature(value);
-        let kind = match self.kind {
-            StyleNodeKind::Boolean(name) => feature(CssContainerStyleFeature::Boolean(name)),
-            StyleNodeKind::Plain(name, range) => feature(CssContainerStyleFeature::Plain {
+        match leaf {
+            StyleLeaf::Boolean(name) => feature(CssContainerStyleFeature::Boolean(name)),
+            StyleLeaf::Plain(name, range) => feature(CssContainerStyleFeature::Plain {
                 name,
                 value: CssContainerStyleValue::new(lexical.select(range)),
             }),
-            StyleNodeKind::Range(ranges, comparisons) => {
+            StyleLeaf::Range(ranges, comparisons) => {
                 let mut operands = ranges.into_iter().map(|range| {
                     let region = lexical.select(range);
                     let reference = custom_reference(region.items());
@@ -71,104 +75,76 @@ impl StyleNode {
                     CssContainerStyleRange::new(kind),
                 ))
             }
-            StyleNodeKind::Parenthesized(child) => {
-                let index = lexical
-                    .items()
-                    .iter()
-                    .position(|item| !trivia(item))
-                    .expect("group");
-                CssContainerStyleQueryKind::Parenthesized(Box::new(
-                    child.into_query(lexical.children(index)),
-                ))
-            }
-            StyleNodeKind::Not(child) => {
-                CssContainerStyleQueryKind::Not(Box::new(child.into_query(lexical.clone())))
-            }
-            StyleNodeKind::And(children) => {
-                CssContainerStyleQueryKind::And(CssContainerStyleQueryList::new(
-                    children
-                        .into_iter()
-                        .map(|child| child.into_query(lexical.clone()))
-                        .collect(),
-                ))
-            }
-            StyleNodeKind::Or(children) => {
-                CssContainerStyleQueryKind::Or(CssContainerStyleQueryList::new(
-                    children
-                        .into_iter()
-                        .map(|child| child.into_query(lexical.clone()))
-                        .collect(),
-                ))
-            }
-            StyleNodeKind::Opaque => CssContainerStyleQueryKind::GeneralEnclosed(
+            StyleLeaf::Opaque => CssContainerStyleQueryKind::GeneralEnclosed(
                 CssContainerGeneralEnclosed::new(lexical.clone()),
             ),
-        };
+        }
+    }
+    fn parenthesized(group: Box<Self::Condition>) -> Self::Kind {
+        CssContainerStyleQueryKind::Parenthesized(group)
+    }
+    fn not(operand: Box<Self::Condition>) -> Self::Kind {
+        CssContainerStyleQueryKind::Not(operand)
+    }
+    fn and(operands: Vec<Self::Condition>) -> Self::Kind {
+        CssContainerStyleQueryKind::And(CssContainerStyleQueryList::new(operands))
+    }
+    fn or(operands: Vec<Self::Condition>) -> Self::Kind {
+        CssContainerStyleQueryKind::Or(CssContainerStyleQueryList::new(operands))
+    }
+    fn condition(kind: Self::Kind, lexical: SupportsLexical) -> Self::Condition {
         CssContainerStyleQuery::new(kind, lexical)
     }
 }
 
+impl StyleNode {
+    pub(super) fn into_query(self, parent: SupportsLexical) -> CssContainerStyleQuery {
+        self.build::<StyleModel>(&parent)
+    }
+}
+
+// A whole style feature is tried before the boolean algebra (Contain 3
+// `<style-query>`); an operand that is neither group nor function fails.
 pub(super) fn parse(items: &[CssComponentValue]) -> Option<StyleNode> {
-    if let Some(kind) = feature(items) {
+    if let Some(leaf) = feature(items) {
         return Some(StyleNode {
             range: 0..items.len(),
-            kind,
+            kind: BooleanNodeKind::Leaf(leaf),
         });
     }
-    let mut cursor = Cursor::new(items);
-    if cursor.ident("not") {
-        let child = atom(&mut cursor)?;
-        return cursor.done().then_some(StyleNode {
-            range: 0..items.len(),
-            kind: StyleNodeKind::Not(Box::new(child)),
-        });
-    }
-    let mut first = atom(&mut cursor)?;
-    let conjunction = if cursor.ident("and") {
-        true
-    } else if cursor.ident("or") {
-        false
-    } else {
-        if !cursor.done() {
-            return None;
-        }
-        first.range = 0..items.len();
-        return Some(first);
-    };
-    let mut children = vec![first];
-    loop {
-        children.push(atom(&mut cursor)?);
-        if !cursor.ident(if conjunction { "and" } else { "or" }) {
-            break;
-        }
-    }
-    cursor.done().then_some(StyleNode {
-        range: 0..items.len(),
-        kind: if conjunction {
-            StyleNodeKind::And(children)
-        } else {
-            StyleNodeKind::Or(children)
-        },
-    })
+    parse_component_condition(&mut StyleOperands, items).ok()
 }
-fn atom(cursor: &mut Cursor<'_>) -> Option<StyleNode> {
-    cursor.skip();
-    let start = cursor.index;
-    let component = cursor.next()?;
-    let kind = match component.view() {
-        CssComponentValueRef::Block(block) if block.kind() == CssBlockKind::Parenthesis => {
-            match parse(block.values().items()) {
-                Some(child) => StyleNodeKind::Parenthesized(Box::new(child)),
-                None => StyleNodeKind::Opaque,
+
+struct StyleOperands;
+
+impl<'a> ComponentOperands<'a> for StyleOperands {
+    type Leaf = StyleLeaf;
+    type Error = std::convert::Infallible;
+
+    fn operand(
+        &mut self,
+        cursor: &mut Cursor<'a>,
+    ) -> Result<StyleNode, ConditionFailure<Self::Error>> {
+        cursor.skip();
+        let start = cursor.index;
+        let Some(component) = cursor.next() else {
+            return Err(ConditionFailure::Mismatch(start));
+        };
+        let kind = match component.view() {
+            CssComponentValueRef::Block(block) if block.kind() == CssBlockKind::Parenthesis => {
+                match parse(block.values().items()) {
+                    Some(group) => BooleanNodeKind::Parenthesized(Box::new(group)),
+                    None => BooleanNodeKind::Leaf(StyleLeaf::Opaque),
+                }
             }
-        }
-        CssComponentValueRef::Function(_) => StyleNodeKind::Opaque,
-        _ => return None,
-    };
-    Some(StyleNode {
-        range: start..cursor.index,
-        kind,
-    })
+            CssComponentValueRef::Function(_) => BooleanNodeKind::Leaf(StyleLeaf::Opaque),
+            _ => return Err(ConditionFailure::Mismatch(start)),
+        };
+        Ok(StyleNode {
+            range: start..cursor.index,
+            kind,
+        })
+    }
 }
 fn decoded_ident(component: &CssComponentValue) -> Option<&str> {
     match component.view() {
@@ -192,11 +168,11 @@ fn feature_name(name: &str) -> Option<CssContainerStyleFeatureName> {
     }
 }
 
-fn feature(items: &[CssComponentValue]) -> Option<StyleNodeKind> {
+fn feature(items: &[CssComponentValue]) -> Option<StyleLeaf> {
     let mut cursor = Cursor::new(items);
     if let Some(name) = cursor.next().and_then(decoded_ident).and_then(feature_name) {
         if cursor.done() {
-            return Some(StyleNodeKind::Boolean(name));
+            return Some(StyleLeaf::Boolean(name));
         }
         if matches!(
             cursor.next().map(CssComponentValue::view),
@@ -204,7 +180,7 @@ fn feature(items: &[CssComponentValue]) -> Option<StyleNodeKind> {
         ) {
             let range = cursor.index..items.len();
             if value(&items[range.clone()]) {
-                return Some(StyleNodeKind::Plain(name, range));
+                return Some(StyleLeaf::Plain(name, range));
             }
         }
     }
@@ -231,7 +207,7 @@ fn feature(items: &[CssComponentValue]) -> Option<StyleNodeKind> {
     if !ranges.iter().all(|range| value(&items[range.clone()])) {
         return None;
     }
-    Some(StyleNodeKind::Range(ranges, comparisons))
+    Some(StyleLeaf::Range(ranges, comparisons))
 }
 fn ascending(comparison: CssQueryComparison) -> bool {
     matches!(

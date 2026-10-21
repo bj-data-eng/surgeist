@@ -5,7 +5,7 @@
   "source_tree": "bfadc7a7a8d93dce59a27fa7df3bb0f6f6a623d8",
   "expectation_schema_version": 1,
   "generation_report_sha256": "ed8c70539c10effc254a8c2c4faa750396c7f3647996f5120e9e311bbe96d366",
-  "expected_class_registry_sha256": "2b611c7f8618219e01e08efe91fc10ff5d41d26ff832445a59e6839e46973f07",
+  "expected_class_registry_sha256": "3d02edb104b79f2105152120005ff09fbd1abc8155bff0b671cf2604e784cf37",
   "records": [
     {
       "id": "atrule/atrule/container.json#/all together",
@@ -10816,20 +10816,11 @@
         "is_clean": false,
         "diagnostics": [
           {
-            "code": "invalid_qualified_rule",
+            "code": "unexpected_token",
             "action": "drop_declaration",
             "byte_offset": 14,
             "span_start": 14,
-            "span_end": 39,
-            "multiplicity": 1,
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "unknown_at_rule",
-            "action": "drop_declaration",
-            "byte_offset": 40,
-            "span_start": 40,
-            "span_end": 69,
+            "span_end": 70,
             "multiplicity": 1,
             "payload_relation": "intersects"
           }
@@ -10870,7 +10861,7 @@
         "is_clean": false,
         "diagnostics": [
           {
-            "code": "invalid_qualified_rule",
+            "code": "unexpected_token",
             "action": "drop_declaration",
             "byte_offset": 0,
             "span_start": 0,

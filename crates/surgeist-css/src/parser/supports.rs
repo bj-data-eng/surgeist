@@ -1,3 +1,6 @@
+use super::boolean_condition::{
+    BooleanConditionGrammar, ConditionFailure, parse_boolean_condition,
+};
 use super::recovery::{RecoveryState, StyleContextCaptures};
 use super::selectors::{SelectorRecovery, parse_rule_selector};
 use crate::error::{Error, invalid_syntax, is_nesting_limit_error, with_at_rule_prelude_context};
@@ -186,6 +189,9 @@ fn ident(value: &CssComponentValue) -> Option<&str> {
         _ => None,
     }
 }
+// Conditional 3 `<supports-condition>`. The operator shape (a lone `not`
+// operand, an odd alternation and its first operator) is checked before any
+// operand is admitted; the shared algebra then admits operands in order.
 fn condition(
     lexical: SupportsLexical,
     recovery: &RecoveryState,
@@ -202,65 +208,106 @@ fn condition(
     let Some(&first) = significant.first() else {
         return Err(invalid_condition(lexical.first_origin()));
     };
-    if ident(&lexical.items()[first]).is_some_and(|v| v.eq_ignore_ascii_case("not")) {
+    let items = lexical.items();
+    if ident(&items[first]).is_some_and(|v| v.eq_ignore_ascii_case("not")) {
         if significant.len() != 2 {
             return Err(invalid_condition(lexical.first_origin()));
         }
-        let operand = operand(
-            lexical.select(significant[1]..significant[1] + 1),
-            recovery,
-            authored,
-            limits,
-        )?;
-        return Ok(CssSupportsCondition::new(
-            CssSupportsConditionKind::Not(Box::new(operand)),
-            lexical,
-            SupportsAuthoredForm::Condition,
-        ));
-    }
-    if significant.len() == 1 {
-        let parsed = operand(lexical.select(first..first + 1), recovery, authored, limits)?;
-        return Ok(CssSupportsCondition::new(
-            parsed.into_kind(),
-            lexical,
-            SupportsAuthoredForm::Condition,
-        ));
-    }
-    if significant.len() % 2 == 0 {
-        return Err(invalid_condition(
-            lexical.items()[*significant.last().expect("nonempty")].origin(),
-        ));
-    }
-    let operator = ident(&lexical.items()[significant[1]])
-        .ok_or_else(|| invalid_condition(lexical.items()[significant[1]].origin()))?;
-    let is_and = operator.eq_ignore_ascii_case("and");
-    if !is_and && !operator.eq_ignore_ascii_case("or") {
-        return Err(invalid_condition(lexical.items()[significant[1]].origin()));
-    }
-    let mut conditions = Vec::new();
-    for (slot, &index) in significant.iter().enumerate() {
-        if slot % 2 == 0 {
-            conditions.push(operand(
-                lexical.select(index..index + 1),
-                recovery,
-                authored,
-                limits,
-            )?);
-        } else if !ident(&lexical.items()[index]).is_some_and(|v| v.eq_ignore_ascii_case(operator))
-        {
-            return Err(invalid_condition(lexical.items()[index].origin()));
+    } else if significant.len() > 1 {
+        if significant.len() % 2 == 0 {
+            return Err(invalid_condition(
+                items[*significant.last().expect("nonempty")].origin(),
+            ));
+        }
+        let operator = ident(&items[significant[1]])
+            .ok_or_else(|| invalid_condition(items[significant[1]].origin()))?;
+        if !operator.eq_ignore_ascii_case("and") && !operator.eq_ignore_ascii_case("or") {
+            return Err(invalid_condition(items[significant[1]].origin()));
         }
     }
-    let list = CssSupportsConditionList::new(conditions);
-    Ok(CssSupportsCondition::new(
-        if is_and {
-            CssSupportsConditionKind::And(list)
-        } else {
-            CssSupportsConditionKind::Or(list)
-        },
-        lexical,
-        SupportsAuthoredForm::Condition,
-    ))
+    let mut grammar = SupportsGrammar {
+        lexical: &lexical,
+        significant: &significant,
+        slot: 0,
+        recovery,
+        authored,
+        limits,
+    };
+    match parse_boolean_condition(&mut grammar, true) {
+        Ok(condition) => Ok(condition),
+        Err(ConditionFailure::Mismatch(index)) => Err(invalid_condition(items[index].origin())),
+        Err(ConditionFailure::Fatal(error)) => Err(error),
+    }
+}
+struct SupportsGrammar<'a> {
+    lexical: &'a SupportsLexical,
+    significant: &'a [usize],
+    slot: usize,
+    recovery: &'a RecoveryState,
+    authored: bool,
+    limits: CssComponentValueLimits,
+}
+impl BooleanConditionGrammar for SupportsGrammar<'_> {
+    type Operator = ();
+    type Node = CssSupportsCondition;
+    type Error = ConditionFailure<CssSupportsConstructionError>;
+
+    fn keyword(&mut self, keyword: &'static str) -> Result<Option<()>, Self::Error> {
+        let matched = self.significant.get(self.slot).is_some_and(|&index| {
+            ident(&self.lexical.items()[index]).is_some_and(|v| v.eq_ignore_ascii_case(keyword))
+        });
+        if matched {
+            self.slot += 1;
+        }
+        Ok(matched.then_some(()))
+    }
+    fn operand(&mut self) -> Result<CssSupportsCondition, Self::Error> {
+        let index = self.significant[self.slot];
+        self.slot += 1;
+        Ok(operand(
+            self.lexical.select(index..index + 1),
+            self.recovery,
+            self.authored,
+            self.limits,
+        )?)
+    }
+    fn finish(&mut self) -> Result<(), Self::Error> {
+        match self.significant.get(self.slot) {
+            None => Ok(()),
+            Some(&index) => Err(ConditionFailure::Mismatch(index)),
+        }
+    }
+    fn negation(&mut self, (): (), operand: CssSupportsCondition) -> CssSupportsCondition {
+        CssSupportsCondition::new(
+            CssSupportsConditionKind::Not(Box::new(operand)),
+            self.lexical.clone(),
+            SupportsAuthoredForm::Condition,
+        )
+    }
+    fn single(&mut self, operand: CssSupportsCondition) -> CssSupportsCondition {
+        CssSupportsCondition::new(
+            operand.into_kind(),
+            self.lexical.clone(),
+            SupportsAuthoredForm::Condition,
+        )
+    }
+    fn junction(
+        &mut self,
+        conjunction: bool,
+        _: Vec<()>,
+        operands: Vec<CssSupportsCondition>,
+    ) -> CssSupportsCondition {
+        let list = CssSupportsConditionList::new(operands);
+        CssSupportsCondition::new(
+            if conjunction {
+                CssSupportsConditionKind::And(list)
+            } else {
+                CssSupportsConditionKind::Or(list)
+            },
+            self.lexical.clone(),
+            SupportsAuthoredForm::Condition,
+        )
+    }
 }
 fn operand(
     lexical: SupportsLexical,

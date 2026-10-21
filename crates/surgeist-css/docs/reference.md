@@ -111,7 +111,7 @@ behavior and whether the move changed it.
 | §5.4.10 parse a comma-separated list of component values appends a group only while input remains, so a final comma followed by no token adds no group. | Media query lists, forgiving selector lists and `@font-face` `src` lists no longer report an empty final member; `@media screen,{}` keeps one clean query. Checked import and custom-media construction agree. | Behavior change |
 | §5.4.4 parse a stylesheet's contents and §5.4.5 parse a block's contents replace "parse a list of rules" and "parse a list of declarations". | `parse_declaration_list_text` still implements the removed 2021 list-of-declarations entry point; `parse_declaration_block_contents` already implements block contents. | Deferred: reconciling or removing the historical public front is a public API decision for #1353. |
 | §5.4.6 parse a rule, §5.4.7 parse a declaration (no trailing-input check; value stops at `;`), §5.4.8 and §5.4.9. | `parse_rule`, `parse_declaration`, `parse_component_values` and related fragment fronts keep their whole-input contracts; the conformance registry excludes these entry points (`excluded.O-SYNTAX3.fragment-api`). | Unchanged (outside the claimed boundary) |
-| §5.4.5 is the intended parser for style attributes, where a root `}` ends the block. | `parse_style_attribute` follows the selected CSS Style Attributes recommendation and discards a stray closer; CSSOM declaration-block parsing already uses `parse_declaration_block_contents`. | Deferred: changing the style-attribute front is a public contract decision for #1353. |
+| §5.4.5 is the intended parser for style attributes, where a root `}` ends the block. | `parse_style_attribute` follows the selected CSS Style Attributes recommendation: a root `}` does not end the style data. Like any unit that starts with neither an identifier nor an at-keyword, it starts a malformed declaration whose remnants §5.5.6 consumes through the next root `;` (#1372). The value admits declarations only, so an identifier-started unit that is not a valid declaration, such as `a {} color: red`, is likewise one malformed declaration read through its `;` (CSS 2.1 §4.2, #1396), never a qualified rule ending at its `}`. CSSOM declaration-block parsing already uses `parse_declaration_block_contents`. | Deferred: ending the style attribute at a root `}` is a public contract decision for #1353. |
 | §5.5.2, §5.5.9 and §5.5.10 no longer mark EOF inside an at-rule, block or function as a parse error. | EOF closures keep their `ImplicitClosure` recovery diagnostics, which are this crate's report contract rather than a claim about parse errors. | Unchanged (report contract) |
 | §7.1 no longer states that `!important` is invalid on descriptors; validity is left to the owning rule's prose. | Descriptor grammars still reject an importance annotation. | Unchanged (owning rules define no important descriptors) |
 | §9 reuses preserved comments only when comments were originally between a token pair. | Component serialization already reuses authored comments and inserts `/**/` only where required. | Unchanged |
@@ -140,8 +140,8 @@ unit through the next root semicolon or EOF. Semicolons inside components, strin
 or comments never split the unit.
 
 For example, raw `} color: red; width: 2px;` retains only Width and reports one
-`DropDeclaration` for `} color: red`. The existing style-attribute front retains
-Color and Width after discarding only the closer. Diagnostic spans for raw units
+`DropDeclaration` for `} color: red`; the style-attribute front drops the same
+malformed declaration with the same diagnostic. Diagnostic spans for raw units
 exclude the recovery semicolon; responsible tokens and EOF diagnostics refer to
 the actual input. Tokenizer recovery and structural-limit diagnostics preserve
 the shared policies and actions. No surrounding braces or generated names are used.

@@ -6,6 +6,7 @@ mod source_resource_preparation;
 mod source_retention_closure;
 mod source_storage;
 mod style_attribute_composed_recovery;
+mod style_attribute_malformed_starts;
 mod style_attribute_recovery;
 mod stylesheet_byte_input;
 mod stylesheet_unicode_bom;

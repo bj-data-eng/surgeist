@@ -3878,18 +3878,16 @@ fn nesting_rejects_unsupported_at_rules_inside_style_blocks() {
 
 #[test]
 fn nesting_rejects_unsupported_nested_selector_forms() {
-    for (css, expects_selector_error) in [
-        (".card { svg|a { color: black; } }", false),
-        (".card { [svg|href] { color: black; } }", true),
-        (".card { .col || { color: black; } }", true),
+    for css in [
+        ".card { svg|a { color: black; } }",
+        ".card { [svg|href] { color: black; } }",
+        ".card { .col || { color: black; } }",
     ] {
         let error = parse_sheet(css).expect_err(css);
-        if expects_selector_error {
-            assert!(
-                matches!(error.kind(), ErrorKind::InvalidSelector { .. }),
-                "{css} should reject as an invalid selector, got {error:?}"
-            );
-        }
+        assert!(
+            matches!(error.kind(), ErrorKind::InvalidSelector { .. }),
+            "{css} should reject as an invalid selector, got {error:?}"
+        );
     }
 }
 

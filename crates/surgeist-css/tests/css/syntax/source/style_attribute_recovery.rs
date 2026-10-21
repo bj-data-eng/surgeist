@@ -144,21 +144,24 @@ fn style_attribute_non_declaration_units_drop_independently_in_source_order() {
     let source = "@unknown x; color: red; .nested { width: 1px; } opacity: 1; broken; height: 2px; ,; --kept: yes;";
     let report = parse_style_attribute(source);
 
+    // A `.`-led or `,`-led unit is a malformed declaration whose remnants,
+    // blocks included, run to the next root `;` (Style Attributes §3; Syntax 3
+    // (2026 CRD) §5.5.6, not nested), so `opacity: 1` is inside the first one.
     assert_eq!(
         property_names(report.syntax()),
-        ["color", "opacity", "height", "--kept"],
+        ["color", "height", "--kept"],
         "{:?}",
         report.diagnostics()
     );
     let units = [
         ("@unknown x;", CssErrorCode::UnknownAtRule, 0),
         (
-            ".nested { width: 1px; }",
-            CssErrorCode::InvalidQualifiedRule,
+            ".nested { width: 1px; } opacity: 1",
+            CssErrorCode::UnexpectedToken,
             0,
         ),
         ("broken;", CssErrorCode::UnexpectedEnd, "broken".len()),
-        (",;", CssErrorCode::UnexpectedToken, 1),
+        (",", CssErrorCode::UnexpectedToken, 0),
     ];
     assert_eq!(report.diagnostics().len(), units.len());
     for (diagnostic, (unit, code, responsible)) in report.diagnostics().iter().zip(units) {
@@ -183,14 +186,18 @@ fn style_attribute_non_declaration_units_drop_independently_in_source_order() {
 
 #[test]
 fn style_attribute_block_at_rules_and_malformed_closers_drop_without_hiding_later_values() {
-    let source = "@unknown screen { color: red; } } color: red; ) width: 2px; ] height: 3px;";
+    // A closer starts a malformed declaration discarded through its `;`
+    // (Style Attributes §3; Syntax 3 (2026 CRD) §5.5.6, not nested).
+    let source = "@unknown screen { color: red; } } color: red; top: 1px; ) width: 2px; left: 1px; ] height: 3px; right: 1px";
     let report = parse_style_attribute(source);
 
-    assert_eq!(
-        property_names(report.syntax()),
-        ["color", "width", "height"]
-    );
-    let units = ["@unknown screen { color: red; }", "}", ")", "]"];
+    assert_eq!(property_names(report.syntax()), ["top", "left", "right"]);
+    let units = [
+        "@unknown screen { color: red; }",
+        "} color: red",
+        ") width: 2px",
+        "] height: 3px",
+    ];
     let codes = [
         CssErrorCode::UnknownAtRule,
         CssErrorCode::UnexpectedToken,

@@ -74,14 +74,19 @@ where
         }
         selected => selected,
     };
-    let value = parse_selected(source, input, parser, recovery, &document, &selected)
-        .map_err(|error| *error.0)?;
+    let (_, value) = parse_selected(source, input, parser, recovery, &document, &selected);
+    let value = value.map_err(|error| *error.0)?;
     input.expect_exhausted()?;
     Ok(value)
 }
 
+// One selected unit's admission: its item, or its error with the original
+// source slice from the unit's start to the failure.
+type SelectedAdmission<'i, R> = Result<R, (Box<ParseError<'i, Error>>, &'i str)>;
+
 // This is the actual unit driver. Generic consumption chooses dispatch and
 // boundaries; native callbacks only admit the selected original source unit.
+// Returns the unit's original start offset with its admission.
 #[inline(never)]
 pub(super) fn parse_selected<'i, 't, P, R>(
     source: &'i str,
@@ -90,7 +95,7 @@ pub(super) fn parse_selected<'i, 't, P, R>(
     recovery: &RecoveryState,
     document: &SyntaxDocument<'_>,
     selected: &GenericRuleResult,
-) -> Result<R, (Box<ParseError<'i, Error>>, &'i str)>
+) -> (usize, SelectedAdmission<'i, R>)
 where
     P: AtRuleParser<'i, AtRule = R, Error = Error>
         + QualifiedRuleParser<'i, QualifiedRule = R, Error = Error>,
@@ -111,12 +116,14 @@ where
         }
     }
     let start = input.state();
-    admit_selected(source, input, parser, recovery, &start, selected).map_err(|error| {
-        (
-            Box::new(error),
-            &source[start_offset..input.position().byte_index()],
-        )
-    })
+    let result =
+        admit_selected(source, input, parser, recovery, &start, selected).map_err(|error| {
+            (
+                Box::new(error),
+                &source[start_offset..input.position().byte_index()],
+            )
+        });
+    (start_offset, result)
 }
 
 pub(super) fn admit_envelope<'i, 't, P, R>(

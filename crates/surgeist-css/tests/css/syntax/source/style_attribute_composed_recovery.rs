@@ -1,6 +1,9 @@
 //! Attribute-front composition tests. Style Attributes REC20131107
-//! §3 supplies empty slots and the unbraced-root closer rule; selected CSS2
-//! §4.2 supplies malformed-declaration recovery. Existing public original-source,
+//! §3 supplies empty slots and the unbraced-root closer rule (a `}` is an
+//! invalid token, not a terminator); selected CSS2 §4.2 supplies
+//! malformed-declaration recovery, read with Syntax 3 (2026 CRD) §5.5.6
+//! "consume the remnants of a bad declaration" (not nested): a malformed start
+//! is discarded through the next root `;`. Existing public original-source,
 //! diagnostic and structural-limit contracts supply coordinates and errors.
 
 use surgeist_css::*;
@@ -123,25 +126,16 @@ fn multiple_empty_slots_comments_and_trailing_delimiters_preserve_only_declarati
 }
 
 #[test]
-fn adjacent_root_curly_is_local_invalid_data_and_does_not_hide_the_next_name() {
+fn adjacent_root_curly_starts_a_malformed_declaration_through_the_next_semicolon() {
     const SOURCE: &str = "}color:red;width:2px";
     let report = report_with_validation_parity(SOURCE);
-    let [color, width] = report.syntax().as_slice() else {
-        panic!("both adjacent declarations remain eligible");
+    let [width] = report.syntax().as_slice() else {
+        panic!("the closer's malformed declaration is discarded; the next one remains");
     };
     let [diagnostic] = report.diagnostics() else {
-        panic!("only the single authored stray token is rejected");
+        panic!("the malformed declaration is one rejected unit");
     };
-    stray_curly(diagnostic, (0, 0, 0), (1, 0, 1));
-    declaration(
-        color,
-        SOURCE,
-        CssKnownProperty::Color,
-        ((1, 0, 1), (6, 0, 6)),
-        ((7, 0, 7), (10, 0, 10)),
-        CssImportance::Normal,
-        "color: red;",
-    );
+    stray_curly(diagnostic, (0, 0, 0), (10, 0, 10));
     declaration(
         width,
         SOURCE,
@@ -159,22 +153,13 @@ fn supplementary_comments_and_crlf_keep_original_root_error_and_sibling_coordina
     // Each comment is 8 UTF8 bytes but 6 UTF16 code units; CRLF is one line break.
     assert_eq!(SOURCE.len(), 38);
     let report = report_with_validation_parity(SOURCE);
-    let [color, width] = report.syntax().as_slice() else {
-        panic!("the Unicode prefix and stray closer do not consume declarations");
+    let [width] = report.syntax().as_slice() else {
+        panic!("the Unicode prefix keeps original coordinates for the remnant and sibling");
     };
     let [diagnostic] = report.diagnostics() else {
-        panic!("the single closer has one local diagnostic");
+        panic!("the closer's malformed declaration has one diagnostic");
     };
-    stray_curly(diagnostic, (18, 1, 6), (19, 1, 7));
-    declaration(
-        color,
-        SOURCE,
-        CssKnownProperty::Color,
-        ((19, 1, 7), (24, 1, 12)),
-        ((25, 1, 13), (28, 1, 16)),
-        CssImportance::Normal,
-        "color: red;",
-    );
+    stray_curly(diagnostic, (18, 1, 6), (28, 1, 16));
     declaration(
         width,
         SOURCE,
@@ -184,13 +169,7 @@ fn supplementary_comments_and_crlf_keep_original_root_error_and_sibling_coordina
         CssImportance::Normal,
         "width: 2px;",
     );
-    assert!(
-        color
-            .parsed_name()
-            .unwrap()
-            .source()
-            .same_snapshot(width.parsed_name().unwrap().source())
-    );
+    assert_eq!(width.parsed_name().unwrap().source().as_str(), SOURCE);
 }
 
 #[test]

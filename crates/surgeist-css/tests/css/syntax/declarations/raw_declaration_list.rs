@@ -71,18 +71,11 @@ fn stray_root_closer_consumes_the_following_declaration_in_its_unit() {
             raw.diagnostics()[0].error().code(),
             CssErrorCode::UnexpectedToken
         );
-        // The accepted attribute contract discards only the stray closer.
+        // A style attribute's stray closer starts the same malformed
+        // declaration (Style Attributes §3; Syntax 3 (2026 CRD) §5.5.6).
         let attribute = parse_style_attribute(&source);
-        assert_eq!(names(attribute.syntax()), ["color", "width"]);
-        assert_eq!(attribute.diagnostics().len(), 1);
-        assert_eq!(
-            attribute.diagnostics()[0]
-                .span()
-                .end()
-                .byte_offset()
-                .value(),
-            1
-        );
+        assert_eq!(names(attribute.syntax()), ["width"]);
+        assert_eq!(attribute.diagnostics(), raw.diagnostics());
     }
 }
 

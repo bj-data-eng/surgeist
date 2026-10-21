@@ -68,7 +68,6 @@ pub(super) fn parse_body<'i>(
         recovery: recovery.clone(),
     };
     let mut blocks = Vec::new();
-    let mut previous_end = input.position().byte_index();
     let (document, selected) = super::syntax_bridge::rules(
         source,
         input,
@@ -80,7 +79,7 @@ pub(super) fn parse_body<'i>(
     })?;
     for selected in &selected {
         let progress = RecoveryProgress::record(input);
-        let item = super::syntax_bridge::parse_selected(
+        let (unit_start, item) = super::syntax_bridge::parse_selected(
             source,
             input,
             &mut parser,
@@ -109,7 +108,7 @@ pub(super) fn parse_body<'i>(
                     source,
                     error,
                     failed_unit,
-                    previous_end,
+                    unit_start,
                     unit_end,
                     crate::CssRecoveryAction::DropKeyframeBlock,
                 ) {
@@ -117,7 +116,6 @@ pub(super) fn parse_body<'i>(
                 }
             }
         }
-        previous_end = unit_end;
         if progress_outcome == RecoveryLoopOutcome::Terminated {
             break;
         }
@@ -137,9 +135,9 @@ pub(super) fn parse_declarations<'i>(
     let mut declarations = Vec::new();
     let mut declaration_parser = KeyframeDeclarationParser { source, recovery };
     let mut items = RuleBodyParser::new(input, &mut declaration_parser);
-    let mut previous_end = items.input.position().byte_index();
     loop {
         let progress = RecoveryProgress::record(items.input);
+        let unit_start = super::rule_list::skip_block_contents_trivia(items.input);
         let Some(item) = items.next() else {
             break;
         };
@@ -175,7 +173,7 @@ pub(super) fn parse_declarations<'i>(
                     source,
                     failed_block_error.unwrap_or(error),
                     failed_unit,
-                    previous_end,
+                    unit_start,
                     unit_end,
                     action,
                 ) {
@@ -183,7 +181,6 @@ pub(super) fn parse_declarations<'i>(
                 }
             }
         }
-        previous_end = unit_end;
         if progress_outcome == RecoveryLoopOutcome::Terminated {
             break;
         }

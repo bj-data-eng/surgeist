@@ -1,4 +1,7 @@
 //! One adopted grammar for parsed and checked generalized conditions.
+use super::boolean_condition::{
+    BooleanConditionGrammar, ConditionFailure, parse_boolean_condition,
+};
 use super::query_components::ComponentCursor;
 use super::recovery::RecoveryState;
 use crate::supports::SupportsLexical;
@@ -100,47 +103,87 @@ fn condition(
     context: CssParserContext,
     authored: bool,
 ) -> Result<CssWhenCondition, CssWhenConstructionError> {
-    let mut cursor = ComponentCursor::new(lexical.items());
-    if cursor.ident("not") {
-        let term = term(&lexical, &mut cursor, limits, context, authored)?;
-        if !cursor.done() {
-            return Err(invalid(&lexical, cursor.index));
-        }
-        return Ok(CssWhenCondition::new(
-            CssWhenConditionKind::Not(Box::new(term)),
+    match nested_condition(&lexical, limits, context, authored) {
+        Ok(condition) => Ok(condition),
+        Err(ConditionFailure::Mismatch(index)) => Err(invalid(&lexical, index)),
+        Err(ConditionFailure::Fatal(error)) => Err(error),
+    }
+}
+fn nested_condition(
+    lexical: &SupportsLexical,
+    limits: CssComponentValueLimits,
+    context: CssParserContext,
+    authored: bool,
+) -> Result<CssWhenCondition, ConditionFailure<CssWhenConstructionError>> {
+    parse_boolean_condition(
+        &mut WhenGrammar {
             lexical,
-        ));
-    }
-    let first = term(&lexical, &mut cursor, limits, context, authored)?;
-    let and = if cursor.ident("and") {
-        true
-    } else if cursor.ident("or") {
-        false
-    } else {
-        if !cursor.done() {
-            return Err(invalid(&lexical, cursor.index));
-        }
-        return Ok(CssWhenCondition::new(first.into_kind(), lexical));
-    };
-    let mut terms = vec![first];
-    loop {
-        terms.push(term(&lexical, &mut cursor, limits, context, authored)?);
-        if !cursor.ident(if and { "and" } else { "or" }) {
-            break;
-        }
-    }
-    if !cursor.done() {
-        return Err(invalid(&lexical, cursor.index));
-    }
-    let list = CssWhenConditionList::new(terms);
-    Ok(CssWhenCondition::new(
-        if and {
-            CssWhenConditionKind::And(list)
-        } else {
-            CssWhenConditionKind::Or(list)
+            cursor: ComponentCursor::new(lexical.items()),
+            limits,
+            context,
+            authored,
         },
-        lexical,
-    ))
+        true,
+    )
+}
+// Conditional 5 §3 `<boolean-condition>` over one lexical list, whose
+// operands are `<boolean-condition-in-parens>` terms.
+struct WhenGrammar<'a> {
+    lexical: &'a SupportsLexical,
+    cursor: ComponentCursor<'a>,
+    limits: CssComponentValueLimits,
+    context: CssParserContext,
+    authored: bool,
+}
+impl BooleanConditionGrammar for WhenGrammar<'_> {
+    type Operator = ();
+    type Node = CssWhenCondition;
+    type Error = ConditionFailure<CssWhenConstructionError>;
+
+    fn keyword(&mut self, keyword: &'static str) -> Result<Option<()>, Self::Error> {
+        Ok(self.cursor.ident(keyword).then_some(()))
+    }
+    fn operand(&mut self) -> Result<CssWhenCondition, Self::Error> {
+        term(
+            self.lexical,
+            &mut self.cursor,
+            self.limits,
+            self.context,
+            self.authored,
+        )
+    }
+    fn finish(&mut self) -> Result<(), Self::Error> {
+        if self.cursor.done() {
+            Ok(())
+        } else {
+            Err(ConditionFailure::Mismatch(self.cursor.index))
+        }
+    }
+    fn negation(&mut self, (): (), operand: CssWhenCondition) -> CssWhenCondition {
+        CssWhenCondition::new(
+            CssWhenConditionKind::Not(Box::new(operand)),
+            self.lexical.clone(),
+        )
+    }
+    fn single(&mut self, operand: CssWhenCondition) -> CssWhenCondition {
+        CssWhenCondition::new(operand.into_kind(), self.lexical.clone())
+    }
+    fn junction(
+        &mut self,
+        conjunction: bool,
+        _: Vec<()>,
+        operands: Vec<CssWhenCondition>,
+    ) -> CssWhenCondition {
+        let list = CssWhenConditionList::new(operands);
+        CssWhenCondition::new(
+            if conjunction {
+                CssWhenConditionKind::And(list)
+            } else {
+                CssWhenConditionKind::Or(list)
+            },
+            self.lexical.clone(),
+        )
+    }
 }
 fn grammar<T>(
     result: Result<T, CssWhenConstructionError>,
@@ -160,23 +203,22 @@ fn term(
     limits: CssComponentValueLimits,
     context: CssParserContext,
     authored: bool,
-) -> Result<CssWhenCondition, CssWhenConstructionError> {
+) -> Result<CssWhenCondition, ConditionFailure<CssWhenConstructionError>> {
     cursor.peek();
     let index = cursor.index;
-    let component = cursor.next().ok_or_else(|| invalid(lexical, index))?;
+    let component = cursor.next().ok_or(ConditionFailure::Mismatch(index))?;
     let region = lexical.select(index..index + 1);
     let kind = match component.view() {
         CssComponentValueRef::Block(block) if block.kind() == CssBlockKind::Parenthesis => {
-            if let Some(group) = grammar(condition(
-                lexical.children(index),
-                limits,
-                context,
-                authored,
-            ))? {
-                return Ok(CssWhenCondition::new(
-                    CssWhenConditionKind::Parenthesized(Box::new(group)),
-                    region,
-                ));
+            match nested_condition(&lexical.children(index), limits, context, authored) {
+                Ok(group) => {
+                    return Ok(CssWhenCondition::new(
+                        CssWhenConditionKind::Parenthesized(Box::new(group)),
+                        region,
+                    ));
+                }
+                Err(ConditionFailure::Mismatch(_)) => {}
+                Err(failure @ ConditionFailure::Fatal(_)) => return Err(failure),
             }
             CssWhenConditionKind::GeneralEnclosed(
                 CssGeneralEnclosed::try_from_component(component.clone())
@@ -211,11 +253,15 @@ fn term(
                         CssSupportsConstructionError::InvalidDeclarationGrammar { .. }
                         | CssSupportsConstructionError::InvalidConditionGrammar { .. },
                     ) => {}
-                    Err(CssSupportsConstructionError::Component(error)) => return Err(error.into()),
+                    Err(CssSupportsConstructionError::Component(error)) => {
+                        return Err(ConditionFailure::Fatal(error.into()));
+                    }
                     Err(error) => {
-                        return Err(CssWhenConstructionError::RecoveredInput {
-                            origin: error.origin().clone(),
-                        });
+                        return Err(ConditionFailure::Fatal(
+                            CssWhenConstructionError::RecoveredInput {
+                                origin: error.origin().clone(),
+                            },
+                        ));
                     }
                 }
             }
@@ -224,7 +270,7 @@ fn term(
                     .expect("validated function"),
             )
         }
-        _ => return Err(invalid(lexical, index)),
+        _ => return Err(ConditionFailure::Mismatch(index)),
     };
     Ok(CssWhenCondition::new(kind, region))
 }

@@ -16,6 +16,12 @@ pub(crate) mod color_tokens;
 pub(crate) mod name;
 pub(crate) mod number;
 
+// Test-only work counter: the input bytes walked by `prepare` on this thread.
+#[cfg(test)]
+thread_local! {
+    pub(crate) static PREPARED_BYTES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// Prepare one complete working input, preserving any masks already applied by
 /// structural recovery. Clean inputs remain borrowed. Each token is visited at
 /// its actual boundary, including URLs whose provider cursor overruns that end.
@@ -24,6 +30,8 @@ pub(crate) mod number;
 /// overlap. Prefix/remnants walks inspect only their own URL, and masks use one
 /// lazy byte-buffer allocation plus one final UTF-8 validation.
 pub(crate) fn prepare(source: &str) -> Cow<'_, str> {
+    #[cfg(test)]
+    PREPARED_BYTES.with(|prepared| prepared.set(prepared.get() + source.len()));
     let mut masked: Option<Vec<u8>> = None;
     let mut offset = 0;
     while let Some((end, _, correction)) = source_token(source, offset) {

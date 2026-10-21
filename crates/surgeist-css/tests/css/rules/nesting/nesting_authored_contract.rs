@@ -343,20 +343,31 @@ fn identifier_led_invalid_child_is_one_recovery_unit_without_descendant_promotio
     );
     assert_eq!(diagnostic.span().start().line().value(), 0);
     assert_eq!(diagnostic.span().start().column().value() as usize, start);
-    // cssparser 0.37's declaration fallback retains expect_colon's original
-    // error after the qualified-rule attempt fails. Unlike the &-led case,
-    // the encountered token is the ampersand following the first identifier.
+    // Syntax 3 (2026 CRD) §5.5.5 reparses the failed declaration as a nested
+    // qualified rule; the dropped rule's own failure is its selector's, at the
+    // same relative position as the same rule at the top level: a type
+    // selector cannot follow `&` within one compound (Selectors 4 §3.1).
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
-    assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedToken);
+    assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);
     assert_eq!(
         diagnostic.error().position().byte_offset().value(),
-        start + 3
+        start + 4
     );
-    let ErrorKind::UnexpectedToken(detail) = diagnostic.error().kind() else {
-        panic!("original declaration fallback error");
+    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
+        panic!("the nested rule's selector failure");
     };
-    assert_eq!(detail.encountered().kind(), CssTokenKind::Delim);
-    assert_eq!(detail.encountered().authored(), "&");
+    let encountered = detail.encountered().expect("responsible selector token");
+    assert_eq!(encountered.kind(), CssTokenKind::Ident);
+    assert_eq!(encountered.authored(), "extra");
+    let top = parse_sheet(failed);
+    let [top_diagnostic] = top.diagnostics() else {
+        panic!("the same rule at the top level");
+    };
+    assert_eq!(top_diagnostic.error().kind(), diagnostic.error().kind());
+    assert_eq!(
+        top_diagnostic.error().position().byte_offset().value() + start,
+        diagnostic.error().position().byte_offset().value()
+    );
     let normalized = normalize_sheet(report.syntax()).unwrap();
     assert_eq!(
         stream(&normalized),

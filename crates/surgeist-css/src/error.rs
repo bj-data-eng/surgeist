@@ -1288,16 +1288,6 @@ pub(crate) fn escape_parse_error(
     }
 }
 
-pub(crate) fn unexpected_token_at(source: &str, byte_offset: usize, token: &Token<'_>) -> Error {
-    Error {
-        kind: ErrorKind::UnexpectedToken(CssUnexpectedTokenError {
-            expectation: EXPECT_CSS_SYNTAX,
-            encountered: CssTokenSummary::from_token(token),
-        }),
-        position: CssSourcePosition::from_byte_offset_in(source, byte_offset),
-    }
-}
-
 /// A name-free grammar failure from an actual retained source token or opener.
 pub(crate) fn unexpected_component_value<'i>(
     component: &crate::CssComponentValue,
