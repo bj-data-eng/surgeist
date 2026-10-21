@@ -11,7 +11,6 @@ use crate::css::support;
 
 use support::csstree::{
     capture_csstree_oracle_from_public_parser as capture_oracle, regenerate_csstree_oracle,
-    validate_shared_support_surface,
 };
 
 #[test]
@@ -23,7 +22,6 @@ fn capture_csstree_oracle_from_public_parser() {
 
 #[test]
 fn csstree_baseline_matches_committed_oracle() {
-    assert!(validate_shared_support_surface());
     let regenerated = regenerate_csstree_oracle()
         .expect("public CSS baseline should regenerate from the validated corpus");
     assert_eq!(regenerated, include_bytes!("../../../csstree/oracle.json"));

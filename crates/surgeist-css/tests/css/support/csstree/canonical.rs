@@ -99,6 +99,8 @@ pub(crate) struct CanonicalSummary {
     compared: BTreeMap<&'static str, (usize, usize)>,
     /// Context and exclusion category to excluded-case count.
     excluded: BTreeMap<(&'static str, &'static str), usize>,
+    /// Expected-class kind to the count of whole-input rejections it records.
+    whole_input_rejections: BTreeMap<&'static str, usize>,
     /// Exception IDs by kind name.
     exceptions: BTreeMap<&'static str, Vec<&'static str>>,
 }
@@ -117,6 +119,15 @@ impl CanonicalSummary {
         self.excluded
             .iter()
             .map(|((context, category), count)| (*context, *category, *count))
+            .collect()
+    }
+
+    /// Expected-class kind (`strict_rejected` or `unsupported`) and count of
+    /// the cases excluded as `no_retained_syntax` whole-input rejections.
+    pub(crate) fn whole_input_rejections(&self) -> Vec<(&'static str, usize)> {
+        self.whole_input_rejections
+            .iter()
+            .map(|(class, count)| (*class, *count))
             .collect()
     }
 
@@ -148,6 +159,14 @@ pub(crate) fn compare_csstree_canonical_forms() -> Result<CanonicalSummary, Vec<
                     .excluded
                     .entry((context, category.name()))
                     .or_default() += 1;
+                continue;
+            }
+            Ok(Projection::WholeInputRejection(class)) => {
+                *summary
+                    .excluded
+                    .entry((context, CanonicalExclusion::NoRetainedSyntax.name()))
+                    .or_default() += 1;
+                *summary.whole_input_rejections.entry(class).or_default() += 1;
                 continue;
             }
             Ok(Projection::Compared { surgeist, upstream }) => (surgeist, upstream),
@@ -244,7 +263,13 @@ fn exception_index(
 
 enum Projection {
     Excluded(CanonicalExclusion),
-    Compared { surgeist: String, upstream: String },
+    /// A [`CanonicalExclusion::NoRetainedSyntax`] case, with the kind of the
+    /// expected class that records its whole-input rejection.
+    WholeInputRejection(&'static str),
+    Compared {
+        surgeist: String,
+        upstream: String,
+    },
 }
 
 fn project(case: &ValidatedCase) -> Result<Projection, String> {
@@ -417,15 +442,33 @@ fn project(case: &ValidatedCase) -> Result<Projection, String> {
             surgeist: String::new(),
             upstream,
         },
-        None if records_whole_input_rejection(expected) => {
-            Projection::Excluded(CanonicalExclusion::NoRetainedSyntax)
-        }
-        None => {
-            return Err(format!(
-                "public parser retained no syntax, but the expected class is not a whole-input rejection: {expected:?}"
-            ));
-        }
+        None => match recorded_whole_input_rejection(expected) {
+            Some(class) => Projection::WholeInputRejection(class),
+            None => {
+                return Err(format!(
+                    "public parser retained no syntax, but the expected class is not a whole-input rejection: {expected:?}"
+                ));
+            }
+        },
     })
+}
+
+/// The kind of the CSS-owned expected class when it records a whole-input
+/// rejection (see [`records_whole_input_rejection`]).
+///
+/// The `:matches()` cases are unsupported dispositions of this kind. Selectors
+/// 4 (WD 2026-01-22, `references/selectors-4--WD-selectors-4-20260122--5d3b3f7e1fcc.md`)
+/// §4.2 says UAs "may additionally implement this obsolete name as a legacy
+/// selector alias" for `:is()`; that alias is permitted, not required, and the
+/// selected profile does not adopt it, so whole-input rejection is the
+/// recorded expectation.
+fn recorded_whole_input_rejection(expected: &ExpectedClass) -> Option<&'static str> {
+    let class = match expected {
+        ExpectedClass::StrictRejected { .. } => "strict_rejected",
+        ExpectedClass::Unsupported { .. } => "unsupported",
+        _ => return None,
+    };
+    records_whole_input_rejection(expected).then_some(class)
 }
 
 /// Whether the CSS-owned expected class requires the public parser to reject

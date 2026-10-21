@@ -19,15 +19,38 @@ fn parsed_shape(shape: &str) -> CssBasicShape {
     shape.shape().clone()
 }
 
+/// The authored text a retained calculation keeps, without simplification.
+macro_rules! calculation_text {
+    ($value:expr) => {
+        $value
+            .calculation()
+            .expect("retained symbolic calculation")
+            .serialize()
+            .unwrap()
+            .as_css()
+            .to_owned()
+    };
+}
+
+// Each calculation is retained as the exact authored expression, and each
+// literal operand as its authored dimension token: Shapes 1 (CRD 2025-06-12)
+// §3.1 circle(), ellipse(), inset() and polygon() take <length-percentage>
+// operands, and Filter Effects 1 blur() a <length>, so a calc() stays in the
+// typed operand it was written for (Filter Effects 1, WD 2018-12-18, §6.1).
+// Keeping `calc(1px + 2px)` unsimplified is the crate's authored-retention
+// representation contract for retained calculations; it is not the Values 4
+// §10.13 specified serialization, which would simplify it to `calc(3px)`.
+
 #[test]
 fn calculated_circle_radius_keeps_typed_shape() {
     let CssBasicShape::Circle(circle) = parsed_shape("circle(calc(1px + 2px))") else {
         panic!("circle");
     };
-    assert!(
-        matches!(circle.radius(), surgeist_css::CssCircleRadius::LengthPercentage(radius)
-        if radius.calculation().is_some())
-    );
+    let surgeist_css::CssCircleRadius::LengthPercentage(radius) = circle.radius() else {
+        panic!("length-percentage radius");
+    };
+    assert_eq!(calculation_text!(radius), "calc(1px + 2px)");
+    assert!(circle.position().is_none());
 }
 
 #[test]
@@ -36,7 +59,18 @@ fn calculated_shape_position_keeps_typed_shape() {
     else {
         panic!("circle");
     };
-    assert!(circle.position().is_some());
+    let surgeist_css::CssCircleRadius::LengthPercentage(radius) = circle.radius() else {
+        panic!("length-percentage radius");
+    };
+    assert!(exact_dimension(radius.literal_component(), "1", "px"));
+    let CssPositionRef::Cartesian(position) = circle.position().expect("position").view() else {
+        panic!("Cartesian position");
+    };
+    let CssHorizontalPosition::Offset(x) = position.horizontal() else {
+        panic!("horizontal offset: {:?}", position.horizontal());
+    };
+    assert_eq!(calculation_text!(x), "calc(1px + 2px)");
+    assert!(matches!(position.vertical(), CssVerticalPosition::Center));
 }
 
 #[test]
@@ -44,10 +78,16 @@ fn calculated_ellipse_keeps_typed_shape() {
     let CssBasicShape::Ellipse(ellipse) = parsed_shape("ellipse(calc(1px + 2px) 4px)") else {
         panic!("ellipse");
     };
-    assert!(
-        matches!(ellipse.radii().unwrap().horizontal(), CssEllipseRadius::LengthPercentage(radius)
-        if radius.calculation().is_some())
-    );
+    let radii = ellipse.radii().expect("explicit radii");
+    let CssEllipseRadius::LengthPercentage(horizontal) = radii.horizontal() else {
+        panic!("horizontal length-percentage radius");
+    };
+    assert_eq!(calculation_text!(horizontal), "calc(1px + 2px)");
+    let CssEllipseRadius::LengthPercentage(vertical) = radii.vertical() else {
+        panic!("vertical length-percentage radius");
+    };
+    assert!(exact_dimension(vertical.literal_component(), "4", "px"));
+    assert!(ellipse.position().is_none());
 }
 
 #[test]
@@ -55,7 +95,11 @@ fn calculated_inset_keeps_typed_shape() {
     let CssBasicShape::Inset(inset) = parsed_shape("inset(calc(1px + 2px))") else {
         panic!("inset");
     };
-    assert!(matches!(inset.offsets().values(), [value] if value.calculation().is_some()));
+    let [offset] = inset.offsets().values() else {
+        panic!("one authored inset offset");
+    };
+    assert_eq!(calculation_text!(offset), "calc(1px + 2px)");
+    assert!(inset.round().is_none());
 }
 
 #[test]
@@ -64,7 +108,13 @@ fn calculated_polygon_keeps_typed_shape() {
     else {
         panic!("polygon");
     };
-    assert!(polygon.points().points()[0].x().calculation().is_some());
+    let [first, second] = polygon.points().points() else {
+        panic!("two authored polygon points");
+    };
+    assert_eq!(calculation_text!(first.x()), "calc(1px + 2px)");
+    assert!(exact_dimension(first.y().literal_component(), "0", "px"));
+    assert!(exact_dimension(second.x().literal_component(), "1", "px"));
+    assert!(exact_dimension(second.y().literal_component(), "1", "px"));
 }
 
 #[test]
@@ -82,10 +132,10 @@ fn calculated_blur_keeps_typed_filter_expression() {
     let surgeist_css::CssFilter::Functions(functions) = value.value() else {
         panic!("filter list");
     };
-    assert!(
-        matches!(functions.functions(), [surgeist_css::CssFilterFunction::Blur(blur)]
-        if blur.length().calculation().is_some())
-    );
+    let [surgeist_css::CssFilterFunction::Blur(blur)] = functions.functions() else {
+        panic!("one blur function");
+    };
+    assert_eq!(calculation_text!(blur.length()), "calc(1px + 2px)");
 }
 
 #[test]

@@ -381,39 +381,18 @@ fn selected_component_limits_apply_to_input_and_canonical_output_with_original_c
 fn deep_checked_definition_admission_and_serialization_fit_an_ordinary_stack() {
     const CHILD: &str = "SURGEIST_CUSTOM_MEDIA_STACK_CHILD";
     const TEST: &str = "css::media::custom_media_construction::deep_checked_definition_admission_and_serialization_fit_an_ordinary_stack";
-    if std::env::var(CHILD).as_deref() != Ok(TEST) {
-        let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", TEST, "--nocapture", "--test-threads=1"])
-            .env(CHILD, TEST)
-            .env_remove("RUST_MIN_STACK")
-            .stdin(std::process::Stdio::null())
-            .output()
-            .unwrap();
-        assert!(
-            output.status.success(),
-            "{}\n{}\n{}",
-            output.status,
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-        return;
-    }
-    std::thread::Builder::new()
-        .stack_size(2 * 1024 * 1024)
-        .spawn(|| {
-            for terminal in ["color", "--external"] {
-                let query = format!("{}{terminal}{}", "(".repeat(256), ")".repeat(256));
-                let components = components(&format!("--deep {query}"));
-                let rule = CssCustomMediaRule::try_from_components(components).unwrap();
-                assert_eq!(
-                    rule.serialize().unwrap().as_css(),
-                    format!("@custom-media --deep {query};")
-                );
-            }
-        })
-        .unwrap()
-        .join()
-        .unwrap();
+    const COMPLETED: &str = "deep custom media admission and serialization completed";
+    crate::css::support::isolated_stack::run(TEST, CHILD, COMPLETED, None, || {
+        for terminal in ["color", "--external"] {
+            let query = format!("{}{terminal}{}", "(".repeat(256), ")".repeat(256));
+            let components = components(&format!("--deep {query}"));
+            let rule = CssCustomMediaRule::try_from_components(components).unwrap();
+            assert_eq!(
+                rule.serialize().unwrap().as_css(),
+                format!("@custom-media --deep {query};")
+            );
+        }
+    });
 }
 
 #[test]

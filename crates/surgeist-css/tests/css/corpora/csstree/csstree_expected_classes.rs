@@ -17,14 +17,12 @@ use crate::css::support;
 
 use support::csstree::{
     expected_payload_relation_holds, validate_csstree_expected_classes_contract,
-    validate_shared_support_surface,
 };
 
 const REPORT_SHA256: &str = "ed8c70539c10effc254a8c2c4faa750396c7f3647996f5120e9e311bbe96d366";
 
 #[test]
 fn explicit_expected_classes_bind_every_neutral_case_without_a_default() {
-    assert!(validate_shared_support_surface());
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let bytes = fs::read(root.join("tests/csstree/expected-classes.json"))
         .expect("read committed expected-class registry");

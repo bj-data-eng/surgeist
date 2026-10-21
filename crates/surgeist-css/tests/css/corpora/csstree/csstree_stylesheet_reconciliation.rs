@@ -7,8 +7,8 @@ use std::{collections::BTreeSet, fs, path::Path};
 
 use serde_json::{Value, json};
 use surgeist_css::{
-    CssDeclarationList, CssImportance, CssKnownPropertyValueRef, CssRule, CssSelector, parse_sheet,
-    validate_sheet,
+    CssDeclarationList, CssErrorCode, CssImportance, CssKnownPropertyValueRef, CssRecoveryAction,
+    CssRule, CssSelector, parse_sheet, validate_sheet,
 };
 
 use crate::css::support::digest;
@@ -90,15 +90,54 @@ fn rules(actual: &[CssRule]) -> Value {
     }).collect())
 }
 
-fn snake_name(value: impl std::fmt::Debug) -> String {
-    let mut result = String::new();
-    for character in format!("{value:?}").chars() {
-        if character.is_ascii_uppercase() && !result.is_empty() {
-            result.push('_');
-        }
-        result.push(character.to_ascii_lowercase());
+/// The registry identifier of a public diagnostic code, by typed match rather
+/// than through the code's derived `Debug` spelling.
+fn error_code_identifier(code: CssErrorCode) -> &'static str {
+    match code {
+        CssErrorCode::EscapeParseError => "escape_parse_error",
+        CssErrorCode::UnexpectedEnd => "unexpected_end",
+        CssErrorCode::UnexpectedToken => "unexpected_token",
+        CssErrorCode::InvalidAtRulePlacement => "invalid_at_rule_placement",
+        CssErrorCode::InvalidAtRulePrelude => "invalid_at_rule_prelude",
+        CssErrorCode::InvalidAtRuleBody => "invalid_at_rule_body",
+        CssErrorCode::NamespaceRedeclaration => "namespace_redeclaration",
+        CssErrorCode::LegacyNavigationTarget => "legacy_navigation_target",
+        CssErrorCode::UnknownAtRule => "unknown_at_rule",
+        CssErrorCode::UnsupportedAtRule => "unsupported_at_rule",
+        CssErrorCode::InvalidQualifiedRule => "invalid_qualified_rule",
+        CssErrorCode::InvalidSelector => "invalid_selector",
+        CssErrorCode::InvalidMediaQuery => "invalid_media_query",
+        CssErrorCode::UnknownProperty => "unknown_property",
+        CssErrorCode::UnsupportedProperty => "unsupported_property",
+        CssErrorCode::InvalidPropertyValue => "invalid_property_value",
+        CssErrorCode::InvalidComponentValue => "invalid_component_value",
+        CssErrorCode::InvalidDeclarationAnnotation => "invalid_declaration_annotation",
+        CssErrorCode::UnknownDescriptor => "unknown_descriptor",
+        CssErrorCode::UnsupportedDescriptor => "unsupported_descriptor",
+        CssErrorCode::InvalidDescriptorValue => "invalid_descriptor_value",
+        CssErrorCode::InvalidDescriptorCombination => "invalid_descriptor_combination",
+        CssErrorCode::InvalidColorSyntax => "invalid_color_syntax",
+        CssErrorCode::NestingLimit => "nesting_limit",
+        other => panic!("diagnostic code without a registry identifier: {other:?}"),
     }
-    result
+}
+
+/// The registry identifier of a public recovery action, by typed match.
+fn recovery_action_identifier(action: CssRecoveryAction) -> &'static str {
+    match action {
+        CssRecoveryAction::RejectInput => "reject_input",
+        CssRecoveryAction::DropDeclaration => "drop_declaration",
+        CssRecoveryAction::DropDescriptor => "drop_descriptor",
+        CssRecoveryAction::DropQualifiedRule => "drop_qualified_rule",
+        CssRecoveryAction::DropAtRule => "drop_at_rule",
+        CssRecoveryAction::DropKeyframeBlock => "drop_keyframe_block",
+        CssRecoveryAction::DropSelectorListItem => "drop_selector_list_item",
+        CssRecoveryAction::ReplaceMediaQueryWithNever => "replace_media_query_with_never",
+        CssRecoveryAction::RetainWithImplicitClosure => "retain_with_implicit_closure",
+        CssRecoveryAction::IgnoreUnterminatedComment => "ignore_unterminated_comment",
+        CssRecoveryAction::StopAtNestingLimit => "stop_at_nesting_limit",
+        other => panic!("recovery action without a registry identifier: {other:?}"),
+    }
 }
 
 #[test]
@@ -140,8 +179,8 @@ fn original_stylesheet_recovery_and_validation_follow_independent_requirements()
                 } else {
                     "recovery_ends_at"
                 };
-                json!({"code": snake_name(diagnostic.error().code()),
-                "action": snake_name(diagnostic.action()), "byte_offset": byte_offset,
+                json!({"code": error_code_identifier(diagnostic.error().code()),
+                "action": recovery_action_identifier(diagnostic.action()), "byte_offset": byte_offset,
                 "span_start": span_start, "span_end": span_end, "multiplicity": 1,
                 "payload_relation": payload_relation})
             })

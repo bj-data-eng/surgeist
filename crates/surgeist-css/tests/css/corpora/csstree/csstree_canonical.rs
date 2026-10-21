@@ -11,14 +11,19 @@
 
 use crate::css::support;
 
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::Path;
+
+use serde_json::Value;
+
 use support::csstree::{
     CANONICAL_EXCEPTIONS, CanonicalExceptionKind, canonically_equal,
-    compare_csstree_canonical_forms, validate_shared_support_surface,
+    compare_csstree_canonical_forms,
 };
 
 #[test]
 fn upstream_parsed_cases_match_csstree_canonical_output() {
-    assert!(validate_shared_support_surface());
     let summary = compare_csstree_canonical_forms().unwrap_or_else(|failures| {
         panic!(
             "{} canonical comparison failures:\n{}",
@@ -58,6 +63,14 @@ fn upstream_parsed_cases_match_csstree_canonical_output() {
     let compared: usize = summary.compared().iter().map(|row| row.1 + row.2).sum();
     let excluded: usize = summary.excluded().iter().map(|row| row.2).sum();
     assert_eq!((compared, excluded, compared + excluded), (468, 253, 721));
+    // The 161 `no_retained_syntax` exclusions split as the corpus README
+    // states: 142 strict rejections and 19 fully observed unsupported
+    // dispositions (outside-profile, vendor or upstream-option cases). The
+    // comparison's split and an independent count over the raw expected-class
+    // registry must both give that split.
+    let split = [("strict_rejected", 142), ("unsupported", 19)];
+    assert_eq!(summary.whole_input_rejections(), split);
+    assert_eq!(registry_whole_input_rejections_of_parsed_cases(), split);
     assert_eq!(
         summary.exceptions(CanonicalExceptionKind::Deliberate).len(),
         170
@@ -68,6 +81,77 @@ fn upstream_parsed_cases_match_csstree_canonical_output() {
             .is_empty()
     );
     assert_eq!(CANONICAL_EXCEPTIONS.len(), 170);
+}
+
+/// Counts, straight from `expected-classes.json` and the neutral expectation
+/// files, the upstream-parsed cases whose expected class records a whole-input
+/// rejection: empty or zero retained syntax with a `reject_input` diagnostic,
+/// as a strict rejection or an unclean fully observed unsupported class.
+fn registry_whole_input_rejections_of_parsed_cases() -> Vec<(&'static str, usize)> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut outcomes = BTreeMap::new();
+    collect_upstream_outcomes(
+        &root.join("tests/corpus/csstree/expectations"),
+        &mut outcomes,
+    );
+    let registry: Value = serde_json::from_slice(
+        &fs::read(root.join("tests/csstree/expected-classes.json")).expect("read registry"),
+    )
+    .expect("registry JSON");
+    let mut counts = BTreeMap::<&'static str, usize>::new();
+    for record in registry["records"].as_array().expect("records") {
+        let id = record["id"].as_str().expect("record ID");
+        if outcomes.get(id).map(String::as_str) != Some("parsed") {
+            continue;
+        }
+        let class = &record["class"];
+        let (kind, observed) = match class["kind"].as_str().expect("class kind") {
+            "strict_rejected" => ("strict_rejected", class),
+            "unsupported"
+                if class["policy"]["kind"] == "full_observation"
+                    && class["policy"]["is_clean"] == false =>
+            {
+                ("unsupported", &class["policy"])
+            }
+            _ => continue,
+        };
+        let predicate = &observed["retained_syntax"]["predicate"];
+        let retains_nothing = predicate["relation"] == "empty"
+            || (predicate["relation"] == "exact" && predicate["value"] == 0);
+        let rejects_input = observed["diagnostics"]
+            .as_array()
+            .expect("diagnostics")
+            .iter()
+            .any(|diagnostic| diagnostic["action"] == "reject_input");
+        if retains_nothing && rejects_input {
+            *counts.entry(kind).or_default() += 1;
+        }
+    }
+    counts.into_iter().collect()
+}
+
+fn collect_upstream_outcomes(path: &Path, outcomes: &mut BTreeMap<String, String>) {
+    if path.is_dir() {
+        for entry in fs::read_dir(path).expect("read expectation directory") {
+            collect_upstream_outcomes(&entry.expect("expectation entry").path(), outcomes);
+        }
+        return;
+    }
+    if path.extension().and_then(|extension| extension.to_str()) != Some("json")
+        || path.to_string_lossy().contains("generation-reports")
+    {
+        return;
+    }
+    let document: Value =
+        serde_json::from_slice(&fs::read(path).expect("read expectation")).expect("JSON");
+    for case in document["cases"].as_array().expect("cases") {
+        let id = case["id"].as_str().expect("case ID").to_owned();
+        let outcome = case["upstream_outcome"]
+            .as_str()
+            .expect("outcome")
+            .to_owned();
+        assert!(outcomes.insert(id, outcome).is_none(), "duplicate case ID");
+    }
 }
 
 #[test]

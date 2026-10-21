@@ -110,7 +110,7 @@ property_records! {
         metadata: longhand(false, |v| {
             assert_eq!(v.value(), CssAlignmentValue::Normal { overflow: None })
         }),
-        catalog: grammar_catalog!("baseline.property.align-items", "first baseline", rejected("space-between")),
+        catalog: grammar_catalog!("baseline.property.align-items", "first baseline" => "baseline", rejected("space-between")),
         source: "S-ALIGN3",
         aliases: ["-webkit-align-items"],
         dispatch: "first baseline",
@@ -132,7 +132,10 @@ property_records! {
     }
     Animation, "animation" {
         metadata: shorthand([AnimationDuration, AnimationTimingFunction, AnimationDelay, AnimationIterationCount, AnimationDirection, AnimationFillMode, AnimationPlayState, AnimationName], []),
-        catalog: grammar_catalog!("baseline.property.animation", "fade 1s ease-in 200ms 3 alternate both running", rejected("fade 1s 2s 3s")),
+        // Animations 1 (WD 2023-03-02) §3.10: default values of other
+        // properties "may be output in additional cases", so the initial
+        // `running` play state may remain in the serialization.
+        catalog: grammar_catalog!("baseline.property.animation", "fade 1s ease-in 200ms 3 alternate both running" => "1s ease-in 0.2s 3 alternate both running fade", rejected("fade 1s 2s 3s")),
         source: "I-ANIMATIONS1",
         dispatch: "fade 1s ease-in 200ms 3 alternate both running",
         wrapper: yes,
@@ -145,7 +148,7 @@ property_records! {
             assert_eq!(literal.numeric().representation(), "0");
             assert_eq!(literal.unit(), CssTimeUnit::Seconds);
         }),
-        catalog: grammar_catalog!("baseline.property.animation-delay", "200ms", rejected("10px")),
+        catalog: grammar_catalog!("baseline.property.animation-delay", "200ms" => "0.2s", rejected("10px")),
         dispatch: "200ms",
         wrapper: yes,
     }
@@ -214,7 +217,7 @@ property_records! {
         metadata: longhand(false, |v| {
             assert!(matches!(v, CssAspectRatioValue::Auto));
         }),
-        catalog: grammar_catalog!("baseline.property.aspect-ratio", "1.5", rejected("solid")),
+        catalog: grammar_catalog!("baseline.property.aspect-ratio", "1.5" => "1.5 / 1", rejected("solid")),
         source: "X-SIZING4-20260904",
         dispatch: "1.5",
         wrapper: yes,
@@ -237,7 +240,7 @@ property_records! {
     }
     Background, "background" {
         metadata: shorthand([BackgroundImage, BackgroundPosition, BackgroundSize, BackgroundRepeat, BackgroundAttachment, BackgroundOrigin, BackgroundClip, BackgroundColor], [BackgroundBlendMode]),
-        catalog: grammar_catalog!("baseline.property.background", "#fff", rejected("#fff #000")),
+        catalog: grammar_catalog!("baseline.property.background", "#fff" => "rgb(255, 255, 255)", rejected("#fff #000")),
         source: "O-BACKGROUNDS3",
         dispatch: "#fff",
         wrapper: yes,
@@ -327,7 +330,9 @@ property_records! {
                 height: None
             }]
         ))),
-        catalog: grammar_catalog!("baseline.property.background-size", "cover, 10px auto", rejected("solid")),
+        // Backgrounds 3 (CRD 2024-03-11) §2.9: an omitted second size is
+        // `auto`, so CSSOM 1 §6.7.2 omits it. Pinned in KNOWN_SERIALIZATION_DEFECTS.
+        catalog: grammar_catalog!("baseline.property.background-size", "cover, 10px auto" => "cover, 10px", rejected("solid")),
         dispatch: "cover, 10px auto",
         wrapper: yes,
     }
@@ -337,7 +342,7 @@ property_records! {
     }
     Border, "border" {
         metadata: shorthand([BorderTopWidth, BorderRightWidth, BorderBottomWidth, BorderLeftWidth, BorderTopStyle, BorderRightStyle, BorderBottomStyle, BorderLeftStyle, BorderTopColor, BorderRightColor, BorderBottomColor, BorderLeftColor], [BorderImageSource, BorderImageSlice, BorderImageWidth, BorderImageOutset, BorderImageRepeat]),
-        catalog: grammar_catalog!("baseline.property.border", "solid 2px #fff", rejected("solid dotted")),
+        catalog: grammar_catalog!("baseline.property.border", "solid 2px #fff" => "2px solid rgb(255, 255, 255)", rejected("solid dotted")),
         dispatch: "solid 2px #fff",
         wrapper: yes,
         inverse: ("1px solid red", "1px solid red"),
@@ -392,7 +397,7 @@ property_records! {
     }
     BorderBottom, "border-bottom" {
         metadata: shorthand([BorderBottomWidth, BorderBottomStyle, BorderBottomColor], []),
-        catalog: grammar_catalog!("baseline.property.border-bottom", "#fff", rejected("solid dotted")),
+        catalog: grammar_catalog!("baseline.property.border-bottom", "#fff" => "rgb(255, 255, 255)", rejected("solid dotted")),
         dispatch: "#fff",
         wrapper: yes,
         inverse: ("1px solid red", "1px solid red"),
@@ -413,7 +418,7 @@ property_records! {
             assert_eq!(v.horizontal(), v.vertical());
             assert!(v.authored_vertical().is_none());
         }),
-        catalog: grammar_catalog!("baseline.property.border-bottom-left-radius", "calc(1px + 2%)", rejected("-1px")),
+        catalog: grammar_catalog!("baseline.property.border-bottom-left-radius", "calc(1px + 2%)" => "calc(2% + 1px)", rejected("-1px")),
         dispatch: "calc(1px + 2%)",
         wrapper: yes,
         mapping: physical("border-radius"),
@@ -481,7 +486,7 @@ property_records! {
     }
     BorderImage, "border-image" {
         metadata: shorthand([BorderImageSource, BorderImageSlice, BorderImageWidth, BorderImageOutset, BorderImageRepeat], []),
-        catalog: grammar_catalog!("official.property.border-image", "url(frame.png) 10 fill / 2 / 1 round", rejected("url(frame.png) / 2")),
+        catalog: grammar_catalog!("official.property.border-image", "url(frame.png) 10 fill / 2 / 1 round" => "url(\"frame.png\") 10 fill / 2 / 1 round", rejected("url(frame.png) / 2")),
         inverse: ("none", "none"),
     }
     BorderImageOutset, "border-image-outset" {
@@ -582,7 +587,7 @@ property_records! {
     }
     BorderLeftColor, "border-left-color" {
         metadata: longhand(false, |v| assert!(v.is_current_color())),
-        catalog: grammar_catalog!("baseline.property.border-left-color", "#fff", rejected("black white")),
+        catalog: grammar_catalog!("baseline.property.border-left-color", "#fff" => "rgb(255, 255, 255)", rejected("black white")),
         dispatch: "#fff",
         wrapper: yes,
         mapping: physical("border-color"),
@@ -674,7 +679,7 @@ property_records! {
     }
     BorderTop, "border-top" {
         metadata: shorthand([BorderTopWidth, BorderTopStyle, BorderTopColor], []),
-        catalog: grammar_catalog!("baseline.property.border-top", "black dotted", rejected("solid dotted")),
+        catalog: grammar_catalog!("baseline.property.border-top", "black dotted" => "dotted black", rejected("solid dotted")),
         dispatch: "black dotted",
         wrapper: yes,
         inverse: ("1px solid red", "1px solid red"),
@@ -753,7 +758,7 @@ property_records! {
     }
     BoxShadow, "box-shadow" {
         metadata: longhand(false, |v| assert_eq!(*v, CssBoxShadow::None)),
-        catalog: grammar_catalog!("baseline.property.box-shadow", "inset 1px 2px 3px 4px black", rejected("1px 2px -3px")),
+        catalog: grammar_catalog!("baseline.property.box-shadow", "inset 1px 2px 3px 4px black" => "black 1px 2px 3px 4px inset", rejected("1px 2px -3px")),
         dispatch: "inset 1px 2px 3px 4px black",
         wrapper: yes,
     }
@@ -803,13 +808,15 @@ property_records! {
     }
     ClipPath, "clip-path" {
         metadata: longhand(false, |v| assert_eq!(*v, CssClipPath::None)),
-        catalog: grammar_catalog!("baseline.property.clip-path", "circle(50% at center)", rejected("circle(red)")),
+        catalog: grammar_catalog!("baseline.property.clip-path", "circle(50% at center)" => "circle(50% at center center)", rejected("circle(red)")),
         dispatch: "circle(50% at center)",
         wrapper: yes,
     }
     ShapeOutside, "shape-outside" {
         metadata: longhand(false, |v| assert_eq!(*v, CssShapeOutside::None)),
-        catalog: complete_grammar_catalog!("official.property.shape-outside", "margin-box circle(50%)", rejected("circle() fill-box")),
+        // Shapes 1 (CRD 2025-06-12) §6.1: an omitted <shape-box> defaults to
+        // margin-box, so CSSOM 1 §6.7.2 omits it. Pinned in KNOWN_SERIALIZATION_DEFECTS.
+        catalog: complete_grammar_catalog!("official.property.shape-outside", "margin-box circle(50%)" => "circle(50%)", rejected("circle() fill-box")),
         source: "S-SHAPES1",
         dispatch: "margin-box circle(50%)",
         wrapper: yes,
@@ -826,7 +833,10 @@ property_records! {
     }
     OffsetPath, "offset-path" {
         metadata: longhand(false, |v| assert_eq!(v.view(), CssOffsetPathRef::None)),
-        catalog: complete_grammar_catalog!("official.property.offset-path", "ray(90deg at inline-end block-start) view-box", rejected("margin-box")),
+        // Values 5 (WD 2024-09-17) §4.2.2 keeps the flow-relative position as
+        // written, and its `[ block-* ] && [ inline-* ]` grammar gives the
+        // canonical block-then-inline order (CSSOM 1 §6.7.2, per grammar).
+        catalog: complete_grammar_catalog!("official.property.offset-path", "ray(90deg at inline-end block-start) view-box" => "ray(90deg at block-start inline-end) view-box", rejected("margin-box")),
         source: "I-MOTION1",
         dispatch: "ray(90deg) view-box",
         wrapper: yes,
@@ -848,7 +858,7 @@ property_records! {
             assert_eq!(v.modifier(), Some(CssOffsetRotateModifier::Auto));
             assert!(v.angle().is_none());
         }),
-        catalog: complete_grammar_catalog!("official.property.offset-rotate", "90deg reverse", rejected("0")),
+        catalog: complete_grammar_catalog!("official.property.offset-rotate", "90deg reverse" => "reverse 90deg", rejected("0")),
         source: "I-MOTION1",
         dispatch: "90deg reverse",
         wrapper: yes,
@@ -862,7 +872,7 @@ property_records! {
     }
     Offset, "offset" {
         metadata: shorthand([OffsetPosition, OffsetPath, OffsetDistance, OffsetRotate, OffsetAnchor], []),
-        catalog: complete_grammar_catalog!("official.property.offset", "x-start none -25% reverse / inline-end block-start", rejected("/ center")),
+        catalog: complete_grammar_catalog!("official.property.offset", "x-start none -25% reverse / inline-end block-start" => "x-start center none -25% reverse / block-start inline-end", rejected("/ center")),
         source: "I-MOTION1",
         dispatch: "normal none -25% reverse / auto",
         wrapper: yes,
@@ -875,7 +885,7 @@ property_records! {
             assert_eq!(value.numeric().representation(), "0");
             assert_eq!(value.origin(), &CssValueOrigin::Programmatic);
         }),
-        catalog: complete_grammar_catalog!("official.property.shape-image-threshold", "150%", rejected("1px")),
+        catalog: complete_grammar_catalog!("official.property.shape-image-threshold", "150%" => "1.5", rejected("1px")),
         source: "S-SHAPES1",
         dispatch: "150%",
         wrapper: yes,
@@ -887,7 +897,7 @@ property_records! {
             assert_eq!(v.origin(), &CssValueOrigin::Programmatic);
             assert!(v.calculation().is_none());
         }),
-        catalog: complete_grammar_catalog!("official.property.shape-margin", "calc(1px - 2px)", rejected("-1px")),
+        catalog: complete_grammar_catalog!("official.property.shape-margin", "calc(1px - 2px)" => "calc(-1px)", rejected("-1px")),
         source: "S-SHAPES1",
         dispatch: "calc(1px - 2px)",
         wrapper: yes,
@@ -903,7 +913,7 @@ property_records! {
     }
     ColorInterpolationFilters, "color-interpolation-filters" {
         metadata: longhand(true, |v| assert_eq!(*v, CssColorInterpolationFilters::LinearRgb)),
-        catalog: grammar_catalog!("official.property.color-interpolation-filters", "sRGB", rejected("rgb"), "#ColorInterpolationFiltersProperty"),
+        catalog: grammar_catalog!("official.property.color-interpolation-filters", "sRGB" => "srgb", rejected("rgb"), "#ColorInterpolationFiltersProperty"),
         source: "I-FILTER1",
         dispatch: "sRGB",
         wrapper: yes,
@@ -980,7 +990,7 @@ property_records! {
     }
     Contain, "contain" {
         metadata: longhand(false, |v| assert_eq!(*v, CssContain::None)),
-        catalog: grammar_catalog!("official.property.contain", "paint style size", rejected("size size")),
+        catalog: grammar_catalog!("official.property.contain", "paint style size" => "size style paint", rejected("size size")),
         source: "I-CONTAIN2",
         dispatch: "paint style size",
         wrapper: yes,
@@ -1079,7 +1089,7 @@ property_records! {
         metadata: longhand(false, |v| {
             assert!(matches!(v.items(), [CssContentValueItem::Content(Some(CssContentReferenceMode::Text))]))
         }),
-        catalog: grammar_catalog!("official.property.bookmark-label", "content(text)", rejected("normal")),
+        catalog: grammar_catalog!("official.property.bookmark-label", "content(text)" => "content()", rejected("normal")),
         source: "X-CONTENT3",
         dispatch: "content(text)",
         wrapper: yes,
@@ -1102,7 +1112,9 @@ property_records! {
     }
     CounterIncrement, "counter-increment" {
         metadata: longhand(false, |v| assert!(v.changes().is_none())),
-        catalog: grammar_catalog!("baseline.property.counter-increment", "section 1", rejected("1")),
+        // Lists 3 (WD 2020-11-17) §4.2: an omitted counter-increment <integer>
+        // is 1, so CSSOM 1 §6.7.2 omits it. Pinned in KNOWN_SERIALIZATION_DEFECTS.
+        catalog: grammar_catalog!("baseline.property.counter-increment", "section 1" => "section", rejected("1")),
         dispatch: "section 1",
         wrapper: yes,
     }
@@ -1187,7 +1199,7 @@ property_records! {
             assert_eq!(value.numeric().representation(), "1");
             assert_eq!(value.origin(), &CssValueOrigin::Programmatic);
         }),
-        catalog: grammar_catalog!("official.property.flood-opacity", "150%", rejected("none"), "#FloodOpacityProperty"),
+        catalog: grammar_catalog!("official.property.flood-opacity", "150%" => "1.5", rejected("none"), "#FloodOpacityProperty"),
         source: "I-FILTER1",
         dispatch: "-25%",
         wrapper: yes,
@@ -1273,7 +1285,7 @@ property_records! {
     }
     Font, "font" {
         metadata: shorthand([FontFamily, FontSize, FontWidth, FontStyle, FontVariantCaps, FontWeight, LineHeight], [FontFeatureSettings, FontKerning, FontLanguageOverride, FontOpticalSizing, FontSizeAdjust, FontVariantAlternates, FontVariantEastAsian, FontVariantEmoji, FontVariantLigatures, FontVariantNumeric, FontVariantPosition, FontVariationSettings]),
-        catalog: grammar_catalog!("baseline.property.font", "italic small-caps 700 condensed 16px/normal \"Avenir Next\", sans-serif", rejected("bold sans-serif")),
+        catalog: grammar_catalog!("baseline.property.font", "italic small-caps 700 condensed 16px/normal \"Avenir Next\", sans-serif" => "italic small-caps 700 condensed 16px \"Avenir Next\", sans-serif", rejected("bold sans-serif")),
         source: "I-FONTS4-20260907",
         dispatch: "italic small-caps 700 condensed 16px/normal \"Avenir Next\", sans-serif",
         wrapper: yes,
@@ -1289,7 +1301,9 @@ property_records! {
         metadata: longhand(true, |v| {
             assert_eq!(v, &CssAuthoredFontFeatureSettings::Normal)
         }),
-        catalog: grammar_catalog!("baseline.property.font-feature-settings", "\"kern\" on, \"liga\" 0", rejected("\"abc\" on")),
+        // Fonts 4 (WD 2026-09-07) §6.12: `on` is 1 and an omitted value is 1,
+        // so CSSOM 1 §6.7.2 omits it. Pinned in KNOWN_SERIALIZATION_DEFECTS.
+        catalog: grammar_catalog!("baseline.property.font-feature-settings", "\"kern\" on, \"liga\" 0" => "\"kern\", \"liga\" 0", rejected("\"abc\" on")),
         dispatch: "\"kern\" on, \"liga\" 0",
         wrapper: yes,
     }
@@ -1602,7 +1616,7 @@ property_records! {
     }
     HangingPunctuation, "hanging-punctuation" {
         metadata: longhand(true, |v| assert_eq!(*v, CssHangingPunctuation::None)),
-        catalog: grammar_catalog!("ext.property.hanging-punctuation", "last allow-end first", rejected("force-end allow-end")),
+        catalog: grammar_catalog!("ext.property.hanging-punctuation", "last allow-end first" => "first allow-end last", rejected("force-end allow-end")),
         source: "X-TEXT4",
         dispatch: "last allow-end first",
         wrapper: yes,
@@ -1637,14 +1651,14 @@ property_records! {
     }
     HyphenateLimitLines, "hyphenate-limit-lines" {
         metadata: longhand(true, |v| assert_eq!(*v, CssHyphenateLimitLines::NoLimit)),
-        catalog: grammar_catalog!("ext.property.hyphenate-limit-lines", "calc(3 / 2)", rejected("-1")),
+        catalog: grammar_catalog!("ext.property.hyphenate-limit-lines", "calc(3 / 2)" => "calc(1.5)", rejected("-1")),
         source: "X-TEXT4",
         dispatch: "calc(3 / 2)",
         wrapper: yes,
     }
     HyphenateLimitZone, "hyphenate-limit-zone" {
         metadata: longhand(true, |v| assert_eq!(*v, CssSpecifiedLengthPercentage::zero())),
-        catalog: grammar_catalog!("ext.property.hyphenate-limit-zone", "calc(-2px + 3%)", rejected("auto")),
+        catalog: grammar_catalog!("ext.property.hyphenate-limit-zone", "calc(-2px + 3%)" => "calc(3% - 2px)", rejected("auto")),
         source: "X-TEXT4",
         dispatch: "calc(-2px + 3%)",
         wrapper: yes,
@@ -1719,7 +1733,7 @@ property_records! {
     }
     ItemFlow, "item-flow" {
         metadata: shorthand([ItemDirection, ItemWrap, ItemPack, FlowTolerance], []),
-        catalog: grammar_catalog!("ext.property.item-flow", "balance dense reverse -2px row", rejected("wrap row reverse")),
+        catalog: grammar_catalog!("ext.property.item-flow", "balance dense reverse -2px row" => "row reverse dense balance -2px", rejected("wrap row reverse")),
         source: "X-GRID3-20260121",
         dispatch: "balance dense reverse -2px row",
         wrapper: yes,
@@ -1727,7 +1741,7 @@ property_records! {
     }
     ItemPack, "item-pack" {
         metadata: longhand(false, |v| assert_eq!(*v, CssItemPack::Normal)),
-        catalog: grammar_catalog!("ext.property.item-pack", "balance dense", rejected("normal dense")),
+        catalog: grammar_catalog!("ext.property.item-pack", "balance dense" => "dense balance", rejected("normal dense")),
         source: "X-GRID3-20260121",
         dispatch: "balance dense",
         wrapper: yes,
@@ -1736,7 +1750,7 @@ property_records! {
         metadata: longhand(false, |v| {
             assert_eq!(*v, CssItemWrap::Mode(CssItemWrapMode::Auto))
         }),
-        catalog: grammar_catalog!("ext.property.item-wrap", "reverse wrap", rejected("normal reverse")),
+        catalog: grammar_catalog!("ext.property.item-wrap", "reverse wrap" => "wrap reverse", rejected("normal reverse")),
         source: "X-GRID3-20260121",
         dispatch: "reverse wrap",
         wrapper: yes,
@@ -1767,7 +1781,7 @@ property_records! {
     }
     Left, "left" {
         metadata: longhand(false, |v| assert_eq!(*v, CssInsetValue::Auto)),
-        catalog: grammar_catalog!("baseline.property.left", "calc(3px + 4%)", rejected("solid")),
+        catalog: grammar_catalog!("baseline.property.left", "calc(3px + 4%)" => "calc(4% + 3px)", rejected("solid")),
         dispatch: "calc(3px + 4%)",
         wrapper: yes,
         mapping: physical("inset"),
@@ -1809,14 +1823,14 @@ property_records! {
     }
     ListStyle, "list-style" {
         metadata: shorthand([ListStylePosition, ListStyleImage, ListStyleType], []),
-        catalog: grammar_catalog!("baseline.property.list-style", "url(marker.svg) inside square", rejected("inside outside square")),
+        catalog: grammar_catalog!("baseline.property.list-style", "url(marker.svg) inside square" => "inside url(\"marker.svg\") square", rejected("inside outside square")),
         dispatch: "url(marker.svg) inside square",
         wrapper: yes,
         inverse: ("square inside none", "inside square"),
     }
     ListStyleImage, "list-style-image" {
         metadata: longhand(true, |v| assert_eq!(v, &CssImageValue::None)),
-        catalog: grammar_catalog!("baseline.property.list-style-image", "url(marker.svg)", rejected("red")),
+        catalog: grammar_catalog!("baseline.property.list-style-image", "url(marker.svg)" => "url(\"marker.svg\")", rejected("red")),
         dispatch: "url(marker.svg)",
         wrapper: yes,
     }
@@ -1895,7 +1909,7 @@ property_records! {
             *v,
             CssMarginValue::LengthPercentage(CssSpecifiedLengthPercentage::zero())
         )),
-        catalog: grammar_catalog!("baseline.property.margin-left", "calc(3px + 4%)", rejected("solid")),
+        catalog: grammar_catalog!("baseline.property.margin-left", "calc(3px + 4%)" => "calc(4% + 3px)", rejected("solid")),
         dispatch: "calc(3px + 4%)",
         wrapper: yes,
         mapping: physical("margin"),
@@ -1925,7 +1939,7 @@ property_records! {
     }
     Mask, "mask" {
         metadata: shorthand([MaskImage, MaskPosition, MaskSize, MaskRepeat, MaskOrigin, MaskClip, MaskComposite, MaskMode], [MaskBorderSource, MaskBorderSlice, MaskBorderWidth, MaskBorderOutset, MaskBorderRepeat, MaskBorderMode]),
-        catalog: complete_grammar_catalog!("baseline.property.mask", "url(mask.png) center / contain no-repeat padding-box no-clip exclude alpha", rejected("margin-box")),
+        catalog: complete_grammar_catalog!("baseline.property.mask", "url(mask.png) center / contain no-repeat padding-box no-clip exclude alpha" => "url(\"mask.png\") center center / contain no-repeat padding-box no-clip exclude alpha", rejected("margin-box")),
         source: "S-MASKING1",
         dispatch: "url(mask.png) center / contain no-repeat",
         wrapper: yes,
@@ -1933,7 +1947,7 @@ property_records! {
     }
     MaskImage, "mask-image" {
         metadata: longhand(false, |v| assert!(matches!(v.images(), [CssImageValue::None]))),
-        catalog: complete_grammar_catalog!("baseline.property.mask-image", "url(mask.png), none", rejected("url(foo bar)")),
+        catalog: complete_grammar_catalog!("baseline.property.mask-image", "url(mask.png), none" => "url(\"mask.png\"), none", rejected("url(foo bar)")),
         source: "S-MASKING1",
         dispatch: "url(mask.png), none, linear-gradient(in lab, red 10% 20%, blue)",
         wrapper: yes,
@@ -1946,7 +1960,7 @@ property_records! {
             assert_eq!(x.literal_component(), Some(&CssComponentValue::try_token("0%").unwrap()));
             assert_eq!(y.literal_component(), Some(&CssComponentValue::try_token("0%").unwrap()));
         }),
-        catalog: complete_grammar_catalog!("baseline.property.mask-position", "center", rejected("left right")),
+        catalog: complete_grammar_catalog!("baseline.property.mask-position", "center" => "center center", rejected("left right")),
         source: "S-MASKING1",
         dispatch: "center",
         wrapper: yes,
@@ -1987,13 +2001,18 @@ property_records! {
     }
     MaskBorder, "mask-border" {
         metadata: shorthand([MaskBorderSource, MaskBorderSlice, MaskBorderWidth, MaskBorderOutset, MaskBorderRepeat, MaskBorderMode], []),
-        catalog: complete_grammar_catalog!("official.property.mask-border", "url(a) 1 2 fill / auto / 2 round alpha", rejected("fill 1")),
+        // Masking 1 (CRD 2021-08-05) §8.7: <'mask-border-slice'> [ /
+        // <'mask-border-width'>? [ / <'mask-border-outset'> ]? ]?, so the
+        // initial `auto` width may be omitted between the slashes while the
+        // outset stays, and the initial `alpha` mode may be omitted; CSSOM 1
+        // §6.7.2 omits both. Pinned in KNOWN_SERIALIZATION_DEFECTS.
+        catalog: complete_grammar_catalog!("official.property.mask-border", "url(a) 1 2 fill / auto / 2 round alpha" => "url(\"a\") 1 2 fill / / 2 round", rejected("fill 1")),
         source: "S-MASKING1", dispatch: "url(a) 1 2 fill / auto / 2 round alpha", wrapper: yes,
         inverse: ("none", "none"),
     }
     MaskBorderSource, "mask-border-source" {
         metadata: longhand(false, |v| assert!(matches!(v, CssImageValue::None))),
-        catalog: complete_grammar_catalog!("official.property.mask-border-source", "url(a)", rejected("none, url(a)")),
+        catalog: complete_grammar_catalog!("official.property.mask-border-source", "url(a)" => "url(\"a\")", rejected("none, url(a)")),
         source: "S-MASKING1", dispatch: "url(a)", wrapper: yes,
     }
     MaskBorderSlice, "mask-border-slice" {
@@ -2121,7 +2140,7 @@ property_records! {
                 assert_eq!(offset.origin(), &CssValueOrigin::Programmatic);
             }
         }),
-        catalog: grammar_catalog!("official.property.object-position", "bottom 2px right 5%", rejected("left 1px top"), "#propdef-object-position"),
+        catalog: grammar_catalog!("official.property.object-position", "bottom 2px right 5%" => "right 5% bottom 2px", rejected("left 1px top"), "#propdef-object-position"),
         source: "O-IMAGES3",
         dispatch: "right 5% bottom 2px",
         wrapper: yes,
@@ -2258,7 +2277,7 @@ property_records! {
     }
     Padding, "padding" {
         metadata: four_side(),
-        catalog: grammar_catalog!("baseline.property.padding", "1px 2% calc(3px + 4%) 0", rejected("auto")),
+        catalog: grammar_catalog!("baseline.property.padding", "1px 2% calc(3px + 4%) 0" => "1px 2% calc(4% + 3px) 0", rejected("auto")),
         dispatch: "1px 2% calc(3px + 4%) 0",
         wrapper: yes,
         inverse: ("1px 2px", "1px 2px"),
@@ -2286,7 +2305,7 @@ property_records! {
             *v,
             CssPaddingValue::new(CssSpecifiedNonNegativeLengthPercentage::zero())
         )),
-        catalog: grammar_catalog!("baseline.property.padding-bottom", "calc(3px + 4%)", rejected("auto")),
+        catalog: grammar_catalog!("baseline.property.padding-bottom", "calc(3px + 4%)" => "calc(4% + 3px)", rejected("auto")),
         dispatch: "calc(3px + 4%)",
         wrapper: yes,
         mapping: physical("padding"),
@@ -2354,7 +2373,7 @@ property_records! {
     }
     Perspective, "perspective" {
         metadata: longhand(false, |v| assert_eq!(*v, CssPerspective::None)),
-        catalog: grammar_catalog!("official.property.perspective", ".25px", rejected("-1e-999px")),
+        catalog: grammar_catalog!("official.property.perspective", ".25px" => "0.25px", rejected("-1e-999px")),
         source: "I-TRANSFORMS2",
         dispatch: "calc(1px - 2px)",
         wrapper: yes,
@@ -2468,7 +2487,7 @@ property_records! {
     }
     Scale, "scale" {
         metadata: longhand(false, |v| assert_eq!(*v, CssScale::None)),
-        catalog: grammar_catalog!("baseline.property.scale", "50% 2", rejected("solid")),
+        catalog: grammar_catalog!("baseline.property.scale", "50% 2" => "0.5 2", rejected("solid")),
         source: "I-TRANSFORMS2",
         dispatch: "1.5 2",
         wrapper: yes,
@@ -2645,7 +2664,7 @@ property_records! {
             };
             assert!(exact_literal(number.literal_component(), "8"));
         }),
-        catalog: grammar_catalog!("ext.property.tab-size", "calc(2 + 3)", rejected("-1e-999")),
+        catalog: grammar_catalog!("ext.property.tab-size", "calc(2 + 3)" => "calc(5)", rejected("-1e-999")),
         source: "X-TEXT4",
         wrapper: yes,
     }
@@ -2673,7 +2692,7 @@ property_records! {
     }
     TextAutospace, "text-autospace" {
         metadata: longhand(true, |v| assert_eq!(*v, CssTextAutospace::Normal)),
-        catalog: grammar_catalog!("ext.property.text-autospace", "replace punctuation ideograph-alpha", rejected("ideograph-alpha insert punctuation")),
+        catalog: grammar_catalog!("ext.property.text-autospace", "replace punctuation ideograph-alpha" => "ideograph-alpha punctuation replace", rejected("ideograph-alpha insert punctuation")),
         source: "X-TEXT4",
         dispatch: "replace punctuation ideograph-alpha",
         wrapper: yes,
@@ -2682,7 +2701,7 @@ property_records! {
     // contributes exact <text-edge> grammar. Normative edge inheritance is yes.
     TextBox, "text-box" {
         metadata: shorthand([TextBoxTrim, TextBoxEdge], []),
-        catalog: complete_grammar_catalog!("official.property.text-box", "cap alphabetic trim-end", rejected("both")),
+        catalog: complete_grammar_catalog!("official.property.text-box", "cap alphabetic trim-end" => "trim-end cap alphabetic", rejected("both")),
         source: "F-INLINE3-20241218",
         dispatch: "cap alphabetic trim-end",
         wrapper: yes,
@@ -2709,7 +2728,7 @@ property_records! {
     }
     TextDecoration, "text-decoration" {
         metadata: shorthand([TextDecorationLine, TextDecorationThickness, TextDecorationStyle, TextDecorationColor], []),
-        catalog: grammar_catalog!("baseline.property.text-decoration", "underline dotted white 3px", rejected("underline underline")),
+        catalog: grammar_catalog!("baseline.property.text-decoration", "underline dotted white 3px" => "underline 3px dotted white", rejected("underline underline")),
         source: "X-TEXTDECOR4",
         dispatch: "underline dotted white 3px",
         wrapper: yes,
@@ -2774,7 +2793,7 @@ property_records! {
     }
     TextDecorationSkipSpaces, "text-decoration-skip-spaces" {
         metadata: longhand(true, |v| assert_eq!(*v, CssTextDecorationSkipSpaces::StartEnd)),
-        catalog: grammar_catalog!("ext.property.text-decoration-skip-spaces", "end start", rejected("start start")),
+        catalog: grammar_catalog!("ext.property.text-decoration-skip-spaces", "end start" => "start end", rejected("start start")),
         source: "X-TEXTDECOR4",
         dispatch: "end start",
         wrapper: yes,
@@ -2788,7 +2807,7 @@ property_records! {
     }
     TextEmphasis, "text-emphasis" {
         metadata: shorthand([TextEmphasisStyle, TextEmphasisColor], []),
-        catalog: grammar_catalog!("ext.property.text-emphasis", "red open triangle", rejected("red blue")),
+        catalog: grammar_catalog!("ext.property.text-emphasis", "red open triangle" => "open triangle red", rejected("red blue")),
         source: "X-TEXTDECOR4",
         dispatch: "red open triangle",
         wrapper: yes,
@@ -2796,42 +2815,42 @@ property_records! {
     }
     TextEmphasisStyle, "text-emphasis-style" {
         metadata: longhand(true, |v| assert_eq!(*v, CssTextEmphasisStyle::None)),
-        catalog: grammar_catalog!("ext.property.text-emphasis-style", "'hello'", rejected("dot circle")),
+        catalog: grammar_catalog!("ext.property.text-emphasis-style", "'hello'" => "\"hello\"", rejected("dot circle")),
         source: "X-TEXTDECOR4",
         dispatch: "filled dot",
         wrapper: yes,
     }
     TextEmphasisColor, "text-emphasis-color" {
         metadata: longhand(true, |v| assert!(v.is_current_color())),
-        catalog: grammar_catalog!("ext.property.text-emphasis-color", "light-dark(red,blue)", rejected("red blue")),
+        catalog: grammar_catalog!("ext.property.text-emphasis-color", "light-dark(red,blue)" => "light-dark(red, blue)", rejected("red blue")),
         source: "X-TEXTDECOR4",
         dispatch: "light-dark(red,blue)",
         wrapper: yes,
     }
     TextEmphasisPosition, "text-emphasis-position" {
         metadata: longhand(true, |v| { assert_eq!(v.vertical(), CssTextEmphasisVertical::Over); assert_eq!(v.side(), Some(CssTextSide::Right)); assert_eq!(v.effective_side(), CssTextSide::Right); }),
-        catalog: grammar_catalog!("ext.property.text-emphasis-position", "left under", rejected("right")),
+        catalog: grammar_catalog!("ext.property.text-emphasis-position", "left under" => "under left", rejected("right")),
         source: "X-TEXTDECOR4",
         dispatch: "left under",
         wrapper: yes,
     }
     TextEmphasisSkip, "text-emphasis-skip" {
         metadata: longhand(true, |v| { assert!(v.spaces()); assert!(v.punctuation()); assert!(!v.symbols()); assert!(!v.narrow()); }),
-        catalog: grammar_catalog!("ext.property.text-emphasis-skip", "narrow symbols spaces", rejected("spaces spaces")),
+        catalog: grammar_catalog!("ext.property.text-emphasis-skip", "narrow symbols spaces" => "spaces symbols narrow", rejected("spaces spaces")),
         source: "X-TEXTDECOR4",
         dispatch: "narrow symbols spaces",
         wrapper: yes,
     }
     TextShadow, "text-shadow" {
         metadata: longhand(true, |v| assert_eq!(*v, CssTextShadow::None)),
-        catalog: grammar_catalog!("ext.property.text-shadow", "inset red 1px 2px 3px 4px", rejected("1px 2px 0px -1px")),
+        catalog: grammar_catalog!("ext.property.text-shadow", "inset red 1px 2px 3px 4px" => "red 1px 2px 3px 4px inset", rejected("1px 2px 0px -1px")),
         source: "X-TEXTDECOR4",
         dispatch: "inset red 1px 2px 3px 4px",
         wrapper: yes,
     }
     TextUnderlinePosition, "text-underline-position" {
         metadata: longhand(true, |v| assert_eq!(*v, CssTextUnderlinePosition::Auto)),
-        catalog: grammar_catalog!("ext.property.text-underline-position", "left from-font", rejected("auto left")),
+        catalog: grammar_catalog!("ext.property.text-underline-position", "left from-font" => "from-font left", rejected("auto left")),
         source: "X-TEXTDECOR4",
         dispatch: "left from-font",
         wrapper: yes,
@@ -2863,7 +2882,10 @@ property_records! {
     }
     TextJustify, "text-justify" {
         metadata: longhand(true, |v| assert_eq!(*v, CssTextJustify::auto())),
-        catalog: grammar_catalog!("ext.property.text-justify", "no-compress distribute", rejected("ruby auto")),
+        // Text 3 (CRD 2026-08-14) §6.4: `distribute` computes to
+        // inter-character and UAs "may" treat it as a legacy value alias, so the
+        // specified value may keep `distribute`.
+        catalog: grammar_catalog!("ext.property.text-justify", "no-compress distribute" => "distribute no-compress", rejected("ruby auto")),
         source: "X-TEXT4",
         dispatch: "no-compress distribute",
         wrapper: yes,
@@ -2880,7 +2902,7 @@ property_records! {
     }
     TextSpacing, "text-spacing" {
         metadata: shorthand([TextSpacingTrim, TextAutospace], []),
-        catalog: grammar_catalog!("ext.property.text-spacing", "replace punctuation ideograph-alpha trim-both", rejected("ideograph-alpha trim-start punctuation")),
+        catalog: grammar_catalog!("ext.property.text-spacing", "replace punctuation ideograph-alpha trim-both" => "trim-both ideograph-alpha punctuation replace", rejected("ideograph-alpha trim-start punctuation")),
         source: "X-TEXT4",
         dispatch: "replace punctuation ideograph-alpha trim-both",
         wrapper: yes,
@@ -2966,7 +2988,7 @@ property_records! {
     }
     Transition, "transition" {
         metadata: shorthand([TransitionProperty, TransitionDuration, TransitionTimingFunction, TransitionDelay], []),
-        catalog: grammar_catalog!("baseline.property.transition", "opacity 150ms ease-in 20ms, transform 2s linear", rejected("opacity 1s 2s 3s")),
+        catalog: grammar_catalog!("baseline.property.transition", "opacity 150ms ease-in 20ms, transform 2s linear" => "opacity 0.15s ease-in 0.02s, transform 2s linear", rejected("opacity 1s 2s 3s")),
         source: "I-TRANSITIONS1",
         dispatch: "opacity 150ms ease-in 20ms, transform 2s linear",
         wrapper: yes,
@@ -2979,7 +3001,7 @@ property_records! {
             assert_eq!(literal.numeric().representation(), "0");
             assert_eq!(literal.unit(), CssTimeUnit::Seconds);
         }),
-        catalog: grammar_catalog!("baseline.property.transition-delay", "20ms", rejected("10px")),
+        catalog: grammar_catalog!("baseline.property.transition-delay", "20ms" => "0.02s", rejected("10px")),
         dispatch: "20ms",
         wrapper: yes,
     }
@@ -2990,7 +3012,7 @@ property_records! {
             assert_eq!(literal.numeric().representation(), "0");
             assert_eq!(literal.unit(), CssTimeUnit::Seconds);
         }),
-        catalog: grammar_catalog!("baseline.property.transition-duration", "150ms, 2s", rejected("10px")),
+        catalog: grammar_catalog!("baseline.property.transition-duration", "150ms, 2s" => "0.15s, 2s", rejected("10px")),
         dispatch: "150ms, 2s",
         wrapper: yes,
     }
@@ -3116,7 +3138,7 @@ property_records! {
     }
     WhiteSpaceTrim, "white-space-trim" {
         metadata: longhand(false, |v| assert_eq!(*v, CssWhiteSpaceTrim::none())),
-        catalog: grammar_catalog!("ext.property.white-space-trim", "discard-after discard-before", rejected("discard-before discard-before")),
+        catalog: grammar_catalog!("ext.property.white-space-trim", "discard-after discard-before" => "discard-before discard-after", rejected("discard-before discard-before")),
         source: "X-TEXT4",
         dispatch: "discard-inner discard-before",
         wrapper: yes,
@@ -3156,7 +3178,7 @@ property_records! {
     }
     WordSpaceTransform, "word-space-transform" {
         metadata: longhand(true, |v| assert_eq!(*v, CssWordSpaceTransform::None)),
-        catalog: grammar_catalog!("ext.property.word-space-transform", "auto-phrase ideographic-space", rejected("auto-phrase")),
+        catalog: grammar_catalog!("ext.property.word-space-transform", "auto-phrase ideographic-space" => "ideographic-space auto-phrase", rejected("auto-phrase")),
         source: "X-TEXT4",
         wrapper: yes,
     }

@@ -60,6 +60,11 @@ pub enum Adapter {
     HostSelector,
     IsSelector,
     LangSelector,
+    /// `:matches()`, whose cases are expected to reject as outside the
+    /// selected profile: Selectors 4 (WD 2026-01-22,
+    /// `references/selectors-4--WD-selectors-4-20260122--5d3b3f7e1fcc.md`)
+    /// §4.2 lets UAs "additionally implement this obsolete name as a legacy
+    /// selector alias" for `:is()`, which permits but does not require it.
     MatchesSelector,
     NotSelector,
     SlottedSelector,

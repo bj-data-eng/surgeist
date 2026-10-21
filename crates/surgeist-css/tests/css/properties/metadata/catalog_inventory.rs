@@ -143,12 +143,53 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
     }
 }
 
+/// Positive vectors whose current specified serialization keeps a component
+/// that CSSOM 1 (WD 2021-08-26) §6.7.2 omits because omitting it does not
+/// change the meaning, with that current serialization. Each record states
+/// the spec form and its basis:
+///
+/// - `place-items`: Box Alignment 3 (WD 2026-01-30) §7.3 copies an omitted
+///   `<'justify-items'>` from `<'align-items'>`, giving `stretch`.
+/// - `background-size`: Backgrounds 3 §2.9, omitted second size is `auto`.
+/// - `counter-increment`: Lists 3 §4.2, omitted integer is 1.
+/// - `font-feature-settings`: Fonts 4 §6.12, `on` and an omitted value are 1.
+/// - `shape-outside`: Shapes 1 §6.1, omitted box is margin-box.
+/// - `mask-border`: Masking 1 §8.7, initial `auto` width and `alpha` mode.
+const KNOWN_SERIALIZATION_DEFECTS: &[(&str, &str)] = &[
+    (
+        "baseline.property.place-items",
+        "place-items: stretch stretch;",
+    ),
+    (
+        "baseline.property.background-size",
+        "background-size: cover, 10px auto;",
+    ),
+    (
+        "baseline.property.counter-increment",
+        "counter-increment: section 1;",
+    ),
+    (
+        "baseline.property.font-feature-settings",
+        "font-feature-settings: \"kern\" on, \"liga\" 0;",
+    ),
+    (
+        "official.property.shape-outside",
+        "shape-outside: circle(50%) margin-box;",
+    ),
+    (
+        "official.property.mask-border",
+        "mask-border: url(\"a\") 1 2 fill / auto / 2 round alpha;",
+    ),
+];
+
 #[test]
 fn authored_property_cases_exercise_public_parser_behavior() {
+    let mut serialization_mismatches = Vec::new();
     for case in CASES {
         let Some(CatalogExpectation::Grammar {
             feature_id,
             positive,
+            serialization,
             boundary,
             ..
         }) = &case.catalog
@@ -194,6 +235,24 @@ fn authored_property_cases_exercise_public_parser_behavior() {
         assert_eq!(known.property(), case.property);
         assert_eq!(known.property().canonical_name(), case.name);
         assert_eq!(known.property().stable_id(), *feature_id);
+        // The parsed value, not only its acceptance: CSSOM 1 (WD 2021-08-26)
+        // §6.7.2 serializes the declaration as `name: value;`, with the value
+        // in the specified serialization each record states.
+        let expected = format!("{}: {};", case.name, serialization.unwrap_or(positive));
+        let actual = declaration.to_specified_css().unwrap();
+        if let Some((_, current)) = KNOWN_SERIALIZATION_DEFECTS
+            .iter()
+            .find(|(id, _)| id == feature_id)
+        {
+            // The defect stays pinned: a fix fails here until its entry goes.
+            assert_ne!(
+                actual, expected,
+                "{feature_id} defect is fixed; remove its entry"
+            );
+            assert_eq!(actual, *current, "{feature_id} current serialization");
+        } else if actual != expected {
+            serialization_mismatches.push(format!("{feature_id}: `{actual}` != `{expected}`"));
+        }
 
         let negative = boundary.authored;
         if case.name == "all" {
@@ -258,6 +317,12 @@ fn authored_property_cases_exercise_public_parser_behavior() {
         assert_eq!(detail.property().canonical_name(), case.name);
         assert_eq!(detail.property().stable_id(), *feature_id);
     }
+    assert!(
+        serialization_mismatches.is_empty(),
+        "{} positive vectors differ from their specified serialization:\n{}",
+        serialization_mismatches.len(),
+        serialization_mismatches.join("\n")
+    );
 }
 
 #[test]

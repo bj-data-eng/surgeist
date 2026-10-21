@@ -1,12 +1,7 @@
 //! Exact retained payloads remain owned; finite RGB output uses Color4 legacy commas.
 #![forbid(unsafe_code)]
 
-use stats_alloc::{INSTRUMENTED_SYSTEM, Region, StatsAlloc};
-use std::alloc::System;
 use surgeist_css::*;
-
-#[global_allocator]
-static GLOBAL: &StatsAlloc<System> = &INSTRUMENTED_SYSTEM;
 
 fn color(declaration: &CssDeclaration) -> &CssColor {
     let CssKnownPropertyValueRef::Color(value) =
@@ -120,40 +115,13 @@ fn recovered_source_closures_are_retained_and_checked_property_admission_stays_s
 }
 
 #[test]
-fn report_completed_public_color_construction_allocation_separately_from_transport() {
-    const TEST: &str =
-        "report_completed_public_color_construction_allocation_separately_from_transport";
-    const CHILD: &str = "SURGEIST_CSS_COMPONENT_BORROW_PUBLIC_ALLOCATION_CHILD";
-    if std::env::var(CHILD).as_deref() != Ok(TEST) {
-        let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", TEST, "--nocapture"])
-            .env(CHILD, TEST)
-            .stdin(std::process::Stdio::null())
-            .output()
-            .unwrap();
-        assert!(
-            output.status.success(),
-            "{}\n{}\n{}",
-            output.status,
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-        print!(
-            "{}{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-        return;
-    }
+fn completed_public_color_construction_resolves_nested_calculations_to_legacy_rgb() {
+    // Values 4 (WD 2024-03-12) §10: max(2, min(3, 4)) is 3, so the red channel
+    // is 4; Color 4 (CRD 2026-09-08) §16.2 serializes an sRGB specified value
+    // in the legacy comma form.
     let values = parse_component_values("rgb(calc(1 + max(2, min(3,4))) 5 6)").unwrap();
-    let region = Region::new(GLOBAL);
     let result = checked(values);
-    let stats = region.change();
     assert_eq!(color(&result).to_specified_css().unwrap(), "rgb(4, 5, 6)");
-    eprintln!(
-        "completed public nested RGB: allocations={}, reallocations={}, bytes_allocated={}, bytes_reallocated={}; includes required owned public result retention",
-        stats.allocations, stats.reallocations, stats.bytes_allocated, stats.bytes_reallocated
-    );
 }
 
 #[test]

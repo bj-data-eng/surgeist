@@ -101,6 +101,27 @@ fn serialized_argument(
     original_argument(origin, input, source, spelling);
 }
 
+/// The valid retry `src("#asset" integrity("hash"))` is admitted as written:
+/// Values 5 §4.1.1 gives `src()` one `<string>` target and the recognized
+/// `integrity()` modifier one `<string>` argument, kept in authored order. Its
+/// argument keeps the origin of the detached replacement it came from.
+fn assert_retried_url(url: &CssUrl, source: &str, input: &CssComponentValues) {
+    assert_eq!(url.function(), CssUrlFunction::Src);
+    assert_eq!(url.as_str(), "#asset");
+    let [CssUrlModifier::Function(modifier)] = url.modifiers() else {
+        panic!("one functional request modifier: {:?}", url.modifiers());
+    };
+    assert_eq!(modifier.name(), "integrity");
+    assert_eq!(
+        url.serialize_specified().unwrap(),
+        "src(\"#asset\" integrity(\"hash\"))"
+    );
+    let [argument] = modifier.argument_components().items() else {
+        panic!("one integrity argument");
+    };
+    original_argument(argument.origin(), input, source, "\"hash\"");
+}
+
 fn property_text(property: CssKnownProperty, url: &str) -> String {
     if property == CssKnownProperty::Cursor {
         format!("{url}, auto")
@@ -286,8 +307,26 @@ fn detached_property_reentry_rejects_with_original_origin_and_allows_valid_retry
         serialized_argument(error.origin(), &input, &source, opening);
         assert!(pending.source().same_occurrence(&authored));
     }
-    let (_, valid) = detached("src(\"#asset\" integrity(\"hash\"))");
-    assert!(pending.reenter(valid).is_ok());
+    let (source, valid) = detached("src(\"#asset\" integrity(\"hash\"))");
+    let CssContributions::Longhands(values) = pending.reenter(valid.clone()).unwrap() else {
+        panic!("completed background-image contribution")
+    };
+    let [contribution] = values.items() else {
+        panic!("one longhand contribution");
+    };
+    assert!(contribution.source().same_occurrence(&authored));
+    assert_eq!(contribution.replacement_components(), Some(&valid));
+    let CssLonghandValueRef::BackgroundImage(images) = contribution
+        .ordinary_value()
+        .expect("ordinary value")
+        .view()
+    else {
+        panic!("background-image value");
+    };
+    let [CssImageValue::Url(url)] = images.images() else {
+        panic!("one URL image: {:?}", images.images());
+    };
+    assert_retried_url(url, &source, &valid);
 }
 
 #[test]
@@ -312,8 +351,12 @@ fn detached_profile_reentry_rejects_with_original_origin_and_allows_valid_retry(
             CssColorProfileDescriptorValueRef::Pending(_)
         ));
     }
-    let (_, valid) = detached("src(\"#asset\" integrity(\"hash\"))");
-    assert!(pending.reparse_after_substitution(valid).is_ok());
+    let (source, valid) = detached("src(\"#asset\" integrity(\"hash\"))");
+    let retried = pending.reparse_after_substitution(valid.clone()).unwrap();
+    let CssColorProfileDescriptorValueRef::Src(url) = retried.view() else {
+        panic!("ordinary profile source");
+    };
+    assert_retried_url(url, &source, &valid);
 }
 
 #[test]
@@ -337,8 +380,16 @@ fn detached_font_reentry_rejects_with_original_origin_and_allows_valid_retry() {
         ));
         serialized_argument(error.origin(), &input, &source, opening);
     }
-    let (_, valid) = detached("src(\"#asset\" integrity(\"hash\"))");
-    assert!(pending.reparse_after_substitution(valid).is_ok());
+    let (source, valid) = detached("src(\"#asset\" integrity(\"hash\"))");
+    let CssFontFaceDescriptorValue::Src(sources) =
+        pending.reparse_after_substitution(valid.clone()).unwrap()
+    else {
+        panic!("ordinary font source list");
+    };
+    let [CssFontFaceSource::Url(font_source)] = sources.sources() else {
+        panic!("one URL font source: {:?}", sources.sources());
+    };
+    assert_retried_url(font_source.url(), &source, &valid);
 }
 
 #[test]
@@ -363,6 +414,16 @@ fn detached_counter_reentry_rejects_with_original_origin_and_allows_valid_retry(
             CssCounterStyleDescriptorValueRef::Pending(_)
         ));
     }
-    let (_, valid) = detached("src(\"#asset\" integrity(\"hash\"))");
-    assert!(pending.reparse_after_substitution(valid).is_ok());
+    let (source, valid) = detached("src(\"#asset\" integrity(\"hash\"))");
+    let retried = pending.reparse_after_substitution(valid.clone()).unwrap();
+    let CssCounterStyleDescriptorValueRef::Symbols(symbols) = retried.view() else {
+        panic!("ordinary counter symbols");
+    };
+    let [CssCounterSymbol::Image(image)] = symbols.symbols() else {
+        panic!("one image symbol: {:?}", symbols.symbols());
+    };
+    let CssImageValue::Url(url) = image.value() else {
+        panic!("URL image symbol");
+    };
+    assert_retried_url(url, &source, &valid);
 }

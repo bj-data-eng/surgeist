@@ -51,23 +51,11 @@ fn retained_whitespace_bytes(nested: bool, length: usize) -> usize {
 fn flat_and_nested_leaves_allocate_only_the_retained_spelling() {
     const TEST: &str = "component_values::parse::spelling_allocation_tests::flat_and_nested_leaves_allocate_only_the_retained_spelling";
     const CHILD: &str = "SURGEIST_COMPONENT_SPELLING_ALLOCATION_CHILD";
-    if std::env::var(CHILD).as_deref() != Ok(TEST) {
-        let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", TEST, "--nocapture"])
-            .env(CHILD, TEST)
-            .stdin(std::process::Stdio::null())
-            .output()
-            .unwrap();
-        assert!(
-            output.status.success(),
-            "isolated spelling allocation witness: {}\n{}\n{}",
-            output.status,
-            String::from_utf8(output.stdout).unwrap(),
-            String::from_utf8(output.stderr).unwrap(),
-        );
-        return;
-    }
+    const COMPLETED: &str = "spelling allocation bound checked";
+    crate::test_support::run_in_isolated_child(TEST, CHILD, COMPLETED, check_spelling_growth);
+}
 
+fn check_spelling_growth() {
     let small = 128;
     let large = 65_536;
     // Only one retained leaf spelling grows; component counts and group shape

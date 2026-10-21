@@ -15,7 +15,23 @@ fn actions(source: &str) -> Vec<CssRecoveryAction> {
 fn recovery_front_doors_retain_valid_siblings() {
     let sheet_source = ".before { color: red; } @unknown x; .middle { mystery: 1; width: 2px; } ??? { color: black; } .after { height: 3px; }";
     let sheet = parse_sheet(sheet_source);
-    assert_eq!(sheet.syntax().rules().len(), 3, "retained rules");
+    // Syntax 3 (CRD 2026-10-01) §5.5 drops only the invalid at-rule, the
+    // unknown declaration and the rule with an invalid prelude; CSSOM 1
+    // (WD 2021-08-26) §6.7.2 serializes each retained style rule.
+    assert_eq!(
+        sheet
+            .syntax()
+            .rules()
+            .iter()
+            .map(|rule| rule.to_specified_css().unwrap())
+            .collect::<Vec<_>>(),
+        [
+            ".before { color: red; }",
+            ".middle { width: 2px; }",
+            ".after { height: 3px; }",
+        ],
+        "retained rules"
+    );
     assert_eq!(sheet.diagnostics().len(), 3, "diagnosed units");
     assert_eq!(
         sheet
@@ -32,7 +48,16 @@ fn recovery_front_doors_retain_valid_siblings() {
     );
 
     let attribute = parse_style_attribute("color: red; broken; width: 2px");
-    assert_eq!(attribute.syntax().len(), 2, "style retention");
+    assert_eq!(
+        attribute
+            .syntax()
+            .as_slice()
+            .iter()
+            .map(|declaration| declaration.to_specified_css().unwrap())
+            .collect::<Vec<_>>(),
+        ["color: red;", "width: 2px;"],
+        "style retention"
+    );
     assert_eq!(attribute.diagnostics().len(), 1, "style recovery");
     assert_eq!(
         attribute.diagnostics()[0].action(),
