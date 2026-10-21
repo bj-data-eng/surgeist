@@ -14,6 +14,7 @@ pub(super) struct Ready {
     pub(super) sheet: CssomSheetId,
     pub(super) revision: CssomRevision,
     pub(super) association: DomStyleSheet,
+    pub(super) notification: Option<DomParsedHtmlStyleNotificationContinuation>,
 }
 pub(super) fn ready(source: &str, limits: DomParsedHtmlAssociationLimits) -> Ready {
     let (mut dom, env) = setup();
@@ -65,6 +66,7 @@ pub(super) fn ready(source: &str, limits: DomParsedHtmlAssociationLimits) -> Rea
         sheet,
         revision,
         association,
+        notification: None,
     }
 }
 fn unchanged_sheet_and_pending(value: &Ready) {
@@ -114,7 +116,11 @@ fn absent_empty_and_ascii_whitespace_media_use_original_head_body_gate_and_real_
                 .dom
                 .begin_parsed_html_style(value.id, envelope(), &flag())
                 .unwrap()
-                .process_rendering(&value.q, &flag())
+                .process_rendering(
+                    &value.q,
+                    surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+                    &flag(),
+                )
                 .unwrap();
             let DomParsedHtmlStyleRenderingProgress::Complete(done) = progress else {
                 panic!("unconditional media must finish this invocation")
@@ -140,7 +146,11 @@ fn absent_empty_and_ascii_whitespace_media_use_original_head_body_gate_and_real_
                 .begin_parsed_html_style(value.id, envelope(), &flag())
                 .unwrap();
             assert!(matches!(
-                hold.process_rendering(&value.q, &flag()),
+                hold.process_rendering(
+                    &value.q,
+                    surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+                    &flag()
+                ),
                 Err(DomParsedHtmlStyleError::WrongPhase {
                     phase: DomParsedHtmlStylePhase::RenderingComplete
                 })
@@ -166,7 +176,11 @@ fn nontrivial_media_keeps_original_cursor_pending_without_guessing_a_match() {
                     .dom
                     .begin_parsed_html_style(value.id, envelope(), &flag())
                     .unwrap()
-                    .process_rendering(&value.q, &flag())
+                    .process_rendering(
+                        &value.q,
+                        surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+                        &flag()
+                    )
                     .unwrap(),
                 DomParsedHtmlStyleRenderingProgress::Pending(
                     DomParsedHtmlStyleRenderingRequirement::MediaEnvironment
@@ -197,17 +211,29 @@ fn cancellation_wrong_qualification_and_final_output_refusal_preserve_same_origi
             .begin_parsed_html_style(value.id, limits, &flag())
             .unwrap();
         assert!(matches!(
-            hold.process_rendering(&other.q, &flag()),
+            hold.process_rendering(
+                &other.q,
+                surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+                &flag()
+            ),
             Err(DomParsedHtmlStyleError::WrongRequest)
         ));
         assert!(matches!(
-            hold.process_rendering(&value.q, &AtomicBool::new(true)),
+            hold.process_rendering(
+                &value.q,
+                surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+                &AtomicBool::new(true)
+            ),
             Err(DomParsedHtmlStyleError::Admission(
                 DomParsedHtmlAssociationAdmissionError::Dom(DomError::Cancelled)
             ))
         ));
         assert!(matches!(
-            hold.process_rendering(&value.q, &flag()),
+            hold.process_rendering(
+                &value.q,
+                surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+                &flag()
+            ),
             Err(DomParsedHtmlStyleError::Admission(
                 DomParsedHtmlAssociationAdmissionError::Dom(DomError::ResourceLimit {
                     resource: DomResource::ParsedAssociationProcessingOutputs,
@@ -233,7 +259,12 @@ fn cancellation_wrong_qualification_and_final_output_refusal_preserve_same_origi
         .unwrap();
     assert!(hold.spent_work() > spent);
     assert!(matches!(
-        hold.process_rendering(&value.q, &flag()).unwrap(),
+        hold.process_rendering(
+            &value.q,
+            surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+            &flag()
+        )
+        .unwrap(),
         DomParsedHtmlStyleRenderingProgress::Complete(_)
     ));
 }
@@ -256,7 +287,11 @@ fn actual_pending_adoption_guard_preserves_live_destination_and_original_qualifi
         .dom
         .begin_parsed_html_style(value.id, envelope(), &flag())
         .unwrap()
-        .process_rendering(&value.q, &flag())
+        .process_rendering(
+            &value.q,
+            surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+            &flag(),
+        )
         .unwrap();
     let DomParsedHtmlStyleRenderingProgress::Complete(done) = result else {
         panic!("original destination remains eligible")

@@ -56,6 +56,7 @@ pub struct DomParsedHtmlStyleSheetRetirement {
     _history: history::Retirement,
     _cssom: CssomCommitRetirement,
     _request: DomParsedHtmlStyleCreateSheetRequest,
+    _order: Vec<crate::DomStyleSheetPlacement>,
     _snapshot: CssomSnapshot,
     _admission: control::Admission,
     _meter: Meter,
@@ -114,6 +115,7 @@ pub struct DomParsedHtmlStyleSheetPreparation<'hold, 'dom, 'caps> {
     batch: Option<CssomBatch>,
     media: Option<Media>,
     request: DomParsedHtmlStyleCreateSheetRequest,
+    order: Vec<crate::DomStyleSheetPlacement>,
     meter: Meter,
 }
 fn wrong_phase(graph: Option<&Graph>) -> DomParsedHtmlStyleError {
@@ -165,6 +167,7 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
             super::successor::qualify_creation(&self.meter, original, previous, cancel)?;
         }
         drop(completed);
+        frontier::ensure_next(self.dom, &self.meter, original.qualification(), cancel)?;
         let document = original.qualification.document();
         self.dom.snapshot().document(document)?;
         if self.dom.pending_associations.document(document) != Some(self.meter.entry().id) {
@@ -199,12 +202,7 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
             },
         })?;
         let snapshot = store.snapshot();
-        // This initial invocation or its authenticated same-Style successor has
-        // no currently registered predecessor. No unexplained external
-        // sheet may be discarded merely to force that original membership.
-        if !snapshot.sheets().is_empty() {
-            return Err(DomParsedHtmlStyleError::InvalidSheetInput.into());
-        }
+        let order = membership(self.dom, &meter, original, &snapshot, cancel)?;
         let batch = store
             .batch(CssomEditGuard::from_snapshot(&snapshot))
             .map_err(|error| Error::Cssom {
@@ -221,9 +219,110 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
             batch: Some(batch),
             media: None,
             request,
+            order,
             meter,
         })
     }
+}
+/// The original row determines placement; current canonical associations and
+/// the exclusive actual producer list determine Existing, never reconstruction.
+fn membership(
+    dom: &Dom,
+    meter: &Meter,
+    original: &DomParsedHtmlStyleInlinePolicyRequest,
+    snapshot: &CssomSnapshot,
+    cancel: &AtomicBool,
+) -> Result<Vec<crate::DomStyleSheetPlacement>, DomParsedHtmlStyleError> {
+    let mut rows = meter.entry().report.value().value.pending_associations();
+    let row = loop {
+        meter.step(cancel)?;
+        match rows.advance() {
+            Step::Occurrence(row) if row.id() == *original.qualification.occurrence() => break row,
+            Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest),
+            _ => (),
+        }
+    };
+    let inputs = row.style().ok_or(DomParsedHtmlStyleError::WrongRequest)?;
+    let view = dom.snapshot();
+    let mut order = Vec::new();
+    let mut this = 0usize;
+    let mut existing = 0usize;
+    for i in 0..inputs.sheet_order_len() {
+        meter.step(cancel)?;
+        let subject = inputs.sheet_order(i).expect("sealed original order").id();
+        if subject == *original.qualification.subject() {
+            this += 1;
+            meter.reserve(&mut order, 1, cancel)?;
+            order.push(crate::DomStyleSheetPlacement::ThisStyle);
+            continue;
+        }
+        let mut node = None;
+        for binding in meter.entry().bindings.iter() {
+            meter.step(cancel)?;
+            if binding.source == subject {
+                node = Some(binding.node);
+                break;
+            }
+        }
+        let id = node.ok_or(DomParsedHtmlStyleError::InvalidSheetInput)?;
+        let node = view.node(id)?;
+        let style = node
+            .as_style()
+            .ok_or(DomParsedHtmlStyleError::InvalidSheetInput)?;
+        if node.node.document() != original.qualification.document() {
+            return Err(DomParsedHtmlStyleError::InvalidSheetInput);
+        }
+        if style.state().availability == crate::DomStyleSheetAvailability::Established {
+            if style.state().sheet.is_some() || style.state().next_association != 0 {
+                return Err(DomParsedHtmlStyleError::InvalidSheetInput);
+            }
+            // A source-qualified no-effect Style can precede the selected
+            // subject in the original order. It belongs to the established-null
+            // domain, not an unprocessed influencing or native sheet domain.
+            let mut history = meter.entry().report.value().value.pending_associations();
+            let mut original_inputs = false;
+            loop {
+                meter.step(cancel)?;
+                match history.advance() {
+                    Step::Occurrence(prior) if prior.subject().id() == subject => {
+                        original_inputs |= prior.style().is_some();
+                        if prior.requires_processing() {
+                            return Err(DomParsedHtmlStyleError::InvalidSheetInput);
+                        }
+                    }
+                    Step::Complete => break,
+                    _ => (),
+                }
+            }
+            if !original_inputs {
+                return Err(DomParsedHtmlStyleError::InvalidSheetInput);
+            }
+            continue;
+        }
+        if let Some(sheet) = style.state().sheet.as_ref() {
+            if sheet.root() != original.qualification.document().node()
+                || sheet.association().element() != id
+            {
+                return Err(DomParsedHtmlStyleError::InvalidSheetInput);
+            }
+            if snapshot.sheets().get(existing) != Some(sheet.id()) {
+                return Err(DomParsedHtmlStyleError::InvalidSheetInput);
+            }
+            let actual = snapshot
+                .sheet(sheet.id())
+                .map_err(|_| DomParsedHtmlStyleError::InvalidSheetInput)?;
+            if actual.inputs().owner.is_none() {
+                return Err(DomParsedHtmlStyleError::InvalidSheetInput);
+            }
+            existing += 1;
+            meter.reserve(&mut order, 1, cancel)?;
+            order.push(crate::DomStyleSheetPlacement::Existing(sheet.id().clone()));
+        }
+    }
+    if this != 1 || existing != snapshot.sheets().len() {
+        return Err(DomParsedHtmlStyleError::InvalidSheetInput);
+    }
+    Ok(order)
 }
 fn form_request(
     dom: &Dom,
@@ -604,16 +703,25 @@ impl<'caps> DomParsedHtmlStyleSheetPreparation<'_, '_, 'caps> {
             .media
             .take()
             .ok_or(DomParsedHtmlStyleError::InvalidSheetInput)?;
+        let mut targets = Vec::new();
+        self.meter.reserve(&mut targets, self.order.len(), cancel)?;
+        for placement in &self.order {
+            self.meter.step(cancel)?;
+            targets.push(match placement {
+                crate::DomStyleSheetPlacement::Existing(id) => {
+                    surgeist_cssom::CssomSheetListTarget::Existing(id)
+                }
+                crate::DomStyleSheetPlacement::ThisStyle => {
+                    surgeist_cssom::CssomSheetListTarget::Created(media.construction.ticket())
+                }
+            });
+        }
         self.batch
             .as_mut()
             .ok_or(DomParsedHtmlStyleError::InvalidSheetInput)?
-            .set_sheet_list_membership(
-                self.snapshot.sheet_list(),
-                &[surgeist_cssom::CssomSheetListTarget::Created(
-                    media.construction.ticket(),
-                )],
-            )
+            .set_sheet_list_membership(self.snapshot.sheet_list(), &targets)
             .map_err(|error| Error::Cssom { root, error })?;
+        drop(targets);
         // All consumer-owned output/retirement headers exist before the native
         // registry baseline. Their represented graphs stay in these same owners.
         self.meter.retain(
@@ -737,6 +845,7 @@ impl<'caps> DomParsedHtmlStyleSheetPreparation<'_, '_, 'caps> {
             _history: history,
             _cssom: dead,
             _request: self.request,
+            _order: self.order,
             _snapshot: self.snapshot,
             _admission: admission,
             _meter: self.meter,

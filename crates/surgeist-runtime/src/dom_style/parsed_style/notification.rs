@@ -37,6 +37,11 @@ pub enum DomStyleParsedNotificationError {
         /// Original contribution requested.
         contribution: DomParsedHtmlAssociationId,
     },
+    /// Rendering has not handed off the exact notification authority.
+    RenderingIncomplete {
+        /// Original association awaiting its rendering handoff.
+        association: DomStyleAssociationId,
+    },
     /// The exact receipt already owns a networking task.
     AlreadyQueued {
         /// Previously issued task; no new task was formed.
@@ -65,6 +70,9 @@ impl std::fmt::Display for DomStyleParsedNotificationError {
             Self::Notification(e) => e.fmt(f),
             Self::ProcessingUnavailable { .. } => {
                 f.write_str("original processing receipt unavailable")
+            }
+            Self::RenderingIncomplete { .. } => {
+                f.write_str("original rendering continuation unavailable")
             }
             Self::AlreadyQueued { .. } => f.write_str("original notification already queued"),
         }
@@ -137,13 +145,15 @@ impl DomStyleRuntime {
         })?;
         let record = state.completions[index]
             .processing()
-            .expect("selected original receipt");
-        let sheet = record
-            .sheet
-            .as_ref()
-            .expect("only authentic publication installed this receipt");
+            .expect("selected actual receipt");
+        let sheet = &record.sheet;
         if record.dependencies == ImportDependencies::Imports {
             return Ok(DomStyleParsedNotificationProgress::PendingImports {
+                association: sheet.association(),
+            });
+        }
+        if record.continuation.is_none() {
+            return Err(DomStyleParsedNotificationError::RenderingIncomplete {
                 association: sheet.association(),
             });
         }
@@ -160,8 +170,25 @@ impl DomStyleRuntime {
         let task_owner = cap.clone();
         let task_sheet = sheet.id().clone();
         let cursor = HtmlStyleNotificationCursor::new(record.profile, true);
+        let StyleState {
+            completions,
+            work,
+            limits: runtime_limits,
+            next_task,
+            ..
+        } = &mut *state;
+        let steps = Steps {
+            work,
+            maximum: runtime_limits.work,
+            cancel,
+        };
+        let (_, tail) = completions.split_at_mut(index);
+        let (row, suffix) = tail.split_first_mut().expect("qualified receiving row");
+        let Completion::ParsedProcessing(record) = row else {
+            unreachable!("qualified actual processing")
+        };
         let mut prep =
-            hold.prepare_notification(qualification, sheet, &record.owner_label, &cap, cancel)?;
+            hold.prepare_notification(&mut record.continuation, &record.owner_label, &cap, cancel)?;
         prep.step(cancel).map_err(DomStyleRuntimeError::from)?;
         steps.runtime()?;
         let removed = prep.owner_association_removed();
@@ -169,16 +196,13 @@ impl DomStyleRuntime {
             None
         } else {
             Some(
-                state
-                    .next_task
+                next_task
                     .checked_add(1)
                     .ok_or(DomStyleRuntimeError::Admission)?,
             )
         };
         if removed {
-            // Actual row removal shifts this exact suffix. Prepay those moves
-            // before original issuance changes; retain the removed graph later.
-            for _ in &state.completions[index + 1..] {
+            for _ in suffix {
                 prep.step(cancel).map_err(DomStyleRuntimeError::from)?;
                 steps.runtime()?;
             }
@@ -186,7 +210,7 @@ impl DomStyleRuntime {
         prep.admit_runtime(custody.usage()?, cancel)
             .map_err(DomStyleRuntimeError::from)?;
         steps.runtime()?;
-        let serial = state.next_task;
+        let serial = *next_task;
         let mut published = prep.commit(cancel)?;
         let disposition = published
             .take_disposition()
@@ -207,17 +231,16 @@ impl DomStyleRuntime {
                     token,
                 };
                 let id = task.id();
-                let old =
-                    std::mem::replace(&mut state.completions[index], Completion::Queued(task));
+                let old = std::mem::replace(&mut completions[index], Completion::Queued(task));
                 let Completion::ParsedProcessing(record) = old else {
                     unreachable!("qualified original row")
                 };
-                state.completions[index].task_mut().parsed = Some(record);
-                state.next_task = next.expect("qualified token branch");
+                completions[index].task_mut().parsed = Some(record);
+                *next_task = next.expect("qualified token branch");
                 DomStyleParsedNotificationProgress::Queued { task: id }
             }
             Disposition::OwnerAssociationRemoved { association } => {
-                retired = Some(state.completions.remove(index));
+                retired = Some(completions.remove(index));
                 DomStyleParsedNotificationProgress::OwnerAssociationRemoved { association }
             }
         };

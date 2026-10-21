@@ -2,6 +2,7 @@
 mod frontier;
 mod notification;
 mod sheet;
+mod subject;
 mod successor;
 use crate::{
     DocumentId, DocumentString, DomError, DomParsedHtmlAssociationAdmissionError,
@@ -10,6 +11,7 @@ use crate::{
 pub use frontier::*;
 pub use notification::*;
 pub use sheet::*;
+pub use subject::*;
 pub use successor::*;
 use surgeist_html::{
     HtmlCspAssociation, HtmlCspProtocolError, HtmlNodeId, HtmlStyleProtocolError, HtmlStyleState,
@@ -76,6 +78,11 @@ pub enum DomParsedHtmlStyleError {
     },
     AlreadyBound,
     MissingPolicy,
+    ReceiverOccupied,
+    NotificationTransferred,
+    HandoffRequired {
+        occurrence: HtmlParseAssociationOccurrenceId,
+    },
     MissingObservation,
     InvalidSheetInput,
     WrongPhase {

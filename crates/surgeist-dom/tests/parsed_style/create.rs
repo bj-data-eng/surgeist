@@ -259,3 +259,128 @@ fn foreign_capability_and_mismatched_original_input_are_refused_before_consumpti
     assert!(input.is_some());
     drop(other);
 }
+
+#[test]
+fn root_style_first_and_pop_creation_preserve_auxiliary_inert_inventory_without_claiming_end() {
+    let (mut dom, env) = setup();
+    let report =
+        parse("<!doctype html><head><style>a{}</style><template><style>b{}</style></template>");
+    let mut documents = 0;
+    let mut inventory = report.pending_associations();
+    loop {
+        match inventory.advance() {
+            surgeist_html_parser::HtmlParsePendingAssociationStep::Document(_) => documents += 1,
+            surgeist_html_parser::HtmlParsePendingAssociationStep::Complete => break,
+            _ => (),
+        }
+    }
+    assert_eq!(
+        documents, 2,
+        "real original root and inert template Documents"
+    );
+    let (document, id) = install(&mut dom, report, env);
+    decision::ready(&mut dom, id, envelope());
+    let cap = root(document);
+    for invocation in 0..2 {
+        let q = qualifier(&dom, id);
+        let mut observed = {
+            let view = dom.parsed_html_style_prefix(id).unwrap();
+            Some(DomParsedHtmlStyleInlinePolicyObservation::evaluated(
+                view.inline_policy_request().unwrap(),
+                true,
+            ))
+        };
+        let mut hold = dom
+            .begin_parsed_html_style(id, envelope(), &flag())
+            .unwrap();
+        hold.accept_inline_policy(&mut observed, &flag()).unwrap();
+        let mut preparation = hold.prepare_create_sheet(&cap, &flag()).unwrap();
+        stage(&mut preparation);
+        let (created, retired) = preparation.commit(&flag()).unwrap().into_parts();
+        assert_eq!(created.sheet().root(), document.node());
+        drop(retired);
+        hold.exclude_script_bookkeeping(
+            &q,
+            surgeist_html::HtmlStyleExecutionProfile::NoExecutableJavaScript,
+            &flag(),
+        )
+        .unwrap();
+        assert!(matches!(
+            hold.process_rendering(&q, DomParsedHtmlStyleNotificationHandoff::Retain, &flag())
+                .unwrap(),
+            DomParsedHtmlStyleRenderingProgress::Complete(_)
+        ));
+        if invocation == 0 {
+            drop(
+                hold.prepare_successor(Some(&cap), &flag())
+                    .unwrap()
+                    .commit(&flag())
+                    .unwrap()
+                    .into_parts(),
+            );
+        } else {
+            assert!(matches!(
+                hold.complete_synchronous_execution(&flag()),
+                Err(DomParsedHtmlFrontierError::Remaining(
+                    DomParsedHtmlStyleNotificationRequirement::Unavailable {
+                        reason: DomParsedHtmlStyleNotificationUnavailable::UnsupportedInventory,
+                        ..
+                    }
+                ))
+            ));
+        }
+    }
+    assert!(dom.parsed_html_synchronous_end(id).unwrap().is_none());
+}
+
+#[test]
+fn producer_proved_prior_type_ineligible_style_preserves_later_first_and_pop_creation() {
+    let (mut dom, document, id) =
+        ready("<!doctype html><head><style type=text/plain>ignored</style><style>a{}</style>");
+    let cap = root(document);
+    for invocation in 0..2 {
+        let q = qualifier(&dom, id);
+        let mut hold = dom
+            .begin_parsed_html_style(id, envelope(), &flag())
+            .unwrap();
+        let mut preparation = hold.prepare_create_sheet(&cap, &flag()).unwrap();
+        stage(&mut preparation);
+        let (created, retired) = preparation.commit(&flag()).unwrap().into_parts();
+        assert_eq!(created.sheet().root(), document.node());
+        drop(retired);
+        hold.exclude_script_bookkeeping(
+            &q,
+            surgeist_html::HtmlStyleExecutionProfile::NoExecutableJavaScript,
+            &flag(),
+        )
+        .unwrap();
+        assert!(matches!(
+            hold.process_rendering(&q, DomParsedHtmlStyleNotificationHandoff::Retain, &flag())
+                .unwrap(),
+            DomParsedHtmlStyleRenderingProgress::Complete(_)
+        ));
+        if invocation == 0 {
+            drop(
+                hold.prepare_successor(Some(&cap), &flag())
+                    .unwrap()
+                    .commit(&flag())
+                    .unwrap()
+                    .into_parts(),
+            );
+            drop(hold);
+            let mut observed = {
+                let view = dom.parsed_html_style_prefix(id).unwrap();
+                Some(DomParsedHtmlStyleInlinePolicyObservation::evaluated(
+                    view.inline_policy_request().unwrap(),
+                    true,
+                ))
+            };
+            dom.begin_parsed_html_style(id, envelope(), &flag())
+                .unwrap()
+                .accept_inline_policy(&mut observed, &flag())
+                .unwrap();
+        } else {
+            assert!(hold.complete_synchronous_execution(&flag()).is_ok());
+        }
+    }
+}

@@ -335,10 +335,9 @@ impl DomStyleRuntime {
             steps.joined(&prep)?;
             owner_label.push(ch);
         }
-        let mut processing = ParsedProcessing {
+        let processing = ParsedProcessingCandidate {
             qualification: prep.request().qualification().clone(),
             owner: cap.clone(),
-            sheet: None,
             // This closed original front uses the actual Session no-engine
             // profile; media, headlessness and CSS text do not establish it.
             profile: HtmlStyleExecutionProfile::NoExecutableJavaScript,
@@ -429,7 +428,7 @@ impl DomStyleRuntime {
         // Infallible whole-fence suffix, retaining old names through lock release.
         let retired = next.map(|next| std::mem::replace(destination, next));
         root.serial = serial;
-        processing.sheet = Some(published.completion().sheet().clone());
+        let processing = processing.publish(published.completion().sheet().clone());
         completions.push(Completion::ParsedProcessing(processing));
         let (completion, retirement) = published.into_parts();
         let revision = match completion.cssom().publication() {

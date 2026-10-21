@@ -126,7 +126,7 @@ fn authentic_queue_survives_current_authored_import_removal_output_drop_and_sess
             if *contribution==q.contribution() && occurrence==q.occurrence())
         );
         let record = actual.parsed.as_ref().unwrap();
-        assert_eq!(record.sheet.as_ref(), Some(&sheet));
+        assert_eq!(&record.sheet, &sheet);
         assert_eq!(record.qualification, q);
         assert_eq!(record.owner_label, "original-root:1");
         assert_eq!(record.dependencies, ImportDependencies::NoImports);
@@ -281,7 +281,9 @@ fn queue_original_output_refusal_and_raised_retry_preserve_all_three_owners() {
         large.retained_bytes(),
         large.retained_units(),
         large.work(),
-        10,
+        // The explicit lower continuation adds one genuine cumulative output;
+        // the following command must still refuse and preserve its owners.
+        11,
     )
     .unwrap();
     let (mut session, _installed, q, sheet) = rendered("<!doctype html><style>x{}</style>", finite);
@@ -297,7 +299,7 @@ fn queue_original_output_refusal_and_raised_retry_preserve_all_three_owners() {
         Err(DomStyleParsedNotificationError::Runtime(
             DomStyleRuntimeError::Dom(DomError::ResourceLimit {
                 resource: DomResource::ParsedAssociationProcessingOutputs,
-                limit: 10
+                limit: 11
             })
         ))
     ));
@@ -329,14 +331,19 @@ fn wrong_phase_foreign_owner_and_cancellation_do_not_consume_queue_issuance() {
         .unwrap()
         .clone();
     let runtime = session.style_execution();
+    let expected = session.state.borrow().completions[0]
+        .processing()
+        .unwrap()
+        .sheet
+        .association();
     assert!(matches!(
         runtime.queue_parsed_style_notification(&mut session.dom(), &q, envelope(), &cancel()),
-        Err(DomStyleParsedNotificationError::Notification(
-            DomParsedHtmlStyleNotificationError::Style(DomParsedHtmlStyleError::WrongPhase {
-                phase: DomParsedHtmlStylePhase::ReadScriptBlockingPending
-            })
-        ))
+        Err(DomStyleParsedNotificationError::RenderingIncomplete { association }) if association == expected
     ));
+    assert_eq!(
+        session.parsed_html_style_prefix(id).unwrap().phase(),
+        DomParsedHtmlStylePhase::ReadScriptBlockingPending
+    );
     let (mut foreign, _) = bound_dispatch_session();
     assert!(matches!(
         runtime.queue_parsed_style_notification(&mut foreign.dom(), &q, envelope(), &cancel()),

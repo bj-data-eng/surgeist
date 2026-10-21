@@ -9,11 +9,56 @@ pub use cleanup::DomParsedHtmlStyleNotificationCompletion;
 use std::sync::{Mutex, MutexGuard};
 use surgeist_cssom::CssomStore;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::store::pending_associations) enum Issuance {
-    Unissued,
-    Issued,
-    OwnerRemoved,
+type HandoffStatus = DomParsedHtmlStyleNotificationHandoffStatus;
+/// Affine completed-rendering authority. It neither proves resource completion
+/// nor grants dispatch permission. Ordinary historical output Drop never owns it.
+pub struct DomParsedHtmlStyleNotificationContinuation {
+    qualification: DomParsedHtmlStyleQualification,
+    sheet: DomStyleSheet,
+    profile: HtmlStyleExecutionProfile,
+    _meter: Meter,
+}
+impl std::fmt::Debug for DomParsedHtmlStyleNotificationContinuation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DomParsedHtmlStyleNotificationContinuation")
+            .field("qualification", &self.qualification)
+            .field("sheet", &self.sheet)
+            .finish_non_exhaustive()
+    }
+}
+impl DomParsedHtmlStyleNotificationContinuation {
+    pub fn qualification(&self) -> &DomParsedHtmlStyleQualification {
+        &self.qualification
+    }
+    pub fn sheet(&self) -> &DomStyleSheet {
+        &self.sheet
+    }
+    pub fn profile(&self) -> HtmlStyleExecutionProfile {
+        self.profile
+    }
+}
+pub(super) fn form_continuation(
+    meter: &Meter,
+    request: &DomParsedHtmlStyleInlinePolicyRequest,
+    cancel: &AtomicBool,
+) -> Result<DomParsedHtmlStyleNotificationContinuation, DomParsedHtmlStyleError> {
+    let own = meter.fork();
+    own.retain(
+        size_of::<DomParsedHtmlStyleNotificationContinuation>(),
+        0,
+        1,
+        cancel,
+    )?;
+    let sheet = request
+        .created_sheet
+        .as_ref()
+        .ok_or(DomParsedHtmlStyleError::InvalidSheetInput)?;
+    Ok(DomParsedHtmlStyleNotificationContinuation {
+        qualification: request.qualification.clone(),
+        sheet: sheet.clone(),
+        profile: request.cursor.profile(),
+        _meter: own,
+    })
 }
 /// Actual original receipt: historical identities and fixed frame disappear
 /// before its Meter. Mutex preserves token Send/Sync without an async loan.
@@ -22,100 +67,131 @@ pub(crate) struct NotificationCustody {
     meter: Mutex<Meter>,
 }
 pub struct DomParsedHtmlStyleNotificationPreparation<'hold, 'dom, 'caps> {
-    graph: MutexGuard<'hold, Stored>,
-    completed: MutexGuard<'hold, Option<CompletedInvocation>>,
-    historical: bool,
+    input: &'hold mut Option<DomParsedHtmlStyleNotificationContinuation>,
     _dom: &'hold mut &'dom mut Dom,
     runtime: &'hold Meter,
-    meter: Meter,
     store: MutexGuard<'caps, CssomStore>,
     disposition: Option<DomParsedHtmlStyleNotificationDisposition>,
+    meter: Meter,
 }
-/// Retains the genuine root lock while the composing owner installs its
-/// already-admitted queue row. Taking once neither unlocks nor allocates.
+struct NotificationRetirement {
+    _continuation: DomParsedHtmlStyleNotificationContinuation,
+    _meter: Meter,
+}
+/// The actual root stays locked through the composing owner's same-row move.
 pub struct DomParsedHtmlStyleNotificationPublished<'caps> {
     _store: MutexGuard<'caps, CssomStore>,
     disposition: Option<DomParsedHtmlStyleNotificationDisposition>,
+    _retirement: NotificationRetirement,
 }
 impl DomParsedHtmlStyleNotificationPublished<'_> {
     pub fn take_disposition(&mut self) -> Option<DomParsedHtmlStyleNotificationDisposition> {
         self.disposition.take()
     }
 }
+impl DomParsedHtmlStyleRuntimeHold<'_> {
+    /// Move canonical retained work once. Refusal preserves the actual receiver.
+    /// Dropping the explicitly transferred continuation abandons that authority,
+    /// never acknowledging history, resource success, dispatch or cleanup.
+    pub fn transfer_notification(
+        &mut self,
+        q: &DomParsedHtmlStyleQualification,
+        receiver: &mut Option<DomParsedHtmlStyleNotificationContinuation>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomParsedHtmlStyleError> {
+        self.meter
+            .entry()
+            .control
+            .require_execution(self.meter.entry().id)?;
+        if receiver.is_some() {
+            return Err(DomParsedHtmlStyleError::ReceiverOccupied);
+        }
+        self.meter.step(cancel)?;
+        let mut graph = lock(self.meter.entry())?;
+        let mut completed = completed_lock(self.meter.entry())?;
+        let current = graph
+            .as_mut()
+            .ok_or(DomParsedHtmlStyleError::WrongRequest)?;
+        if current.value().qualification() == q {
+            let Graph::Rendered {
+                request,
+                notification,
+            } = current.value_mut().as_mut()
+            else {
+                return Err(DomParsedHtmlStyleError::WrongPhase {
+                    phase: current.value().phase(),
+                });
+            };
+            if *notification != HandoffStatus::Retained {
+                return Err(DomParsedHtmlStyleError::NotificationTransferred);
+            }
+            let value = form_continuation(&self.meter, request, cancel)?;
+            self.meter.step(cancel)?;
+            *receiver = Some(value);
+            *notification = HandoffStatus::Transferred;
+            return Ok(());
+        }
+        let old = completed
+            .as_mut()
+            .filter(|old| &old.qualification == q)
+            .ok_or(DomParsedHtmlStyleError::WrongRequest)?;
+        let CompletedOutcome::Created {
+            sheet,
+            notification,
+        } = &mut old.outcome
+        else {
+            return Err(DomParsedHtmlStyleError::WrongRequest);
+        };
+        if *notification != HandoffStatus::Retained {
+            return Err(DomParsedHtmlStyleError::NotificationTransferred);
+        }
+        let own = self.meter.fork();
+        own.retain(
+            size_of::<DomParsedHtmlStyleNotificationContinuation>(),
+            0,
+            1,
+            cancel,
+        )?;
+        let value = DomParsedHtmlStyleNotificationContinuation {
+            qualification: q.clone(),
+            sheet: sheet.clone(),
+            profile: old.profile,
+            _meter: own,
+        };
+        self.meter.step(cancel)?;
+        *receiver = Some(value);
+        *notification = HandoffStatus::Transferred;
+        Ok(())
+    }
+}
 impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
     pub fn prepare_notification<'hold, 'caps>(
         &'hold mut self,
-        qualification: &DomParsedHtmlStyleQualification,
-        expected: &DomStyleSheet,
+        input: &'hold mut Option<DomParsedHtmlStyleNotificationContinuation>,
         expected_owner_label: &str,
         cap: &'caps DomStyleCssomRoot,
         cancel: &AtomicBool,
     ) -> Result<DomParsedHtmlStyleNotificationPreparation<'hold, 'dom, 'caps>, Error> {
+        let continuation = input.as_ref().ok_or(Error::MissingContinuation)?;
+        let qualification = &continuation.qualification;
+        let expected = &continuation.sheet;
         self.meter
             .entry()
             .control
             .require_execution(self.meter.entry().id)?;
         self.meter.step(cancel)?;
-        let graph = lock(self.meter.entry())?;
-        let value = graph
-            .as_ref()
-            .ok_or(DomParsedHtmlStyleError::WrongRequest)?
-            .value();
-        let completed = self
-            .meter
-            .entry()
-            .completed_style
-            .try_lock()
-            .map_err(|e| guard_error(e, self.meter.entry().id))?;
-        let historical = completed
-            .as_ref()
-            .is_some_and(|old| &old.qualification == qualification);
-        let (notification, profile, sheet) = if historical {
-            let old = completed.as_ref().expect("qualified predecessor");
-            let CompletedOutcome::Created {
-                sheet,
-                notification,
-            } = &old.outcome
-            else {
-                return Err(DomParsedHtmlStyleError::WrongPhase {
-                    phase: DomParsedHtmlStylePhase::InlinePolicyBlocked,
-                }
-                .into());
-            };
-            (*notification, old.profile, sheet)
-        } else {
-            if value.qualification() != qualification {
-                return Err(DomParsedHtmlStyleError::WrongRequest.into());
-            }
-            let Graph::Rendered {
-                request,
-                notification,
-            } = value.as_ref()
-            else {
-                return Err(DomParsedHtmlStyleError::WrongPhase {
-                    phase: value.phase(),
-                }
-                .into());
-            };
-            (
-                *notification,
-                request.cursor.profile(),
-                request
-                    .created_sheet
-                    .as_ref()
-                    .ok_or(DomParsedHtmlStyleError::InvalidSheetInput)?,
-            )
-        };
-        if notification != Issuance::Unissued {
-            return Err(Error::AlreadyIssued {
-                contribution: qualification.contribution(),
-            });
+        if qualification.contribution() != self.meter.entry().id
+            || !std::ptr::eq(continuation._meter.entry(), self.meter.entry())
+        {
+            return Err(DomParsedHtmlStyleError::WrongRequest.into());
         }
-        if profile != HtmlStyleExecutionProfile::NoExecutableJavaScript {
-            return Err(DomParsedHtmlStyleError::WrongExecutionProfile { profile }.into());
+        if continuation.profile != HtmlStyleExecutionProfile::NoExecutableJavaScript {
+            return Err(DomParsedHtmlStyleError::WrongExecutionProfile {
+                profile: continuation.profile,
+            }
+            .into());
         }
         let root = qualification.document().node();
-        self.meter.step(cancel)?;
         if cap.root() != root
             || expected.root() != root
             || self
@@ -160,7 +236,7 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
                 && sheet.association() == expected.association()
                 && sheet.root() == expected.root()
         }) && node.node.document() == qualification.document();
-        let store = cap.lock().map_err(|error| match error {
+        let store = cap.lock().map_err(|e| match e {
             crate::DomStyleCssomRootError::Busy => Error::OwnerBusy { root },
             crate::DomStyleCssomRootError::Poisoned => Error::OwnerPoisoned { root },
             _ => Error::MismatchedOwner { root },
@@ -176,14 +252,6 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
         )?;
         let producer = store.snapshot();
         let actual = producer.sheet(expected.id()).map_err(Error::Cssom)?;
-        // Preserve the authentic producer refusal for unresolved identities.
-        // A resolved object must still be the creation-sealed invocation sheet,
-        // including the owner-cleared path after a successor has started.
-        if sheet != expected {
-            return Err(Error::MismatchedAssociation {
-                target: expected.association().element(),
-            });
-        }
         meter.step(cancel)?;
         let removed = if let Some(owner) = actual.inputs().owner.as_deref() {
             if !canonical_matches {
@@ -202,17 +270,13 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
         } else {
             true
         };
-        // Both snapshots can disappear here: their actual canonical/producer
-        // graphs remain owned by the still-exclusive DOM and real Store guard.
-        drop(producer);
-        drop(snapshot);
         let disposition = if removed {
             DomParsedHtmlStyleNotificationDisposition::OwnerAssociationRemoved {
                 association: expected.association(),
             }
         } else {
-            let custody = self.meter.fork();
-            custody.retain(size_of::<NotificationCustody>(), 0, 0, cancel)?;
+            let own = self.meter.fork();
+            own.retain(size_of::<NotificationCustody>(), 0, 0, cancel)?;
             DomParsedHtmlStyleNotificationDisposition::Token(DomStyleNotificationToken {
                 origin: Some(DomStyleNotificationOrigin::ParsedOccurrence {
                     contribution: qualification.contribution(),
@@ -222,19 +286,17 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
                 complete: false,
                 parsed: Some(Box::new(NotificationCustody {
                     qualification: qualification.clone(),
-                    meter: Mutex::new(custody),
+                    meter: Mutex::new(own),
                 })),
             })
         };
         Ok(DomParsedHtmlStyleNotificationPreparation {
-            graph,
-            completed,
-            historical,
+            input,
             _dom: &mut self.dom,
             runtime: &self.meter,
-            meter,
             store,
             disposition: Some(disposition),
+            meter,
         })
     }
 }
@@ -261,39 +323,17 @@ impl<'caps> DomParsedHtmlStyleNotificationPreparation<'_, '_, 'caps> {
     ) -> Result<DomParsedHtmlStyleNotificationPublished<'caps>, Error> {
         self.meter.retain(0, 0, 1, cancel)?;
         self.meter.step(cancel)?;
-        let removed = self.owner_association_removed();
-        let notification = if self.historical {
-            let CompletedOutcome::Created { notification, .. } = &mut self
-                .completed
-                .as_mut()
-                .expect("qualified predecessor")
-                .outcome
-            else {
-                unreachable!("qualified creation")
-            };
-            notification
-        } else {
-            let Graph::Rendered { notification, .. } = self
-                .graph
-                .as_mut()
-                .expect("qualified original")
-                .value_mut()
-                .as_mut()
-            else {
-                unreachable!("exclusive original graph")
-            };
-            notification
-        };
-        // Only infallible scalar/move publication follows. Runtime keeps the
-        // actual Store guard until its same-row queue transition is installed.
-        *notification = if removed {
-            Issuance::OwnerRemoved
-        } else {
-            Issuance::Issued
-        };
+        let continuation = self
+            .input
+            .take()
+            .expect("exclusive authenticated continuation");
         Ok(DomParsedHtmlStyleNotificationPublished {
             _store: self.store,
             disposition: self.disposition.take(),
+            _retirement: NotificationRetirement {
+                _continuation: continuation,
+                _meter: self.meter,
+            },
         })
     }
 }

@@ -19,7 +19,7 @@ pub use parsed_style::{
     DomStyleParsedFrontierError, DomStyleParsedMetaOccurrenceError,
     DomStyleParsedMetaOccurrenceOutcome, DomStyleParsedNotificationError,
     DomStyleParsedNotificationProgress, DomStyleParsedPrefixError, DomStyleParsedSheetError,
-    DomStyleParsedSheetOutcome, DomStyleParsedSuccessorError,
+    DomStyleParsedSheetOutcome, DomStyleParsedSubjectError, DomStyleParsedSuccessorError,
 };
 pub use sheet_sets::{DomStyleSheetSetCommit, DomStyleSheetSetObservation};
 
@@ -342,10 +342,31 @@ fn import_dependencies_with<E>(
 struct ParsedProcessing {
     qualification: surgeist_dom::DomParsedHtmlStyleQualification,
     owner: std::rc::Rc<DomStyleCssomRoot>,
-    sheet: Option<surgeist_dom::DomStyleSheet>,
+    sheet: surgeist_dom::DomStyleSheet,
+    continuation: Option<surgeist_dom::DomParsedHtmlStyleNotificationContinuation>,
     profile: HtmlStyleExecutionProfile,
     dependencies: ImportDependencies,
     owner_label: String,
+}
+struct ParsedProcessingCandidate {
+    qualification: surgeist_dom::DomParsedHtmlStyleQualification,
+    owner: std::rc::Rc<DomStyleCssomRoot>,
+    profile: HtmlStyleExecutionProfile,
+    dependencies: ImportDependencies,
+    owner_label: String,
+}
+impl ParsedProcessingCandidate {
+    fn publish(self, sheet: surgeist_dom::DomStyleSheet) -> ParsedProcessing {
+        ParsedProcessing {
+            qualification: self.qualification,
+            owner: self.owner,
+            sheet,
+            continuation: None,
+            profile: self.profile,
+            dependencies: self.dependencies,
+            owner_label: self.owner_label,
+        }
+    }
 }
 impl std::fmt::Debug for ParsedProcessing {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

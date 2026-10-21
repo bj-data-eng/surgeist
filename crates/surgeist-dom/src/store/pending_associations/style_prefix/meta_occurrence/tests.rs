@@ -90,7 +90,14 @@ fn ready() -> (
             &flag(),
         )
         .unwrap();
-        drop(hold.process_rendering(&q, &flag()).unwrap());
+        drop(
+            hold.process_rendering(
+                &q,
+                crate::DomParsedHtmlStyleNotificationHandoff::Retain,
+                &flag(),
+            )
+            .unwrap(),
+        );
         if invocation == 0 {
             let (_, retired) = hold
                 .prepare_successor(Some(&cap), &flag())
@@ -136,14 +143,16 @@ fn post_producer_original_work_refusal_preserves_marker_flags_and_raised_retry()
         ));
         assert_eq!(PREPARED.with(|n| n.get()), before + 1);
         spent = hold.spent_work();
-        assert!(
-            hold.meter
-                .entry()
-                .completed_meta
-                .try_lock()
-                .unwrap()
-                .is_none()
-        );
+        {
+            let graph = hold.meter.entry().style_prefix.try_lock().unwrap();
+            let current = graph.as_ref().unwrap().value().qualification().occurrence();
+            let marker = hold.meter.entry().executed_prefix.try_lock().unwrap();
+            assert_eq!(&marker.as_ref().unwrap().last, current);
+            assert_ne!(
+                current, &wanted,
+                "refused Meta cannot replace completed Style prefix"
+            );
+        }
     }
     assert_eq!(dom.snapshot().stamp(), stamp);
     assert_eq!(cap.snapshot().unwrap().revision(), &revision);
@@ -286,14 +295,16 @@ fn actual_root_busy_and_tight_retained_output_overlap_leave_the_same_row_retryab
         before,
         "output backing must refuse before producer preparation"
     );
-    assert!(
-        hold.meter
-            .entry()
-            .completed_meta
-            .try_lock()
-            .unwrap()
-            .is_none()
-    );
+    {
+        let graph = hold.meter.entry().style_prefix.try_lock().unwrap();
+        let current = graph.as_ref().unwrap().value().qualification().occurrence();
+        let marker = hold.meter.entry().executed_prefix.try_lock().unwrap();
+        assert_eq!(&marker.as_ref().unwrap().last, current);
+        assert_ne!(
+            current, &wanted,
+            "refused Meta cannot replace completed Style prefix"
+        );
+    }
     let spent = hold.spent_work();
     drop(scratch);
     drop(scratch_meter);

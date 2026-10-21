@@ -21,12 +21,14 @@ pub use meta_occurrence::{
     DomParsedHtmlMetaOccurrenceRetirement,
 };
 
+mod subject;
+pub use subject::DomParsedHtmlStyleSubjectCompletion;
 mod successor;
 pub use successor::{
     DomParsedHtmlStyleSuccessorCompletion, DomParsedHtmlStyleSuccessorPreparation,
     DomParsedHtmlStyleSuccessorPublished, DomParsedHtmlStyleSuccessorRetirement,
 };
-mod frontier;
+pub(super) mod frontier;
 pub use frontier::{
     DomParsedHtmlDispatchCursor, DomParsedHtmlDispatchEntry, DomParsedHtmlSynchronousEnd,
     DomParsedHtmlSynchronousEndView,
@@ -34,8 +36,8 @@ pub use frontier::{
 mod notification;
 pub(crate) use notification::NotificationCustody;
 pub use notification::{
-    DomParsedHtmlStyleNotificationCompletion, DomParsedHtmlStyleNotificationPreparation,
-    DomParsedHtmlStyleNotificationPublished,
+    DomParsedHtmlStyleNotificationCompletion, DomParsedHtmlStyleNotificationContinuation,
+    DomParsedHtmlStyleNotificationPreparation, DomParsedHtmlStyleNotificationPublished,
 };
 mod rendering;
 pub use rendering::DomParsedHtmlStyleRenderingCompletion;
@@ -55,7 +57,7 @@ pub(super) enum Graph {
     Inline(DomParsedHtmlStyleInlinePolicyRequest),
     Rendered {
         request: DomParsedHtmlStyleInlinePolicyRequest,
-        notification: notification::Issuance,
+        notification: DomParsedHtmlStyleNotificationHandoffStatus,
     },
     Transition,
 }
@@ -70,7 +72,7 @@ pub(super) struct CompletedInvocation {
 pub(super) enum CompletedOutcome {
     Created {
         sheet: crate::DomStyleSheet,
-        notification: notification::Issuance,
+        notification: DomParsedHtmlStyleNotificationHandoffStatus,
     },
     InlinePolicyBlocked,
 }
@@ -200,15 +202,9 @@ impl DomParsedHtmlStylePrefixView<'_> {
             _ => None,
         }
     }
-    pub fn notification_status(&self) -> Option<DomParsedHtmlStyleNotificationStatus> {
+    pub fn notification_handoff(&self) -> Option<DomParsedHtmlStyleNotificationHandoffStatus> {
         match self.state.as_ref().map(|held| held.value().as_ref()) {
-            Some(Graph::Rendered { notification, .. }) => Some(match notification {
-                notification::Issuance::Unissued => DomParsedHtmlStyleNotificationStatus::NotIssued,
-                notification::Issuance::Issued => DomParsedHtmlStyleNotificationStatus::Issued,
-                notification::Issuance::OwnerRemoved => {
-                    DomParsedHtmlStyleNotificationStatus::OwnerAssociationRemoved
-                }
-            }),
+            Some(Graph::Rendered { notification, .. }) => Some(*notification),
             _ => None,
         }
     }
@@ -471,10 +467,34 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
         self.meter.retain(0, 0, 1, cancel)?;
         let mut successor = request.cursor;
         successor.reply(Reply::InlineAllowed(observation.allowed))?;
+        let next_prefix = if successor.action() == Action::Complete {
+            frontier::ensure_next(self.dom, &self.meter, request.qualification(), cancel)?;
+            Some(frontier::ExecutedPrefix {
+                last: request.qualification().occurrence().clone(),
+            })
+        } else {
+            None
+        };
+        let mut prefix = if next_prefix.is_some() {
+            Some(
+                self.meter
+                    .entry()
+                    .executed_prefix
+                    .try_lock()
+                    .map_err(|e| notification::guard_error(e, self.meter.entry().id))?,
+            )
+        } else {
+            None
+        };
         // The actual accepted decision admits synchronous execution. Everything
         // that may refuse precedes this durable header and same-cursor fence.
         self.meter.entry().control.activate_execution();
         request.cursor = successor;
+        let _old_prefix = if let (Some(prefix), Some(next)) = (prefix.as_mut(), next_prefix) {
+            prefix.replace(next)
+        } else {
+            None
+        };
         let _accepted = input.take();
         Ok(held.value().phase())
     }

@@ -8,7 +8,11 @@ fn completed_predecessor_is_same_entry_and_canonical_serial_membership_are_prese
     let (mut dom, doc, id, q, element, cap) = ready("", 1024);
     dom.begin_parsed_html_style(id, super::super::tests::envelope(), &flag())
         .unwrap()
-        .process_rendering(&q, &flag())
+        .process_rendering(
+            &q,
+            crate::DomParsedHtmlStyleNotificationHandoff::Retain,
+            &flag(),
+        )
         .unwrap();
     let before = dom.snapshot();
     let old_state = before
@@ -36,7 +40,7 @@ fn completed_predecessor_is_same_entry_and_canonical_serial_membership_are_prese
     let completed = completed_guard.as_ref().unwrap();
     assert_eq!(completed.qualification, q);
     assert!(
-        matches!(&completed.outcome, CompletedOutcome::Created { sheet,notification:notification::Issuance::Unissued } if sheet==old_state.sheet.as_ref().unwrap())
+        matches!(&completed.outcome, CompletedOutcome::Created { sheet,notification:DomParsedHtmlStyleNotificationHandoffStatus::Retained } if sheet==old_state.sheet.as_ref().unwrap())
     );
     assert_ne!(completion.qualification(), &q);
     let retained = ledger.total().bytes();
@@ -78,7 +82,11 @@ fn old_inline_decision_cannot_answer_new_occurrence() {
     let (mut dom, _doc, id, q, _element, cap) = ready("", 1024);
     dom.begin_parsed_html_style(id, super::super::tests::envelope(), &flag())
         .unwrap()
-        .process_rendering(&q, &flag())
+        .process_rendering(
+            &q,
+            crate::DomParsedHtmlStyleNotificationHandoff::Retain,
+            &flag(),
+        )
         .unwrap();
     let mut old = {
         let entry = dom
@@ -123,7 +131,11 @@ fn real_post_producer_work_refusal_preserves_old_invocation_and_raised_retry_rem
         let (mut dom, _doc, id, q, _element, cap) = ready("", 1024);
         dom.begin_parsed_html_style(id, super::super::tests::envelope(), &flag())
             .unwrap()
-            .process_rendering(&q, &flag())
+            .process_rendering(
+                &q,
+                crate::DomParsedHtmlStyleNotificationHandoff::Retain,
+                &flag(),
+            )
             .unwrap();
         let stamp = dom.snapshot().stamp();
         let snapshot = cap.snapshot().unwrap();
@@ -275,7 +287,11 @@ fn different_real_same_store_ownerless_sheet_cannot_substitute_for_completed_inv
     let (mut dom, _doc, id, q, element, cap) = ready("", 1024);
     dom.begin_parsed_html_style(id, super::super::tests::envelope(), &flag())
         .unwrap()
-        .process_rendering(&q, &flag())
+        .process_rendering(
+            &q,
+            crate::DomParsedHtmlStyleNotificationHandoff::Retain,
+            &flag(),
+        )
         .unwrap();
     let old = dom
         .snapshot()
@@ -333,16 +349,19 @@ fn different_real_same_store_ownerless_sheet_cannot_substitute_for_completed_inv
     };
     // A deliberately invalid claim containing a real, resolved same-owner ID,
     // not a fabricated execution record or a fake producer publication.
-    let mut wrong = old.clone();
-    wrong.id = other;
+    assert_ne!(old.id, other);
+    let mut input = None;
     let mut hold = dom
         .begin_parsed_html_style(id, super::super::tests::envelope(), &flag())
         .unwrap();
-    assert!(
-        matches!(hold.prepare_notification(&q, &wrong, "owner", &cap, &flag()), Err(crate::DomParsedHtmlStyleNotificationError::MismatchedAssociation { target }) if target==element)
+    hold.transfer_notification(&q, &mut input, &flag()).unwrap();
+    assert_eq!(input.as_ref().unwrap().sheet(), &old);
+    assert_eq!(
+        input.as_ref().unwrap().sheet().association().element(),
+        element
     );
     let prep = hold
-        .prepare_notification(&q, &old, "owner", &cap, &flag())
+        .prepare_notification(&mut input, "owner", &cap, &flag())
         .unwrap();
     assert!(
         prep.owner_association_removed(),

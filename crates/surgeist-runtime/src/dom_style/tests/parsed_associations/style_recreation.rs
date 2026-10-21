@@ -12,6 +12,7 @@ use surgeist_html_parser::{
 };
 mod frontier;
 mod meta_occurrence;
+mod subjects;
 mod text_policy;
 
 fn next_parser_pop(
@@ -244,9 +245,9 @@ fn fresh_parser_pop_allow_creates_distinct_nonempty_sheet_and_processing_receipt
     let old_record = state.completions[0].processing().unwrap();
     let new_record = state.completions[1].processing().unwrap();
     assert_eq!(old_record.qualification, old);
-    assert_eq!(old_record.sheet.as_ref(), Some(&old_sheet));
+    assert_eq!(&old_record.sheet, &old_sheet);
     assert_eq!(new_record.qualification, new);
-    assert_eq!(new_record.sheet.as_ref(), Some(new_sheet));
+    assert_eq!(&new_record.sheet, new_sheet);
     assert_eq!(new_record.dependencies, ImportDependencies::NoImports);
     assert_eq!(state.next_task, 1, "creation issues no networking task");
     drop(state);
@@ -410,10 +411,7 @@ fn blocked_predecessor_preserves_old_decision_qualification_and_independent_allo
             let state = session.state.borrow();
             assert_eq!(state.completions.len(), 1);
             assert_eq!(state.completions[0].processing().unwrap().qualification, q);
-            assert_eq!(
-                state.completions[0].processing().unwrap().sheet.as_ref(),
-                Some(&sheet)
-            );
+            assert_eq!(&state.completions[0].processing().unwrap().sheet, &sheet);
             assert_eq!(
                 state
                     .roots
@@ -664,12 +662,11 @@ fn nonempty_recreation_css_input_refusal_and_cancellation_preserve_retry_and_bot
     );
     assert_eq!(session.state.borrow().completions.len(), 1);
     assert_eq!(
-        session.state.borrow().completions[0]
+        &session.state.borrow().completions[0]
             .processing()
             .unwrap()
-            .sheet
-            .as_ref(),
-        Some(&old_sheet)
+            .sheet,
+        &old_sheet
     );
     runtime
         .set_limits(&session.dom(), limits(), &cancel())

@@ -135,8 +135,17 @@ this synchronous step. The new request needs its own policy decision. An allowed
 successor can then create, exclude script bookkeeping and complete its rendering
 tail through the same owners. A blocked successor creates no sheet or task;
 real imports remain `PendingImports` until genuine resource outcomes exist.
+`advance_parsed_style_subject` selects the exact next distinct original Style
+insertion by its opaque occurrence identity after the prior synchronous work.
+Rendering transfers each genuine created invocation's notification continuation
+into its actual retained processing row. That row owns later queue authority even
+after the active Graph moves to another element; caller output Drop, imports and
+queue delivery do not gate the next synchronous subject. The new original policy,
+text and attributes form a new request and require their own decision. Creation
+uses the authentic Existing+Created list and the existing preference owner, so a
+new titled sheet does not reset preferred-name history or disturb prior sheets.
 `consume_parsed_meta_occurrence` executes only the exact next original
-`ChangePreferred` after the completed first/ParserPopped Style prefix. It uses the
+`ChangePreferred` after the completed contiguous synchronous prefix. It uses the
 retained original UTF-16 name and the existing stylesheet-set owner, publishing
 preferred-name history, actual named-sheet disabled flags and the canonical
 occurrence marker together under the real root lock. Repeated names can leave

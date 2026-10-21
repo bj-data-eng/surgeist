@@ -186,7 +186,7 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
             .meter
             .fork()
             .constrain_pending(self.dom.pending_associations.usage, self.dom.limits);
-        let selection = select_next(&formed, request, cancel)?;
+        let selection = select_next(self.dom, &formed, request, cancel)?;
         let (policy, policy_usage, cleanup_atomic) = match &selection.origin {
             StylePolicyOrigin::Known { .. } => {
                 let (policy, usage, atomic) = form_original_policy(&formed, &selection, cancel)?;
@@ -277,147 +277,47 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
 }
 // Complete all source inventory authentication before selecting a candidate.
 fn select_next(
+    dom: &Dom,
     meter: &Meter,
     old: &DomParsedHtmlStyleInlinePolicyRequest,
     cancel: &AtomicBool,
 ) -> Result<Selection, Error> {
-    let report = &meter.entry().report.value().value;
-    if meter.entry().context_basis.is_some()
-        || report.document().is_none()
-        || report.effective_scripting_mode() != surgeist_html::HtmlParserScriptingMode::Disabled
-    {
-        return Err(DomParsedHtmlStyleError::UnsupportedProfile {
+    let scan = frontier::scan(dom, meter, None, cancel)?;
+    if let Some(reason) = scan.missing {
+        meter.retain(
+            size_of::<DomParsedHtmlStyleNotificationRequirement>(),
+            0,
+            1,
+            cancel,
+        )?;
+        return Err(Error::Remaining(
+            DomParsedHtmlStyleNotificationRequirement::Unavailable {
+                contribution: meter.entry().id,
+                reason,
+            },
+        ));
+    }
+    let row = scan
+        .next
+        .ok_or(DomParsedHtmlStyleError::UnsupportedProfile {
             contribution: meter.entry().id,
-        }
-        .into());
+        })?;
+    let document = super::super::consume::mapped(
+        meter.entry(),
+        frontier::original_document(row.document()),
+        meter,
+        cancel,
+    )?;
+    if row.kind() != Kind::StyleUpdate(surgeist_html::HtmlStyleTrigger::ParserPopped)
+        || row.subject().id() != *old.qualification.subject()
+        || document != old.qualification.document()
+    {
+        return Err(remaining(meter, &row, document, cancel)?);
     }
-    let mut all = report.pending_associations();
-    loop {
-        meter.step(cancel)?;
-        match all.advance() {
-            Step::Document(row) => {
-                if let surgeist_html_parser::HtmlParseAssociationCaptureDisposition::Unavailable(
-                    missing,
-                ) = row.disposition()
-                {
-                    return Err(crate::DomParsedHtmlAssociationAdmissionError::Incomplete {
-                        contribution: meter.entry().id,
-                        missing,
-                    }
-                    .into());
-                }
-            }
-            Step::Complete => break,
-            _ => (),
-        }
+    if row.prior_style().as_ref() != Some(old.qualification.occurrence()) {
+        return Err(DomParsedHtmlStyleError::WrongRequest.into());
     }
-    let mut seen = false;
-    let mut cursor = report.pending_associations();
-    loop {
-        meter.step(cancel)?;
-        match cursor.advance() {
-            Step::Occurrence(row) if row.requires_processing() => {
-                if row.id() == *old.qualification.occurrence() {
-                    seen = true;
-                    continue;
-                }
-                let mut mapped = None;
-                for binding in &meter.entry().documents {
-                    meter.step(cancel)?;
-                    if matches!(row.document(), HtmlParseMetadataDocument::Owned(node) if binding.source == crate::DomParsedHtmlHistoricalDocument::Constructed(node.id()))
-                    {
-                        mapped = Some(binding.document);
-                        break;
-                    }
-                }
-                let document = mapped.ok_or(DomParsedHtmlStyleError::WrongRequest)?;
-                if !seen
-                    || row.kind()
-                        != Kind::StyleUpdate(surgeist_html::HtmlStyleTrigger::ParserPopped)
-                    || row.subject().id() != *old.qualification.subject()
-                    || document != old.qualification.document()
-                {
-                    return Err(remaining(meter, &row, document, cancel)?);
-                }
-                for prior in [row.prior_document(), row.prior_style()]
-                    .into_iter()
-                    .flatten()
-                {
-                    if !dependency(
-                        meter,
-                        &prior,
-                        &row.id(),
-                        old.qualification.occurrence(),
-                        cancel,
-                    )? {
-                        return Err(DomParsedHtmlStyleError::WrongRequest.into());
-                    }
-                }
-                let context = row.context();
-                let requirement = context.requirement(Role::InitialPolicy);
-                let origin = match (requirement, context.csp_association(), &old.origin) {
-                    (
-                        Requirement::Known,
-                        Some(policy),
-                        StylePolicyOrigin::Known { document, .. },
-                    ) if policy.document() == document => StylePolicyOrigin::known(policy),
-                    (Requirement::OfflineUnbound, None, StylePolicyOrigin::Offline(previous)) => {
-                        let slot = context
-                            .slot(Role::InitialPolicy)
-                            .ok_or(DomParsedHtmlStyleError::WrongRequest)?;
-                        if slot != *previous
-                            || context.input_epoch(Role::InitialPolicy) != *previous.epoch()
-                        {
-                            return Err(DomParsedHtmlStyleError::WrongRequest.into());
-                        }
-                        StylePolicyOrigin::Offline(slot)
-                    }
-                    _ => return Err(DomParsedHtmlStyleError::PolicyContext { requirement }.into()),
-                };
-                let inputs = row.style().ok_or(DomParsedHtmlStyleError::WrongRequest)?;
-                if !inputs.connected() || !inputs.type_eligible() {
-                    return Err(DomParsedHtmlStyleError::UnsupportedProfile {
-                        contribution: meter.entry().id,
-                    }
-                    .into());
-                }
-                let mut cursor = HtmlStyleUpdateCursor::new(old.cursor.profile());
-                for reply in [
-                    Reply::Applied,
-                    Reply::Connected(inputs.connected()),
-                    Reply::TypeEligible(inputs.type_eligible()),
-                ] {
-                    meter.step(cancel)?;
-                    cursor.reply(reply)?;
-                }
-                let HtmlParseMetadataDocument::Owned(original) = row.document() else {
-                    return Err(DomParsedHtmlStyleError::WrongRequest.into());
-                };
-                return Ok(Selection {
-                    qualification: DomParsedHtmlStyleQualification {
-                        contribution: meter.entry().id,
-                        occurrence: row.id(),
-                        subject: row.subject().id(),
-                        original_document: crate::DomParsedHtmlHistoricalDocument::Constructed(
-                            original.id(),
-                        ),
-                        document,
-                        context_epoch: context.epoch(),
-                    },
-                    state: inputs.state(),
-                    origin,
-                    cursor,
-                });
-            }
-            Step::Complete => {
-                return Err(DomParsedHtmlStyleError::UnsupportedProfile {
-                    contribution: meter.entry().id,
-                }
-                .into());
-            }
-            _ => (),
-        }
-    }
+    subject::selection(meter, &row, old, cancel).map_err(Into::into)
 }
 // Formation of a truthful unsupported-influence diagnostic is itself finite
 // original output. The borrowed row remains producer-qualified throughout.

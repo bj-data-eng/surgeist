@@ -440,7 +440,9 @@ fn original_finite_output_refusal_preserves_sheet_and_spent_work_until_raised_re
         large.retained_bytes(),
         large.retained_units(),
         large.work(),
-        10,
+        // The explicit lower continuation adds one genuine cumulative output;
+        // the following command must still refuse and preserve its owners.
+        11,
     )
     .unwrap();
     let (mut session, _installation, old, sheet, _) = rendered(finite);
@@ -460,7 +462,7 @@ fn original_finite_output_refusal_preserves_sheet_and_spent_work_until_raised_re
             Err(DomStyleParsedSuccessorError::Runtime(
                 DomStyleRuntimeError::Dom(DomError::ResourceLimit {
                     resource: DomResource::ParsedAssociationProcessingOutputs,
-                    limit: 10,
+                    limit: 11,
                 })
             ))
         ),

@@ -177,16 +177,17 @@ fn blocked_first_needs_no_creation_owner_and_later_exact_text_can_create_and_ren
         )
         .unwrap();
         assert!(matches!(
-            hold.process_rendering(q, &flag()).unwrap(),
+            hold.process_rendering(
+                q,
+                surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+                &flag()
+            )
+            .unwrap(),
             DomParsedHtmlStyleRenderingProgress::Complete(_)
         ));
         assert!(matches!(
-            hold.prepare_notification(&old_q, &sheet, "owner", &cap, &flag()),
-            Err(DomParsedHtmlStyleNotificationError::Style(
-                DomParsedHtmlStyleError::WrongPhase {
-                    phase: DomParsedHtmlStylePhase::InlinePolicyBlocked
-                }
-            ))
+            hold.transfer_notification(&old_q, &mut None, &flag()),
+            Err(DomParsedHtmlStyleError::WrongRequest)
         ));
     }
     assert_eq!(
@@ -376,16 +377,21 @@ fn created_first_recreates_distinct_association_and_old_notification_uses_old_sh
     )
     .unwrap();
     assert!(matches!(
-        hold.process_rendering(completion.qualification(), &flag())
-            .unwrap(),
+        hold.process_rendering(
+            completion.qualification(),
+            surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+            &flag()
+        )
+        .unwrap(),
         DomParsedHtmlStyleRenderingProgress::Complete(_)
     ));
-    assert!(matches!(
-        hold.prepare_notification(&value.q, created.sheet(), "owner", &value.root, &flag()),
-        Err(DomParsedHtmlStyleNotificationError::MismatchedAssociation { .. })
-    ));
+    assert_eq!(value.notification.as_ref().unwrap().sheet(), &old);
+    assert_ne!(
+        value.notification.as_ref().unwrap().sheet(),
+        created.sheet()
+    );
     assert!(
-        hold.prepare_notification(&value.q, &old, "owner", &value.root, &flag())
+        hold.prepare_notification(&mut value.notification, "owner", &value.root, &flag())
             .unwrap()
             .owner_association_removed()
     );

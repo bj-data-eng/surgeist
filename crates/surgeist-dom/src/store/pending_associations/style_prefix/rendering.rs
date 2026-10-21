@@ -19,6 +19,7 @@ struct Output {
     _history: history::Retirement,
     _formation: Option<source::formation::Formation>,
     _admission: control::Admission,
+    _prefix: Option<frontier::ExecutedPrefix>,
     _meter: Meter,
 }
 /// Historical evidence from one completed original rendering invocation. This
@@ -257,6 +258,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
     pub fn process_rendering(
         &mut self,
         q: &DomParsedHtmlStyleQualification,
+        handoff: DomParsedHtmlStyleNotificationHandoff<'_>,
         cancel: &AtomicBool,
     ) -> Result<DomParsedHtmlStyleRenderingProgress, DomParsedHtmlStyleError> {
         self.meter
@@ -315,6 +317,11 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
             return Err(DomParsedHtmlStyleError::WrongRequest);
         }
         drop(snapshot);
+        if matches!(&handoff,DomParsedHtmlStyleNotificationHandoff::Transfer(receiver) if receiver.is_some())
+        {
+            return Err(DomParsedHtmlStyleError::ReceiverOccupied);
+        }
+        frontier::ensure_next(self.dom, &self.meter, q, cancel)?;
         let facts = facts(&self.meter, q, cancel)?;
         if let Some(required) = facts.context {
             self.meter.retain(
@@ -351,6 +358,23 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
             false
         };
         debug_assert_eq!(successor.action(), Action::Complete);
+        let transfer = match handoff {
+            DomParsedHtmlStyleNotificationHandoff::Retain => None,
+            DomParsedHtmlStyleNotificationHandoff::Transfer(receiver) => Some((
+                receiver,
+                notification::form_continuation(&self.meter, request, cancel)?,
+            )),
+        };
+        let next_prefix = frontier::ExecutedPrefix {
+            last: q.occurrence().clone(),
+        };
+        let mut prefix = self
+            .meter
+            .entry()
+            .executed_prefix
+            .try_lock()
+            .map_err(|e| notification::guard_error(e, self.meter.entry().id))?;
+
         let meter = self.meter.fork();
         meter.retain(
             size_of::<Output>() + size_of::<DomParsedHtmlStyleRenderingProgress>(),
@@ -402,6 +426,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
                 _history: history,
                 _formation: publication._formation.take(),
                 _admission: admission,
+                _prefix: None,
                 _meter: meter,
             })),
         };
@@ -417,8 +442,20 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
         request.cursor = successor;
         **held.value_mut() = Graph::Rendered {
             request,
-            notification: super::notification::Issuance::Unissued,
+            notification: if transfer.is_some() {
+                DomParsedHtmlStyleNotificationHandoffStatus::Transferred
+            } else {
+                DomParsedHtmlStyleNotificationHandoffStatus::Retained
+            },
         };
+        completion
+            .output
+            .as_mut()
+            .expect("preformed output")
+            ._prefix = prefix.replace(next_prefix);
+        if let Some((receiver, value)) = transfer {
+            *receiver = Some(value);
+        }
         Ok(DomParsedHtmlStyleRenderingProgress::Complete(completion))
     }
 }

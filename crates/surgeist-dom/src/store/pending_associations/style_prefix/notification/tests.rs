@@ -9,11 +9,17 @@ fn rendered() -> (
     DomParsedHtmlStyleQualification,
     DomStyleCssomRoot,
     DomStyleSheet,
+    Option<DomParsedHtmlStyleNotificationContinuation>,
 ) {
     let (mut dom, _document, id, q, element, cap) = ready("", 1024);
+    let mut input = None;
     dom.begin_parsed_html_style(id, envelope(), &flag())
         .unwrap()
-        .process_rendering(&q, &flag())
+        .process_rendering(
+            &q,
+            crate::DomParsedHtmlStyleNotificationHandoff::Transfer(&mut input),
+            &flag(),
+        )
         .unwrap();
     let sheet = dom
         .snapshot()
@@ -25,11 +31,11 @@ fn rendered() -> (
         .sheet
         .clone()
         .unwrap();
-    (dom, id, q, cap, sheet)
+    (dom, id, q, cap, sheet, input)
 }
 #[test]
 fn real_busy_poisoned_and_missing_object_are_not_owner_removal() {
-    let (mut dom, id, q, cap, sheet) = rendered();
+    let (mut dom, id, q, cap, sheet, mut input) = rendered();
     let root = q.document().node();
     {
         let locked = cap.lock().unwrap();
@@ -37,7 +43,7 @@ fn real_busy_poisoned_and_missing_object_are_not_owner_removal() {
             .begin_parsed_html_style(id, envelope(), &flag())
             .unwrap();
         assert!(
-            matches!(hold.prepare_notification(&q,&sheet,"owner",&cap,&flag()),Err(Error::OwnerBusy{root:actual}) if actual==root)
+            matches!(hold.prepare_notification(&mut input,"owner",&cap,&flag()),Err(Error::OwnerBusy{root:actual}) if actual==root)
         );
         drop(locked);
     }
@@ -63,17 +69,12 @@ fn real_busy_poisoned_and_missing_object_are_not_owner_removal() {
         let prepared = owner.prepare_commit(batch).unwrap();
         prepared.sheet(&ticket).unwrap().id().clone()
     };
-    let mut wrong = sheet.clone();
-    wrong.id = ghost;
-    {
-        let mut hold = dom
-            .begin_parsed_html_style(id, envelope(), &flag())
-            .unwrap();
-        assert!(matches!(
-            hold.prepare_notification(&q, &wrong, "owner", &cap, &flag()),
-            Err(Error::Cssom(surgeist_cssom::CssomError::MissingObject))
-        ));
-    }
+    assert!(matches!(
+        cap.snapshot().unwrap().sheet(&ghost),
+        Err(surgeist_cssom::CssomError::MissingObject)
+    ));
+    assert_eq!(input.as_ref().unwrap().sheet(), &sheet);
+    assert_eq!(input.as_ref().unwrap().qualification(), &q);
     let poisoned = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let _guard = cap.lock().unwrap();
         panic!("genuine owner failure");
@@ -83,18 +84,20 @@ fn real_busy_poisoned_and_missing_object_are_not_owner_removal() {
         .begin_parsed_html_style(id, envelope(), &flag())
         .unwrap();
     assert!(
-        matches!(hold.prepare_notification(&q,&sheet,"owner",&cap,&flag()),Err(Error::OwnerPoisoned{root:actual}) if actual==root)
+        matches!(hold.prepare_notification(&mut input,"owner",&cap,&flag()),Err(Error::OwnerPoisoned{root:actual}) if actual==root)
     );
 }
 #[test]
 fn token_keeps_actual_original_entry_and_frame_debit_after_canonical_owner_drop() {
-    let (mut dom, id, q, cap, sheet) = rendered();
+    let (mut dom, id, q, cap, sheet, mut input) = rendered();
+    assert_eq!(input.as_ref().unwrap().qualification(), &q);
+    assert_eq!(input.as_ref().unwrap().sheet(), &sheet);
     let token = {
         let mut hold = dom
             .begin_parsed_html_style(id, envelope(), &flag())
             .unwrap();
         let prep = hold
-            .prepare_notification(&q, &sheet, "owner", &cap, &flag())
+            .prepare_notification(&mut input, "owner", &cap, &flag())
             .unwrap();
         let mut published = prep.commit(&flag()).unwrap();
         let DomParsedHtmlStyleNotificationDisposition::Token(token) =
@@ -125,13 +128,13 @@ fn token_keeps_actual_original_entry_and_frame_debit_after_canonical_owner_drop(
 }
 #[test]
 fn forbidden_cleanup_keeps_canonical_membership_and_token_phase_unchanged() {
-    let (mut dom, id, q, cap, sheet) = rendered();
+    let (mut dom, id, q, cap, sheet, mut input) = rendered();
     let mut token = {
         let mut hold = dom
             .begin_parsed_html_style(id, envelope(), &flag())
             .unwrap();
         let mut published = hold
-            .prepare_notification(&q, &sheet, "owner", &cap, &flag())
+            .prepare_notification(&mut input, "owner", &cap, &flag())
             .unwrap()
             .commit(&flag())
             .unwrap();

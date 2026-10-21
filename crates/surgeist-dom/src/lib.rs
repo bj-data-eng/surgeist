@@ -287,7 +287,7 @@ pub use store::pending_associations::{
     DomParsedHtmlMetaPublished, DomParsedHtmlMetaRetirement, DomParsedHtmlMetaRuntimeHold,
     DomParsedHtmlStylePrefixView, DomParsedHtmlStyleRuntimeHold, DomParsedHtmlStyleSheetCompletion,
     DomParsedHtmlStyleSheetPreparation, DomParsedHtmlStyleSheetPublished,
-    DomParsedHtmlStyleSheetRetirement,
+    DomParsedHtmlStyleSheetRetirement, DomParsedHtmlStyleSubjectCompletion,
 };
 pub use store::source::operation::dialog_queue::{
     DomDialogCloseTaskInfo, DomDialogTask, DomDialogTaskInfo, DomDialogTaskQueueCommit,

@@ -32,13 +32,16 @@ pub enum DomParsedHtmlStyleNotificationRequirement {
         reason: DomParsedHtmlStyleNotificationUnavailable,
     },
 }
-/// Canonical original permission disposition; Issued does not itself assert
-/// that a composing Runtime installed or delivered an element task.
+/// Canonical custody readback, not task issuance or resource readiness.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DomParsedHtmlStyleNotificationStatus {
-    NotIssued,
-    Issued,
-    OwnerAssociationRemoved,
+pub enum DomParsedHtmlStyleNotificationHandoffStatus {
+    Retained,
+    Transferred,
+}
+/// An explicit receiving owner for this completed invocation's affine work.
+pub enum DomParsedHtmlStyleNotificationHandoff<'a> {
+    Retain,
+    Transfer(&'a mut Option<DomParsedHtmlStyleNotificationContinuation>),
 }
 #[derive(Debug)]
 pub enum DomParsedHtmlStyleNotificationDisposition {
@@ -48,28 +51,14 @@ pub enum DomParsedHtmlStyleNotificationDisposition {
 #[derive(Debug)]
 pub enum DomParsedHtmlStyleNotificationError {
     Style(DomParsedHtmlStyleError),
-    MismatchedOwner {
-        root: NodeId,
-    },
-    OwnerBusy {
-        root: NodeId,
-    },
-    OwnerPoisoned {
-        root: NodeId,
-    },
+    MismatchedOwner { root: NodeId },
+    OwnerBusy { root: NodeId },
+    OwnerPoisoned { root: NodeId },
     Cssom(surgeist_cssom::CssomError),
-    MismatchedAssociation {
-        target: NodeId,
-    },
-    MismatchedLabel {
-        root: NodeId,
-    },
-    TargetDestroyed {
-        target: NodeId,
-    },
-    AlreadyIssued {
-        contribution: DomParsedHtmlAssociationId,
-    },
+    MismatchedAssociation { target: NodeId },
+    MismatchedLabel { root: NodeId },
+    TargetDestroyed { target: NodeId },
+    MissingContinuation,
 }
 impl From<DomParsedHtmlStyleError> for DomParsedHtmlStyleNotificationError {
     fn from(value: DomParsedHtmlStyleError) -> Self {
@@ -96,6 +85,6 @@ impl std::error::Error for DomParsedHtmlStyleNotificationError {
     }
 }
 pub use crate::store::pending_associations::{
-    DomParsedHtmlStyleNotificationCompletion, DomParsedHtmlStyleNotificationPreparation,
-    DomParsedHtmlStyleNotificationPublished,
+    DomParsedHtmlStyleNotificationCompletion, DomParsedHtmlStyleNotificationContinuation,
+    DomParsedHtmlStyleNotificationPreparation, DomParsedHtmlStyleNotificationPublished,
 };

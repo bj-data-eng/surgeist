@@ -485,34 +485,54 @@ the insertion's empty input. It requires a new external inline-policy decision, 
 the predecessor. A blocked new decision completes this cursor without creating
 a sheet, processing receipt or notification task. An allowed decision enters the
 same closed `prepare_create_sheet` editor: the genuine new occurrence and
-predecessor outcome qualify its original inputs, empty registered membership
-and canonical null association. The producer creates a distinct sheet identity
+predecessor outcome qualify its original inputs and canonical null association.
+Existing registered sheets remain in their authentic original order. The producer creates a distinct sheet identity
 and DOM increments the same association lineage. Old readable CSSOM objects,
 processing/resource receipts and queued tasks remain independent.
 
 The recreated invocation then uses its own explicit script exclusion and
-original rendering actions. This supports the first invocation and its actual
-ParserPopped successor; further influencing history remains precise pending
-work. Neither completion acknowledges the contribution or enables task delivery.
+original rendering actions. Each selected ordinary Style supports its insertion
+and actual ParserPopped successor. Neither completion acknowledges the
+contribution or enables task delivery.
 
 The same Entry and cumulative Control retain one compact completed predecessor:
 its actual qualification and execution profile, plus either a creation-sealed
-sheet/association and notification disposition or a genuine CSP-blocked outcome.
+sheet/association and handoff status or a genuine CSP-blocked outcome.
 A blocked outcome has no invented sheet or notification permission. Old full
 text/nonce graphs move into admitted retirement. Offline bound policy moves into
 the new request; known old policy and its actual debit retire after publication,
 while the new request owns its separately admitted source policy. Compact
-completed evidence keeps the closed source origin without another native graph. Both old queued tokens
-and unqueued resource receipts retain their exact predecessor qualification.
-Notification permission resolves that stored sheet proof even after the active
-Graph advances, so a later sheet at the same Element cannot substitute. All
-output, replacement and retirement overlap is admitted before publication;
+completed evidence keeps the closed source origin without another native graph.
+Before advancing to a distinct subject, created invocations must transfer their
+affine notification continuation to the composing owner. This is independent of
+queueing or import completion. Old queued tokens and unqueued resource receipts
+then retain their exact qualification and sealed sheet proof outside the active
+Graph. All output, replacement and retirement overlap is admitted before
+publication;
 refusal keeps both published owners and the old graph unchanged, while work
 spent remains on the original controller for a raised-limit retry.
 
+### A subsequent original Style subject
+
+`advance_subject` selects only the exact next influencing distinct Style insertion
+by its opaque original occurrence identity. Earlier completed invocations and
+Meta operations are authenticated through the same fixed executed-prefix marker;
+no caller ordinal or asynchronous completion stands in for execution. The
+operation requires prior created invocations to have transferred their work,
+retains existing sheets and preferences, and reaches a fresh original inline
+policy request without publishing another sheet. A known source policy is
+admitted from that occurrence; offline reuse requires its actual shared slot and
+input epoch. Every new request needs a new decision.
+
+Each new creation validates the original sheet order against mapped canonical
+associations and the real locked CSSOM list, using existing and newly created
+membership targets. Unexplained, missing, duplicate or foreign members refuse.
+Repeated subject transitions have no fixed two-subject limit; unsupported or
+unfinished influencing operations remain precise Pending requirements.
+
 ### Original Meta preferred-name progress
 
-After the supported first and ParserPopped Style invocations have returned,
+After the preceding influencing synchronous operations have returned,
 `meta_occurrence_document` and `prepare_meta_occurrence` select the exact next
 original `ChangePreferred` by its opaque occurrence ID. Selection authenticates
 the complete inventory and dependencies. It reads the retained original UTF-16
@@ -539,23 +559,27 @@ acknowledges the contribution nor seals the synchronous end automatically.
 
 ### Original notification permission and the synchronous frontier
 
-After this invocation reaches `RenderingComplete`, a composing owner can use
-`prepare_notification` with the exact retained qualification, actual created
-sheet, creation-time CSSOM owner label and real root capability. Preparation
-holds the actual root lock while checking the originating sheet and current
-owner. A cleared owner ends this notification path as `OwnerAssociationRemoved`;
-it does not report a failed resource or cancel resource work. A missing sheet,
-destroyed target, different nonnull owner and wrong association remain distinct
-refusals. Creation revision is historical evidence, not a current revision gate.
+Rendering explicitly selects `DomParsedHtmlStyleNotificationHandoff::Retain` or
+`Transfer` into an empty continuation slot. Retain leaves the work in the
+canonical invocation even when its historical rendering output drops. The
+separate `transfer_notification` operation can recover that work once. Transfer
+marks the canonical `notification_handoff` as `Transferred`; it does not assert
+queueing or resource success. Dropping a transferred continuation abandons its
+authority without acknowledging the contribution or issuing an event.
+
+`prepare_notification` borrows that actual continuation, its creation-time CSSOM
+owner label and real root capability. It checks the originating sheet and current
+owner under the actual root lock. A cleared owner ends this notification path as
+`OwnerAssociationRemoved`; missing objects, destroyed targets, different nonnull
+owners and wrong labels remain distinct refusals. Creation revision is historical
+evidence, not a current revision gate. Refusal or precommit Drop retains the
+same continuation. Only successful commit consumes it.
 
 The composing owner admits its actual queue row/serial/result and any suffix
-moves before `commit`. Publication records one original disposition without
-acknowledging the history or fabricating a DOM/CSSOM revision. A fresh
-`take_disposition` moves the token or removed-owner result once while the
-Published value retains the real root lock through the infallible queue update.
-Drop before commit issues nothing; retry keeps the same work and policy. The
-canonical `notification_status` is caller retry/diagnostic evidence of permission
-issuance or owner removal, not a claim that Runtime installed or delivered a task.
+moves before `commit`. A fresh `take_disposition` moves the token or removed-owner
+result once while Published retains the real root lock through the infallible
+queue update. There is no replayable lookup of notification authority in a newer
+active Graph.
 
 `DomStyleNotificationOrigin` distinguishes native Source operations from genuine
 parsed occurrences. Parsed tokens retain original finite custody independently
@@ -572,10 +596,9 @@ inline decision is real synchronous execution, not missing processing.
 
 `complete_synchronous_execution` authenticates the completed ordinary offline
 no-executable-JavaScript report, every Document capture disposition, the entire
-sealed inventory, and the actual completed first and ParserPopped invocations.
+sealed inventory, and the actual contiguous executed prefix.
 It recognizes producer-proved no-effect rows, genuine blocked returns, and
-explicitly committed original Meta preferred-name progress. Further influencing
-Style/Link operations or an unconsumed Meta remain exact requirements.
+explicitly committed original Meta preferred-name progress. Unfinished Style/Link operations or an unconsumed Meta remain exact requirements.
 Capture completeness or an exhausted cursor alone does not establish end.
 The returned opaque end retains its actual original output custody; the
 canonical `parsed_html_synchronous_end` lender permits readback after that

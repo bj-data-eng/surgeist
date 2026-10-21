@@ -16,16 +16,26 @@ pub(in crate::store::pending_associations::style_prefix) fn ready(
     NodeId,
     DomStyleCssomRoot,
 ) {
+    ready_source(
+        &format!("<!doctype html><head><style media='{media}'>later</style></head><body>final"),
+        outputs,
+    )
+}
+pub(in crate::store::pending_associations::style_prefix) fn ready_source(
+    source: &str,
+    outputs: usize,
+) -> (
+    Dom,
+    DocumentId,
+    DomParsedHtmlAssociationId,
+    DomParsedHtmlStyleQualification,
+    NodeId,
+    DomStyleCssomRoot,
+) {
     let limits =
         DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 1_000_000, outputs).unwrap();
     let (mut dom, env) = setup();
-    let (document, id) = install(
-        &mut dom,
-        parse(&format!(
-            "<!doctype html><head><style media='{media}'>later</style></head><body>final"
-        )),
-        env,
-    );
+    let (document, id) = install(&mut dom, parse(source), env);
     begin_await(&mut dom, id, limits);
     let binding = binding(&dom, id);
     let q = binding.qualification().clone();
@@ -108,7 +118,11 @@ fn completed_output_keeps_real_retired_state_history_and_original_frame_debit() 
     let progress = dom
         .begin_parsed_html_style(id, envelope(), &flag())
         .unwrap()
-        .process_rendering(&q, &flag())
+        .process_rendering(
+            &q,
+            crate::DomParsedHtmlStyleNotificationHandoff::Retain,
+            &flag(),
+        )
         .unwrap();
     let DomParsedHtmlStyleRenderingProgress::Complete(done) = progress else {
         panic!("unconditional original head Style")
@@ -147,7 +161,11 @@ fn final_output_refusal_discards_prepared_relation_and_retries_without_duplicate
     let spent = {
         let mut hold = dom.begin_parsed_html_style(id, policy, &flag()).unwrap();
         assert!(matches!(
-            hold.process_rendering(&q, &flag()),
+            hold.process_rendering(
+                &q,
+                crate::DomParsedHtmlStyleNotificationHandoff::Retain,
+                &flag()
+            ),
             Err(DomParsedHtmlStyleError::Admission(
                 DomParsedHtmlAssociationAdmissionError::Dom(DomError::ResourceLimit {
                     resource: DomResource::ParsedAssociationProcessingOutputs,
@@ -177,7 +195,12 @@ fn final_output_refusal_discards_prepared_relation_and_retries_without_duplicate
             .begin_parsed_html_style(id, envelope(), &flag())
             .unwrap();
         assert!(hold.spent_work() > spent);
-        hold.process_rendering(&q, &flag()).unwrap()
+        hold.process_rendering(
+            &q,
+            crate::DomParsedHtmlStyleNotificationHandoff::Retain,
+            &flag(),
+        )
+        .unwrap()
     };
     assert!(matches!(
         progress,
@@ -207,7 +230,11 @@ fn repeated_pending_outputs_consume_one_original_finite_allowance_without_cursor
     // same original entry; dropping a hold cannot reset its output allowance.
     for _ in 0..=policy.outputs() {
         let mut hold = dom.begin_parsed_html_style(id, policy, &flag()).unwrap();
-        match hold.process_rendering(&q, &flag()) {
+        match hold.process_rendering(
+            &q,
+            crate::DomParsedHtmlStyleNotificationHandoff::Retain,
+            &flag(),
+        ) {
             Ok(DomParsedHtmlStyleRenderingProgress::Pending(Required::MediaEnvironment)) => {
                 emitted += 1
             }

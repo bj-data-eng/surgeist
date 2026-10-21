@@ -56,7 +56,12 @@ fn next_sheet(dom: &mut Dom, id: DomParsedHtmlAssociationId, root: &DomStyleCsso
     )
     .unwrap();
     assert!(matches!(
-        hold.process_rendering(&q, &flag()).unwrap(),
+        hold.process_rendering(
+            &q,
+            surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+            &flag()
+        )
+        .unwrap(),
         DomParsedHtmlStyleRenderingProgress::Complete(_)
     ));
 }
@@ -172,7 +177,11 @@ fn queued_predecessor_reaches_end_before_delivery_and_real_cleanup_unblocks_curr
         .dom
         .begin_parsed_html_style(value.id, envelope(), &flag())
         .unwrap()
-        .process_rendering(&value.q, &flag())
+        .process_rendering(
+            &value.q,
+            surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Transfer(&mut value.notification),
+            &flag(),
+        )
         .unwrap();
     let mut token = {
         let mut hold = value
@@ -180,7 +189,7 @@ fn queued_predecessor_reaches_end_before_delivery_and_real_cleanup_unblocks_curr
             .begin_parsed_html_style(value.id, envelope(), &flag())
             .unwrap();
         let mut published = hold
-            .prepare_notification(&value.q, &value.association, "owner", &value.root, &flag())
+            .prepare_notification(&mut value.notification, "owner", &value.root, &flag())
             .unwrap()
             .commit(&flag())
             .unwrap();

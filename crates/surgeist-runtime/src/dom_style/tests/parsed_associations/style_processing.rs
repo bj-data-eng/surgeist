@@ -89,7 +89,7 @@ fn actual_first_parse_receipt_survives_output_drop_and_later_authored_import_and
     let owner = session.state.borrow().completions[0].owner().clone();
     record(&session, |value| {
         assert_eq!(value.qualification, original);
-        assert_eq!(value.sheet.as_ref(), Some(&sheet));
+        assert_eq!(&value.sheet, &sheet);
         assert_eq!(value.owner.root(), document.node());
         assert_eq!(
             value.profile,
@@ -114,7 +114,7 @@ fn actual_first_parse_receipt_survives_output_drop_and_later_authored_import_and
     assert!(owner.snapshot().unwrap().sheets().is_empty());
     record(&session, |value| {
         assert_eq!(value.dependencies, ImportDependencies::NoImports);
-        assert_eq!(value.sheet.as_ref(), Some(&sheet));
+        assert_eq!(&value.sheet, &sheet);
         assert_eq!(value.qualification, original);
     });
     assert!(create(&mut session, id, envelope()).is_err());
@@ -156,7 +156,7 @@ fn processing_bank_limit_refuses_before_publication_and_raise_installs_one_recei
         .unwrap();
     let created = create(&mut session, id, envelope()).unwrap();
     record(&session, |value| {
-        assert_eq!(value.sheet.as_ref(), Some(created.completion().sheet()))
+        assert_eq!(&value.sheet, created.completion().sheet())
     });
     assert_eq!(
         session.state.borrow().next_task,
@@ -493,12 +493,12 @@ fn native_wait_and_delivery_remain_distinct_beside_original_processing_rows() {
         let state = session.state.borrow();
         let original = state.completions[0].processing().unwrap();
         assert_eq!(original.qualification, first);
-        assert_eq!(original.sheet.as_ref(), Some(&first_sheet));
+        assert_eq!(&original.sheet, &first_sheet);
         assert_eq!(state.completions[1].task().id(), waiting);
         assert_eq!(state.completions[1].task().token.target(), imported);
         let recreated = state.completions[2].processing().unwrap();
         assert_eq!(recreated.qualification, q);
-        assert_eq!(recreated.sheet.as_ref(), Some(&second_sheet));
+        assert_eq!(&recreated.sheet, &second_sheet);
         assert_ne!(first_sheet.id(), second_sheet.id());
     }
     assert!(matches!(

@@ -27,7 +27,13 @@ pub(super) fn rendered() -> Ready {
             .dom
             .begin_parsed_html_style(value.id, envelope(), &flag())
             .unwrap()
-            .process_rendering(&value.q, &flag())
+            .process_rendering(
+                &value.q,
+                surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Transfer(
+                    &mut value.notification
+                ),
+                &flag()
+            )
             .unwrap(),
         DomParsedHtmlStyleRenderingProgress::Complete(_)
     ));
@@ -39,7 +45,7 @@ fn issue(value: &mut Ready) -> DomStyleNotificationToken {
         .begin_parsed_html_style(value.id, envelope(), &flag())
         .unwrap();
     let mut published = hold
-        .prepare_notification(&value.q, &value.association, "owner", &value.root, &flag())
+        .prepare_notification(&mut value.notification, "owner", &value.root, &flag())
         .unwrap()
         .commit(&flag())
         .unwrap();
@@ -187,8 +193,8 @@ fn queued_predecessor_keeps_execution_and_direct_cleanup_remains_blocked_by_new_
         .begin_parsed_html_style(value.id, envelope(), &flag())
         .unwrap();
     assert!(matches!(
-        hold.prepare_notification(&value.q, &value.association, "owner", &value.root, &flag()),
-        Err(DomParsedHtmlStyleNotificationError::AlreadyIssued { .. })
+        hold.prepare_notification(&mut value.notification, "owner", &value.root, &flag()),
+        Err(DomParsedHtmlStyleNotificationError::MissingContinuation)
     ));
 }
 #[test]
@@ -201,11 +207,11 @@ fn unqueued_old_receipt_can_terminate_after_successor_and_foreign_root_refuses()
         .begin_parsed_html_style(value.id, envelope(), &flag())
         .unwrap();
     assert!(matches!(
-        hold.prepare_notification(&value.q, &other.association, "owner", &value.root, &flag()),
+        hold.prepare_notification(&mut value.notification, "owner", &other.root, &flag()),
         Err(DomParsedHtmlStyleNotificationError::MismatchedOwner { root }) if root == value.document.node()
     ));
     let prep = hold
-        .prepare_notification(&value.q, &value.association, "owner", &value.root, &flag())
+        .prepare_notification(&mut value.notification, "owner", &value.root, &flag())
         .unwrap();
     assert!(prep.owner_association_removed());
     let mut published = prep.commit(&flag()).unwrap();
@@ -292,7 +298,7 @@ fn new_policy_decision_is_required_before_authentic_successor_creation() {
 }
 #[test]
 fn finite_successor_output_refusal_retains_original_work_and_raised_retry() {
-    let limits = DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 1_000_000, 8).unwrap();
+    let limits = DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 1_000_000, 9).unwrap();
     let mut value = ready(
         "<!doctype html><head><style>later</style></head><body>final",
         limits,
@@ -301,7 +307,11 @@ fn finite_successor_output_refusal_retains_original_work_and_raised_retry() {
         .dom
         .begin_parsed_html_style(value.id, limits, &flag())
         .unwrap()
-        .process_rendering(&value.q, &flag())
+        .process_rendering(
+            &value.q,
+            surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Transfer(&mut value.notification),
+            &flag(),
+        )
         .unwrap();
     let stamp = value.dom.snapshot().stamp();
     let revision = value.root.snapshot().unwrap().revision().clone();
@@ -321,7 +331,7 @@ fn finite_successor_output_refusal_retains_original_work_and_raised_retry() {
                 DomParsedHtmlStyleError::Admission(DomParsedHtmlAssociationAdmissionError::Dom(
                     DomError::ResourceLimit {
                         resource: DomResource::ParsedAssociationProcessingOutputs,
-                        limit: 8
+                        limit: 9
                     }
                 ))
             ))

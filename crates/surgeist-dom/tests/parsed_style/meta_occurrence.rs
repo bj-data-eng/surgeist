@@ -52,7 +52,14 @@ fn pair(
             &flag(),
         )
         .unwrap();
-        drop(h.process_rendering(&binding_q, &flag()).unwrap());
+        drop(
+            h.process_rendering(
+                &binding_q,
+                surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+                &flag(),
+            )
+            .unwrap(),
+        );
         let (_, dead) = h
             .prepare_successor(Some(&cap), &flag())
             .unwrap()
@@ -84,7 +91,14 @@ fn pair(
             &flag(),
         )
         .unwrap();
-        drop(h.process_rendering(&q, &flag()).unwrap());
+        drop(
+            h.process_rendering(
+                &q,
+                surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Retain,
+                &flag(),
+            )
+            .unwrap(),
+        );
     }
     (dom, document, id, cap, ids)
 }

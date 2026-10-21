@@ -6,10 +6,6 @@ use surgeist_cssom::{
 };
 use surgeist_html_parser::{HtmlParseAssociationOccurrence, HtmlParseAssociationOccurrenceId};
 
-pub(in crate::store::pending_associations) struct CompletedMetaPrefix {
-    pub(super) last: HtmlParseAssociationOccurrenceId,
-}
-
 /// Refusal of one exact original occurrence. No other row executes on refusal.
 #[derive(Debug)]
 pub enum DomParsedHtmlMetaOccurrenceError {
@@ -61,67 +57,53 @@ fn select<'a>(
     cancel: &AtomicBool,
 ) -> Result<HtmlParseAssociationOccurrence<'a>, Error> {
     meter.entry().control.require_execution(meter.entry().id)?;
-    let remaining = frontier::remaining(dom, meter, cancel)?;
-    let marker = meter
-        .entry()
-        .completed_meta
-        .try_lock()
-        .map_err(|e| notification::guard_error(e, meter.entry().id))?;
-    let mut through = marker.as_ref().map(|m| &m.last);
-    let mut duplicate = false;
-    let mut candidate = None;
-    let mut previous = None;
-    let mut dependencies = false;
-    let mut cursor = meter.entry().report.value().value.pending_associations();
-    loop {
-        meter.step(cancel)?;
-        match cursor.advance() {
-            Step::Occurrence(row) => {
-                if through.is_some()
-                    && row.requires_processing()
-                    && row.kind() == Kind::ChangePreferred
-                    && row.id() == *expected
-                {
-                    duplicate = true;
+    let scan = frontier::scan(dom, meter, Some(expected), cancel)?;
+    if let Some(reason) = scan.missing {
+        meter.retain(
+            size_of::<crate::DomParsedHtmlStyleNotificationRequirement>(),
+            0,
+            1,
+            cancel,
+        )?;
+        return Err(Error::Remaining(
+            crate::DomParsedHtmlStyleNotificationRequirement::Unavailable {
+                contribution: meter.entry().id,
+                reason,
+            },
+        ));
+    }
+    if scan.covered {
+        let mut rows = meter.entry().report.value().value.pending_associations();
+        loop {
+            meter.step(cancel)?;
+            match rows.advance() {
+                Step::Occurrence(row) if row.id() == *expected => {
+                    return Err(if row.kind() == Kind::ChangePreferred {
+                        Error::AlreadyConsumed
+                    } else {
+                        Error::WrongOccurrence
+                    });
                 }
-                if through.is_some_and(|id| row.id() == *id) {
-                    through = None;
-                }
-                let row_id = row.id();
-                if matches!(&remaining,Some(crate::DomParsedHtmlStyleNotificationRequirement::Occurrence { occurrence,.. }) if *occurrence==row.id())
-                {
-                    dependencies = row.prior_document() == previous && row.prior_style().is_none();
-                    candidate = Some(row);
-                }
-                previous = Some(row_id);
+                Step::Complete => return Err(Error::WrongOccurrence),
+                _ => (),
             }
-            Step::Complete => break,
-            _ => (),
         }
     }
-    if duplicate {
-        return Err(Error::AlreadyConsumed);
+    let row = scan.next.ok_or(Error::WrongOccurrence)?;
+    if row.kind() != Kind::ChangePreferred {
+        let graph = lock(meter.entry())?;
+        let phase = graph
+            .as_ref()
+            .filter(|held| held.value().qualification().occurrence() == &row.id())
+            .map(|held| held.value().phase());
+        return Err(Error::Remaining(frontier::diagnostic(
+            meter, &row, phase, cancel,
+        )?));
     }
-    let row = match (remaining, candidate) {
-        (
-            Some(crate::DomParsedHtmlStyleNotificationRequirement::Occurrence {
-                kind: Kind::ChangePreferred,
-                ..
-            }),
-            Some(row),
-        ) if dependencies => row,
-        (Some(requirement), _) => return Err(Error::Remaining(requirement)),
-        _ => return Err(Error::WrongOccurrence),
-    };
     if row.id() != *expected {
         return Err(Error::WrongOccurrence);
     }
-    // This bounded profile has completed the first invocation and its genuine
-    // ParserPopped successor, rather than skipping an unfinished Style.
-    let completed = completed_lock(meter.entry())?;
-    if completed.is_none() {
-        return Err(Error::WrongOccurrence);
-    }
+
     Ok(row)
 }
 
@@ -159,7 +141,7 @@ pub struct DomParsedHtmlMetaOccurrenceRetirement {
     _cssom: CssomCommitRetirement,
     _binding: Option<style_custody::Bank>,
     _snapshot: CssomSnapshot,
-    _marker: Option<CompletedMetaPrefix>,
+    _marker: Option<frontier::ExecutedPrefix>,
     _meter: Meter,
 }
 pub struct DomParsedHtmlMetaOccurrencePublished<'caps> {
@@ -189,8 +171,7 @@ impl DomParsedHtmlMetaOccurrencePublished<'_> {
 pub struct DomParsedHtmlMetaOccurrencePreparation<'hold, 'dom, 'caps> {
     dom: &'hold mut &'dom mut Dom,
     _graph: MutexGuard<'hold, Stored>,
-    _completed: MutexGuard<'hold, Option<CompletedInvocation>>,
-    marker: MutexGuard<'hold, Option<CompletedMetaPrefix>>,
+    marker: MutexGuard<'hold, Option<frontier::ExecutedPrefix>>,
     occurrence: DomParsedHtmlMetaOccurrence,
     store: MutexGuard<'caps, CssomStore>,
     snapshot: CssomSnapshot,
@@ -264,11 +245,10 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
             None
         };
         let graph = lock(self.meter.entry())?;
-        let completed = completed_lock(self.meter.entry())?;
         let marker = self
             .meter
             .entry()
-            .completed_meta
+            .executed_prefix
             .try_lock()
             .map_err(|e| notification::guard_error(e, self.meter.entry().id))?;
         let capacity = occurrence.content().shared_code_units().capacity();
@@ -285,7 +265,6 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
         Ok(DomParsedHtmlMetaOccurrencePreparation {
             dom: &mut self.dom,
             _graph: graph,
-            _completed: completed,
             marker,
             occurrence,
             store,
@@ -379,7 +358,7 @@ impl<'caps> DomParsedHtmlMetaOccurrencePreparation<'_, '_, 'caps> {
             .checked_add(custody::Usage::new(surviving.bytes(), surviving.units()))?;
         self.runtime.check_transfer_to(output, survivor_usage)?;
         self.meter.step(cancel)?;
-        let next = CompletedMetaPrefix {
+        let next = frontier::ExecutedPrefix {
             last: self.occurrence.id().clone(),
         };
         let root = self.occurrence.document().node();

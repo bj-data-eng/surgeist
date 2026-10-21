@@ -89,7 +89,10 @@ fn original_work_refuses_after_real_producer_prepare_and_raised_retry_publishes_
         let mut supplied = input(&prep);
         prep.stage_sheet(&mut supplied, &flag()).unwrap();
         let control = &prep.meter.entry().control;
-        while control.limits().work() - control.spent_work() > 5 {
+        // Compared with the former single-target array, actual target Vec
+        // reservation adds three polls and its one placement adds one.
+        assert_eq!(prep.order.len(), 1);
+        while control.limits().work() - control.spent_work() > 9 {
             prep.step(&flag()).unwrap();
         }
         spent = control.spent_work();
@@ -370,7 +373,11 @@ fn successor_creation_late_refusal_preserves_removed_predecessor_then_retries_sa
         .unwrap();
     dom.begin_parsed_html_style(id, envelope(), &flag())
         .unwrap()
-        .process_rendering(&q, &flag())
+        .process_rendering(
+            &q,
+            crate::DomParsedHtmlStyleNotificationHandoff::Retain,
+            &flag(),
+        )
         .unwrap();
     {
         let mut hold = dom
@@ -414,7 +421,10 @@ fn successor_creation_late_refusal_preserves_removed_predecessor_then_retries_sa
         let mut report = input(&prep);
         prep.stage_sheet(&mut report, &flag()).unwrap();
         let control = &prep.meter.entry().control;
-        while control.limits().work() - control.spent_work() > 5 {
+        // Compared with the former single-target array, actual target Vec
+        // reservation adds three polls and its one placement adds one.
+        assert_eq!(prep.order.len(), 1);
+        while control.limits().work() - control.spent_work() > 9 {
             prep.step(&flag()).unwrap();
         }
         let count = PREPARED_FRONTIER.with(|value| value.get());

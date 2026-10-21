@@ -16,7 +16,13 @@ fn rendered(outputs: usize) -> Ready {
             .dom
             .begin_parsed_html_style(value.id, limits, &flag())
             .unwrap()
-            .process_rendering(&value.q, &flag())
+            .process_rendering(
+                &value.q,
+                surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Transfer(
+                    &mut value.notification
+                ),
+                &flag()
+            )
             .unwrap(),
         DomParsedHtmlStyleRenderingProgress::Complete(_)
     ));
@@ -28,7 +34,7 @@ fn issue(value: &mut Ready) -> DomStyleNotificationToken {
         .begin_parsed_html_style(value.id, envelope(), &flag())
         .unwrap();
     let prep = hold
-        .prepare_notification(&value.q, &value.association, "owner", &value.root, &flag())
+        .prepare_notification(&mut value.notification, "owner", &value.root, &flag())
         .unwrap();
     assert!(!prep.owner_association_removed());
     let mut published = prep.commit(&flag()).unwrap();
@@ -94,16 +100,17 @@ fn actual_parsed_origin_is_once_only_and_remaining_parser_pop_blocks_direct_clea
             .dom
             .parsed_html_style_prefix(value.id)
             .unwrap()
-            .notification_status(),
-        Some(DomParsedHtmlStyleNotificationStatus::Issued)
+            .notification_handoff(),
+        Some(DomParsedHtmlStyleNotificationHandoffStatus::Transferred)
     );
     let mut hold = value
         .dom
         .begin_parsed_html_style(value.id, envelope(), &flag())
         .unwrap();
-    assert!(
-        matches!(hold.prepare_notification(&value.q,&value.association,"owner",&value.root,&flag()),Err(DomParsedHtmlStyleNotificationError::AlreadyIssued{contribution}) if contribution==value.id)
-    );
+    assert!(matches!(
+        hold.prepare_notification(&mut value.notification, "owner", &value.root, &flag()),
+        Err(DomParsedHtmlStyleNotificationError::MissingContinuation)
+    ));
 }
 #[test]
 fn actual_prequeue_owner_removal_is_terminal_but_postqueue_removal_preserves_permission() {
@@ -126,8 +133,8 @@ fn actual_prequeue_owner_removal_is_terminal_but_postqueue_removal_preserves_per
                     .dom
                     .parsed_html_style_prefix(value.id)
                     .unwrap()
-                    .notification_status(),
-                Some(DomParsedHtmlStyleNotificationStatus::Issued)
+                    .notification_handoff(),
+                Some(DomParsedHtmlStyleNotificationHandoffStatus::Transferred)
             );
         } else {
             let mut hold = value
@@ -135,7 +142,7 @@ fn actual_prequeue_owner_removal_is_terminal_but_postqueue_removal_preserves_per
                 .begin_parsed_html_style(value.id, envelope(), &flag())
                 .unwrap();
             let prep = hold
-                .prepare_notification(&value.q, &value.association, "owner", &value.root, &flag())
+                .prepare_notification(&mut value.notification, "owner", &value.root, &flag())
                 .unwrap();
             assert!(prep.owner_association_removed());
             let mut published = prep.commit(&flag()).unwrap();
@@ -149,8 +156,8 @@ fn actual_prequeue_owner_removal_is_terminal_but_postqueue_removal_preserves_per
                     .dom
                     .parsed_html_style_prefix(value.id)
                     .unwrap()
-                    .notification_status(),
-                Some(DomParsedHtmlStyleNotificationStatus::OwnerAssociationRemoved)
+                    .notification_handoff(),
+                Some(DomParsedHtmlStyleNotificationHandoffStatus::Transferred)
             );
         }
     }
@@ -158,7 +165,7 @@ fn actual_prequeue_owner_removal_is_terminal_but_postqueue_removal_preserves_per
 #[test]
 fn wrong_label_foreign_owner_cancellation_and_dropped_preparation_do_not_issue() {
     let mut value = rendered(1024);
-    let other = rendered(1024);
+    let mut other = rendered(1024);
     let wrong = create::root(value.document);
     let before = value.dom.snapshot().stamp();
     {
@@ -167,25 +174,25 @@ fn wrong_label_foreign_owner_cancellation_and_dropped_preparation_do_not_issue()
             .begin_parsed_html_style(value.id, envelope(), &flag())
             .unwrap();
         assert!(matches!(
-            hold.prepare_notification(&value.q, &value.association, "wrong", &value.root, &flag()),
+            hold.prepare_notification(&mut value.notification, "wrong", &value.root, &flag()),
             Err(DomParsedHtmlStyleNotificationError::MismatchedLabel { .. })
         ));
         assert!(matches!(
-            hold.prepare_notification(&other.q, &value.association, "owner", &value.root, &flag()),
+            hold.prepare_notification(&mut other.notification, "owner", &value.root, &flag()),
             Err(DomParsedHtmlStyleNotificationError::Style(
                 DomParsedHtmlStyleError::WrongRequest
             ))
         ));
         assert!(matches!(
-            hold.prepare_notification(&value.q, &value.association, "owner", &wrong, &flag()),
+            hold.prepare_notification(&mut value.notification, "owner", &wrong, &flag()),
             Err(DomParsedHtmlStyleNotificationError::MismatchedOwner { .. })
         ));
         let prep = hold
-            .prepare_notification(&value.q, &value.association, "owner", &value.root, &flag())
+            .prepare_notification(&mut value.notification, "owner", &value.root, &flag())
             .unwrap();
         drop(prep);
         let prep = hold
-            .prepare_notification(&value.q, &value.association, "owner", &value.root, &flag())
+            .prepare_notification(&mut value.notification, "owner", &value.root, &flag())
             .unwrap();
         assert!(matches!(
             prep.commit(&AtomicBool::new(true)),
@@ -202,8 +209,8 @@ fn wrong_label_foreign_owner_cancellation_and_dropped_preparation_do_not_issue()
             .dom
             .parsed_html_style_prefix(value.id)
             .unwrap()
-            .notification_status(),
-        Some(DomParsedHtmlStyleNotificationStatus::NotIssued)
+            .notification_handoff(),
+        Some(DomParsedHtmlStyleNotificationHandoffStatus::Transferred)
     );
     let mut token = issue(&mut value);
     assert!(matches!(
@@ -221,15 +228,15 @@ fn wrong_label_foreign_owner_cancellation_and_dropped_preparation_do_not_issue()
 }
 #[test]
 fn final_output_refusal_retains_original_issuance_for_raised_retry() {
-    let mut value = rendered(8);
-    let limits = DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 1_000_000, 8).unwrap();
+    let mut value = rendered(9);
+    let limits = DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 1_000_000, 9).unwrap();
     let spent = {
         let mut hold = value
             .dom
             .begin_parsed_html_style(value.id, limits, &flag())
             .unwrap();
         let prep = hold
-            .prepare_notification(&value.q, &value.association, "owner", &value.root, &flag())
+            .prepare_notification(&mut value.notification, "owner", &value.root, &flag())
             .unwrap();
         assert!(matches!(
             prep.commit(&flag()),
@@ -237,7 +244,7 @@ fn final_output_refusal_retains_original_issuance_for_raised_retry() {
                 DomParsedHtmlStyleError::Admission(DomParsedHtmlAssociationAdmissionError::Dom(
                     DomError::ResourceLimit {
                         resource: DomResource::ParsedAssociationProcessingOutputs,
-                        limit: 8
+                        limit: 9
                     }
                 ))
             ))
@@ -249,8 +256,8 @@ fn final_output_refusal_retains_original_issuance_for_raised_retry() {
             .dom
             .parsed_html_style_prefix(value.id)
             .unwrap()
-            .notification_status(),
-        Some(DomParsedHtmlStyleNotificationStatus::NotIssued)
+            .notification_handoff(),
+        Some(DomParsedHtmlStyleNotificationHandoffStatus::Transferred)
     );
     {
         let hold = value
@@ -271,9 +278,8 @@ fn expectation_loans_end_before_publication_without_releasing_the_actual_root_gu
         .begin_parsed_html_style(value.id, envelope(), &flag())
         .unwrap();
     let prep = {
-        let expected = value.association.clone();
         let label = String::from("owner");
-        hold.prepare_notification(&value.q, &expected, &label, &value.root, &flag())
+        hold.prepare_notification(&mut value.notification, &label, &value.root, &flag())
             .unwrap()
     };
     let mut published = prep.commit(&flag()).unwrap();
@@ -289,15 +295,15 @@ fn expectation_loans_end_before_publication_without_releasing_the_actual_root_gu
 
 #[test]
 fn readback_output_refusal_keeps_the_same_token_for_raised_original_policy() {
-    let mut value = rendered(9);
-    let limits = DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 1_000_000, 9).unwrap();
+    let mut value = rendered(10);
+    let limits = DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 1_000_000, 10).unwrap();
     let token = {
         let mut hold = value
             .dom
             .begin_parsed_html_style(value.id, limits, &flag())
             .unwrap();
         let mut published = hold
-            .prepare_notification(&value.q, &value.association, "owner", &value.root, &flag())
+            .prepare_notification(&mut value.notification, "owner", &value.root, &flag())
             .unwrap()
             .commit(&flag())
             .unwrap();
@@ -314,7 +320,7 @@ fn readback_output_refusal_keeps_the_same_token_for_raised_original_policy() {
             .parsed_style_notification_requirement(&token, &flag()),
         Err(DomError::ResourceLimit {
             resource: DomResource::ParsedAssociationProcessingOutputs,
-            limit: 9
+            limit: 10
         })
     ));
     {

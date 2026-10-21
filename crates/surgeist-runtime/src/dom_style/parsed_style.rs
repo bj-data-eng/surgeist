@@ -13,10 +13,12 @@ pub use meta_occurrence::{DomStyleParsedMetaOccurrenceError, DomStyleParsedMetaO
 mod create_sheet;
 mod frontier;
 mod notification;
+mod subject;
 mod successor;
 pub use create_sheet::{DomStyleParsedSheetError, DomStyleParsedSheetOutcome};
 pub use frontier::DomStyleParsedFrontierError;
 pub use notification::{DomStyleParsedNotificationError, DomStyleParsedNotificationProgress};
+pub use subject::DomStyleParsedSubjectError;
 pub use successor::DomStyleParsedSuccessorError;
 
 /// The actual Session or original parsed Style prefix refused a command.
@@ -26,12 +28,20 @@ pub enum DomStyleParsedPrefixError {
     Runtime(DomStyleRuntimeError),
     /// Canonical original-input qualification, phase or admission refused.
     Style(DomParsedHtmlStyleError),
+    /// No actual creation receipt can receive this rendering continuation.
+    ProcessingUnavailable {
+        /// Original contribution requested.
+        contribution: DomParsedHtmlAssociationId,
+    },
 }
 impl std::fmt::Display for DomStyleParsedPrefixError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Runtime(error) => write!(f, "parsed Style Runtime preparation refused: {error}"),
             Self::Style(error) => error.fmt(f),
+            Self::ProcessingUnavailable { .. } => {
+                f.write_str("original creation receipt unavailable")
+            }
         }
     }
 }
@@ -40,6 +50,7 @@ impl std::error::Error for DomStyleParsedPrefixError {
         match self {
             Self::Runtime(error) => Some(error),
             Self::Style(error) => Some(error),
+            Self::ProcessingUnavailable { .. } => None,
         }
     }
 }
@@ -66,8 +77,9 @@ impl DomStyleRuntime {
         limits: DomParsedHtmlAssociationLimits,
         cancel: &AtomicBool,
     ) -> Result<DomParsedHtmlStyleRenderingProgress, DomStyleParsedPrefixError> {
+        use admission::{Custody, Steps, current_storage};
         let owner = self.original()?;
-        let state = owner
+        let mut state = owner
             .try_borrow_mut()
             .map_err(|_| DomStyleRuntimeError::Binding)?;
         if state.dom != dom.owner() {
@@ -77,9 +89,49 @@ impl DomStyleRuntime {
         let mut hold =
             dom.raw_mut()
                 .begin_parsed_html_style(qualification.contribution(), limits, cancel)?;
-        hold.step(cancel).map_err(DomStyleRuntimeError::from)?;
-        state.step(cancel)?;
-        Ok(hold.process_rendering(qualification, cancel)?)
+        let steps = Steps {
+            work: &state.work,
+            maximum: state.limits.work,
+            cancel,
+        };
+        let mut custody = Custody {
+            bytes: size_of::<DomParsedHtmlStyleRenderingProgress>()
+                + size_of::<Option<surgeist_dom::DomParsedHtmlStyleNotificationContinuation>>(),
+            shared: size_of::<surgeist_dom::DomParsedHtmlStyleNotificationContinuation>(),
+            units: 0,
+            current: 0,
+            maximum: state.limits.storage_bytes,
+            // The lower owner admits both actual outputs. Runtime forwards
+            // its Progress directly and receives authority in the existing row.
+            outputs: 0,
+        };
+        steps.prefix(&hold)?;
+        hold.admit_runtime(custody.usage()?, cancel)
+            .map_err(DomStyleRuntimeError::from)?;
+        custody.current = current_storage(&state, &mut hold, &custody, &steps)?;
+        custody.check()?;
+        let mut selected = None;
+        for (index, row) in state.completions.iter().enumerate() {
+            steps.prefix(&hold)?;
+            if matches!(row,Completion::ParsedProcessing(record) if record.qualification==*qualification)
+            {
+                selected = Some(index);
+                break;
+            }
+        }
+        let index = selected.ok_or(DomStyleParsedPrefixError::ProcessingUnavailable {
+            contribution: qualification.contribution(),
+        })?;
+        steps.prefix(&hold)?;
+        let record = match &mut state.completions[index] {
+            Completion::ParsedProcessing(record) => record,
+            _ => unreachable!("qualified actual receiving row"),
+        };
+        Ok(hold.process_rendering(
+            qualification,
+            surgeist_dom::DomParsedHtmlStyleNotificationHandoff::Transfer(&mut record.continuation),
+            cancel,
+        )?)
     }
 
     /// Advance the original first influencing Style only as far as its

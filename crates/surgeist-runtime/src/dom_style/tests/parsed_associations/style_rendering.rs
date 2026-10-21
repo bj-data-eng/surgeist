@@ -269,12 +269,12 @@ fn rendering_checks_actual_session_phase_cancellation_and_cumulative_original_wo
     let qualification = request(&session, id);
     assert!(matches!(
         render(&mut session, &qualification, finite),
-        Err(DomStyleParsedPrefixError::Style(
-            DomParsedHtmlStyleError::WrongPhase {
-                phase: DomParsedHtmlStylePhase::CreateSheetPending
-            }
-        ))
+        Err(DomStyleParsedPrefixError::ProcessingUnavailable { contribution }) if contribution == id
     ));
+    assert_eq!(
+        session.parsed_html_style_prefix(id).unwrap().phase(),
+        DomParsedHtmlStylePhase::CreateSheetPending
+    );
     bind(&mut session, installed.document(), Default::default());
     drop(create(&mut session, id, finite).unwrap());
     exclude(&mut session, &qualification, finite);

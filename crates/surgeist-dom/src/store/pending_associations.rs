@@ -17,11 +17,12 @@ pub use style_prefix::{
     DomParsedHtmlDispatchCursor, DomParsedHtmlDispatchEntry, DomParsedHtmlMetaOccurrenceCompletion,
     DomParsedHtmlMetaOccurrenceError, DomParsedHtmlMetaOccurrencePreparation,
     DomParsedHtmlMetaOccurrencePublished, DomParsedHtmlMetaOccurrenceRetirement,
-    DomParsedHtmlStyleNotificationCompletion, DomParsedHtmlStyleNotificationPreparation,
-    DomParsedHtmlStyleNotificationPublished, DomParsedHtmlStylePrefixView,
-    DomParsedHtmlStyleRenderingCompletion, DomParsedHtmlStyleRuntimeHold,
-    DomParsedHtmlStyleSheetCompletion, DomParsedHtmlStyleSheetPreparation,
-    DomParsedHtmlStyleSheetPublished, DomParsedHtmlStyleSheetRetirement,
+    DomParsedHtmlStyleNotificationCompletion, DomParsedHtmlStyleNotificationContinuation,
+    DomParsedHtmlStyleNotificationPreparation, DomParsedHtmlStyleNotificationPublished,
+    DomParsedHtmlStylePrefixView, DomParsedHtmlStyleRenderingCompletion,
+    DomParsedHtmlStyleRuntimeHold, DomParsedHtmlStyleSheetCompletion,
+    DomParsedHtmlStyleSheetPreparation, DomParsedHtmlStyleSheetPublished,
+    DomParsedHtmlStyleSheetRetirement, DomParsedHtmlStyleSubjectCompletion,
     DomParsedHtmlSynchronousEnd, DomParsedHtmlSynchronousEndView,
 };
 pub use style_prefix::{
@@ -43,7 +44,7 @@ pub(super) struct Entry {
     payload: custody::Usage,
     style_prefix: std::sync::Mutex<Option<custody::Held<Box<style_prefix::Graph>>>>,
     completed_style: std::sync::Mutex<Option<style_prefix::CompletedInvocation>>,
-    completed_meta: std::sync::Mutex<Option<style_prefix::meta_occurrence::CompletedMetaPrefix>>,
+    executed_prefix: std::sync::Mutex<Option<style_prefix::frontier::ExecutedPrefix>>,
     control: control::Control,
 }
 impl Entry {
@@ -283,7 +284,7 @@ impl Bank {
                 payload,
                 style_prefix: std::sync::Mutex::new(None),
                 completed_style: std::sync::Mutex::new(None),
-                completed_meta: std::sync::Mutex::new(None),
+                executed_prefix: std::sync::Mutex::new(None),
                 control: control::Control::default(),
             },
             payload,
