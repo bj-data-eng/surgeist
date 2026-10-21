@@ -347,7 +347,7 @@ fn explicit_end_and_foreign_contexts_preserve_svg_namespace_and_parser_cause() {
 }
 
 #[test]
-fn inert_template_and_auxiliary_parser_documents_survive_refused_adoption_and_native_clone() {
+fn inert_template_and_auxiliary_parser_documents_remain_distinct_through_adoption_and_clone() {
     let cancel = AtomicBool::new(false);
     let (mut dom, capture, document, host) = contextual_fixture(Namespace::html(), "div");
     let report = fragment_report(
@@ -415,70 +415,37 @@ fn inert_template_and_auxiliary_parser_documents_survive_refused_adoption_and_na
     let commit = dom.apply(create, &cancel).unwrap();
     let other = commit.document(&other).unwrap();
     let parent = commit.created(&parent).unwrap().unwrap();
-    let before = dom.snapshot();
     let mut adopt = DomBatch::new();
     adopt.adopt(script, other);
-    assert_eq!(
-        dom.apply(adopt, &cancel).unwrap_err(),
-        DomError::FocusedAreaDesignationUnavailable {
-            subject: Some(script),
-            document: Some(inert)
-        }
-    );
-    assert_eq!(dom.snapshot().stamp(), before.stamp());
-    assert_eq!(
-        dom.snapshot().node(script).unwrap().owner_document(),
-        Some(inert)
-    );
-    let mut clone = DomBatch::new();
-    let copied = clone.import_node(installed.snapshot(), script, other, false);
-    let commit = dom.apply(clone, &cancel).unwrap();
+    let copied = adopt.import_node(installed.snapshot(), script, other, false);
+    let commit = dom.apply(adopt, &cancel).unwrap();
     let copied = commit.created(&copied).unwrap().unwrap();
-    let cloned = dom.snapshot();
-    assert_eq!(cloned.node(copied).unwrap().owner_document(), Some(other));
-    assert_eq!(cloned.node(copied).unwrap().parent(), None);
-    assert_eq!(
-        cloned
-            .node(copied)
-            .unwrap()
-            .as_svg_script()
-            .unwrap()
-            .origin(),
-        DomSvgScriptOrigin::Clone
-    );
-    assert!(
-        !cloned
-            .node(copied)
-            .unwrap()
-            .as_svg_script()
-            .unwrap()
-            .flags()
-            .already_processed()
-    );
+    let adopted = dom.snapshot();
+    for (id, cause) in [
+        (script, DomSvgScriptOrigin::Parser),
+        (copied, DomSvgScriptOrigin::Clone),
+    ] {
+        let node = adopted.node(id).unwrap();
+        assert_eq!(node.owner_document(), Some(other));
+        assert_eq!(node.parent(), None);
+        assert_eq!(node.as_svg_script().unwrap().origin(), cause);
+        assert!(!node.as_svg_script().unwrap().flags().already_processed());
+    }
     let mut connect = DomBatch::new();
+    connect.insert_before(script, parent, None);
     connect.insert_before(copied, parent, None);
     dom.apply(connect, &cancel).unwrap();
     let connected = dom.snapshot();
-    assert_eq!(
-        connected
-            .node(copied)
-            .unwrap()
-            .as_svg_script()
-            .unwrap()
-            .origin(),
-        DomSvgScriptOrigin::Clone
-    );
-    assert!(
-        connected
-            .node(copied)
-            .unwrap()
-            .as_svg_script()
-            .unwrap()
-            .flags()
-            .already_processed()
-    );
+    for (id, cause) in [
+        (script, DomSvgScriptOrigin::Parser),
+        (copied, DomSvgScriptOrigin::Clone),
+    ] {
+        let node = connected.node(id).unwrap();
+        assert_eq!(node.as_svg_script().unwrap().origin(), cause);
+        assert!(node.as_svg_script().unwrap().flags().already_processed());
+    }
     let mut clone_started = DomBatch::new();
-    let started_copy = clone_started.import_node(&connected, copied, document, false);
+    let started_copy = clone_started.import_node(&connected, script, document, false);
     let commit = dom.apply(clone_started, &cancel).unwrap();
     let started_copy = commit.created(&started_copy).unwrap().unwrap();
     let latest = dom.snapshot();
@@ -486,7 +453,7 @@ fn inert_template_and_auxiliary_parser_documents_survive_refused_adoption_and_na
     assert_eq!(copied.origin(), DomSvgScriptOrigin::Clone);
     assert!(copied.flags().already_processed());
     assert!(
-        !cloned
+        !adopted
             .node(script)
             .unwrap()
             .as_svg_script()

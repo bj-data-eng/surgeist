@@ -163,164 +163,179 @@ fn assert_original_patch(
 
 #[test]
 fn retiring_only_the_template_target_preserves_live_markers_and_never_retargets_a_replacement() {
-    let markup = "<body><div><?marker name='x'?></div><template for=x><p>N";
-    let (mut dom, capture, _, host) = fragment_fixture("div");
-    let report = fragment_report(&capture, host, HtmlSource::utf8(markup), false);
-    let installed = dom
-        .install_parsed_html_fragment(report.clone(), &capture, limits(), &AtomicBool::new(false))
-        .unwrap();
-    assert_eq!(
-        installed
-            .snapshot()
-            .document(installed.document())
-            .unwrap()
-            .focused_area_designation(),
-        DomFocusedAreaDesignation::KnownNull
-    );
-    let template = element(&installed, "template");
-    let target = element(&installed, "div");
-    let marker = installed
-        .bindings()
-        .iter()
-        .find_map(|binding| {
-            matches!(
-                installed.snapshot().node(binding.node()).unwrap().kind(),
-                DomNodeKind::ProcessingInstruction(_)
-            )
-            .then_some(binding.node())
-        })
-        .unwrap();
-    let original = installed.snapshot();
-    let patch = original
-        .node(template)
-        .unwrap()
-        .as_template()
-        .unwrap()
-        .insertion_state();
-    assert_eq!(
-        (patch.target(), patch.start(), patch.end()),
-        (Some(target), Some(marker), Some(marker))
-    );
-    assert_original_patch(&report, &installed, template, target, marker);
-    let mut batch = DomBatch::new();
-    let other = batch.create_document();
-    batch.adopt(marker, &other);
-    let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
-    let other = commit.document(&other).unwrap();
-    let moved = dom.snapshot();
-    assert_eq!(moved.node(marker).unwrap().parent(), None);
-    assert_eq!(moved.node(marker).unwrap().owner_document(), Some(other));
-    assert_eq!(
-        moved
+    for native_context in [false, true] {
+        let markup = "<body><div><?marker name='x'?></div><template for=x><p>N";
+        let (mut dom, report, installed) = if native_context {
+            let (mut dom, capture, _, host) = fragment_fixture("div");
+            let report = fragment_report(&capture, host, HtmlSource::utf8(markup), false);
+            let installed = dom
+                .install_parsed_html_fragment(
+                    report.clone(),
+                    &capture,
+                    limits(),
+                    &AtomicBool::new(false),
+                )
+                .unwrap();
+            (dom, report, installed)
+        } else {
+            let report = parse(HtmlSource::utf8(markup));
+            let (mut dom, environment) = setup();
+            let installed = install(&mut dom, report.clone(), environment);
+            (dom, report, installed)
+        };
+        assert_eq!(
+            installed
+                .snapshot()
+                .document(installed.document())
+                .unwrap()
+                .focused_area_designation(),
+            DomFocusedAreaDesignation::KnownNull
+        );
+        let template = element(&installed, "template");
+        let target = element(&installed, "div");
+        let marker = installed
+            .bindings()
+            .iter()
+            .find_map(|binding| {
+                matches!(
+                    installed.snapshot().node(binding.node()).unwrap().kind(),
+                    DomNodeKind::ProcessingInstruction(_)
+                )
+                .then_some(binding.node())
+            })
+            .unwrap();
+        let original = installed.snapshot();
+        let patch = original
             .node(template)
             .unwrap()
             .as_template()
             .unwrap()
-            .insertion_state(),
-        patch
-    );
-    let mut batch = DomBatch::new();
-    batch.detach(target);
-    batch.destroy(target);
-    let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
-    let retired = dom.snapshot();
-    let current_patch = retired
-        .node(template)
-        .unwrap()
-        .as_template()
-        .unwrap()
-        .insertion_state();
-    assert_eq!(
-        (
-            current_patch.target(),
-            current_patch.start(),
-            current_patch.end()
-        ),
-        (None, Some(marker), Some(marker))
-    );
-    assert!(matches!(retired.node(target), Err(DomError::StaleNode)));
-    assert!(retired.node(marker).is_ok());
-    assert_eq!(retired.revision().get(), moved.revision().get() + 1);
-    assert!(
-        commit
-            .changes()
-            .changes()
-            .contains(&DomChange::Destroyed(target))
-    );
-    assert!(
-        commit
-            .changes()
-            .changes()
-            .contains(&DomChange::TemplateRelations)
-    );
-    let mut batch = DomBatch::new();
-    let replacement = batch.create_element_ns(installed.document(), Namespace::html(), "div");
-    let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
-    let replacement = commit.created(&replacement).unwrap().unwrap();
-    assert_ne!(replacement, target);
-    let replaced = dom.snapshot();
-    assert!(matches!(replaced.node(target), Err(DomError::StaleNode)));
-    assert!(replaced.node(replacement).is_ok());
-    assert_eq!(
-        replaced
+            .insertion_state();
+        assert_eq!(
+            (patch.target(), patch.start(), patch.end()),
+            (Some(target), Some(marker), Some(marker))
+        );
+        assert_original_patch(&report, &installed, template, target, marker);
+        let mut batch = DomBatch::new();
+        let other = batch.create_document();
+        batch.adopt(marker, &other);
+        let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+        let other = commit.document(&other).unwrap();
+        let moved = dom.snapshot();
+        assert_eq!(moved.node(marker).unwrap().parent(), None);
+        assert_eq!(moved.node(marker).unwrap().owner_document(), Some(other));
+        assert_eq!(
+            moved
+                .node(template)
+                .unwrap()
+                .as_template()
+                .unwrap()
+                .insertion_state(),
+            patch
+        );
+        let mut batch = DomBatch::new();
+        batch.detach(target);
+        batch.destroy(target);
+        let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+        let retired = dom.snapshot();
+        let current_patch = retired
             .node(template)
             .unwrap()
             .as_template()
             .unwrap()
-            .insertion_state(),
-        current_patch
-    );
-    let mut batch = DomBatch::new();
-    batch.destroy(marker);
-    let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
-    let current = dom.snapshot();
-    let final_patch = current
-        .node(template)
-        .unwrap()
-        .as_template()
-        .unwrap()
-        .insertion_state();
-    assert_eq!(
-        (final_patch.target(), final_patch.start(), final_patch.end()),
-        (None, None, None)
-    );
-    assert!(
-        commit
-            .changes()
-            .changes()
-            .contains(&DomChange::Destroyed(marker))
-    );
-    assert!(
-        commit
-            .changes()
-            .changes()
-            .contains(&DomChange::TemplateRelations)
-    );
-    assert!(current.node(replacement).is_ok());
-    assert_eq!(
-        original
+            .insertion_state();
+        assert_eq!(
+            (
+                current_patch.target(),
+                current_patch.start(),
+                current_patch.end()
+            ),
+            (None, Some(marker), Some(marker))
+        );
+        assert!(matches!(retired.node(target), Err(DomError::StaleNode)));
+        assert!(retired.node(marker).is_ok());
+        assert_eq!(retired.revision().get(), moved.revision().get() + 1);
+        assert!(
+            commit
+                .changes()
+                .changes()
+                .contains(&DomChange::Destroyed(target))
+        );
+        assert!(
+            commit
+                .changes()
+                .changes()
+                .contains(&DomChange::TemplateRelations)
+        );
+        let mut batch = DomBatch::new();
+        let replacement = batch.create_element_ns(installed.document(), Namespace::html(), "div");
+        let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+        let replacement = commit.created(&replacement).unwrap().unwrap();
+        assert_ne!(replacement, target);
+        let replaced = dom.snapshot();
+        assert!(matches!(replaced.node(target), Err(DomError::StaleNode)));
+        assert!(replaced.node(replacement).is_ok());
+        assert_eq!(
+            replaced
+                .node(template)
+                .unwrap()
+                .as_template()
+                .unwrap()
+                .insertion_state(),
+            current_patch
+        );
+        let mut batch = DomBatch::new();
+        batch.destroy(marker);
+        let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+        let current = dom.snapshot();
+        let final_patch = current
             .node(template)
             .unwrap()
             .as_template()
             .unwrap()
-            .insertion_state(),
-        patch
-    );
-    assert!(original.node(target).is_ok());
-    assert!(original.node(marker).is_ok());
-    assert_eq!(
-        retired
-            .node(template)
-            .unwrap()
-            .as_template()
-            .unwrap()
-            .insertion_state(),
-        current_patch
-    );
-    assert!(retired.node(marker).is_ok());
-    assert!(std::ptr::eq(installed.report(), report.as_ref()));
-    assert_eq!(report.source().as_utf8(), Some(markup));
-    assert_original_patch(&report, &installed, template, target, marker);
+            .insertion_state();
+        assert_eq!(
+            (final_patch.target(), final_patch.start(), final_patch.end()),
+            (None, None, None)
+        );
+        assert!(
+            commit
+                .changes()
+                .changes()
+                .contains(&DomChange::Destroyed(marker))
+        );
+        assert!(
+            commit
+                .changes()
+                .changes()
+                .contains(&DomChange::TemplateRelations)
+        );
+        assert!(current.node(replacement).is_ok());
+        assert_eq!(
+            original
+                .node(template)
+                .unwrap()
+                .as_template()
+                .unwrap()
+                .insertion_state(),
+            patch
+        );
+        assert!(original.node(target).is_ok());
+        assert!(original.node(marker).is_ok());
+        assert_eq!(
+            retired
+                .node(template)
+                .unwrap()
+                .as_template()
+                .unwrap()
+                .insertion_state(),
+            current_patch
+        );
+        assert!(retired.node(marker).is_ok());
+        assert!(std::ptr::eq(installed.report(), report.as_ref()));
+        assert_eq!(report.source().as_utf8(), Some(markup));
+        assert_original_patch(&report, &installed, template, target, marker);
+    }
 }
 
 fn script_flags(script: DomHtmlScript<'_>) -> [bool; 5] {

@@ -6,6 +6,7 @@ mod capture;
 mod context;
 mod creation_paths;
 mod dialog;
+mod focus;
 mod input;
 mod link_history;
 mod meta_csp;

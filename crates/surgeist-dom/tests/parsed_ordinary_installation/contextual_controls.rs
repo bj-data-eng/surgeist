@@ -506,7 +506,7 @@ fn assert_nonancestor_report(
 }
 
 #[test]
-fn true_nonancestor_parser_owner_survives_cloning_and_unknown_removal_refusal() {
+fn true_nonancestor_parser_owner_survives_cloning_but_resets_on_actual_removal_and_reinsertion() {
     let report = parse(HtmlSource::utf8(NONANCESTOR_MARKUP));
     let source = report.source().identity().clone();
     let (mut dom, environment) = setup();
@@ -601,24 +601,56 @@ fn true_nonancestor_parser_owner_survives_cloning_and_unknown_removal_refusal() 
             .parser_inserted()
     );
 
+    // Insertion alone skips a true parser flag. This actual removal puts the
+    // original control in a different tree from its former Form, requiring the
+    // reset rule to clear both that flag and the nonancestor association.
     let mut batch = DomBatch::new();
     batch.detach(input);
+    let removed = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    let detached = dom.snapshot();
+    assert_eq!(removed.changes().from(), cloned.stamp());
+    assert_eq!(removed.changes().to(), detached.stamp());
+    assert_eq!(detached.revision().get(), cloned.revision().get() + 1);
+    let control = detached.node(input).unwrap().as_input().unwrap();
+    assert_eq!(detached.node(input).unwrap().parent(), None);
+    assert_eq!(control.form_owner().unwrap(), None);
+    assert!(!control.state().parser_inserted());
     assert_eq!(
-        dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
-        DomError::FocusedAreaDesignationUnavailable {
-            subject: Some(input),
-            document: Some(installed.document())
-        }
+        control.value(),
+        "current".encode_utf16().collect::<Vec<_>>()
     );
+    assert!(control.state().flags().dirty_value());
+
+    let mut batch = DomBatch::new();
+    batch.adopt(input, destination);
+    dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    let adopted = dom.snapshot();
+    let control = adopted.node(input).unwrap().as_input().unwrap();
+    assert_eq!(
+        adopted.node(input).unwrap().owner_document(),
+        Some(destination)
+    );
+    assert_eq!(adopted.node(input).unwrap().parent(), None);
+    assert_eq!(control.form_owner().unwrap(), None);
+    assert!(!control.state().parser_inserted());
+    assert_eq!(
+        control.value(),
+        "current".encode_utf16().collect::<Vec<_>>()
+    );
+    assert!(control.state().flags().dirty_value());
+
+    let mut batch = DomBatch::new();
+    batch.insert_before(input, destination_form, None);
+    dom.apply(batch, &AtomicBool::new(false)).unwrap();
     let current = dom.snapshot();
-    assert_eq!(current.stamp(), cloned.stamp());
+    let control = current.node(input).unwrap().as_input().unwrap();
     assert_eq!(
         current.node(input).unwrap().parent(),
-        cloned.node(input).unwrap().parent()
+        Some(destination_form)
     );
-    let control = current.node(input).unwrap().as_input().unwrap();
-    assert_eq!(control.form_owner().unwrap(), Some(form));
-    assert!(control.state().parser_inserted());
+    assert_eq!(current.node(destination_form).unwrap().children(), &[input]);
+    assert_eq!(control.form_owner().unwrap(), Some(destination_form));
+    assert!(!control.state().parser_inserted());
     assert_eq!(
         control.value(),
         "current".encode_utf16().collect::<Vec<_>>()

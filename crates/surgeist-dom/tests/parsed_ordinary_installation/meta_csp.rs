@@ -711,19 +711,10 @@ fn transferred_policy_does_not_enable_native_csp_processing_or_lose_snapshot_his
     let identity = associated(&old, document).document().clone();
     let mut batch = DomBatch::new();
     batch.detach(meta);
-    assert_eq!(
-        dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
-        DomError::FocusedAreaDesignationUnavailable {
-            subject: Some(meta),
-            document: Some(document)
-        }
-    );
+    dom.apply(batch, &AtomicBool::new(false)).unwrap();
     let before = dom.snapshot();
     let mut batch = DomBatch::new();
-    let fresh = batch.create_element_ns(document, Namespace::html(), "meta");
-    batch.set_attribute(&fresh, "http-equiv", "content-security-policy");
-    batch.set_attribute(&fresh, "content", "replacement");
-    batch.insert_before(&fresh, head, None);
+    batch.insert_before(meta, head, None);
     assert_eq!(
         dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
         DomError::Meta(DomMetaError::ContentSecurityPolicyUnsupported)

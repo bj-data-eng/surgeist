@@ -47,6 +47,14 @@ input-platform facts through `DomParsedDocumentEnvironment`. The operation
 preserves actual construction state and publishes fresh canonical identities,
 without replaying native attribute or insertion hooks.
 
+Each newly materialized report-owned Document receives its exact retained HTML
+focused-area designation qualification. Controlled creation supplies known null
+through the producer's closed construction lifetime; absent history stays
+unavailable. Parsed creation causes are preserved. Existing captured owners are
+never initialized from a new auxiliary or inert Document's fact. This transfer
+does not resolve focus, acknowledge pending autofocus or grant a Window or
+viewport.
+
 `Dom::install_parsed_html_fragment` checks the original `DomHtmlCapture` against
 the actual current target and materializes a detached fragment in that Document.
 It applies the report's ordered Template-cache and shadow-attachment effects;

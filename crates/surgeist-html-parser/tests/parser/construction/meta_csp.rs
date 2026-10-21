@@ -152,9 +152,18 @@ fn rows(report: &HtmlParseReport) -> Vec<HtmlParseDocumentMeta<'_>> {
     rows
 }
 fn parse(source: &str, processor: &mut Processor) -> HtmlParseReport {
-    HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits())
+    let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits())
         .parse_with_meta_csp(processor)
-        .unwrap()
+        .unwrap();
+    assert_eq!(
+        report
+            .document()
+            .unwrap()
+            .root()
+            .document_focused_area_designation(),
+        Some(HtmlFocusedAreaDesignation::KnownNull)
+    );
+    report
 }
 #[test]
 fn reached_policies_use_exact_prior_artifacts_and_original_style_epochs() {

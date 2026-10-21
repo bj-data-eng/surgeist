@@ -391,7 +391,7 @@ fn created_first_recreates_distinct_association_and_old_notification_uses_old_sh
     );
 }
 #[test]
-fn earlier_focus_refusal_preserves_pending_destination_for_null_successor() {
+fn blocked_pending_adoption_refusal_preserves_real_destination_for_null_successor() {
     let (mut dom, document, id, q, _) =
         blocked("<!doctype html><style>a{color:red}</style>", envelope());
     let element = dom
@@ -408,7 +408,7 @@ fn earlier_focus_refusal_preserves_pending_destination_for_null_successor() {
     let mut adopt = DomBatch::new();
     adopt.adopt(element, other.node());
     assert!(
-        matches!(dom.apply(adopt,&flag()),Err(DomError::FocusedAreaDesignationUnavailable { subject: Some(actual_subject), document: Some(actual) }) if actual==document && actual_subject==element)
+        matches!(dom.apply(adopt,&flag()),Err(DomError::ParsedAssociationPending { document:actual,pending }) if actual==document && pending==id)
     );
     assert_eq!(dom.snapshot().stamp(), before);
     let completion = no_sheet(&mut dom, id, envelope());

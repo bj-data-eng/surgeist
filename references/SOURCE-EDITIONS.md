@@ -1134,6 +1134,23 @@ corroborates the explicit native choice through Document's member declaration,
 complete constructor and RefPtr's default-null initialization. This is a bounded
 native qualification, not a missing HTML normative default.
 
+The same selected initialization includes the actual controlled HTML
+`CreateDocument` constructor under [issue #1432](https://github.com/bj-data-eng/surgeist/issues/1432).
+HTML owns the original fact from that transition through sealing. Each exposed
+designation-changing route must update retained state through its actual rule,
+establish that the transition is inapplicable, or make the qualification
+unavailable/refuse the unsupported operation. Recovery retains the same original
+fact; it does not issue a new one. Fresh auxiliary and inert owners qualify
+independently; reused and captured owners preserve their actual state.
+
+DOM transfers this qualification only into a newly materialized report-owned
+Document, retaining its original construction cause. Captured existing targets
+are never reset. New canonical allocation, disabled scripting, headlessness,
+inertness and final metadata do not establish the original fact. Pending focus
+or autofocus work remains separate; null neither acknowledges that work nor
+grants a viewport, positive focus or Window authority. This constructor extension
+uses the same retained witness and selects no new source edition.
+
 Null designation, viewport designation, unavailable imported history and absent
 system focus remain distinct. Resolving null designation to the candidate
 Document does not write a viewport designation. The current-standard comparison

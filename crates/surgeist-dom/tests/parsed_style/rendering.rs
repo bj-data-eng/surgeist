@@ -239,7 +239,7 @@ fn cancellation_wrong_qualification_and_final_output_refusal_preserve_same_origi
 }
 
 #[test]
-fn earlier_focus_qualification_preserves_live_destination_and_original_pending_qualification() {
+fn actual_pending_adoption_guard_preserves_live_destination_and_original_qualification() {
     let mut value = ready("<!doctype html><style>later</style>", envelope());
     let mut batch = DomBatch::new();
     let other = batch.create_document();
@@ -249,7 +249,7 @@ fn earlier_focus_qualification_preserves_live_destination_and_original_pending_q
     let mut adopt = DomBatch::new();
     adopt.adopt(value.element, other.node());
     assert!(
-        matches!(value.dom.apply(adopt,&flag()),Err(DomError::FocusedAreaDesignationUnavailable { subject: Some(subject), document: Some(document) }) if document==value.document && subject==value.element)
+        matches!(value.dom.apply(adopt,&flag()),Err(DomError::ParsedAssociationPending{document,pending}) if document==value.document && pending==value.id)
     );
     assert_eq!(value.dom.snapshot().stamp(), before);
     let result = value

@@ -104,7 +104,8 @@ pub struct DomDocument<'a> {
 
 impl<'a> DomDocument<'a> {
     /// The retained designation at this exact Document revision. Native fresh
-    /// construction establishes known null; imported history without a producer
+    /// construction establishes known null, as does transferred original
+    /// controlled HTML constructor proof. Imported history without a producer
     /// proof stays unavailable. Neither value supplies a current-area resolver,
     /// viewport, system-focus observation or execution authority. Reads preserve
     /// the captured value across later inactivity, metadata and tree changes.

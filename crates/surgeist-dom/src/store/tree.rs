@@ -1107,6 +1107,9 @@ pub(super) struct InsertionTrace {
 }
 
 #[cfg(test)]
+mod focus_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

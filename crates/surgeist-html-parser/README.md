@@ -34,6 +34,12 @@ per occurrence. Mutable parsing retains its original peak-storage requirements.
 The document profile is fresh ordinary Disabled execution. Fragments retain
 qualified Inert/Disabled context facts. JavaScript execution, resource fetching,
 live shadow attachment and browser events remain outside these profiles.
+Owned Document nodes retain HTML's stored constructor focus designation through
+original construction, continuation and report sealing. Fresh auxiliary/inert
+owners use their own constructor; reused owners retain their state. Captured
+external targets remain separate references and receive no constructor grant.
+Known null does not complete pending autofocus, interaction or association work.
+
 Unsupported execution or required construction facts return typed failures. Failure retains
 the original request and live ownership until explicit cleanup; no successful
 partial report is returned.

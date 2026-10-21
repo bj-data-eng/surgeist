@@ -503,7 +503,7 @@ fn refusal_after_an_earlier_complete_contribution_preserves_its_actual_original_
 }
 
 #[test]
-fn unavailable_original_meta_removal_preserves_its_retained_occurrence() {
+fn removed_original_meta_still_executes_its_retained_occurrence_without_a_live_subject() {
     let (mut dom, installed) =
         raw("<!doctype html><meta http-equiv=default-style content=survives>");
     let mut cursor = installed.report().pending_associations();
@@ -526,28 +526,26 @@ fn unavailable_original_meta_removal_preserves_its_retained_occurrence() {
             .document(document)
             .unwrap()
             .focused_area_designation(),
-        surgeist_dom::DomFocusedAreaDesignation::Unavailable
+        surgeist_dom::DomFocusedAreaDesignation::KnownNull
     );
     let mut batch = DomBatch::new();
     batch.detach(meta);
     batch.destroy(meta);
-    assert_eq!(
-        dom.apply(batch, &cancel()).unwrap_err(),
-        DomError::FocusedAreaDesignationUnavailable {
-            subject: Some(meta),
-            document: Some(document),
-        }
-    );
-    assert_eq!(dom.snapshot().stamp(), before.stamp());
-    assert_eq!(dom.snapshot().node(meta).unwrap().parent(), parent);
+    dom.apply(batch, &cancel()).unwrap();
+    assert!(matches!(
+        dom.snapshot().node(meta),
+        Err(DomError::StaleNode)
+    ));
+    assert_eq!(before.node(meta).unwrap().parent(), parent);
     let id = installed.pending_association().unwrap();
     assert_eq!(
         dom.pending_parsed_html_association(document).unwrap(),
         Some(id)
     );
+    drop(installed);
     let mut session =
         DomSession::admit_parsed(dom, session_limits(limits()), envelope(), &cancel()).unwrap();
-    bind(&mut session, document, "retained", Default::default());
+    bind(&mut session, document, "removed", Default::default());
     let done = session
         .style_execution()
         .consume_parsed_meta(&mut session.dom(), id, envelope(), &cancel())

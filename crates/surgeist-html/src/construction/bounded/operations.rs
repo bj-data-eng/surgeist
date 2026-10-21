@@ -2017,6 +2017,10 @@ impl HtmlConstructionReadyOperation {
                 }
                 Command::CreateDocument { mode } => {
                     let mut record = Record::new(HtmlNodeKind::Document(mode), None, 0);
+                    // This actual admitted constructor issues original state;
+                    // generic raw kinds and later mode edits cannot issue it.
+                    record.document_focused_area_designation =
+                        Some(HtmlFocusedAreaDesignation::KnownNull);
                     record.children = std::mem::take(&mut plan.new_children[0]);
                     record.children_generation = plan.new_children_generations[0];
                     arena.records.push(record);
@@ -2243,6 +2247,7 @@ impl HtmlConstructionRetirementAction<'_> {
                     .arena
                     .records[index];
                 record.kind = HtmlNodeKind::Fragment;
+                record.document_focused_area_designation = None;
                 record.owner = None;
                 record.shadow = None;
                 record.template_contents = None;

@@ -1112,6 +1112,18 @@ impl Dom {
             let design_mode_enabled = node
                 .document_design_mode_enabled()
                 .ok_or_else(|| Error::MissingMetadata { subject: node.id() })?;
+            c.step(1)?;
+            let focused_area_designation = match node
+                .document_focused_area_designation()
+                .ok_or_else(|| Error::MissingMetadata { subject: node.id() })?
+            {
+                surgeist_html::HtmlFocusedAreaDesignation::KnownNull => {
+                    crate::DomFocusedAreaDesignation::KnownNull
+                }
+                surgeist_html::HtmlFocusedAreaDesignation::Unavailable => {
+                    crate::DomFocusedAreaDesignation::Unavailable
+                }
+            };
             let (class, inert, _) = source
                 .observation(&node.id(), &mut c, |r| r.document_facts())?
                 .ok_or_else(|| Error::MissingMetadata { subject: node.id() })?;
@@ -1166,6 +1178,14 @@ impl Dom {
             let interaction = state::document_interaction(&source, node, &mut c)?;
             let own = Key::Created(draft.created.len());
             let key = draft.allocate(NewNode::Document(metadata), own, self.limits, cancelled)?;
+            // This is the actual new report-owned record, before publication;
+            // its retained HTML qualification does not reset captured owners.
+            c.step(1)?;
+            draft
+                .private_node_mut(key)
+                .document_fields_mut()
+                .expect("new owned Document")
+                .focused_area_designation = focused_area_designation;
             // Only this genuinely new owned Document receives its original
             // qualified history. Captured current Documents are never reset.
             match interaction {

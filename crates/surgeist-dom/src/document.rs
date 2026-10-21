@@ -20,7 +20,8 @@ pub enum DomDocumentClass {
 /// This does not resolve the currently focused area, system focus or a viewport.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomFocusedAreaDesignation {
-    /// The actual fresh native constructor established a null designation.
+    /// The actual fresh native constructor, or a qualified original controlled
+    /// HTML constructor, established a null designation.
     KnownNull,
     /// Original designation history was not supplied by its producer.
     Unavailable,

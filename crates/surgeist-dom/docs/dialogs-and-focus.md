@@ -61,11 +61,14 @@ adoption does not substitute a new Window.
 `DomDocument::focused_area_designation()` reads the retained designation
 qualification from that exact immutable Document snapshot. `KnownNull` is the
 [selected initial fact](../../../references/SOURCE-EDITIONS.md#fresh-native-document-focus-initialization)
-for actual fresh native XML/HTML Documents, hosted initial
-about:blank Documents and freshly constructed native inert Template owners.
-`Unavailable` means original focused-designation history was not supplied: parsed
-ordinary, auxiliary and inert Documents do not gain known-null state from a
-headless environment or final tree.
+for actual fresh native XML/HTML Documents, hosted initial about:blank Documents
+and freshly constructed native inert Template owners. Controlled HTML
+construction also retains its original constructor qualification through its
+closed construction lifetime. Parsed installation transfers that exact fact only
+to new report-owned ordinary, auxiliary and inert Documents, preserving their
+parsed creation cause. It does not initialize captured existing owners.
+`Unavailable` means original focused-designation history was not supplied; no
+headless environment, scripting mode or final tree can supply the missing fact.
 
 Existing captured and cached owners preserve their value. Subtree import,
 adoption, metadata edits, inactivity and hosted teardown do not initialize it

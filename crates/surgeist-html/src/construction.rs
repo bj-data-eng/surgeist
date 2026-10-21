@@ -540,9 +540,21 @@ pub enum HtmlTemplateContentsKind {
     ShadowReference,
 }
 
+/// Original focused-area designation retained by an owned construction Document.
+/// This supplies no viewport, positive focusing operation or execution permission.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlFocusedAreaDesignation {
+    /// The actual controlled Document constructor established null, preserved
+    /// through this owner's admitted operations.
+    KnownNull,
+    /// No qualified original designation history is retained.
+    Unavailable,
+}
+
 #[derive(Debug)]
 struct Record {
     kind: HtmlNodeKind,
+    document_focused_area_designation: Option<HtmlFocusedAreaDesignation>,
     parent: Option<usize>,
     children: Vec<usize>,
     children_generation: u64,
@@ -554,8 +566,11 @@ struct Record {
 }
 impl Record {
     fn new(kind: HtmlNodeKind, parent: Option<usize>, depth: usize) -> Self {
+        let document_focused_area_designation = matches!(kind, HtmlNodeKind::Document(_))
+            .then_some(HtmlFocusedAreaDesignation::Unavailable);
         Self {
             kind,
+            document_focused_area_designation,
             parent,
             children: Vec::new(),
             children_generation: 0,
@@ -618,6 +633,13 @@ impl<'a> HtmlNode<'a> {
     /// Documents are not owned construction nodes and receive no such grant.
     pub fn document_design_mode_enabled(self) -> Option<bool> {
         matches!(self.kind(), HtmlNodeKind::Document(_)).then_some(false)
+    }
+    /// Stored original designation of this owned Document, or `None` for a
+    /// non-Document. Only the controlled CreateDocument transition issues known
+    /// null. Its closed operation domain preserves that state through recovery
+    /// and publication; captured external Documents receive no such grant.
+    pub fn document_focused_area_designation(self) -> Option<HtmlFocusedAreaDesignation> {
+        self.arena.records[self.index].document_focused_area_designation
     }
     /// Ordinary parent; association fragment roots have no ordinary parent.
     pub fn parent(self) -> Option<HtmlNodeId> {
@@ -1209,6 +1231,31 @@ impl HtmlFragmentBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unqualified_document_record_readback_is_not_a_node_kind_constant() {
+        let arena = Arena {
+            identity: Arc::new(Identity),
+            records: vec![Record::new(
+                HtmlNodeKind::Document(HtmlDocumentMode::NoQuirks),
+                None,
+                0,
+            )],
+            usage: HtmlConstructionUsage::default(),
+            records_generation: 0,
+            wrapper_generation: 0,
+            depths_valid: true,
+            temporary_generation: 0,
+        };
+        let node = HtmlNode {
+            arena: &arena,
+            index: 0,
+        };
+        assert_eq!(
+            node.document_focused_area_designation(),
+            Some(HtmlFocusedAreaDesignation::Unavailable)
+        );
+    }
 
     #[test]
     fn exact_recovered_pi_data_is_stored_without_becoming_checked_author_input() {

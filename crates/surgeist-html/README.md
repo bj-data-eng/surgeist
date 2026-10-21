@@ -12,6 +12,15 @@ constructors admit no design-mode mutation. Existing parser report views lend
 the same qualified node, so consumers can transfer its state without inventing
 a native default. Captured external Documents retain their own state authority.
 
+`HtmlNode::document_focused_area_designation` reads stored original state.
+The actual controlled `CreateDocument` transition issues selected `KnownNull`;
+an unqualified Document record remains `Unavailable`, and non-Documents return
+`None`. Structural/mode edits and original arena recovery preserve the state.
+The current closed construction domain has no positive designation writer.
+Immutable copies retain the same evidence; captured external Documents cannot
+acquire it from matching metadata. This grants no viewport, focus execution,
+system focus or completion of pending autofocus/interaction work.
+
 The [selected WHATWG edition](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline)
 defines behavior. [INVENTORY.md](INVENTORY.md) connects the vocabulary and local
 operations to their clauses. The [detailed HTML guide](../../docs/reference/html-operations.md)

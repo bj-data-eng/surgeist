@@ -3,7 +3,7 @@ use surgeist_html::*;
 use surgeist_html_parser::*;
 use surgeist_html_semantics::*;
 
-fn fragment_context(
+pub(super) fn fragment_context(
     mode: HtmlDocumentMode,
     activity: HtmlBrowsingContextPresence,
 ) -> HtmlFragmentContext {

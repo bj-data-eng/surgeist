@@ -255,7 +255,7 @@ fn preferred(report: &HtmlParseReport) -> Vec<Vec<u16>> {
 }
 
 #[test]
-fn pending_association_zero_sheet_history_survives_drop_move_and_refused_original_retirement() {
+fn pending_association_zero_sheet_history_survives_drop_move_and_supported_node_retirement() {
     let report = parse(HtmlSource::utf8(
         "<!doctype html><meta http-equiv=default-style content=first><meta http-equiv=default-style content=second><template><style></style></template><p>survivor",
     ));
@@ -284,31 +284,23 @@ fn pending_association_zero_sheet_history_survives_drop_move_and_refused_origina
     let fragment = created.created(&fragment).unwrap().unwrap();
     let mut edit = DomBatch::new();
     edit.destroy(fragment);
-    edit.set_attribute(paragraph, "class", "permitted");
-    moved.apply(edit, &AtomicBool::new(false)).unwrap();
-    let before = moved.snapshot();
-    let style_document = before.node(style).unwrap().owner_document().unwrap();
-    let mut edit = DomBatch::new();
+    // This original Style is in inert Template contents: its actual removal
+    // is disconnected-to-disconnected and requires no association update.
+    // A connected pending Style's reached update is guarded separately.
     edit.detach(style);
     edit.destroy(style);
+    edit.set_attribute(paragraph, "class", "permitted");
     edit.detach(meta);
     edit.destroy(meta);
-    assert_eq!(
-        moved.apply(edit, &AtomicBool::new(false)).unwrap_err(),
-        DomError::FocusedAreaDesignationUnavailable {
-            subject: Some(style),
-            document: Some(style_document)
-        }
-    );
-    assert_eq!(moved.snapshot().stamp(), before.stamp());
+    moved.apply(edit, &AtomicBool::new(false)).unwrap();
     assert_eq!(moved.pending_parsed_html_associations().count(), 1);
     let pending = moved.pending_parsed_html_associations().next().unwrap();
     assert_eq!(pending.id(), id);
     assert_eq!(pending.documents().len(), 1);
     assert_eq!(pending.documents()[0].document(), document);
     assert_eq!(preferred(pending.report()), expected);
-    assert!(moved.snapshot().node(meta).is_ok());
-    assert!(moved.snapshot().node(style).is_ok());
+    assert!(moved.snapshot().node(meta).is_err());
+    assert!(moved.snapshot().node(style).is_err());
     assert!(moved.snapshot().node(fragment).is_err());
     drop(moved);
     assert!(weak.upgrade().is_none());

@@ -2489,8 +2489,8 @@ fn eof_template_patch_retains_nonchild_subjects_and_each_weak_marker_slot_retire
 }
 
 #[test]
-fn nested_template_owners_share_actual_inert_document_and_refused_move_preserves_svg_parser_cause()
-{
+fn nested_template_owners_share_actual_inert_document_and_svg_parser_cause_survives_later_insertion()
+ {
     let report = parse(HtmlSource::utf8(
         "<!doctype html><template><template><svg><script/></svg></template></template><template></template>",
     ));
@@ -2559,17 +2559,11 @@ fn nested_template_owners_share_actual_inert_document_and_refused_move_preserves
     let body = element(&result, "body");
     let mut b = DomBatch::new();
     b.insert_before(script_id, body, None);
-    assert_eq!(
-        dom.apply(b, &AtomicBool::new(false)).unwrap_err(),
-        DomError::FocusedAreaDesignationUnavailable {
-            subject: Some(script_id),
-            document: Some(inert)
-        }
-    );
+    dom.apply(b, &AtomicBool::new(false)).unwrap();
     let current = dom.snapshot();
     let moved = current.node(script_id).unwrap().as_svg_script().unwrap();
     assert_eq!(moved.origin(), DomSvgScriptOrigin::Parser);
-    assert!(!moved.flags().already_processed());
+    assert!(moved.flags().already_processed());
     assert!(!original.flags().already_processed());
 }
 
@@ -2932,7 +2926,7 @@ fn parsed_select_cache_textarea_raw_and_output_null_continue_through_canonical_s
 }
 
 #[test]
-fn hyperlink_source_time_base_failed_parse_and_refused_adoption_keep_the_actual_cache() {
+fn hyperlink_source_time_base_failed_parse_and_adoption_keep_the_actual_cache() {
     use surgeist_html_semantics::{
         HtmlAboutBaseUrl, HtmlBaseAllowed, HtmlBaseDocumentFacts, HtmlBaseFactsLimits,
         HtmlBaseParseObservation, HtmlBaseParseOutcome, HtmlEncodingUrlParseFacts,
@@ -3046,17 +3040,11 @@ fn hyperlink_source_time_base_failed_parse_and_refused_adoption_keep_the_actual_
     let mut batch = DomBatch::new();
     let destination = batch.create_document();
     batch.adopt(a, &destination);
-    assert_eq!(
-        dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
-        DomError::FocusedAreaDesignationUnavailable {
-            subject: Some(a),
-            document: Some(result.document())
-        }
-    );
+    let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
     let current = dom.snapshot();
     assert_eq!(
-        current.node(a).unwrap().owner_document(),
-        Some(result.document())
+        current.node(a).unwrap().owner_document().unwrap(),
+        commit.document(&destination).unwrap()
     );
     let adopted = current.node(a).unwrap().as_hyperlink().unwrap();
     assert_eq!(adopted.url(), Some(&early));
@@ -3107,9 +3095,8 @@ fn absent_hyperlink_is_actual_null_but_missing_present_href_observation_refuses_
 #[test]
 fn parsed_img_wait_is_real_owned_work_then_later_update_and_exact_retirement_use_canonical_ids() {
     use surgeist_html::HtmlImgFreshRequestState;
-    // Ordinary reports retain true parser insertion; their original removal is
-    // currently blocked. A captured native target independently exercises the
-    // supported later lifecycle, with the fragment's own final parser flags.
+    // Both the original controlled owner and an independent captured native
+    // target support this lifecycle, retaining their distinct parser flags.
     for native_context in [false, true] {
         let (mut dom, result) = if native_context {
             let (mut dom, capture, _, host) = fragment_fixture("div");
@@ -3185,32 +3172,7 @@ fn parsed_img_wait_is_real_owned_work_then_later_update_and_exact_retirement_use
         );
         let mut batch = DomBatch::new();
         batch.detach(image);
-        let removal = dom.apply(batch, &AtomicBool::new(false));
-        if !native_context {
-            assert_eq!(
-                removal.unwrap_err(),
-                DomError::FocusedAreaDesignationUnavailable {
-                    subject: Some(image),
-                    document: Some(result.document())
-                }
-            );
-            assert_eq!(dom.snapshot().stamp(), current.stamp());
-            assert_eq!(dom.snapshot().node(image).unwrap().parent(), Some(form));
-            assert_eq!(
-                dom.snapshot()
-                    .node(image)
-                    .unwrap()
-                    .as_img()
-                    .unwrap()
-                    .suspended_update()
-                    .unwrap()
-                    .unwrap()
-                    .id(),
-                next.id()
-            );
-            continue;
-        }
-        let removal = removal.unwrap();
+        let removal = dom.apply(batch, &AtomicBool::new(false)).unwrap();
         assert!(
             !removal
                 .changes()
@@ -3765,19 +3727,6 @@ fn parsed_meta_history_survives_report_release_and_later_native_insertion_update
     batch.set_attribute(meta, "content", "fr");
     batch.detach(meta);
     batch.insert_before(meta, head, None);
-    assert_eq!(
-        dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
-        DomError::FocusedAreaDesignationUnavailable {
-            subject: Some(meta),
-            document: Some(document)
-        }
-    );
-    assert_eq!(meta_language(&dom.snapshot(), document), Some(&"en".into()));
-    let mut batch = DomBatch::new();
-    let later = batch.create_element_ns(document, Namespace::html(), "meta");
-    batch.set_attribute(&later, "http-equiv", "content-language");
-    batch.set_attribute(&later, "content", "fr");
-    batch.insert_before(&later, head, None);
     dom.apply(batch, &AtomicBool::new(false)).unwrap();
     assert_eq!(meta_language(&dom.snapshot(), document), Some(&"fr".into()));
     assert_eq!(meta_language(&old, document), Some(&"en".into()));
@@ -4122,25 +4071,17 @@ fn parsed_dialog_free_document_retains_history_for_later_native_open_cleanup() {
             .is_some()
     );
 
-    // Removal reaches unavailable focus qualification before removed-open
-    // cleanup; the earlier attribute-only cleanup remains supported.
+    // Exercise removed-open cleanup as a separate real ordinary operation.
     let mut batch = DomBatch::new();
     batch.set_attribute(id, "open", "");
     dom.apply(batch, &AtomicBool::new(false)).unwrap();
     let mut batch = DomBatch::new();
     batch.detach(id);
-    let before_removal = dom.snapshot();
-    assert_eq!(
-        dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
-        DomError::FocusedAreaDesignationUnavailable {
-            subject: Some(id),
-            document: Some(document)
-        }
-    );
-    assert_eq!(dom.snapshot().stamp(), before_removal.stamp());
+    dom.apply(batch, &AtomicBool::new(false))
+        .expect("source-established Document list history supports removed-open cleanup");
     let detached = dom.snapshot();
     let node = detached.node(id).unwrap();
-    assert!(node.is_connected());
+    assert!(!node.is_connected());
     assert_eq!(node.owner_document(), Some(document));
     assert!(
         node.as_element()
@@ -4153,7 +4094,7 @@ fn parsed_dialog_free_document_retains_history_for_later_native_open_cleanup() {
 }
 
 #[test]
-fn parsed_template_dialog_refused_adoption_preserves_inert_history_and_allows_local_value_edits() {
+fn parsed_template_dialog_adoption_keeps_current_value_and_original_inert_history() {
     let report = parse(HtmlSource::utf8(
         "<!doctype html><dialog id=outer open></dialog><template><dialog id=inner open></dialog></template>",
     ));
@@ -4207,30 +4148,12 @@ fn parsed_template_dialog_refused_adoption_preserves_inert_history_and_allows_lo
     batch.adopt(inner, result.document());
     batch.insert_before(inner, element(&result, "body"), None);
     batch.remove_attribute(inner, "open");
-    assert_eq!(
-        dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
-        DomError::FocusedAreaDesignationUnavailable {
-            subject: Some(inner),
-            document: Some(inert)
-        }
-    );
-    assert_eq!(dom.snapshot().stamp(), initial.stamp());
-    assert_eq!(
-        dom.snapshot()
-            .node(inner)
-            .unwrap()
-            .as_dialog()
-            .unwrap()
-            .return_value()
-            .code_units(),
-        []
-    );
-    let mut batch = DomBatch::new();
-    batch.set_dialog_return_value(inner, exact.clone());
-    batch.remove_attribute(inner, "open");
     let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
     let current = dom.snapshot();
-    assert_eq!(current.node(inner).unwrap().owner_document(), Some(inert));
+    assert_eq!(
+        current.node(inner).unwrap().owner_document(),
+        Some(result.document())
+    );
     assert_eq!(
         current
             .node(inner)
@@ -4249,10 +4172,10 @@ fn parsed_template_dialog_refused_adoption_preserves_inert_history_and_allows_lo
             .attribute(&"open".into()),
         None
     );
-    assert_eq!(current.node(contents).unwrap().children(), &[inner]);
+    assert!(current.node(contents).unwrap().children().is_empty());
     assert_parsed_dialog_closed_services(current.node(inner).unwrap().as_dialog().unwrap());
     assert!(
-        !commit
+        commit
             .changes()
             .changes()
             .contains(&DomChange::NodeDocument(inner))
