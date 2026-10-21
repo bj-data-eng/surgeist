@@ -951,7 +951,8 @@ fn semantic_children_canonicalize_numeric_math_and_new_aggregate_owners() {
         ("translate", "10px 0px 0px", "10px"),
         ("scale", "2 2 1", "2"),
         ("rotate", "z 90deg", "90deg"),
-        ("transition", "opacity 1s ease 0s", "opacity 1s ease 0s"),
+        // CSSOM omits the initial `ease` and `0s` delay (#1329).
+        ("transition", "opacity 1s ease 0s", "opacity 1s"),
     ] {
         let expected = format!("{name}: {value} !important;");
         for declaration in [
