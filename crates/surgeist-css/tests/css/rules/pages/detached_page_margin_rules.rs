@@ -68,6 +68,30 @@ fn local_invalid_neighbors_descriptors_and_structural_units_recover_under_margin
     );
 }
 
+/// A recognized property refused by the margin grammar names its own
+/// support-catalog record, as `CssUnsupportedPropertyError::feature` documents.
+#[test]
+fn recognized_page_descriptor_property_in_margin_names_its_catalog_identity() {
+    for spelling in ["size", "SIZE"] {
+        let report = parse_page_margin_rule(&format!("@top-left {{ {spelling}: A4 }}"));
+        let errors = report
+            .diagnostics()
+            .iter()
+            .filter_map(|diagnostic| match diagnostic.error().kind() {
+                ErrorKind::UnsupportedProperty(error) => Some(error),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let [error] = errors.as_slice() else {
+            panic!("{spelling}: one unsupported property: {report:?}")
+        };
+        assert_eq!(error.name().as_str(), spelling);
+        let catalog = property_support_metadata("size").expect("size catalog record");
+        assert_eq!(error.feature(), catalog.feature().id());
+        assert!(feature_metadata(error.feature().as_str()).is_some());
+    }
+}
+
 #[test]
 fn complete_rule_framing_and_empty_prelude_reject_extra_input_without_hierarchy_relabeling() {
     for source in [

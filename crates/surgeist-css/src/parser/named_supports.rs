@@ -632,7 +632,8 @@ pub fn parse_supports_test_contents_with_limits(
     source: &str,
     limits: CssComponentValueLimits,
 ) -> CssParseReport<Option<CssSupportsTestBody>> {
-    fragments::bounded_execution(source, || {
+    let refused = || None;
+    fragments::bounded_report(source, refused, || {
         let document = match syntax::source_document_with_limits(source, limits) {
             Ok(document) => document,
             Err(error) => {

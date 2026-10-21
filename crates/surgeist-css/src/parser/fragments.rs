@@ -1,37 +1,35 @@
 //! Context-specific parsing over the caller's unmodified source.
 use super::*;
 
+/// Complete fragment parsing whose refusal retains no syntax.
 pub(super) fn bounded<T: Send>(
     source: &str,
+    parse: impl FnOnce() -> crate::CssParseReport<Option<T>> + Send,
+) -> crate::CssParseReport<Option<T>> {
+    bounded_or(source, || None, parse)
+}
+
+/// Complete fragment parsing whose refusal retains the front door's `refused` syntax.
+pub(super) fn bounded_or<T: Send>(
+    source: &str,
+    refused: impl FnOnce() -> T,
     parse: impl FnOnce() -> crate::CssParseReport<T> + Send,
 ) -> crate::CssParseReport<T> {
-    recovery::finish_report(source, bounded_execution(source, parse))
+    recovery::finish_report(source, bounded_report(source, refused, parse))
 }
 
-pub(super) fn bounded_execution<T: Send>(source: &str, parse: impl FnOnce() -> T + Send) -> T {
-    bounded_execution_at_depth(recovery::maximum_nested_depth(source), parse)
-}
-
-pub(super) fn bounded_execution_at_depth<T: Send>(
-    depth: u32,
-    parse: impl FnOnce() -> T + Send,
-) -> T {
-    // Recursive value and selector grammar can have larger frames than
-    // structural rule parsing. This threshold is not an admission limit.
-    if depth < 64 {
-        return parse();
-    }
-    std::thread::scope(|scope| {
-        let thread = std::thread::Builder::new()
-            .name("surgeist-css-fragment-parser".into())
-            .stack_size(16 * 1024 * 1024)
-            .spawn_scoped(scope, parse)
-            .expect("bounded CSS parser thread must be available");
-        match thread.join() {
-            Ok(value) => value,
-            Err(panic) => std::panic::resume_unwind(panic),
-        }
-    })
+/// Fragment-profile execution whose caller publishes tokenizer recovery itself.
+pub(super) fn bounded_report<T: Send>(
+    source: &str,
+    refused: impl FnOnce() -> T,
+    parse: impl FnOnce() -> crate::CssParseReport<T> + Send,
+) -> crate::CssParseReport<T> {
+    super::bounded_execution::report(
+        super::bounded_execution::StackProfile::Fragment,
+        source,
+        refused,
+        parse,
+    )
 }
 
 pub(super) fn reject(
@@ -857,9 +855,24 @@ pub fn parse_relative_selector_list(
     })
 }
 
+/// The never-matching replacement covering a refused media source's significant extent.
+fn never_media_query(snapshot: &crate::CssSourceSnapshot) -> CssMediaQuery {
+    let source = snapshot.as_str();
+    CssMediaQuery::Never(CssNeverMediaQuery::new(
+        crate::CssParsedOrigin::from_range(
+            snapshot,
+            recovery::first_non_trivia_position(source, 0, source.len())
+                .byte_offset()
+                .value()..source.len(),
+        )
+        .expect("parsed media recovery origin"),
+    ))
+}
+
 /// Parses exactly one media query, replacing rejected input with a never-matching query.
 pub fn parse_media_query(source: &str) -> crate::CssParseReport<CssMediaQuery> {
-    bounded(source, || {
+    let refused = || never_media_query(&crate::CssSourceSnapshot::new(source));
+    bounded_or(source, refused, || {
         let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
         let working_source = crate::tokenization::prepare(source);
         let mut input = ParserInput::new(&working_source);
@@ -918,7 +931,8 @@ pub(crate) fn parse_media_query_list_snapshot(
     context: crate::CssParserContext,
 ) -> crate::CssParseReport<CssMediaQueryList> {
     let source = snapshot.as_str();
-    let (mut list, mut diagnostics) = bounded(source, || {
+    let refused = || CssMediaQueryList::new(vec![never_media_query(snapshot)]);
+    let (mut list, mut diagnostics) = bounded_or(source, refused, || {
         let state = RecoveryState::at_depth_with_snapshot(
             source,
             0,
@@ -986,11 +1000,38 @@ pub(crate) fn parse_media_query_list_snapshot(
 /// );
 /// ```
 pub fn parse_cssom_media_query(source: &str) -> crate::CssParseReport<Option<CssMediaQuery>> {
-    let (list, diagnostics) = parse_media_query_list(source).into_parts();
-    crate::media::with_media_stack(
-        list.queries().iter().any(crate::media::query_is_deep),
-        || crate::CssParseReport::new(list.into_single_query(), diagnostics),
-    )
+    let (list, mut diagnostics) = parse_media_query_list(source).into_parts();
+    // Condition depth counts `not` and grouping levels, so shallow source can
+    // still need the bounded thread here. Without it the query is refused.
+    let deep = list
+        .queries()
+        .iter()
+        .find(|query| crate::media::query_is_deep(query))
+        .map(|query| query.origin().clone());
+    let mut list = Some(list);
+    let single = super::bounded_execution::run_deep(deep.is_some(), || {
+        list.take()
+            .expect("one single-query projection")
+            .into_single_query()
+    });
+    match single {
+        Ok(query) => crate::CssParseReport::new(query, diagnostics),
+        Err(unavailable) => {
+            let (at, snapshot) = match &deep {
+                Some(crate::CssValueOrigin::Parsed(origin)) => (
+                    origin.span().start().byte_offset().value(),
+                    Some(origin.source().clone()),
+                ),
+                _ => (0, None),
+            };
+            let mut refusal = unavailable.diagnostic_at(source, at);
+            if let Some(snapshot) = &snapshot {
+                refusal.bind_source(snapshot);
+            }
+            diagnostics.push(refusal);
+            crate::CssParseReport::new(None, diagnostics)
+        }
+    }
 }
 
 /// Parses one complete raw `@font-face` descriptor value in the selected grammar.

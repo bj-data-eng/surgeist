@@ -115,6 +115,13 @@ fn retained_eof_modifier_components_gain_explicit_closures_without_losing_identi
         [component] if matches!(component.view(),
             CssComponentValueRef::Token(CssValueTokenRef::Ident("a�")))
     ));
+    // Opaque modifier arguments keep their authored token representation, as
+    // `\61uto` does elsewhere; CSSOM "serialize an identifier" (which would emit
+    // the U+FFFD character itself) applies to identifier values it serializes,
+    // not to retained raw tokens. Syntax 3 (CRD 2026-10-01) §9 requires only
+    // round-tripping: the authored `a\` gains the appended explicit escape
+    // `fffd `, which reparses to the same `a\u{FFFD}` ident (§4.3.7) without
+    // rewriting authored bytes or letting the escape consume the closing `)`.
     assert_eq!(
         escaped.serialize_specified().unwrap(),
         "src(\"x\" m(a\\fffd ))"

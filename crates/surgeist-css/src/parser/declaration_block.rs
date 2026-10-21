@@ -159,7 +159,8 @@ fn parse_contents_with_snapshot<R: Receiver>(
     snapshot: Option<&CssSourceSnapshot>,
     make_receiver: impl FnOnce(RecoveryState) -> R + Send,
 ) -> CssParseReport<Option<Vec<R::Declaration>>> {
-    fragments::bounded_execution(source, || {
+    let refused = || None;
+    fragments::bounded_report(source, refused, || {
         let document = match snapshot.map_or_else(
             || syntax::source_document_with_limits(source, limits),
             |snapshot| syntax::source_document_snapshot_with_limits(snapshot, limits),

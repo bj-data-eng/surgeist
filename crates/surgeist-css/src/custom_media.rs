@@ -248,17 +248,25 @@ impl CssCustomMediaRule {
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssCustomMediaConstructionError> {
         let deep = matches!(&body,CssCustomMediaBody::Media(list) if list.queries().iter().any(crate::media::query_is_deep));
-        crate::media::with_media_stack(deep, || {
-            let rule = Self::parsed(
-                name,
-                body,
-                CssValueOrigin::Programmatic,
-                CssValueOrigin::Programmatic,
-                CssValueOrigin::Programmatic,
-            );
-            rule.validate(limits)?;
-            Ok(rule)
-        })
+        let origin = match &body {
+            CssCustomMediaBody::Media(list) if deep => crate::media::deep_list_origin(list),
+            _ => CssValueOrigin::Programmatic,
+        };
+        crate::media::with_media_stack(
+            deep,
+            || origin,
+            || {
+                let rule = Self::parsed(
+                    name,
+                    body,
+                    CssValueOrigin::Programmatic,
+                    CssValueOrigin::Programmatic,
+                    CssValueOrigin::Programmatic,
+                );
+                rule.validate(limits)?;
+                Ok(rule)
+            },
+        )
     }
     /// Admits a prelude (name followed by body), preserving original component origins.
     pub fn try_from_components(
@@ -272,65 +280,75 @@ impl CssCustomMediaRule {
         values: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self, CssCustomMediaConstructionError> {
-        crate::media::with_media_stack(values.nesting_depth() >= 64, || {
-            values.validate_with_limits(limits)?;
-            if let Some(origin) = values.first_implicit_origin() {
-                return Err(CssCustomMediaConstructionError::RecoveredInput {
-                    origin: origin.clone(),
-                });
-            }
-            let Some(index) = values.items().iter().position(|v| !trivia(v)) else {
-                return Err(CssCustomMediaConstructionError::InvalidPrelude {
-                    origin: CssValueOrigin::Programmatic,
-                });
-            };
-            let name = CssCustomMediaName::try_from_component(values.items()[index].clone())?;
-            let tail = &values.items()[index + 1..];
-            let (body, body_origin) = if let Some(boolean) = boolean_body(tail) {
-                boolean
-            } else {
-                let mut queries = Vec::new();
-                let mut commas = Vec::new();
-                let mut start = 0;
-                let empty = tail.iter().all(trivia);
-                if !empty {
-                    for end in 0..=tail.len() {
-                        if end == tail.len()
-                            || matches!(
-                                tail[end].view(),
-                                CssComponentValueRef::Token(CssValueTokenRef::Comma)
-                            )
-                        {
-                            queries.push(CssMediaQuery::try_from_components_with_limits(
-                                CssComponentValues::try_new(tail[start..end].to_vec())?,
-                                limits,
-                            )?);
-                            if end < tail.len() {
-                                commas.push(tail[end].origin().clone());
+        let deep = values.nesting_depth() >= 64;
+        let origin = if deep {
+            crate::parser::bounded_execution::deep_component_origin(values.items())
+        } else {
+            CssValueOrigin::Programmatic
+        };
+        crate::media::with_media_stack(
+            deep,
+            || origin,
+            || {
+                values.validate_with_limits(limits)?;
+                if let Some(origin) = values.first_implicit_origin() {
+                    return Err(CssCustomMediaConstructionError::RecoveredInput {
+                        origin: origin.clone(),
+                    });
+                }
+                let Some(index) = values.items().iter().position(|v| !trivia(v)) else {
+                    return Err(CssCustomMediaConstructionError::InvalidPrelude {
+                        origin: CssValueOrigin::Programmatic,
+                    });
+                };
+                let name = CssCustomMediaName::try_from_component(values.items()[index].clone())?;
+                let tail = &values.items()[index + 1..];
+                let (body, body_origin) = if let Some(boolean) = boolean_body(tail) {
+                    boolean
+                } else {
+                    let mut queries = Vec::new();
+                    let mut commas = Vec::new();
+                    let mut start = 0;
+                    let empty = tail.iter().all(trivia);
+                    if !empty {
+                        for end in 0..=tail.len() {
+                            if end == tail.len()
+                                || matches!(
+                                    tail[end].view(),
+                                    CssComponentValueRef::Token(CssValueTokenRef::Comma)
+                                )
+                            {
+                                queries.push(CssMediaQuery::try_from_components_with_limits(
+                                    CssComponentValues::try_new(tail[start..end].to_vec())?,
+                                    limits,
+                                )?);
+                                if end < tail.len() {
+                                    commas.push(tail[end].origin().clone());
+                                }
+                                start = end + 1;
                             }
-                            start = end + 1;
                         }
                     }
-                }
-                (
-                    CssCustomMediaBody::Media(CssMediaQueryList::with_comma_origins(
-                        queries, commas,
-                    )),
-                    tail.iter()
-                        .find(|v| !trivia(v))
-                        .map_or(CssValueOrigin::Programmatic, |v| v.origin().clone()),
-                )
-            };
-            let rule = Self::parsed(
-                name,
-                body,
-                CssValueOrigin::Programmatic,
-                body_origin,
-                CssValueOrigin::Programmatic,
-            );
-            rule.validate(limits)?;
-            Ok(rule)
-        })
+                    (
+                        CssCustomMediaBody::Media(CssMediaQueryList::with_comma_origins(
+                            queries, commas,
+                        )),
+                        tail.iter()
+                            .find(|v| !trivia(v))
+                            .map_or(CssValueOrigin::Programmatic, |v| v.origin().clone()),
+                    )
+                };
+                let rule = Self::parsed(
+                    name,
+                    body,
+                    CssValueOrigin::Programmatic,
+                    body_origin,
+                    CssValueOrigin::Programmatic,
+                );
+                rule.validate(limits)?;
+                Ok(rule)
+            },
+        )
     }
     pub(crate) fn parsed(
         name: CssCustomMediaName,
@@ -361,11 +379,19 @@ impl CssCustomMediaRule {
     pub const fn position(&self) -> Option<CssSourcePosition> {
         crate::media::parsed_position(&self.data.origin)
     }
+    /// The deep media query responsible for a refused deep serialization.
+    fn media_origin(&self) -> CssValueOrigin {
+        match &self.data.body {
+            CssCustomMediaBody::Media(list) => crate::media::deep_list_origin(list),
+            _ => self.data.origin.clone(),
+        }
+    }
     /// Emits canonical authored syntax with original token origins. Any recovered
     /// media member fails the entire operation before an output is returned.
     pub fn serialize(&self) -> Result<CssSerializedValue, CssCustomMediaSerializationError> {
         let deep = matches!(&self.data.body,CssCustomMediaBody::Media(list) if list.queries().iter().any(crate::media::query_is_deep));
-        crate::media::with_media_stack(deep, || self.emit(usize::MAX))
+        let origin = || self.media_origin();
+        crate::media::with_media_stack(deep, origin, || self.emit(usize::MAX))
     }
     /// Generic graph projection leaves the logical rule charge to its caller.
     pub(crate) fn append_specified(
@@ -388,7 +414,8 @@ impl CssCustomMediaRule {
             return Ok(());
         }
         let deep = matches!(&self.data.body,CssCustomMediaBody::Media(list) if list.queries().iter().any(crate::media::query_is_deep));
-        let value = crate::media::with_media_stack(deep, || {
+        let origin = || self.media_origin();
+        let value = crate::media::with_media_stack(deep, origin, || {
             let mut out = CssCanonicalBuilder::new(context.remaining_bytes());
             self.emit_into(&mut out, crate::media::emit_query_cssom)?;
             Ok::<_, CssCustomMediaSerializationError>(out.finish()?)

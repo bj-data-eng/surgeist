@@ -175,7 +175,8 @@ impl CssUnknownMediaFeature {
         }
     }
     pub fn serialize(&self) -> Result<CssSerializedValue, CssMediaSerializationError> {
-        with_media_stack(component_depth(self.component()) >= 64, || {
+        let origin = || self.component().origin().clone();
+        with_media_stack(component_depth(self.component()) >= 64, origin, || {
             let mut out = CssCanonicalBuilder::new(usize::MAX);
             emit_feature(&mut out, &self.syntax, &[], None, MediaOutput::Authored)?;
             Ok(out.finish()?)
@@ -216,11 +217,15 @@ impl CssMediaQuery {
         crate::parser::construct_media_query(values, limits)
     }
     pub fn serialize(&self) -> Result<CssSerializedValue, CssMediaSerializationError> {
-        with_media_stack(query_is_deep(self), || {
-            let mut out = CssCanonicalBuilder::new(usize::MAX);
-            emit_query(&mut out, self)?;
-            Ok(out.finish()?)
-        })
+        with_media_stack(
+            query_is_deep(self),
+            || self.origin().clone(),
+            || {
+                let mut out = CssCanonicalBuilder::new(usize::MAX);
+                emit_query(&mut out, self)?;
+                Ok(out.finish()?)
+            },
+        )
     }
 
     /// Serializes canonical CSSOM text, projecting an ignored grammar member to
@@ -269,11 +274,15 @@ impl CssMediaQuery {
         context: &mut SpecifiedSerializationContext,
     ) -> Result<CssSerializedValue, CssMediaCssomSerializationError> {
         charge_query(context, self)?;
-        with_media_stack(query_is_deep(self), || {
-            let mut out = CssCanonicalBuilder::new(context.remaining_bytes());
-            emit_query_with_mode(&mut out, self, MediaOutput::Cssom)?;
-            Ok(out.finish()?)
-        })
+        with_media_stack(
+            query_is_deep(self),
+            || self.origin().clone(),
+            || {
+                let mut out = CssCanonicalBuilder::new(context.remaining_bytes());
+                emit_query_with_mode(&mut out, self, MediaOutput::Cssom)?;
+                Ok(out.finish()?)
+            },
+        )
         .map_err(bounded_error)
     }
 }
@@ -290,16 +299,21 @@ impl CssMediaCondition {
         crate::parser::construct_media_condition(values, limits)
     }
     pub fn serialize(&self) -> Result<CssSerializedValue, CssMediaSerializationError> {
-        with_media_stack(condition_is_deep(self), || {
-            let mut out = CssCanonicalBuilder::new(usize::MAX);
-            emit_condition(&mut out, self)?;
-            Ok(out.finish()?)
-        })
+        with_media_stack(
+            condition_is_deep(self),
+            || self.origin().clone(),
+            || {
+                let mut out = CssCanonicalBuilder::new(usize::MAX);
+                emit_condition(&mut out, self)?;
+                Ok(out.finish()?)
+            },
+        )
     }
 }
 impl CssMediaQueryList {
     pub fn serialize(&self) -> Result<CssSerializedValue, CssMediaSerializationError> {
-        with_media_stack(self.queries().iter().any(query_is_deep), || {
+        let origin = || deep_list_origin(self);
+        with_media_stack(self.queries().iter().any(query_is_deep), origin, || {
             if let Some(CssMediaQuery::Never(value)) = self
                 .queries()
                 .iter()
@@ -387,7 +401,8 @@ impl CssMediaQueryList {
                 .finish()
                 .map_err(|error| bounded_error(error.into()));
         }
-        with_media_stack(self.queries().iter().any(query_is_deep), || {
+        let origin = || deep_list_origin(self);
+        with_media_stack(self.queries().iter().any(query_is_deep), origin, || {
             let mut out = CssCanonicalBuilder::new(context.remaining_bytes());
             emit_list(&mut out, self, MediaOutput::Cssom)?;
             Ok(out.finish()?)
@@ -945,21 +960,23 @@ pub(crate) fn check_canonical_limit(
     Ok(())
 }
 
-pub(crate) fn with_media_stack<T: Send>(deep: bool, action: impl FnOnce() -> T + Send) -> T {
-    if !deep {
-        return action();
-    }
-    std::thread::scope(|scope| {
-        let task = std::thread::Builder::new()
-            .name("surgeist-css-media".into())
-            .stack_size(16 * 1024 * 1024)
-            .spawn_scoped(scope, action)
-            .expect("bounded media parser thread must be available");
-        match task.join() {
-            Ok(value) => value,
-            Err(panic) => std::panic::resume_unwind(panic),
-        }
-    })
+/// Runs deep media work on the shared bounded parser thread. If that thread is
+/// unavailable the operation fails with its existing component `NestingLimit`
+/// error at `origin`, never recursing deeply on the caller's stack.
+pub(crate) fn with_media_stack<T: Send, E: Send + From<CssComponentValueError>>(
+    deep: bool,
+    origin: impl FnOnce() -> CssValueOrigin,
+    action: impl FnOnce() -> Result<T, E> + Send,
+) -> Result<T, E> {
+    crate::parser::bounded_execution::media(deep, origin, action)
+}
+
+/// The origin of a list's first deep query, for a refused deep operation.
+pub(crate) fn deep_list_origin(list: &CssMediaQueryList) -> CssValueOrigin {
+    list.queries()
+        .iter()
+        .find(|query| query_is_deep(query))
+        .map_or(CssValueOrigin::Programmatic, |query| query.origin().clone())
 }
 pub(crate) fn query_is_deep(query: &CssMediaQuery) -> bool {
     match query {

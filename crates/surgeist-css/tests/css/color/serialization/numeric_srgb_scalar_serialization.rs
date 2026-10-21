@@ -180,6 +180,18 @@ text_case!(
     "hsl(none calc(infinity) 50%)",
     "hsl(none calc(infinity * 1%) 50%)"
 );
+// A positive subnormal saturation changes each half-lightness channel by far
+// less than the six-place precision: every channel is 0.5 * 255 = 127.5.
+text_case!(
+    hsl_minimum_subnormal_saturation_converts_as_gray,
+    "hsl(0 calc(5e-324%) 50%)",
+    "rgb(127.5, 127.5, 127.5)"
+);
+text_case!(
+    hsl_near_minimum_subnormal_saturation_converts_as_gray,
+    "hsl(0 calc(1e-323%) 50%)",
+    "rgb(127.5, 127.5, 127.5)"
+);
 text_case!(
     hsl_lightness_unbounded,
     "hsl(none 50% calc(-150))",

@@ -404,7 +404,21 @@ query sequences still recover at their own comma boundary.
 Fragments retain the shared 256-level structural limit and report
 `StopAtNestingLimit` without silently discarding neighboring media members.
 Deep parsing and media construction/serialization use a bounded worker thread
-so ordinary callers need not allocate a larger stack. Accepted EOF closures
+so ordinary callers need not allocate a larger stack. Stylesheets and style
+attributes deeper than 128 levels, and fragments or checked components 64 or
+more levels deep, need that thread. If the platform cannot start it, deep input
+is never parsed on the caller's stack: the parse is refused with a typed
+`NestingLimit` resource failure whose limit is the caller-stack depth (128 or 63),
+located at the first deeper opening and spanning the whole source; the front
+door may still append its tokenizer EOF and escape diagnostics. The refused
+report retains no syntax, or a `Never` query for media front doors; checked
+components report a component `NestingLimit` at that function or block.
+Media condition depth also counts `not` and grouping levels, so
+`parse_cssom_media_query` can need the thread for shallow source; it then
+returns `None` with the same refusal at the deep query. Media construction and
+serialization, custom-media and `@import` media output instead fail with their
+existing component `NestingLimit` error at the responsible component or query.
+Accepted EOF closures
 appear as recovery diagnostics; clean
 validation therefore rejects a report that needed them. Functions inside
 discarded forgiving-selector members do not produce retained-closure diagnostics;
@@ -2047,7 +2061,14 @@ Animation iteration counts and easing values use their own shared numeric models
 This crate does not resolve relative units, evaluate computed ranges, run animation
 timelines, or lower values into sibling Surgeist crates. The represented transition and animation list types expose
 `serialize_specified` and `serialize_specified_with_limits`. They retain item
-order and explicit optional fields. A delay without a duration emits a preceding
+order. Following CSSOM's shortest serialization, a transition item omits an
+explicit initial (`all`, a literal zero duration, the `ease` keyword, a literal
+zero delay) when omission keeps the meaning: a duration stays whenever a delay
+follows, an easing stays before a property spelled like an easing keyword, and
+an item whose components are all initial keeps its first present component.
+Calculations are not evaluated and stay explicit; omitted components still
+charge their nodes. Animation items keep every explicit optional field, as
+Chromium 152 does. A delay without a duration emits a preceding
 `0s`: the selected
 [Transitions 1 shorthand](https://www.w3.org/TR/2026/WD-css-transitions-1-20260108/#transition-shorthand-property)
 and
@@ -4411,6 +4432,10 @@ The selected Fonts 4 `font-style` property accepts `normal`, `italic`, `left`,
 `right`, and `oblique` with an optional angle. `CssFontStyleKeyword` shares the
 four keywords with the descriptor, while `CssFontStyle::Oblique { angle: None }`
 retains omission rather than inserting the matching default `14deg`.
+Specified `font-style` serialization omits an explicit literal angle exactly equal
+to `14deg` (Fonts 4 §2.4 with CSSOM's shortest serialization), so `oblique 14deg`
+serializes as `oblique`; calculations stay explicit. Chromium 152 keeps
+`oblique 14deg`; the specification governs this divergence.
 `CssFontObliqueAngle` accepts literal `deg`, `grad`, and `turn` angles at exact
 lexical bounds of ±90deg, ±100grad, and ±0.25turn. Radian admission has an
 explicit binary64 precision: the original decimal coefficient is parsed as
