@@ -14,6 +14,11 @@ use surgeist_html_parser::{
     HtmlParseMetadataDocument, HtmlParseOriginGroup, HtmlParsePendingAssociationStep as Step,
 };
 
+mod notification;
+pub(crate) use notification::NotificationCustody;
+pub use notification::{
+    DomParsedHtmlStyleNotificationPreparation, DomParsedHtmlStyleNotificationPublished,
+};
 mod rendering;
 pub use rendering::DomParsedHtmlStyleRenderingCompletion;
 mod sheet_join;
@@ -29,7 +34,10 @@ pub(super) enum Graph {
         policy: Option<HtmlCspAssociation>,
     },
     Inline(DomParsedHtmlStyleInlinePolicyRequest),
-    Rendered(DomParsedHtmlStyleInlinePolicyRequest),
+    Rendered {
+        request: DomParsedHtmlStyleInlinePolicyRequest,
+        notification: notification::Issuance,
+    },
     Transition,
 }
 pub(super) struct Selection {
@@ -49,14 +57,14 @@ impl Graph {
                 Action::ReadRenderBlocking => DomParsedHtmlStylePhase::ReadRenderBlockingPending,
                 _ => unreachable!("only the selected inline decision can advance this cursor"),
             },
-            Self::Rendered(_) => DomParsedHtmlStylePhase::RenderingComplete,
+            Self::Rendered { .. } => DomParsedHtmlStylePhase::RenderingComplete,
             Self::Transition => unreachable!("private infallible transition"),
         }
     }
     fn qualification(&self) -> &DomParsedHtmlStyleInitialPolicyRequest {
         match self {
             Self::Awaiting { selection, .. } => &selection.qualification,
-            Self::Inline(request) | Self::Rendered(request) => request.qualification(),
+            Self::Inline(request) | Self::Rendered { request, .. } => request.qualification(),
             Self::Transition => unreachable!("private infallible transition"),
         }
     }
@@ -123,7 +131,7 @@ impl DomParsedHtmlStylePrefixView<'_> {
             {
                 Some(request.cursor.profile())
             }
-            Some(Graph::Rendered(request))
+            Some(Graph::Rendered { request, .. })
                 if request.cursor.profile()
                     == HtmlStyleExecutionProfile::NoExecutableJavaScript =>
             {
@@ -132,10 +140,22 @@ impl DomParsedHtmlStylePrefixView<'_> {
             _ => None,
         }
     }
+    pub fn notification_status(&self) -> Option<DomParsedHtmlStyleNotificationStatus> {
+        match self.state.as_ref().map(|held| held.value().as_ref()) {
+            Some(Graph::Rendered { notification, .. }) => Some(match notification {
+                notification::Issuance::Unissued => DomParsedHtmlStyleNotificationStatus::NotIssued,
+                notification::Issuance::Issued => DomParsedHtmlStyleNotificationStatus::Issued,
+                notification::Issuance::OwnerRemoved => {
+                    DomParsedHtmlStyleNotificationStatus::OwnerAssociationRemoved
+                }
+            }),
+            _ => None,
+        }
+    }
     pub fn initial_policy_bound(&self) -> bool {
         match self.state.as_ref().map(|s| s.value().as_ref()) {
             Some(Graph::Awaiting { policy, .. }) => policy.is_some(),
-            Some(Graph::Inline(_) | Graph::Rendered(_)) => true,
+            Some(Graph::Inline(_) | Graph::Rendered { .. }) => true,
             Some(Graph::Transition) => unreachable!("private infallible transition"),
             None => false,
         }
@@ -255,7 +275,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
         self.meter.step(cancel)?;
         let mut state = lock(self.meter.entry())?;
         match state.as_ref().map(|s| s.value().as_ref()) {
-            Some(Graph::Inline(_) | Graph::Rendered(_)) => {
+            Some(Graph::Inline(_) | Graph::Rendered { .. }) => {
                 return Ok(state
                     .as_ref()
                     .expect("stored inline request")
@@ -350,7 +370,8 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
         let Some(held) = state.as_mut() else {
             return Err(DomParsedHtmlStyleError::WrongRequest);
         };
-        let (Graph::Inline(request) | Graph::Rendered(request)) = held.value_mut().as_mut() else {
+        let (Graph::Inline(request) | Graph::Rendered { request, .. }) = held.value_mut().as_mut()
+        else {
             return Err(DomParsedHtmlStyleError::WrongRequest);
         };
         if request.cursor.action() != Action::CheckInlineCsp {

@@ -3,17 +3,18 @@ use super::*;
 use surgeist_cssom::{CssomRevision, CssomSheetId};
 use surgeist_html::HtmlStyleExecutionProfile;
 
-struct Ready {
-    dom: Dom,
-    document: DocumentId,
-    id: DomParsedHtmlAssociationId,
-    q: DomParsedHtmlStyleInitialPolicyRequest,
-    element: NodeId,
-    root: DomStyleCssomRoot,
-    sheet: CssomSheetId,
-    revision: CssomRevision,
+pub(super) struct Ready {
+    pub(super) dom: Dom,
+    pub(super) document: DocumentId,
+    pub(super) id: DomParsedHtmlAssociationId,
+    pub(super) q: DomParsedHtmlStyleInitialPolicyRequest,
+    pub(super) element: NodeId,
+    pub(super) root: DomStyleCssomRoot,
+    pub(super) sheet: CssomSheetId,
+    pub(super) revision: CssomRevision,
+    pub(super) association: DomStyleSheet,
 }
-fn ready(source: &str, limits: DomParsedHtmlAssociationLimits) -> Ready {
+pub(super) fn ready(source: &str, limits: DomParsedHtmlAssociationLimits) -> Ready {
     let (mut dom, env) = setup();
     let (document, id) = install(&mut dom, parse(source), env);
     decision::ready(&mut dom, id, limits);
@@ -26,7 +27,7 @@ fn ready(source: &str, limits: DomParsedHtmlAssociationLimits) -> Ready {
         ))
     };
     let root = create::root(document);
-    let (element, sheet, revision) = {
+    let (element, sheet, revision, association) = {
         let mut hold = dom.begin_parsed_html_style(id, limits, &flag()).unwrap();
         hold.accept_inline_policy(&mut observation, &flag())
             .unwrap();
@@ -38,6 +39,7 @@ fn ready(source: &str, limits: DomParsedHtmlAssociationLimits) -> Ready {
             element,
             completion.sheet().id().clone(),
             completion.sheet().revision().clone(),
+            completion.sheet().clone(),
         );
         drop(retirement);
         values
@@ -59,6 +61,7 @@ fn ready(source: &str, limits: DomParsedHtmlAssociationLimits) -> Ready {
         root,
         sheet,
         revision,
+        association,
     }
 }
 fn unchanged_sheet_and_pending(value: &Ready) {

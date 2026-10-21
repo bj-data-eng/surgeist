@@ -253,6 +253,11 @@ fn receipt_uses_actual_runtime_storage_and_is_not_a_networking_or_critical_wait(
     assert_eq!(
         after - before,
         (new_capacity - capacity) * size_of::<Completion>() + new_sets - sets
+            + session.state.borrow().completions[0]
+                .processing()
+                .unwrap()
+                .owner_label
+                .capacity()
     );
     assert_eq!(session.style_execution().waiting_resources().unwrap(), 0);
     assert!(

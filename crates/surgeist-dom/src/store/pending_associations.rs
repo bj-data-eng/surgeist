@@ -12,7 +12,9 @@ pub use consume::{
     DomParsedHtmlMetaPreparation, DomParsedHtmlMetaPublished, DomParsedHtmlMetaRetirement,
     DomParsedHtmlMetaRuntimeHold,
 };
+pub(crate) use style_prefix::NotificationCustody;
 pub use style_prefix::{
+    DomParsedHtmlStyleNotificationPreparation, DomParsedHtmlStyleNotificationPublished,
     DomParsedHtmlStylePrefixView, DomParsedHtmlStyleRenderingCompletion,
     DomParsedHtmlStyleRuntimeHold, DomParsedHtmlStyleSheetCompletion,
     DomParsedHtmlStyleSheetPreparation, DomParsedHtmlStyleSheetPublished,

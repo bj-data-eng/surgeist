@@ -5,6 +5,8 @@ mod create;
 mod decision;
 #[path = "parsed_style/exclusion.rs"]
 mod exclusion;
+#[path = "parsed_style/notification.rs"]
+mod notification;
 #[path = "parsed_style/rendering.rs"]
 mod rendering;
 use std::sync::{Arc, atomic::AtomicBool};

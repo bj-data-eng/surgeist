@@ -2913,7 +2913,8 @@ impl DomSourceLease<'_> {
         let op = self.dom.source_operation.as_mut().expect("live lease");
         let token = if request.action == DomStyleAction::Update(Action::CreateSheet) {
             Some(DomStyleNotificationToken {
-                operation: op.id,
+                origin: Some(crate::DomStyleNotificationOrigin::NativeSource(op.id)),
+                parsed: None,
                 association: op
                     .request
                     .as_ref()
@@ -3418,7 +3419,7 @@ impl Dom {
     ) -> Result<DomStyleNotificationCompletion, DomError> {
         self.require_source_idle()?;
         check_cancel(cancel)?;
-        if token.operation.owner != self.owner {
+        if token.owner() != self.owner {
             return Err(DomError::ForeignOwner);
         }
         if token.complete {
@@ -3428,6 +3429,20 @@ impl Dom {
         if self.state.node(self.owner, target).is_err() {
             token.complete = true;
             return Ok(DomStyleNotificationCompletion::TargetDestroyed);
+        }
+        if matches!(
+            token.origin(),
+            crate::DomStyleNotificationOrigin::ParsedOccurrence { .. }
+        ) {
+            let _requirement = self.parsed_style_notification_requirement(token, cancel)?;
+            let crate::DomStyleNotificationOrigin::ParsedOccurrence { contribution, .. } =
+                token.origin()
+            else {
+                unreachable!()
+            };
+            return Err(DomError::ParsedAssociationSynchronousPending {
+                pending: *contribution,
+            });
         }
         let mut draft = Draft::new(
             self,

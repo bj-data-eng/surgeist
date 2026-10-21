@@ -187,6 +187,15 @@ pub enum DomError {
         document: DocumentId,
         pending: crate::DomParsedHtmlAssociationId,
     },
+    /// No authenticated executed synchronous frontier is available for this
+    /// original parsed notification. Whole-history Pending is not this guard.
+    ParsedAssociationSynchronousPending {
+        pending: crate::DomParsedHtmlAssociationId,
+    },
+    /// The original parsed processing guard was authentically poisoned.
+    ParsedAssociationProcessingPoisoned {
+        pending: crate::DomParsedHtmlAssociationId,
+    },
     /// The explicit ordinary inline operation lacks a reached profile.
     InlineStyleProfileMissing {
         element: NodeId,

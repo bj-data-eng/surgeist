@@ -1,9 +1,11 @@
 //! Original parsed Style processing and its bounded external-owner joins.
+mod notification;
 mod sheet;
 use crate::{
     DocumentId, DocumentString, DomError, DomParsedHtmlAssociationAdmissionError,
     DomParsedHtmlAssociationId, DomParsedHtmlHistoricalDocument,
 };
+pub use notification::*;
 pub use sheet::*;
 use surgeist_html::{
     HtmlCspAssociation, HtmlCspProtocolError, HtmlNodeId, HtmlStyleProtocolError, HtmlStyleState,

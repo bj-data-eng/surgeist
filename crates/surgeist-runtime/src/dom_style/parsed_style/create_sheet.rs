@@ -1,10 +1,10 @@
 //! One actual original CreateSheet through the sole association/preference owners.
+use super::admission::{Custody, Steps, current_storage};
 use super::*;
-use std::{cell::Cell, rc::Rc};
+use std::rc::Rc;
 use surgeist_dom::{
-    DomParsedHtmlAssociationRuntimeUsage, DomParsedHtmlStyleRuntimeHold,
-    DomParsedHtmlStyleSheetCompletion, DomParsedHtmlStyleSheetError, DomParsedHtmlStyleSheetInput,
-    DomParsedHtmlStyleSheetPreparation,
+    DomParsedHtmlStyleRuntimeHold, DomParsedHtmlStyleSheetCompletion, DomParsedHtmlStyleSheetError,
+    DomParsedHtmlStyleSheetInput, DomParsedHtmlStyleSheetPreparation,
 };
 
 /// Original sheet processing refused before the joined publication fence.
@@ -86,95 +86,6 @@ impl DomStyleParsedSheetOutcome {
     }
 }
 
-// References the existing Runtime counter and original Entry meter, never a
-// replacement work owner. CSS only supplies preparation/pre/post grammar polls.
-struct Steps<'a> {
-    work: &'a Cell<u64>,
-    maximum: u64,
-    cancel: &'a AtomicBool,
-}
-impl Steps<'_> {
-    fn runtime(&self) -> Result<(), DomStyleRuntimeError> {
-        StyleState::step_counter(self.work, self.cancel, self.maximum)
-    }
-    fn prefix(&self, hold: &DomParsedHtmlStyleRuntimeHold<'_>) -> Result<(), DomStyleRuntimeError> {
-        hold.step(self.cancel)?;
-        self.runtime()
-    }
-    fn joined(
-        &self,
-        prep: &DomParsedHtmlStyleSheetPreparation<'_, '_, '_>,
-    ) -> Result<(), DomStyleRuntimeError> {
-        prep.step(self.cancel)?;
-        self.runtime()
-    }
-}
-// Temporary/output representations beside the current Runtime bank. CSS/CSSOM
-// own AST/grammar storage; these are actual holders/names/labels, not AST tariffs.
-struct Custody {
-    bytes: usize,
-    shared: usize,
-    units: usize,
-    current: usize,
-    maximum: usize,
-}
-impl Custody {
-    fn usage(&self) -> Result<DomParsedHtmlAssociationRuntimeUsage, DomStyleRuntimeError> {
-        Ok(DomParsedHtmlAssociationRuntimeUsage::new(
-            self.bytes - self.shared,
-            self.units,
-            2, // Returned creation output and durable Runtime processing receipt.
-        )?)
-    }
-    fn check(&self) -> Result<(), DomStyleRuntimeError> {
-        if self
-            .current
-            .checked_add(self.bytes)
-            .is_none_or(|n| n > self.maximum)
-        {
-            return Err(DomStyleRuntimeError::Admission);
-        }
-        Ok(())
-    }
-    fn add(&mut self, bytes: usize) -> Result<(), DomStyleRuntimeError> {
-        self.bytes = self
-            .bytes
-            .checked_add(bytes)
-            .ok_or(DomStyleRuntimeError::Admission)?;
-        self.check()
-    }
-    fn admit(
-        &self,
-        prep: &mut DomParsedHtmlStyleSheetPreparation<'_, '_, '_>,
-        steps: &Steps<'_>,
-    ) -> Result<(), DomStyleRuntimeError> {
-        self.check()?;
-        steps.joined(prep)?;
-        prep.admit_runtime(self.usage()?, steps.cancel)?;
-        Ok(())
-    }
-    fn string(
-        &mut self,
-        requested: usize,
-        prep: &mut DomParsedHtmlStyleSheetPreparation<'_, '_, '_>,
-        steps: &Steps<'_>,
-    ) -> Result<String, DomStyleRuntimeError> {
-        self.add(requested)?;
-        self.admit(prep, steps)?;
-        let mut value = String::new();
-        value
-            .try_reserve_exact(requested)
-            .map_err(|_| DomStyleRuntimeError::Admission)?;
-        self.add(
-            value
-                .capacity()
-                .checked_sub(requested)
-                .ok_or(DomStyleRuntimeError::Admission)?,
-        )?;
-        self.admit(prep, steps)?;
-        Ok(value)
-    }
-}
 fn reserve_processing(
     state: &mut StyleState,
     hold: &mut DomParsedHtmlStyleRuntimeHold<'_>,
@@ -231,72 +142,6 @@ fn reserve_processing(
         .checked_sub(actual)
         .ok_or(DomStyleRuntimeError::Admission)?;
     Ok(())
-}
-fn current_storage(
-    state: &StyleState,
-    hold: &mut DomParsedHtmlStyleRuntimeHold<'_>,
-    custody: &Custody,
-    steps: &Steps<'_>,
-) -> Result<usize, DomStyleRuntimeError> {
-    let headers = state.storage_headers(None, || steps.prefix(hold))?;
-    let remaining = steps.maximum.saturating_sub(steps.work.get());
-    let mut fault = None;
-    let mut admit = |action| {
-        if fault.is_some() {
-            return false;
-        }
-        let result = match action {
-            surgeist_css::CssSourceRetentionAction::Step => steps.prefix(hold),
-            surgeist_css::CssSourceRetentionAction::Scratch { live_bytes } => (|| {
-                steps.prefix(hold)?;
-                let bytes = custody
-                    .bytes
-                    .checked_add(live_bytes)
-                    .ok_or(DomStyleRuntimeError::Admission)?;
-                hold.admit_runtime(
-                    DomParsedHtmlAssociationRuntimeUsage::new(bytes, custody.units, 2)?,
-                    steps.cancel,
-                )?;
-                Ok(())
-            })(),
-        };
-        match result {
-            Ok(()) => true,
-            Err(e) => {
-                fault = Some(e);
-                false
-            }
-        }
-    };
-    let result = (|| {
-        let mut sources = CssSourceRetention::with_admission(
-            usize::MAX,
-            usize::try_from(remaining).unwrap_or(usize::MAX),
-            usize::try_from(remaining).unwrap_or(usize::MAX),
-            &mut admit,
-        )
-        .map_err(|_| DomStyleRuntimeError::Admission)?;
-        state.processing(None, |value| {
-            sources
-                .charge_step()
-                .map_err(|_| DomStyleRuntimeError::Admission)?;
-            for diagnostic in value.diagnostics() {
-                sources
-                    .visit(diagnostic)
-                    .map_err(|_| DomStyleRuntimeError::Admission)?;
-            }
-            Ok(())
-        })?;
-        sources
-            .complete_payload_bytes_admitted()
-            .map_err(|_| DomStyleRuntimeError::Admission)
-    })();
-    if let Some(error) = fault {
-        return Err(error);
-    }
-    headers
-        .checked_add(result?)
-        .ok_or(DomStyleRuntimeError::Admission)
 }
 #[expect(
     clippy::result_large_err,
@@ -411,6 +256,7 @@ impl DomStyleRuntime {
             units: 0,
             current: 0,
             maximum: state.limits.storage_bytes,
+            outputs: 2, // Returned creation output and durable processing receipt.
         };
         steps.prefix(&hold)?;
         hold.admit_runtime(custody.usage()?, cancel)
@@ -484,6 +330,11 @@ impl DomStyleRuntime {
             .map_err(DomStyleParsedSheetError::Css)?;
         let dependencies = import_dependencies_with(&report, || steps.joined(&prep))?;
         steps.joined(&prep)?;
+        let mut owner_label = custody.string(label.len(), &mut prep, &steps)?;
+        for ch in label.chars() {
+            steps.joined(&prep)?;
+            owner_label.push(ch);
+        }
         let mut processing = ParsedProcessing {
             qualification: prep.request().qualification().clone(),
             owner: cap.clone(),
@@ -492,6 +343,7 @@ impl DomStyleRuntime {
             // profile; media, headlessness and CSS text do not establish it.
             profile: HtmlStyleExecutionProfile::NoExecutableJavaScript,
             dependencies,
+            owner_label,
         };
         steps.joined(&prep)?;
         let media = prep

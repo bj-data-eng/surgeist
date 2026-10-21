@@ -328,7 +328,7 @@ pub use store::source::operation::meta::{
 pub use style::{
     DomStyle, DomStyleAction, DomStyleAssociationId, DomStyleCssomOwnerBinding,
     DomStyleCssomPublicationRejection, DomStyleCssomRoot, DomStyleCssomRootError,
-    DomStyleInlineCspObservation, DomStyleNotificationCompletion, DomStyleNotificationToken,
-    DomStyleRequest, DomStyleRootKind, DomStyleSheet, DomStyleSheetAvailability,
-    DomStyleSheetPlacement, DomStyleSource, DomStyleState,
+    DomStyleInlineCspObservation, DomStyleNotificationCompletion, DomStyleNotificationOrigin,
+    DomStyleNotificationToken, DomStyleRequest, DomStyleRootKind, DomStyleSheet,
+    DomStyleSheetAvailability, DomStyleSheetPlacement, DomStyleSource, DomStyleState,
 };

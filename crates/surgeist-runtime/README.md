@@ -97,6 +97,16 @@ rewrite it. This pre-task record is included in Runtime storage and live-resourc
 custody; it is neither an import-resource wait nor a networking task. It issues
 no notification permission or task serial. Parsed dispatch still requires the
 separate original synchronous frontier, including later parser-pop work.
+`queue_parsed_style_notification` consumes that receipt once. It checks the
+actual original sheet's current owner against its retained creation-time label
+under the genuine root guard. A cleared owner returns `OwnerAssociationRemoved`
+without a task; another nonnull owner refuses. Later revisions alone do not
+invalidate original processing. A queued task retains its exact parsed origin,
+target and receipt through subsequent sheet changes/removal and Session moves.
+The real networking FIFO returns `OriginalSynchronousPending` before event or
+unblock work for these tasks: the next authentic parser-pop occurrence remains
+unexecuted. It cannot skip that head to deliver a later task. No positive
+frontier is supplied by this checkpoint; native task behavior is preserved.
 `exclude_parsed_style_script_bookkeeping` binds the actual Session's
 no-executable-JavaScript profile to the exact original occurrence. It advances
 that retained cursor to `ReadRenderBlockingPending`, without inventing a false

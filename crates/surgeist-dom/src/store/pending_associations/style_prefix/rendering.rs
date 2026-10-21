@@ -411,10 +411,13 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
             unreachable!("qualified original rendering cursor")
         };
         request.cursor = successor;
-        **held.value_mut() = Graph::Rendered(request);
+        **held.value_mut() = Graph::Rendered {
+            request,
+            notification: super::notification::Issuance::Unissued,
+        };
         Ok(DomParsedHtmlStyleRenderingProgress::Complete(completion))
     }
 }
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;

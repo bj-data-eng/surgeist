@@ -64,6 +64,13 @@ cursor, receipts, spent work and published effects; increasing the relevant
 limit resumes that cursor without repeating acknowledged requests or effects.
 Committing an already prepared segment requires no further name allocation.
 
+Native completion tokens expose `NativeSource` provenance; original parsed
+permission exposes `ParsedOccurrence` and retains its original admission. The
+[original queue contract](html-installation.md#original-notification-permission-and-the-synchronous-frontier)
+keeps task custody separate from its still-unavailable synchronous dispatch
+frontier. An original pending history is neither a fake native Source operation
+nor a blanket prohibition on unrelated asynchronous resource waits.
+
 ## Mutable CSSOM custody and disabled state
 
 Style processing retains the actual mutable CSSOM store through

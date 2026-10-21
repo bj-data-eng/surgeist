@@ -5,7 +5,7 @@ use crate::*;
 use surgeist_css::{CssParserContext, CssUtf16InputLimits};
 use surgeist_cssom::*;
 use surgeist_html::HtmlCspOwner;
-fn ready(
+pub(in crate::store::pending_associations::style_prefix) fn ready(
     media: &str,
     outputs: usize,
 ) -> (

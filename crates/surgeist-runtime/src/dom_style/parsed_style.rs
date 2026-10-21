@@ -6,8 +6,11 @@ use surgeist_dom::{
     DomParsedHtmlStylePhase, DomParsedHtmlStylePrefixView, DomParsedHtmlStyleRenderingProgress,
 };
 use surgeist_html::HtmlCspAssociation;
+mod admission;
 mod create_sheet;
+mod notification;
 pub use create_sheet::{DomStyleParsedSheetError, DomStyleParsedSheetOutcome};
+pub use notification::{DomStyleParsedNotificationError, DomStyleParsedNotificationProgress};
 
 /// The actual Session or original parsed Style prefix refused a command.
 #[derive(Debug)]

@@ -16,7 +16,8 @@ pub use meta::{
     DomStyleMetaSourceOutcome,
 };
 pub use parsed_style::{
-    DomStyleParsedPrefixError, DomStyleParsedSheetError, DomStyleParsedSheetOutcome,
+    DomStyleParsedNotificationError, DomStyleParsedNotificationProgress, DomStyleParsedPrefixError,
+    DomStyleParsedSheetError, DomStyleParsedSheetOutcome,
 };
 pub use sheet_sets::{DomStyleSheetSetCommit, DomStyleSheetSetObservation};
 
@@ -39,10 +40,11 @@ use surgeist_cssom::{
     CssomSheetOwnerAttributes, CssomSnapshot,
 };
 use surgeist_dom::{
-    Dom, DomError, DomOwnerId, DomSnapshot, DomSourceLease, DomSourceOperationId, DomStyleAction,
-    DomStyleCssomOwnerBinding, DomStyleCssomRoot, DomStyleCssomRootError,
-    DomStyleNotificationCompletion, DomStyleNotificationToken, DomStyleRequest,
-    DomStyleSheetPlacement, DomStyleSource, NodeId,
+    Dom, DomError, DomOwnerId, DomParsedHtmlStyleNotificationRequirement, DomSnapshot,
+    DomSourceLease, DomSourceOperationId, DomStyleAction, DomStyleCssomOwnerBinding,
+    DomStyleCssomRoot, DomStyleCssomRootError, DomStyleNotificationCompletion,
+    DomStyleNotificationOrigin, DomStyleNotificationToken, DomStyleRequest, DomStyleSheetPlacement,
+    DomStyleSource, NodeId,
 };
 use surgeist_html::{
     HtmlDocumentMode, HtmlStyleExecutionProfile, HtmlStyleNotificationAction,
@@ -295,11 +297,14 @@ struct Task {
     root: NodeId,
     owner: std::rc::Rc<DomStyleCssomRoot>,
     sheet: CssomSheetId,
-    token: DomStyleNotificationToken,
+    parsed: Option<ParsedProcessing>,
     cursor: HtmlStyleNotificationCursor,
     delivery: Delivery,
     running: bool,
     dispatch_reserved: usize,
+    // Any original admission carried by this token outlives represented task,
+    // delivery and processing graphs on ordinary Drop and target retirement.
+    token: DomStyleNotificationToken,
 }
 impl Task {
     fn id(&self) -> DomStyleNetworkingTaskId {
@@ -338,6 +343,7 @@ struct ParsedProcessing {
     sheet: Option<surgeist_dom::DomStyleSheet>,
     profile: HtmlStyleExecutionProfile,
     dependencies: ImportDependencies,
+    owner_label: String,
 }
 impl std::fmt::Debug for ParsedProcessing {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -346,6 +352,7 @@ impl std::fmt::Debug for ParsedProcessing {
             .field("sheet", &self.sheet)
             .field("profile", &self.profile)
             .field("dependencies", &self.dependencies)
+            .field("owner_label", &self.owner_label)
             .finish_non_exhaustive()
     }
 }
@@ -355,6 +362,12 @@ enum Completion {
     Queued(Task),
 }
 impl Completion {
+    fn processing(&self) -> Option<&ParsedProcessing> {
+        match self {
+            Self::ParsedProcessing(record) => Some(record),
+            Self::Waiting(task) | Self::Queued(task) => task.parsed.as_ref(),
+        }
+    }
     fn owner(&self) -> &std::rc::Rc<DomStyleCssomRoot> {
         match self {
             Self::ParsedProcessing(record) => &record.owner,
@@ -391,6 +404,14 @@ pub struct DomStyleNetworkingTaskId {
 pub enum DomStyleNetworkingProgress {
     /// No queued networking task exists (critical-resource waits are separate).
     Empty,
+    /// This exact parsed FIFO head lacks an executed original synchronous
+    /// frontier. No event, running marker or post-event cleanup was started.
+    OriginalSynchronousPending {
+        /// Exact retained FIFO head.
+        task: DomStyleNetworkingTaskId,
+        /// Actual original invocation, occurrence or unavailable frontier.
+        requirement: DomParsedHtmlStyleNotificationRequirement,
+    },
     /// Delivery and the source's post-event canonical cleanup completed.
     Complete {
         /// Exact task that actually ran.
@@ -651,6 +672,9 @@ impl StyleState {
         }
         for (index, completion) in self.completions.iter().enumerate() {
             step()?;
+            if let Some(record) = completion.processing() {
+                add(&mut bytes, record.owner_label.capacity())?;
+            }
             let owner = completion.owner();
             let mut counted = false;
             for root in &self.roots {
@@ -1162,6 +1186,7 @@ impl StyleState {
                         root,
                         owner,
                         sheet: sheet.clone(),
+                        parsed: None,
                         token,
                         cursor: HtmlStyleNotificationCursor::new(
                             HtmlStyleExecutionProfile::NoExecutableJavaScript,
@@ -2216,6 +2241,57 @@ impl DomStyleRuntime {
             let id = task.id();
             if task.running {
                 return Ok(DomStyleNetworkingProgress::Running(id));
+            }
+            let started = match &task.delivery {
+                Delivery::NotStarted => false,
+                Delivery::Dispatching(event) => event.has_started(),
+                Delivery::Delivered(_) => true,
+            };
+            if !started
+                && matches!(
+                    task.token.origin(),
+                    DomStyleNotificationOrigin::ParsedOccurrence { .. }
+                )
+            {
+                // Retirement is not event delivery and requires no positive
+                // frontier. Validate the captured generation before its gate.
+                match dom.snapshot().node(task.token.target()) {
+                    Err(DomError::StaleNode) => {
+                        let target = task.token.target();
+                        for _ in &state.completions[index + 1..] {
+                            state.step(cancel)?;
+                        }
+                        state.completions.remove(index);
+                        return Ok(DomStyleNetworkingProgress::TargetDestroyed {
+                            task: id,
+                            target,
+                        });
+                    }
+                    Err(error) => return Err(error.into()),
+                    Ok(_) => (),
+                }
+                // Keep the real native dispatch guards; whole parsed Pending
+                // is neither a native Source operation nor a frontier proof.
+                if dom.raw().source_dispatch_blocker().is_some() {
+                    return Err(DomStyleRuntimeError::Dispatch(
+                        crate::DomEventDispatchError::Dom(DomError::IncompleteSourceOperation),
+                    ));
+                }
+                if dom.snapshot().incomplete_hosted_operation().is_some() {
+                    return Err(DomStyleRuntimeError::Dispatch(
+                        crate::DomEventDispatchError::Hosted(
+                            surgeist_dom::DomHostedError::IncompleteOperation,
+                        ),
+                    ));
+                }
+                state.admit(size_of::<DomStyleNetworkingProgress>(), cancel)?;
+                let requirement = dom
+                    .raw()
+                    .parsed_style_notification_requirement(&task.token, cancel)?;
+                return Ok(DomStyleNetworkingProgress::OriginalSynchronousPending {
+                    task: id,
+                    requirement,
+                });
             }
             // Reserve bounded exact-identity searches and marker cleanup before
             // callbacks. The native cursor takes at most thirteen full bank

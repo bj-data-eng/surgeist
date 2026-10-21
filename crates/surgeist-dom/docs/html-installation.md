@@ -388,6 +388,51 @@ continue to refuse `PendingParsedProcessing`; the narrow completion is historica
 evidence rather than a general live query. Later parser-pop text updates,
 resource and notification processing remain separate work.
 
+### Original notification permission and the synchronous frontier
+
+After this invocation reaches `RenderingComplete`, a composing owner can use
+`prepare_notification` with the exact retained qualification, actual created
+sheet, creation-time CSSOM owner label and real root capability. Preparation
+holds the actual root lock while checking the originating sheet and current
+owner. A cleared owner ends this notification path as `OwnerAssociationRemoved`;
+it does not report a failed resource or cancel resource work. A missing sheet,
+destroyed target, different nonnull owner and wrong association remain distinct
+refusals. Creation revision is historical evidence, not a current revision gate.
+
+The composing owner admits its actual queue row/serial/result and any suffix
+moves before `commit`. Publication records one original disposition without
+acknowledging the history or fabricating a DOM/CSSOM revision. A fresh
+`take_disposition` moves the token or removed-owner result once while the
+Published value retains the real root lock through the infallible queue update.
+Drop before commit issues nothing; retry keeps the same work and policy. The
+canonical `notification_status` is caller retry/diagnostic evidence of permission
+issuance or owner removal, not a claim that Runtime installed or delivered a task.
+
+`DomStyleNotificationOrigin` distinguishes native Source operations from genuine
+parsed occurrences. Parsed tokens retain original finite custody independently
+of caller creation/rendering outputs; identities do not keep a live Element
+from being retired. Once a task is queued, later owner removal does not revoke
+its captured target/outcome or redirect it to another sheet.
+
+This queue capability supplies no positive dispatch frontier. The metered
+`parsed_style_notification_requirement` authenticates the ordinary sealed report,
+all Document capture dispositions and inventory end before returning the first
+remaining influencing occurrence. Producer-proved no-effect rows and the exact
+executed invocation can be recognized; later `ParserPopped` and Meta work cannot
+be inferred complete. Missing/captured/lost evidence or an absent canonical entry
+is unavailable, not completion. Query outputs consume finite original admission.
+
+Whole history Pending includes both synchronous and asynchronous obligations;
+it is not a dispatch predicate. The supported offline no-JavaScript profile
+requires actual execution through the sealed synchronous contribution end before
+networking dispatch. Resource waits and queued delivery are separate obligations
+where the source permits that separation. Runtime gates the actual parsed queue
+head on the returned requirement, and direct `finish_style_notification` also
+refuses live parsed-target cleanup without that frontier. This slice cannot
+fabricate an end witness, process later occurrences or dispatch a parsed task.
+Native task ordering/cleanup and the general Pending Style readiness guards
+remain governed by their existing owners.
+
 ## Control state and form associations
 
 Installation transfers the report's current values, dirty/checked/selected flags,

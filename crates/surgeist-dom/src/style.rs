@@ -466,18 +466,58 @@ impl DomStyleCssomPublicationRejection {
     }
 }
 
-/// Permission retained by the actual Style completion owner. It identifies the
-/// accepted original sheet association; it is neither a task nor proof of event
-/// dispatch. The composing Runtime acknowledges it only after dispatch finishes.
-#[derive(Debug)]
+/// Original provenance, not a task or a resource-completion assertion.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DomStyleNotificationOrigin {
+    NativeSource(DomSourceOperationId),
+    ParsedOccurrence {
+        contribution: crate::DomParsedHtmlAssociationId,
+        occurrence: surgeist_html_parser::HtmlParseAssociationOccurrenceId,
+    },
+}
+/// Issuer-controlled, once-only permission for an actual sheet association.
+/// Parsed permission retains its original finite custody; it does not establish
+/// the synchronous consumer frontier required for event dispatch or cleanup.
 pub struct DomStyleNotificationToken {
-    pub(crate) operation: DomSourceOperationId,
+    pub(crate) origin: Option<DomStyleNotificationOrigin>,
     pub(crate) association: DomStyleAssociationId,
     pub(crate) complete: bool,
+    pub(crate) parsed: Option<Box<crate::store::pending_associations::NotificationCustody>>,
+}
+impl Drop for DomStyleNotificationToken {
+    fn drop(&mut self) {
+        drop(self.origin.take());
+        if let Some(boxed) = self.parsed.take() {
+            // End the partially moved Box's scope before dropping its graphs
+            // and original controlling Meter, including the box-frame debit.
+            let value = {
+                let inner = boxed;
+                *inner
+            };
+            drop(value);
+        }
+    }
+}
+impl std::fmt::Debug for DomStyleNotificationToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DomStyleNotificationToken")
+            .field("origin", &self.origin)
+            .field("association", &self.association)
+            .field("complete", &self.complete)
+            .finish()
+    }
 }
 impl DomStyleNotificationToken {
-    pub fn operation(&self) -> DomSourceOperationId {
-        self.operation
+    pub fn origin(&self) -> &DomStyleNotificationOrigin {
+        self.origin.as_ref().expect("live notification origin")
+    }
+    pub(crate) fn owner(&self) -> crate::DomOwnerId {
+        match self.origin() {
+            DomStyleNotificationOrigin::NativeSource(operation) => operation.owner,
+            DomStyleNotificationOrigin::ParsedOccurrence { contribution, .. } => {
+                contribution.stamp().owner()
+            }
+        }
     }
     pub fn association(&self) -> DomStyleAssociationId {
         self.association
