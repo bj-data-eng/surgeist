@@ -406,3 +406,6 @@ fn pending_replacement_survives_prepare_drop_and_terminal_revision_credits() {
 
 #[path = "prepared_commit/effects.rs"]
 mod effects;
+
+#[path = "prepared_commit/created_sheet.rs"]
+mod created_sheet;

@@ -4593,6 +4593,7 @@ pub fn surgeist_cssom::CssomOwnerId::hash<H: core::hash::Hasher>(&self, state: &
 pub struct surgeist_cssom::CssomPreparedCommit<'store>
 impl surgeist_cssom::CssomPreparedCommit<'_>
 pub fn surgeist_cssom::CssomPreparedCommit<'_>::publish(self) -> (surgeist_cssom::CssomCommit, surgeist_cssom::CssomCommitRetirement)
+pub fn surgeist_cssom::CssomPreparedCommit<'_>::sheet(&self, ticket: &surgeist_cssom::CssomSheetTicket) -> core::result::Result<surgeist_cssom::CssomPreparedSheet<'_>, surgeist_cssom::CssomError>
 impl core::fmt::Debug for surgeist_cssom::CssomPreparedCommit<'_>
 pub fn surgeist_cssom::CssomPreparedCommit<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_cssom::CssomPreparedDeclaration
@@ -4600,6 +4601,10 @@ impl surgeist_cssom::CssomPreparedDeclaration
 pub fn surgeist_cssom::CssomPreparedDeclaration::candidates(&self) -> &[surgeist_cssom::CssomDeclarationCandidate]
 pub fn surgeist_cssom::CssomPreparedDeclaration::diagnostics(&self) -> &[surgeist_css::report::CssRecoveryDiagnostic]
 pub fn surgeist_cssom::CssomPreparedDeclaration::profile_version(&self) -> core::option::Option<&surgeist_cssom::CssomInputVersion>
+pub struct surgeist_cssom::CssomPreparedSheet<'prepared>
+impl surgeist_cssom::CssomPreparedSheet<'_>
+pub fn surgeist_cssom::CssomPreparedSheet<'_>::id(&self) -> &surgeist_cssom::CssomSheetId
+pub fn surgeist_cssom::CssomPreparedSheet<'_>::revision(&self) -> &surgeist_cssom::CssomRevision
 pub struct surgeist_cssom::CssomQueryResult
 impl surgeist_cssom::CssomQueryResult
 pub fn surgeist_cssom::CssomQueryResult::context(&self) -> &surgeist_cssom::CssomContext

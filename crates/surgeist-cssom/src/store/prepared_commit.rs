@@ -6,8 +6,8 @@ use std::{
     fmt,
 };
 
-/// Private completed producer work under one exclusive Store loan. No effect,
-/// creation ticket resolution or tentative snapshot is available before publish.
+/// Private completed producer work under one exclusive Store loan. Only narrow
+/// created-sheet metadata is readable; no effect or tentative snapshot escapes.
 /// Drop abandons staging and releases each private effect's own quota reservation.
 ///
 /// The exclusive borrow prevents observation/mutation through the Store:
@@ -57,6 +57,36 @@ impl fmt::Debug for CssomCommitRetirement {
 }
 
 impl CssomPreparedCommit<'_> {
+    /// Resolve this preparation's exact sheet ticket to borrowed metadata. The
+    /// ID is already issued but the sheet is not live until publication. A
+    /// retained ID from an abandoned preparation never resolves to a later
+    /// object. The proposed revision may repeat after abandonment; it is not a
+    /// publication witness or permission to acknowledge consumer work.
+    ///
+    /// The metadata view retains the exclusive Store loan:
+    /// ```compile_fail,E0502
+    /// use surgeist_cssom::*;
+    /// use surgeist_css::CssSheet;
+    /// let mut store = CssomStore::new(Default::default(), Default::default()).unwrap();
+    /// let mut batch = store.batch(CssomEditGuard::from_snapshot(&store.snapshot())).unwrap();
+    /// let inputs = CssomSheetInputs::constructed(
+    ///     CssomInputVersion { role: CssomInputRole::Document, identity: "d".into(), revision: 1 },
+    ///     "d".into(), None);
+    /// let ticket = batch.create_typed_sheet(CssSheet::new(), inputs).unwrap();
+    /// let prepared = store.prepare_commit(batch).unwrap();
+    /// let metadata = prepared.sheet(&ticket).unwrap();
+    /// let _ = store.snapshot();
+    /// let _ = metadata.id();
+    /// ```
+    pub fn sheet(&self, ticket: &CssomSheetTicket) -> Result<CssomPreparedSheet<'_>, CssomError> {
+        let id = self.output.sheet(ticket)?;
+        let revision = match self.output.publication() {
+            CssomPublication::Changed(summary) => summary.to(),
+            CssomPublication::Unchanged { revision } => revision,
+        };
+        Ok(CssomPreparedSheet { id, revision })
+    }
+
     /// Publish by prechecked moves, prelocated removal and reserved deque work.
     /// No allocation, serialization, payload clone, callback, fallible lookup or
     /// potentially large last-owner destruction occurs in this tail.
@@ -94,6 +124,23 @@ impl CssomPreparedCommit<'_> {
     }
 }
 
+/// Borrowed created-sheet metadata from one successful private preparation.
+/// This is neither a live stylesheet nor a published revision receipt. Reading
+/// it does not allocate, mutate, invoke callbacks or publish either owner.
+#[derive(Debug)]
+pub struct CssomPreparedSheet<'prepared> {
+    id: &'prepared CssomSheetId,
+    revision: &'prepared CssomRevision,
+}
+impl CssomPreparedSheet<'_> {
+    pub fn id(&self) -> &CssomSheetId {
+        self.id
+    }
+    pub fn revision(&self) -> &CssomRevision {
+        self.revision
+    }
+}
+
 struct Ready {
     successor: Option<Arc<State>>,
     history_summary: Option<CssomChangeSummary>,
@@ -106,7 +153,9 @@ impl CssomStore {
     /// Consumes the attempted batch and prepares all producer work privately.
     /// An error or later Drop does not recover/replay the input. Operational
     /// history capacity and per-effect reservations may be acquired here, but
-    /// canonical state/history, identities and replacement membership stay put.
+    /// canonical state/history and replacement membership stay put. Object
+    /// identities were issued during staging and are never refunded on error
+    /// or Drop; private owner-effect identities remain unpublished until publish.
     pub fn prepare_commit(
         &mut self,
         batch: CssomBatch,
@@ -246,4 +295,39 @@ fn prepare_data(store: &mut CssomStore, batch: CssomBatch) -> Result<Ready, Csso
             publication: CssomPublication::Changed(Box::new(summary)),
         },
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sheet_metadata_rejects_a_same_batch_ticket_pointing_to_another_created_kind() {
+        let mut store = CssomStore::new(Default::default(), Default::default()).unwrap();
+        let mut batch = store
+            .batch(CssomEditGuard::from_snapshot(&store.snapshot()))
+            .unwrap();
+        let block = batch
+            .create_declarations(
+                CssParserContext::default()
+                    .parse_style_attribute("")
+                    .into_parts()
+                    .0,
+                false,
+                false,
+                None,
+            )
+            .unwrap();
+        // Exercise kind authentication independently of the public ticket types,
+        // which already prevent passing a BlockTicket as a SheetTicket.
+        let wrong = CssomSheetTicket {
+            token: block.token,
+            index: block.index,
+        };
+        let prepared = store.prepare_commit(batch).unwrap();
+        assert!(matches!(
+            prepared.sheet(&wrong),
+            Err(CssomError::ForeignTicket)
+        ));
+    }
 }

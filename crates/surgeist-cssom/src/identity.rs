@@ -31,7 +31,7 @@ impl fmt::Debug for CssomOwnerId {
 
 macro_rules! identity {
     ($($name:ident),+ $(,)?) => {$ (
-        #[doc = "Opaque, owner-qualified live identity, independent of CSS provenance."]
+        #[doc = "Opaque, owner-qualified identity, independent of CSS provenance. Possession does not establish live resolution or publication."]
         #[derive(Clone, Debug, Eq, Hash, PartialEq)]
         pub struct $name { pub(crate) owner: CssomOwnerId, pub(crate) serial: u64 }
         impl $name {

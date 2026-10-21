@@ -21,6 +21,8 @@ pub struct CssomLimits {
     /// Representation walk depth, independent of CSS semantic nesting.
     pub max_source_traversal_depth: usize,
     pub max_depth: usize,
+    /// Owner-wide operational issuance ceiling, including abandoned staging and
+    /// replacement tokens. Issued identities are never refunded.
     pub max_identity: u64,
     pub max_revision: u64,
     pub summary_history: usize,
@@ -695,7 +697,12 @@ impl CssomFeatureMap {
 pub(crate) struct State {
     pub owner: CssomOwnerId,
     pub revision: CssomRevision,
-    pub next_identity: u64,
+    /// One private operational issuer shared by every clone with this owner.
+    /// Public identity tokens remain immutable pointer keys.
+    pub identity_issuer: Arc<std::sync::atomic::AtomicU64>,
+    /// Last allocation performed by this State lineage. Sibling owner issuance
+    /// must not mark an otherwise untouched State edited.
+    pub last_allocation: u64,
     pub context: Arc<CssomContext>,
     pub sheet_list: CssomSheetListId,
     pub sheet_order: Arc<Vec<CssomSheetId>>,

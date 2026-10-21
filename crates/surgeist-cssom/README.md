@@ -88,15 +88,29 @@ Rust without depending on that tool.
 
 Create a `CssomStore`, capture a snapshot and acquire an edit guard from that
 capture. Stage parsed or checked typed sheets in a batch; commit resolves private
-creation tickets to owner-qualified live IDs. One successful publication advances
+creation tickets to owner-qualified IDs. One successful publication advances
 one revision. Failed or stale batches publish nothing. Source no-ops and batches
 that restore the original observable state preserve the revision. IDs are never
-reused within an owner. Dropping a staged ticket/batch cannot publish an identity.
+reused within an owner. All object and replacement-token allocations reserve
+owner-wide operational identity headroom during staging, shared even by detached
+sibling batches. Successful allocations are never refunded on an operation error,
+stale batch, preparation failure or Drop. This can exhaust `max_identity` without
+publishing any object or revision; exhaustion never wraps. An untouched or restored
+batch remains unchanged when a sibling burns identities. Dropping a staged
+ticket/batch cannot publish an object.
 
 `CssomStore::prepare_commit` consumes the attempted batch and holds an exclusive
 Store loan while all validation, effect serialization/reservation, successor
 state, boxed output, history copy and capacity are prepared privately. It exposes
-no tentative effects, live IDs or snapshot. Dropping it abandons staging without
+only `sheet(ticket)` metadata: a borrowed `CssomPreparedSheet` containing the
+actual issued ID and proposed result revision, authenticated against that exact
+batch and created kind. It exposes no tentative effects, live object or snapshot.
+Readback performs no allocation, mutation, parsing or callbacks and retains the
+exclusive Store loan. Published sheet identity/revision equal the prepared values.
+An escaped clone of an abandoned sheet ID stays unresolved forever. The proposed
+revision is not a publication witness and may repeat after abandonment; consumers
+must qualify against the actual preparation/publication and their own occurrence.
+Dropping preparation abandons staging without
 changing canonical state, history rows, effect identity issuance or pending
 replacement membership. Each private effect releases its own count/byte quota;
 an older external effect may independently finish while preparation exists.
@@ -126,7 +140,8 @@ host's styleSheets collection: `set_sheet_list_membership` publishes its supplie
 selection/order. Its `CssomSheetListTarget::Existing` identities and `Created`
 creation tickets can be mixed in one batch, so a newly parsed sheet reaches its
 correct caller-selected position in the same publication. Tickets are validated
-against that exact batch and never expose tentative live IDs. Length/item inspect
+against that exact batch; only prepared metadata can expose an issued ID before
+publication, without establishing live resolution. Length/item inspect
 that collection and return null out of range.
 
 The supplied parser context applies to subsequent parsed creation/replacement;

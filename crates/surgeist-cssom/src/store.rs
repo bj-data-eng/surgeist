@@ -12,7 +12,7 @@ use surgeist_css::CssRule;
 use surgeist_css::*;
 
 mod prepared_commit;
-pub use prepared_commit::{CssomCommitRetirement, CssomPreparedCommit};
+pub use prepared_commit::{CssomCommitRetirement, CssomPreparedCommit, CssomPreparedSheet};
 
 /// Exclusive live writer. Snapshots/batches own captures and never borrow this store.
 pub struct CssomStore {
@@ -41,7 +41,10 @@ impl CssomStore {
                 serial: 1,
             },
             owner,
-            next_identity: 2,
+            // Serial 1 is the initial sheet list; zero permanently marks
+            // exhaustion, including after issuing u64::MAX.
+            identity_issuer: Arc::new(std::sync::atomic::AtomicU64::new(2)),
+            last_allocation: 1,
             context: Arc::new(context),
             sheet_order: Arc::new(Vec::new()),
             sheets: crate::shared_table::SharedTable::new(),
@@ -1017,7 +1020,7 @@ impl CssomBatch {
     fn changed(&self) -> bool {
         if !self.counter_changes.is_empty()
             || !self.declaration_changes.is_empty()
-            || self.staged.next_identity != self.base.next_identity
+            || self.staged.last_allocation != self.base.last_allocation
             || self.staged.context != self.base.context
         {
             return true;

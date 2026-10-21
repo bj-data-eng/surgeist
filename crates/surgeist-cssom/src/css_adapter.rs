@@ -1,6 +1,7 @@
 //! CSS-owned checked syntax enters one live owner without text reconstruction.
 use crate::parser_resources::check_resource_diagnostics;
 use crate::{model::State, *};
+use std::sync::atomic::Ordering;
 use surgeist_css::*;
 use surgeist_css::{
     CssCounterStyleRule, CssCustomMediaRule, CssFontFaceRule, CssFontFeatureValuesRule,
@@ -9,11 +10,17 @@ use surgeist_css::{
 
 impl State {
     pub(crate) fn allocate(&mut self, limits: &CssomLimits) -> Result<u64, CssomError> {
-        let value = self.next_identity;
-        if value == 0 || value > limits.max_identity {
-            return Err(CssomError::IdentityExhausted);
-        }
-        self.next_identity = value.checked_add(1).unwrap_or(0);
+        let value = self
+            .identity_issuer
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
+                if next == 0 || next > limits.max_identity {
+                    None
+                } else {
+                    Some(next.checked_add(1).unwrap_or(0))
+                }
+            })
+            .map_err(|_| CssomError::IdentityExhausted)?;
+        self.last_allocation = value;
         Ok(value)
     }
     pub(crate) fn list(&mut self, limits: &CssomLimits) -> Result<CssomRuleListId, CssomError> {
@@ -656,4 +663,48 @@ pub(crate) fn font_winners(entries: Vec<CssFontFaceDescriptor>) -> Vec<CssFontFa
         .collect::<Vec<_>>();
     winners.reverse();
     winners
+}
+
+#[cfg(test)]
+mod identity_tests {
+    use super::*;
+
+    #[test]
+    fn final_identity_is_issued_once_then_exhaustion_never_wraps() {
+        let store = CssomStore::new(Default::default(), Default::default()).unwrap();
+        let mut state = (*store.state).clone();
+        state.identity_issuer.store(u64::MAX, Ordering::Relaxed);
+        let mut sibling = state.clone();
+        assert_eq!(state.allocate(&store.limits).unwrap(), u64::MAX);
+        assert!(matches!(
+            sibling.allocate(&store.limits),
+            Err(CssomError::IdentityExhausted)
+        ));
+        assert!(matches!(
+            state.allocate(&store.limits),
+            Err(CssomError::IdentityExhausted)
+        ));
+        assert_eq!(state.owner, sibling.owner);
+        assert_eq!(state.last_allocation, u64::MAX);
+    }
+
+    #[test]
+    fn a_finite_refusal_does_not_advance_the_shared_issuer() {
+        let store = CssomStore::new(Default::default(), Default::default()).unwrap();
+        let mut state = (*store.state).clone();
+        let mut limits = store.limits.clone();
+        limits.max_identity = 1;
+        assert!(matches!(
+            state.allocate(&limits),
+            Err(CssomError::IdentityExhausted)
+        ));
+        limits.max_identity = 2;
+        assert_eq!(state.allocate(&limits).unwrap(), 2);
+        assert!(matches!(
+            state.allocate(&limits),
+            Err(CssomError::IdentityExhausted)
+        ));
+        limits.max_identity = 3;
+        assert_eq!(state.allocate(&limits).unwrap(), 3);
+    }
 }
