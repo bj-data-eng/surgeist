@@ -373,6 +373,20 @@ fn exact_invocation_retry_keeps_original_work_and_phase_without_unrelated_row_di
                 .unwrap()
                 .retiring
         );
+        assert_eq!(
+            old.document(f.creation.document)
+                .unwrap()
+                .focused_area_designation(),
+            crate::DomFocusedAreaDesignation::KnownNull
+        );
+        assert_eq!(
+            f.dom
+                .snapshot()
+                .document(f.creation.document)
+                .unwrap()
+                .focused_area_designation(),
+            crate::DomFocusedAreaDesignation::KnownNull
+        );
         assert!(
             f.dom
                 .state
@@ -543,6 +557,9 @@ fn source_limits() -> crate::DomSourceLimits {
     crate::DomSourceLimits::new(128_000_000, 4_000_000, 100_000_000, 128, 4096, 4096, 4)
 }
 fn insert_absent_src_frame(f: &mut Fixture) -> (NodeId, DomHostedCreation) {
+    insert_absent_src_element(f, "frame")
+}
+fn insert_absent_src_element(f: &mut Fixture, local: &str) -> (NodeId, DomHostedCreation) {
     use crate::{
         DomHostedChildStep as Step, DomInitialPermissionsPolicy, DomPermissionsPolicyValue,
         DomSourceEdit,
@@ -556,7 +573,7 @@ fn insert_absent_src_frame(f: &mut Fixture) -> (NodeId, DomHostedCreation) {
         .unwrap();
     let mut batch = DomBatch::new();
     let closed = batch.create_html_document(f.creation.document, None);
-    let ticket = batch.create_element_ns(&closed, crate::Namespace::html(), "frame");
+    let ticket = batch.create_element_ns(&closed, crate::Namespace::html(), local);
     let frame = f
         .dom
         .apply(batch, &cancel())
@@ -964,4 +981,41 @@ fn permanent_controller_finish_reclaims_retired_generation_paths_at_fixed_slot_e
 #[test]
 fn permanently_removed_narrowed_projections_release_the_original_allowed_paths() {
     retained_controller_cycles(false, true);
+}
+
+#[test]
+fn focused_designation_hosted_frame_and_iframe_are_fresh_and_survive_service_expiry() {
+    for local in ["frame", "iframe"] {
+        let mut fixture = Fixture::new();
+        let (_, child) = insert_absent_src_element(&mut fixture, local);
+        let captured = fixture.dom.snapshot();
+        for document in [fixture.creation.document, child.document] {
+            assert_eq!(
+                captured
+                    .document(document)
+                    .unwrap()
+                    .focused_area_designation(),
+                crate::DomFocusedAreaDesignation::KnownNull
+            );
+        }
+        drop(fixture.source);
+        for document in [fixture.creation.document, child.document] {
+            assert_eq!(
+                fixture
+                    .dom
+                    .snapshot()
+                    .document(document)
+                    .unwrap()
+                    .focused_area_designation(),
+                crate::DomFocusedAreaDesignation::KnownNull
+            );
+            assert_eq!(
+                captured
+                    .document(document)
+                    .unwrap()
+                    .focused_area_designation(),
+                crate::DomFocusedAreaDesignation::KnownNull
+            );
+        }
+    }
 }

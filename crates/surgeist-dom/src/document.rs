@@ -16,6 +16,16 @@ pub enum DomDocumentClass {
     Html,
 }
 
+/// Retained provenance of this Document's focused-area designation.
+/// This does not resolve the currently focused area, system focus or a viewport.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomFocusedAreaDesignation {
+    /// The actual fresh native constructor established a null designation.
+    KnownNull,
+    /// Original designation history was not supplied by its producer.
+    Unavailable,
+}
+
 /// The actual registry selected by controlled Document/Element creation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomRegistryBinding {

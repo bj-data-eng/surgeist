@@ -141,6 +141,7 @@ pub(crate) struct DocumentNode<K> {
     pub metadata: Arc<Payload<DomDocumentMetadata>>,
     pub children: Option<Arc<Payload<ContainerChildren<K>>>>,
     pub active_range: crate::DomActiveRangeState,
+    pub focused_area_designation: crate::DomFocusedAreaDesignation,
     pub fullscreen_events: Option<Arc<Payload<FullscreenQueue>>>,
     pub template_document: Option<crate::template::TemplateDocument<K>>,
     pub base_document: BaseDocumentState<K>,
@@ -269,6 +270,12 @@ impl Node {
     }
     pub(crate) fn children(&self) -> &[NodeId] {
         self.children_backing().map_or(&[], SharedVec::as_slice)
+    }
+    pub(crate) fn focused_area_designation(&self) -> crate::DomFocusedAreaDesignation {
+        match self {
+            Self::Document(n) => n.value.focused_area_designation,
+            _ => crate::DomFocusedAreaDesignation::Unavailable,
+        }
     }
     pub(crate) fn active_range(&self) -> crate::DomActiveRangeState {
         match self {
@@ -650,6 +657,7 @@ impl<K: PartialEq> PartialEq for DocumentNode<K> {
             && same_payload(&self.metadata, &other.metadata)
             && same_children(&self.children, &other.children)
             && self.active_range == other.active_range
+            && self.focused_area_designation == other.focused_area_designation
             && same_fullscreen(&self.fullscreen_events, &other.fullscreen_events)
             && self.template_document == other.template_document
             && self.base_document == other.base_document

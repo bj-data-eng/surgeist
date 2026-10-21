@@ -103,6 +103,18 @@ pub struct DomDocument<'a> {
 }
 
 impl<'a> DomDocument<'a> {
+    /// The retained designation at this exact Document revision. Native fresh
+    /// construction establishes known null; imported history without a producer
+    /// proof stays unavailable. Neither value supplies a current-area resolver,
+    /// viewport, system-focus observation or execution authority. Reads preserve
+    /// the captured value across later inactivity, metadata and tree changes.
+    pub fn focused_area_designation(self) -> crate::DomFocusedAreaDesignation {
+        self.snapshot
+            .state
+            .node(self.snapshot.owner, self.id.0)
+            .expect("captured Document")
+            .focused_area_designation()
+    }
     pub fn active_range(self) -> crate::DomActiveRangeState {
         self.snapshot
             .state

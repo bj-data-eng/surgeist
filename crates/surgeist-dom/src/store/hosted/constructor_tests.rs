@@ -262,6 +262,13 @@ fn complete_policy_receipt_preserves_independent_values_and_atomic_constructor_c
             dom.snapshot()
                 .document(document)
                 .unwrap()
+                .focused_area_designation(),
+            crate::DomFocusedAreaDesignation::KnownNull
+        );
+        assert_eq!(
+            dom.snapshot()
+                .document(document)
+                .unwrap()
                 .metadata()
                 .initial_permissions_policy(),
             Some(policy)

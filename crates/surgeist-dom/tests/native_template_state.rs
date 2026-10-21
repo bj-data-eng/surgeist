@@ -63,6 +63,22 @@ fn real_contents_cache_defaults_class_and_opaque_origin_have_exact_costs() {
     let mut dom = dom();
     let (d, t, f, i) = setup(&mut dom);
     let s = dom.snapshot();
+    assert_eq!(
+        s.document(d).unwrap().focused_area_designation(),
+        DomFocusedAreaDesignation::KnownNull
+    );
+    assert_eq!(
+        s.document(i).unwrap().focused_area_designation(),
+        DomFocusedAreaDesignation::KnownNull
+    );
+    assert_eq!(
+        capture(&s, d)
+            .source()
+            .document(i)
+            .unwrap()
+            .focused_area_designation(),
+        DomFocusedAreaDesignation::KnownNull
+    );
     assert_eq!(dom.usage().managed_nodes(), 4);
     assert_eq!(dom.usage().string_code_units(), 98); //31 outer+36 name+31 inert
     assert_eq!(
@@ -531,6 +547,12 @@ fn shallow_and_deep_import_preserve_both_lists_and_use_copy_contents_documents()
     let df = contents(&s, deep);
     let owner = s.node(df).unwrap().owner_document().unwrap();
     assert_ne!(owner, doc);
+    for document in [doc, owner] {
+        assert_eq!(
+            s.document(document).unwrap().focused_area_designation(),
+            DomFocusedAreaDesignation::KnownNull
+        );
+    }
     assert_eq!(
         s.node(contents(&s, shallow)).unwrap().owner_document(),
         Some(owner)
@@ -594,6 +616,13 @@ fn exact_creation_limits_and_late_failure_never_publish_auxiliary_identities_or_
                 .associated_inert_template_document(),
             None
         );
+        assert_eq!(
+            dom.snapshot()
+                .document(d)
+                .unwrap()
+                .focused_area_designation(),
+            DomFocusedAreaDesignation::KnownNull
+        );
         dom.set_limits(limits(4, 98)).unwrap();
         let mut b = DomBatch::new();
         let t = b.create_element_ns(d, Namespace::html(), "template");
@@ -606,6 +635,16 @@ fn exact_creation_limits_and_late_failure_never_publish_auxiliary_identities_or_
                 .is_some()
         );
         assert_eq!(dom.usage().string_code_units(), 98);
+        let snapshot = dom.snapshot();
+        let inert = snapshot
+            .document(d)
+            .unwrap()
+            .associated_inert_template_document()
+            .unwrap();
+        assert_eq!(
+            snapshot.document(inert).unwrap().focused_area_designation(),
+            DomFocusedAreaDesignation::KnownNull
+        );
     }
     let mut dom = dom();
     let mut b = DomBatch::new();

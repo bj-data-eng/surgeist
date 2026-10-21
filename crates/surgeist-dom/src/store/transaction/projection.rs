@@ -684,6 +684,7 @@ impl Draft {
                         metadata: value.metadata.value.clone(),
                         children: children.as_ref().map(|v| v.value.clone()),
                         active_range: value.active_range,
+                        focused_area_designation: source.focused_area_designation(),
                         fullscreen_events: fullscreen.as_ref().map(|v| v.value.clone()),
                         template_document: value.template_document.map(|v| v.map(map)),
                         base_document: base.0.clone(),

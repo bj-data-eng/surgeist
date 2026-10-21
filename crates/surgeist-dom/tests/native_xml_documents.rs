@@ -33,6 +33,10 @@ fn setup(limits: DomLimits) -> (Dom, DocumentId, DocumentId) {
     )
 }
 fn xml_defaults(snapshot: &DomSnapshot, doc: DocumentId, associated: DocumentId, mime: &str) {
+    assert_eq!(
+        snapshot.document(doc).unwrap().focused_area_designation(),
+        DomFocusedAreaDesignation::KnownNull
+    );
     let metadata = snapshot.document(doc).unwrap().metadata();
     assert_eq!(metadata.class(), DomDocumentClass::Xml);
     assert_eq!(metadata.content_type(), &DocumentString::from(mime));

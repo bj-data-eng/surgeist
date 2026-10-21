@@ -833,6 +833,13 @@ impl<'a> NodeRead<'a> {
             },
         }
     }
+    pub fn focused_area_designation(self) -> crate::DomFocusedAreaDesignation {
+        match self.source {
+            Source::Canonical(n) => n.focused_area_designation(),
+            Source::Staged(DraftNode::Document(n)) => n.value().focused_area_designation,
+            _ => crate::DomFocusedAreaDesignation::Unavailable,
+        }
+    }
     pub fn active_range(self) -> crate::DomActiveRangeState {
         if let Some(Overlay::ActiveRange(v)) = self.overlay {
             return *v;

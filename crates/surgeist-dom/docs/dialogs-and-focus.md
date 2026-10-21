@@ -56,6 +56,28 @@ Without the actual service, the request remains pending. Registration uses the
 Dialog's original relevant Global, independently of its current node-Document;
 adoption does not substitute a new Window.
 
+## Focused-area designation provenance
+
+`DomDocument::focused_area_designation()` reads the retained designation
+qualification from that exact immutable Document snapshot. `KnownNull` is the
+[selected initial fact](../../../references/SOURCE-EDITIONS.md#fresh-native-document-focus-initialization)
+for actual fresh native XML/HTML Documents, hosted initial
+about:blank Documents and freshly constructed native inert Template owners.
+`Unavailable` means original focused-designation history was not supplied: parsed
+ordinary, auxiliary and inert Documents do not gain known-null state from a
+headless environment or final tree.
+
+Existing captured and cached owners preserve their value. Subtree import,
+adoption, metadata edits, inactivity and hosted teardown do not initialize it
+again; old snapshots retain the original value after later edits or owner drop.
+The inline field shares the Document's ordinary staged and canonical storage
+admission. Created-Document change records cover its initialization.
+
+This qualification does not identify a positive focused area, resolve a viewport
+or focus chain, describe system focus, change Window state or authorize focus
+effects. No designation setter is exposed. Direct Document cloning, import and
+adoption remain unsupported.
+
 ## Entry scope and remembered focus
 
 Each Source operation retains its actual entry scope outside the mutable Draft.

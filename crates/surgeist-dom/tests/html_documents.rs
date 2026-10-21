@@ -39,6 +39,13 @@ fn documents(dom: &mut Dom) -> (DocumentId, DocumentId) {
     )
 }
 fn skeleton(snapshot: &DomSnapshot, document: DocumentId) -> (NodeId, NodeId, NodeId) {
+    assert_eq!(
+        snapshot
+            .document(document)
+            .unwrap()
+            .focused_area_designation(),
+        surgeist_dom::DomFocusedAreaDesignation::KnownNull
+    );
     let children = snapshot.node(document.node()).unwrap().children();
     assert_eq!(children.len(), 2);
     let DomNodeKind::DocumentType(doctype) = snapshot.node(children[0]).unwrap().kind() else {

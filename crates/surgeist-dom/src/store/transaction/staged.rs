@@ -119,6 +119,7 @@ pub(in crate::store) struct DocumentFields {
     pub metadata: Controlled<DomDocumentMetadata>,
     pub children: Option<Group<ContainerChildren<NodeId>, Children>>,
     pub active_range: crate::DomActiveRangeState,
+    pub focused_area_designation: crate::DomFocusedAreaDesignation,
     pub fullscreen: Option<
         Group<FullscreenQueue, Sequence<crate::DomFullscreenEvent, crate::DomFullscreenEvent>>,
     >,
@@ -464,6 +465,7 @@ impl DraftNode {
                         metadata,
                         children,
                         active_range: value.active_range,
+                        focused_area_designation: value.focused_area_designation,
                         fullscreen,
                         template_document: value.template_document.map(|v| v.map(Key::Existing)),
                         base,
@@ -729,6 +731,13 @@ impl DraftNode {
                             crate::DomActiveRangeState::Known(None)
                         } else {
                             crate::DomActiveRangeState::Unavailable
+                        },
+                        // This is a one-time actual constructor qualification,
+                        // copied thereafter even when activity/metadata changes.
+                        focused_area_designation: if native {
+                            crate::DomFocusedAreaDesignation::KnownNull
+                        } else {
+                            crate::DomFocusedAreaDesignation::Unavailable
                         },
                         fullscreen: None,
                         template_document: Some(crate::template::TemplateDocument::Ordinary {

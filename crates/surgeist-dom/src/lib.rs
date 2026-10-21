@@ -195,7 +195,7 @@ pub use dispatch::{DomDispatchAssociation, DomDispatchCustody, DomDispatchCustod
 pub use document::DomNativeInputPlatform;
 pub use document::{
     DomDocumentClass, DomDocumentCreationCause, DomDocumentEnvironment, DomDocumentMetadata,
-    DomOpaqueOrigin, DomRegistryBinding,
+    DomFocusedAreaDesignation, DomOpaqueOrigin, DomRegistryBinding,
 };
 pub use element::{DomElement, DomElementDefinition};
 pub use fullscreen::{

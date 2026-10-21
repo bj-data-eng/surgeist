@@ -210,6 +210,15 @@ fn child_history_publication_cancellation_restores_graph_and_retries_the_origina
     assert_eq!(queued.operation(), operation);
     assert!(publication.is_none());
     assert_ne!(lease.snapshot().stamp(), before.stamp());
+    let focused_snapshot = lease.snapshot();
+    for id in focused_snapshot.nodes() {
+        if let Some(document) = focused_snapshot.node(id).unwrap().as_document() {
+            assert_eq!(
+                document.focused_area_designation(),
+                crate::DomFocusedAreaDesignation::KnownNull
+            );
+        }
+    }
     crate::store::oracle_tests::assert_full_canonical(lease.dom);
     assert!(matches!(
         lease.hosted_child_step(&child).unwrap(),
