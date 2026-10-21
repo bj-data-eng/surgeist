@@ -1893,6 +1893,17 @@ fn issued_select_final_output_refusal_retries_same_head_once_and_preserves_next_
 
 #[test]
 fn actual_html_body_gate_and_blocking_attribute_cleanup_use_the_canonical_set() {
+    html_body_gate_and_blocking_cleanup(None);
+}
+
+#[test]
+fn ascii_whitespace_media_matches_without_environment_and_respects_the_body_gate() {
+    // HTML 2.3.10: a string containing only the five ASCII whitespace units
+    // matches unconditionally, without a media environment observation.
+    html_body_gate_and_blocking_cleanup(Some(" \t\n\u{000c}\r "));
+}
+
+fn html_body_gate_and_blocking_cleanup(selected_media: Option<&str>) {
     use std::sync::Arc;
     use surgeist_css::{CssParserContext, CssUtf16InputLimits};
     use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
@@ -1918,6 +1929,9 @@ fn actual_html_body_gate_and_blocking_attribute_cleanup_use_the_canonical_set() 
         }
         let style = batch.create_element_ns(document, Namespace::html(), "style");
         batch.set_attribute(&style, "blocking", "other\trender\nrender");
+        if let Some(media) = selected_media {
+            batch.set_attribute(&style, "media", media);
+        }
         let text = batch.create_text(document, "a {}");
         batch.insert_before(&text, &style, None);
         let setup = dom.apply(batch, &cancel).unwrap();
@@ -1970,7 +1984,10 @@ fn actual_html_body_gate_and_blocking_attribute_cleanup_use_the_canonical_set() 
             .unwrap();
         let media = context
             .parse_media_query_list_utf16_with_limits(
-                Arc::new(Vec::new()),
+                create
+                    .source()
+                    .media()
+                    .map_or_else(Arc::default, |value| value.shared_code_units().clone()),
                 CssUtf16InputLimits::default(),
                 || Ok::<_, ()>(()),
             )
@@ -1992,8 +2009,13 @@ fn actual_html_body_gate_and_blocking_attribute_cleanup_use_the_canonical_set() 
                 Some(construction.ticket()),
             )
             .unwrap();
-        let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
-            panic!("completed synchronous source")
+        let progress = lease.advance(&cancel).unwrap();
+        assert!(
+            matches!(&progress, DomSourceProgress::Complete(_)),
+            "unconditional media must proceed beyond ReadRenderBlocking, got {progress:?}"
+        );
+        let DomSourceProgress::Complete(done) = progress else {
+            unreachable!("asserted actual Source completion")
         };
         assert_eq!(done.output(), None);
         drop(lease);
