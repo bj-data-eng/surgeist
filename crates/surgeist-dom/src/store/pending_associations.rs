@@ -7,10 +7,12 @@ use crate::parsed_installation::{
 use surgeist_html_parser::HtmlParseReport;
 mod consume;
 mod control;
+mod style_prefix;
 pub use consume::{
     DomParsedHtmlMetaPreparation, DomParsedHtmlMetaPublished, DomParsedHtmlMetaRetirement,
     DomParsedHtmlMetaRuntimeHold,
 };
+pub use style_prefix::{DomParsedHtmlStylePrefixView, DomParsedHtmlStyleRuntimeHold};
 
 struct Report {
     value: Arc<HtmlParseReport>,
@@ -24,6 +26,7 @@ pub(super) struct Entry {
     bindings: Arc<Vec<DomParsedHtmlBinding>>,
     captured: Arc<Vec<DomParsedHtmlCapturedBinding>>,
     payload: custody::Usage,
+    style_prefix: std::sync::Mutex<Option<custody::Held<Box<style_prefix::Graph>>>>,
     control: control::Control,
 }
 impl Entry {
@@ -261,6 +264,7 @@ impl Bank {
                 bindings,
                 captured,
                 payload,
+                style_prefix: std::sync::Mutex::new(None),
                 control: control::Control::default(),
             },
             payload,
@@ -298,7 +302,9 @@ impl Bank {
         );
         for entry in candidate.entries.values() {
             admit_storage(custody::Usage::ZERO)?;
-            usage = usage.checked_add(entry.payload)?;
+            usage = usage
+                .checked_add(entry.payload)?
+                .checked_add(entry.control.persistent_usage())?;
             let mut first = true;
             for preceding in candidate.entries.values() {
                 admit_storage(custody::Usage::ZERO)?;
@@ -444,7 +450,9 @@ impl Bank {
         let mut usage = custody::Usage::new(bytes, 0);
         for entry in candidate.entries.values() {
             admission(registry.total())?;
-            usage = usage.checked_add(entry.payload)?;
+            usage = usage
+                .checked_add(entry.payload)?
+                .checked_add(entry.control.persistent_usage())?;
             let mut first = true;
             for preceding in candidate.entries.values() {
                 admission(registry.total())?;

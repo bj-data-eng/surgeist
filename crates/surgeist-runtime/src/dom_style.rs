@@ -4,6 +4,7 @@
 //! and sheet identity. This owner binds actual root lists, services those source
 //! requests, and queues completion only after a parsed sheet has no imports.
 mod meta;
+mod parsed_style;
 mod sheet_sets;
 pub use meta::parsed::{
     DomStyleParsedAdmissionError, DomStyleParsedInstallError, DomStyleParsedMetaError,
@@ -13,6 +14,7 @@ pub use meta::{
     DomStyleMetaError, DomStyleMetaOrdinaryOutcome, DomStyleMetaPreference,
     DomStyleMetaSourceOutcome,
 };
+pub use parsed_style::DomStyleParsedPrefixError;
 pub use sheet_sets::{DomStyleSheetSetCommit, DomStyleSheetSetObservation};
 
 use crate::dom_event::{

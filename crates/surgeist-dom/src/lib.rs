@@ -276,11 +276,13 @@ pub use snapshot::{
 pub use store::meta_atomic::{DomMetaOrdinaryPreparation, DomMetaOrdinaryPublished};
 mod parsed_association;
 pub use parsed_association::*;
+mod parsed_style;
+pub use parsed_style::*;
 mod parsed_meta;
 pub use parsed_meta::*;
 pub use store::pending_associations::{
     DomParsedHtmlMetaPreparation, DomParsedHtmlMetaPublished, DomParsedHtmlMetaRetirement,
-    DomParsedHtmlMetaRuntimeHold,
+    DomParsedHtmlMetaRuntimeHold, DomParsedHtmlStylePrefixView, DomParsedHtmlStyleRuntimeHold,
 };
 pub use store::source::operation::dialog_queue::{
     DomDialogCloseTaskInfo, DomDialogTask, DomDialogTaskInfo, DomDialogTaskQueueCommit,

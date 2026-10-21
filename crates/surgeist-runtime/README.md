@@ -46,8 +46,27 @@ capture that profile. A later captured shadow-Style contribution can already
 share the same Document; completing its earlier Meta contribution preserves the
 remaining Style guard.
 
-Influencing Style histories remain Pending; this consumer supplies no historical
-Style processing, resource completion or unused URL/policy/media binding facade.
+Influencing Style histories remain Pending. On an existing Session's structural
+installation, `prepare_parsed_style` can prepare the first influencing Style of
+a fresh original Document through its historical inline-policy request. DOM
+advances HTML's cursor using the original retained inputs; Runtime checks its
+actual Session, idle custody and finite work. This prefix needs no CSSOM root
+capability and creates no sheet or preference effect.
+
+The explicit `bind_parsed_style_initial_policy` command accepts only the exact
+constructor-declared unbound slot and genuine immutable `HtmlCspAssociation`
+custody. A supplied constructor-empty artifact is explicit input, never an
+inference from current referrer/default policy. Accepted binding survives later
+request-admission refusal. The separate `parsed_html_style_prefix` Session query
+lends the same canonical request with original identities, UTF-16 text/nonce
+and policy identity; it grants no reply or execution authority. Drop the borrowed
+view before binding or advancing. Original work, phase and raise-only limits
+remain canonical across retries. Raw `admit_parsed` still refuses influencing
+Style histories.
+
+Policy evaluation, captured-context recovery, historical sheet creation and
+resource completion remain unavailable. No unused URL/Base/media binder is
+introduced, and reaching a request does not acknowledge its contribution.
 Meta change-preferred does not read those external context slots. Read-only
 captures remain historical; standalone enable/select/change-preferred mutations
 refuse an affected Document while its original contribution is pending.

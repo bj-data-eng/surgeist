@@ -192,6 +192,70 @@ front does not manufacture such reports or infer processing from the final tree.
 Runtime owns the corresponding Session admission, preference state and output
 orchestration; the lower DOM front does not create another preference owner.
 
+### Original Style inline-policy prefix
+
+`begin_parsed_html_style` prepares only the first influencing original Style
+operation in a fresh ordinary constructed Document. DOM checks the authentic
+current pending entry, exact installed Document generation and source-root
+mapping, all capture dispositions, the absence of a canonical CSSOM binding,
+and that every earlier association operation is producer-proven no-effect.
+This establishes fresh consumer association state with no associated sheet.
+The historical `HtmlStyleState` and a native null sheet are not that proof.
+A refused earlier Meta classification may already have spent work; it does not
+constitute prior association execution or restart the original envelope.
+
+DOM adapts those retained inputs through HTML's real Style cursor, acknowledging
+its proved no-op removal and original connection/type guards. It stops at
+`CheckInlineCsp`. The original insertion runs before the parser pushes the Style
+or consumes its raw text, so this first request has empty text even when the
+completed tree contains CSS. Later parser-pop text is a different original
+operation and cannot replace it. Nonce is the exact retained internal nonce,
+including its original UTF16. Current attributes and descendants are never
+reconstructed into historical inputs.
+
+The durable entry moves from `Unstarted` to `AwaitingInitialPolicy` and then
+`InlinePolicyPending`. The binding command accepts only its exact original
+constructor-declared `OfflineUnbound` InitialPolicy slot and an explicitly
+supplied immutable `HtmlCspAssociation`. A genuine constructor-empty artifact
+must be supplied explicitly too. Successful binding takes the Option input;
+refusal preserves it. Known, deferred captured and lost policy facts cannot be
+replaced by current or empty defaults. Captured/fragment and earlier influencing
+histories outside the fresh profile remain pending. Reached intrinsic Meta CSP
+gaps still refuse installation.
+
+Binding and request formation are separate commands. A late formation refusal
+retains the accepted artifact, original qualification and spent work. Raising
+the original limits permits retry; lowering them or replacing an accepted
+binding does not. The same immutable report installed independently has distinct
+destination qualifications and can bind distinct explicit policies.
+
+`parsed_html_style_prefix` borrows the actual stored qualification or request
+through a nonblocking canonical read guard, after temporary command holds have
+ended. It supplies no policy reply or publication authority. Repeated queries
+observe the same request. Drop releases the read loan; forgetting it leaves
+Busy rather than discarding or recreating the phase. The
+[borrow examples](../src/store/pending_associations/style_prefix.rs) show how to
+release the query before issuing a binding command. Runtime's Session forwards
+this canonical query and orchestrates short commands without retaining another
+policy owner or cloning a report graph.
+
+The one original parsed-association control retains finite work, outputs,
+limits and peaks. Work includes prepaid native last-owner disposal credits;
+those credits are not refunded on retry. The artifact's cached independent
+cleanup-frame extent remains reserved in processing peak admission for its
+entire retained lifetime. This reservation is separate from actual bank/ledger
+storage, which charges the real graph and old/replacement overlap. Later nonce
+formation and temporary banks cannot consume that reserved cleanup headroom.
+The graph drops before its debit. Canonical pending usage includes the persistent
+graph even when an older disposal-only retirement shares its entry; future
+installs/removals preserve that accounting.
+
+No inline-policy evaluation, reply, CreateSheet acknowledgement, preference
+update or whole-contribution completion occurs here. URL, Base, media and other
+external contexts are not requested before their actual later branches. Use the
+Session structural-installation route; raw Session admission keeps its existing
+influencing-Style refusal.
+
 ## Control state and form associations
 
 Installation transfers the report's current values, dirty/checked/selected flags,

@@ -12,10 +12,10 @@ use surgeist_html_semantics::{
     HtmlBaseUrlScheme, HtmlCaptureLimits, HtmlFragmentContext,
 };
 
-fn envelope() -> DomParsedHtmlAssociationLimits {
+pub(super) fn envelope() -> DomParsedHtmlAssociationLimits {
     DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 1_000_000, 128).unwrap()
 }
-fn parsing() -> HtmlParseLimits {
+pub(super) fn parsing() -> HtmlParseLimits {
     HtmlParseLimits::builder()
         .source_units(100_000)
         .buffered_utf16_units(100_000)
@@ -39,17 +39,17 @@ fn parsing() -> HtmlParseLimits {
         .finish()
         .unwrap()
 }
-fn report(text: &str) -> Arc<HtmlParseReport> {
+pub(super) fn report(text: &str) -> Arc<HtmlParseReport> {
     Arc::new(
         HtmlDocumentParseRequest::offline(HtmlSource::utf8(text), parsing())
             .parse()
             .unwrap(),
     )
 }
-fn installation() -> DomParsedHtmlInstallLimits {
+pub(super) fn installation() -> DomParsedHtmlInstallLimits {
     DomParsedHtmlInstallLimits::new(1024, 10_000_000, 16_000_000, 100_000_000)
 }
-fn environment(dom: &Dom) -> DomParsedDocumentEnvironment {
+pub(super) fn environment(dom: &Dom) -> DomParsedDocumentEnvironment {
     let snapshot = dom.snapshot();
     let origin = snapshot
         .nodes()

@@ -18,8 +18,43 @@ pub(super) struct Control {
     units: AtomicUsize,
     peak_bytes: AtomicUsize,
     peak_units: AtomicUsize,
+    persistent_bytes: AtomicUsize,
+    persistent_units: AtomicUsize,
+    cleanup_atomic: AtomicUsize,
 }
 impl Control {
+    pub(super) fn persistent_usage(&self) -> custody::Usage {
+        custody::Usage::new(
+            self.persistent_bytes.load(Ordering::Relaxed),
+            self.persistent_units.load(Ordering::Relaxed),
+        )
+    }
+    pub(super) fn reserve_cleanup(&self, bytes: usize) {
+        self.cleanup_atomic.fetch_max(bytes, Ordering::Relaxed);
+    }
+    pub(super) fn add_persistent(&self, usage: custody::Usage) {
+        self.persistent_bytes
+            .fetch_add(usage.bytes(), Ordering::Relaxed);
+        self.persistent_units
+            .fetch_add(usage.units(), Ordering::Relaxed);
+    }
+    fn spend(&self, count: u64, cancel: &AtomicBool) -> Result<(), DomError> {
+        check_cancel(cancel)?;
+        let limit = self.work_limit.load(Ordering::Relaxed);
+        let next = self
+            .work
+            .load(Ordering::Relaxed)
+            .checked_add(count)
+            .ok_or(DomError::RepresentationExhausted)?;
+        if next > limit {
+            return Err(DomError::WorkLimit {
+                resource: DomResource::ParsedAssociationProcessingWork,
+                limit,
+            });
+        }
+        self.work.store(next, Ordering::Relaxed);
+        Ok(())
+    }
     pub(super) fn bind(
         &self,
         id: DomParsedHtmlAssociationId,
@@ -92,8 +127,11 @@ impl Control {
             .load(Ordering::Relaxed)
             .checked_add(usage.units())
             .ok_or(DomError::RepresentationExhausted)?;
+        let peak = bytes
+            .checked_add(self.cleanup_atomic.load(Ordering::Relaxed))
+            .ok_or(DomError::RepresentationExhausted)?;
         admit(
-            bytes,
+            peak,
             self.bytes_limit.load(Ordering::Relaxed),
             DomResource::ParsedAssociationProcessingRetainedBytes,
         )?;
@@ -102,7 +140,7 @@ impl Control {
             self.units_limit.load(Ordering::Relaxed),
             DomResource::ParsedAssociationProcessingRetainedUnits,
         )?;
-        self.peak_bytes.fetch_max(bytes, Ordering::Relaxed);
+        self.peak_bytes.fetch_max(peak, Ordering::Relaxed);
         self.peak_units.fetch_max(units, Ordering::Relaxed);
         Ok(())
     }
@@ -139,6 +177,7 @@ pub(super) struct Meter {
     own: Cell<custody::Usage>,
     controlled: Cell<custody::Usage>,
     runtime: Cell<DomParsedHtmlAssociationRuntimeUsage>,
+    pending_limit: Option<(custody::Usage, DomLimits)>,
 }
 impl Drop for Meter {
     fn drop(&mut self) {
@@ -147,6 +186,30 @@ impl Drop for Meter {
     }
 }
 impl Meter {
+    pub(super) fn spend(&self, count: u64, cancel: &AtomicBool) -> Result<(), DomError> {
+        self.entry().control.spend(count, cancel)
+    }
+    pub(super) fn check_peak(&self, usage: custody::Usage) -> Result<(), DomError> {
+        self.entry().control.check(usage)
+    }
+    /// The already-admitted graph moves into the original Entry, never a Meter
+    /// or ControlledRecord backreference. Its control extent stays charged.
+    pub(super) fn detach(&self, usage: custody::Usage) -> custody::Debit {
+        let left = self
+            .own
+            .get()
+            .checked_sub(usage)
+            .expect("preadmitted persistent subset");
+        let debit = self
+            .debit
+            .borrow_mut()
+            .as_mut()
+            .expect("admitted graph")
+            .split(usage)
+            .expect("preadmitted persistent subset");
+        self.own.set(left);
+        debit
+    }
     pub(super) fn shrink_to(&self, usage: custody::Usage) {
         self.release(
             self.own
@@ -162,6 +225,7 @@ impl Meter {
             debit: RefCell::new(None),
             own: Cell::new(custody::Usage::ZERO),
             controlled: Cell::new(custody::Usage::ZERO),
+            pending_limit: None,
             runtime: Cell::new(DomParsedHtmlAssociationRuntimeUsage {
                 bytes: 0,
                 units: 0,
@@ -173,8 +237,15 @@ impl Meter {
         self.entry.value()
     }
     pub(super) fn fork(&self) -> Self {
-        Self::new(self.entry.clone(), self.ledger.clone())
+        let mut next = Self::new(self.entry.clone(), self.ledger.clone());
+        next.pending_limit = self.pending_limit;
+        next
     }
+    pub(super) fn constrain_pending(mut self, baseline: custody::Usage, limits: DomLimits) -> Self {
+        self.pending_limit = Some((baseline, limits));
+        self
+    }
+
     pub(super) fn step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
         self.entry().control.step(cancel)
     }
@@ -189,6 +260,17 @@ impl Meter {
         let usage = custody::Usage::new(bytes, units);
         let next = self.own.get().checked_add(usage)?;
         self.entry().control.check(usage)?;
+        if let Some((baseline, limits)) = self.pending_limit {
+            let control = &self.entry().control;
+            let live = custody::Usage::new(
+                control.bytes.load(Ordering::Relaxed),
+                control.units.load(Ordering::Relaxed),
+            );
+            let extra = live
+                .checked_add(usage)?
+                .checked_sub(control.persistent_usage())?;
+            Bank::admit_usage(baseline.checked_add(extra)?, limits)?;
+        }
         self.entry().control.outputs(outputs)?;
         let debit = self.ledger.retain(usage, |_| Ok(()))?;
         let mut own = self.debit.borrow_mut();
