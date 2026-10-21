@@ -12,7 +12,7 @@ pub(crate) use reverse::{AssociationRelation, AssociationView};
 
 /// Local indices never leave their evidence identity through an unchecked API.
 pub(crate) struct OriginGroupRef {
-    index: usize,
+    pub(super) index: usize,
     issuer: Weak<evidence::EvidenceIdentity>,
     control: ControlIdentity,
 }

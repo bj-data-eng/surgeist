@@ -6,6 +6,42 @@ use crate::*;
 pub enum CssSourceRetentionError {
     Limit(&'static str),
     Allocation,
+    /// The borrowed caller admission predicate refused; this collector is terminal.
+    CallerAdmission,
+}
+
+/// Actual collector work or simultaneous temporary storage, separate from source payload.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CssSourceRetentionAction {
+    /// Admit the next observation before its operands are read.
+    Step,
+    /// Complete live collector metadata and source-reference bank bytes.
+    /// During replacement this includes both old and requested/actual new banks.
+    Scratch { live_bytes: usize },
+}
+
+struct Admission<'a> {
+    callback: Option<&'a mut dyn FnMut(CssSourceRetentionAction) -> bool>,
+    refused: bool,
+}
+impl Admission<'_> {
+    fn check(&self) -> Result<(), CssSourceRetentionError> {
+        if self.refused {
+            Err(CssSourceRetentionError::CallerAdmission)
+        } else {
+            Ok(())
+        }
+    }
+    fn action(&mut self, action: CssSourceRetentionAction) -> Result<(), CssSourceRetentionError> {
+        self.check()?;
+        if let Some(callback) = &mut self.callback
+            && !callback(action)
+        {
+            self.refused = true;
+            return Err(CssSourceRetentionError::CallerAdmission);
+        }
+        Ok(())
+    }
 }
 
 /// Refusal while observing CSS-owned retained payloads.
@@ -39,13 +75,19 @@ pub trait CssRetainedSources {
     #[doc(hidden)]
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError>;
 }
 
 /// One cumulative admission, deduplicated by actual immutable snapshot identity.
 /// It does not count references held by callers or inspect Arc strong counts.
-pub struct CssSourceRetention {
+///
+/// The borrowed predicate may capture thread-local owner state. Consequently the
+/// collector is neither Send nor Sync, including values constructed with new.
+/// It also makes no UnwindSafe or RefUnwindSafe guarantee. Source snapshots stay
+/// independently shareable; this collector's lifetime/auto-trait contract does
+/// not change their immutable ownership.
+pub struct CssSourceRetention<'admit> {
     sources: Vec<CssSourceSnapshot>,
     usage: CssSourceStorageUsage,
     bytes: usize,
@@ -53,8 +95,9 @@ pub struct CssSourceRetention {
     maximum_visits: usize,
     depth: usize,
     maximum_depth: usize,
+    admission: Admission<'admit>,
 }
-impl CssSourceRetention {
+impl<'admit> CssSourceRetention<'admit> {
     #[must_use]
     pub const fn new(bytes: usize, maximum_visits: usize, maximum_depth: usize) -> Self {
         Self {
@@ -65,7 +108,34 @@ impl CssSourceRetention {
             maximum_visits,
             depth: 0,
             maximum_depth,
+            admission: Admission {
+                callback: None,
+                refused: false,
+            },
         }
+    }
+    /// Construct a collector borrowing the caller's finite admission policy.
+    ///
+    /// The first Scratch action admits the collector's fixed metadata before
+    /// formation. Later reports include actual bank capacity and replacement
+    /// overlap. Keep that admission live until this collector has been dropped.
+    /// A false predicate result is terminal, including when a visitor swallows
+    /// the returned error. The predicate may retain its original typed error in
+    /// caller-owned storage; no error allocation or erasure is required.
+    pub fn with_admission(
+        bytes: usize,
+        maximum_visits: usize,
+        maximum_depth: usize,
+        admit: &'admit mut dyn FnMut(CssSourceRetentionAction) -> bool,
+    ) -> Result<Self, CssSourceRetentionError> {
+        if !admit(CssSourceRetentionAction::Scratch {
+            live_bytes: std::mem::size_of::<Self>(),
+        }) {
+            return Err(CssSourceRetentionError::CallerAdmission);
+        }
+        let mut collector = Self::new(bytes, maximum_visits, maximum_depth);
+        collector.admission.callback = Some(admit);
+        Ok(collector)
     }
     pub fn visit<T: CssRetainedSources + ?Sized>(
         &mut self,
@@ -78,10 +148,12 @@ impl CssSourceRetention {
         self.depth += 1;
         let result = value.visit_retained_sources(self);
         self.depth -= 1;
+        self.admission.check()?;
         result
     }
     /// Charges one actual consumer traversal action into this same work bank.
     pub fn charge_step(&mut self) -> Result<(), CssSourceRetentionError> {
+        self.admission.action(CssSourceRetentionAction::Step)?;
         self.visits = self
             .visits
             .checked_add(1)
@@ -114,17 +186,43 @@ impl CssSourceRetention {
                 .saturating_mul(2)
                 .max(required)
                 .min(self.maximum_visits);
-            self.sources
-                .try_reserve_exact(capacity - self.sources.len())
-                .map_err(|_| CssSourceRetentionError::Allocation)?;
-        }
-        if self.sources.capacity() > self.maximum_visits {
-            return Err(CssSourceRetentionError::Limit("source storage"));
+            self.reserve_sources(capacity)?;
         }
         self.sources.push(source.clone());
         self.usage = usage;
         Ok(())
     }
+    fn reserve_sources(&mut self, capacity: usize) -> Result<(), CssSourceRetentionError> {
+        let scratch = |new_capacity: usize| {
+            self.sources
+                .capacity()
+                .checked_add(new_capacity)
+                .and_then(|count| count.checked_mul(std::mem::size_of::<CssSourceSnapshot>()))
+                .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Self>()))
+                .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Vec<CssSourceSnapshot>>()))
+                .ok_or(CssSourceRetentionError::Limit("source storage"))
+        };
+        self.admission.action(CssSourceRetentionAction::Scratch {
+            live_bytes: scratch(capacity)?,
+        })?;
+        let mut replacement = Vec::new();
+        replacement
+            .try_reserve_exact(capacity)
+            .map_err(|_| CssSourceRetentionError::Allocation)?;
+        // An allocator may grant more capacity than requested. Admit that actual
+        // simultaneous extent before copying/using it; refusal drops it while
+        // the caller still retains the requested reservation and the old bank.
+        self.admission.action(CssSourceRetentionAction::Scratch {
+            live_bytes: scratch(replacement.capacity())?,
+        })?;
+        if replacement.capacity() > self.maximum_visits {
+            return Err(CssSourceRetentionError::Limit("source storage"));
+        }
+        replacement.append(&mut self.sources);
+        self.sources = replacement;
+        Ok(())
+    }
+
     /// Complete source payload in this retained snapshot-identity domain.
     ///
     /// Includes private source payload headers and backing, and each exact shared
@@ -133,39 +231,29 @@ impl CssSourceRetention {
     /// overhead. Existing backing-only usage/quota and visit tariffs are unchanged.
     /// The caller admits each source observation and original-identity comparison
     /// before operands are read. No allocation or source-text comparison occurs.
+    /// This read-only observation has its own explicit admission budget,
+    /// independently of the optional traversal predicate and its terminal state.
+    /// Use complete_payload_bytes_admitted to spend the stored predicate instead.
     pub fn complete_payload_bytes_with<E>(
         &self,
         mut admit: impl FnMut() -> Result<(), E>,
     ) -> Result<usize, CssRetainedPayloadError<E>> {
-        use CssRetainedPayloadError::{Admission, CapacityOverflow};
-        admit().map_err(Admission)?;
-        let mut total = 0usize;
-        for index in 0..self.sources.len() {
-            admit().map_err(Admission)?;
-            let source = &self.sources[index];
-            let mut include_original = true;
-            if let Some(original) = source.original_utf16() {
-                for earlier in 0..index {
-                    admit().map_err(Admission)?;
-                    if self.sources[earlier]
-                        .original_utf16()
-                        .is_some_and(|previous| std::sync::Arc::ptr_eq(previous, original))
-                    {
-                        include_original = false;
-                        break;
-                    }
-                }
-            }
-            admit().map_err(Admission)?;
-            total = total
-                .checked_add(
-                    source
-                        .payload_bytes(include_original)
-                        .ok_or(CapacityOverflow)?,
-                )
-                .ok_or(CapacityOverflow)?;
-        }
-        Ok(total)
+        complete_payload_bytes(&self.sources, &mut admit)
+    }
+
+    /// Measure complete source payload through this collector's same admission
+    /// predicate, without advancing the traversal steps() counter. Each action
+    /// precedes its observation/comparison. Scratch and source payload stay
+    /// separate; a prior caller refusal prevents all observations/callbacks.
+    pub fn complete_payload_bytes_admitted(
+        &mut self,
+    ) -> Result<usize, CssRetainedPayloadError<CssSourceRetentionError>> {
+        let Self {
+            sources, admission, ..
+        } = self;
+        complete_payload_bytes(sources, &mut || {
+            admission.action(CssSourceRetentionAction::Step)
+        })
     }
 
     #[must_use]
@@ -186,6 +274,7 @@ impl CssSourceRetention {
         depth: usize,
         visit: impl FnOnce(&mut Self) -> Result<T, CssSourceRetentionError>,
     ) -> Result<T, CssSourceRetentionError> {
+        self.admission.check()?;
         if depth < self.depth || depth > self.maximum_depth {
             return Err(CssSourceRetentionError::Limit("source depth"));
         }
@@ -193,13 +282,49 @@ impl CssSourceRetention {
         self.depth = depth;
         let result = visit(self);
         self.depth = previous;
+        self.admission.check()?;
         result
     }
 }
+fn complete_payload_bytes<E>(
+    sources: &[CssSourceSnapshot],
+    admit: &mut impl FnMut() -> Result<(), E>,
+) -> Result<usize, CssRetainedPayloadError<E>> {
+    use CssRetainedPayloadError::{Admission, CapacityOverflow};
+    admit().map_err(Admission)?;
+    let mut total = 0usize;
+    for index in 0..sources.len() {
+        admit().map_err(Admission)?;
+        let source = &sources[index];
+        let mut include_original = true;
+        if let Some(original) = source.original_utf16() {
+            for previous in sources.iter().take(index) {
+                admit().map_err(Admission)?;
+                if previous
+                    .original_utf16()
+                    .is_some_and(|previous| std::sync::Arc::ptr_eq(previous, original))
+                {
+                    include_original = false;
+                    break;
+                }
+            }
+        }
+        admit().map_err(Admission)?;
+        total = total
+            .checked_add(
+                source
+                    .payload_bytes(include_original)
+                    .ok_or(CapacityOverflow)?,
+            )
+            .ok_or(CapacityOverflow)?;
+    }
+    Ok(total)
+}
+
 impl<T: CssRetainedSources> CssRetainedSources for [T] {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         for value in self {
             sources.visit(value)?;
@@ -210,7 +335,7 @@ impl<T: CssRetainedSources> CssRetainedSources for [T] {
 impl<T: CssRetainedSources> CssRetainedSources for Option<T> {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         if let Some(value) = self {
             sources.visit(value)?;
@@ -221,7 +346,7 @@ impl<T: CssRetainedSources> CssRetainedSources for Option<T> {
 impl<T: CssRetainedSources + ?Sized> CssRetainedSources for &T {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         sources.visit(*self)
     }
@@ -229,7 +354,7 @@ impl<T: CssRetainedSources + ?Sized> CssRetainedSources for &T {
 impl<T: CssRetainedSources + ?Sized> CssRetainedSources for Box<T> {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         sources.visit(self.as_ref())
     }
@@ -237,7 +362,7 @@ impl<T: CssRetainedSources + ?Sized> CssRetainedSources for Box<T> {
 impl CssRetainedSources for CssParsedOrigin {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         sources.source(self.source())
     }
@@ -245,7 +370,7 @@ impl CssRetainedSources for CssParsedOrigin {
 impl CssRetainedSources for CssValueOrigin {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         match self {
             Self::Parsed(origin) => sources.visit(origin),
@@ -260,7 +385,7 @@ impl CssRetainedSources for CssValueOrigin {
 impl CssRetainedSources for CssRecoveryDiagnostic {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         if let Some(value) = self.source() {
             sources.source(value)?;
@@ -271,7 +396,7 @@ impl CssRetainedSources for CssRecoveryDiagnostic {
 impl CssRetainedSources for Error {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         if let ErrorKind::InvalidComponentValue(value) = self.kind() {
             sources.visit(value.as_ref())?;
@@ -282,7 +407,7 @@ impl CssRetainedSources for Error {
 impl CssRetainedSources for CssComponentValueError {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         sources.visit(self.origin())
     }
@@ -290,7 +415,7 @@ impl CssRetainedSources for CssComponentValueError {
 impl CssRetainedSources for CssComponentValue {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         sources.visit(self.origin())?;
         match self.view() {
@@ -314,7 +439,7 @@ impl CssRetainedSources for CssComponentValue {
 impl CssRetainedSources for CssComponentValues {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         sources.visit(self.items())
     }
@@ -322,7 +447,7 @@ impl CssRetainedSources for CssComponentValues {
 impl CssRetainedSources for CssDeclaration {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         if let Some(value) = self.parsed_name() {
             sources.visit(value)?;
@@ -338,7 +463,7 @@ impl CssRetainedSources for CssDeclaration {
 impl CssRetainedSources for CssDeclarationList {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         for value in self.iter() {
             sources.visit(value)?;
@@ -349,7 +474,7 @@ impl CssRetainedSources for CssDeclarationList {
 impl CssRetainedSources for CssSpecifiedDeclarationBlock {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         for value in self.entries() {
             sources.visit(value)?;
@@ -360,7 +485,7 @@ impl CssRetainedSources for CssSpecifiedDeclarationBlock {
 impl CssRetainedSources for CssSheet {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         if let Some(value) = self.parse_source() {
             sources.source(value.source())?;
@@ -496,7 +621,7 @@ via!(CssScopedElseRule, self, &self.condition(), self.rules());
 impl<T: CssRetainedSources> CssRetainedSources for CssDescriptorOccurrence<T> {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         if let Some(value) = self.parsed_name() {
             sources.visit(value)?;
@@ -513,7 +638,7 @@ impl<T: CssRetainedSources> CssRetainedSources for CssDescriptorOccurrence<T> {
 impl CssRetainedSources for CssCounterStyleDescriptors {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         for value in self.occurrences() {
             use CssCounterStyleDescriptorRef::*;
@@ -536,7 +661,7 @@ impl CssRetainedSources for CssCounterStyleDescriptors {
 impl CssRetainedSources for CssFontFaceDescriptors {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         for value in self.occurrences() {
             sources.visit(value)?;
@@ -547,7 +672,7 @@ impl CssRetainedSources for CssFontFaceDescriptors {
 impl CssRetainedSources for CssKeyframeSelector {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         if let Self::Percent(value) = self
             && let Some(value) = value.calculation()
@@ -560,7 +685,7 @@ impl CssRetainedSources for CssKeyframeSelector {
 impl CssRetainedSources for CssScopedStyleSelector {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         match self {
             Self::Selector(value) => sources.visit(value),
@@ -571,7 +696,7 @@ impl CssRetainedSources for CssScopedStyleSelector {
 impl CssRetainedSources for CssFontFeatureValuesItem {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         match self {
             Self::Block(value) => sources.visit(value),
@@ -583,7 +708,7 @@ via!(CssPageDeclarationBlock, self, self.occurrences());
 impl CssRetainedSources for CssPageDeclaration {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         match self {
             Self::Property(value) => sources.visit(value),
@@ -594,7 +719,7 @@ impl CssRetainedSources for CssPageDeclaration {
 impl CssRetainedSources for CssPageDescriptor {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         if let Some(value) = self.occurrence() {
             sources.visit(value)?;
@@ -605,7 +730,7 @@ impl CssRetainedSources for CssPageDescriptor {
 impl CssRetainedSources for CssImportRule {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         sources.visit(&self.syntax.at_keyword)?;
         sources.visit(&self.syntax.prelude.target)?;
@@ -627,7 +752,7 @@ impl CssRetainedSources for CssImportRule {
 impl CssRetainedSources for CssMediaQueryList {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         if let Some(source) = self.parse_source() {
             sources.source(source.source())?;
@@ -639,7 +764,7 @@ impl CssRetainedSources for CssMediaQueryList {
 impl CssRetainedSources for CssMediaQuery {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         sources.visit(self.origin())?;
         match self {
@@ -660,7 +785,7 @@ impl CssRetainedSources for CssMediaQuery {
 impl CssRetainedSources for CssMediaCondition {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         use crate::media::MediaConditionSyntax;
         sources.visit(self.origin())?;
@@ -696,7 +821,7 @@ impl CssRetainedSources for CssMediaCondition {
 impl CssRetainedSources for CssAuthoredFontFaceDescriptorValue {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         match self {
             Self::Ordinary(value) => sources.visit(value),
@@ -707,7 +832,7 @@ impl CssRetainedSources for CssAuthoredFontFaceDescriptorValue {
 impl CssRetainedSources for CssFontFaceDescriptorValue {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         match self {
             Self::FontFamily(_) | Self::FontDisplay(_) | Self::UnicodeRange(_) => Ok(()),
@@ -788,7 +913,7 @@ impl CssRetainedSources for CssFontFaceDescriptorValue {
 impl CssRetainedSources for CssAbsoluteFontWeight {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         match self {
             Self::Number(value) => sources.visit(value),
@@ -799,7 +924,7 @@ impl CssRetainedSources for CssAbsoluteFontWeight {
 impl CssRetainedSources for CssFontWidth {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         match self {
             Self::Percentage(value) => sources.visit(value),
@@ -810,7 +935,7 @@ impl CssRetainedSources for CssFontWidth {
 impl CssRetainedSources for CssUrl {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         for value in self.modifiers() {
             sources.charge_step()?;
@@ -845,7 +970,7 @@ via!(CssFontFeatureValuesFamilyList, self, self.origin());
 impl CssRetainedSources for CssSpecifiedPageDeclarationEntry {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         match self {
             Self::Property(value) => sources.visit(value),
@@ -856,7 +981,7 @@ impl CssRetainedSources for CssSpecifiedPageDeclarationEntry {
 impl CssRetainedSources for CssDeclarationBlockError {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         if let Some(value) = self.declaration() {
             sources.visit(value)?;
@@ -875,7 +1000,7 @@ impl CssRetainedSources for CssDeclarationBlockError {
 impl CssRetainedSources for CssSerializedOrigin {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         match self {
             Self::Token(value) => sources.visit(value),
@@ -890,7 +1015,7 @@ impl CssRetainedSources for CssSerializedOrigin {
 impl CssRetainedSources for CssPageProjectionError {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         match self {
             Self::Properties(value) => sources.visit(value),
@@ -902,7 +1027,7 @@ impl CssRetainedSources for CssPageProjectionError {
 impl CssRetainedSources for CssFontFaceDeclarationBlockError {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         match self {
             Self::Serialization(value) => sources.visit(value),
@@ -914,7 +1039,7 @@ impl CssRetainedSources for CssFontFaceDeclarationBlockError {
 impl CssRetainedSources for CssScopeRule {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         if let Some(value) = self.root() {
             sources.visit(value)?;
@@ -928,7 +1053,7 @@ impl CssRetainedSources for CssScopeRule {
 impl CssRetainedSources for CssRule {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         match self {
             Self::CustomMedia(value) => sources.visit(value),
@@ -958,7 +1083,7 @@ impl CssRetainedSources for CssRule {
 impl CssRetainedSources for CssScopedRule {
     fn visit_retained_sources(
         &self,
-        sources: &mut CssSourceRetention,
+        sources: &mut CssSourceRetention<'_>,
     ) -> Result<(), CssSourceRetentionError> {
         match self {
             Self::CustomMedia(value) => sources.visit(value),
@@ -983,3 +1108,6 @@ impl CssRetainedSources for CssScopedRule {
         }
     }
 }
+
+#[cfg(test)]
+mod admission_tests;

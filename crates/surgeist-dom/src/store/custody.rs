@@ -141,6 +141,9 @@ impl Default for Ledger {
 }
 
 impl Ledger {
+    pub(in crate::store) fn same_owner(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.total, &other.total)
+    }
     /// The owner admits this actual allocation once as its administration. Its
     /// inline Ledger handle is already part of the containing owner's layout.
     /// Arc control-block and opaque allocator metadata remain excluded.

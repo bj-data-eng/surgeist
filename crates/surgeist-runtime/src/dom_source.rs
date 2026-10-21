@@ -27,6 +27,9 @@ use surgeist_dom::{
 /// Borrowed services for the reached requests of one actual Source operation.
 /// These references own no resource, response slot, issuer or operation cursor.
 pub struct DomSourceServices<'a> {
+    /// Explicit finite native Meta composition permission for this advance.
+    /// None preserves unavailable behavior and cannot discharge pending Meta.
+    pub meta: Option<surgeist_dom::DomMetaAtomicLimits>,
     /// Optional exact Session/Host permission, bound only at fresh Source entry.
     pub execution_scope: Option<&'a crate::DomSourceExecutionScope>,
     /// Actual CSP observation supplier; absence remains an unavailable policy.
@@ -85,6 +88,9 @@ pub enum DomSourceDriveProgress {
         /// Original paired DOM and CSSOM publication evidence.
         publication: surgeist_dom::DomInlineStyleSourcePublication,
     },
+    /// Authentic joined Meta publication; no later service has run.
+    /// Complete retains the original completion; Request remains unserviced.
+    MetaSource(crate::DomStyleMetaSourceOutcome),
     /// The fullscreen handoff was serviced and its original tail remains live.
     InlineFullscreenHandoff {
         /// The original operation whose mandatory continuation remains live.
@@ -99,6 +105,57 @@ pub enum DomSourceDriveProgress {
         /// Actual missing service.
         reason: DomSourceUnavailable,
     },
+}
+
+/// Failure of the actual Source driver or its explicitly selected native join.
+/// Local services retain their own errors; no native failure is projected back.
+#[derive(Debug)]
+pub enum DomSourceDriveError {
+    /// Original Source qualification, service or family-tail refusal.
+    Source(DomSourceRuntimeError),
+    /// Native Meta composition retained its actual owner/producer failure.
+    Meta(crate::DomStyleMetaError),
+}
+impl std::fmt::Display for DomSourceDriveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Source(error) => write!(f, "Source drive refused: {error}"),
+            Self::Meta(error) => write!(f, "Source native Meta drive refused: {error}"),
+        }
+    }
+}
+impl std::error::Error for DomSourceDriveError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Source(error) => Some(error),
+            Self::Meta(error) => Some(error),
+        }
+    }
+}
+impl From<DomSourceRuntimeError> for DomSourceDriveError {
+    fn from(error: DomSourceRuntimeError) -> Self {
+        Self::Source(error)
+    }
+}
+impl From<crate::DomStyleMetaError> for DomSourceDriveError {
+    fn from(error: crate::DomStyleMetaError) -> Self {
+        Self::Meta(error)
+    }
+}
+impl From<DomError> for DomSourceDriveError {
+    fn from(error: DomError) -> Self {
+        Self::Source(error.into())
+    }
+}
+impl From<DomStyleRuntimeError> for DomSourceDriveError {
+    fn from(error: DomStyleRuntimeError) -> Self {
+        Self::Source(error.into())
+    }
+}
+impl From<DomHostedRuntimeError> for DomSourceDriveError {
+    fn from(error: DomHostedRuntimeError) -> Self {
+        Self::Source(error.into())
+    }
 }
 
 /// Canonical retirement or live Source progress for one authorized Select task.
@@ -293,6 +350,10 @@ impl DomSourceRuntime {
         Ok(self.styles.qualify_source(dom)?)
     }
     /// Execute exactly one requested edit through the original Source engine.
+    #[expect(
+        clippy::result_large_err,
+        reason = "the driving boundary retains the actual root and original producer failure without allocating"
+    )]
     pub fn apply(
         &mut self,
         dom: &mut DomEventDom<'_>,
@@ -300,7 +361,7 @@ impl DomSourceRuntime {
         limits: DomSourceLimits,
         services: &mut DomSourceServices<'_>,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+    ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
         let guard = self.prepare(dom, cancel)?;
         if let Some(scope) = services.execution_scope {
             self.hosted
@@ -317,6 +378,7 @@ impl DomSourceRuntime {
             self.drive_lease(
                 &guard,
                 &mut lease,
+                services.meta,
                 services.url.as_ref().map(|service| service.revision),
                 cancel,
             )?
@@ -334,6 +396,10 @@ impl DomSourceRuntime {
         )
     }
     /// Resume the same operation without rebuilding acknowledged external work.
+    #[expect(
+        clippy::result_large_err,
+        reason = "the driving boundary retains the actual root and original producer failure without allocating"
+    )]
     pub fn resume(
         &mut self,
         dom: &mut DomEventDom<'_>,
@@ -341,7 +407,7 @@ impl DomSourceRuntime {
         limits: DomSourceLimits,
         services: &mut DomSourceServices<'_>,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+    ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
         let guard = self.prepare(dom, cancel)?;
         if let Some(scope) = services.execution_scope {
             self.hosted
@@ -358,6 +424,7 @@ impl DomSourceRuntime {
             self.drive_lease(
                 &guard,
                 &mut lease,
+                services.meta,
                 services.url.as_ref().map(|service| service.revision),
                 cancel,
             )?
@@ -376,6 +443,10 @@ impl DomSourceRuntime {
     }
     /// Execute one Source edit with the original inline context and a borrowed
     /// pure resolver. Actual inline publications return before further service.
+    #[expect(
+        clippy::result_large_err,
+        reason = "the driving boundary retains the actual root and original producer failure without allocating"
+    )]
     pub fn apply_with_inline_styles(
         &mut self,
         dom: &mut DomEventDom<'_>,
@@ -388,7 +459,7 @@ impl DomSourceRuntime {
         )
             -> Result<surgeist_cssom::CssomAdmission, surgeist_cssom::CssomError>,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+    ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
         let mut drive = SourceDrive {
             guard: self.prepare(dom, cancel)?,
             resolver: Some(&mut resolver),
@@ -417,6 +488,7 @@ impl DomSourceRuntime {
             self.drive_lease_execution(
                 &drive.guard,
                 &mut lease,
+                services.meta,
                 services.url.as_ref().map(|s| s.revision),
                 &mut drive.resolver,
                 cancel,
@@ -437,6 +509,10 @@ impl DomSourceRuntime {
 
     /// Resume the same inline-qualified operation, retaining its original
     /// profiles, producer limits, work and acknowledged continuation.
+    #[expect(
+        clippy::result_large_err,
+        reason = "the driving boundary retains the actual root and original producer failure without allocating"
+    )]
     pub fn resume_with_inline_styles(
         &mut self,
         dom: &mut DomEventDom<'_>,
@@ -449,7 +525,7 @@ impl DomSourceRuntime {
         )
             -> Result<surgeist_cssom::CssomAdmission, surgeist_cssom::CssomError>,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+    ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
         let mut drive = SourceDrive {
             guard: self.prepare(dom, cancel)?,
             resolver: Some(&mut resolver),
@@ -469,6 +545,7 @@ impl DomSourceRuntime {
             self.drive_lease_execution(
                 &drive.guard,
                 &mut lease,
+                services.meta,
                 services.url.as_ref().map(|s| s.revision),
                 &mut drive.resolver,
                 cancel,
@@ -488,6 +565,10 @@ impl DomSourceRuntime {
     }
 
     /// Install one immutable native fragment using its original feature root.
+    #[expect(
+        clippy::result_large_err,
+        reason = "the driving boundary retains the actual root and original producer failure without allocating"
+    )]
     pub fn install_native_html(
         &mut self,
         dom: &mut DomEventDom<'_>,
@@ -496,7 +577,7 @@ impl DomSourceRuntime {
         budgets: DomSourceNativeHtmlInstallLimits,
         services: &mut DomSourceServices<'_>,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+    ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
         let guard = self.prepare(dom, cancel)?;
         if let Some(scope) = services.execution_scope {
             self.hosted
@@ -517,6 +598,7 @@ impl DomSourceRuntime {
             self.drive_lease(
                 &guard,
                 &mut lease,
+                services.meta,
                 services.url.as_ref().map(|service| service.revision),
                 cancel,
             )?
@@ -534,6 +616,10 @@ impl DomSourceRuntime {
         )
     }
     /// Complete the actual once-authorized Select task through its feature root.
+    #[expect(
+        clippy::result_large_err,
+        reason = "the driving boundary retains the actual root and original producer failure without allocating"
+    )]
     pub fn complete_select(
         &mut self,
         dom: &mut DomEventDom<'_>,
@@ -542,7 +628,7 @@ impl DomSourceRuntime {
         limits: DomSourceLimits,
         services: &mut DomSourceServices<'_>,
         cancel: &AtomicBool,
-    ) -> Result<DomSelectCompletionProgress, DomSourceRuntimeError> {
+    ) -> Result<DomSelectCompletionProgress, DomSourceDriveError> {
         // Validate every original Session binding before canonical consumption.
         // Cleanup admission and optional services belong only to a live Source.
         let guard = self.qualify_source_owners(dom)?;
@@ -570,6 +656,7 @@ impl DomSourceRuntime {
             self.drive_lease(
                 &guard,
                 &mut lease,
+                services.meta,
                 services.url.as_ref().map(|service| service.revision),
                 cancel,
             )?
@@ -588,6 +675,10 @@ impl DomSourceRuntime {
         .map(DomSelectCompletionProgress::Source)
     }
     /// Resume Select processing with the same actual task authorization.
+    #[expect(
+        clippy::result_large_err,
+        reason = "the driving boundary retains the actual root and original producer failure without allocating"
+    )]
     pub fn resume_select(
         &mut self,
         dom: &mut DomEventDom<'_>,
@@ -596,7 +687,7 @@ impl DomSourceRuntime {
         limits: DomSourceLimits,
         services: &mut DomSourceServices<'_>,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+    ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
         let guard = self.prepare(dom, cancel)?;
         if let Some(scope) = services.execution_scope {
             self.hosted
@@ -615,6 +706,7 @@ impl DomSourceRuntime {
             self.drive_lease(
                 &guard,
                 &mut lease,
+                services.meta,
                 services.url.as_ref().map(|service| service.revision),
                 cancel,
             )?
@@ -634,43 +726,72 @@ impl DomSourceRuntime {
 }
 
 impl DomSourceRuntime {
+    #[expect(
+        clippy::result_large_err,
+        reason = "the driving boundary retains the actual root and original producer failure without allocating"
+    )]
     fn drive_lease(
         &self,
         guard: &StyleSourceGuard,
         lease: &mut DomSourceLease<'_>,
+        meta: Option<surgeist_dom::DomMetaAtomicLimits>,
         url_revision: Option<&surgeist_html_semantics::HtmlBaseFactsRevision>,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
-        self.drive_lease_execution(guard, lease, url_revision, &mut None, cancel)
+    ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
+        self.drive_lease_execution(guard, lease, meta, url_revision, &mut None, cancel)
     }
 
+    #[expect(
+        clippy::result_large_err,
+        reason = "the driving boundary retains the actual root and original producer failure without allocating"
+    )]
     fn drive_lease_execution(
         &self,
         guard: &StyleSourceGuard,
         lease: &mut DomSourceLease<'_>,
+        meta: Option<surgeist_dom::DomMetaAtomicLimits>,
         url_revision: Option<&surgeist_html_semantics::HtmlBaseFactsRevision>,
         resolver: &mut Option<&mut InlineResolver<'_>>,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+    ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
         loop {
             guard.flush(lease, cancel)?;
             let settlement = self
                 .hosted
                 .prepare_watcher_settlement(lease, cancel)
                 .map_err(DomSourceRuntimeError::Hosted)?;
-            let advanced = if let Some(resolver) = resolver.as_deref_mut() {
+            // Keep the result unpropagated until the prepaid watcher tail sees
+            // canonical state. The native adapter has disposed its borrowed hold
+            // and all represented external banks before returning.
+            let advanced = if let Some(limits) = meta {
+                self.styles
+                    .advance_meta(lease, resolver.as_deref_mut(), limits, cancel)
+                    .map(Advanced::Meta)
+                    .map_err(DomSourceDriveError::Meta)
+            } else if let Some(resolver) = resolver.as_deref_mut() {
                 lease
                     .advance_with_inline_styles(resolver, cancel)
-                    .map(|progress| progress.into_parts())
-                    .map_err(DomSourceRuntimeError::Inline)
+                    .map(|progress| Advanced::Source(progress.into_parts()))
+                    .map_err(|error| DomSourceRuntimeError::Inline(error).into())
             } else {
                 lease
                     .advance(cancel)
-                    .map(|progress| (progress, None))
-                    .map_err(DomSourceRuntimeError::Dom)
+                    .map(|progress| Advanced::Source((progress, None)))
+                    .map_err(|error| DomSourceRuntimeError::Dom(error).into())
             };
             settlement.finish(&lease.snapshot());
-            let (source, publication) = advanced?;
+            let (source, publication) = match advanced? {
+                Advanced::Meta(outcome) if !outcome.preferences().is_empty() => {
+                    return Ok(DomSourceDriveProgress::MetaSource(outcome));
+                }
+                Advanced::Meta(outcome) => {
+                    let (source, _, inline, _) = outcome.into_parts();
+                    // Empty observations identify the genuine non-Meta path;
+                    // no native producer output is dropped by this branch.
+                    (source, inline)
+                }
+                Advanced::Source(progress) => progress,
+            };
             if let Some(publication) = publication {
                 return Ok(DomSourceDriveProgress::InlineSource {
                     source,
@@ -842,12 +963,26 @@ impl DomSourceRuntime {
     }
 }
 
+enum Advanced {
+    Source(
+        (
+            DomSourceProgress,
+            Option<surgeist_dom::DomInlineStyleSourcePublication>,
+        ),
+    ),
+    Meta(crate::DomStyleMetaSourceOutcome),
+}
+
 struct DriveRoot<'a> {
     limits: DomSourceLimits,
     select: Option<&'a DomSelectTask>,
 }
 
 impl DomSourceRuntime {
+    #[expect(
+        clippy::result_large_err,
+        reason = "the driving boundary retains the actual root and original producer failure without allocating"
+    )]
     fn finish_or_supply(
         &self,
         dom: &mut DomEventDom<'_>,
@@ -856,7 +991,7 @@ impl DomSourceRuntime {
         progress: DomSourceDriveProgress,
         services: &mut DomSourceServices<'_>,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+    ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
         self.finish_or_supply_execution(
             dom,
             root,
@@ -870,6 +1005,10 @@ impl DomSourceRuntime {
         )
     }
 
+    #[expect(
+        clippy::result_large_err,
+        reason = "the driving boundary retains the actual root and original producer failure without allocating"
+    )]
     fn finish_or_supply_execution(
         &self,
         dom: &mut DomEventDom<'_>,
@@ -878,7 +1017,7 @@ impl DomSourceRuntime {
         mut progress: DomSourceDriveProgress,
         services: &mut DomSourceServices<'_>,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+    ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
         let DriveRoot { limits, select } = root;
         loop {
             match progress {
@@ -887,6 +1026,12 @@ impl DomSourceRuntime {
                     source: DomSourceProgress::Complete(_),
                     ..
                 } => {
+                    drive.guard.finish(&dom.snapshot());
+                    return Ok(progress);
+                }
+                DomSourceDriveProgress::MetaSource(ref outcome)
+                    if matches!(outcome.source(), DomSourceProgress::Complete(_)) =>
+                {
                     drive.guard.finish(&dom.snapshot());
                     return Ok(progress);
                 }
@@ -913,6 +1058,7 @@ impl DomSourceRuntime {
                     progress = self.drive_lease_execution(
                         &drive.guard,
                         &mut lease,
+                        services.meta,
                         services.url.as_ref().map(|service| service.revision),
                         &mut drive.resolver,
                         cancel,
@@ -968,6 +1114,7 @@ impl DomSourceRuntime {
                     progress = self.drive_lease_execution(
                         &drive.guard,
                         &mut lease,
+                        services.meta,
                         services.url.as_ref().map(|service| service.revision),
                         &mut drive.resolver,
                         cancel,
@@ -1046,6 +1193,7 @@ mod tests {
                 DomSourceEdit::create_document(),
                 limits,
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut |_| panic!("Document creation has no inline CSS request"),
                     url: None,
@@ -1067,6 +1215,7 @@ mod tests {
                 DomSourceEdit::create_text(id.node(), "exact text"),
                 limits,
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut |_| panic!("Text creation has no inline CSS request"),
                     url: None,

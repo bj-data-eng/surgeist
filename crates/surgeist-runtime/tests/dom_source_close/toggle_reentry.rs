@@ -74,6 +74,7 @@ fn nested_close(dom: &mut DomEventDom<'_>, context: &mut Reentry, subject: NodeI
             DomSourceEdit::close_dialog(subject, Some("closed in first Toggle".into())),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -125,6 +126,7 @@ fn nested_close(dom: &mut DomEventDom<'_>, context: &mut Reentry, subject: NodeI
                 request.operation(),
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut |_| None,
                     url: None,

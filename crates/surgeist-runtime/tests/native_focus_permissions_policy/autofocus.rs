@@ -74,6 +74,7 @@ fn edit(session: &mut DomSession, operation: DomSourceEdit) {
             operation,
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -369,6 +370,7 @@ fn candidate_capacity_refuses_atomic_insertion_and_exact_one_reference_admits() 
             DomSourceEdit::insert_before(node, destination, None),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -379,10 +381,12 @@ fn candidate_capacity_refuses_atomic_insertion_and_exact_one_reference_admits() 
             assert!(
                 matches!(
                     result,
-                    Err(DomSourceRuntimeError::Dom(DomError::ResourceLimit {
-                        resource: DomResource::AutofocusCandidates,
-                        limit: 0
-                    }))
+                    Err(surgeist_runtime::DomSourceDriveError::Source(
+                        DomSourceRuntimeError::Dom(DomError::ResourceLimit {
+                            resource: DomResource::AutofocusCandidates,
+                            limit: 0
+                        })
+                    ))
                 ),
                 "wrong actual capacity refusal: {result:?}"
             );
@@ -423,6 +427,7 @@ fn unpublished_source_refusal_and_fresh_retry_never_install_partial_candidate_hi
         DomSourceEdit::insert_before(node, destination, None),
         short,
         &mut DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut |_| None,
             url: None,
@@ -432,7 +437,9 @@ fn unpublished_source_refusal_and_fresh_retry_never_install_partial_candidate_hi
     assert!(
         matches!(
             result,
-            Err(DomSourceRuntimeError::Dom(DomError::SourceOutputLimit))
+            Err(surgeist_runtime::DomSourceDriveError::Source(
+                DomSourceRuntimeError::Dom(DomError::SourceOutputLimit)
+            ))
         ),
         "actual source refusal required: {result:?}"
     );
@@ -451,13 +458,16 @@ fn unpublished_source_refusal_and_fresh_retry_never_install_partial_candidate_hi
             DomSourceEdit::insert_before(node, destination, None),
             ordinary,
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None
             },
             &AtomicBool::new(true)
         ),
-        Err(DomSourceRuntimeError::Dom(DomError::Cancelled))
+        Err(surgeist_runtime::DomSourceDriveError::Source(
+            DomSourceRuntimeError::Dom(DomError::Cancelled)
+        ))
     ));
     assert!(session.dom().pending_source_edit().is_none());
     assert_eq!(session.snapshot().stamp(), before.stamp());
@@ -468,6 +478,7 @@ fn unpublished_source_refusal_and_fresh_retry_never_install_partial_candidate_hi
                 DomSourceEdit::insert_before(node, destination, None),
                 ordinary,
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut |_| None,
                     url: None

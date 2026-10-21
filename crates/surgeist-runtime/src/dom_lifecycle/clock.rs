@@ -729,6 +729,7 @@ mod tests {
                 let mut source = session.source_execution();
                 let mut policy = |_: &surgeist_dom::DomStyleSource| None;
                 let mut services = DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
@@ -741,12 +742,14 @@ mod tests {
                         &mut services,
                         &cancel
                     ),
-                    Err(DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(
-                        DomHostedError::Limit {
-                            resource: DomHostedResource::Globals,
-                            ..
-                        }
-                    )))
+                    Err(crate::DomSourceDriveError::Source(
+                        DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(
+                            DomHostedError::Limit {
+                                resource: DomHostedResource::Globals,
+                                ..
+                            }
+                        ))
+                    ))
                 ));
                 let operation = session.snapshot().incomplete_source_operation().unwrap();
                 let cursor = child_phase(&mut session, operation);
@@ -781,8 +784,8 @@ mod tests {
                         &mut services,
                         &cancel
                     ),
-                    Err(DomSourceRuntimeError::Hosted(
-                        DomHostedRuntimeError::Binding
+                    Err(crate::DomSourceDriveError::Source(
+                        DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Binding)
                     ))
                 ));
                 assert_eq!(session.snapshot().stamp(), before);
@@ -808,8 +811,8 @@ mod tests {
                         &mut services,
                         &cancel
                     ),
-                    Err(DomSourceRuntimeError::Hosted(
-                        DomHostedRuntimeError::ClockUnavailable
+                    Err(crate::DomSourceDriveError::Source(
+                        DomSourceRuntimeError::Hosted(DomHostedRuntimeError::ClockUnavailable)
                     ))
                 ));
                 assert_eq!(child_phase(&mut session, operation), (cursor.0, "loading"));
@@ -849,12 +852,14 @@ mod tests {
                         &mut services,
                         &cancel
                     ),
-                    Err(DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(
-                        DomHostedError::Limit {
-                            resource: DomHostedResource::Entries,
-                            ..
-                        }
-                    )))
+                    Err(crate::DomSourceDriveError::Source(
+                        DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(
+                            DomHostedError::Limit {
+                                resource: DomHostedResource::Entries,
+                                ..
+                            }
+                        ))
+                    ))
                 ));
                 assert_eq!(child_phase(&mut session, operation), (cursor.0, "entry"));
                 let finished = {
@@ -881,12 +886,14 @@ mod tests {
                         &mut services,
                         &cancel
                     ),
-                    Err(DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(
-                        DomHostedError::Limit {
-                            resource: DomHostedResource::Entries,
-                            ..
-                        }
-                    )))
+                    Err(crate::DomSourceDriveError::Source(
+                        DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(
+                            DomHostedError::Limit {
+                                resource: DomHostedResource::Entries,
+                                ..
+                            }
+                        ))
+                    ))
                 ));
                 {
                     let state = owner.borrow();

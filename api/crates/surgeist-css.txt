@@ -5388,8 +5388,13 @@ pub fn surgeist_css::CssSizeValue::serialize_specified(&self) -> core::result::R
 pub fn surgeist_css::CssSizeValue::serialize_specified_with_limits(&self, limits: surgeist_css::CssSpecifiedValueSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::CssSpecifiedValueSerializationError>
 impl core::convert::From<surgeist_css::CssSizeValue> for surgeist_css::CssFlexBasisValue
 pub fn surgeist_css::CssFlexBasisValue::from(value: surgeist_css::CssSizeValue) -> Self
+pub enum surgeist_css::CssSourceRetentionAction
+pub surgeist_css::CssSourceRetentionAction::Scratch
+pub surgeist_css::CssSourceRetentionAction::Scratch::live_bytes: usize
+pub surgeist_css::CssSourceRetentionAction::Step
 pub enum surgeist_css::CssSourceRetentionError
 pub surgeist_css::CssSourceRetentionError::Allocation
+pub surgeist_css::CssSourceRetentionError::CallerAdmission
 pub surgeist_css::CssSourceRetentionError::Limit(&'static str)
 #[non_exhaustive] pub enum surgeist_css::CssSpacingTrim
 pub surgeist_css::CssSpacingTrim::Normal
@@ -12522,16 +12527,18 @@ pub const fn surgeist_css::CssSourcePosition::column(self) -> surgeist_css::CssU
 pub const fn surgeist_css::CssSourcePosition::line(self) -> surgeist_css::CssLineIndex
 impl core::fmt::Display for surgeist_css::CssSourcePosition
 pub fn surgeist_css::CssSourcePosition::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub struct surgeist_css::CssSourceRetention
-impl surgeist_css::CssSourceRetention
-pub fn surgeist_css::CssSourceRetention::at_depth<T>(&mut self, depth: usize, visit: impl core::ops::function::FnOnce(&mut Self) -> core::result::Result<T, surgeist_css::CssSourceRetentionError>) -> core::result::Result<T, surgeist_css::CssSourceRetentionError>
-pub fn surgeist_css::CssSourceRetention::charge_step(&mut self) -> core::result::Result<(), surgeist_css::CssSourceRetentionError>
-pub fn surgeist_css::CssSourceRetention::complete_payload_bytes_with<E>(&self, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<usize, surgeist_css::CssRetainedPayloadError<E>>
-pub const fn surgeist_css::CssSourceRetention::new(bytes: usize, maximum_visits: usize, maximum_depth: usize) -> Self
-pub fn surgeist_css::CssSourceRetention::source(&mut self, source: &surgeist_css::CssSourceSnapshot) -> core::result::Result<(), surgeist_css::CssSourceRetentionError>
-pub const fn surgeist_css::CssSourceRetention::steps(&self) -> usize
-pub const fn surgeist_css::CssSourceRetention::usage(&self) -> surgeist_css::CssSourceStorageUsage
-pub fn surgeist_css::CssSourceRetention::visit<T: surgeist_css::CssRetainedSources + ?core::marker::Sized>(&mut self, value: &T) -> core::result::Result<(), surgeist_css::CssSourceRetentionError>
+pub struct surgeist_css::CssSourceRetention<'admit>
+impl<'admit> surgeist_css::CssSourceRetention<'admit>
+pub fn surgeist_css::CssSourceRetention<'admit>::at_depth<T>(&mut self, depth: usize, visit: impl core::ops::function::FnOnce(&mut Self) -> core::result::Result<T, surgeist_css::CssSourceRetentionError>) -> core::result::Result<T, surgeist_css::CssSourceRetentionError>
+pub fn surgeist_css::CssSourceRetention<'admit>::charge_step(&mut self) -> core::result::Result<(), surgeist_css::CssSourceRetentionError>
+pub fn surgeist_css::CssSourceRetention<'admit>::complete_payload_bytes_admitted(&mut self) -> core::result::Result<usize, surgeist_css::CssRetainedPayloadError<surgeist_css::CssSourceRetentionError>>
+pub fn surgeist_css::CssSourceRetention<'admit>::complete_payload_bytes_with<E>(&self, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<usize, surgeist_css::CssRetainedPayloadError<E>>
+pub const fn surgeist_css::CssSourceRetention<'admit>::new(bytes: usize, maximum_visits: usize, maximum_depth: usize) -> Self
+pub fn surgeist_css::CssSourceRetention<'admit>::source(&mut self, source: &surgeist_css::CssSourceSnapshot) -> core::result::Result<(), surgeist_css::CssSourceRetentionError>
+pub const fn surgeist_css::CssSourceRetention<'admit>::steps(&self) -> usize
+pub const fn surgeist_css::CssSourceRetention<'admit>::usage(&self) -> surgeist_css::CssSourceStorageUsage
+pub fn surgeist_css::CssSourceRetention<'admit>::visit<T: surgeist_css::CssRetainedSources + ?core::marker::Sized>(&mut self, value: &T) -> core::result::Result<(), surgeist_css::CssSourceRetentionError>
+pub fn surgeist_css::CssSourceRetention<'admit>::with_admission(bytes: usize, maximum_visits: usize, maximum_depth: usize, admit: &'admit mut dyn core::ops::function::FnMut(surgeist_css::CssSourceRetentionAction) -> bool) -> core::result::Result<Self, surgeist_css::CssSourceRetentionError>
 pub struct surgeist_css::CssSourceSnapshot(_)
 impl surgeist_css::CssSourceSnapshot
 pub fn surgeist_css::CssSourceSnapshot::as_str(&self) -> &str

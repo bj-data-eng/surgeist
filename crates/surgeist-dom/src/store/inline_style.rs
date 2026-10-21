@@ -96,7 +96,7 @@ impl Selection {
 }
 pub(super) struct Owner {
     limits: DomInlineStyleLimits,
-    store: Option<CssomStore>,
+    pub(super) store: Option<CssomStore>,
     pub(super) index: Index,
     pub(super) objects: Vec<ObjectEntry>,
     issuer: Option<Arc<recording::InputIssuer>>,

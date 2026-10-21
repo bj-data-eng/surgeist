@@ -248,3 +248,117 @@ fn captured_connected_unknown_header_is_typed_failure_not_false() {
     );
     assert!(failure.after_cleanup().is_some());
 }
+
+pub(super) fn captured_template_contents_context() -> HtmlFragmentContext {
+    let mut builder = HtmlCaptureBuilder::new(
+        HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
+        HtmlHostFactsRevision::fresh(),
+    );
+    let document = builder
+        .add_document(
+            HtmlDocumentMode::NoQuirks,
+            HtmlScriptingStatus::Disabled,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    let inert = builder
+        .add_document(
+            HtmlDocumentMode::NoQuirks,
+            HtmlScriptingStatus::Disabled,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    builder
+        .establish_document_template_facts(
+            &inert,
+            HtmlDocumentClass::Html,
+            HtmlTemplateDocumentRole::InertTemplate,
+            HtmlCaptureTemplateCacheInput::Absent,
+        )
+        .unwrap();
+    builder
+        .establish_document_template_facts(
+            &document,
+            HtmlDocumentClass::Html,
+            HtmlTemplateDocumentRole::Ordinary,
+            HtmlCaptureTemplateCacheInput::Document(inert.clone()),
+        )
+        .unwrap();
+    builder
+        .establish_document_nonce_environment(
+            &document,
+            HtmlNonceDocumentEnvironment::new(
+                HtmlBrowsingContextPresence::Present,
+                HtmlHeaderDeliveredCsp::Present,
+            ),
+        )
+        .unwrap();
+    let template = builder
+        .add_element(
+            &document,
+            QualifiedName::new(Namespace::html(), None, "template"),
+            OrderedAttributes::default(),
+            HtmlCapturedIsValue::Absent,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    builder.establish_parent(&template, &document).unwrap();
+    let contents = builder.add_fragment(&inert).unwrap();
+    builder
+        .establish_template_contents(&template, &contents)
+        .unwrap();
+    let div = builder
+        .add_element(
+            &inert,
+            QualifiedName::new(Namespace::html(), None, "div"),
+            OrderedAttributes::default(),
+            HtmlCapturedIsValue::Absent,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    builder.establish_parent(&div, &contents).unwrap();
+    builder.establish_no_shadow_root(&div).unwrap();
+    let capture = builder.finish().unwrap();
+    HtmlFragmentContext::element(&capture, &capture.subject_id(&div).unwrap()).unwrap()
+}
+
+#[test]
+fn captured_template_contents_host_does_not_connect_nonce_to_browsing_context() {
+    let context = captured_template_contents_context();
+    let report = HtmlFragmentParseRequest::with_options(
+        HtmlSource::utf8("<template shadowrootmode=open><p nonce=A></p></template>"),
+        context,
+        limits(),
+        HtmlParserScriptingMode::Inert,
+        true,
+    )
+    .unwrap()
+    .parse()
+    .unwrap();
+    assert!(
+        slots(&report)
+            .iter()
+            .any(|(name, value)| name == "p" && value == &DocumentString::from("A"))
+    );
+    let mut metadata = report.metadata();
+    loop {
+        match metadata.advance() {
+            HtmlParseMetadataStep::Record(record)
+                if record.cryptographic_nonce() == Some(&DocumentString::from("A")) =>
+            {
+                let HtmlNodeKind::Element(element) = record.node().kind() else {
+                    panic!("nonce element")
+                };
+                // A template's contents host is not a ShadowRoot host. The
+                // connected outer Document's policy cannot hide this attribute.
+                assert_eq!(
+                    element.attributes().as_slice()[0].value(),
+                    &DocumentString::from("A")
+                );
+                break;
+            }
+            HtmlParseMetadataStep::Complete => panic!("p nonce record"),
+            _ => {}
+        }
+    }
+}

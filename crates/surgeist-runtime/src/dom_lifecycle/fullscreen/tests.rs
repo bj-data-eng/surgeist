@@ -100,6 +100,7 @@ fn handoff(session: &mut DomSession, top: DomHostedTopLevel, root: NodeId) -> Do
             DomSourceEdit::exit_fullscreen(top.document()),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -362,6 +363,7 @@ fn dropping_real_prepared_handoff_preserves_the_exposed_request_and_retries_once
             operation,
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -549,6 +551,7 @@ fn bound_detach_joins_inline_context_and_one_runtime_job_before_returning_receip
             ),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| panic!("no sheet service"),
                 url: None,
@@ -596,6 +599,7 @@ fn bound_detach_joins_inline_context_and_one_runtime_job_before_returning_receip
             operation,
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| panic!("no sheet service"),
                 url: None,
@@ -656,6 +660,7 @@ fn inline_commit_refusal_releases_reserved_runtime_row_and_preserves_exposed_sou
         ),
         source_limits(),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut |_| None,
             url: None,
@@ -665,8 +670,10 @@ fn inline_commit_refusal_releases_reserved_runtime_row_and_preserves_exposed_sou
     );
     assert!(matches!(
         result,
-        Err(crate::DomSourceRuntimeError::Inline(
-            surgeist_dom::DomInlineStyleError::Cssom(surgeist_cssom::CssomError::RevisionExhausted)
+        Err(crate::DomSourceDriveError::Source(
+            crate::DomSourceRuntimeError::Inline(surgeist_dom::DomInlineStyleError::Cssom(
+                surgeist_cssom::CssomError::RevisionExhausted
+            ))
         ))
     ));
     assert_eq!(session.snapshot().stamp(), before.stamp());
@@ -788,6 +795,7 @@ fn runtime_capacity_refusal_retries_original_inline_handoff_once() {
         ),
         source_limits(),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut |_| None,
             url: None,
@@ -797,8 +805,8 @@ fn runtime_capacity_refusal_retries_original_inline_handoff_once() {
     );
     assert!(matches!(
         result,
-        Err(crate::DomSourceRuntimeError::Hosted(
-            DomHostedRuntimeError::Admission
+        Err(crate::DomSourceDriveError::Source(
+            crate::DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Admission)
         ))
     ));
     assert_eq!(session.snapshot().stamp(), before.stamp());
@@ -824,6 +832,7 @@ fn runtime_capacity_refusal_retries_original_inline_handoff_once() {
             original.operation(),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,

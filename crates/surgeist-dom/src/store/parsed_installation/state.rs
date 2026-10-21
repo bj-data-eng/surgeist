@@ -70,7 +70,6 @@ pub(super) fn transfer_document_meta<'a>(
     }
     for domain in [
         HtmlParseMetaDomain::Refresh,
-        HtmlParseMetaDomain::PreferredStyle,
         HtmlParseMetaDomain::Csp,
         HtmlParseMetaDomain::ThemeColor,
         HtmlParseMetaDomain::ColorScheme,
@@ -118,7 +117,7 @@ pub(super) fn admit_history(
     report: &HtmlParseReport,
     environment: Option<&DomParsedDocumentEnvironment>,
     c: &mut Control<'_>,
-) -> Result<(), Error> {
+) -> Result<custody::Usage, Error> {
     c.step(1)?;
     let source = report.source();
     let source_bytes = if let Some(utf16) = source.as_utf16() {
@@ -131,6 +130,13 @@ pub(super) fn admit_history(
     } else {
         source.len()
     };
+    let mut units = usize::try_from(report.retained_construction_utf16_units())
+        .map_err(|_| Error::RepresentationExhausted)?;
+    if let Some(utf16) = source.as_utf16() {
+        units = units
+            .checked_add(utf16.shared_code_units().capacity())
+            .ok_or(Error::RepresentationExhausted)?;
+    }
     // The URL owner's actual payload and this exact encoding-label backing
     // remain reachable through the installed Document. Sharing does not erase
     // their spare backing admission.
@@ -171,6 +177,9 @@ pub(super) fn admit_history(
                     Error::RepresentationExhausted
                 }
             })?;
+        units = units
+            .checked_add(capture.utf16_extent())
+            .ok_or(Error::RepresentationExhausted)?;
         bytes = bytes
             .checked_add(
                 u64::try_from(capture.retained_bytes())
@@ -185,6 +194,9 @@ pub(super) fn admit_history(
         // interpretation input or a substitute canonical policy binding. Its
         // owner receipt includes the out-of-line header and all spare backing;
         // the report header above includes only the Arc handle.
+        units = units
+            .checked_add(facts.retained_storage_usage().utf16_extent())
+            .ok_or(Error::RepresentationExhausted)?;
         bytes = bytes
             .checked_add(
                 u64::try_from(facts.retained_storage_usage().retained_bytes())
@@ -205,6 +217,9 @@ pub(super) fn admit_history(
         // This owner-issued receipt includes private observation fallback
         // records and actual spare UTF-16/vector backing; formation's logical
         // string extent is deliberately not used as a physical byte measure.
+        units = units
+            .checked_add(facts.retained_storage_usage().utf16_extent())
+            .ok_or(Error::RepresentationExhausted)?;
         bytes = bytes
             .checked_add(
                 u64::try_from(facts.retained_storage_usage().retained_bytes())
@@ -221,6 +236,9 @@ pub(super) fn admit_history(
                 if let Some(facts) = record.document_base_facts()
                     && !root_facts.is_some_and(|root| root.same_owner(facts))
                 {
+                    units = units
+                        .checked_add(facts.retained_storage_usage().utf16_extent())
+                        .ok_or(Error::RepresentationExhausted)?;
                     bytes = bytes
                         .checked_add(
                             u64::try_from(facts.retained_storage_usage().retained_bytes())
@@ -239,7 +257,13 @@ pub(super) fn admit_history(
         c.string(&environment.encoding_label)?;
         c.string(environment.url.serialization())?;
     }
-    Ok(())
+    Ok(custody::Usage::new(
+        usize::try_from(bytes)
+            .map_err(|_| Error::RepresentationExhausted)?
+            .checked_sub(environment_bytes)
+            .ok_or(Error::RepresentationExhausted)?,
+        units,
+    ))
 }
 
 pub(super) fn metadata(

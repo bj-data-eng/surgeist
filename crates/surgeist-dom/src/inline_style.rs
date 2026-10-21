@@ -311,6 +311,12 @@ pub enum DomInlineStyleError {
     Unbound,
     /// Another actual inline owner-write outcome is still resident.
     OperationPending { element: NodeId },
+    /// Reconciliation requires a failed terminal effect, not a live/applied one.
+    ReconciliationRequiresTerminal {
+        status: surgeist_cssom::CssomOwnerEffectStatus,
+    },
+    /// An effect-free operation has no owner synchronization to reconcile.
+    ReconciliationNotRequired,
     /// This effect is terminal and cannot be retried as a Pending write.
     TerminalEffect {
         status: surgeist_cssom::CssomOwnerEffectStatus,
@@ -371,7 +377,10 @@ impl DomInlineStyleCapture {
 
 /// DOM-owned envelope for one CSSOM-origin feedback operation. CSSOM keeps its
 /// independent declaration, diagnostic, publication and owner-effect quotas.
-/// Work is cumulative across feedback refusal, parking and retry. Storage uses
+/// Work is cumulative across feedback refusal, parking, reconciliation and retry.
+/// Successful reconciliation emits one terminal outcome; final completion counts
+/// its producer outcome and actual DOM changes against the same output allowance.
+/// Storage uses
 /// the original DOM custody ledger, including canonical replacement overlap.
 #[derive(Clone, Copy, Debug)]
 pub struct DomInlineStyleFeedbackLimits {
@@ -423,57 +432,103 @@ pub enum DomInlineStyleReturn {
     /// removeProperty returns the original serialized removed value.
     Removed(String),
 }
-/// The standard operation's original components and its canonical feedback.
-/// An effect-free producer no-op needs no DOM publication.
+/// Authentic producer evidence for one inline owner-write attempt.
+pub enum DomInlineStyleOutcome {
+    /// Components moved unchanged from the standard declaration executor.
+    Standard {
+        /// Original standard return value.
+        value: DomInlineStyleReturn,
+        /// Original committed publication.
+        publication: surgeist_cssom::CssomPublication,
+        /// Original diagnostics, including their retained source provenance.
+        diagnostics: Vec<surgeist_css::CssRecoveryDiagnostic>,
+        /// Actual affine effects.
+        effects: Vec<surgeist_cssom::CssomOwnerEffect>,
+    },
+    /// Fresh current-state synchronization, without a standard mutation result.
+    Synchronization {
+        /// Actual producer commit; its effects were detached into `effects`.
+        commit: surgeist_cssom::CssomCommit,
+        /// Actual effects taken once from this commit.
+        effects: Vec<surgeist_cssom::CssomOwnerEffect>,
+    },
+}
+impl DomInlineStyleOutcome {
+    /// Publication owned by the actual standard outcome or synchronization commit.
+    pub fn publication(&self) -> &surgeist_cssom::CssomPublication {
+        match self {
+            Self::Standard { publication, .. } => publication,
+            Self::Synchronization { commit, .. } => commit.publication(),
+        }
+    }
+    /// Actual affine effects, including their unchanged failure status.
+    pub fn owner_effects(&self) -> &[surgeist_cssom::CssomOwnerEffect] {
+        match self {
+            Self::Standard { effects, .. } | Self::Synchronization { effects, .. } => effects,
+        }
+    }
+    pub(crate) fn effects_mut(&mut self) -> &mut [surgeist_cssom::CssomOwnerEffect] {
+        match self {
+            Self::Standard { effects, .. } | Self::Synchronization { effects, .. } => effects,
+        }
+    }
+}
+/// Displaced failed attempt. Reconciliation preserves this evidence and does
+/// not turn its terminal effect into a successful application.
+pub struct DomInlineStyleTerminal {
+    pub(crate) element: NodeId,
+    pub(crate) outcome: DomInlineStyleOutcome,
+    pub(crate) spent_work: u64,
+    pub(crate) _custody: crate::store::custody::Debit,
+}
+impl DomInlineStyleTerminal {
+    /// Original exact target.
+    pub fn element(&self) -> NodeId {
+        self.element
+    }
+    /// Original terminal producer evidence.
+    pub fn outcome(&self) -> &DomInlineStyleOutcome {
+        &self.outcome
+    }
+    /// Cumulative lineage work at displacement, not a live counter.
+    pub fn spent_work(&self) -> u64 {
+        self.spent_work
+    }
+    /// Transfer the authentic terminal outcome once.
+    pub fn into_outcome(self) -> DomInlineStyleOutcome {
+        self.outcome
+    }
+}
+/// One producer attempt and its canonical feedback. An effect-free standard
+/// no-op needs no DOM publication.
 pub struct DomInlineStyleCompletion {
-    pub(crate) value: DomInlineStyleReturn,
-    pub(crate) publication: surgeist_cssom::CssomPublication,
-    pub(crate) diagnostics: Vec<surgeist_css::CssRecoveryDiagnostic>,
-    pub(crate) effects: Vec<surgeist_cssom::CssomOwnerEffect>,
+    pub(crate) outcome: DomInlineStyleOutcome,
     pub(crate) dom: Option<DomCommit>,
     pub(crate) _custody: crate::store::custody::Debit,
 }
 impl DomInlineStyleCompletion {
-    /// Original standard result.
-    pub fn value(&self) -> &DomInlineStyleReturn {
-        &self.value
+    /// Authentic standard or synchronization result.
+    pub fn outcome(&self) -> &DomInlineStyleOutcome {
+        &self.outcome
     }
     /// Original CSSOM publication, never synthesized from DOM changes.
     pub fn publication(&self) -> &surgeist_cssom::CssomPublication {
-        &self.publication
+        self.outcome.publication()
     }
-    /// Original recovery diagnostics.
-    pub fn diagnostics(&self) -> &[surgeist_css::CssRecoveryDiagnostic] {
-        &self.diagnostics
-    }
-    /// Original effects, with their actual terminal application states.
+    /// Actual effects and application states.
     pub fn owner_effects(&self) -> &[surgeist_cssom::CssomOwnerEffect] {
-        &self.effects
+        self.outcome.owner_effects()
     }
     /// Canonical feedback publication, absent for an effect-free operation.
     pub fn dom(&self) -> Option<&DomCommit> {
         self.dom.as_ref()
     }
-    /// Move every original component exactly once.
-    pub fn into_parts(
-        self,
-    ) -> (
-        DomInlineStyleReturn,
-        surgeist_cssom::CssomPublication,
-        Vec<surgeist_css::CssRecoveryDiagnostic>,
-        Vec<surgeist_cssom::CssomOwnerEffect>,
-        Option<DomCommit>,
-    ) {
-        (
-            self.value,
-            self.publication,
-            self.diagnostics,
-            self.effects,
-            self.dom,
-        )
+    /// Move the producer evidence and canonical publication exactly once.
+    pub fn into_parts(self) -> (DomInlineStyleOutcome, Option<DomCommit>) {
+        (self.outcome, self.dom)
     }
 }
-/// A committed standard operation either completed its canonical feedback or
+/// A committed standard mutation or fresh synchronization completed feedback or
 /// remains owned by the same DOM. The latter is not a prepublication error.
 #[must_use = "complete or retain the original inline feedback obligation"]
 pub enum DomInlineStyleMutation<'a> {

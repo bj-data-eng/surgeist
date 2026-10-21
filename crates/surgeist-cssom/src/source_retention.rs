@@ -246,6 +246,9 @@ impl State {
             Ok(sources.steps())
         })();
         result.map_err(|error| match error {
+            CssSourceRetentionError::CallerAdmission => {
+                unreachable!("standalone Source collector has no caller admission predicate")
+            }
             CssSourceRetentionError::Limit("retained source bytes") => CssomError::Limit {
                 resource: "retained parse source bytes",
                 maximum: limits.max_retained_source_bytes,

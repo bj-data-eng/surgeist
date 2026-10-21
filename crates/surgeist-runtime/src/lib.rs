@@ -228,15 +228,17 @@ pub use dom_lifecycle::{
     DomHostedTaskWait, DomHostedTopLevel, HostedRuntime,
 };
 pub use dom_source::{
-    DomSelectCompletionProgress, DomSourceDriveProgress, DomSourceInlineStyleEdit,
-    DomSourceRuntime, DomSourceRuntimeError, DomSourceServices, DomSourceUnavailable,
-    DomSourceUrlObservationResult, DomSourceUrlService,
+    DomSelectCompletionProgress, DomSourceDriveError, DomSourceDriveProgress,
+    DomSourceInlineStyleEdit, DomSourceRuntime, DomSourceRuntimeError, DomSourceServices,
+    DomSourceUnavailable, DomSourceUrlObservationResult, DomSourceUrlService,
 };
 pub use dom_style::{
     DomSession, DomSessionCreateError, DomSessionCreateFailure, DomSessionLimits,
     DomShutdownOutcome, DomShutdownReason, DomStyleDisabledObservation, DomStyleEventContext,
-    DomStyleNetworkingProgress, DomStyleNetworkingTaskId, DomStyleProcessedSheet, DomStyleRuntime,
-    DomStyleRuntimeError, DomStyleRuntimeLimits, DomStyleUnavailable,
+    DomStyleMetaError, DomStyleMetaOrdinaryOutcome, DomStyleMetaPreference,
+    DomStyleMetaSourceOutcome, DomStyleNetworkingProgress, DomStyleNetworkingTaskId,
+    DomStyleProcessedSheet, DomStyleRuntime, DomStyleRuntimeError, DomStyleRuntimeLimits,
+    DomStyleSheetSetCommit, DomStyleSheetSetObservation, DomStyleUnavailable,
 };
 pub use effect::{
     AppEffect, AppEffectPayload, CallServiceEffect, CancelTaskEffect, DiagnosticEffect,

@@ -395,6 +395,11 @@ pub(in crate::store) struct Snapshot {
     effect_bytes: usize,
     effect_scoped: bool,
     input: input_processing::InputProcessing,
+    meta_len: Option<usize>,
+    meta_scope: Option<(
+        crate::DomSourceOperationId,
+        crate::store::source::operation::meta::SubjectScope,
+    )>,
 }
 impl Snapshot {
     pub(in crate::store) fn capture(draft: &Draft) -> Self {
@@ -407,11 +412,17 @@ impl Snapshot {
             effect_bytes: draft.effect_bytes,
             effect_scoped: draft.effect_scoped,
             input: draft.input_processing.checkpoint(),
+            meta_len: draft.meta_recording.as_ref().map(|r| r.entries.len()),
+            meta_scope: draft.meta_scope.clone(),
         }
     }
     pub(in crate::store) fn restore(mut self, draft: &mut Draft) {
         self.input.preserve_spent(&draft.input_processing);
         draft.input_processing = self.input;
+        if let (Some(len), Some(recording)) = (self.meta_len, draft.meta_recording.as_mut()) {
+            recording.rollback(len);
+        }
+        draft.meta_scope = self.meta_scope;
         draft.fullscreen_exit = self.fullscreen_exit;
         draft.hosted_pending = self.hosted_pending;
         draft.notification_queued = self.notification_queued;

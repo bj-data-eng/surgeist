@@ -552,6 +552,7 @@ impl<'a> PreparedReportStorage<'a> {
                 _ => {}
             }
         }
+        pending_association::qualify(storage, c)?;
         if storage.fragment.is_some() {
             fragment_document::qualify(storage, c)?;
             frozen.prepare_fragment_effects(c)?;

@@ -103,6 +103,7 @@ fn request(session: &mut DomSession, subject: NodeId) -> DomSourceEventRequest {
             DomSourceEdit::show_dialog(subject),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut policy,
                 url: None,
@@ -127,6 +128,7 @@ fn resume(session: &mut DomSession, operation: DomSourceOperationId) -> DomSourc
             operation,
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut policy,
                 url: None,
@@ -971,6 +973,7 @@ fn hosted_source_open_attribute_completes_actual_watcher_hook_without_queueing()
                 DomSourceEdit::set_attribute(subject, "open", ""),
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
@@ -1018,13 +1021,16 @@ fn hosted_source_open_attribute_completes_actual_watcher_hook_without_queueing()
             operation,
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut policy,
                 url: None
             },
             &cancel
         ),
-        Err(DomSourceRuntimeError::Dom(DomError::InvalidSourceOperation))
+        Err(surgeist_runtime::DomSourceDriveError::Source(
+            DomSourceRuntimeError::Dom(DomError::InvalidSourceOperation)
+        ))
     ));
     let retried = session.snapshot();
     assert_eq!(retried.stamp(), published.stamp());
@@ -1531,6 +1537,7 @@ fn canceled_child_intention_joins_parent_queue_while_grandparent_observation_sur
                             DomSourceEdit::show_dialog(next),
                             source_limits(),
                             &mut DomSourceServices {
+                                meta: None,
                                 execution_scope: None,
                                 style_policy: &mut policy,
                                 url: None,
@@ -2039,6 +2046,7 @@ fn callback_open_is_observed_by_separate_resume_without_queueing_toggle() {
                             DomSourceEdit::set_attribute(subject, "open", ""),
                             source_limits(),
                             &mut DomSourceServices {
+                                meta: None,
                                 execution_scope: None,
                                 style_policy: &mut policy,
                                 url: None
@@ -2113,6 +2121,7 @@ fn pending_nested_request_parks_original_dispatch_and_resumes_without_replay() {
                         DomSourceEdit::show_dialog(second),
                         source_limits(),
                         &mut DomSourceServices {
+                            meta: None,
                             execution_scope: None,
                             style_policy: &mut policy,
                             url: None,
@@ -2338,6 +2347,7 @@ fn uncanceled_beforetoggle_reports_precise_retired_receiver_after_actual_receipt
             request.operation(),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut policy,
                 url: None,
@@ -2346,9 +2356,9 @@ fn uncanceled_beforetoggle_reports_precise_retired_receiver_after_actual_receipt
         )
         .unwrap_err();
     assert!(
-        matches!(error, DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired {
+        matches!(error, surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired {
         operation, subject: retired, action: HtmlDialogAction::ReadOpen,
-    }) if operation == request.operation() && retired == subject)
+    })) if operation == request.operation() && retired == subject)
     );
     // The public whole-owner completion check proves neither the Source tail
     // nor its actual event job remains parked after the terminal retirement.
@@ -2360,7 +2370,7 @@ fn uncanceled_beforetoggle_reports_precise_retired_receiver_after_actual_receipt
 
 struct AncestorRecovery {
     permission: DomSourceRuntime,
-    child_progress: Option<Result<DomSourceDriveProgress, DomSourceRuntimeError>>,
+    child_progress: Option<Result<DomSourceDriveProgress, DomSourceDriveError>>,
     calls: Vec<&'static str>,
     edits: usize,
     refusal: Option<DomError>,
@@ -2387,6 +2397,7 @@ fn replacement_permission_raises_exhausted_ancestor_without_replaying_retained_c
                     DomSourceEdit::show_dialog(second),
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None,
@@ -2722,7 +2733,7 @@ fn late_adapter_work_refusal_recovers_same_receipt_through_qualified_monotonic_p
 
 struct ByteOverlap {
     source: DomSourceRuntime,
-    child: Option<Result<DomSourceDriveProgress, DomSourceRuntimeError>>,
+    child: Option<Result<DomSourceDriveProgress, DomSourceDriveError>>,
     log: Vec<(&'static str, usize)>,
     children: usize,
 }
@@ -2816,6 +2827,7 @@ fn tight_ancestor_bytes_cover_live_nested_nodes_and_allow_repeated_child_removal
                         DomSourceEdit::show_dialog(second),
                         source_limits(),
                         &mut DomSourceServices {
+                            meta: None,
                             execution_scope: None,
                             style_policy: &mut policy,
                             url: None,
@@ -3025,6 +3037,7 @@ fn native_installation_completes_watcher_hook_with_its_actual_created_identity()
                 source_limits(),
             ),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut policy,
                 url: None,
@@ -3081,13 +3094,16 @@ fn native_installation_completes_watcher_hook_with_its_actual_created_identity()
             done.operation(),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut policy,
                 url: None
             },
             &cancel
         ),
-        Err(DomSourceRuntimeError::Dom(DomError::InvalidSourceOperation))
+        Err(surgeist_runtime::DomSourceDriveError::Source(
+            DomSourceRuntimeError::Dom(DomError::InvalidSourceOperation)
+        ))
     ));
     let retried = session.snapshot();
     assert_eq!(retried.stamp(), published.stamp());
@@ -3150,6 +3166,7 @@ fn hosted_dialog_watcher_lifetime(retire_before_removal: bool) {
                 DomSourceEdit::set_attribute(subject, "open", ""),
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
@@ -3274,6 +3291,7 @@ fn hosted_dialog_watcher_lifetime(retire_before_removal: bool) {
                 DomSourceEdit::remove_attribute(subject, "open"),
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None,

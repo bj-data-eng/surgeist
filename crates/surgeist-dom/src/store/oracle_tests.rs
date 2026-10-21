@@ -260,8 +260,14 @@ fn full_root_payload(state: &State) -> source::storage::Payload {
 /// owners still define their own string semantics; this oracle owns the full
 /// traversal and summation, including related producer facts and past names.
 fn full_usage(dom: &Dom) -> DomUsage {
+    // These sparse ordinary-mutation sequences never install parser reports.
+    // Pending ingress accounting has its own real-producer owning tests; do
+    // not silently treat a future parsed contribution as an expected zero.
+    assert!(dom.pending_parsed_html_associations().next().is_none());
     let state = &dom.state;
     let mut usage = DomUsage {
+        parsed_association_bytes: 0,
+        parsed_association_units: 0,
         ranges: 0,
         meta_color_scheme_bytes: 0,
         autofocus_candidates: 0,

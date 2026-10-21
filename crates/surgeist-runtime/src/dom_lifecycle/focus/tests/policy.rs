@@ -41,6 +41,7 @@ fn parked_live(denied: bool) -> LiveCase {
             DomSourceEdit::insert_before(iframe, body, None),
             source_limits(10_000_000),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -87,6 +88,7 @@ fn parked_live(denied: bool) -> LiveCase {
             DomSourceEdit::show_modal_dialog(subject),
             source_limits(10_000_000),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -595,6 +597,7 @@ fn real_modal_close_reserves_its_post_watcher_pending_removal_output_before_queu
             DomSourceEdit::close_dialog(case.subject, None),
             bounded(EXACT_OUTPUTS - 1),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -720,6 +723,7 @@ fn real_modal_close_reserves_its_post_watcher_pending_removal_output_before_queu
                 before.operation(),
                 bounded(EXACT_OUTPUTS),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut |_| None,
                     url: None

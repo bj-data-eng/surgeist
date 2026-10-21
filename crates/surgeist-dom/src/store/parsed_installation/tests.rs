@@ -169,6 +169,9 @@ fn scratch_growth_peak_refuses_public_installation_atomically_and_exact_peak_suc
     // The selected geometric banks hold eight Rows while metadata grows from
     // sixteen to thirty-two. Both metadata allocations coexist during copying;
     // the peak is their sum, not a final-occupancy receipt from the allocator.
+    // The original envelope also reserves the two actual mandatory shared
+    // output Vec payload headers before collection. This is future-backing
+    // reservation, not a claim that those allocations overlap this copy.
     let mut cursor = report.metadata();
     let mut records = 0;
     loop {
@@ -179,7 +182,10 @@ fn scratch_growth_peak_refuses_public_installation_atomically_and_exact_peak_suc
         }
     }
     assert_eq!(records, 17);
-    let peak = 8 * size_of::<Row<'_>>() + (16 + 32) * size_of::<HtmlParseMetadata<'_>>();
+    let peak = 8 * size_of::<Row<'_>>()
+        + (16 + 32) * size_of::<HtmlParseMetadata<'_>>()
+        + size_of::<Vec<DomParsedHtmlBinding>>()
+        + size_of::<Vec<DomParsedHtmlCapturedBinding>>();
     let before = dom.snapshot();
     let usage = dom.usage();
     let result = dom.install_parsed_html_document(

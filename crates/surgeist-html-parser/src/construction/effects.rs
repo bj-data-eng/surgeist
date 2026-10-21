@@ -352,6 +352,17 @@ impl SessionStorage {
                     return self.write_current_effect(c, None);
                 };
                 let binding = document.try_clone(c)?;
+                if self.html_local(c, node, "style")? {
+                    let next_document = document.try_clone(c)?;
+                    self.record_association(
+                        c,
+                        node,
+                        pending_association::OccurrenceKind::StyleDocumentChanged,
+                        None,
+                        Some(next_document),
+                        false,
+                    )?;
+                }
                 self.set_node_document(c, node, binding)?;
                 self.adopt_registry(c, node, &document, root)?;
                 self.start_img_update(

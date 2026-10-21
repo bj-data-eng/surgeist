@@ -1172,6 +1172,21 @@ pub surgeist_html::bounded::HtmlConstructionTextAppendWork::provider_calls: usiz
 pub surgeist_html::bounded::HtmlConstructionTextAppendWork::record_visits: usize
 pub surgeist_html::bounded::HtmlConstructionTextAppendWork::record_writes: usize
 pub surgeist_html::bounded::HtmlConstructionTextAppendWork::relocation_bound_bytes: usize
+pub struct surgeist_html::bounded::HtmlCspOwner
+impl surgeist_html::HtmlCspOwner
+pub fn surgeist_html::HtmlCspOwner::associate_document_with<E>(&mut self, source: &surgeist_html::HtmlCspAssociation, cause: surgeist_html::HtmlCspAssociationCause, admit: &mut impl core::ops::function::FnMut(surgeist_html::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlCspAssociation, surgeist_html::HtmlCspError<E>>
+pub fn surgeist_html::HtmlCspOwner::identity(&self) -> &surgeist_html::HtmlCspOwnerId
+pub fn surgeist_html::HtmlCspOwner::initial_document_with<E>(&mut self, admit: &mut impl core::ops::function::FnMut(surgeist_html::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlCspAssociation, surgeist_html::HtmlCspError<E>>
+pub fn surgeist_html::HtmlCspOwner::new_with<E>(admit: &mut impl core::ops::function::FnMut(surgeist_html::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<Self, surgeist_html::HtmlCspError<E>>
+pub fn surgeist_html::HtmlCspOwner::request_meta_insertion_with<E>(&mut self, current: &surgeist_html::HtmlCspAssociation, processor: &surgeist_html::HtmlCspProcessorProfile, content: surgeist_html::DocumentString, admit: &mut impl core::ops::function::FnMut(surgeist_html::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlMetaCspRequest, surgeist_html::HtmlCspRejected<surgeist_html::DocumentString, E>>
+impl surgeist_html::HtmlCspOwner
+pub fn surgeist_html::HtmlCspOwner::prepare_publication_with<'a, E>(&'a mut self, current: &'a mut surgeist_html::HtmlCspAssociation, request: surgeist_html::HtmlMetaCspRequest, prepared: surgeist_html::HtmlMetaCspPrepared, admit: &mut impl core::ops::function::FnMut(surgeist_html::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlMetaCspPublication<'a>, surgeist_html::HtmlCspRejected<(surgeist_html::HtmlMetaCspRequest, surgeist_html::HtmlMetaCspPrepared), E>>
+pub struct surgeist_html::bounded::HtmlCspProcessorAuthority
+impl surgeist_html::HtmlCspProcessorAuthority
+pub fn surgeist_html::HtmlCspProcessorAuthority::attest_changed_with<A: surgeist_html::HtmlCspPolicyArtifact, E>(&mut self, request: &surgeist_html::HtmlMetaCspRequest, artifact: alloc::sync::Arc<A>, admit: &mut impl core::ops::function::FnMut(surgeist_html::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlMetaCspPrepared, surgeist_html::HtmlCspRejected<alloc::sync::Arc<A>, E>>
+pub fn surgeist_html::HtmlCspProcessorAuthority::attest_unchanged_with<E>(&mut self, request: &surgeist_html::HtmlMetaCspRequest, admit: &mut impl core::ops::function::FnMut(surgeist_html::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlMetaCspPrepared, surgeist_html::HtmlCspError<E>>
+pub fn surgeist_html::HtmlCspProcessorAuthority::new_with<E>(admit: &mut impl core::ops::function::FnMut(surgeist_html::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<Self, surgeist_html::HtmlCspError<E>>
+pub fn surgeist_html::HtmlCspProcessorAuthority::profile_with<E>(&self, semantic_version: u64, admit: &mut impl core::ops::function::FnMut(surgeist_html::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlCspProcessorProfile, surgeist_html::HtmlCspError<E>>
 pub struct surgeist_html::bounded::HtmlFormOwnerResetCursor
 impl surgeist_html::bounded::HtmlFormOwnerResetCursor
 pub fn surgeist_html::bounded::HtmlFormOwnerResetCursor::action(&self) -> surgeist_html::bounded::HtmlFormOwnerResetAction
@@ -1229,6 +1244,10 @@ pub fn surgeist_html::bounded::HtmlMediaInterpretation<'raw, N, A>::theme_color_
 pub fn surgeist_html::bounded::HtmlMediaInterpretation<'raw, N, A>::try_finish(slot: &mut core::option::Option<Self>) -> core::result::Result<surgeist_html::HtmlMediaAttributeReport, surgeist_html::bounded::HtmlMediaInterpretationError>
 pub fn surgeist_html::bounded::HtmlMediaInterpretation<'raw, N, A>::value(&self) -> core::result::Result<surgeist_html::HtmlMediaValue, surgeist_html::bounded::HtmlMediaInterpretationError>
 pub fn surgeist_html::bounded::HtmlMediaInterpretation<'raw, N, A>::value_action(&self) -> core::result::Result<surgeist_html::HtmlMediaCursorAction, surgeist_html::bounded::HtmlMediaInterpretationError>
+pub struct surgeist_html::bounded::HtmlMetaCspPublication<'a>
+impl surgeist_html::HtmlMetaCspPublication<'_>
+pub fn surgeist_html::HtmlMetaCspPublication<'_>::abort(self) -> (surgeist_html::HtmlMetaCspRequest, surgeist_html::HtmlMetaCspPrepared)
+pub fn surgeist_html::HtmlMetaCspPublication<'_>::publish(self) -> surgeist_html::HtmlMetaCspCompletion
 pub struct surgeist_html::bounded::HtmlMicrodataTokenAction<'owner, 'raw>
 impl surgeist_html::bounded::HtmlMicrodataTokenAction<'_, '_>
 pub fn surgeist_html::bounded::HtmlMicrodataTokenAction<'_, '_>::advance<M: surgeist_html::bounded::HtmlMicrodataTokenMeter>(self, meter: &mut M) -> core::result::Result<surgeist_html::bounded::HtmlMicrodataTokenStep, surgeist_html::bounded::HtmlMicrodataTokenActionError<<M as surgeist_html::bounded::HtmlMicrodataTokenMeter>::Error>>
@@ -2247,6 +2266,43 @@ pub fn surgeist_html::HtmlCrossOrigin::into_attribute(self) -> surgeist_html::At
 pub enum surgeist_html::HtmlCrossOriginState
 pub surgeist_html::HtmlCrossOriginState::Keyword(surgeist_html::HtmlCrossOrigin)
 pub surgeist_html::HtmlCrossOriginState::NoCors
+pub enum surgeist_html::HtmlCspAssociationCause
+pub surgeist_html::HtmlCspAssociationCause::Inheritance
+pub surgeist_html::HtmlCspAssociationCause::Installation
+pub enum surgeist_html::HtmlCspError<E>
+pub surgeist_html::HtmlCspError::Interrupted(E)
+pub surgeist_html::HtmlCspError::Protocol(surgeist_html::HtmlCspProtocolError)
+impl<E: core::error::Error + 'static> core::error::Error for surgeist_html::HtmlCspError<E>
+pub fn surgeist_html::HtmlCspError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl<E: core::fmt::Display> core::fmt::Display for surgeist_html::HtmlCspError<E>
+pub fn surgeist_html::HtmlCspError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<E> core::convert::From<surgeist_html::HtmlCspProtocolError> for surgeist_html::HtmlCspError<E>
+pub fn surgeist_html::HtmlCspError<E>::from(error: surgeist_html::HtmlCspProtocolError) -> Self
+pub enum surgeist_html::HtmlCspNativePolicy<'a, A: surgeist_html::HtmlCspPolicyArtifact>
+pub surgeist_html::HtmlCspNativePolicy::External(&'a A)
+pub surgeist_html::HtmlCspNativePolicy::InitialEmpty
+#[non_exhaustive] pub enum surgeist_html::HtmlCspProtocolError
+pub surgeist_html::HtmlCspProtocolError::EmptyContent
+pub surgeist_html::HtmlCspProtocolError::ForeignDocument
+pub surgeist_html::HtmlCspProtocolError::ForeignOwner
+pub surgeist_html::HtmlCspProtocolError::InvalidStorage
+pub surgeist_html::HtmlCspProtocolError::PriorPolicyMismatch
+pub surgeist_html::HtmlCspProtocolError::RepresentationExhausted
+pub surgeist_html::HtmlCspProtocolError::StaleAssociation
+pub surgeist_html::HtmlCspProtocolError::WrongNativeArtifactType
+pub surgeist_html::HtmlCspProtocolError::WrongProcessor
+pub surgeist_html::HtmlCspProtocolError::WrongProfile
+pub surgeist_html::HtmlCspProtocolError::WrongRequest
+impl core::error::Error for surgeist_html::HtmlCspProtocolError
+impl core::fmt::Display for surgeist_html::HtmlCspProtocolError
+pub fn surgeist_html::HtmlCspProtocolError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<E> core::convert::From<surgeist_html::HtmlCspProtocolError> for surgeist_html::HtmlCspError<E>
+pub fn surgeist_html::HtmlCspError<E>::from(error: surgeist_html::HtmlCspProtocolError) -> Self
+#[non_exhaustive] pub enum surgeist_html::HtmlCspUnavailable
+pub surgeist_html::HtmlCspUnavailable::InitialEmptyProcessing
+pub surgeist_html::HtmlCspUnavailable::NativeOwner
+pub surgeist_html::HtmlCspUnavailable::Processor
+pub surgeist_html::HtmlCspUnavailable::Profile
 pub enum surgeist_html::HtmlCurrentFocusChainAction
 pub surgeist_html::HtmlCurrentFocusChainAction::Complete
 pub surgeist_html::HtmlCurrentFocusChainAction::InitializeEmptyChain
@@ -3347,6 +3403,22 @@ pub surgeist_html::HtmlMediaValueClass::Absent
 pub surgeist_html::HtmlMediaValueClass::AsciiWhitespaceOnly
 pub surgeist_html::HtmlMediaValueClass::Empty
 pub surgeist_html::HtmlMediaValueClass::Nontrivial
+pub enum surgeist_html::HtmlMetaCspDisposition
+pub surgeist_html::HtmlMetaCspDisposition::Enforce
+pub enum surgeist_html::HtmlMetaCspOutcome<E>
+pub surgeist_html::HtmlMetaCspOutcome::Cancelled
+pub surgeist_html::HtmlMetaCspOutcome::Completed(surgeist_html::HtmlMetaCspPrepared)
+pub surgeist_html::HtmlMetaCspOutcome::Failed(E)
+pub surgeist_html::HtmlMetaCspOutcome::Refused(E)
+pub surgeist_html::HtmlMetaCspOutcome::Unavailable(surgeist_html::HtmlCspUnavailable)
+pub enum surgeist_html::HtmlMetaCspRemovedDirective
+pub surgeist_html::HtmlMetaCspRemovedDirective::FrameAncestors
+pub surgeist_html::HtmlMetaCspRemovedDirective::ReportUri
+pub surgeist_html::HtmlMetaCspRemovedDirective::Sandbox
+pub enum surgeist_html::HtmlMetaCspSource
+pub surgeist_html::HtmlMetaCspSource::Meta
+pub enum surgeist_html::HtmlMetaCspTrigger
+pub surgeist_html::HtmlMetaCspTrigger::Insertion
 pub enum surgeist_html::HtmlMetaMediaPlacement
 pub surgeist_html::HtmlMetaMediaPlacement::AllowedForThemeColor
 pub surgeist_html::HtmlMetaMediaPlacement::Forbidden
@@ -4863,6 +4935,86 @@ pub fn surgeist_html::HtmlControlLengthReport::getter_limitation_source_clause(&
 pub fn surgeist_html::HtmlControlLengthReport::getter_origin(&self) -> core::option::Option<surgeist_html::HtmlControlGetterOrigin>
 pub fn surgeist_html::HtmlControlLengthReport::processing_source_clause(&self) -> &'static str
 pub fn surgeist_html::HtmlControlLengthReport::reflected_getter(&self) -> core::option::Option<i32>
+pub struct surgeist_html::HtmlCspArtifactLayout
+impl surgeist_html::HtmlCspArtifactLayout
+pub fn surgeist_html::HtmlCspArtifactLayout::disposal(self) -> surgeist_html::HtmlCspDisposalWork
+pub fn surgeist_html::HtmlCspArtifactLayout::storage(self) -> surgeist_html::HtmlCspStorage
+pub fn surgeist_html::HtmlCspArtifactLayout::try_new(storage: surgeist_html::HtmlCspStorage, disposal: surgeist_html::HtmlCspDisposalWork) -> core::result::Result<Self, surgeist_html::HtmlCspProtocolError>
+pub struct surgeist_html::HtmlCspAssociation
+impl surgeist_html::HtmlCspAssociation
+pub fn surgeist_html::HtmlCspAssociation::document(&self) -> &surgeist_html::HtmlCspDocumentId
+pub fn surgeist_html::HtmlCspAssociation::generation(&self) -> &surgeist_html::HtmlCspAssociationGeneration
+pub fn surgeist_html::HtmlCspAssociation::latest(&self) -> core::option::Option<&surgeist_html::HtmlMetaCspQualification>
+pub fn surgeist_html::HtmlCspAssociation::origin(&self) -> &surgeist_html::HtmlCspAssociationOrigin
+pub fn surgeist_html::HtmlCspAssociation::policy(&self) -> &surgeist_html::HtmlCspPolicyState
+pub fn surgeist_html::HtmlCspAssociation::retained_layout(&self) -> core::result::Result<surgeist_html::HtmlCspArtifactLayout, surgeist_html::HtmlCspProtocolError>
+pub struct surgeist_html::HtmlCspAssociationGeneration
+pub struct surgeist_html::HtmlCspAssociationOrigin
+impl surgeist_html::HtmlCspAssociationOrigin
+pub fn surgeist_html::HtmlCspAssociationOrigin::original_document(&self) -> &surgeist_html::HtmlCspDocumentId
+pub fn surgeist_html::HtmlCspAssociationOrigin::transferred_from(&self) -> core::option::Option<(&surgeist_html::HtmlCspDocumentId, &surgeist_html::HtmlCspAssociationGeneration, surgeist_html::HtmlCspAssociationCause)>
+pub struct surgeist_html::HtmlCspDisposalWork
+impl surgeist_html::HtmlCspDisposalWork
+pub fn surgeist_html::HtmlCspDisposalWork::atomic_bytes(self) -> usize
+pub fn surgeist_html::HtmlCspDisposalWork::try_new(work_credits: u64, atomic_bytes: usize) -> core::result::Result<Self, surgeist_html::HtmlCspProtocolError>
+pub fn surgeist_html::HtmlCspDisposalWork::work_credits(self) -> u64
+pub struct surgeist_html::HtmlCspDocumentId
+impl surgeist_html::HtmlCspDocumentId
+pub fn surgeist_html::HtmlCspDocumentId::owner(&self) -> &surgeist_html::HtmlCspOwnerId
+pub struct surgeist_html::HtmlCspLayout
+impl surgeist_html::HtmlCspLayout
+pub fn surgeist_html::HtmlCspLayout::atomic_bytes(self) -> usize
+pub fn surgeist_html::HtmlCspLayout::closing_work(self) -> surgeist_html::HtmlCspDisposalWork
+pub fn surgeist_html::HtmlCspLayout::peak(self) -> surgeist_html::HtmlCspStorage
+pub fn surgeist_html::HtmlCspLayout::processing(work_credits: u64, live: surgeist_html::HtmlCspStorage, closing_work: surgeist_html::HtmlCspDisposalWork, atomic_bytes: usize) -> core::result::Result<Self, surgeist_html::HtmlCspProtocolError>
+pub fn surgeist_html::HtmlCspLayout::retained(self) -> surgeist_html::HtmlCspArtifactLayout
+pub fn surgeist_html::HtmlCspLayout::transferred(self) -> surgeist_html::HtmlCspArtifactLayout
+pub fn surgeist_html::HtmlCspLayout::work_credits(self) -> u64
+pub struct surgeist_html::HtmlCspOwner
+impl surgeist_html::HtmlCspOwner
+pub fn surgeist_html::HtmlCspOwner::associate_document_with<E>(&mut self, source: &surgeist_html::HtmlCspAssociation, cause: surgeist_html::HtmlCspAssociationCause, admit: &mut impl core::ops::function::FnMut(surgeist_html::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlCspAssociation, surgeist_html::HtmlCspError<E>>
+pub fn surgeist_html::HtmlCspOwner::identity(&self) -> &surgeist_html::HtmlCspOwnerId
+pub fn surgeist_html::HtmlCspOwner::initial_document_with<E>(&mut self, admit: &mut impl core::ops::function::FnMut(surgeist_html::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlCspAssociation, surgeist_html::HtmlCspError<E>>
+pub fn surgeist_html::HtmlCspOwner::new_with<E>(admit: &mut impl core::ops::function::FnMut(surgeist_html::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<Self, surgeist_html::HtmlCspError<E>>
+pub fn surgeist_html::HtmlCspOwner::request_meta_insertion_with<E>(&mut self, current: &surgeist_html::HtmlCspAssociation, processor: &surgeist_html::HtmlCspProcessorProfile, content: surgeist_html::DocumentString, admit: &mut impl core::ops::function::FnMut(surgeist_html::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlMetaCspRequest, surgeist_html::HtmlCspRejected<surgeist_html::DocumentString, E>>
+impl surgeist_html::HtmlCspOwner
+pub fn surgeist_html::HtmlCspOwner::prepare_publication_with<'a, E>(&'a mut self, current: &'a mut surgeist_html::HtmlCspAssociation, request: surgeist_html::HtmlMetaCspRequest, prepared: surgeist_html::HtmlMetaCspPrepared, admit: &mut impl core::ops::function::FnMut(surgeist_html::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlMetaCspPublication<'a>, surgeist_html::HtmlCspRejected<(surgeist_html::HtmlMetaCspRequest, surgeist_html::HtmlMetaCspPrepared), E>>
+pub struct surgeist_html::HtmlCspOwnerId(_)
+impl core::cmp::Eq for surgeist_html::HtmlCspOwnerId
+impl core::cmp::PartialEq for surgeist_html::HtmlCspOwnerId
+pub fn surgeist_html::HtmlCspOwnerId::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::HtmlCspPolicyId
+pub struct surgeist_html::HtmlCspPolicyRevision(_)
+pub struct surgeist_html::HtmlCspPolicyState(_)
+impl surgeist_html::HtmlCspPolicyState
+pub fn surgeist_html::HtmlCspPolicyState::borrow_native_with<'a, A: surgeist_html::HtmlCspPolicyArtifact, E>(&'a self, processor: &surgeist_html::HtmlCspProcessorProfile, admit: &mut impl core::ops::function::FnMut(surgeist_html::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlCspNativePolicy<'a, A>, surgeist_html::HtmlCspError<E>>
+pub fn surgeist_html::HtmlCspPolicyState::id(&self) -> &surgeist_html::HtmlCspPolicyId
+pub fn surgeist_html::HtmlCspPolicyState::processing_origin(&self) -> core::option::Option<&surgeist_html::HtmlMetaCspQualification>
+pub fn surgeist_html::HtmlCspPolicyState::profile(&self) -> core::option::Option<&surgeist_html::HtmlCspProcessorProfile>
+pub fn surgeist_html::HtmlCspPolicyState::retained_layout(&self) -> surgeist_html::HtmlCspArtifactLayout
+pub fn surgeist_html::HtmlCspPolicyState::revision(&self) -> surgeist_html::HtmlCspPolicyRevision
+impl core::cmp::Eq for surgeist_html::HtmlCspPolicyState
+impl core::cmp::PartialEq for surgeist_html::HtmlCspPolicyState
+pub fn surgeist_html::HtmlCspPolicyState::eq(&self, other: &Self) -> bool
+pub struct surgeist_html::HtmlCspProcessorAuthority
+impl surgeist_html::HtmlCspProcessorAuthority
+pub fn surgeist_html::HtmlCspProcessorAuthority::attest_changed_with<A: surgeist_html::HtmlCspPolicyArtifact, E>(&mut self, request: &surgeist_html::HtmlMetaCspRequest, artifact: alloc::sync::Arc<A>, admit: &mut impl core::ops::function::FnMut(surgeist_html::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlMetaCspPrepared, surgeist_html::HtmlCspRejected<alloc::sync::Arc<A>, E>>
+pub fn surgeist_html::HtmlCspProcessorAuthority::attest_unchanged_with<E>(&mut self, request: &surgeist_html::HtmlMetaCspRequest, admit: &mut impl core::ops::function::FnMut(surgeist_html::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlMetaCspPrepared, surgeist_html::HtmlCspError<E>>
+pub fn surgeist_html::HtmlCspProcessorAuthority::new_with<E>(admit: &mut impl core::ops::function::FnMut(surgeist_html::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<Self, surgeist_html::HtmlCspError<E>>
+pub fn surgeist_html::HtmlCspProcessorAuthority::profile_with<E>(&self, semantic_version: u64, admit: &mut impl core::ops::function::FnMut(surgeist_html::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::HtmlCspProcessorProfile, surgeist_html::HtmlCspError<E>>
+pub struct surgeist_html::HtmlCspProcessorProfile
+impl surgeist_html::HtmlCspProcessorProfile
+pub fn surgeist_html::HtmlCspProcessorProfile::semantic_version(&self) -> u64
+pub fn surgeist_html::HtmlCspProcessorProfile::validate_selected_with<E>(&self, selected: &Self, admit: &mut impl core::ops::function::FnMut(surgeist_html::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<(), surgeist_html::HtmlCspError<E>>
+pub struct surgeist_html::HtmlCspRejected<T, E>
+pub surgeist_html::HtmlCspRejected::error: surgeist_html::HtmlCspError<E>
+pub surgeist_html::HtmlCspRejected::retained: T
+pub struct surgeist_html::HtmlCspStorage
+impl surgeist_html::HtmlCspStorage
+pub fn surgeist_html::HtmlCspStorage::bytes(self) -> usize
+pub fn surgeist_html::HtmlCspStorage::entries(self) -> usize
+pub fn surgeist_html::HtmlCspStorage::try_new(bytes: usize, utf16_units: usize, entries: usize) -> core::result::Result<Self, surgeist_html::HtmlCspProtocolError>
+pub fn surgeist_html::HtmlCspStorage::utf16_units(self) -> usize
 pub struct surgeist_html::HtmlCurrentFocusChainCursor
 impl surgeist_html::HtmlCurrentFocusChainCursor
 pub const fn surgeist_html::HtmlCurrentFocusChainCursor::action(&self) -> surgeist_html::HtmlCurrentFocusChainAction
@@ -5515,6 +5667,44 @@ pub fn surgeist_html::HtmlMediaValueCursor<'a>::advance(&mut self)
 pub fn surgeist_html::HtmlMediaValueCursor<'a>::new(units: core::option::Option<&'a [u16]>) -> Self
 pub fn surgeist_html::HtmlMediaValueCursor<'a>::next_action(&self) -> surgeist_html::HtmlMediaCursorAction
 pub fn surgeist_html::HtmlMediaValueCursor<'a>::result(&self) -> core::option::Option<surgeist_html::HtmlMediaValue>
+pub struct surgeist_html::HtmlMetaCspCompletion
+impl surgeist_html::HtmlMetaCspCompletion
+pub fn surgeist_html::HtmlMetaCspCompletion::into_parts(self) -> (surgeist_html::HtmlMetaCspReceipt, surgeist_html::HtmlCspAssociation, surgeist_html::HtmlMetaCspRequest, surgeist_html::HtmlMetaCspPrepared)
+pub fn surgeist_html::HtmlMetaCspCompletion::receipt(&self) -> &surgeist_html::HtmlMetaCspReceipt
+pub fn surgeist_html::HtmlMetaCspCompletion::retired(&self) -> &surgeist_html::HtmlCspAssociation
+pub struct surgeist_html::HtmlMetaCspOccurrence
+pub struct surgeist_html::HtmlMetaCspPrepared
+impl surgeist_html::HtmlMetaCspPrepared
+pub fn surgeist_html::HtmlMetaCspPrepared::policy(&self) -> &surgeist_html::HtmlCspPolicyState
+pub fn surgeist_html::HtmlMetaCspPrepared::qualification(&self) -> &surgeist_html::HtmlMetaCspQualification
+pub fn surgeist_html::HtmlMetaCspPrepared::retained_layout(&self) -> core::result::Result<surgeist_html::HtmlCspArtifactLayout, surgeist_html::HtmlCspProtocolError>
+pub struct surgeist_html::HtmlMetaCspPublication<'a>
+impl surgeist_html::HtmlMetaCspPublication<'_>
+pub fn surgeist_html::HtmlMetaCspPublication<'_>::abort(self) -> (surgeist_html::HtmlMetaCspRequest, surgeist_html::HtmlMetaCspPrepared)
+pub fn surgeist_html::HtmlMetaCspPublication<'_>::publish(self) -> surgeist_html::HtmlMetaCspCompletion
+pub struct surgeist_html::HtmlMetaCspQualification(_)
+impl surgeist_html::HtmlMetaCspQualification
+pub fn surgeist_html::HtmlMetaCspQualification::content(&self) -> &surgeist_html::DocumentString
+pub fn surgeist_html::HtmlMetaCspQualification::disposition(&self) -> surgeist_html::HtmlMetaCspDisposition
+pub fn surgeist_html::HtmlMetaCspQualification::document(&self) -> &surgeist_html::HtmlCspDocumentId
+pub fn surgeist_html::HtmlMetaCspQualification::generation(&self) -> &surgeist_html::HtmlCspAssociationGeneration
+pub fn surgeist_html::HtmlMetaCspQualification::occurrence(&self) -> &surgeist_html::HtmlMetaCspOccurrence
+pub fn surgeist_html::HtmlMetaCspQualification::prior_policy(&self) -> &surgeist_html::HtmlCspPolicyId
+pub fn surgeist_html::HtmlMetaCspQualification::prior_revision(&self) -> surgeist_html::HtmlCspPolicyRevision
+pub fn surgeist_html::HtmlMetaCspQualification::processor(&self) -> &surgeist_html::HtmlCspProcessorProfile
+pub fn surgeist_html::HtmlMetaCspQualification::removed_directives(&self) -> [surgeist_html::HtmlMetaCspRemovedDirective; 3]
+pub fn surgeist_html::HtmlMetaCspQualification::source(&self) -> surgeist_html::HtmlMetaCspSource
+pub fn surgeist_html::HtmlMetaCspQualification::trigger(&self) -> surgeist_html::HtmlMetaCspTrigger
+pub struct surgeist_html::HtmlMetaCspReceipt
+impl surgeist_html::HtmlMetaCspReceipt
+pub fn surgeist_html::HtmlMetaCspReceipt::policy(&self) -> &surgeist_html::HtmlCspPolicyState
+pub fn surgeist_html::HtmlMetaCspReceipt::qualification(&self) -> &surgeist_html::HtmlMetaCspQualification
+pub fn surgeist_html::HtmlMetaCspReceipt::retained_layout(&self) -> core::result::Result<surgeist_html::HtmlCspArtifactLayout, surgeist_html::HtmlCspProtocolError>
+pub struct surgeist_html::HtmlMetaCspRequest
+impl surgeist_html::HtmlMetaCspRequest
+pub fn surgeist_html::HtmlMetaCspRequest::prior_policy(&self) -> &surgeist_html::HtmlCspPolicyState
+pub fn surgeist_html::HtmlMetaCspRequest::qualification(&self) -> &surgeist_html::HtmlMetaCspQualification
+pub fn surgeist_html::HtmlMetaCspRequest::retained_layout(&self) -> core::result::Result<surgeist_html::HtmlCspArtifactLayout, surgeist_html::HtmlCspProtocolError>
 pub struct surgeist_html::HtmlMeterAttributeInput<'a, A: surgeist_html::HtmlAttributeInput>
 pub surgeist_html::HtmlMeterAttributeInput::high: core::option::Option<&'a A>
 pub surgeist_html::HtmlMeterAttributeInput::low: core::option::Option<&'a A>
@@ -6535,6 +6725,12 @@ impl<A: surgeist_html::HtmlAttributeInput> surgeist_html::HtmlAttributesInput fo
 pub type [A]::Attribute = A
 pub fn [A]::get(&self, index: usize) -> core::option::Option<&A>
 pub fn [A]::len(&self) -> usize
+pub trait surgeist_html::HtmlCspPolicyArtifact: core::any::Any + core::fmt::Debug + core::marker::Send + core::marker::Sync
+pub fn surgeist_html::HtmlCspPolicyArtifact::retained_layout(&self) -> surgeist_html::HtmlCspArtifactLayout
+pub trait surgeist_html::HtmlMetaCspProcessor
+pub type surgeist_html::HtmlMetaCspProcessor::Error
+pub fn surgeist_html::HtmlMetaCspProcessor::prepare<E>(&mut self, request: &surgeist_html::HtmlMetaCspRequest, admit: &mut impl core::ops::function::FnMut(surgeist_html::HtmlCspLayout) -> core::result::Result<(), E>, release: &mut impl core::ops::function::FnMut(surgeist_html::HtmlCspStorage)) -> core::result::Result<surgeist_html::HtmlMetaCspOutcome<Self::Error>, surgeist_html::HtmlCspError<E>>
+pub fn surgeist_html::HtmlMetaCspProcessor::profile(&self) -> &surgeist_html::HtmlCspProcessorProfile
 pub trait surgeist_html::HtmlNameInput
 pub fn surgeist_html::HtmlNameInput::local_name(&self) -> &surgeist_html::DocumentString
 pub fn surgeist_html::HtmlNameInput::namespace_uri(&self) -> core::option::Option<&surgeist_html::DocumentString>

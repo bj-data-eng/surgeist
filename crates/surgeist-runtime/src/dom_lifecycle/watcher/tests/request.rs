@@ -60,7 +60,7 @@ fn removed_record_stays_in_original_invocation_and_resets_without_touching_repla
             DomEventListenerOptions {capture: true, once: true}).unwrap();
         assert!(context.original.borrow().state.running_cancel_action());
         for edit in [DomSourceEdit::remove_attribute(subject, "open"), DomSourceEdit::set_attribute(subject, "open", "")] {
-            let progress = context.source.apply(dom, edit, source_limits(), &mut DomSourceServices {execution_scope: None, style_policy: &mut |_| None, url: None}, &AtomicBool::new(false)).unwrap();
+            let progress = context.source.apply(dom, edit, source_limits(), &mut DomSourceServices {meta: None,execution_scope: None, style_policy: &mut |_| None, url: None}, &AtomicBool::new(false)).unwrap();
             let DomSourceDriveProgress::Complete(done) = progress else {panic!("actual Hook must finish: {progress:?}");};
             context.nested.push(done);
         }
@@ -86,6 +86,7 @@ fn removed_record_stays_in_original_invocation_and_resets_without_touching_repla
             DomSourceEdit::request_close_dialog(subject, Some("retained".into())),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -133,6 +134,7 @@ fn removed_record_stays_in_original_invocation_and_resets_without_touching_repla
             request.operation(),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -245,6 +247,7 @@ fn start_request(
             DomSourceEdit::request_close_dialog(subject, result),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -262,15 +265,20 @@ fn start_request(
     assert_eq!(request.kind(), DomSourceEventKind::Cancel);
     request
 }
+#[expect(
+    clippy::result_large_err,
+    reason = "the helper preserves the actual root and original producer failure for exact driving refusal assertions"
+)]
 fn resume(
     session: &mut DomSession,
     operation: DomSourceOperationId,
-) -> Result<DomSourceDriveProgress, crate::DomSourceRuntimeError> {
+) -> Result<DomSourceDriveProgress, crate::DomSourceDriveError> {
     session.source_execution().resume(
         &mut session.dom(),
         operation,
         source_limits(),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut |_| None,
             url: None,
@@ -658,6 +666,7 @@ fn retired_nested_close_cleanup_parks_at_settle_and_source_tail_without_replay()
                             DomSourceEdit::remove_attribute(subject, "open"),
                             source_limits(),
                             &mut DomSourceServices {
+                                meta: None,
                                 execution_scope: None,
                                 style_policy: &mut |_| None,
                                 url: None,

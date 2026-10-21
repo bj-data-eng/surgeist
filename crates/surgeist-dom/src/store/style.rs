@@ -222,6 +222,7 @@ impl Draft {
         {
             return Ok(());
         }
+        self.guard_pending_associations(self.node(key)?.document(), cancel)?;
         // Without live Ranges, the conservative fixed-counter scan needs no
         // prospective boundary validation. Otherwise run the original guards
         // through the first real wait before qualifying that exposure.
@@ -379,6 +380,7 @@ impl Draft {
             .language()
             .style_state()
             .ok_or(DomError::WrongNodeKind)?;
+        self.guard_pending_associations(self.node(key)?.document(), cancel)?;
         if state.availability == crate::DomStyleSheetAvailability::PendingParsedProcessing {
             return Err(DomError::StyleProcessingUnavailable);
         }
@@ -436,6 +438,7 @@ impl Draft {
         {
             return Ok(());
         }
+        self.guard_pending_associations(self.node(key)?.document(), cancel)?;
         let state = self.element(key)?.language().style_state().expect("Style");
         if state.availability == crate::DomStyleSheetAvailability::PendingParsedProcessing {
             return Err(DomError::StyleProcessingUnavailable);

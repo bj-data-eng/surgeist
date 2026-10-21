@@ -941,7 +941,7 @@ fn copy_rows<T: Copy>(
     Ok(values)
 }
 impl Dom {
-    fn begin_inline_recording(
+    pub(in crate::store) fn begin_inline_recording(
         &mut self,
         context: DomInlineStyleBatchContext,
         cancel: &AtomicBool,

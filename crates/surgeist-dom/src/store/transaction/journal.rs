@@ -75,6 +75,46 @@ pub(in crate::store) struct Mark<U> {
     live: bool,
 }
 
+/// Historical qualification only; the weak allocation handle keeps identity
+/// from reuse without retaining inverse payload or permitting journal access.
+pub(in crate::store) struct Observation<U> {
+    shared: std::sync::Weak<Shared<U>>,
+    epoch: u64,
+    mark: u64,
+}
+impl<U> Clone for Observation<U> {
+    fn clone(&self) -> Self {
+        Self {
+            shared: self.shared.clone(),
+            epoch: self.epoch,
+            mark: self.mark,
+        }
+    }
+}
+impl<U> PartialEq for Observation<U> {
+    fn eq(&self, other: &Self) -> bool {
+        self.shared.ptr_eq(&other.shared) && self.epoch == other.epoch && self.mark == other.mark
+    }
+}
+impl<U> Eq for Observation<U> {}
+impl<U> std::fmt::Debug for Observation<U> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("JournalObservation")
+            .field("epoch", &self.epoch)
+            .field("mark", &self.mark)
+            .finish_non_exhaustive()
+    }
+}
+impl<U> Mark<U> {
+    pub(in crate::store) fn observation(&self) -> Observation<U> {
+        Observation {
+            shared: Arc::downgrade(&self.shared),
+            epoch: self.epoch,
+            mark: self.id,
+        }
+    }
+}
+
 /// Checked before the publication fence. Its infallible commit seals every
 /// private mark belonging to the preceding unpublished segment.
 pub(in crate::store) struct Commit<U> {

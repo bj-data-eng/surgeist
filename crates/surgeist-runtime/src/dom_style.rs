@@ -3,6 +3,14 @@
 //! DOM owns each synchronous source continuation; CSS/CSSOM own parsing, recovery
 //! and sheet identity. This owner binds actual root lists, services those source
 //! requests, and queues completion only after a parsed sheet has no imports.
+mod meta;
+mod sheet_sets;
+pub use meta::{
+    DomStyleMetaError, DomStyleMetaOrdinaryOutcome, DomStyleMetaPreference,
+    DomStyleMetaSourceOutcome,
+};
+pub use sheet_sets::{DomStyleSheetSetCommit, DomStyleSheetSetObservation};
+
 use crate::dom_event::{
     DomEventDispatchLimits, DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher,
     DomEventDom, NativeDomEvent, NativeDomEventOwner,
@@ -70,6 +78,9 @@ pub enum DomStyleUnavailable {
 /// Failure retains all acknowledged external work inside the composing owners.
 #[derive(Debug)]
 pub enum DomStyleRuntimeError {
+    /// Original parsed association inputs remain under canonical DOM custody;
+    /// no live #840 admission/execution service has consumed them.
+    PendingParsedAssociations(surgeist_dom::DomParsedHtmlAssociationId),
     /// Canonical source admission or qualification failed.
     Dom(DomError),
     /// The CSSOM owner refused its actual mutation.
@@ -90,6 +101,22 @@ pub enum DomStyleRuntimeError {
     WrongSession,
     /// A new session cannot reconstruct preexisting root/task custody.
     PreboundSession,
+    /// The actual Document has no bound stylesheet association owner.
+    SheetSetRootUnavailable {
+        /// Exact live Document for which ownership is unavailable.
+        root: NodeId,
+    },
+    /// Preference history belongs to Documents, not ShadowRoot or Element lists.
+    SheetSetDocumentRequired {
+        /// Actual non-Document root supplied by the caller.
+        root: NodeId,
+    },
+    /// The canonical, preference or actual producer revision changed.
+    StaleSheetSetObservation,
+    /// An actual staged or committed Source publication retains exclusive custody.
+    SheetSetPublicationPending,
+    /// The one actual preference/producer output could not be admitted.
+    SheetSetOutputLimit,
     /// An actual canonical source operation is already pending at bootstrap.
     SourcePending(DomSourceOperationId),
     /// The exact retained CSSOM resource is temporarily unavailable or refused work.
@@ -140,6 +167,7 @@ struct Root {
     label: String,
     store: std::rc::Rc<DomStyleCssomRoot>,
     serial: u64,
+    sheet_sets: sheet_sets::RootSets,
 }
 /// Qualified processing output. Media diagnostics keep their own source
 /// coordinate context; body diagnostics remain on the actual CSSOM sheet.
@@ -231,11 +259,13 @@ fn payload_error(error: CssRetainedPayloadError<DomStyleRuntimeError>) -> DomSty
 struct StagedPublication {
     request: DomStyleRequest,
     root: NodeId,
+    root_index: usize,
     owner: std::rc::Rc<DomStyleCssomRoot>,
     batch: Option<CssomBatch>,
     serial: Option<u64>,
     created: Option<(CssomSheetConstruction, bool)>,
     attributes: Option<(CssomSheetId, CssomSheetAttributeEdit)>,
+    sheet_sets: Option<sheet_sets::State>,
 }
 struct Publication {
     request: DomStyleRequest,
@@ -392,15 +422,21 @@ impl StyleState {
         cancel: &AtomicBool,
         maximum: u64,
     ) -> Result<(), DomStyleRuntimeError> {
+        Self::step_counter(&self.work, cancel, maximum)
+    }
+    fn step_counter(
+        work: &std::cell::Cell<u64>,
+        cancel: &AtomicBool,
+        maximum: u64,
+    ) -> Result<(), DomStyleRuntimeError> {
         if cancel.load(Ordering::Relaxed) {
             return Err(DomError::Cancelled.into());
         }
-        let next = self
-            .work
+        let next = work
             .get()
             .checked_add(1)
             .ok_or(DomStyleRuntimeError::Admission)?;
-        self.work.set(next);
+        work.set(next);
         if next > maximum {
             return Err(DomStyleRuntimeError::Admission);
         }
@@ -435,11 +471,10 @@ impl StyleState {
         }
         Ok(())
     }
-    fn storage(
+    fn storage_headers(
         &self,
         candidate: Option<&StagedPublication>,
-        cancel: &AtomicBool,
-        work_limit: u64,
+        mut step: impl FnMut() -> Result<(), DomStyleRuntimeError>,
     ) -> Result<usize, DomStyleRuntimeError> {
         fn add(total: &mut usize, value: usize) -> Result<(), DomStyleRuntimeError> {
             *total = total
@@ -447,7 +482,7 @@ impl StyleState {
                 .ok_or(DomStyleRuntimeError::Admission)?;
             Ok(())
         }
-        self.step_with_work(cancel, work_limit)?;
+        step()?;
         let mut bytes = size_of::<std::cell::RefCell<StyleState>>();
         for (capacity, element) in [
             (self.roots.capacity(), size_of::<Root>()),
@@ -465,16 +500,17 @@ impl StyleState {
             )?;
         }
         for root in &self.roots {
-            self.step_with_work(cancel, work_limit)?;
+            step()?;
             add(&mut bytes, root.label.capacity())?;
+            add(&mut bytes, root.sheet_sets.backing_bytes()?)?;
             add(&mut bytes, size_of::<DomStyleCssomRoot>())?;
         }
         for (index, completion) in self.completions.iter().enumerate() {
-            self.step_with_work(cancel, work_limit)?;
+            step()?;
             let task = completion.task();
             let mut counted = false;
             for root in &self.roots {
-                self.step_with_work(cancel, work_limit)?;
+                step()?;
                 if std::rc::Rc::ptr_eq(&root.store, &task.owner) {
                     counted = true;
                     break;
@@ -482,7 +518,7 @@ impl StyleState {
             }
             if !counted {
                 for previous in &self.completions[..index] {
-                    self.step_with_work(cancel, work_limit)?;
+                    step()?;
                     if std::rc::Rc::ptr_eq(&previous.task().owner, &task.owner) {
                         counted = true;
                         break;
@@ -504,21 +540,38 @@ impl StyleState {
                 Delivery::Delivered(receipt) => add(&mut bytes, receipt.retained_backing_bytes())?,
             }
         }
+        for stage in self.staged.iter().chain(candidate) {
+            if let Some(next) = &stage.sheet_sets {
+                let mut previous = None;
+                for root in &self.roots {
+                    step()?;
+                    if root.node == stage.root {
+                        previous = root.sheet_sets.state();
+                        break;
+                    }
+                }
+                add(&mut bytes, next.additional_backing(previous)?)?;
+            }
+        }
         // Each Arc payload is formed once by this private bank. Public historical
         // observations cannot insert aliases back into it; count its Self once.
         for _ in &self.reports {
-            self.step_with_work(cancel, work_limit)?;
+            step()?;
             add(&mut bytes, size_of::<DomStyleProcessedSheet>())?;
         }
         self.processing(candidate, |value| {
-            self.step_with_work(cancel, work_limit)?;
-            add(
-                &mut bytes,
-                value
-                    .backing(|| self.step_with_work(cancel, work_limit))
-                    .map_err(payload_error)?,
-            )
+            step()?;
+            add(&mut bytes, value.backing(&mut step).map_err(payload_error)?)
         })?;
+        Ok(bytes)
+    }
+    fn storage(
+        &self,
+        candidate: Option<&StagedPublication>,
+        cancel: &AtomicBool,
+        work_limit: u64,
+    ) -> Result<usize, DomStyleRuntimeError> {
+        let bytes = self.storage_headers(candidate, || self.step_with_work(cancel, work_limit))?;
         let remaining = work_limit.saturating_sub(self.work.get());
         let mut sources = CssSourceRetention::new(
             usize::MAX,
@@ -554,13 +607,13 @@ impl StyleState {
                 .ok_or(DomStyleRuntimeError::Admission)?,
         );
         result?;
-        add(
-            &mut bytes,
-            sources
-                .complete_payload_bytes_with(|| self.step_with_work(cancel, work_limit))
-                .map_err(payload_error)?,
-        )?;
-        Ok(bytes)
+        bytes
+            .checked_add(
+                sources
+                    .complete_payload_bytes_with(|| self.step_with_work(cancel, work_limit))
+                    .map_err(payload_error)?,
+            )
+            .ok_or(DomStyleRuntimeError::Admission)
     }
     fn admit(&self, extra: usize, cancel: &AtomicBool) -> Result<(), DomStyleRuntimeError> {
         if self
@@ -826,9 +879,11 @@ impl StyleState {
         if self.roots.len() >= self.limits.roots {
             return Err(DomStyleRuntimeError::Admission);
         }
+        let document = matches!(node.kind(), surgeist_dom::DomNodeKind::Document(_));
         let incoming = label
             .capacity()
-            .checked_add(size_of::<DomStyleCssomRoot>())
+            .checked_add(if document { size_of::<Vec<u16>>() } else { 0 })
+            .and_then(|n| n.checked_add(size_of::<DomStyleCssomRoot>()))
             .ok_or(DomStyleRuntimeError::Admission)?;
         let (old_bank, replacement) =
             persistent_bank_growth(self.roots.len(), self.roots.capacity(), size_of::<Root>())?;
@@ -855,6 +910,7 @@ impl StyleState {
             label,
             store,
             serial: 0,
+            sheet_sets: sheet_sets::RootSets::new(document),
         });
         Ok(())
     }
@@ -939,6 +995,13 @@ impl StyleState {
     }
     fn commit_staged(&mut self) -> Result<(), DomStyleRuntimeError> {
         let staged = self.staged.as_mut().ok_or(DomStyleRuntimeError::Protocol)?;
+        let root = self
+            .roots
+            .get(staged.root_index)
+            .ok_or(DomStyleRuntimeError::Binding)?;
+        if root.node != staged.root || !std::rc::Rc::ptr_eq(&root.store, &staged.owner) {
+            return Err(DomStyleRuntimeError::Binding);
+        }
         // Busy/Poisoned never consumes the actual unattempted producer batch.
         let commit = match staged.owner.commit(&mut staged.batch) {
             Ok(commit) => commit,
@@ -952,12 +1015,12 @@ impl StyleState {
             Err(error) => return Err(error.into()),
         };
         let staged = self.staged.take().expect("commit retained stage");
+        let root = &mut self.roots[staged.root_index];
         if let Some(serial) = staged.serial {
-            self.roots
-                .iter_mut()
-                .find(|root| root.node == staged.root)
-                .expect("original root retained through commit")
-                .serial = serial;
+            root.serial = serial;
+        }
+        if let Some(preferences) = staged.sheet_sets {
+            root.sheet_sets.publish(preferences);
         }
         let created = staged.created.map(|(construction, imports)| {
             let sheet = commit
@@ -1098,6 +1161,7 @@ impl StyleState {
                 let mut batch = self.roots[index]
                     .store
                     .batch(CssomEditGuard::from_snapshot(&snapshot))?;
+                let mut sheet_sets = None;
                 let created = if request.action()
                     == DomStyleAction::Update(HtmlStyleUpdateAction::CreateSheet)
                 {
@@ -1181,6 +1245,13 @@ impl StyleState {
                     {
                         inputs.title = title.shared_code_units().clone();
                     }
+                    sheet_sets = self.prepare_added_sheet_sets(
+                        index,
+                        &snapshot,
+                        &mut batch,
+                        &mut inputs,
+                        cancel,
+                    )?;
                     let construction =
                         batch.create_parsed_sheet_with_media_reports(report, media, inputs)?;
 
@@ -1224,11 +1295,13 @@ impl StyleState {
                 let staged = StagedPublication {
                     request,
                     root,
+                    root_index: index,
                     owner: self.roots[index].store.clone(),
                     batch: Some(batch),
                     serial: created.as_ref().map(|_| self.roots[index].serial + 1),
                     created,
                     attributes: None,
+                    sheet_sets,
                 };
                 self.admit_staged(&staged, cancel)?;
                 self.staged = Some(staged);
@@ -1254,11 +1327,13 @@ impl StyleState {
                 let staged = StagedPublication {
                     request,
                     root,
+                    root_index: index,
                     owner: self.roots[index].store.clone(),
                     batch: Some(batch),
                     serial: None,
                     created: None,
                     attributes: None,
+                    sheet_sets: None,
                 };
                 self.admit_staged(&staged, cancel)?;
                 self.staged = Some(staged);
@@ -1340,11 +1415,13 @@ impl StyleState {
                 let staged = StagedPublication {
                     request,
                     root: root_id,
+                    root_index: index,
                     owner: root.store.clone(),
                     batch: Some(batch),
                     serial: None,
                     created: None,
                     attributes: Some((sheet_id, edit)),
+                    sheet_sets: None,
                 };
                 self.admit_staged(&staged, cancel)?;
                 self.staged = Some(staged);
@@ -1522,7 +1599,13 @@ impl DomSession {
                 ),
             });
         }
-        let reject = if dom.has_style_cssom_roots() {
+        let pending_parsed = dom
+            .pending_parsed_html_associations()
+            .next()
+            .map(|entry| entry.id());
+        let reject = if let Some(id) = pending_parsed {
+            Some(DomStyleRuntimeError::PendingParsedAssociations(id))
+        } else if dom.has_style_cssom_roots() {
             Some(DomStyleRuntimeError::PreboundSession)
         } else if let Some(status) = dom.pending_source_edit() {
             Some(DomStyleRuntimeError::SourcePending(status.operation()))
@@ -2253,6 +2336,10 @@ use crate::{
 use surgeist_dom::DomStyleInlineCspObservation;
 #[cfg(test)]
 mod tests {
+    mod meta;
+    mod meta_source;
+    mod parsed_associations;
+    mod preferred_sets;
     pub(super) fn session_limits(style: super::DomStyleRuntimeLimits) -> super::DomSessionLimits {
         super::DomSessionLimits {
             source_events: crate::dom_dialog::DomSourceEventRuntimeLimits {
@@ -2421,6 +2508,7 @@ mod tests {
                     DomSourceEdit::insert_before(later, container, None),
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None
@@ -2437,6 +2525,7 @@ mod tests {
                     DomSourceEdit::insert_before(earlier, container, Some(later)),
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None
@@ -2453,6 +2542,7 @@ mod tests {
                     DomSourceEdit::insert_before(isolated, shadow, None),
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None
@@ -2494,6 +2584,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
@@ -2525,6 +2616,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
@@ -2611,6 +2703,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
@@ -2651,6 +2744,7 @@ mod tests {
                     DomSourceEdit::set_attribute(style, "title", title.clone()),
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None
@@ -2667,6 +2761,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
@@ -2747,6 +2842,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
@@ -2796,6 +2892,7 @@ mod tests {
                             edit,
                             source_limits(),
                             &mut DomSourceServices {
+                                meta: None,
                                 execution_scope: None,
                                 style_policy: &mut policy,
                                 url: None,
@@ -2889,6 +2986,7 @@ mod tests {
                     DomSourceEdit::insert_before(style, container, None),
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None
@@ -2943,6 +3041,7 @@ mod tests {
                     edit,
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None
@@ -2971,6 +3070,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
@@ -2989,6 +3089,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
@@ -3059,7 +3160,10 @@ mod tests {
         assert_eq!(receipt.callbacks(), 1);
         assert_eq!(context.events, [(target, target)]);
         drop(context);
-        let styles = session.style_execution();
+        let mut styles = session.style_execution();
+        let preference_basis = styles
+            .sheet_sets(&session.dom(), document, &cancel)
+            .unwrap();
         let before_dom = session.snapshot();
         let before = styles.snapshot(document).unwrap().unwrap();
         let sheet = before.sheets()[0].clone();
@@ -3138,6 +3242,19 @@ mod tests {
         assert_eq!(committed.revision().value(), before.revision().value() + 1);
         let parked_dom = session.snapshot();
         assert_eq!(parked_dom.incomplete_source_operation(), Some(operation));
+        assert!(
+            matches!(styles.sheet_sets(&session.dom(), document, &cancel),
+            Err(DomStyleRuntimeError::SourcePending(id)) if id == operation)
+        );
+        assert!(
+            matches!(styles.select_sheet_set(&session.dom(), &preference_basis, &"other".into(), 1, &cancel),
+            Err(DomStyleRuntimeError::SourcePending(id)) if id == operation)
+        );
+        assert_eq!(
+            styles.snapshot(document).unwrap().unwrap().revision(),
+            committed.revision()
+        );
+
         assert!(styles.pending_sheet(0).unwrap().is_none());
         drop(styles); // Sole execution permission; no strong State/root loan survives.
         let DomShutdownOutcome::Pending {
@@ -3165,15 +3282,16 @@ mod tests {
                 operation,
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
                 },
                 &cancelled,
             ),
-            Err(DomSourceRuntimeError::Style(DomStyleRuntimeError::Dom(
-                DomError::Cancelled
-            )))
+            Err(crate::DomSourceDriveError::Source(
+                DomSourceRuntimeError::Style(DomStyleRuntimeError::Dom(DomError::Cancelled))
+            ))
         ));
         assert_eq!(
             styles.snapshot(document).unwrap().unwrap().revision(),
@@ -3207,6 +3325,7 @@ mod tests {
                     operation,
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut |_| panic!("retry must not rerun CSP"),
                         url: None,
@@ -3300,14 +3419,15 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None
                 },
                 &cancel
             ),
-            Err(DomSourceRuntimeError::Style(
-                DomStyleRuntimeError::Admission
+            Err(crate::DomSourceDriveError::Source(
+                DomSourceRuntimeError::Style(DomStyleRuntimeError::Admission)
             ))
         ));
         let operation = session.dom().pending_source_edit().unwrap().operation();
@@ -3345,6 +3465,7 @@ mod tests {
                     operation,
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None
@@ -3547,6 +3668,7 @@ mod tests {
                     edit,
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None
@@ -3581,7 +3703,13 @@ mod tests {
                 + state
                     .roots
                     .iter()
-                    .map(|root| root.label.capacity() + size_of::<DomStyleCssomRoot>())
+                    .map(|root| {
+                        // Each Document in this fixture retains one empty
+                        // preferred-name Vec target; no explicit selection ran.
+                        root.label.capacity()
+                            + size_of::<DomStyleCssomRoot>()
+                            + size_of::<Vec<u16>>()
+                    })
                     .sum::<usize>()
                 + state.reports.len() * size_of::<DomStyleProcessedSheet>();
             let mut sources = CssSourceRetention::new(usize::MAX, 100_000, 128);
@@ -3733,6 +3861,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut |source| {
                         observed = Some((
@@ -3864,6 +3993,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
@@ -3941,6 +4071,7 @@ mod tests {
                     edit,
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None
@@ -4025,6 +4156,7 @@ mod tests {
                     edit,
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None
@@ -4065,6 +4197,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut |_| None,
                     url: None,
@@ -4190,14 +4323,15 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None
                 },
                 &cancel
             ),
-            Err(DomSourceRuntimeError::Style(
-                DomStyleRuntimeError::Admission
+            Err(crate::DomSourceDriveError::Source(
+                DomSourceRuntimeError::Style(DomStyleRuntimeError::Admission)
             ))
         ));
         let pending = session.dom().pending_source_edit().unwrap().operation();
@@ -4218,6 +4352,7 @@ mod tests {
                     pending,
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None
@@ -4417,6 +4552,7 @@ mod tests {
                     edit,
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None
@@ -4449,6 +4585,7 @@ mod tests {
                     edit,
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None
@@ -4648,6 +4785,7 @@ mod tests {
                     DomSourceEdit::detach(target),
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None
@@ -4666,6 +4804,7 @@ mod tests {
                     edit,
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None
@@ -4761,6 +4900,7 @@ mod tests {
                             edit,
                             source_limits(),
                             &mut DomSourceServices {
+                                meta: None,
                                 execution_scope: None,
                                 style_policy: &mut |source| {
                                     *seen =
@@ -4861,6 +5001,7 @@ mod tests {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
@@ -4881,6 +5022,7 @@ mod tests {
                     DomSourceEdit::detach(host),
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None
@@ -4898,6 +5040,7 @@ mod tests {
                     edit,
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None
@@ -5048,7 +5191,9 @@ mod tests {
             )
         };
         let label = String::from("c");
-        let incoming = label.capacity() + size_of::<DomStyleCssomRoot>();
+        // A new Document preference owns its empty Vec target in addition
+        // to the root capability. Preserve the same one-short/exact envelope.
+        let incoming = label.capacity() + size_of::<DomStyleCssomRoot>() + size_of::<Vec<u16>>();
         let replacement = (capacity + 1) * size_of::<Root>();
         let mut low = limits();
         low.storage_bytes = current + replacement + incoming - 1;
@@ -5172,14 +5317,15 @@ mod tests {
                     edit,
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None
                     },
                     &cancel
                 ),
-                Err(DomSourceRuntimeError::Style(
-                    DomStyleRuntimeError::Admission
+                Err(crate::DomSourceDriveError::Source(
+                    DomSourceRuntimeError::Style(DomStyleRuntimeError::Admission)
                 ))
             ),
             "report replacement must be admitted before actual CSSOM owner edit"
@@ -5208,6 +5354,7 @@ mod tests {
                     operation,
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None
@@ -5381,6 +5528,7 @@ mod replacement_test {
                 edit,
                 DomSourceLimits::new(16_000_000, 100000, 10_000_000, 64, 4096, 4096, 1),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut |source| {
                         Some(DomStyleInlineCspObservation::complete_empty(source, 1))

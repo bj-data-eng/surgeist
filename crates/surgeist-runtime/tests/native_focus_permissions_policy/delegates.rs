@@ -10,6 +10,7 @@ fn edit(session: &mut DomSession, edit: DomSourceEdit) {
             edit,
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -116,6 +117,7 @@ fn stable_query(
                     original.operation(),
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut |_| None,
                         url: None,
@@ -338,6 +340,7 @@ fn before_with_policy(
             DomSourceEdit::show_modal_dialog(subject),
             limits,
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -502,6 +505,7 @@ fn empty_delegate_tail_preadmits_only_actual_changed_same_origin_autofocus_outpu
                 before.operation(),
                 output_policy(exact - usize::from(short)),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut |_| None,
                     url: None,
@@ -512,8 +516,10 @@ fn empty_delegate_tail_preadmits_only_actual_changed_same_origin_autofocus_outpu
                 assert!(
                     matches!(
                         result,
-                        Err(DomSourceRuntimeError::ElementTasks(
-                            DomElementTaskRuntimeError::Dom(DomError::SourceOutputLimit)
+                        Err(surgeist_runtime::DomSourceDriveError::Source(
+                            DomSourceRuntimeError::ElementTasks(DomElementTaskRuntimeError::Dom(
+                                DomError::SourceOutputLimit
+                            ))
                         ))
                     ),
                     "whole future output must refuse before QueueToggle publication: {result:?}"
@@ -546,6 +552,7 @@ fn empty_delegate_tail_preadmits_only_actual_changed_same_origin_autofocus_outpu
                         before.operation(),
                         output_policy(exact),
                         &mut DomSourceServices {
+                            meta: None,
                             execution_scope: None,
                             style_policy: &mut |_| None,
                             url: None,

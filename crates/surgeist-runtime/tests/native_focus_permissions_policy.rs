@@ -134,6 +134,7 @@ fn container(
             DomSourceEdit::insert_before(element, destination, None),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -204,6 +205,7 @@ fn drive(
             edit,
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -271,6 +273,7 @@ fn drive(
             event.operation(),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -468,6 +471,7 @@ fn later_raw_attribute_changes_do_not_recompute_the_complete_constructor_policy(
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut |_| None,
                     url: None,
@@ -679,6 +683,7 @@ fn enabled_autofocus_preserves_actual_focusing_wait_and_completes_same_origin_ta
                     DomSourceEdit::set_attribute(subject, name, ""),
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut |_| None,
                         url: None,
@@ -795,6 +800,7 @@ fn beforetoggle_removing_actual_own_inert_preserves_called_focusing_wait_and_exa
                 DomSourceEdit::set_attribute(subject, name, ""),
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut |_| None,
                     url: None,
@@ -812,6 +818,7 @@ fn beforetoggle_removing_actual_own_inert_preserves_called_focusing_wait_and_exa
             DomSourceEdit::show_modal_dialog(subject),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -829,7 +836,7 @@ fn beforetoggle_removing_actual_own_inert_preserves_called_focusing_wait_and_exa
     struct Context {
         source: DomSourceRuntime,
         calls: usize,
-        removed: Option<Result<DomSourceDriveProgress, DomSourceRuntimeError>>,
+        removed: Option<Result<DomSourceDriveProgress, DomSourceDriveError>>,
     }
     let mut context = Context {
         source: session.source_execution(),
@@ -855,6 +862,7 @@ fn beforetoggle_removing_actual_own_inert_preserves_called_focusing_wait_and_exa
                     DomSourceEdit::remove_attribute(subject, "inert"),
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut |_| None,
                         url: None,
@@ -903,6 +911,7 @@ fn beforetoggle_removing_actual_own_inert_preserves_called_focusing_wait_and_exa
             event.operation(),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -959,6 +968,7 @@ fn beforetoggle_removing_actual_own_inert_preserves_called_focusing_wait_and_exa
             event.operation(),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -1028,6 +1038,7 @@ fn enabled_cross_origin_inert_autofocus_dialog_completes_show_modal() {
                 DomSourceEdit::set_attribute(subject, name, ""),
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut |_| None,
                     url: None,
@@ -1159,6 +1170,7 @@ fn enabled_same_origin_inert_autofocus_dialog_completes_its_autofocus_tail() {
                 DomSourceEdit::set_attribute(subject, name, ""),
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut |_| None,
                     url: None,
@@ -1343,6 +1355,7 @@ fn enabled_same_origin_inert_dialog_without_autofocus_completes_after_empty_dele
             DomSourceEdit::set_attribute(subject, "inert", ""),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,

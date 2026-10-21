@@ -8,9 +8,22 @@ use crate::{
 };
 use surgeist_html::{HtmlDocument, HtmlFragment, HtmlNode, HtmlNodeId, HtmlNodeKind};
 use surgeist_html_parser::{
-    HtmlParseBaseState, HtmlParseCompletion, HtmlParseDestination, HtmlParseMetadata,
-    HtmlParseMetadataDocument, HtmlParseMetadataStep, HtmlParseReadiness, HtmlParseReport,
+    HtmlParseAssociationCaptureDisposition, HtmlParseBaseState, HtmlParseCompletion,
+    HtmlParseDestination, HtmlParseMetadata, HtmlParseMetadataDocument, HtmlParseMetadataStep,
+    HtmlParsePendingAssociationStep, HtmlParseReadiness, HtmlParseReport,
 };
+fn historical_document(
+    value: HtmlParseMetadataDocument<'_>,
+) -> crate::DomParsedHtmlHistoricalDocument {
+    match value {
+        HtmlParseMetadataDocument::Owned(node) => {
+            crate::DomParsedHtmlHistoricalDocument::Constructed(node.id())
+        }
+        HtmlParseMetadataDocument::Captured(node) => {
+            crate::DomParsedHtmlHistoricalDocument::Captured(node.id())
+        }
+    }
+}
 mod state;
 #[cfg(test)]
 mod tests;
@@ -151,6 +164,33 @@ impl From<DomError> for Error {
     }
 }
 
+/// Affine reservation for the actual two mandatory shared output payload
+/// headers. The original scratch envelope reserves their future backing before
+/// collection; this is not an observation of simultaneous allocator occupancy.
+struct OutputHeaders {
+    _reserved: (),
+}
+impl OutputHeaders {
+    fn admit(control: &mut Control<'_>) -> Result<Self, Error> {
+        control.retain(
+            size_of::<Vec<DomParsedHtmlBinding>>() + size_of::<Vec<DomParsedHtmlCapturedBinding>>(),
+        )?;
+        Ok(Self { _reserved: () })
+    }
+    fn materialize(
+        self,
+        bindings: Vec<DomParsedHtmlBinding>,
+        captured: Vec<DomParsedHtmlCapturedBinding>,
+    ) -> (
+        Arc<Vec<DomParsedHtmlBinding>>,
+        Arc<Vec<DomParsedHtmlCapturedBinding>>,
+    ) {
+        // Consume the original reservation for these exact payload
+        // allocations; their backing needs no second admission.
+        (Arc::new(bindings), Arc::new(captured))
+    }
+}
+
 struct Row<'a> {
     source: HtmlNode<'a>,
     key: Option<Key>,
@@ -165,6 +205,7 @@ pub(crate) struct ParsedSvgQualification {
     _sealed: (),
 }
 struct PreparedInstallation {
+    output_headers: OutputHeaders,
     prepared: Prepared,
     report: Arc<HtmlParseReport>,
     source_root: HtmlNodeId,
@@ -173,6 +214,11 @@ struct PreparedInstallation {
     context_basis: Option<crate::DomDocumentStamp>,
     captured_bindings: Vec<DomParsedHtmlCapturedBinding>,
     bindings: Vec<DomParsedHtmlBinding>,
+    association_documents: Vec<crate::DomParsedHtmlAssociationDocument>,
+    report_usage: custody::Usage,
+    control_limits: Limits,
+    work: u64,
+    scratch: usize,
     #[cfg(test)]
     admitted_work: u64,
     #[cfg(test)]
@@ -710,6 +756,50 @@ fn collect_rows<'a>(
             | HtmlParseDestination::Cause(_) => {}
         }
     }
+    let mut pending = report.pending_associations();
+    loop {
+        c.step(1)?;
+        match pending.advance() {
+            HtmlParsePendingAssociationStep::Document(view) => {
+                if let HtmlParseAssociationCaptureDisposition::Unavailable(reason) =
+                    view.disposition()
+                {
+                    return Err(Error::AssociationCaptureUnavailable {
+                        document: historical_document(view.document()),
+                        reason,
+                    });
+                }
+                if view.has_obligations() {
+                    source.add_document(view.document(), c)?;
+                }
+            }
+            HtmlParsePendingAssociationStep::Occurrence(view) => {
+                source.add_document(view.document(), c)?;
+                if let Some(previous) = view.previous_document() {
+                    source.add_document(previous, c)?;
+                }
+                if let Some(next) = view.next_document() {
+                    source.add_document(next, c)?;
+                }
+                // A detached creation root may be the historical Style itself.
+                // That identity is evidence, not permission to materialize a
+                // retired historical subject. Structural owners are separate.
+                if matches!(
+                    view.root().kind(),
+                    HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment
+                ) {
+                    source.add(view.root().id(), c)?;
+                }
+                if let Some(style) = view.style()
+                    && let Some(creating) = style.creating_parser_document()
+                {
+                    source.add_document(creating, c)?;
+                }
+            }
+            HtmlParsePendingAssociationStep::Skipped => {}
+            HtmlParsePendingAssociationStep::Complete => break,
+        }
+    }
     // Grow only from actual retained subjects and current relationships. Retired
     // lexical/cause subjects are preserved by the report, never invented NodeIds.
     let mut next = 0;
@@ -732,6 +822,43 @@ fn collect_rows<'a>(
         next += 1;
     }
     Ok(source)
+}
+
+fn association_document(
+    source: &Source<'_>,
+    mapped: &[NodeId],
+    original: HtmlParseMetadataDocument<'_>,
+    documents: &mut Vec<crate::DomParsedHtmlAssociationDocument>,
+    c: &mut Control<'_>,
+) -> Result<(), Error> {
+    let document = match &original {
+        HtmlParseMetadataDocument::Owned(node) => {
+            let index = source
+                .index(&node.id(), c)?
+                .ok_or_else(|| Error::MissingMetadata { subject: node.id() })?;
+            DocumentId(mapped[index])
+        }
+        HtmlParseMetadataDocument::Captured(node) => {
+            let key = source.captured_key(&node.id(), c)?;
+            let Key::Existing(id) = key else {
+                return Err(Error::ForeignContext);
+            };
+            DocumentId(id)
+        }
+    };
+    let historical = historical_document(original);
+    for existing in documents.iter() {
+        c.step(1)?;
+        if existing.source == historical {
+            return Ok(());
+        }
+    }
+    c.reserve(documents, 1)?;
+    documents.push(crate::DomParsedHtmlAssociationDocument {
+        source: historical,
+        document,
+    });
+    Ok(())
 }
 
 fn apply_fragment_effects(
@@ -900,7 +1027,8 @@ impl Dom {
                 return Err(Error::ForeignContext);
             }
         }
-        state::admit_history(&report, environment.as_ref(), &mut c)?;
+        let report_usage = state::admit_history(&report, environment.as_ref(), &mut c)?;
+        let output_headers = OutputHeaders::admit(&mut c)?;
         let mut source = match capture {
             Some(capture) => collect_fragment(&report, capture, &mut c)?,
             None => collect(&report, &mut c)?,
@@ -1131,6 +1259,51 @@ impl Dom {
             DocumentId(mapped[root_index])
         };
         let root_id_canonical = mapped[root_index];
+        let mut association_documents = Vec::new();
+        let mut association_cursor = report.pending_associations();
+        loop {
+            c.step(1)?;
+            match association_cursor.advance() {
+                HtmlParsePendingAssociationStep::Document(view) if view.has_obligations() => {
+                    association_document(
+                        &source,
+                        &mapped,
+                        view.document(),
+                        &mut association_documents,
+                        &mut c,
+                    )?;
+                }
+                HtmlParsePendingAssociationStep::Occurrence(view) if view.requires_processing() => {
+                    association_document(
+                        &source,
+                        &mapped,
+                        view.document(),
+                        &mut association_documents,
+                        &mut c,
+                    )?;
+                    if let Some(next) = view.next_document() {
+                        association_document(
+                            &source,
+                            &mapped,
+                            next,
+                            &mut association_documents,
+                            &mut c,
+                        )?;
+                    }
+                    if let Some(previous) = view.previous_document() {
+                        association_document(
+                            &source,
+                            &mapped,
+                            previous,
+                            &mut association_documents,
+                            &mut c,
+                        )?;
+                    }
+                }
+                HtmlParsePendingAssociationStep::Complete => break,
+                _ => {}
+            }
+        }
         for (row, node) in source.rows.iter().zip(mapped) {
             c.step(1)?;
             bindings.push(DomParsedHtmlBinding {
@@ -1145,6 +1318,7 @@ impl Dom {
         drop(source);
         c.check()?;
         Ok(PreparedInstallation {
+            output_headers,
             prepared,
             report,
             source_root: root_id,
@@ -1153,6 +1327,11 @@ impl Dom {
             context_basis: capture.map(crate::DomHtmlCapture::basis),
             captured_bindings,
             bindings,
+            association_documents,
+            report_usage,
+            control_limits: c.limits,
+            work: c.work,
+            scratch: c.bytes,
             #[cfg(test)]
             admitted_work: c.work,
             #[cfg(test)]
@@ -1186,17 +1365,70 @@ impl Dom {
         pending: PreparedInstallation,
         cancelled: &AtomicBool,
     ) -> Result<DomParsedHtmlInstallation, Error> {
-        let commit = self.publish(pending.prepared, cancelled)?;
+        let mut control = Control {
+            limits: pending.control_limits,
+            work: pending.work,
+            bytes: pending.scratch,
+            peak_bytes: pending.scratch,
+            cancel: cancelled,
+        };
+        control.check()?;
+        let (bindings, captured_bindings) = pending
+            .output_headers
+            .materialize(pending.bindings, pending.captured_bindings);
+        let mut publication = self.prepare_publication(pending.prepared, cancelled)?;
+        let pending_association = (!pending.association_documents.is_empty()).then_some(
+            crate::DomParsedHtmlAssociationId {
+                stamp: publication.to,
+                root: pending.root,
+            },
+        );
+        let mut control_error = None;
+        let candidate = if let Some(id) = pending_association {
+            let result = self.pending_associations.prepare(
+                pending_associations::Transfer {
+                    context_basis: pending.context_basis,
+                    id,
+                    report: pending.report.clone(),
+                    report_usage: pending.report_usage,
+                    documents: pending.association_documents,
+                    bindings: bindings.clone(),
+                    captured: captured_bindings.clone(),
+                },
+                self.limits,
+                || {
+                    control.step(1).map_err(|error| {
+                        control_error = Some(error);
+                        DomError::Cancelled
+                    })
+                },
+            );
+            if let Some(error) = control_error {
+                return Err(error);
+            }
+            Some(result?)
+        } else {
+            None
+        };
+        publication.close_ordinary_sharing(cancelled)?;
+        control.check()?;
+        // Every original-history, mapping, bank and output allocation is now
+        // admitted. Structural publication and durable custody move together.
+        let commit = self.publish_prepared(publication);
+        if let Some(candidate) = candidate {
+            self.pending_associations = candidate;
+        }
         Ok(DomParsedHtmlInstallation {
             report: pending.report,
             source_root: pending.source_root,
             document: pending.document,
             root: pending.root,
             context_basis: pending.context_basis,
-            captured_bindings: pending.captured_bindings,
+            captured_bindings,
+            pending_association,
             snapshot: self.snapshot(),
             changes: commit.changes.clone(),
-            bindings: pending.bindings,
+            bindings,
         })
     }
 }

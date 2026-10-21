@@ -45,7 +45,7 @@ impl AssociatedStorageUsage {
             (HtmlParseResource::AuxiliaryEntries, self.entries),
         ]
     }
-    fn add(
+    pub(super) fn add(
         &mut self,
         bytes: usize,
         units: usize,

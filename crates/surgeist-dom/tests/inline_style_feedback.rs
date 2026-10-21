@@ -115,6 +115,12 @@ fn fixture_with_requirement(
     }
     (dom, d, a, other)
 }
+fn standard_value(outcome: &DomInlineStyleOutcome) -> &DomInlineStyleReturn {
+    match outcome {
+        DomInlineStyleOutcome::Standard { value, .. } => value,
+        DomInlineStyleOutcome::Synchronization { .. } => panic!("expected standard executor"),
+    }
+}
 fn complete(result: DomInlineStyleMutation<'_>) -> DomInlineStyleCompletion {
     match result {
         DomInlineStyleMutation::Complete(c) => c,
@@ -150,7 +156,10 @@ fn standard_setters_and_remove_move_real_results_and_apply_canonical_echo_once()
         )
         .unwrap(),
     );
-    assert!(matches!(c.value(), DomInlineStyleReturn::Unit));
+    assert!(matches!(
+        standard_value(c.outcome()),
+        DomInlineStyleReturn::Unit
+    ));
     assert_eq!(c.owner_effects().len(), 1);
     assert_eq!(
         c.owner_effects()[0].status(),
@@ -199,7 +208,7 @@ fn standard_setters_and_remove_move_real_results_and_apply_canonical_echo_once()
         dom.remove_inline_style_property(a, &i, "width", request(), &cancel())
             .unwrap(),
     );
-    assert!(matches!(c.value(),DomInlineStyleReturn::Removed(v) if v=="4px"));
+    assert!(matches!(standard_value(c.outcome()),DomInlineStyleReturn::Removed(v) if v=="4px"));
     assert_eq!(width(&dom.capture_inline_style(a).unwrap().unwrap()), "");
     assert_eq!(
         c.owner_effects()[0].status(),
@@ -339,7 +348,7 @@ fn last_removal_keeps_empty_attribute_and_second_remove_has_no_echo_publication(
         dom.remove_inline_style_property(a, &i, "width", request(), &cancel())
             .unwrap(),
     );
-    assert!(matches!(c.value(),DomInlineStyleReturn::Removed(v) if v=="9px"));
+    assert!(matches!(standard_value(c.outcome()),DomInlineStyleReturn::Removed(v) if v=="9px"));
     assert_eq!(
         dom.snapshot()
             .node(a)
@@ -358,7 +367,7 @@ fn last_removal_keeps_empty_attribute_and_second_remove_has_no_echo_publication(
         dom.remove_inline_style_property(a, &i, "width", request(), &cancel())
             .unwrap(),
     );
-    assert!(matches!(c.value(),DomInlineStyleReturn::Removed(v) if v.is_empty()));
+    assert!(matches!(standard_value(c.outcome()),DomInlineStyleReturn::Removed(v) if v.is_empty()));
     assert!(c.owner_effects().is_empty());
     assert!(c.dom().is_none());
     assert_eq!(dom.snapshot().stamp(), before);
@@ -686,7 +695,10 @@ fn effect_free_standard_result_completes_even_when_its_resolver_requested_cancel
     assert!(flag.load(Ordering::Relaxed));
     assert!(outcome.owner_effects().is_empty());
     assert!(outcome.dom().is_none());
-    assert!(matches!(outcome.value(), DomInlineStyleReturn::Unit));
+    assert!(matches!(
+        standard_value(outcome.outcome()),
+        DomInlineStyleReturn::Unit
+    ));
     assert_eq!(dom.snapshot().stamp(), before);
     assert_eq!(
         width(&dom.capture_inline_style(element).unwrap().unwrap()),

@@ -146,6 +146,7 @@ fn apply(session: &mut DomSession, edit: DomSourceEdit) -> DomSourceDriveProgres
             edit,
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -219,15 +220,20 @@ fn start_request(
     assert!(request.toggle_event().is_none());
     request
 }
+#[expect(
+    clippy::result_large_err,
+    reason = "the helper preserves the actual root and original producer failure for exact driving refusal assertions"
+)]
 fn resume(
     session: &mut DomSession,
     operation: DomSourceOperationId,
-) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
     session.source_execution().resume(
         &mut session.dom(),
         operation,
         source_limits(),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut |_| None,
             url: None,
@@ -468,6 +474,7 @@ fn nested(context: &mut MutationContext, dom: &mut DomEventDom<'_>, edit: DomSou
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut |_| None,
                     url: None,
@@ -750,9 +757,9 @@ fn cancel_retirement_finishes_started_path_and_once_before_native_final_reset_fa
         drop(receipt);
         let terminal = resume(&mut session, request.operation());
         assert!(
-            matches!(&terminal, Err(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired {
+            matches!(&terminal, Err(surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired {
             operation, subject: actual, action: HtmlDialogAction::SetForceCloseWatcherEnabled(false)
-        })) if *operation == request.operation() && *actual == subject),
+        }))) if *operation == request.operation() && *actual == subject),
             "actual retired Cancel terminal: {terminal:?}"
         );
         assert!(session.dom().pending_source_edit().is_none());
@@ -984,9 +991,9 @@ fn nested_close_retirement_preserves_its_stopped_action_and_settles_original_wat
     drop(receipt);
     let terminal = resume(&mut session, request.operation());
     assert!(
-        matches!(&terminal, Err(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired {
+        matches!(&terminal, Err(surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired {
         operation, subject: actual, action: HtmlDialogAction::ReadOpen
-    })) if *operation == request.operation() && *actual == subject),
+    }))) if *operation == request.operation() && *actual == subject),
         "actual nested Close terminal: {terminal:?}"
     );
     assert!(session.dom().pending_source_edit().is_none());
@@ -1343,6 +1350,7 @@ fn terminal_child_request_inside_parent_cancel_preserves_original_parent_and_no_
                             DomSourceEdit::remove_attribute(context.child, "open"),
                             source_limits(),
                             &mut DomSourceServices {
+                                meta: None,
                                 execution_scope: None,
                                 style_policy: &mut |_| None,
                                 url: None,
@@ -1390,6 +1398,7 @@ fn terminal_child_request_inside_parent_cancel_preserves_original_parent_and_no_
         let parent_marker = dom.snapshot().incomplete_source_operation().expect("real parent request prefix is published");
         let mut invoking = context.invoking.take().expect("original Session permission");
         let child_progress = invoking.apply(dom, DomSourceEdit::request_close_dialog(context.child, Some("child request".into())), source_limits(), &mut DomSourceServices {
+            meta: None,
             execution_scope: None, style_policy: &mut |_| None, url: None,
         }, &cancel()).unwrap();
         let child_request = pending_event(child_progress, DomSourceEventKind::Cancel);
@@ -1403,11 +1412,12 @@ fn terminal_child_request_inside_parent_cancel_preserves_original_parent_and_no_
         assert!(receipt.failures().is_empty());
         drop(receipt);
         let terminal = invoking.resume(dom, child_request.operation(), source_limits(), &mut DomSourceServices {
+            meta: None,
             execution_scope: None, style_policy: &mut |_| None, url: None,
         }, &cancel());
-        assert!(matches!(&terminal, Err(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired {
+        assert!(matches!(&terminal, Err(surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired {
             operation, subject, action: HtmlDialogAction::SetForceCloseWatcherEnabled(false)
-        })) if *operation == child_request.operation() && *subject == context.child), "actual child terminal: {terminal:?}");
+        }))) if *operation == child_request.operation() && *subject == context.child), "actual child terminal: {terminal:?}");
         let actual_parent = dom.pending_source_edit().expect("actual observing parent remains");
         assert_eq!(actual_parent.operation(), parent_marker);
         assert_eq!(actual_parent.cleanup_cause(), None, "terminal child failure cannot become the parent's cleanup cause");

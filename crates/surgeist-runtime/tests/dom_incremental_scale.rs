@@ -221,6 +221,7 @@ fn production_session_local_source_scale() {
                     edit,
                     limits,
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut |_| None,
                         url: None,
@@ -372,6 +373,7 @@ fn production_session_parked_source_reentry_scale() {
                 DomEventCallback::new(move |dom, _, context: &mut Callback, _| {
                     context.calls += 1;
                     let mut services = DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut |_| None,
                         url: None,
@@ -468,6 +470,7 @@ fn production_session_parked_source_reentry_scale() {
                     DomSourceEdit::show_dialog(subject),
                     continuation_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut |_| None,
                         url: None,
@@ -537,6 +540,7 @@ fn production_session_parked_source_reentry_scale() {
                     operation,
                     continuation_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut |_| None,
                         url: None,

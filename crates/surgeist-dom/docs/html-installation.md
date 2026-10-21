@@ -64,7 +64,11 @@ image and Document-policy qualifications. Missing required family or historical
 state, a stale or foreign capture, incompatible environment, cancellation or
 admission failure refuses the complete installation. The adapter separately
 bounds mapped subjects, work, historical backing and simultaneous scratch
-capacities, including old and replacement vectors during growth. Canonical
+capacities, including old and replacement vectors during growth. The two
+mandatory shared output Vec-header payloads are reserved in that same original
+envelope before collection and consumed at actual wrapping; this reservation
+for future backing is separate from measuring simultaneous allocator occupancy.
+Canonical
 Draft and publication retain their own limits. Downstream associations are
 explicitly pending; installation does not execute resources, CSSOM or callbacks.
 For captured historical hyperlink observations, installation checks the actual
@@ -82,8 +86,53 @@ theme-color and authored color-scheme history. The original parser selects CSS
 values under its own finite admission; installation retains the sealed result
 without parsing CSS or replaying native Meta hooks. Selected color-scheme backing
 also consumes the canonical retained-report allowance. Untouched Template-owner
-Documents retain their own known absence. Reached unavailable media/CSS facts,
-preferred-style or CSP processing still refuse the entire installation.
+Documents retain their own known absence. Reached unavailable media/CSS facts
+or intrinsic CSP processing still refuse the entire installation.
+
+## Pending stylesheet associations
+
+A sealed complete parser association capture can install structurally while
+association execution remains pending. `Dom::pending_parsed_html_associations`
+lends the canonical owner's retained contributions, including default-style Meta
+with no sheets. Each contribution keeps the authentic immutable report,
+original result-qualified occurrences/causes/contexts, exact Document bindings,
+the original canonical captured-context stamp, and optional subject bindings.
+Historical subjects without a current binding
+remain historical; installation invents no NodeId for them. The captured-context
+stamp is original history, not current freshness or execution authority. A later
+context observation must match that original basis while the association join
+independently qualifies its actual current owner. An unavailable
+capture refuses before publication.
+
+`DomParsedHtmlAssociationId` combines the actual publication stamp and installed
+root. Installing the same report twice issues distinct destination identities;
+the original occurrence identities stay equal. The canonical bank retains this
+history independently of installation packets, owner moves and later permitted
+node retirement. Intrinsic-only installs retain no additional report owner.
+Removing a Meta, Style or fragment never acknowledges pending work.
+
+`DomLimits::with_parsed_associations` selects finite pending byte and UTF-16
+allowances; the constructor selects 64 MiB and 16 Mi units. Current backing
+accounting includes each actual report graph once, each destination's maps and
+metadata, and sparse semantic index backing. The same canonical custody ledger
+also admits the actual record/control/path union and replacement overlap during
+formation, and later Source operations see that retained union. Per-invocation
+HistoricalBytes remains a separate admission. Caller-held immutable output
+history and allocator/Arc bookkeeping are outside these allowances; they are
+not an RSS claim. Limits cannot fall below current retained pending backing.
+
+Native Style updates, association owner-attribute/disabled operations, adoption
+across either affected Document and nonempty default-style Meta processing
+refuse with `ParsedAssociationPending` until a real association consumer can
+join the original contribution. Unrelated native edits remain usable. Hosted
+Document cleanup refuses pending obligations; ordinary public destruction does
+not support Document destruction. No positive Document-retirement path is
+claimed here.
+
+Association admission, external context binding, actual CSSOM/preference effects
+and completion acknowledgement belong to the later association consumer. These
+read views grant none of that authority and native hooks are not replayed as an
+execution shortcut.
 
 ## Control state and form associations
 

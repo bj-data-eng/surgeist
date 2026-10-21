@@ -80,22 +80,16 @@ fn independent_intrinsics_continue_after_missing_external_domains_and_keep_first
     assert_eq!(state.referrer_policy(), HtmlReferrerPolicy::NoReferrer);
     assert!(!known_refresh(state));
     let first = state.first_missing().unwrap();
-    assert_eq!(first.kind(), &HtmlParseMetaMissingKind::PreferredStyle);
+    assert_eq!(first.kind(), &HtmlParseMetaMissingKind::Csp);
     assert_eq!(first.document().id(), state.document().id());
     assert!(first.cause().is_some());
-    for (domain, kind) in [
-        (
-            HtmlParseMetaDomain::PreferredStyle,
-            HtmlParseMetaMissingKind::PreferredStyle,
-        ),
-        (HtmlParseMetaDomain::Csp, HtmlParseMetaMissingKind::Csp),
-    ] {
-        let HtmlParseMetaDisposition::Unavailable(missing) = state.disposition(domain) else {
-            panic!("actual reached external operation")
-        };
-        assert_eq!(missing.kind(), &kind);
-        assert_eq!(missing.document().id(), state.document().id());
-    }
+    let HtmlParseMetaDisposition::Unavailable(missing) =
+        state.disposition(HtmlParseMetaDomain::Csp)
+    else {
+        panic!("actual reached external operation")
+    };
+    assert_eq!(missing.kind(), &HtmlParseMetaMissingKind::Csp);
+    assert_eq!(missing.document().id(), state.document().id());
     assert!(matches!(
         state.disposition(HtmlParseMetaDomain::ThemeColor),
         HtmlParseMetaDisposition::Complete

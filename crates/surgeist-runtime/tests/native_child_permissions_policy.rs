@@ -112,11 +112,15 @@ fn detached_container(
         .unwrap()
 }
 
+#[expect(
+    clippy::result_large_err,
+    reason = "the helper preserves the actual root and original producer failure for exact driving refusal assertions"
+)]
 fn insert_without_url(
     session: &mut DomSession,
     container: NodeId,
     parent: NodeId,
-) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
     let mut source = session.source_execution();
     let mut policy = |_: &DomStyleSource| None;
     source.apply(
@@ -124,6 +128,7 @@ fn insert_without_url(
         DomSourceEdit::insert_before(container, parent, None),
         source_limits(),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut policy,
             url: None,
@@ -572,9 +577,11 @@ fn present_srcdoc_uses_parent_origin_before_truthful_unsupported_navigation_tail
         assert!(
             matches!(
                 result,
-                Err(DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(
-                    DomHostedError::UnsupportedProfile
-                )))
+                Err(surgeist_runtime::DomSourceDriveError::Source(
+                    DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(
+                        DomHostedError::UnsupportedProfile
+                    ))
+                ))
             ),
             "srcdoc navigation remains outside the admitted initial tail: {result:?}"
         );
@@ -690,6 +697,10 @@ impl FixedUrlInputs {
     }
 }
 
+#[expect(
+    clippy::result_large_err,
+    reason = "the helper preserves the actual root and original producer failure for exact driving refusal assertions"
+)]
 fn insert_with_url(
     session: &mut DomSession,
     container: NodeId,
@@ -699,7 +710,7 @@ fn insert_with_url(
         &DomSourceUrlRequest,
         &AtomicBool,
     ) -> surgeist_runtime::DomSourceUrlObservationResult,
-) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
     let mut source = session.source_execution();
     let mut policy = |_: &DomStyleSource| None;
     source.apply(
@@ -707,6 +718,7 @@ fn insert_with_url(
         DomSourceEdit::insert_before(container, parent, None),
         source_limits(),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut policy,
             url: Some(DomSourceUrlService { revision, observe }),
@@ -917,9 +929,11 @@ fn prebound_blob_entry_environment_supplies_shared_or_unequal_actual_opaque_orig
         assert!(
             matches!(
                 result,
-                Err(DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(
-                    DomHostedError::UnsupportedProfile
-                )))
+                Err(surgeist_runtime::DomSourceDriveError::Source(
+                    DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(
+                        DomHostedError::UnsupportedProfile
+                    ))
+                ))
             ),
             "a non-blank blob navigation is not implemented by this fixture: {result:?}"
         );
@@ -1014,6 +1028,7 @@ fn unavailable_qualified_producer_preserves_request_until_actual_failure_observa
             operation,
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut policy,
                 url: Some(DomSourceUrlService {
@@ -1078,8 +1093,8 @@ fn stale_external_revision_refuses_without_default_policy_then_same_source_resum
     );
     assert!(matches!(
         result,
-        Err(DomSourceRuntimeError::Dom(
-            DomError::SourceUrlInputsMismatch
+        Err(surgeist_runtime::DomSourceDriveError::Source(
+            DomSourceRuntimeError::Dom(DomError::SourceUrlInputsMismatch)
         ))
     ));
     let operation = issued_operation.unwrap();
@@ -1114,6 +1129,7 @@ fn stale_external_revision_refuses_without_default_policy_then_same_source_resum
             operation,
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut policy,
                 url: Some(DomSourceUrlService {
@@ -1180,9 +1196,11 @@ fn parent_active_origin_restriction_precedes_srcdoc_and_is_inherited_by_frame() 
             assert!(
                 matches!(
                     result,
-                    Err(DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(
-                        DomHostedError::UnsupportedProfile
-                    )))
+                    Err(surgeist_runtime::DomSourceDriveError::Source(
+                        DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(
+                            DomHostedError::UnsupportedProfile
+                        ))
+                    ))
                 ),
                 "srcdoc navigation remains unsupported after policy creation: {result:?}"
             );
@@ -1253,6 +1271,7 @@ fn completed_child_policy_and_origin_do_not_change_after_allow_and_sandbox_edits
                 DomSourceEdit::set_attribute(container, name, value),
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
@@ -1323,6 +1342,7 @@ fn adopted_container_uses_new_document_url_basis_and_rejects_old_document_observ
         DomSourceEdit::adopt(container, a.document().node()),
         source_limits(),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut policy,
             url: None,
@@ -1379,8 +1399,8 @@ fn adopted_container_uses_new_document_url_basis_and_rejects_old_document_observ
     assert!(
         matches!(
             result,
-            Err(DomSourceRuntimeError::Dom(
-                DomError::SourceUrlInputsMismatch
+            Err(surgeist_runtime::DomSourceDriveError::Source(
+                DomSourceRuntimeError::Dom(DomError::SourceUrlInputsMismatch)
             ))
         ),
         "old node-Document facts must not establish policy: {result:?}"
@@ -1429,6 +1449,7 @@ fn adopted_container_uses_new_document_url_basis_and_rejects_old_document_observ
             operation,
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut policy,
                 url: Some(DomSourceUrlService {
@@ -1503,6 +1524,7 @@ fn absent_raw_sandbox_after_detach_still_reaches_present_empty_declared_origin_u
         DomSourceEdit::detach(container),
         source_limits(),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut policy,
             url: None,

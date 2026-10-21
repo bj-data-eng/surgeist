@@ -10,6 +10,7 @@ pub(super) enum ManagedFamily {
     Details,
     Dialog,
     Input,
+    Style,
 }
 #[cfg(test)]
 impl ManagedFamily {
@@ -20,6 +21,7 @@ impl ManagedFamily {
             Self::Details => "details",
             Self::Dialog => "dialog",
             Self::Input => "input",
+            Self::Style => "style",
         }
     }
     fn boolean(self) -> &'static str {
@@ -28,6 +30,7 @@ impl ManagedFamily {
             Self::Link => "disabled",
             Self::Details | Self::Dialog => "open",
             Self::Input => "checked",
+            Self::Style => "title",
         }
     }
 }
@@ -35,6 +38,7 @@ impl ManagedFamily {
 #[derive(Clone, Copy)]
 enum ManagedEffect {
     Dialog,
+    Style,
     BaseHref,
     BaseTarget,
     LinkFlags(Option<crate::HtmlLinkFlags>),
@@ -61,6 +65,7 @@ impl SessionStorage {
         payload_write::<ManagedEffect>(c, 1)?;
         Ok(match family {
             ManagedFamily::Dialog => ManagedEffect::Dialog,
+            ManagedFamily::Style => ManagedEffect::Style,
             ManagedFamily::Base if local == "href" => ManagedEffect::BaseHref,
             ManagedFamily::Base => ManagedEffect::BaseTarget,
             ManagedFamily::Link => {
@@ -132,7 +137,7 @@ impl SessionStorage {
         match effect {
             // The generic actual backing owner already ran the exact Dialog
             // hook, including equal writes and removed attributes.
-            ManagedEffect::Dialog => Ok(()),
+            ManagedEffect::Dialog | ManagedEffect::Style => Ok(()),
             ManagedEffect::BaseHref => self.base_change(c, node, None, true),
             ManagedEffect::BaseTarget => Ok(()),
             ManagedEffect::LinkFlags(flags) => {
@@ -385,6 +390,7 @@ impl SessionStorage {
         drop(incoming);
         replace?;
         self.dialog_attribute_at(c, node, position, true)?;
+        self.association_attribute_hook(c, node, position)?;
         Ok(())
     }
     pub(super) fn remove_managed_field(
@@ -418,6 +424,15 @@ impl SessionStorage {
         let Some(index) = selected else {
             return Ok(());
         };
+        let style_effect = surgeist_html::KnownHtmlAttribute::from_name(
+            element.attributes().as_slice()[index].name(),
+        )
+        .map(|attribute| {
+            surgeist_html::style_attribute_effect(
+                element.attributes().as_slice()[index].name().namespace(),
+                attribute,
+            )
+        });
         payload_write::<Option<AttributeStorage>>(c, 2)?;
         let RetainedPayload::Attributes(storage) = &mut self.payloads.values[container] else {
             unreachable!()
@@ -520,6 +535,18 @@ impl SessionStorage {
         });
         if local == "open" {
             self.dialog_open_changed(c, node, true, false)?;
+        }
+        if style_effect == Some(surgeist_html::HtmlStyleAttributeEffect::OwnerAttributes)
+            && self.html_local(c, node, "style")?
+        {
+            self.record_association(
+                c,
+                node,
+                pending_association::OccurrenceKind::StyleOwnerAttributes,
+                None,
+                None,
+                false,
+            )?;
         }
         if base::is_base(
             self.construction
