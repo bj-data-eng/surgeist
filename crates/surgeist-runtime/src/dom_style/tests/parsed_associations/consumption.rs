@@ -1,5 +1,5 @@
 //! Original parse/install/consume boundaries, independent of native Meta hooks.
-use super::super::meta::{cancel, envelope, is_disabled, native_session, observe};
+use super::super::meta::{cancel, is_disabled, native_session, observe};
 use super::super::*;
 use std::sync::Arc;
 use surgeist_dom::*;
@@ -12,6 +12,9 @@ use surgeist_html_semantics::{
     HtmlBaseUrlScheme, HtmlCaptureLimits, HtmlFragmentContext,
 };
 
+fn envelope() -> DomParsedHtmlAssociationLimits {
+    DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 1_000_000, 128).unwrap()
+}
 fn parsing() -> HtmlParseLimits {
     HtmlParseLimits::builder()
         .source_units(100_000)
@@ -289,7 +292,7 @@ fn admitted_pending_session_consumes_original_names_once_and_later_native_style_
                 envelope(),
                 &cancel()
             ),
-            Err(DomStyleParsedMetaError::Meta(DomParsedHtmlMetaError::Admission(DomParsedHtmlMetaAdmissionError::NotPending { contribution }))) if contribution == id
+            Err(DomStyleParsedMetaError::Meta(DomParsedHtmlMetaError::Admission(DomParsedHtmlAssociationAdmissionError::NotPending { contribution }))) if contribution == id
         ),
         "completed evidence cannot be consumed twice"
     );
@@ -359,8 +362,8 @@ fn influencing_style_history_refuses_admission_without_losing_original_dom() {
         DomSession::admit_parsed(dom, session_limits(limits()), envelope(), &cancel()).unwrap_err();
     assert!(matches!(
         rejected.error(),
-        DomSessionCreateFailure::Parsed(DomStyleParsedAdmissionError::Meta(
-            DomParsedHtmlMetaAdmissionError::Unsupported { contribution, kind: surgeist_html_parser::HtmlParseAssociationOccurrenceKind::StyleUpdate(_), .. }
+        DomSessionCreateFailure::Parsed(DomStyleParsedAdmissionError::Association(
+            DomParsedHtmlAssociationAdmissionError::Unsupported { contribution, kind: surgeist_html_parser::HtmlParseAssociationOccurrenceKind::StyleUpdate(_), .. }
         )) if *contribution == id
     ));
     let dom = rejected.into_dom();
@@ -473,7 +476,7 @@ fn refusal_after_an_earlier_complete_contribution_preserves_its_actual_original_
         DomSession::admit_parsed(dom, session_limits(limits()), envelope(), &cancel()).unwrap_err();
     assert!(matches!(
         rejected.error(),
-        DomSessionCreateFailure::Parsed(DomStyleParsedAdmissionError::Meta(_))
+        DomSessionCreateFailure::Parsed(DomStyleParsedAdmissionError::Association(_))
     ));
     let mut dom = rejected.into_dom();
     assert_eq!(dom.snapshot().stamp(), before);
@@ -728,7 +731,7 @@ fn completing_original_meta_keeps_a_real_later_shadow_style_contribution_guarded
         matches!(session.style_execution().select_sheet_set(&session.dom(), &basis, &"B".into(), 1, &cancel()), Err(DomStyleRuntimeError::PendingParsedAssociations(actual)) if actual == second_id)
     );
     assert!(
-        matches!(session.style_execution().consume_parsed_meta(&mut session.dom(), second_id, envelope(), &cancel()), Err(DomStyleParsedMetaError::Meta(DomParsedHtmlMetaError::Admission(DomParsedHtmlMetaAdmissionError::Unsupported {contribution, ..}))) if contribution == second_id)
+        matches!(session.style_execution().consume_parsed_meta(&mut session.dom(), second_id, envelope(), &cancel()), Err(DomStyleParsedMetaError::Meta(DomParsedHtmlMetaError::Admission(DomParsedHtmlAssociationAdmissionError::Unsupported {contribution, ..}))) if contribution == second_id)
     );
     assert_eq!(
         session
@@ -745,13 +748,28 @@ fn finite_output_refusal_and_cancellation_keep_pending_until_a_raised_retry() {
     let id = installed.pending_association().unwrap();
     let document = installed.document();
     let large = envelope();
-    let no_outputs = DomMetaAtomicLimits::new(
+    let no_outputs = DomParsedHtmlAssociationLimits::new(
         large.retained_bytes(),
         large.retained_units(),
         large.work(),
         0,
     )
     .unwrap();
+    let no_work =
+        DomParsedHtmlAssociationLimits::new(large.retained_bytes(), large.retained_units(), 0, 0)
+            .unwrap();
+    let refused =
+        DomSession::admit_parsed(dom, session_limits(limits()), no_work, &cancel()).unwrap_err();
+    assert!(matches!(
+        refused.error(),
+        DomSessionCreateFailure::Parsed(DomStyleParsedAdmissionError::Association(
+            DomParsedHtmlAssociationAdmissionError::Dom(DomError::WorkLimit {
+                resource: DomResource::ParsedAssociationProcessingWork,
+                limit: 0
+            })
+        ))
+    ));
+    let dom = refused.into_dom();
     let mut session =
         DomSession::admit_parsed(dom, session_limits(limits()), no_outputs, &cancel()).unwrap();
     bind(&mut session, document, "finite", Default::default());
@@ -769,7 +787,7 @@ fn finite_output_refusal_and_cancellation_keep_pending_until_a_raised_retry() {
     assert!(matches!(
         error,
         DomStyleParsedMetaError::Runtime(DomStyleRuntimeError::Dom(DomError::ResourceLimit {
-            resource: DomResource::MetaAtomicOutputs,
+            resource: DomResource::ParsedAssociationProcessingOutputs,
             limit: 0
         }))
     ));
@@ -788,7 +806,7 @@ fn finite_output_refusal_and_cancellation_keep_pending_until_a_raised_retry() {
     );
     // One preferred-name output fits the Runtime bank. The remaining genuine
     // root/completion outputs must still be admitted before canonical ack.
-    let one_output = DomMetaAtomicLimits::new(
+    let one_output = DomParsedHtmlAssociationLimits::new(
         large.retained_bytes(),
         large.retained_units(),
         large.work(),
@@ -802,8 +820,8 @@ fn finite_output_refusal_and_cancellation_keep_pending_until_a_raised_retry() {
     assert!(matches!(
         error,
         DomStyleParsedMetaError::Meta(DomParsedHtmlMetaError::Admission(
-            DomParsedHtmlMetaAdmissionError::Dom(DomError::ResourceLimit {
-                resource: DomResource::MetaAtomicOutputs,
+            DomParsedHtmlAssociationAdmissionError::Dom(DomError::ResourceLimit {
+                resource: DomResource::ParsedAssociationProcessingOutputs,
                 limit: 1
             })
         ))
@@ -835,7 +853,7 @@ fn finite_output_refusal_and_cancellation_keep_pending_until_a_raised_retry() {
             .style_execution()
             .consume_parsed_meta(&mut session.dom(), id, large, &cancel_now),
         Err(DomStyleParsedMetaError::Meta(
-            DomParsedHtmlMetaError::Admission(DomParsedHtmlMetaAdmissionError::Dom(
+            DomParsedHtmlMetaError::Admission(DomParsedHtmlAssociationAdmissionError::Dom(
                 DomError::Cancelled
             ))
         ))
@@ -852,7 +870,7 @@ fn finite_output_refusal_and_cancellation_keep_pending_until_a_raised_retry() {
             .style_execution()
             .consume_parsed_meta(&mut session.dom(), id, large, &cancel()),
         Err(DomStyleParsedMetaError::Meta(DomParsedHtmlMetaError::Admission(
-            DomParsedHtmlMetaAdmissionError::NotPending { contribution }
+            DomParsedHtmlAssociationAdmissionError::NotPending { contribution }
         ))) if contribution == id
     ));
 }
@@ -917,7 +935,7 @@ fn a_real_parked_source_tail_and_foreign_session_refuse_without_acknowledgement(
             .style_execution()
             .consume_parsed_meta(&mut other.dom(), id, envelope(), &cancel()),
         Err(DomStyleParsedMetaError::Meta(
-            DomParsedHtmlMetaError::Admission(DomParsedHtmlMetaAdmissionError::Dom(
+            DomParsedHtmlMetaError::Admission(DomParsedHtmlAssociationAdmissionError::Dom(
                 DomError::ForeignOwner
             ))
         ))

@@ -1,7 +1,7 @@
 //! The actual destination entry owns one persistent finite consuming envelope.
 use super::*;
-use crate::parsed_meta::DomParsedHtmlMetaAdmissionError as Error;
-use crate::{DomMetaAtomicLimits, DomMetaRuntimeUsage};
+use crate::parsed_association::DomParsedHtmlAssociationAdmissionError as Error;
+use crate::{DomParsedHtmlAssociationLimits, DomParsedHtmlAssociationRuntimeUsage};
 use std::cell::{Cell, RefCell};
 
 #[derive(Default)]
@@ -23,7 +23,7 @@ impl Control {
     pub(super) fn bind(
         &self,
         id: DomParsedHtmlAssociationId,
-        limits: DomMetaAtomicLimits,
+        limits: DomParsedHtmlAssociationLimits,
     ) -> Result<(), Error> {
         if self.active.load(Ordering::Relaxed) {
             return Err(DomError::ParsedAssociationOperationPending { pending: id }.into());
@@ -55,8 +55,8 @@ impl Control {
     pub(super) fn spent_work(&self) -> u64 {
         self.work.load(Ordering::Relaxed)
     }
-    pub(super) fn limits(&self) -> DomMetaAtomicLimits {
-        DomMetaAtomicLimits::new(
+    pub(super) fn limits(&self) -> DomParsedHtmlAssociationLimits {
+        DomParsedHtmlAssociationLimits::new(
             self.bytes_limit.load(Ordering::Relaxed),
             self.units_limit.load(Ordering::Relaxed),
             self.work_limit.load(Ordering::Relaxed),
@@ -73,7 +73,10 @@ impl Control {
             .ok_or(DomError::RepresentationExhausted)?;
         let limit = self.work_limit.load(Ordering::Relaxed);
         if next > limit {
-            return Err(DomError::Meta(crate::DomMetaError::WorkLimit { limit }));
+            return Err(DomError::WorkLimit {
+                resource: DomResource::ParsedAssociationProcessingWork,
+                limit,
+            });
         }
         self.work.store(next, Ordering::Relaxed);
         Ok(())
@@ -92,12 +95,12 @@ impl Control {
         admit(
             bytes,
             self.bytes_limit.load(Ordering::Relaxed),
-            DomResource::MetaAtomicRetainedBytes,
+            DomResource::ParsedAssociationProcessingRetainedBytes,
         )?;
         admit(
             units,
             self.units_limit.load(Ordering::Relaxed),
-            DomResource::MetaAtomicRetainedUnits,
+            DomResource::ParsedAssociationProcessingRetainedUnits,
         )?;
         self.peak_bytes.fetch_max(bytes, Ordering::Relaxed);
         self.peak_units.fetch_max(units, Ordering::Relaxed);
@@ -120,7 +123,7 @@ impl Control {
         admit(
             next,
             self.outputs_limit.load(Ordering::Relaxed),
-            DomResource::MetaAtomicOutputs,
+            DomResource::ParsedAssociationProcessingOutputs,
         )?;
         self.outputs.store(next, Ordering::Relaxed);
         Ok(())
@@ -135,7 +138,7 @@ pub(super) struct Meter {
     debit: RefCell<Option<custody::Debit>>,
     own: Cell<custody::Usage>,
     controlled: Cell<custody::Usage>,
-    runtime: Cell<DomMetaRuntimeUsage>,
+    runtime: Cell<DomParsedHtmlAssociationRuntimeUsage>,
 }
 impl Drop for Meter {
     fn drop(&mut self) {
@@ -159,7 +162,7 @@ impl Meter {
             debit: RefCell::new(None),
             own: Cell::new(custody::Usage::ZERO),
             controlled: Cell::new(custody::Usage::ZERO),
-            runtime: Cell::new(DomMetaRuntimeUsage {
+            runtime: Cell::new(DomParsedHtmlAssociationRuntimeUsage {
                 bytes: 0,
                 units: 0,
                 outputs: 0,
@@ -221,11 +224,11 @@ impl Meter {
     }
     pub(super) fn runtime(
         &self,
-        usage: DomMetaRuntimeUsage,
+        usage: DomParsedHtmlAssociationRuntimeUsage,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         let old = self.runtime.get();
-        let next = DomMetaRuntimeUsage::new(
+        let next = DomParsedHtmlAssociationRuntimeUsage::new(
             old.bytes().max(usage.bytes()),
             old.units().max(usage.units()),
             old.outputs().max(usage.outputs()),

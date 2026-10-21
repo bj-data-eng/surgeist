@@ -105,6 +105,10 @@ pub(crate) use view_transition::TransitionMembership;
 pub enum DomResource {
     ParsedAssociationBytes,
     ParsedAssociationUnits,
+    ParsedAssociationProcessingRetainedBytes,
+    ParsedAssociationProcessingRetainedUnits,
+    ParsedAssociationProcessingOutputs,
+    ParsedAssociationProcessingWork,
     FullscreenExits,
     FullscreenEvents,
     Ranges,

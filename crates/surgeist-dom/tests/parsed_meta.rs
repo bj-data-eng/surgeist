@@ -13,8 +13,8 @@ use surgeist_html_semantics::{
 fn flag() -> AtomicBool {
     AtomicBool::new(false)
 }
-fn envelope() -> DomMetaAtomicLimits {
-    DomMetaAtomicLimits::new(16_000_000, 1_000_000, 1_000_000, 1024).unwrap()
+fn envelope() -> DomParsedHtmlAssociationLimits {
+    DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 1_000_000, 1024).unwrap()
 }
 fn parse(text: &str) -> Arc<HtmlParseReport> {
     let limits = HtmlParseLimits::builder()
@@ -173,7 +173,7 @@ fn exact_original_names_complete_once_with_real_unchanged_producer_and_no_tree_r
         Ok(_) => panic!("completed destination cannot replay"),
     };
     assert!(
-        matches!(error, DomParsedHtmlMetaAdmissionError::NotPending { contribution } if contribution == id)
+        matches!(error, DomParsedHtmlAssociationAdmissionError::NotPending { contribution } if contribution == id)
     );
 }
 
@@ -192,14 +192,14 @@ fn whole_influencing_style_refuses_without_an_owner_and_remains_pending() {
     let mut hold = dom.begin_parsed_html_meta(id, envelope(), &flag()).unwrap();
     let error = hold.validate_meta(&flag()).unwrap_err();
     assert!(
-        matches!(error, DomParsedHtmlMetaAdmissionError::Unsupported { contribution, .. } if contribution == id)
+        matches!(error, DomParsedHtmlAssociationAdmissionError::Unsupported { contribution, .. } if contribution == id)
     );
     let error = match hold.prepare(&[], &flag()) {
         Err(error) => error,
         Ok(_) => panic!("whole influencing history must remain pending"),
     };
     assert!(
-        matches!(error, DomParsedHtmlMetaError::Admission(DomParsedHtmlMetaAdmissionError::Unsupported { contribution, .. }) if contribution == id)
+        matches!(error, DomParsedHtmlMetaError::Admission(DomParsedHtmlAssociationAdmissionError::Unsupported { contribution, .. }) if contribution == id)
     );
     drop(hold);
     assert_eq!(dom.snapshot().stamp(), stamp);
@@ -282,7 +282,7 @@ fn normal_drop_retries_original_work_but_forgetting_preparation_keeps_it_sealed(
                 Ok(_) => panic!("forgotten graph cannot be reacquired"),
             };
             assert!(
-                matches!(error, DomParsedHtmlMetaAdmissionError::Dom(DomError::ParsedAssociationOperationPending { pending }) if pending == id)
+                matches!(error, DomParsedHtmlAssociationAdmissionError::Dom(DomError::ParsedAssociationOperationPending { pending }) if pending == id)
             );
         } else {
             let mut hold = dom.begin_parsed_html_meta(id, envelope(), &flag()).unwrap();
@@ -304,24 +304,27 @@ fn original_work_is_finite_persistent_and_only_raiseable_after_refusal() {
     );
     let root = owner(document);
     let stamp = dom.snapshot().stamp();
-    let short = DomMetaAtomicLimits::new(16_000_000, 1_000_000, 2, 1024).unwrap();
+    let short = DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 2, 1024).unwrap();
     {
         let mut hold = dom.begin_parsed_html_meta(id, short, &flag()).unwrap();
         assert!(matches!(
             hold.validate_meta(&flag()),
-            Err(DomParsedHtmlMetaAdmissionError::Dom(DomError::Meta(
-                DomMetaError::WorkLimit { limit: 2 }
-            )))
+            Err(DomParsedHtmlAssociationAdmissionError::Dom(
+                DomError::WorkLimit {
+                    resource: DomResource::ParsedAssociationProcessingWork,
+                    limit: 2
+                }
+            ))
         ));
         assert_eq!(hold.spent_work(), 2);
     }
-    let lower = DomMetaAtomicLimits::new(16_000_000, 1_000_000, 1, 1024).unwrap();
+    let lower = DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 1, 1024).unwrap();
     let error = match dom.begin_parsed_html_meta(id, lower, &flag()) {
         Err(error) => error,
         Ok(_) => panic!("original work policy cannot decrease"),
     };
     assert!(
-        matches!(error, DomParsedHtmlMetaAdmissionError::LimitReduction { contribution } if contribution == id)
+        matches!(error, DomParsedHtmlAssociationAdmissionError::LimitReduction { contribution } if contribution == id)
     );
     assert_eq!(dom.snapshot().stamp(), stamp);
     assert!(dom.style_cssom_root(document.node()).unwrap().is_none());
@@ -348,7 +351,7 @@ fn cancellation_and_output_refusal_preserve_original_pending_and_owner() {
         let limits = if canceled {
             envelope()
         } else {
-            DomMetaAtomicLimits::new(16_000_000, 1_000_000, 1_000_000, 0).unwrap()
+            DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 1_000_000, 0).unwrap()
         };
         let mut hold = dom.begin_parsed_html_meta(id, limits, &flag()).unwrap();
         let prepared = hold.prepare(&caps, &flag()).unwrap();
@@ -359,16 +362,16 @@ fn cancellation_and_output_refusal_preserve_original_pending_and_owner() {
         if canceled {
             assert!(matches!(
                 error,
-                DomParsedHtmlMetaError::Admission(DomParsedHtmlMetaAdmissionError::Dom(
+                DomParsedHtmlMetaError::Admission(DomParsedHtmlAssociationAdmissionError::Dom(
                     DomError::Cancelled
                 ))
             ));
         } else {
             assert!(matches!(
                 error,
-                DomParsedHtmlMetaError::Admission(DomParsedHtmlMetaAdmissionError::Dom(
+                DomParsedHtmlMetaError::Admission(DomParsedHtmlAssociationAdmissionError::Dom(
                     DomError::ResourceLimit {
-                        resource: DomResource::MetaAtomicOutputs,
+                        resource: DomResource::ParsedAssociationProcessingOutputs,
                         limit: 0
                     }
                 ))

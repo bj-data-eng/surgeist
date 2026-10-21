@@ -1608,7 +1608,7 @@ impl DomSession {
     pub fn admit_parsed(
         dom: Dom,
         limits: DomSessionLimits,
-        processing: surgeist_dom::DomMetaAtomicLimits,
+        processing: surgeist_dom::DomParsedHtmlAssociationLimits,
         cancel: &AtomicBool,
     ) -> Result<Self, DomSessionCreateError> {
         Self::create(dom, limits, Some((processing, cancel)))
@@ -1620,7 +1620,7 @@ impl DomSession {
     fn create(
         mut dom: Dom,
         limits: DomSessionLimits,
-        parsed: Option<(surgeist_dom::DomMetaAtomicLimits, &AtomicBool)>,
+        parsed: Option<(surgeist_dom::DomParsedHtmlAssociationLimits, &AtomicBool)>,
     ) -> Result<Self, DomSessionCreateError> {
         if dom.has_element_task_source() {
             return Err(DomSessionCreateError {

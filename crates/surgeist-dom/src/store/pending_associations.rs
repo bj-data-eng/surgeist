@@ -322,15 +322,17 @@ impl Bank {
     fn controlled_entry(
         &self,
         id: DomParsedHtmlAssociationId,
-    ) -> Result<bank::ControlledRecord<Entry>, crate::parsed_meta::DomParsedHtmlMetaAdmissionError>
-    {
+    ) -> Result<
+        bank::ControlledRecord<Entry>,
+        crate::parsed_association::DomParsedHtmlAssociationAdmissionError,
+    > {
         let key = usize::try_from(id.stamp.revision().get())
             .map_err(|_| DomError::RepresentationExhausted)?;
         self.entries
             .controlled_record(&self.entry_custody, key)
             .filter(|record| record.value().id == id)
             .ok_or(
-                crate::parsed_meta::DomParsedHtmlMetaAdmissionError::NotPending {
+                crate::parsed_association::DomParsedHtmlAssociationAdmissionError::NotPending {
                     contribution: id,
                 },
             )
@@ -342,7 +344,7 @@ impl Bank {
         limits: DomLimits,
         mut admit_extra: impl FnMut(custody::Usage) -> Result<(), DomError>,
         mut step: impl FnMut() -> Result<(), DomError>,
-    ) -> Result<Self, crate::parsed_meta::DomParsedHtmlMetaAdmissionError> {
+    ) -> Result<Self, crate::parsed_association::DomParsedHtmlAssociationAdmissionError> {
         let original = self.controlled_entry(id)?;
         let registry = &self.registry;
         registry.reconcile_releases();

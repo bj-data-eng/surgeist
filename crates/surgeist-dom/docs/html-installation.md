@@ -145,7 +145,7 @@ replayed as an execution shortcut.
 ### Whole parsed-Meta consumption
 
 `Dom::begin_parsed_html_meta` exclusively borrows one authentic pending
-contribution and binds its finite `DomMetaAtomicLimits`. The original entry
+contribution and binds its finite `DomParsedHtmlAssociationLimits`. The original entry
 retains cumulative work and output admission across retries; limits can only
 increase componentwise. Runtime must charge and admit its actual temporary
 banks through the hold before forming them. Repeated whole storage reports

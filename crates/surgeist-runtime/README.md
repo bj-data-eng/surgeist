@@ -20,7 +20,9 @@ association history remains pending under canonical custody. Explicit
 Session before readiness and before any CSSOM operation. Original contribution
 work and raise-only processing policy survive a refused attempt; structural
 state, identities and effects remain unchanged. Successful admission carries its
-actual Runtime discovery work into that Session.
+actual Runtime discovery work into that Session. Parsed processing uses the
+shared `DomParsedHtmlAssociationLimits` envelope; its admission errors and
+processing resources are distinct from native Meta limits.
 
 The Session's borrowed `pending_parsed_html_associations` iterator discovers
 original canonical custody even after installation outputs are dropped; it lends

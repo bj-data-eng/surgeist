@@ -274,6 +274,8 @@ pub use snapshot::{
     DomTreeScope,
 };
 pub use store::meta_atomic::{DomMetaOrdinaryPreparation, DomMetaOrdinaryPublished};
+mod parsed_association;
+pub use parsed_association::*;
 mod parsed_meta;
 pub use parsed_meta::*;
 pub use store::pending_associations::{

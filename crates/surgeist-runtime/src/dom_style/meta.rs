@@ -311,6 +311,41 @@ impl Steps<'_> {
     }
 }
 
+// A private normalized capacity policy, with the diagnostics of its actual
+// public domain. Native and parsed owners retain distinct public envelopes.
+struct BackingLimits {
+    bytes: usize,
+    units: usize,
+    outputs: usize,
+    resources: [surgeist_dom::DomResource; 3],
+}
+impl BackingLimits {
+    fn native(limits: DomMetaAtomicLimits) -> Self {
+        Self {
+            bytes: limits.retained_bytes(),
+            units: limits.retained_units(),
+            outputs: limits.outputs(),
+            resources: [
+                surgeist_dom::DomResource::MetaAtomicRetainedBytes,
+                surgeist_dom::DomResource::MetaAtomicRetainedUnits,
+                surgeist_dom::DomResource::MetaAtomicOutputs,
+            ],
+        }
+    }
+    fn parsed(limits: surgeist_dom::DomParsedHtmlAssociationLimits) -> Self {
+        Self {
+            bytes: limits.retained_bytes(),
+            units: limits.retained_units(),
+            outputs: limits.outputs(),
+            resources: [
+                surgeist_dom::DomResource::ParsedAssociationProcessingRetainedBytes,
+                surgeist_dom::DomResource::ParsedAssociationProcessingRetainedUnits,
+                surgeist_dom::DomResource::ParsedAssociationProcessingOutputs,
+            ],
+        }
+    }
+}
+
 // Actual temporary/output backing beside the unchanged canonical Runtime bank.
 // Producer-private graphs remain charged by DOM/CSSOM, not a payload tariff here.
 struct Backing {
@@ -321,26 +356,22 @@ struct Backing {
     outputs: usize,
     current: usize,
     runtime_limit: usize,
-    limits: DomMetaAtomicLimits,
+    limits: BackingLimits,
 }
 impl Backing {
     fn check(&self) -> Result<(), DomStyleRuntimeError> {
         for (actual, limit, resource) in [
             (
                 self.bytes - self.dom_shared_bytes,
-                self.limits.retained_bytes(),
-                surgeist_dom::DomResource::MetaAtomicRetainedBytes,
+                self.limits.bytes,
+                self.limits.resources[0],
             ),
             (
                 self.units - self.dom_shared_units,
-                self.limits.retained_units(),
-                surgeist_dom::DomResource::MetaAtomicRetainedUnits,
+                self.limits.units,
+                self.limits.resources[1],
             ),
-            (
-                self.outputs,
-                self.limits.outputs(),
-                surgeist_dom::DomResource::MetaAtomicOutputs,
-            ),
+            (self.outputs, self.limits.outputs, self.limits.resources[2]),
         ] {
             if actual > limit {
                 return Err(DomError::ResourceLimit { resource, limit }.into());
@@ -425,7 +456,7 @@ impl Backing {
             .ok_or(DomStyleRuntimeError::Admission)?;
         self.add(requested)?;
         steps.runtime()?;
-        preparation.admit_runtime(self.usage()?, steps.cancel)?;
+        preparation.admit_runtime(self.native_usage()?, steps.cancel)?;
         values
             .try_reserve_exact(count)
             .map_err(|_| DomStyleRuntimeError::Admission)?;
@@ -439,10 +470,10 @@ impl Backing {
                 .ok_or(DomStyleRuntimeError::Admission)?,
         )?;
         steps.runtime()?;
-        preparation.admit_runtime(self.usage()?, steps.cancel)?;
+        preparation.admit_runtime(self.native_usage()?, steps.cancel)?;
         Ok(())
     }
-    fn usage(&self) -> Result<DomMetaRuntimeUsage, DomStyleRuntimeError> {
+    fn native_usage(&self) -> Result<DomMetaRuntimeUsage, DomStyleRuntimeError> {
         Ok(DomMetaRuntimeUsage::new(
             self.bytes - self.dom_shared_bytes,
             self.units - self.dom_shared_units,
@@ -461,7 +492,7 @@ impl Backing {
             .ok_or(DomStyleRuntimeError::Admission)?;
         self.add(requested)?;
         steps.prefix(hold)?;
-        hold.admit_runtime(self.usage()?, steps.cancel)?;
+        hold.admit_runtime(self.native_usage()?, steps.cancel)?;
         values
             .try_reserve_exact(count)
             .map_err(|_| DomStyleRuntimeError::Admission)?;
@@ -475,7 +506,7 @@ impl Backing {
                 .ok_or(DomStyleRuntimeError::Admission)?,
         )?;
         steps.prefix(hold)?;
-        hold.admit_runtime(self.usage()?, steps.cancel)?;
+        hold.admit_runtime(self.native_usage()?, steps.cancel)?;
         Ok(())
     }
     fn reserve_source<T>(
@@ -490,7 +521,7 @@ impl Backing {
             .ok_or(DomStyleRuntimeError::Admission)?;
         self.add(requested)?;
         steps.joined(preparation)?;
-        preparation.admit_runtime(self.usage()?, steps.cancel)?;
+        preparation.admit_runtime(self.native_usage()?, steps.cancel)?;
         values
             .try_reserve_exact(count)
             .map_err(|_| DomStyleRuntimeError::Admission)?;
@@ -504,7 +535,7 @@ impl Backing {
                 .ok_or(DomStyleRuntimeError::Admission)?,
         )?;
         steps.joined(preparation)?;
-        preparation.admit_runtime(self.usage()?, steps.cancel)?;
+        preparation.admit_runtime(self.native_usage()?, steps.cancel)?;
         Ok(())
     }
 }
@@ -559,7 +590,7 @@ impl DomStyleRuntime {
             outputs: 0,
             current,
             runtime_limit: state.limits.storage_bytes,
-            limits,
+            limits: BackingLimits::native(limits),
         };
         backing.check()?;
         let mut capabilities = Vec::new();
@@ -578,7 +609,7 @@ impl DomStyleRuntime {
         let formation_work = state.work.get() - initial_work;
         // Both banks are outside every DOM loan and remain stable until all
         // returned producer guards have been extracted and released.
-        let prefix = DomMetaRuntimePrefix::new(backing.usage()?, formation_work, limits)
+        let prefix = DomMetaRuntimePrefix::new(backing.native_usage()?, formation_work, limits)
             .map_err(DomStyleRuntimeError::from)?;
         let mut preparation =
             dom.raw_mut()
@@ -695,7 +726,7 @@ impl DomStyleRuntime {
                 backing.retain_name(bytes, units, shared_dom)?;
                 steps.runtime()?;
                 preparation
-                    .admit_runtime(backing.usage()?, cancel)
+                    .admit_runtime(backing.native_usage()?, cancel)
                     .map_err(DomStyleRuntimeError::from)?;
             }
             steps.runtime()?;
@@ -840,10 +871,10 @@ impl DomStyleRuntime {
             outputs: 0,
             current: 0,
             runtime_limit: state.limits.storage_bytes,
-            limits,
+            limits: BackingLimits::native(limits),
         };
         steps.prefix(&hold)?;
-        hold.admit_runtime(backing.usage()?, cancel)
+        hold.admit_runtime(backing.native_usage()?, cancel)
             .map_err(DomStyleRuntimeError::from)?;
         // Persistent Runtime storage excludes this temporary collector, as in
         // the existing owner contract. Its actual scratch is additionally
@@ -991,7 +1022,7 @@ impl DomStyleRuntime {
                 backing.retain_name(bytes, units, shared_dom)?;
                 steps.joined(&preparation)?;
                 preparation
-                    .admit_runtime(backing.usage()?, cancel)
+                    .admit_runtime(backing.native_usage()?, cancel)
                     .map_err(DomStyleRuntimeError::from)?;
             }
             steps.joined(&preparation)?;

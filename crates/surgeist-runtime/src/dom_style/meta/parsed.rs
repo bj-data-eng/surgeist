@@ -35,8 +35,8 @@ impl From<surgeist_dom::DomParsedHtmlMetaError> for DomStyleParsedMetaError {
         Self::Meta(error)
     }
 }
-impl From<surgeist_dom::DomParsedHtmlMetaAdmissionError> for DomStyleParsedMetaError {
-    fn from(error: surgeist_dom::DomParsedHtmlMetaAdmissionError) -> Self {
+impl From<surgeist_dom::DomParsedHtmlAssociationAdmissionError> for DomStyleParsedMetaError {
+    fn from(error: surgeist_dom::DomParsedHtmlAssociationAdmissionError) -> Self {
         Self::Meta(error.into())
     }
 }
@@ -46,13 +46,13 @@ pub enum DomStyleParsedAdmissionError {
     /// Runtime owner setup or finite discovery refused.
     Runtime(DomStyleRuntimeError),
     /// Original whole-contribution classification or admission refused.
-    Meta(surgeist_dom::DomParsedHtmlMetaAdmissionError),
+    Association(surgeist_dom::DomParsedHtmlAssociationAdmissionError),
 }
 impl std::fmt::Display for DomStyleParsedAdmissionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Runtime(error) => write!(f, "parsed Session intake refused: {error}"),
-            Self::Meta(error) => error.fmt(f),
+            Self::Association(error) => error.fmt(f),
         }
     }
 }
@@ -60,7 +60,7 @@ impl std::error::Error for DomStyleParsedAdmissionError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Runtime(error) => Some(error),
-            Self::Meta(error) => Some(error),
+            Self::Association(error) => Some(error),
         }
     }
 }
@@ -69,9 +69,9 @@ impl From<DomStyleRuntimeError> for DomStyleParsedAdmissionError {
         Self::Runtime(error)
     }
 }
-impl From<surgeist_dom::DomParsedHtmlMetaAdmissionError> for DomStyleParsedAdmissionError {
-    fn from(error: surgeist_dom::DomParsedHtmlMetaAdmissionError) -> Self {
-        Self::Meta(error)
+impl From<surgeist_dom::DomParsedHtmlAssociationAdmissionError> for DomStyleParsedAdmissionError {
+    fn from(error: surgeist_dom::DomParsedHtmlAssociationAdmissionError) -> Self {
+        Self::Association(error)
     }
 }
 /// Structural installation refused without processing association effects.
@@ -231,7 +231,11 @@ fn storage(
                     .checked_add(live_bytes)
                     .ok_or(DomStyleRuntimeError::Admission)?;
                 hold.admit_runtime(
-                    DomMetaRuntimeUsage::new(bytes, backing.units, backing.outputs)?,
+                    surgeist_dom::DomParsedHtmlAssociationRuntimeUsage::new(
+                        bytes,
+                        backing.units,
+                        backing.outputs,
+                    )?,
                     steps.cancel,
                 )?;
                 Ok(())
@@ -280,6 +284,15 @@ fn storage(
         .ok_or(DomStyleRuntimeError::Admission)
 }
 impl Backing {
+    fn parsed_usage(
+        &self,
+    ) -> Result<surgeist_dom::DomParsedHtmlAssociationRuntimeUsage, DomStyleRuntimeError> {
+        Ok(surgeist_dom::DomParsedHtmlAssociationRuntimeUsage::new(
+            self.bytes - self.dom_shared_bytes,
+            self.units - self.dom_shared_units,
+            self.outputs,
+        )?)
+    }
     fn reserve_initial<T>(
         &mut self,
         values: &mut Vec<T>,
@@ -292,7 +305,7 @@ impl Backing {
             .ok_or(DomStyleRuntimeError::Admission)?;
         self.add(requested)?;
         steps.prefix(hold)?;
-        hold.admit_runtime(self.usage()?, steps.cancel)?;
+        hold.admit_runtime(self.parsed_usage()?, steps.cancel)?;
         values
             .try_reserve_exact(count)
             .map_err(|_| DomStyleRuntimeError::Admission)?;
@@ -306,7 +319,7 @@ impl Backing {
                 .ok_or(DomStyleRuntimeError::Admission)?,
         )?;
         steps.prefix(hold)?;
-        hold.admit_runtime(self.usage()?, steps.cancel)?;
+        hold.admit_runtime(self.parsed_usage()?, steps.cancel)?;
         Ok(())
     }
     fn reserve_parsed<T>(
@@ -321,7 +334,7 @@ impl Backing {
             .ok_or(DomStyleRuntimeError::Admission)?;
         self.add(requested)?;
         steps.joined(preparation)?;
-        preparation.admit_runtime(self.usage()?, steps.cancel)?;
+        preparation.admit_runtime(self.parsed_usage()?, steps.cancel)?;
         values
             .try_reserve_exact(count)
             .map_err(|_| DomStyleRuntimeError::Admission)?;
@@ -335,7 +348,7 @@ impl Backing {
                 .ok_or(DomStyleRuntimeError::Admission)?,
         )?;
         steps.joined(preparation)?;
-        preparation.admit_runtime(self.usage()?, steps.cancel)?;
+        preparation.admit_runtime(self.parsed_usage()?, steps.cancel)?;
         Ok(())
     }
 }
@@ -352,7 +365,7 @@ impl DomStyleRuntime {
         &self,
         dom: &mut DomEventDom<'_>,
         contribution: surgeist_dom::DomParsedHtmlAssociationId,
-        limits: DomMetaAtomicLimits,
+        limits: surgeist_dom::DomParsedHtmlAssociationLimits,
         cancel: &AtomicBool,
     ) -> Result<DomStyleParsedMetaOutcome, DomStyleParsedMetaError> {
         let owner = self.original()?;
@@ -391,10 +404,10 @@ impl DomStyleRuntime {
             outputs: 0,
             current: 0,
             runtime_limit: state.limits.storage_bytes,
-            limits,
+            limits: BackingLimits::parsed(limits),
         };
         steps.prefix(&hold)?;
-        hold.admit_runtime(backing.usage()?, cancel)
+        hold.admit_runtime(backing.parsed_usage()?, cancel)
             .map_err(DomStyleRuntimeError::from)?;
         // Persistent Runtime storage excludes this temporary collector, as in
         // the existing owner contract. Its actual scratch is additionally
@@ -528,7 +541,7 @@ impl DomStyleRuntime {
                 backing.retain_name(bytes, units, shared_dom)?;
                 steps.joined(&preparation)?;
                 preparation
-                    .admit_runtime(backing.usage()?, cancel)
+                    .admit_runtime(backing.parsed_usage()?, cancel)
                     .map_err(DomStyleRuntimeError::from)?;
             }
             steps.joined(&preparation)?;
@@ -629,7 +642,7 @@ impl DomStyleRuntime {
 pub(in crate::dom_style) fn admit(
     dom: &mut Dom,
     limits: DomStyleRuntimeLimits,
-    processing: DomMetaAtomicLimits,
+    processing: surgeist_dom::DomParsedHtmlAssociationLimits,
     cancel: &AtomicBool,
 ) -> Result<u64, DomStyleParsedAdmissionError> {
     let work = Cell::new(0);

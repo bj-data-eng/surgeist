@@ -1,81 +1,16 @@
 //! Whole original parsed contributions consumed by the association owner.
 use crate::{
-    DocumentId, DocumentString, DomError, DomMetaRootCommit, DomParsedHtmlAssociationId,
-    DomParsedHtmlHistoricalDocument, DomStamp, NodeId,
+    DocumentId, DocumentString, DomError, DomMetaRootCommit,
+    DomParsedHtmlAssociationAdmissionError, DomParsedHtmlAssociationId, DomStamp, NodeId,
 };
 use surgeist_html::HtmlNodeId;
-use surgeist_html_parser::{
-    HtmlParseAssociationMissingKind, HtmlParseAssociationOccurrenceId,
-    HtmlParseAssociationOccurrenceKind,
-};
+use surgeist_html_parser::HtmlParseAssociationOccurrenceId;
 
-/// Pure admission, immutable-history classification and destination qualification.
-/// No CSSOM owner is accessed by these fronts.
-#[derive(Debug)]
-pub enum DomParsedHtmlMetaAdmissionError {
-    Dom(DomError),
-    /// The qualified destination no longer has this pending contribution.
-    /// No unbounded completed-identity registry is retained.
-    NotPending {
-        contribution: DomParsedHtmlAssociationId,
-    },
-    /// The original finite policy can only be raised componentwise on retry.
-    LimitReduction {
-        contribution: DomParsedHtmlAssociationId,
-    },
-    /// Another original contribution must complete first for this Document.
-    EarlierPending {
-        document: DocumentId,
-        pending: DomParsedHtmlAssociationId,
-    },
-    /// The whole contribution needs an influencing unsupported operation.
-    Unsupported {
-        contribution: DomParsedHtmlAssociationId,
-        occurrence: HtmlParseAssociationOccurrenceId,
-        kind: HtmlParseAssociationOccurrenceKind,
-    },
-    /// Original capture lacks required qualification, rather than an unused context.
-    Incomplete {
-        contribution: DomParsedHtmlAssociationId,
-        missing: HtmlParseAssociationMissingKind,
-    },
-    /// The original report/Document mapping is not part of this destination.
-    DocumentMismatch {
-        contribution: DomParsedHtmlAssociationId,
-        document: DomParsedHtmlHistoricalDocument,
-    },
-    /// A destination Document is no longer the actual canonical generation.
-    StaleDocument {
-        document: DocumentId,
-    },
-    History(surgeist_html_parser::HtmlParseHistoryError),
-}
-impl From<DomError> for DomParsedHtmlMetaAdmissionError {
-    fn from(value: DomError) -> Self {
-        Self::Dom(value)
-    }
-}
-impl std::fmt::Display for DomParsedHtmlMetaAdmissionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Dom(error) => error.fmt(f),
-            other => write!(f, "parsed Meta admission refused: {other:?}"),
-        }
-    }
-}
-impl std::error::Error for DomParsedHtmlMetaAdmissionError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Dom(error) => Some(error),
-            _ => None,
-        }
-    }
-}
 /// A complete original contribution or actual root-qualified producer failure.
 /// The native producer diagnostic is moved intact without refusal-time allocation.
 #[derive(Debug)]
 pub enum DomParsedHtmlMetaError {
-    Admission(DomParsedHtmlMetaAdmissionError),
+    Admission(DomParsedHtmlAssociationAdmissionError),
     OwnerBusy {
         root: NodeId,
     },
@@ -96,8 +31,8 @@ pub enum DomParsedHtmlMetaError {
         error: surgeist_cssom::CssomError,
     },
 }
-impl From<DomParsedHtmlMetaAdmissionError> for DomParsedHtmlMetaError {
-    fn from(value: DomParsedHtmlMetaAdmissionError) -> Self {
+impl From<DomParsedHtmlAssociationAdmissionError> for DomParsedHtmlMetaError {
+    fn from(value: DomParsedHtmlAssociationAdmissionError) -> Self {
         Self::Admission(value)
     }
 }

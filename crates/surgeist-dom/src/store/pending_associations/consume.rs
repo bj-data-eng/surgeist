@@ -3,7 +3,8 @@ use super::control::Meter;
 use super::*;
 use crate::parsed_meta::*;
 use crate::{
-    DocumentString, DomMetaAtomicLimits, DomMetaRootCommit, DomMetaRuntimeUsage, DomStyleCssomRoot,
+    DocumentString, DomMetaRootCommit, DomParsedHtmlAssociationAdmissionError,
+    DomParsedHtmlAssociationLimits, DomParsedHtmlAssociationRuntimeUsage, DomStyleCssomRoot,
 };
 use std::sync::MutexGuard;
 use surgeist_cssom::{CssomBatch, CssomEditGuard, CssomSheetId, CssomSnapshot};
@@ -26,10 +27,10 @@ enum Phase {
 /// Given an authentic pending identity and its admitted finite policy, admission
 /// can inspect immutable history, then release the exclusive owner borrow:
 /// ```no_run
-/// use surgeist_dom::{Dom, DomParsedHtmlAssociationId, DomMetaAtomicLimits};
+/// use surgeist_dom::{Dom, DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits};
 /// use std::sync::atomic::AtomicBool;
 /// fn inspect(dom: &mut Dom, id: DomParsedHtmlAssociationId,
-///            limits: DomMetaAtomicLimits, cancel: &AtomicBool) {
+///            limits: DomParsedHtmlAssociationLimits, cancel: &AtomicBool) {
 ///     let mut hold = dom.begin_parsed_html_meta(id, limits, cancel).unwrap();
 ///     hold.validate_meta(cancel).unwrap();
 ///     drop(hold);
@@ -38,10 +39,10 @@ enum Phase {
 /// ```
 /// The canonical owner cannot be accessed while its actual hold remains live:
 /// ```compile_fail,E0502
-/// use surgeist_dom::{Dom, DomParsedHtmlAssociationId, DomMetaAtomicLimits};
+/// use surgeist_dom::{Dom, DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(dom: &mut Dom, id: DomParsedHtmlAssociationId,
-///            limits: DomMetaAtomicLimits, cancel: &AtomicBool) {
+///            limits: DomParsedHtmlAssociationLimits, cancel: &AtomicBool) {
 ///     let hold = dom.begin_parsed_html_meta(id, limits, cancel).unwrap();
 ///     let _ = dom.snapshot();
 ///     let _ = hold.step(cancel);
@@ -49,11 +50,11 @@ enum Phase {
 /// ```
 /// A real preparation exclusively holds its original admission front:
 /// ```compile_fail,E0502
-/// use surgeist_dom::{Dom, DomParsedHtmlAssociationId, DomMetaAtomicLimits,
+/// use surgeist_dom::{Dom, DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits,
 ///                    DomStyleCssomRoot};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(dom: &mut Dom, id: DomParsedHtmlAssociationId,
-///            limits: DomMetaAtomicLimits, caps: &[&DomStyleCssomRoot],
+///            limits: DomParsedHtmlAssociationLimits, caps: &[&DomStyleCssomRoot],
 ///            cancel: &AtomicBool) {
 ///     let mut hold = dom.begin_parsed_html_meta(id, limits, cancel).unwrap();
 ///     let prepared = hold.prepare(caps, cancel).unwrap();
@@ -77,9 +78,9 @@ impl Dom {
     pub fn begin_parsed_html_meta(
         &mut self,
         id: DomParsedHtmlAssociationId,
-        limits: DomMetaAtomicLimits,
+        limits: DomParsedHtmlAssociationLimits,
         cancel: &AtomicBool,
-    ) -> Result<DomParsedHtmlMetaRuntimeHold<'_>, DomParsedHtmlMetaAdmissionError> {
+    ) -> Result<DomParsedHtmlMetaRuntimeHold<'_>, DomParsedHtmlAssociationAdmissionError> {
         if self.source_operation.is_some() || !self.source_parents.is_empty() {
             return Err(DomError::SourceOperationPending.into());
         }
@@ -120,19 +121,22 @@ fn mapped(
     source: crate::DomParsedHtmlHistoricalDocument,
     meter: &Meter,
     cancel: &AtomicBool,
-) -> Result<DocumentId, DomParsedHtmlMetaAdmissionError> {
+) -> Result<DocumentId, DomParsedHtmlAssociationAdmissionError> {
     for row in &entry.documents {
         meter.step(cancel)?;
         if row.source == source {
             return Ok(row.document);
         }
     }
-    Err(DomParsedHtmlMetaAdmissionError::DocumentMismatch {
+    Err(DomParsedHtmlAssociationAdmissionError::DocumentMismatch {
         contribution: entry.id,
         document: source,
     })
 }
-fn validate(meter: &Meter, cancel: &AtomicBool) -> Result<(), DomParsedHtmlMetaAdmissionError> {
+fn validate(
+    meter: &Meter,
+    cancel: &AtomicBool,
+) -> Result<(), DomParsedHtmlAssociationAdmissionError> {
     let entry = meter.entry();
     let mut cursor = entry.report.value().value.pending_associations();
     loop {
@@ -140,7 +144,7 @@ fn validate(meter: &Meter, cancel: &AtomicBool) -> Result<(), DomParsedHtmlMetaA
         match cursor.advance() {
             Step::Document(row) => {
                 if let Capture::Unavailable(missing) = row.disposition() {
-                    return Err(DomParsedHtmlMetaAdmissionError::Incomplete {
+                    return Err(DomParsedHtmlAssociationAdmissionError::Incomplete {
                         contribution: entry.id,
                         missing,
                     });
@@ -150,7 +154,7 @@ fn validate(meter: &Meter, cancel: &AtomicBool) -> Result<(), DomParsedHtmlMetaA
                 if row.kind() == Kind::ChangePreferred {
                     mapped(entry, document_source(row.document()), meter, cancel)?;
                 } else if row.requires_processing() {
-                    return Err(DomParsedHtmlMetaAdmissionError::Unsupported {
+                    return Err(DomParsedHtmlAssociationAdmissionError::Unsupported {
                         contribution: entry.id,
                         occurrence: row.id(),
                         kind: row.kind(),
@@ -177,7 +181,7 @@ impl DomParsedHtmlMetaRuntimeHold<'_> {
     pub fn spent_work(&self) -> u64 {
         self.meter.entry().control.spent_work()
     }
-    pub fn limits(&self) -> DomMetaAtomicLimits {
+    pub fn limits(&self) -> DomParsedHtmlAssociationLimits {
         self.meter.entry().control.limits()
     }
     pub fn step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
@@ -186,7 +190,7 @@ impl DomParsedHtmlMetaRuntimeHold<'_> {
     }
     pub fn admit_runtime(
         &mut self,
-        usage: DomMetaRuntimeUsage,
+        usage: DomParsedHtmlAssociationRuntimeUsage,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.require_prefix()?;
@@ -198,7 +202,7 @@ impl DomParsedHtmlMetaRuntimeHold<'_> {
     pub fn validate_meta(
         &mut self,
         cancel: &AtomicBool,
-    ) -> Result<(), DomParsedHtmlMetaAdmissionError> {
+    ) -> Result<(), DomParsedHtmlAssociationAdmissionError> {
         self.require_prefix()?;
         validate(&self.meter, cancel)
     }
@@ -261,25 +265,25 @@ fn qualify_order(
     dom: &Dom,
     meter: &Meter,
     cancel: &AtomicBool,
-) -> Result<(), DomParsedHtmlMetaAdmissionError> {
+) -> Result<(), DomParsedHtmlAssociationAdmissionError> {
     let entry = meter.entry();
     for row in &entry.documents {
         meter.step(cancel)?;
         dom.snapshot().document(row.document).map_err(|_| {
-            DomParsedHtmlMetaAdmissionError::StaleDocument {
+            DomParsedHtmlAssociationAdmissionError::StaleDocument {
                 document: row.document,
             }
         })?;
         match dom.pending_associations.document(row.document) {
             Some(pending) if pending == entry.id => (),
             Some(pending) => {
-                return Err(DomParsedHtmlMetaAdmissionError::EarlierPending {
+                return Err(DomParsedHtmlAssociationAdmissionError::EarlierPending {
                     document: row.document,
                     pending,
                 });
             }
             None => {
-                return Err(DomParsedHtmlMetaAdmissionError::NotPending {
+                return Err(DomParsedHtmlAssociationAdmissionError::NotPending {
                     contribution: entry.id,
                 });
             }
@@ -291,7 +295,7 @@ fn qualify_order(
 fn occurrences(
     meter: &Meter,
     cancel: &AtomicBool,
-) -> Result<Vec<DomParsedHtmlMetaOccurrence>, DomParsedHtmlMetaAdmissionError> {
+) -> Result<Vec<DomParsedHtmlMetaOccurrence>, DomParsedHtmlAssociationAdmissionError> {
     use surgeist_html_parser::{HtmlParseHistoryFrame, HtmlParseHistoryStep};
     let entry = meter.entry();
     let report = &entry.report.value().value;
@@ -317,7 +321,7 @@ fn occurrences(
                     .expect("sealed ChangePreferred has its original name");
                 let mut reader = history
                     .cursor(group, &mut frames, None)
-                    .map_err(DomParsedHtmlMetaAdmissionError::History)?;
+                    .map_err(DomParsedHtmlAssociationAdmissionError::History)?;
                 let mut units = Vec::new();
                 loop {
                     meter.step(cancel)?;
@@ -484,7 +488,7 @@ impl DomParsedHtmlMetaPreparation<'_, '_, '_> {
     }
     pub fn admit_runtime(
         &mut self,
-        usage: DomMetaRuntimeUsage,
+        usage: DomParsedHtmlAssociationRuntimeUsage,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.runtime.runtime(usage, cancel)

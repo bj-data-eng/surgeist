@@ -14,8 +14,8 @@ use surgeist_html_semantics::{
 fn flag() -> AtomicBool {
     AtomicBool::new(false)
 }
-fn envelope() -> DomMetaAtomicLimits {
-    DomMetaAtomicLimits::new(16_000_000, 1_000_000, 1_000_000, 1024).unwrap()
+fn envelope() -> DomParsedHtmlAssociationLimits {
+    DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 1_000_000, 1024).unwrap()
 }
 fn parse(text: &str) -> Arc<HtmlParseReport> {
     let limits = HtmlParseLimits::builder()
@@ -186,26 +186,38 @@ fn runtime_whole_reports_charge_only_positive_storage_and_output_deltas() {
     );
     let ledger = dom.custody_registry.ledger().clone();
     let baseline = ledger.total();
-    let limits = DomMetaAtomicLimits::new(16_000_000, 1_000_000, 1_000_000, 5).unwrap();
+    let limits = DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 1_000_000, 5).unwrap();
     let mut hold = dom.begin_parsed_html_meta(id, limits, &flag()).unwrap();
     let holding = ledger.total();
     let start_work = hold.spent_work();
-    hold.admit_runtime(DomMetaRuntimeUsage::new(60, 3, 2).unwrap(), &flag())
-        .unwrap();
+    hold.admit_runtime(
+        DomParsedHtmlAssociationRuntimeUsage::new(60, 3, 2).unwrap(),
+        &flag(),
+    )
+    .unwrap();
     assert_eq!(
         ledger.total(),
         holding.checked_add(custody::Usage::new(60, 3)).unwrap()
     );
-    hold.admit_runtime(DomMetaRuntimeUsage::new(60, 3, 2).unwrap(), &flag())
-        .unwrap();
-    hold.admit_runtime(DomMetaRuntimeUsage::new(20, 1, 1).unwrap(), &flag())
-        .unwrap();
+    hold.admit_runtime(
+        DomParsedHtmlAssociationRuntimeUsage::new(60, 3, 2).unwrap(),
+        &flag(),
+    )
+    .unwrap();
+    hold.admit_runtime(
+        DomParsedHtmlAssociationRuntimeUsage::new(20, 1, 1).unwrap(),
+        &flag(),
+    )
+    .unwrap();
     assert_eq!(
         ledger.total(),
         holding.checked_add(custody::Usage::new(60, 3)).unwrap()
     );
-    hold.admit_runtime(DomMetaRuntimeUsage::new(90, 7, 5).unwrap(), &flag())
-        .unwrap();
+    hold.admit_runtime(
+        DomParsedHtmlAssociationRuntimeUsage::new(90, 7, 5).unwrap(),
+        &flag(),
+    )
+    .unwrap();
     assert_eq!(
         ledger.total(),
         holding.checked_add(custody::Usage::new(90, 7)).unwrap()
@@ -216,9 +228,12 @@ fn runtime_whole_reports_charge_only_positive_storage_and_output_deltas() {
     let mut retry = dom.begin_parsed_html_meta(id, limits, &flag()).unwrap();
     let before_refusal = ledger.total();
     assert!(matches!(
-        retry.admit_runtime(DomMetaRuntimeUsage::new(0, 0, 1).unwrap(), &flag()),
+        retry.admit_runtime(
+            DomParsedHtmlAssociationRuntimeUsage::new(0, 0, 1).unwrap(),
+            &flag()
+        ),
         Err(DomError::ResourceLimit {
-            resource: DomResource::MetaAtomicOutputs,
+            resource: DomResource::ParsedAssociationProcessingOutputs,
             limit: 5
         })
     ));
