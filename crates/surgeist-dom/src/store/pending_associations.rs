@@ -20,6 +20,10 @@ pub use style_prefix::{
     DomParsedHtmlStyleSheetPreparation, DomParsedHtmlStyleSheetPublished,
     DomParsedHtmlStyleSheetRetirement,
 };
+pub use style_prefix::{
+    DomParsedHtmlStyleSuccessorCompletion, DomParsedHtmlStyleSuccessorPreparation,
+    DomParsedHtmlStyleSuccessorPublished, DomParsedHtmlStyleSuccessorRetirement,
+};
 
 struct Report {
     value: Arc<HtmlParseReport>,
@@ -34,6 +38,7 @@ pub(super) struct Entry {
     captured: Arc<Vec<DomParsedHtmlCapturedBinding>>,
     payload: custody::Usage,
     style_prefix: std::sync::Mutex<Option<custody::Held<Box<style_prefix::Graph>>>>,
+    completed_style: std::sync::Mutex<Option<style_prefix::CompletedInvocation>>,
     control: control::Control,
 }
 impl Entry {
@@ -272,6 +277,7 @@ impl Bank {
                 captured,
                 payload,
                 style_prefix: std::sync::Mutex::new(None),
+                completed_style: std::sync::Mutex::new(None),
                 control: control::Control::default(),
             },
             payload,

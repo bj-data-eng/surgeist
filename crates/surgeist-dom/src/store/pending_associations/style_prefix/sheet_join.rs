@@ -149,6 +149,12 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
     ) -> Result<DomParsedHtmlStyleSheetPreparation<'hold, 'dom, 'caps>, Error> {
         self.meter.step(cancel)?;
         let graph = lock(self.meter.entry())?;
+        if completed_lock(self.meter.entry())?.is_some() {
+            return Err(DomParsedHtmlStyleError::UnsupportedProfile {
+                contribution: self.meter.entry().id,
+            }
+            .into());
+        }
         let value = graph.as_ref().map(|h| h.value().as_ref());
         let Some(Graph::Inline(original)) = value else {
             return Err(wrong_phase(value).into());
@@ -711,6 +717,7 @@ impl<'caps> DomParsedHtmlStyleSheetPreparation<'_, '_, 'caps> {
             unreachable!("qualified original creation")
         };
         request.cursor = successor;
+        request.created_sheet = Some(sheet.clone());
         let contribution = self.meter.entry().id;
         let completion = DomParsedHtmlStyleSheetCompletion {
             contribution,

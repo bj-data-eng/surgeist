@@ -69,7 +69,10 @@ permission exposes `ParsedOccurrence` and retains its original admission. The
 [original queue contract](html-installation.md#original-notification-permission-and-the-synchronous-frontier)
 keeps task custody separate from its still-unavailable synchronous dispatch
 frontier. An original pending history is neither a fake native Source operation
-nor a blanket prohibition on unrelated asynchronous resource waits.
+nor a blanket prohibition on unrelated asynchronous resource waits. The
+[first ParserPopped successor](html-installation.md#the-first-parserpopped-successor)
+removes the genuine old association and reaches a fresh policy request without
+requiring old tasks to drain or replacing their original qualification.
 
 ## Mutable CSSOM custody and disabled state
 

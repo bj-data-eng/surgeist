@@ -9,6 +9,8 @@ mod exclusion;
 mod notification;
 #[path = "parsed_style/rendering.rs"]
 mod rendering;
+#[path = "parsed_style/successor.rs"]
+mod successor;
 use std::sync::{Arc, atomic::AtomicBool};
 use surgeist_dom::*;
 use surgeist_html_parser::{

@@ -209,6 +209,30 @@ impl Meter {
         self.own.set(left);
         debit
     }
+    /// Transfer already charged persistent backing into an actual retirement
+    /// owner. No new retention or fallible work occurs at publication.
+    pub(super) fn retire_persistent(&self, debit: custody::Debit, usage: custody::Usage) {
+        self.entry()
+            .control
+            .persistent_bytes
+            .fetch_sub(usage.bytes(), Ordering::Relaxed);
+        self.entry()
+            .control
+            .persistent_units
+            .fetch_sub(usage.units(), Ordering::Relaxed);
+        let mut own = self.debit.borrow_mut();
+        if let Some(own) = own.as_mut() {
+            own.absorb(debit).expect("same original custody ledger");
+        } else {
+            *own = Some(debit);
+        }
+        self.own.set(
+            self.own
+                .get()
+                .checked_add(usage)
+                .expect("preadmitted retirement union"),
+        );
+    }
     pub(super) fn shrink_to(&self, usage: custody::Usage) {
         self.release(
             self.own

@@ -9,8 +9,10 @@ use surgeist_html::HtmlCspAssociation;
 mod admission;
 mod create_sheet;
 mod notification;
+mod successor;
 pub use create_sheet::{DomStyleParsedSheetError, DomStyleParsedSheetOutcome};
 pub use notification::{DomStyleParsedNotificationError, DomStyleParsedNotificationProgress};
+pub use successor::DomStyleParsedSuccessorError;
 
 /// The actual Session or original parsed Style prefix refused a command.
 #[derive(Debug)]

@@ -21,6 +21,8 @@ pub(crate) struct NotificationCustody {
 }
 pub struct DomParsedHtmlStyleNotificationPreparation<'hold, 'dom, 'caps> {
     graph: MutexGuard<'hold, Stored>,
+    completed: MutexGuard<'hold, Option<CompletedInvocation>>,
+    historical: bool,
     _dom: &'hold mut &'dom mut Dom,
     runtime: &'hold Meter,
     meter: Meter,
@@ -53,29 +55,48 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
             .as_ref()
             .ok_or(DomParsedHtmlStyleError::WrongRequest)?
             .value();
-        if value.qualification() != qualification {
-            return Err(DomParsedHtmlStyleError::WrongRequest.into());
-        }
-        let Graph::Rendered {
-            request,
-            notification,
-        } = value.as_ref()
-        else {
-            return Err(DomParsedHtmlStyleError::WrongPhase {
-                phase: value.phase(),
+        let completed = self
+            .meter
+            .entry()
+            .completed_style
+            .try_lock()
+            .map_err(|e| guard_error(e, self.meter.entry().id))?;
+        let historical = completed
+            .as_ref()
+            .is_some_and(|old| &old.qualification == qualification);
+        let (notification, profile, sheet) = if historical {
+            let old = completed.as_ref().expect("qualified predecessor");
+            (old.notification, old.profile, &old.sheet)
+        } else {
+            if value.qualification() != qualification {
+                return Err(DomParsedHtmlStyleError::WrongRequest.into());
             }
-            .into());
+            let Graph::Rendered {
+                request,
+                notification,
+            } = value.as_ref()
+            else {
+                return Err(DomParsedHtmlStyleError::WrongPhase {
+                    phase: value.phase(),
+                }
+                .into());
+            };
+            (
+                *notification,
+                request.cursor.profile(),
+                request
+                    .created_sheet
+                    .as_ref()
+                    .ok_or(DomParsedHtmlStyleError::InvalidSheetInput)?,
+            )
         };
-        if *notification != Issuance::Unissued {
+        if notification != Issuance::Unissued {
             return Err(Error::AlreadyIssued {
                 contribution: qualification.contribution(),
             });
         }
-        if request.cursor.profile() != HtmlStyleExecutionProfile::NoExecutableJavaScript {
-            return Err(DomParsedHtmlStyleError::WrongExecutionProfile {
-                profile: request.cursor.profile(),
-            }
-            .into());
+        if profile != HtmlStyleExecutionProfile::NoExecutableJavaScript {
+            return Err(DomParsedHtmlStyleError::WrongExecutionProfile { profile }.into());
         }
         let root = qualification.document().node();
         self.meter.step(cancel)?;
@@ -139,6 +160,14 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
         )?;
         let producer = store.snapshot();
         let actual = producer.sheet(expected.id()).map_err(Error::Cssom)?;
+        // Preserve the authentic producer refusal for unresolved identities.
+        // A resolved object must still be the creation-sealed invocation sheet,
+        // including the owner-cleared path after a successor has started.
+        if sheet != expected {
+            return Err(Error::MismatchedAssociation {
+                target: expected.association().element(),
+            });
+        }
         meter.step(cancel)?;
         let removed = if let Some(owner) = actual.inputs().owner.as_deref() {
             if !canonical_matches {
@@ -183,6 +212,8 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
         };
         Ok(DomParsedHtmlStyleNotificationPreparation {
             graph,
+            completed,
+            historical,
             _dom: &mut self.dom,
             runtime: &self.meter,
             meter,
@@ -215,14 +246,23 @@ impl<'caps> DomParsedHtmlStyleNotificationPreparation<'_, '_, 'caps> {
         self.meter.retain(0, 0, 1, cancel)?;
         self.meter.step(cancel)?;
         let removed = self.owner_association_removed();
-        let Graph::Rendered { notification, .. } = self
-            .graph
-            .as_mut()
-            .expect("qualified original")
-            .value_mut()
-            .as_mut()
-        else {
-            unreachable!("exclusive original graph")
+        let notification = if self.historical {
+            &mut self
+                .completed
+                .as_mut()
+                .expect("qualified predecessor")
+                .notification
+        } else {
+            let Graph::Rendered { notification, .. } = self
+                .graph
+                .as_mut()
+                .expect("qualified original")
+                .value_mut()
+                .as_mut()
+            else {
+                unreachable!("exclusive original graph")
+            };
+            notification
         };
         // Only infallible scalar/move publication follows. Runtime keeps the
         // actual Store guard until its same-row queue transition is installed.
@@ -276,7 +316,15 @@ fn requirement(
         .style_prefix
         .try_lock()
         .map_err(|error| guard_error(error, id))?;
-    let executed = matches!(graph.as_ref().map(|stored|stored.value().as_ref()),Some(Graph::Rendered{request,notification:Issuance::Issued}) if request.qualification()==q);
+    let completed = meter
+        .entry()
+        .completed_style
+        .try_lock()
+        .map_err(|e| guard_error(e, id))?;
+    let executed = matches!(graph.as_ref().map(|stored|stored.value().as_ref()),Some(Graph::Rendered{request,notification:Issuance::Issued}) if request.qualification()==q)
+        || completed
+            .as_ref()
+            .is_some_and(|old| &old.qualification == q && old.notification == Issuance::Issued);
     let phase = graph
         .as_ref()
         .map_or(DomParsedHtmlStylePhase::Unstarted, |g| g.value().phase());
@@ -300,8 +348,14 @@ fn requirement(
                 }
             }
             Step::Occurrence(row) if row.requires_processing() => {
-                if &row.id() == q.occurrence() && executed {
-                    seen = true;
+                let current_done = matches!(graph.as_ref().map(|g|g.value().as_ref()), Some(Graph::Rendered{request,..}) if request.qualification().occurrence()==&row.id());
+                let prior_done = completed
+                    .as_ref()
+                    .is_some_and(|old| old.qualification.occurrence() == &row.id());
+                if current_done || prior_done {
+                    if &row.id() == q.occurrence() && executed {
+                        seen = true;
+                    }
                     continue;
                 }
                 if first.is_none() {
@@ -322,12 +376,25 @@ fn requirement(
                         }
                     }
                     if let Some(document) = document {
-                        first = Some(R::Occurrence {
-                            contribution: id,
-                            occurrence: row.id(),
-                            document,
-                            kind: row.kind(),
-                        });
+                        first = Some(
+                            if graph.as_ref().is_some_and(|g| {
+                                g.value().qualification().occurrence() == &row.id()
+                            }) {
+                                R::Invocation {
+                                    contribution: id,
+                                    occurrence: row.id(),
+                                    document,
+                                    phase,
+                                }
+                            } else {
+                                R::Occurrence {
+                                    contribution: id,
+                                    occurrence: row.id(),
+                                    document,
+                                    kind: row.kind(),
+                                }
+                            },
+                        );
                     } else {
                         missing.get_or_insert(U::UnsupportedInventory);
                     }

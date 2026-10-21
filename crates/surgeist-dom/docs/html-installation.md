@@ -381,12 +381,50 @@ publication tail. Refusal/cancellation preserves the reached cursor and canonica
 state while retaining spent work; retry may raise the same envelope. Every owned
 Pending result and completed publication consumes finite cumulative output.
 
-The new `RenderingComplete` phase completes only this original invocation's
+The `RenderingComplete` phase completes only this original invocation's
 rendering actions. It preserves the accepted script exclusion, original sheet
 and whole Pending history. General `is_render_blocking`/sheet readiness queries
 continue to refuse `PendingParsedProcessing`; the narrow completion is historical
-evidence rather than a general live query. Later parser-pop text updates,
-resource and notification processing remain separate work.
+evidence rather than a general live query. The ParserPopped continuation below
+reaches a fresh policy request; resource completion, recreation and notification
+delivery retain their separate owners.
+
+### The first ParserPopped successor
+
+After the first invocation reaches `RenderingComplete`, `successor_document`
+and the closed `prepare_successor` editor select the next influencing original
+row internally. The ordinary sealed inventory, every Document capture and the
+actual `prior_document`/`prior_style` dependencies must qualify. Only the genuine
+next ParserPopped operation for the same mapped Style and Document is supported;
+another influencing action returns its exact remaining requirement. No caller
+ordinal or asynchronous queue/resource completion is required.
+
+The editor prepares real CSSOM removal of the associated sheet and canonical
+`Style.sheet=None`, then the new HTML cursor's removal/connected/type steps and
+its fresh inline-policy request. The old sheet object, rules and handles survive
+with list membership and owner links cleared. An already cleared producer may
+return a genuine unchanged CSSOM commit while DOM still clears the association.
+Association serials, render-blocking membership and preference history are not
+reset by removing the sheet. The root guard remains held across both genuine
+publications and until the preformed output/retirement is extracted.
+
+The successor reuses the actual initial-policy artifact only when the producer's
+shared input epoch and slot lineage match. Its occurrence, context epoch, text
+and nonce come from ParserPopped, including the later nonempty text rather than
+the insertion's empty input. It requires a new external inline-policy decision.
+Recreation remains explicitly unsupported for this successor; reaching the next
+request does not acknowledge the whole contribution or enable task delivery.
+
+The same Entry and cumulative Control retain one compact completed predecessor:
+its actual qualification, execution profile, notification disposition and
+creation-sealed sheet/association. Old full text/nonce graphs move into admitted
+retirement; the bound policy moves into the new request. Both old queued tokens
+and unqueued resource receipts retain their exact predecessor qualification.
+Notification permission resolves that stored sheet proof even after the active
+Graph advances, so a later sheet at the same Element cannot substitute. All
+output, replacement and retirement overlap is admitted before publication;
+refusal keeps both published owners and the old graph unchanged, while work
+spent remains on the original controller for a raised-limit retry.
 
 ### Original notification permission and the synchronous frontier
 
@@ -418,8 +456,9 @@ This queue capability supplies no positive dispatch frontier. The metered
 `parsed_style_notification_requirement` authenticates the ordinary sealed report,
 all Document capture dispositions and inventory end before returning the first
 remaining influencing occurrence. Producer-proved no-effect rows and the exact
-executed invocation can be recognized; later `ParserPopped` and Meta work cannot
-be inferred complete. Missing/captured/lost evidence or an absent canonical entry
+executed invocation and its compact completed predecessor can be recognized;
+later work is never inferred complete from capture or an earlier operation.
+An active successor is reported with its actual qualification and reached phase. Missing/captured/lost evidence or an absent canonical entry
 is unavailable, not completion. Query outputs consume finite original admission.
 
 Whole history Pending includes both synchronous and asynchronous obligations;
@@ -429,7 +468,7 @@ networking dispatch. Resource waits and queued delivery are separate obligations
 where the source permits that separation. Runtime gates the actual parsed queue
 head on the returned requirement, and direct `finish_style_notification` also
 refuses live parsed-target cleanup without that frontier. This slice cannot
-fabricate an end witness, process later occurrences or dispatch a parsed task.
+fabricate an end witness or dispatch a parsed task.
 Native task ordering/cleanup and the general Pending Style readiness guards
 remain governed by their existing owners.
 

@@ -14,6 +14,11 @@ use surgeist_html_parser::{
     HtmlParseMetadataDocument, HtmlParseOriginGroup, HtmlParsePendingAssociationStep as Step,
 };
 
+mod successor;
+pub use successor::{
+    DomParsedHtmlStyleSuccessorCompletion, DomParsedHtmlStyleSuccessorPreparation,
+    DomParsedHtmlStyleSuccessorPublished, DomParsedHtmlStyleSuccessorRetirement,
+};
 mod notification;
 pub(crate) use notification::NotificationCustody;
 pub use notification::{
@@ -39,6 +44,14 @@ pub(super) enum Graph {
         notification: notification::Issuance,
     },
     Transition,
+}
+/// Compact proof for the one completed predecessor supported by this leaf.
+/// Fixed storage is part of Entry; no request text, nonce or policy graph is retained.
+pub(super) struct CompletedInvocation {
+    qualification: DomParsedHtmlStyleInitialPolicyRequest,
+    sheet: crate::DomStyleSheet,
+    profile: HtmlStyleExecutionProfile,
+    notification: notification::Issuance,
 }
 pub(super) struct Selection {
     qualification: DomParsedHtmlStyleInitialPolicyRequest,
@@ -78,6 +91,21 @@ fn lock(entry: &Entry) -> Result<MutexGuard<'_, Stored>, DomParsedHtmlStyleError
             contribution: entry.id,
         },
     })
+}
+fn completed_lock(
+    entry: &Entry,
+) -> Result<MutexGuard<'_, Option<CompletedInvocation>>, DomParsedHtmlStyleError> {
+    entry
+        .completed_style
+        .try_lock()
+        .map_err(|error| match error {
+            TryLockError::WouldBlock => DomParsedHtmlStyleError::Busy {
+                contribution: entry.id,
+            },
+            TryLockError::Poisoned(_) => DomParsedHtmlStyleError::Poisoned {
+                contribution: entry.id,
+            },
+        })
 }
 /// Observation of the actual stored request. Forgetting this guard can leave it
 /// Busy; no path discards or recreates the phase to recover access.
@@ -328,6 +356,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
                     state: selection.state,
                     policy,
                     cursor: selection.cursor,
+                    created_sheet: None,
                 });
                 return Ok(DomParsedHtmlStylePhase::InlinePolicyPending);
             }

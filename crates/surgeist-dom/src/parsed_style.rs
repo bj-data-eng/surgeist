@@ -1,12 +1,14 @@
 //! Original parsed Style processing and its bounded external-owner joins.
 mod notification;
 mod sheet;
+mod successor;
 use crate::{
     DocumentId, DocumentString, DomError, DomParsedHtmlAssociationAdmissionError,
     DomParsedHtmlAssociationId, DomParsedHtmlHistoricalDocument,
 };
 pub use notification::*;
 pub use sheet::*;
+pub use successor::*;
 use surgeist_html::{
     HtmlCspAssociation, HtmlCspProtocolError, HtmlNodeId, HtmlStyleProtocolError, HtmlStyleState,
     HtmlStyleUpdateAction,
@@ -163,6 +165,7 @@ pub struct DomParsedHtmlStyleInlinePolicyRequest {
     pub(crate) state: HtmlStyleState,
     pub(crate) policy: HtmlCspAssociation,
     pub(crate) cursor: surgeist_html::HtmlStyleUpdateCursor,
+    pub(crate) created_sheet: Option<crate::DomStyleSheet>,
 }
 impl DomParsedHtmlStyleInlinePolicyRequest {
     pub fn qualification(&self) -> &DomParsedHtmlStyleInitialPolicyRequest {

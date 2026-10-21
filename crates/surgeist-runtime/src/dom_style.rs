@@ -17,7 +17,7 @@ pub use meta::{
 };
 pub use parsed_style::{
     DomStyleParsedNotificationError, DomStyleParsedNotificationProgress, DomStyleParsedPrefixError,
-    DomStyleParsedSheetError, DomStyleParsedSheetOutcome,
+    DomStyleParsedSheetError, DomStyleParsedSheetOutcome, DomStyleParsedSuccessorError,
 };
 pub use sheet_sets::{DomStyleSheetSetCommit, DomStyleSheetSetObservation};
 

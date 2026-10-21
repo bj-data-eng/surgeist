@@ -107,6 +107,15 @@ The real networking FIFO returns `OriginalSynchronousPending` before event or
 unblock work for these tasks: the next authentic parser-pop occurrence remains
 unexecuted. It cannot skip that head to deliver a later task. No positive
 frontier is supplied by this checkpoint; native task behavior is preserved.
+`advance_parsed_style_successor` selects the next original ParserPopped update
+inside the retained contribution. It jointly removes the old CSSOM sheet and
+clears the canonical association before reaching a fresh inline-policy request
+for the original text and nonce. The old sheet and its rules remain readable.
+Preferred/last-selected history and root/task serials stay with their existing
+owners; previous processing receipts and queued tasks retain their own original
+qualification. Queue delivery and import completion are not prerequisites for
+this synchronous step. The new request needs its own policy decision. Recreation
+and a positive networking frontier remain unavailable.
 `exclude_parsed_style_script_bookkeeping` binds the actual Session's
 no-executable-JavaScript profile to the exact original occurrence. It advances
 that retained cursor to `ReadRenderBlockingPending`, without inventing a false
