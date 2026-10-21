@@ -125,10 +125,14 @@ fn neighboring_binary_values_straddle_dyadic_halfway() {
 #[test]
 fn shortest_decimal_halfway_is_below_halfway_in_the_actual_binary_value() {
     // 5e-7 = 4722366482869645 / 9444732965739290427392 < 1/2000000.
-    assert_number("calc(5e-7)", "calc(0)");
-    assert_number("calc(-5e-7)", "calc(0)");
-    assert_number("calc(5.000000000000001e-7)", "calc(0.000001)");
-    assert_number("calc(4.999999999999999e-7)", "calc(0)");
+    // Multiplication by one keeps the binary64 projection; a single leaf would
+    // instead keep its exact authored coefficient (#1297).
+    assert_number("calc(5e-7 * 1)", "calc(0)");
+    assert_number("calc(-5e-7 * 1)", "calc(0)");
+    assert_number("calc(5.000000000000001e-7 * 1)", "calc(0.000001)");
+    assert_number("calc(4.999999999999999e-7 * 1)", "calc(0)");
+    assert_number("calc(5e-7)", "calc(0.000001)");
+    assert_number("calc(-5e-7)", "calc(-0.000001)");
 }
 
 #[test]
@@ -173,7 +177,9 @@ fn finite_extremes_have_fixed_text_from_exact_binary_values() {
 fn large_integral_binary_value_emits_all_actual_integer_digits() {
     // Nearest binary64 is 7812500000000001 * 2^7, not decimal ...0100.
     assert_eq!(7812500000000001_u128 * 128, 1000000000000000128);
-    assert_number("calc(1000000000000000100)", "calc(1000000000000000128)");
+    assert_number("calc(1000000000000000100 * 1)", "calc(1000000000000000128)");
+    // The operation-free leaf keeps its exact authored coefficient (#1297).
+    assert_number("calc(1000000000000000100)", "calc(1000000000000000100)");
 }
 
 #[test]
@@ -187,7 +193,10 @@ fn maximum_finite_binary_value_emits_its_exact_309_digit_integer() {
         "250404026184124858368"
     );
     assert_eq!(INTEGER.len(), 309);
-    assert_number("calc(1.7976931348623157e308)", &format!("calc({INTEGER})"));
+    assert_number(
+        "calc(1.7976931348623157e308 * 1)",
+        &format!("calc({INTEGER})"),
+    );
 }
 
 #[test]
@@ -262,7 +271,8 @@ fn original_recovery_and_substitution_errors_precede_projection() {
 fn integer_calculation_text_rounding_is_distinct_from_integer_arithmetic() {
     for (source, expected) in [
         ("calc(-1 / 128)", "calc(-0.007813)"),
-        ("calc(1000000000000000100)", "calc(1000000000000000128)"),
+        ("calc(1000000000000000100 * 1)", "calc(1000000000000000128)"),
+        ("calc(1000000000000000100)", "calc(1000000000000000100)"),
         ("round(-2.5)", "calc(-2)"),
         ("sign(1em - 1px)", "sign(1em - 1px)"),
     ] {

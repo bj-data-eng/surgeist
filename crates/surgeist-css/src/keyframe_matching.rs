@@ -68,9 +68,9 @@ impl std::error::Error for CssKeyframeSelectorComparisonError {
     }
 }
 
-enum NormalizedOffset {
+enum NormalizedOffset<'a> {
     Literal(f64),
-    Calculation(DeferredNumericProjection),
+    Calculation(DeferredNumericProjection<'a>),
 }
 
 fn origin(selector: &CssKeyframeSelector) -> Option<&CssValueOrigin> {
@@ -80,11 +80,11 @@ fn origin(selector: &CssKeyframeSelector) -> Option<&CssValueOrigin> {
     }
 }
 
-fn normalize(
-    list: &CssKeyframeSelectorList,
+fn normalize<'a>(
+    list: &'a CssKeyframeSelectorList,
     context: &mut SpecifiedSerializationContext,
     stage: CssKeyframeSelectorComparisonStage,
-) -> Result<Vec<NormalizedOffset>, CssKeyframeSelectorComparisonError> {
+) -> Result<Vec<NormalizedOffset<'a>>, CssKeyframeSelectorComparisonError> {
     let failure = |cause, index: Option<usize>| {
         let source = index
             .and_then(|index| origin(&list.selectors()[index]))
@@ -123,21 +123,23 @@ fn normalize(
                 Some(index),
             )
         })?;
-        let mut prepare = || -> Result<NormalizedOffset, CssSpecifiedValueSerializationError> {
-            match selector {
-                CssKeyframeSelector::From => Ok(NormalizedOffset::Literal(0.0)),
-                CssKeyframeSelector::To => Ok(NormalizedOffset::Literal(100.0)),
-                CssKeyframeSelector::Percent(percent) => {
-                    if let Some(value) = percent.literal_value() {
-                        Ok(NormalizedOffset::Literal(value))
-                    } else {
-                        let calculation = percent.calculation().expect("checked percentage phase");
-                        prepare_keyframe_matching(&calculation.expression, context)
-                            .map(NormalizedOffset::Calculation)
+        let mut prepare =
+            || -> Result<NormalizedOffset<'a>, CssSpecifiedValueSerializationError> {
+                match selector {
+                    CssKeyframeSelector::From => Ok(NormalizedOffset::Literal(0.0)),
+                    CssKeyframeSelector::To => Ok(NormalizedOffset::Literal(100.0)),
+                    CssKeyframeSelector::Percent(percent) => {
+                        if let Some(value) = percent.literal_value() {
+                            Ok(NormalizedOffset::Literal(value))
+                        } else {
+                            let calculation =
+                                percent.calculation().expect("checked percentage phase");
+                            prepare_keyframe_matching(&calculation.expression, context)
+                                .map(NormalizedOffset::Calculation)
+                        }
                     }
                 }
-            }
-        };
+            };
         offsets.push(prepare().map_err(|e| failure(e, Some(index)))?);
     }
     Ok(offsets)
@@ -191,7 +193,7 @@ impl CssKeyframeSelectorList {
 /// cloneable. It retains no live identity and performs no collection mutation.
 pub struct CssKeyframeSelectorMatcher<'query> {
     query: &'query CssKeyframeSelectorList,
-    normalized: Vec<NormalizedOffset>,
+    normalized: Vec<NormalizedOffset<'query>>,
     context: SpecifiedSerializationContext,
 }
 impl<'query> CssKeyframeSelectorMatcher<'query> {

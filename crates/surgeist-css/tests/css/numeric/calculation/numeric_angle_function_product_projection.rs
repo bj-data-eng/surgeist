@@ -8,8 +8,9 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-simplification
 //! Frozen WebKit 73aa6c89e2cb77c46184a81aec944e4ab99d114d likewise merges
 //! Number children in CSSCalcTree+Simplification.cpp lines 654–745.
-//! Already projected Number/compound values retain selected binary64 IEEE
-//! outcomes. An Angle ancestor does not reconstruct their earlier magnitudes.
+//! Already projected Number/compound values retain NaN and genuine infinities;
+//! their finite overflow converts to the closest finite Number (#1297). An
+//! Angle ancestor does not reconstruct their earlier magnitudes.
 
 use surgeist_css::*;
 
@@ -90,41 +91,67 @@ fn grouped_angle_results_and_ordinary_finite_functions_keep_their_behavior() {
     }
 }
 
+/// The cosine of a finite supported angle: a number in [-1, 1], never NaN.
+/// Its digits depend on binary64 radian conversion and are not prescribed.
+fn assert_finite_cosine(source: &str) {
+    let value = number(source);
+    let result = value.serialize_specified().unwrap();
+    let coefficient: f64 = result
+        .strip_prefix("calc(")
+        .and_then(|rest| rest.strip_suffix(')'))
+        .and_then(|text| text.parse().ok())
+        .unwrap_or_else(|| panic!("{source}: {result}"));
+    assert!((-1.0..=1.0).contains(&coefficient), "{source}: {result}");
+}
+
 #[test]
 fn materialized_numbers_and_retained_products_follow_the_selected_policy() {
     // A Number subtree becomes a scalar before its Angle ancestor sees it.
+    // Its finite overflow converts to the closest finite Number, f64::MAX
+    // (#1297); MAX degrees is a supported angle, so its cosine is finite.
     // A compound Length*Angle subtree instead remains a Product: step 9.4
     // cannot materialize its compound type, and the ancestor flattens it under
     // step 9.1. Its finite leaves then participate in one final Angle Product.
+    let max = format!("calc({:.0})", f64::MAX);
     for (source, expected) in [
-        ("calc(1e308 * 2)", "calc(infinity)"),
-        ("calc((1e308 * 2) / (1e308 * 2))", "calc(NaN)"),
-        ("calc((1e308 * 2) * 0)", "calc(NaN)"),
+        ("calc(1e308 * 2)", max.as_str()),
+        ("calc((1e308 * 2) / (1e308 * 2))", "calc(1)"),
+        ("calc((1e308 * 2) * 0)", "calc(0)"),
         ("calc(1 / (0 * -1))", "calc(-infinity)"),
-        ("cos((1e308 * 2) * 1deg)", "calc(NaN)"),
-        ("cos(calc(1e308 * 2) * 1deg)", "calc(NaN)"),
-        ("cos((1e308 * 2) * 0deg)", "calc(NaN)"),
-        ("cos((1e308px * 2deg) / 1px)", "calc(1)"),
-        ("cos((1e308px * 2deg) / 1e308px)", "calc(1)"),
-        ("cos(hypot(1.3e308,1.3e308) * 1deg)", "calc(NaN)"),
-        ("cos(exp(710) * 1deg)", "calc(NaN)"),
-        ("cos(pow(1e308,2) * 1deg)", "calc(NaN)"),
+        ("cos((1e308 * 2) * 0deg)", "calc(1)"),
+        // The overflowing prefix 1e308px * 2deg has a compound Length*Angle
+        // type, so it converts to f64::MAX, not to the Angle endpoint; the
+        // final quotient is then MAX / binary64(1e308) = 1.7976931348623157deg.
+        ("cos((1e308px * 2deg) / 1e308px)", "calc(0.999508)"),
     ] {
         assert_number(source, expected);
+    }
+    for source in [
+        // MAX degrees is a supported angle.
+        "cos((1e308px * 2deg) / 1px)",
+        "cos((1e308 * 2) * 1deg)",
+        "cos(calc(1e308 * 2) * 1deg)",
+        "cos(hypot(1.3e308,1.3e308) * 1deg)",
+        "cos(exp(710) * 1deg)",
+        "cos(pow(1e308,2) * 1deg)",
+    ] {
+        assert_finite_cosine(source);
     }
 }
 
 #[test]
 fn finite_authored_number_coefficients_keep_the_selected_projection_range() {
+    // A finite Number coefficient beyond binary64 converts to f64::MAX (#1297).
     let huge = "1e170141183460469231731687303715884105728";
     for source in [
         "cos(1e400 * 1deg)".to_owned(),
         "cos(-1e400 * 1deg)".to_owned(),
         format!("cos({huge} * 1deg)"),
-        format!("cos(({huge} / {huge}) * 1deg)"),
     ] {
-        assert_number(&source, "calc(NaN)");
+        assert_finite_cosine(&source);
     }
+    // MAX / MAX is one up to binary64 rounding of the subnormal reciprocal.
+    assert_number(&format!("cos(({huge} / {huge}) * 1deg)"), "calc(0.999848)");
     for source in [
         "cos(0e170141183460469231731687303715884105728 * 1deg)",
         "cos(1e-170141183460469231731687303715884105728 * 1deg)",

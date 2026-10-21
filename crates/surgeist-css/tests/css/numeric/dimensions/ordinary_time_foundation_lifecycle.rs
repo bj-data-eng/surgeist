@@ -1121,9 +1121,12 @@ mod construction {
     #[test]
     fn calculation_emission_keeps_existing_simplification_and_unfinished_projection() {
         for (source, expected) in [
-            ("calc(1000ms + 1s)", "calc(2s)"),
-            ("calc(1e999s)", "calc(infinity * 1s)"),
-            ("calc(1e-999s)", "calc(0s)"),
+            ("calc(1000ms + 1s)", "calc(2s)".to_owned()),
+            // An operation-free leaf keeps its exact coefficient; arithmetic
+            // overflow converts to the closest finite value (#1297).
+            ("calc(1e999s)", format!("calc(1{}s)", "0".repeat(999))),
+            ("calc(1e999s * 1)", format!("calc({:.0}s)", f64::MAX)),
+            ("calc(1e-999s)", "calc(0s)".to_owned()),
         ] {
             let value = CssTimeValue::try_from_calculation(calculation(source)).unwrap();
             let before = value.clone();

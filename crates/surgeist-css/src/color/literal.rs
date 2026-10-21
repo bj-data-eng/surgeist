@@ -475,8 +475,9 @@ impl<'owner> LiteralConversion<'owner> {
                     .intrinsic_scale()
                     .expect("all canonical angle units are intrinsic");
                 (
-                    crate::numeric::projection::finite_angle_overflow(
+                    crate::numeric::projection::closest_supported_value(
                         if scaled { value } else { value * factor },
+                        true,
                         true,
                     ),
                     Some(CssNumericUnit::Angle(CssAngleUnit::Degrees)),

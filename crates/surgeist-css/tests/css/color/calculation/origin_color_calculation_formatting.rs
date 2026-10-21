@@ -145,8 +145,14 @@ text_case!(
 );
 text_case!(
     binary_micro_below,
-    "alpha(from rgb(calc(5e-7) none none))",
+    "alpha(from rgb(calc(5e-7 * 1) none none))",
     "alpha(from rgb(calc(0) none none))"
+);
+// An origin color's operation-free leaf keeps its exact coefficient (#1297).
+text_case!(
+    exact_operation_free_leaf,
+    "alpha(from rgb(calc(5e-7) none none))",
+    "alpha(from rgb(calc(0.000001) none none))"
 );
 text_case!(
     tiny,

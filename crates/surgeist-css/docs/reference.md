@@ -850,7 +850,7 @@ finite binary value for text. `calc(1 / 3)` emits `calc(0.333333)`, and the exac
 dyadic halfway value `calc(-1 / 128)` emits `calc(-0.007813)`.
 
 An authored decimal and its binary approximation can fall on different sides of
-a rounding midpoint. Ordinary `5e-7` emits `0.000001`; `calc(5e-7)` emits `calc(0)`
+a rounding midpoint. Ordinary `5e-7` emits `0.000001`; `calc(5e-7 * 1)` emits `calc(0)`
 because its projected binary64 value is just below that decimal midpoint.
 Finite integral results emit all their actual integer digits, including digits
 that differ from a shorter decimal spelling which merely round-trips to the
@@ -865,36 +865,98 @@ Values 4 leaves supported numeric precision and range
 [implementation-defined](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types);
 the authored coefficients remain exact even when their projected magnitudes differ.
 
+[#1297](https://github.com/bj-data-eng/surgeist/issues/1297) revises the
+[#735](https://github.com/bj-data-eng/surgeist/issues/735) precision and phase
+boundary in two respects; binary64 projection is otherwise unchanged. Both are
+specified-serialization rules only: keyframe selector matching is out of scope
+and keeps its selected native tree's IEEE outcomes.
+
+- A finite value whose binary64 projection overflows converts to the closest
+  supported value, as [Values 4's numeric-types rule](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types)
+  requires. For every non-angle type that is `f64::MAX` with the value's sign;
+  angles use the multiple-of-`360deg` endpoint below. One projection rule covers
+  authored coefficients and unit conversions (`calc(1e308in)`), each Sum and
+  Product accumulation step including merged Number coefficients
+  (`calc(1e308px * 10)`), division by a nonzero finite value, and named
+  functions such as `exp(1000)`, `pow(10, 400)` and `hypot()`. Every finite
+  intermediate value must itself be supported, so conversion applies at each
+  source-order step whose two operands are finite, before the next operand.
+  Thus `calc(1e308 * 2 * 0)` and `calc((1e308 * 2) * 0)` both emit `calc(0)`,
+  `calc(1e308px + 1e308px - infinity * 1px)` emits the genuine
+  `calc(-infinity * 1px)` rather than NaN, and `calc(1e308px * 10)` emits all
+  digits of `f64::MAX` followed by `px`, rather than `calc(infinity * 1px)`.
+  A Sum prefix has the Sum's type; a Product prefix has a partial compound type,
+  so only its final factor can select the Angle endpoint. Projection does not
+  track that partial type: every prefix before the last factor uses the Number
+  range, even one that cancels back to a pure angle. Thus the contrived factors
+  `1e300px * 1e300deg / 1e-300px * 1px / 1px` end at `f64::MAX` degrees rather
+  than the `360deg`-multiple endpoint; both are supported angles.
+- A calculation whose simplified tree is a single numeric leaf needing no unit
+  conversion or arithmetic serializes its exact authored coefficient under the
+  [ordinary number output](#canonical-ordinary-number-output) policy, as the
+  literal does. Thus `calc(1e999px)` emits a 1000-digit coefficient, and
+  `calc(5e-7)` emits `calc(0.000001)`. Groups, `calc()`, `clamp(none, A, none)`
+  and one-argument `min()` or `max()`, which Values 4 simplification replaces
+  with their argument, add no arithmetic. A slot scale, a conversion such as
+  `calc(1khz)` or any operator keeps binary64 projection. The projected value
+  still supplies comparison, and the outcome used by owning slots. Rotation axis
+  classification treats such a leaf as it treats the literal. Only the
+  non-contextual ordinary color calculation role (final RGB, HSL and HWB scalar
+  text) keeps binary64 text; retained alpha, mix weights, relative-color
+  channels and origin colors receive the exact text.
+
+Genuine infinities are unchanged: the `infinity` and `-infinity` constants,
+infinite operands, division by zero and argument combinations
+[defined to produce infinity](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-ieee),
+namely `pow(0, B)` for negative B, `log(0)` and `tan()` at an asymptote.
+`calc(1px / 0)` still emits `calc(infinity * 1px)`. The outcome statement
+above concerns finite values that cannot be represented; it does not reverse
+the spec mechanics of an earlier conversion. `calc(1 / -1e-999)` still emits
+`calc(-infinity)`: the leaf `-1e-999` first converts to its closest supported
+value, negative zero, and dividing by zero is then a defined infinity.
+
 Finite canonical angle projection supports `[-f64::MAX, f64::MAX]` degrees.
-When a finite authored angle conversion or finite-input Angle-valued operator
-or named-function result overflows that range, it converts to the nearest
-supported multiple of `360deg`,
+As the angle case of that rule, a finite authored angle conversion or
+finite-input Angle-valued operator or named-function result that overflows this
+range converts to the nearest supported multiple of `360deg`,
 as required by [Values 4's angle range rule](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types).
 The positive endpoint is `f64::from_bits(f64::MAX.to_bits() - 31)`: the maximum
 value is `(2^53 - 1) * 2^971`, and its significand is 31 above a multiple of 45.
 Since `360 = 45 * 8`, subtracting those 31 representable steps gives the largest
 finite exact multiple of 360. Representable angles above this multiple remain
-supported. An overflowing `grad` coefficient is normalized to a bounded
-19-digit decimal prefix before binary64 degree scaling, so `1.8e308grad` still
-projects to a supported degree magnitude. Authored coefficients and origins
-remain unchanged. Infinite operands and defined calculation exceptions retain
-their mathematical semantics; [trigonometric functions of infinity produce NaN](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#trig-infinities).
-Same-unit Sum coefficients accumulate in source order, then Angle range
-conversion applies once when the combined scalar replacement is created,
-following [Values 4's Sum simplification](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-simplification).
-Separately grouped Angle Sums materialize separately. Thus
-`calc((1e308deg + 1e308deg - 1e308deg) / 1e308deg)` emits `calc(1.797693)`,
-while grouping the first two terms emits `calc(0.797693)`.
+supported. A coefficient that overflows binary64 but has a unit scale below
+one (`grad`, `ms`, `Q`, `dpi`, `dpcm`) is normalized to a bounded 19-digit
+decimal prefix before binary64 canonical scaling, so `1.8e308grad` still
+projects to a supported degree magnitude and `1e310ms` to about `1e307s`.
+Authored coefficients and origins remain unchanged. Infinite operands and
+defined calculation exceptions retain their mathematical semantics;
+[trigonometric functions of infinity produce NaN](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#trig-infinities).
+
+Each value converts by its own type. The angle leaf in `cos(1e400deg)` is an
+unsupported angle and projects to the `360deg`-multiple endpoint, so its cosine
+is `1`. In `cos(1e400 * 1deg)` the unsupported value is the Number `1e400`,
+which converts to `f64::MAX`; multiplying by `1deg` then gives `f64::MAX`
+degrees, a supported angle, so no angle conversion applies and the cosine is a
+finite value of that angle. An operation-free `calc(1e400deg)` serializes its
+exact coefficient instead.
+
+Same-unit Sum coefficients accumulate in source order, applying the range rule
+at each step, before the combined scalar replacement is created, following
+[Values 4's Sum simplification](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-simplification).
+Thus `calc((1e308deg + 1e308deg - 1e308deg) / 1e308deg)` emits `calc(0.797693)`,
+flat or with the first two terms grouped: the first sum converts to the
+endpoint before `1e308deg` is subtracted.
 Products flatten nested Product children and then merge Number coefficients in
 source order before distribution and typed evaluation, following
 [Values 4's Product simplification](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-simplification).
 Thus `cos(1e308deg * 2 * 0)` first combines the Number coefficient to zero and
 emits `calc(1)`. Each merged coefficient spends a shared projection node.
-Already materialized Number and compound arithmetic retains its selected IEEE
-infinity and NaN outcomes; an Angle ancestor does not reconstruct discarded
-magnitudes. A retained compound Product may instead flatten into its ancestor
-before the final Angle result is evaluated. Target-context computed and
-used-value range clamping remains with the consuming owner.
+Already materialized Number and compound arithmetic retains its NaN and
+genuine infinity outcomes, and its finite overflow converts to the non-angle
+closest value; an Angle ancestor does not reconstruct discarded magnitudes.
+A retained compound Product may instead flatten into its ancestor before the
+final Angle result is evaluated. Target-context computed and used-value range
+clamping remains with the consuming owner.
 
 The selected draft's general `atan2()` normalization interval
 [excludes `-180deg`](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#funcdef-atan2),
@@ -2506,13 +2568,27 @@ rejects bare `0`; transform-function zero-angle grammar retains its separate
 `CssAngleOrZero` contract. This authored model replaces the former String payload.
 `CssRotate::serialize_specified` and `serialize_specified_with_limits` follow
 [Transforms 2 §5.1](https://www.w3.org/TR/2021/WD-css-transforms-2-20211109/#individual-transform-serialization).
-Authored `none` remains `none`; proved identity emits `0deg`. This includes
-zero angles, integral full turns and an unnormalizable all-zero axis under
-[§12.2](https://www.w3.org/TR/2021/WD-css-transforms-2-20211109/#three-d-transform-functions).
-Degree, gradian and turn identity is checked from borrowed exact decimal
-coefficients without expanding exponents. Nonzero ordinary decimal radians
-cannot be exact integral full turns. Finite calculated identity uses projected
-degrees under the existing [calculation arithmetic policy](#calculated-number-output).
+Authored `none` remains `none`.
+[#1298](https://github.com/bj-data-eng/surgeist/issues/1298) revises
+[#554](https://github.com/bj-data-eng/surgeist/issues/554)'s canonical provider,
+which emitted `0deg` for proved identities: Transforms 2 defines the
+[computed value](https://www.w3.org/TR/2021/WD-css-transforms-2-20211109/#propdef-rotate)
+as an angle with an axis, not a normalized orientation, and a
+[zero direction vector](https://www.w3.org/TR/2021/WD-css-transforms-2-20211109/#three-d-transform-functions)
+only makes the rotation not apply. Zero angles, full turns in literal and
+calculated forms, and an unnormalizable all-zero axis therefore keep their
+authored form: `x 0deg`, `y 400grad`, `calc(720deg)` and `0 0 0 400grad` are
+unchanged, matching WPT `css/css-transforms/parsing/rotate-parsing-valid.html`.
+Calculated angles use the [calculation output policy](#calculated-number-output),
+so the property agrees with the `transform: rotate()` function path.
+Identity classification for rendering or interpolation belongs to the
+downstream computed and used-value owner. This revision covers the `rotate`
+property only: the `rotate3d()` function path still replaces a full-turn angle
+or an unnormalizable zero axis with `0, 0, 1, 0deg`, pending a separate
+decision. Both paths share axis classification, so an operation-free calculated
+axis leaf is classified from its exact coefficient (#1297):
+`rotate3d(calc(1e-400), 0, 0, 30deg)` emits `rotate3d(1, 0, 0, 30deg)` and
+`rotate3d(calc(5e-7), 1, 0, 30deg)` emits `rotate3d(calc(0.000001), 1, 0, 30deg)`.
 
 Omitted and keyword z axes emit only the angle. Parallel x/y vectors emit their
 keyword; parallel z vectors omit the axis. Negative directed vectors invert the

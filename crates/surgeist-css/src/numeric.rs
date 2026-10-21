@@ -3239,9 +3239,9 @@ pub(crate) fn project_calculation_specified_into(
     project_specified_into(calculation.expression(), context, output)
 }
 
-impl SpecifiedCalculationRef<'_> {
-    fn expression(&self) -> &CssCalculationExpression {
-        match self {
+impl<'a> SpecifiedCalculationRef<'a> {
+    fn expression(&self) -> &'a CssCalculationExpression {
+        match *self {
             Self::Number(value) => &value.expression,
             Self::Angle(value) => &value.expression,
             Self::Time(value) => &value.expression,
@@ -3251,10 +3251,11 @@ impl SpecifiedCalculationRef<'_> {
 }
 
 /// Builds once in the caller's cumulative context and defers numeric emission.
-pub(crate) fn prepare_calculation_specified(
-    calculation: SpecifiedCalculationRef<'_>,
+pub(crate) fn prepare_calculation_specified<'a>(
+    calculation: SpecifiedCalculationRef<'a>,
     context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-) -> std::result::Result<DeferredNumericProjection, crate::CssSpecifiedValueSerializationError> {
+) -> std::result::Result<DeferredNumericProjection<'a>, crate::CssSpecifiedValueSerializationError>
+{
     prepare_specified(calculation.expression(), context)
 }
 

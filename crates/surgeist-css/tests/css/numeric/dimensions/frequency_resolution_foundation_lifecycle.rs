@@ -804,10 +804,13 @@ mod construction {
             assert_eq!(value, original);
         }
         for (source, expected) in [
-            ("calc(1khz)", "calc(1000hz)"),
-            ("calc(1e999hz)", "calc(infinity * 1hz)"),
-            ("calc(1e-999hz)", "calc(0hz)"),
-            ("calc((1hz))", "calc(1hz)"),
+            ("calc(1khz)", "calc(1000hz)".to_owned()),
+            // An operation-free leaf keeps its exact coefficient; conversion
+            // overflow converts to the closest finite value (#1297).
+            ("calc(1e999hz)", format!("calc(1{}hz)", "0".repeat(999))),
+            ("calc(1e999khz)", format!("calc({:.0}hz)", f64::MAX)),
+            ("calc(1e-999hz)", "calc(0hz)".to_owned()),
+            ("calc((1hz))", "calc(1hz)".to_owned()),
         ] {
             let value = frequency(source);
             assert_eq!(value.serialize_specified().unwrap(), expected);

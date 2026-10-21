@@ -1,12 +1,12 @@
 //! Values 4 §10.10 Sum step 8.2 replaces each same-unit set with ONE numeric
-//! value. Supported Angle range conversion belongs to that replacement, not
-//! each binary64 accumulator prefix. Grouped Sums materialize separately.
+//! value. Each finite source-order accumulation step is itself a value that
+//! must be supported, so Angle range conversion applies at every overflowing
+//! step (#1297 review), and grouping no longer changes the result.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-simplification
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types
-//! Source-order accumulation retains the selected binary64 policy. The flat
-//! finite-input overflow converts once to the supported multiple endpoint E;
-//! E/binary64(1e308) rounds to 1.797693. A separately materialized E followed by
-//! subtraction of binary64(1e308) instead rounds to a quotient of 0.797693.
+//! Source-order accumulation retains the selected binary64 policy. The first
+//! finite-input overflow converts to the supported multiple endpoint E; E minus
+//! binary64(1e308), divided by binary64(1e308), rounds to 0.797693, flat or grouped.
 //! Genuine infinite operands and NaN retain the §10.9.1 exception semantics.
 
 use surgeist_css::*;
@@ -37,15 +37,15 @@ fn assert_number(source: &str, expected: &str) {
 }
 
 #[test]
-fn flat_same_unit_angle_sum_converts_only_its_merged_replacement() {
+fn flat_same_unit_angle_sum_converts_at_each_accumulation_step() {
     for (source, expected) in [
         (
             "calc((1e308deg + 1e308deg - 1e308deg) / 1e308deg)",
-            "calc(1.797693)",
+            "calc(0.797693)",
         ),
         (
             "calc((-1e308deg - 1e308deg + 1e308deg) / 1e308deg)",
-            "calc(-1.797693)",
+            "calc(-0.797693)",
         ),
     ] {
         assert_number(source, expected);
@@ -117,7 +117,7 @@ fn programmatic_angle_sum_keeps_exact_coefficients_and_origin() {
     assert_eq!(value, before);
     assert_eq!(value.origin(), before.origin());
     assert_eq!(value.calculation().unwrap().components(), &components);
-    assert_eq!(result.unwrap(), "calc(1.797693)");
+    assert_eq!(result.unwrap(), "calc(0.797693)");
 }
 
 #[test]
@@ -125,11 +125,11 @@ fn merged_angle_replacement_obeys_exact_limits_and_atomic_failures() {
     for (source, expected) in [
         (
             "calc((1e308deg + 1e308deg - 1e308deg) / 1e308deg)",
-            "calc(1.797693)",
+            "calc(0.797693)",
         ),
         (
             "calc((-1e308deg - 1e308deg + 1e308deg) / 1e308deg)",
-            "calc(-1.797693)",
+            "calc(-0.797693)",
         ),
     ] {
         let value = number(source);
@@ -162,7 +162,7 @@ fn sibling_angle_replacements_share_one_cumulative_budget() {
         "calc(calc((1e308deg + 1e308deg - 1e308deg) / 1e308deg) + calc((1e308deg + 1e308deg - 1e308deg) / 1e308deg))",
     );
     let before = value.clone();
-    let expected = "calc(3.595386)";
+    let expected = "calc(1.595386)";
     // Two eight-input/eight-projection children; outer Calc/Sum costs two
     // inputs and one combined Number replacement projection.
     for (limits, kind) in [

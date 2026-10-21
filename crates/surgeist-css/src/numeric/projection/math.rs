@@ -64,6 +64,21 @@ impl VariadicMath {
     }
 }
 
+/// Values 4 §10.9.1 argument combinations defined to produce an infinity from
+/// finite operands: pow(0, B < 0), log(0) and tan() at an asymptote. Any other
+/// infinite result of finite operands is a finite value outside binary64.
+pub(super) fn defines_infinity(function: Function, args: &[Option<Scalar>]) -> bool {
+    let mut values = args.iter().flatten().map(|argument| argument.value);
+    let first = values.next();
+    match function {
+        Function::Log => first == Some(0.0),
+        Function::Pow => first == Some(0.0) && values.next().is_some_and(|b| b < 0.0),
+        // Finite tangent inputs are infinite only at the exact asymptotes.
+        Function::Tan => true,
+        _ => false,
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct KernelArguments;
 
@@ -416,6 +431,38 @@ fn pow(a: f64, b: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn defined_infinities_are_only_the_values_4_exceptions() {
+        // Values 4 §10.9.1: pow(0, -1), log(0) and tan() asymptotes are
+        // defined infinities; exp() and pow() overflow of finite operands is not.
+        let number = |value| {
+            Some(Scalar {
+                value,
+                unit: Unit::Number,
+            })
+        };
+        assert!(defines_infinity(
+            Function::Pow,
+            &[number(0.0), number(-1.0)]
+        ));
+        assert!(defines_infinity(
+            Function::Pow,
+            &[number(-0.0), number(-3.0)]
+        ));
+        assert!(!defines_infinity(
+            Function::Pow,
+            &[number(10.0), number(400.0)]
+        ));
+        assert!(defines_infinity(Function::Log, &[number(0.0)]));
+        assert!(!defines_infinity(Function::Log, &[number(2.0)]));
+        assert!(defines_infinity(Function::Tan, &[number(90.0)]));
+        assert!(!defines_infinity(Function::Exp, &[number(1000.0)]));
+        assert!(!defines_infinity(
+            Function::Hypot,
+            &[number(1e308), number(1e308)]
+        ));
+    }
     #[test]
     fn variadic_steps_preserve_css_nan_and_signed_zero() {
         let mut min = VariadicMath::new(Function::Min).unwrap();
