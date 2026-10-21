@@ -3331,11 +3331,25 @@ Named HSL lightness and HWB whiteness/blackness remain unbounded; NaN becomes
 zero, while dimensional infinities retain valid `calc(infinity * 1%)` or
 `calc(-infinity * 1%)` text. Numeric hue normalizes to degrees modulo 360,
 with NaN and infinities becoming zero. Preserved named forms round calculated hue after
-normalization and map a rounded 360 back to zero; direct hue retains its exact
-literal path. RGB conversion uses the
+normalization and map a rounded 360 back to zero. A direct number, degree or
+turn hue retains its exact decimal in degrees; a direct radian or gradian hue
+is a canonical degree number rounded to six decimals, as CSSOM serializes a
+<number>, with a rounded 360 again written as zero. A literal number or angle
+hue beyond binary64 is the nearest supported multiple of 360deg (Values 4
+§10.12) and serializes as 0 in both phases. RGB conversion uses the
 normalized unrounded hue.
-When HSL/HWB convert to RGB, the final converted and clipped binary64 channels
+When HSL/HWB convert to RGB, surgeist-color performs the Color 4 conversion on
+the same binary64 channel values that used-value resolution reads, so
+specified and used serialization agree. In both phases a finite literal beyond
+binary64 is the closest finite value (Values 4 §10.12), and a channel whose
+conversion overflows is likewise the signed closest finite value before
+clipping. The final converted and clipped binary64 channels
 use the same six-place positive-tie policy.
+Direct literals with an identity or percentage-shift factor use the decimal
+shift formatter, while other exact factors use the rational six-place
+formatter. They remain separate because they charge projection work
+differently (one node versus per-limb work); merging them would change
+cumulative accounting.
 For example, `rgb(255 0 0 / none)` emits `color(srgb 1 0 0 / none)`.
 An omitted alpha or a calculated alpha does not itself select this form.
 These rules also apply to ordinary children of `color-mix()`. Byte limits count
@@ -4412,12 +4426,12 @@ The selected Fonts 4 `font-style` property accepts `normal`, `italic`, `left`,
 four keywords with the descriptor, while `CssFontStyle::Oblique { angle: None }`
 retains omission rather than inserting the matching default `14deg`.
 `CssFontObliqueAngle` accepts literal `deg`, `grad`, and `turn` angles at exact
-lexical bounds of ±90deg, ±100grad, and ±0.25turn. Radian admission has an
-explicit binary64 precision: the original decimal coefficient is parsed as
-`f64` and compared directly with `FRAC_PI_2`. Thus
-`1.5707963267948966rad` is admitted and `1.5707963267948968rad` is rejected;
-decimal spellings that round to the same binary64 value share an admission
-result. The original component, unit, token spelling, and parsed or programmatic
+lexical bounds of ±90deg, ±100grad, and ±0.25turn. Radian admission compares
+the exact authored decimal with π/2, using its first 1000 significant digits:
+`1.5707963267948966rad` is admitted and `1.57079632679489665rad` is rejected
+although both round to the same binary64 value. The decision is exact for every
+coefficient of at most 1000 significant digits; a longer coefficient matching
+that whole prefix is rejected. The original component, unit, token spelling, and parsed or programmatic
 origin remain available after admission. A bare unitless zero is not an angle.
 Angle-valued calculations remain symbolic and use the existing numeric type
 rules; their apparent computed result is not range-checked here.

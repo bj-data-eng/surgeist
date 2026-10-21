@@ -472,11 +472,54 @@ fn representable_extreme_gray_and_overflowing_difference_have_finite_hsl_results
 }
 
 #[test]
-fn genuinely_unrepresentable_required_results_use_the_typed_result_error() {
+fn hsl_lightness_far_above_one_keeps_the_exact_white_vertex() {
+    // Color 4 §7.1 with S = 1 and L > 1/2: f(n) = L - (1 - L) * t, which is
+    // exactly 1 at t = -1 and 2L - 1 at t = 1. At L = 1e16 the binary64
+    // difference 1 - L rounds to -L, so the direct form cancels to zero.
+    let hsl = Hsl::try_new(Some(0.0), 100.0, 1e18).unwrap();
+    assert_eq!(convert_hsl_to_srgb(&hsl).unwrap(), [1.0, 2e16, 2e16]);
+    for hue in [120.0, 240.0] {
+        let channels = convert_hsl_to_srgb(&Hsl::try_new(Some(hue), 100.0, 1e18).unwrap()).unwrap();
+        assert_eq!(channels.iter().filter(|value| **value == 1.0).count(), 1);
+        assert_eq!(channels.iter().filter(|value| **value == 2e16).count(), 2);
+    }
+}
+
+#[test]
+fn hsl_channel_overflow_is_the_signed_closest_finite_value() {
+    // Values 4: a value that cannot be supported for range reasons converts
+    // to the closest supported value. At hue 0, S = L = 1e298 makes the red
+    // channel L + S(1 - L) ~ -1e596 and green/blue L + S(L - 1) ~ +1e596.
+    let hsl = Hsl::try_new(Some(0.0), 1e300, 1e300).unwrap();
     assert_eq!(
-        convert_hsl_to_srgb(&Hsl::try_new(None, f64::MAX, f64::MAX).unwrap()),
-        Err(Error::UnrepresentableResult)
+        convert_hsl_to_srgb(&hsl).unwrap(),
+        [-f64::MAX, f64::MAX, f64::MAX]
     );
+    assert_eq!(
+        convert_hsl_to_srgb(&Hsl::try_new(None, f64::MAX, f64::MAX).unwrap()).unwrap(),
+        [-f64::MAX, f64::MAX, f64::MAX]
+    );
+    // L <= 1/2: f(n) = L(1 - S t); a hugely negative L with huge S.
+    let hsl = Hsl::try_new(Some(0.0), 1e300, -1e300).unwrap();
+    assert_eq!(
+        convert_hsl_to_srgb(&hsl).unwrap(),
+        [-f64::MAX, f64::MAX, f64::MAX]
+    );
+}
+
+#[test]
+fn hwb_extreme_whiteness_or_blackness_keeps_exact_vertex_channels() {
+    // Color 4 §8.1 with W + B < 1: channel = basis (1 - W - B) + W, which is
+    // 1 - B at basis 1 and W at basis 0. At |W| = 1e16 the direct sum
+    // 1 - W rounds away the 1.
+    let hwb = Hwb::try_new(Some(0.0), -1e18, 0.0).unwrap();
+    assert_eq!(convert_hwb_to_srgb(&hwb), [1.0, -1e16, -1e16]);
+    let hwb = Hwb::try_new(Some(0.0), 0.0, -1e18).unwrap();
+    assert_eq!(convert_hwb_to_srgb(&hwb), [1e16 + 1.0, 0.0, 0.0]);
+}
+
+#[test]
+fn genuinely_unrepresentable_required_results_use_the_typed_result_error() {
     for rgb in [[f64::MAX; 3], [-f64::MAX; 3]] {
         assert_eq!(convert_srgb_to_hsl(rgb), Err(Error::UnrepresentableResult));
         assert_eq!(convert_srgb_to_hwb(rgb), Err(Error::UnrepresentableResult));

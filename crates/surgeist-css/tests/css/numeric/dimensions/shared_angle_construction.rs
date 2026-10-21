@@ -3,6 +3,7 @@
 //! Angle-root math, contextual direction omission, and cumulative budgets.
 //! https://www.w3.org/TR/2023/CRD-css-images-3-20231218/#serialization
 
+use crate::css::support::checked_color as color;
 use surgeist_css::*;
 
 fn zero_angle() -> CssAngleOrZero {
@@ -29,21 +30,6 @@ fn angle_math(text: &str) -> CssAngleOrZero {
 
 fn number(text: &str) -> CssSpecifiedNumber {
     CssSpecifiedNumber::try_from_component(CssComponentValue::try_number(text).unwrap()).unwrap()
-}
-
-fn color(text: &str) -> CssColor {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        parse_component_values(text).unwrap(),
-        CssImportance::Normal,
-    )
-    .unwrap();
-    let CssKnownPropertyValueRef::Color(value) =
-        declaration.known().unwrap().property_value().unwrap()
-    else {
-        panic!("color")
-    };
-    value.value().clone()
 }
 
 fn gradient(angle: CssAngleOrZero) -> CssGradient {

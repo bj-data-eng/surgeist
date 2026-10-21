@@ -2,6 +2,7 @@
 
 use super::channels::{self, Component, Domain, Error as ChannelError};
 use super::facts::{CssColorFactIdentity, CssColorFacts, CssDeviceColorFact};
+use super::keywords::ColorFunction as F;
 use super::{Color, ColorError};
 use crate::{ColorSpace as Space, CssColorSyntax, PredefinedColorSpace};
 
@@ -25,16 +26,9 @@ impl ComputedCmyk {
         {
             return Err(ChannelError::Grammar);
         }
-        let one = |component| {
-            channels::scalar(component, 1.0).map(|value| value.map(|value| value.clamp(0.0, 1.0)))
-        };
+        let ink = |index| channels::declared(F::DeviceCmyk, index, components[index], true);
         Ok(Self {
-            channels: [
-                one(components[0])?,
-                one(components[1])?,
-                one(components[2])?,
-                one(components[3])?,
-            ],
+            channels: [ink(0)?, ink(1)?, ink(2)?, ink(3)?],
             alpha: channels::alpha(alpha, legacy)?,
         })
     }

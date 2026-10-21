@@ -13,6 +13,7 @@ pub use path::{
     CssColorPathInspectionLayout, CssColorPathReservationLayout, CssColorPathReservationStatus,
     CssColorPathStep,
 };
+pub(crate) use spelling::authored_hue_degrees;
 
 mod controlled;
 pub use controlled::*;

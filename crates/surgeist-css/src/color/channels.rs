@@ -36,6 +36,113 @@ pub(crate) enum Error {
     Grammar,
     Numerical(ColorError),
 }
+/// One percentage: the channel value that 1% denotes, as the unreduced ratio
+/// that specified serialization multiplies exactly. 100% is the Color 4/5
+/// reference value `100 × numerator / denominator`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct Percent {
+    pub(crate) numerator: u64,
+    pub(crate) denominator: u64,
+}
+impl Percent {
+    const fn new(numerator: u64, denominator: u64) -> Self {
+        Self {
+            numerator,
+            denominator,
+        }
+    }
+    /// The channel value of 100%.
+    pub(crate) fn reference(self) -> f64 {
+        (self.numerator * 100) as f64 / self.denominator as f64
+    }
+    /// The decimal exponent of a power-of-ten reference value, such as 2 for
+    /// Lab lightness (100%% = 100) or 0 for Oklab lightness (100%% = 1).
+    pub(crate) fn reference_power_of_ten(self) -> Option<i128> {
+        let scaled = self.numerator * 100;
+        if !scaled.is_multiple_of(self.denominator) {
+            return None;
+        }
+        let reference = scaled / self.denominator;
+        let exponent = reference.ilog10();
+        (10u64.pow(exponent) == reference).then_some(i128::from(exponent))
+    }
+}
+
+/// The parse-time range of an absolute channel. Color 5 relative channels
+/// and calculation results are not clamped.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Clamp {
+    Unclamped,
+    /// Negative values clamp to 0 (HSL saturation, LCH/OKLCH chroma).
+    NonNegative,
+    /// Values clamp to `[0, reference]` (RGB, Lab/Oklab/LCH/OKLCH lightness,
+    /// device-cmyk inks).
+    Reference,
+}
+
+/// One fixed channel slot of a Color 4/5 color function.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Slot {
+    /// A `<hue>` in degrees, normalized by [`normalize_hue`].
+    Hue,
+    Scalar {
+        percent: Percent,
+        clamp: Clamp,
+    },
+}
+
+/// The Color 4/5 channel declarations, read by absolute and relative
+/// resolution and by specified serialization: rgb "100% = 255"; hsl/hwb
+/// percentages of 100; lab "100% = 100" lightness and "100% = 125" a/b;
+/// lch "100% = 150" chroma; oklab/oklch "100% = 1" lightness and
+/// "100% = 0.4" a/b/chroma; color() and device-cmyk "100% = 1".
+pub(crate) const fn slot(function: F, index: usize) -> Slot {
+    const UNIT: Percent = Percent::new(1, 100);
+    const PERCENT: Percent = Percent::new(1, 1);
+    const OK_AXIS: Percent = Percent::new(1, 250);
+    const fn scalar(percent: Percent, clamp: Clamp) -> Slot {
+        Slot::Scalar { percent, clamp }
+    }
+    match (function, index) {
+        (F::Rgb, _) => scalar(Percent::new(255, 100), Clamp::Reference),
+        (F::Hsl | F::Hwb, 0) | (F::Lch | F::Oklch, 2) => Slot::Hue,
+        (F::Hsl, 1) => scalar(PERCENT, Clamp::NonNegative),
+        (F::Hsl | F::Hwb, _) => scalar(PERCENT, Clamp::Unclamped),
+        (F::Lab | F::Lch, 0) => scalar(PERCENT, Clamp::Reference),
+        (F::Lab, _) => scalar(Percent::new(5, 4), Clamp::Unclamped),
+        (F::Lch, _) => scalar(Percent::new(3, 2), Clamp::NonNegative),
+        (F::Oklab | F::Oklch, 0) => scalar(UNIT, Clamp::Reference),
+        (F::Oklab, _) => scalar(OK_AXIS, Clamp::Unclamped),
+        (F::Oklch, _) => scalar(OK_AXIS, Clamp::NonNegative),
+        (F::DeviceCmyk, _) => scalar(UNIT, Clamp::Reference),
+        _ => scalar(UNIT, Clamp::Unclamped),
+    }
+}
+
+/// Resolves one channel by its declared slot. Absolute channels apply the
+/// declared clamp; relative channels keep every finite extended value.
+pub(crate) fn declared(
+    function: F,
+    index: usize,
+    component: Component,
+    absolute: bool,
+) -> Result<Option<f64>, Error> {
+    match slot(function, index) {
+        Slot::Hue => hue(component),
+        Slot::Scalar {
+            percent,
+            clamp: range,
+        } => {
+            let value = scalar(component, percent.reference())?;
+            Ok(match (absolute, range) {
+                (false, _) | (true, Clamp::Unclamped) => value,
+                (true, Clamp::NonNegative) => value.map(|value| value.max(0.0)),
+                (true, Clamp::Reference) => clamp(value, percent.reference()),
+            })
+        }
+    }
+}
+
 pub(crate) fn legacy_rgb_domains(domains: [Domain; 3]) -> bool {
     matches!(domains[0], Domain::Number | Domain::Percentage)
         && domains[1] == domains[0]
@@ -66,15 +173,23 @@ pub(crate) fn scalar(component: Component, percentage: f64) -> Result<Option<f64
         value
     }))
 }
+/// Color 4 §4.3 normalizes every hue in degrees to `[0, 360)`; the
+/// `hsl(360 0 0)` and `hsl(calc(±infinity) 0 0)` examples give 0 degrees.
+/// This is the one CSS normalization for used and specified hues. Zero,
+/// including -0, is the unsigned zero, and a negative hue whose remainder
+/// rounds up to the excluded 360 in binary64 also normalizes to zero.
+pub(crate) fn normalize_hue(degrees: f64) -> f64 {
+    if !degrees.is_finite() {
+        return 0.0;
+    }
+    let hue = degrees.rem_euclid(360.0);
+    if hue == 0.0 || hue >= 360.0 { 0.0 } else { hue }
+}
 pub(crate) fn hue(component: Component) -> Result<Option<f64>, Error> {
     match component.domain {
         Domain::Missing => Ok(None),
         Domain::Percentage => Err(Error::Grammar),
-        Domain::Degrees | Domain::Number => Ok(Some(if component.value.is_finite() {
-            component.value.rem_euclid(360.0)
-        } else {
-            0.0
-        })),
+        Domain::Degrees | Domain::Number => Ok(Some(normalize_hue(component.value))),
     }
 }
 fn clamp(value: Option<f64>, maximum: f64) -> Option<f64> {
@@ -94,6 +209,48 @@ pub(crate) fn alpha(value: Option<Component>, legacy: bool) -> Result<Option<f64
         value.map_or(Ok(Some(1.0)), |value| scalar(value, 1.0))?,
         1.0,
     ))
+}
+
+/// The numerical space of one three-channel color function.
+pub(crate) fn function_space(function: F, predefined: Option<Predefined>) -> Result<Space, Error> {
+    Ok(match function {
+        F::Rgb => Space::Predefined(Predefined::Srgb),
+        F::Hsl => Space::Hsl,
+        F::Hwb => Space::Hwb,
+        F::Lab => Space::Lab,
+        F::Oklab => Space::Oklab,
+        F::Lch => Space::Lch,
+        F::Oklch => Space::Oklch,
+        F::Color => Space::Predefined(predefined.ok_or(Error::Grammar)?),
+        _ => return Err(Error::Grammar),
+    })
+}
+
+/// Resolves relative function channels by their declared slots, without
+/// the absolute parse-time clamps (Color 5: relative components "are *not
+/// clamped*").
+pub(crate) fn relative_channels(
+    function: F,
+    components: [Component; 3],
+) -> Result<[Option<f64>; 3], Error> {
+    if function == F::Rgb {
+        let Slot::Scalar { percent, .. } = slot(F::Rgb, 0) else {
+            unreachable!("rgb channels are scalar")
+        };
+        let channel = |value: Component| -> Result<Option<f64>, Error> {
+            Ok(scalar(value, percent.reference())?.map(|value| value / percent.reference()))
+        };
+        return Ok([
+            channel(components[0])?,
+            channel(components[1])?,
+            channel(components[2])?,
+        ]);
+    }
+    Ok([
+        declared(function, 0, components[0], false)?,
+        declared(function, 1, components[1], false)?,
+        declared(function, 2, components[2], false)?,
+    ])
 }
 
 /// Function-space coordinates remain available to same-space relative syntax
@@ -117,11 +274,17 @@ pub(crate) fn absolute_coordinates(
         return Err(Error::Grammar);
     }
     let alpha = alpha(alpha_component, legacy)?;
-    let (space, channels) = match function {
+    let space = function_space(function, predefined)?;
+    let channels = match function {
         F::Rgb => {
             if legacy && !legacy_rgb_domains(components.map(|value| value.domain)) {
                 return Err(Error::Grammar);
             }
+            let Slot::Scalar { percent, .. } = slot(F::Rgb, 0) else {
+                unreachable!("rgb channels are scalar")
+            };
+            // Absolute rgb() channels clamp to [0, 255] and are stored in
+            // sRGB unit coordinates; a percentage needs no 255 round trip.
             let channel = |value: Component| -> Result<Option<f64>, Error> {
                 if value.domain == Domain::Missing {
                     return Ok(None);
@@ -139,81 +302,30 @@ pub(crate) fn absolute_coordinates(
                         / if value.domain == Domain::Percentage {
                             100.0
                         } else {
-                            255.0
+                            percent.reference()
                         })
                     .clamp(0.0, 1.0),
                 ))
             };
-            (
-                Space::Predefined(Predefined::Srgb),
-                [
-                    channel(components[0])?,
-                    channel(components[1])?,
-                    channel(components[2])?,
-                ],
-            )
+            [
+                channel(components[0])?,
+                channel(components[1])?,
+                channel(components[2])?,
+            ]
         }
-        F::Hsl | F::Hwb => {
+        _ => {
             if legacy
                 && (components[1].domain != Domain::Percentage
                     || components[2].domain != Domain::Percentage)
             {
                 return Err(Error::Grammar);
             }
-            let saturation = scalar(components[1], 100.0)?;
-            let third = scalar(components[2], 100.0)?;
-            let second = if function == F::Hsl {
-                saturation.map(|value| value.max(0.0))
-            } else {
-                saturation
-            };
-            (
-                if function == F::Hsl {
-                    Space::Hsl
-                } else {
-                    Space::Hwb
-                },
-                [hue(components[0])?, second, third],
-            )
-        }
-        F::Lab | F::Oklab => {
-            let ok = function == F::Oklab;
-            (
-                if ok { Space::Oklab } else { Space::Lab },
-                [
-                    clamp(
-                        scalar(components[0], if ok { 1.0 } else { 100.0 })?,
-                        if ok { 1.0 } else { 100.0 },
-                    ),
-                    scalar(components[1], if ok { 0.4 } else { 125.0 })?,
-                    scalar(components[2], if ok { 0.4 } else { 125.0 })?,
-                ],
-            )
-        }
-        F::Lch | F::Oklch => {
-            let ok = function == F::Oklch;
-            (
-                if ok { Space::Oklch } else { Space::Lch },
-                [
-                    clamp(
-                        scalar(components[0], if ok { 1.0 } else { 100.0 })?,
-                        if ok { 1.0 } else { 100.0 },
-                    ),
-                    scalar(components[1], if ok { 0.4 } else { 150.0 })?
-                        .map(|value| value.max(0.0)),
-                    hue(components[2])?,
-                ],
-            )
-        }
-        F::Color => (
-            Space::Predefined(predefined.ok_or(Error::Grammar)?),
             [
-                scalar(components[0], 1.0)?,
-                scalar(components[1], 1.0)?,
-                scalar(components[2], 1.0)?,
-            ],
-        ),
-        _ => return Err(Error::Grammar),
+                declared(function, 0, components[0], true)?,
+                declared(function, 1, components[1], true)?,
+                declared(function, 2, components[2], true)?,
+            ]
+        }
     };
     let value = Color::try_new(space, channels, alpha)?;
     // Color4 16.2.2 retains the absolute rgb()/rgba() serialization family.
@@ -224,171 +336,4 @@ pub(crate) fn absolute_coordinates(
     } else {
         value
     })
-}
-#[cfg(test)]
-pub(crate) fn absolute(
-    function: F,
-    predefined: Option<Predefined>,
-    syntax: Syntax,
-    components: [Component; 3],
-    alpha_component: Option<Component>,
-) -> Result<Color, Error> {
-    let value = absolute_coordinates(function, predefined, syntax, components, alpha_component)?;
-    let alpha = value.alpha();
-    let channels = value.channels();
-    // Color4§15.1 resolves present HSL/HWB channels to corresponding sRGB.
-    // Explicit missing channels instead retain their modern natural form.
-    if matches!(function, F::Hsl | F::Hwb) && channels.iter().all(Option::is_some) {
-        let converted = value.converted(Space::Predefined(Predefined::Srgb))?;
-        Color::try_new(
-            converted.space(),
-            converted.channels().map(|value| clamp(value, 1.0)),
-            alpha,
-        )
-        .and_then(|value| {
-            value.with_serialization_family(surgeist_color::SerializationFamily::LegacySrgb)
-        })
-        .map_err(Into::into)
-    } else {
-        Ok(value)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    fn percent(value: f64) -> Component {
-        Component {
-            domain: Domain::Percentage,
-            value,
-        }
-    }
-    fn degrees(value: f64) -> Component {
-        Component {
-            domain: Domain::Degrees,
-            value,
-        }
-    }
-    #[test]
-    fn literal_reference_ranges_clamping_and_extended_values_are_distinct() {
-        let rgb = absolute(
-            F::Rgb,
-            None,
-            Syntax::Modern,
-            [
-                percent(100.0),
-                Component::number(-1.0),
-                Component::number(128.0),
-            ],
-            Some(percent(50.0)),
-        )
-        .unwrap();
-        assert_eq!(rgb.channels(), [Some(1.0), Some(0.0), Some(128.0 / 255.0)]);
-        assert_eq!(rgb.alpha(), Some(0.5));
-        assert_eq!(rgb.srgb_bytes(), None);
-        let lab = absolute(
-            F::Lab,
-            None,
-            Syntax::Modern,
-            [percent(120.0), percent(100.0), percent(-100.0)],
-            None,
-        )
-        .unwrap();
-        assert_eq!(lab.channels(), [Some(100.0), Some(125.0), Some(-125.0)]);
-        let ok = absolute(
-            F::Oklch,
-            None,
-            Syntax::Modern,
-            [percent(50.0), percent(100.0), degrees(450.0)],
-            None,
-        )
-        .unwrap();
-        assert_eq!(ok.channels(), [Some(0.5), Some(0.4), Some(90.0)]);
-        let wide = absolute(
-            F::Color,
-            Some(Predefined::DisplayP3),
-            Syntax::Modern,
-            [Component::number(1.5), percent(-50.0), Component::MISSING],
-            Some(Component::MISSING),
-        )
-        .unwrap();
-        assert_eq!(wide.channels(), [Some(1.5), Some(-0.5), None]);
-        assert_eq!(wide.alpha(), None);
-    }
-    #[test]
-    fn legacy_domain_failures_are_not_numerical_failures() {
-        assert_eq!(
-            absolute(
-                F::Rgb,
-                None,
-                Syntax::Legacy,
-                [Component::number(1.0), percent(2.0), percent(3.0)],
-                None
-            ),
-            Err(Error::Grammar)
-        );
-        assert_eq!(
-            absolute(
-                F::Hsl,
-                None,
-                Syntax::Legacy,
-                [degrees(0.0), Component::number(100.0), percent(50.0)],
-                None
-            ),
-            Err(Error::Grammar)
-        );
-        assert_eq!(
-            absolute(
-                F::Lab,
-                None,
-                Syntax::Modern,
-                [
-                    Component::number(50.0),
-                    Component::number(f64::INFINITY),
-                    Component::number(0.0)
-                ],
-                None
-            ),
-            Err(Error::Numerical(ColorError::NonFinite { component: 1 }))
-        );
-        let rgb = absolute(
-            F::Rgb,
-            None,
-            Syntax::Modern,
-            [
-                Component::number(f64::INFINITY),
-                Component::number(f64::NAN),
-                Component::number(f64::NEG_INFINITY),
-            ],
-            None,
-        )
-        .unwrap();
-        assert_eq!(rgb.channels(), [Some(1.0), Some(0.0), Some(0.0)]);
-    }
-    #[test]
-    fn present_hsl_resolves_srgb_but_missing_channels_preserve_natural_form() {
-        let red = absolute(
-            F::Hsl,
-            None,
-            Syntax::Modern,
-            [degrees(360.0), percent(100.0), percent(50.0)],
-            None,
-        )
-        .unwrap();
-        assert_eq!(red.space(), Space::Predefined(Predefined::Srgb));
-        assert_eq!(red.channels(), [Some(1.0), Some(0.0), Some(0.0)]);
-        assert!(
-            !(red.serialization_family() == surgeist_color::SerializationFamily::ColorFunction)
-        );
-        let missing = absolute(
-            F::Hsl,
-            None,
-            Syntax::Modern,
-            [Component::MISSING, percent(0.0), percent(50.0)],
-            None,
-        )
-        .unwrap();
-        assert_eq!(missing.space(), Space::Hsl);
-        assert_eq!(missing.channels(), [None, Some(0.0), Some(50.0)]);
-    }
 }

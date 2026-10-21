@@ -1,20 +1,6 @@
 //! Color 5 alpha and authored absolute-eligibility contracts.
+use crate::css::support::checked_color as color;
 use surgeist_css::*;
-
-fn color(text: &str) -> CssColor {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        parse_component_values(text).unwrap(),
-        CssImportance::Normal,
-    )
-    .unwrap();
-    let CssKnownPropertyValueRef::Color(value) =
-        declaration.known().unwrap().property_value().unwrap()
-    else {
-        panic!("color")
-    };
-    value.value().clone()
-}
 
 fn alpha(text: &str) -> CssRelativeColorExpression {
     CssRelativeColorExpression::try_from_components(

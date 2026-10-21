@@ -900,25 +900,3 @@ fn color_calculation_text_follows_its_declared_slot() {
         assert_eq!(value, before);
     }
 }
-
-#[test]
-fn discarded_color_channel_capture_keeps_its_unrounded_scratch_budget() {
-    let value = color("rgb(calc(10000000000) 0 0)");
-    let before = value.clone();
-    // Capture occurs before final RGB output. calc(10000000000) needs seventeen
-    // scratch bytes although the clamped final rgb(255, 0, 0) needs fourteen.
-    assert_eq!(
-        value
-            .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, 17))
-            .unwrap(),
-        "rgb(255, 0, 0)"
-    );
-    assert_eq!(
-        value
-            .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, 16))
-            .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
-    );
-    assert_eq!(value, before);
-}

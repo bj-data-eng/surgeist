@@ -2,6 +2,7 @@
 //! Color4 CRD20260908 #propdef-color; full accepted Color/Color5/profile/device
 //! owners; Syntax3 original EOF boundaries; Cascade5/Variables1; CSSOM.
 //! Context-specific quirky hex APIs are intentionally not fabricated here.
+use crate::css::support::declaration_color as color;
 use surgeist_css::*;
 
 const COLOR_GOLDENS: &[(&str, &str)] = &[
@@ -174,13 +175,6 @@ fn completed(source: &CssDeclaration) -> CssLonghandContributions {
     values
 }
 
-fn color(source: &CssDeclaration) -> &CssColor {
-    let CssKnownPropertyValueRef::Color(value) = source.known().unwrap().property_value().unwrap()
-    else {
-        panic!("color payload")
-    };
-    value.value()
-}
 fn strict_error(error: &CssPropertyValueParseError, original: &str) {
     assert!(matches!(
         error.kind(),
@@ -782,7 +776,7 @@ fn standalone_color_provider_keeps_its_one_node_budget_and_capacity_failure() {
     }
     let source = checked(
         "color",
-        "hsl(0 12345678901234567891e170141183460469231731687303715884105727% 50%)",
+        "rgb(12345678901234567891e170141183460469231731687303715884105727 0 0)",
         true,
     );
     let before = source.clone();

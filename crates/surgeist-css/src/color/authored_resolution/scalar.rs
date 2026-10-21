@@ -413,11 +413,8 @@ impl<'css> ScalarLowering<'css> {
             }
             State::Convert(cursor) => {
                 if let LiteralAction::Done(value) = cursor.action() {
-                    self.state = match self.context.domain(value.ty) {
-                        Some(domain) => State::Done(CheckedScalar::Literal(Component {
-                            domain,
-                            value: value.value,
-                        })),
+                    self.state = match self.context.literal(value) {
+                        Some(component) => State::Done(CheckedScalar::Literal(component)),
                         None => State::Failed(SyntaxFailure::Component {
                             site,
                             reason: super::super::component::ComponentFailureReason::Component,

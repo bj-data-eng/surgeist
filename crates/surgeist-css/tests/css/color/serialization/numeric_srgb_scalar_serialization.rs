@@ -7,22 +7,13 @@
 //! below are independent mathematical/grammar oracles, never captured output.
 
 use crate::css::support::{
-    checked_color_declaration as declaration, component_values as components,
+    checked_color as color, checked_color_declaration as declaration,
+    component_values as components, declaration_color,
 };
 use surgeist_css::*;
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
-fn declared_color(value: &CssDeclaration) -> &CssColor {
-    let CssKnownPropertyValueRef::Color(value) = value.known().unwrap().property_value().unwrap()
-    else {
-        panic!("checked color")
-    };
-    value.value()
-}
-fn color(source: &str) -> CssColor {
-    declared_color(&declaration(source)).clone()
-}
 fn assert_value(value: &CssColor, expected: &str) {
     let before = value.clone();
     let result = value.to_specified_css();
@@ -52,7 +43,7 @@ fn assert_text(source: &str, expected: &str) {
             panic!("parsed function");
         };
         assert!(origin.source().as_str().contains(source));
-        assert_value(declared_color(value), expected);
+        assert_value(declaration_color(value), expected);
         assert_eq!(value, &before);
     }
 }

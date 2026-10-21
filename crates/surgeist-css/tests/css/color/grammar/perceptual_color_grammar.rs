@@ -7,39 +7,13 @@
 //! Explicit numeric oracles use Lab scales 100/125/150 and OK scales 1/0.4,
 //! degree conversion and the selected direct bounds, never captured output.
 
+use crate::css::support::color_components::{
+    assert_component, assert_origin, assert_recovered, component, token,
+};
 use crate::css::support::parsed_color as parsed;
 use surgeist_css::*;
 
 const FAMILIES: [&str; 4] = ["lab", "lch", "oklab", "oklch"];
-
-fn token(text: &str) -> CssComponentValue {
-    let values = parse_component_values(text).unwrap();
-    assert_eq!(values.items().len(), 1, "{text}");
-    values.items()[0].clone()
-}
-
-fn component(text: &str) -> CssColorComponent {
-    if text.eq_ignore_ascii_case("none") {
-        CssColorComponent::None
-    } else if text.starts_with("calc(") {
-        let values = parse_component_values(text).unwrap();
-        if text.contains('%') {
-            CssColorComponent::PercentageCalculation(
-                CssPercentageCalculation::try_from_components(values).unwrap(),
-            )
-        } else {
-            CssColorComponent::NumberCalculation(
-                CssNumberCalculation::try_from_components(values).unwrap(),
-            )
-        }
-    } else if text.ends_with('%') {
-        CssColorComponent::Percentage(
-            CssColorPercentageLiteral::try_from_component(token(text)).unwrap(),
-        )
-    } else {
-        CssColorComponent::Number(CssColorNumberLiteral::try_from_component(token(text)).unwrap())
-    }
-}
 
 fn hue(text: &str) -> CssColorHue {
     if text.eq_ignore_ascii_case("none") {
@@ -98,44 +72,6 @@ fn constructed(family: &str, channels: [&str; 3], alpha: Option<&str>) -> CssCol
             }
         }
         _ => panic!("unknown test family {family}"),
-    }
-}
-
-fn assert_origin(origin: &CssValueOrigin, text: &str) {
-    let CssValueOrigin::Parsed(origin) = origin else {
-        panic!("actual token provenance: {text}")
-    };
-    assert!(
-        origin.source().as_str().contains(text),
-        "{text}: {origin:?}"
-    );
-}
-
-fn assert_component(value: &CssColorComponent, expected: &str) {
-    match value {
-        CssColorComponent::None => assert!(expected.eq_ignore_ascii_case("none")),
-        CssColorComponent::Number(value) => {
-            assert_eq!(value.numeric().representation(), expected);
-            assert_origin(value.origin(), expected);
-        }
-        CssColorComponent::Percentage(value) => {
-            assert_eq!(
-                value.numeric().representation(),
-                expected.strip_suffix('%').unwrap()
-            );
-            assert_origin(value.origin(), expected);
-        }
-        CssColorComponent::NumberCalculation(value) => {
-            assert!(!expected.contains('%'));
-            assert_eq!(value.components().serialize().unwrap().as_css(), expected);
-            assert_origin(value.origin(), expected);
-        }
-        CssColorComponent::PercentageCalculation(value) => {
-            assert!(expected.contains('%'));
-            assert_eq!(value.components().serialize().unwrap().as_css(), expected);
-            assert_origin(value.origin(), expected);
-        }
-        other => panic!("unexpected scalar {other:?}"),
     }
 }
 
@@ -334,15 +270,15 @@ fn direct_bounds_preserve_raw_coefficients_and_unbounded_axes_or_chroma() {
 
 #[test]
 fn polar_hues_retain_units_and_wrap_direct_values_without_erasing_present_hue() {
-    // The catalog's direct-radian factor is 1007958012753983 / 17592186044416.
-    // Its independently divided exact decimal differs from retained Origin rounding.
+    // Color 4 §16 serializes a hue as a canonicalized <number> of degrees and
+    // CSSOM rounds it to six decimals: 1rad = 180/π deg = 57.2957795…deg.
     for family in ["lch", "oklch"] {
         for (hue, degrees) in [
             ("-90", "270"),
             ("450deg", "90"),
             ("-100grad", "270"),
             ("1.25turn", "90"),
-            ("1rad", "57.29577951308232286464772187173366546630859375"),
+            ("1rad", "57.29578"),
             ("none", "none"),
         ] {
             assert_case(
@@ -425,29 +361,6 @@ fn malformed_perceptual_functions_drop_only_color_and_fail_strict_validation() {
             assert_recovered(&format!("{family}(1 2 {invalid_third})"));
         }
     }
-}
-
-fn assert_recovered(value: &str) {
-    let source = format!("color: {value}; opacity: 0.5");
-    let report = parse_style_attribute(&source);
-    assert_eq!(
-        report.syntax().len(),
-        1,
-        "{source}: {:?}",
-        report.diagnostics()
-    );
-    assert_eq!(report.diagnostics().len(), 1, "{source}");
-    assert_eq!(
-        report.diagnostics()[0].action(),
-        CssRecoveryAction::DropDeclaration,
-        "{source}"
-    );
-    assert_eq!(
-        report.syntax()[0].known().unwrap().property(),
-        CssKnownProperty::Opacity,
-        "{source}"
-    );
-    assert!(validate_style_attribute(&source).is_err(), "{source}");
 }
 
 #[test]

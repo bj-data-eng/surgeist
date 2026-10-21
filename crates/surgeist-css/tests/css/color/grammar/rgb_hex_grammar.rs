@@ -6,11 +6,10 @@
 //! Calculated alpha, Origin, missing-component output precision and opaque hex
 //! output budgets have separate focused tests; this module characterizes literals.
 
+use crate::css::support::color_components::{assert_recovered, component};
 use surgeist_css::{
-    CssColor, CssColorComponent, CssColorConstructionError, CssColorNumberLiteral,
-    CssColorPercentageLiteral, CssColorSyntax, CssHexColor, CssKnownProperty,
-    CssKnownPropertyValueRef, CssRecoveryAction, CssRgbColor, parse_component_values,
-    parse_style_attribute, validate_style_attribute,
+    CssColor, CssColorComponent, CssColorConstructionError, CssColorSyntax, CssHexColor,
+    CssKnownPropertyValueRef, CssRgbColor, parse_style_attribute, validate_style_attribute,
 };
 
 fn parsed_color(text: &str) -> CssColor {
@@ -29,20 +28,6 @@ fn parsed_color(text: &str) -> CssColor {
     let color = color.value().clone();
     assert_eq!(validate_style_attribute(&source).unwrap(), *report.syntax());
     color
-}
-
-fn component(text: &str) -> CssColorComponent {
-    if text == "none" {
-        return CssColorComponent::None;
-    }
-    let values = parse_component_values(text).unwrap();
-    assert_eq!(values.items().len(), 1, "{text}");
-    let token = values.items()[0].clone();
-    if text.ends_with('%') {
-        CssColorComponent::Percentage(CssColorPercentageLiteral::try_from_component(token).unwrap())
-    } else {
-        CssColorComponent::Number(CssColorNumberLiteral::try_from_component(token).unwrap())
-    }
 }
 
 fn assert_component(value: &CssColorComponent, expected: &str) {
@@ -216,29 +201,6 @@ fn ordinary_endpoint_projection_clamps_output_without_changing_literal_ranges() 
             assert_rgb(&color, syntax, channels, Some(alpha));
         }
     }
-}
-
-fn assert_recovered(value: &str) {
-    let source = format!("color: {value}; opacity: 0.5");
-    let report = parse_style_attribute(&source);
-    assert_eq!(
-        report.syntax().len(),
-        1,
-        "{source}: {:?}",
-        report.diagnostics()
-    );
-    assert_eq!(report.diagnostics().len(), 1, "{source}");
-    assert_eq!(
-        report.diagnostics()[0].action(),
-        CssRecoveryAction::DropDeclaration,
-        "{source}"
-    );
-    assert_eq!(
-        report.syntax()[0].known().unwrap().property(),
-        CssKnownProperty::Opacity,
-        "{source}"
-    );
-    assert!(validate_style_attribute(&source).is_err(), "{source}");
 }
 
 #[test]

@@ -5,24 +5,13 @@
 //! ordinary mix children still use ordinary specified serialization.
 
 use crate::css::support::{
-    checked_color_declaration as declaration, component_values as components,
+    checked_color as color, checked_color_declaration as declaration,
+    component_values as components, declaration_color,
 };
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-
-fn declared_color(value: &CssDeclaration) -> &CssColor {
-    let CssKnownPropertyValueRef::Color(value) = value.known().unwrap().property_value().unwrap()
-    else {
-        panic!("checked color property")
-    };
-    value.value()
-}
-
-fn color(source: &str) -> CssColor {
-    declared_color(&declaration(source)).clone()
-}
 
 fn assert_value(value: &CssColor, expected: &str) {
     let before = value.clone();
@@ -34,7 +23,7 @@ fn assert_value(value: &CssColor, expected: &str) {
     // real property grammar; this does not assert equality across color spaces.
     let reparsed = declaration(expected);
     assert_eq!(
-        declared_color(&reparsed).to_specified_css().unwrap(),
+        declaration_color(&reparsed).to_specified_css().unwrap(),
         expected
     );
 }
@@ -51,7 +40,7 @@ fn assert_text(source: &str, expected: &str) {
             value.value_components().serialize().unwrap().as_css(),
             source
         );
-        assert_value(declared_color(value), expected);
+        assert_value(declaration_color(value), expected);
         assert_eq!(value, &before);
     }
 }
@@ -265,14 +254,14 @@ fn parsed_none_alpha_kind_and_raw_tokens_survive_repeated_serialization() {
     let source = "RGB(255 0 0 / NoNe)";
     let declared = declaration(source);
     let before = declared.clone();
-    let rgb = declared_color(&declared).rgb_value().unwrap();
+    let rgb = declaration_color(&declared).rgb_value().unwrap();
     assert_eq!(rgb.alpha(), Some(&CssColorComponent::None));
     assert_eq!(declared.value_components(), &components(source));
     let CssValueOrigin::Parsed(origin) = declared.value_components().items()[0].origin() else {
         panic!("parsed function");
     };
     assert_eq!(origin.source().as_str(), source);
-    assert_value(declared_color(&declared), "color(srgb 1 0 0 / none)");
+    assert_value(declaration_color(&declared), "color(srgb 1 0 0 / none)");
     assert_eq!(declared, before);
     assert_eq!(
         declared.value_components().serialize().unwrap().as_css(),
@@ -335,7 +324,7 @@ fn important_checked_declaration_and_validation_keep_sibling_properties() {
     );
     let before = report.syntax().clone();
     assert_value(
-        declared_color(&report.syntax()[0]),
+        declaration_color(&report.syntax()[0]),
         "hsl(0 100% 50% / none)",
     );
     assert_eq!(report.syntax(), &before);

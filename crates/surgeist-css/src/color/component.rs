@@ -125,6 +125,27 @@ impl ComponentContext {
             allow_missing: recipe.syntax == CssColorSyntax::Modern && role != ComponentRole::Weight,
         })
     }
+    /// The checked component of one converted literal. A `<number>` hue is
+    /// degrees (Color 4 §4.3), so an authored number beyond binary64 takes the
+    /// Values 4 §10.12 angle case, the nearest supported multiple of 360deg,
+    /// exactly like an overflowing `<angle>`.
+    pub(crate) fn literal(self, value: super::literal::LiteralValue) -> Option<Component> {
+        let domain = self.domain(value.ty)?;
+        let number =
+            if self.expectation == Expectation::Hue && domain == Domain::Number && value.overflowed
+            {
+                crate::numeric::projection::finite_angle_overflow(
+                    f64::INFINITY.copysign(value.value),
+                    true,
+                )
+            } else {
+                value.value
+            };
+        Some(Component {
+            domain,
+            value: number,
+        })
+    }
     pub(crate) fn domain(self, ty: CssNumericType) -> Option<Domain> {
         match self.expectation {
             Expectation::Hue if ty.percent_hint().is_none() => {
@@ -563,11 +584,8 @@ impl<'owner> ComponentSyntax<'owner> {
             }
             State::Literal(cursor) => {
                 if let LiteralAction::Done(value) = cursor.action() {
-                    if let Some(domain) = self.context.domain(value.ty) {
-                        self.state = State::Done(CheckedComponent::Literal(Component {
-                            domain,
-                            value: value.value,
-                        }));
+                    if let Some(component) = self.context.literal(value) {
+                        self.state = State::Done(CheckedComponent::Literal(component));
                     } else {
                         let RawComponent::Atom(token) = self.raw else {
                             unreachable!()

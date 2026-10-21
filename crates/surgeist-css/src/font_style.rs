@@ -16,6 +16,22 @@ use crate::{
 type ConstructionResult<T> = Result<T, CssNumericConstructionError>;
 type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
 
+/// The first 1000 significant digits of π/2 = 1.5707963267948966192…, the
+/// Fonts 4 oblique radian bound. π/2 is irrational, so this truncation lies
+/// strictly below it and no shorter authored decimal can equal it.
+const HALF_PI_DIGITS: &str = concat!(
+    "1570796326794896619231321691639751442098584699687552910487472296153908203143104499314017412671058533",
+    "9910740432566411533235469223047752911158626797040642405587251420513509692605527798223114744774651909",
+    "8221440548783296672306423782411689339158263560095457282428346173017430522716332410669680363012457063",
+    "6862293503303157794087440760460481414627045857682183946295180005665265274410233260692073475970755804",
+    "7165286351828797959765460930586909663058965525592740372311899813747836759428763624456139690915059745",
+    "6491683668122032832154301069747319761236859535108993047185138526960858814658837619233740923383470256",
+    "6000284063572631780413892885671378894804586818589360734220450612476715073274792685525396139844629461",
+    "7710099780560645109804320172090799068148873856549802593536056749999991864890249755298658664080481592",
+    "9751222972767345415132126115412667234251763096559408550500156891937644329376660419071030858883457365",
+    "1799126745214377734365579781431941176893796875978890928890266085613403306500963938305597954608210099",
+);
+
 /// A keyword shared by the `font-style` property and its font-face descriptor.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -66,9 +82,13 @@ impl Eq for CssFontObliqueAngle {}
 
 impl CssFontObliqueAngle {
     /// Checks one literal angle against the inclusive Fonts 4 oblique range.
-    /// Degrees, gradians and turns use exact lexical bounds; radians compare
-    /// their original decimal parsed as binary64 against `FRAC_PI_2`. The
-    /// accepted component keeps its original spelling and source origin.
+    /// Every unit compares its exact authored decimal with the quarter-turn
+    /// bound: 90deg, 100grad, 0.25turn, or π/2 radians. The irrational radian
+    /// bound is its first 1000 significant digits, so the
+    /// decision is exact for every coefficient of at most that many
+    /// significant digits; a longer coefficient that matches the whole prefix
+    /// is rejected. The accepted component keeps its original spelling and
+    /// source origin.
     pub fn try_from_component(component: CssComponentValue) -> ConstructionResult<Self> {
         let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
             component.view()
@@ -85,9 +105,8 @@ impl CssFontObliqueAngle {
             "turn" => {
                 crate::exact_decimal::LexicalDecimal::new(spelling).absolute_at_most("25", -2)
             }
-            "rad" => spelling
-                .parse::<f64>()
-                .is_ok_and(|value| value.abs() <= std::f64::consts::FRAC_PI_2),
+            "rad" => crate::exact_decimal::LexicalDecimal::new(spelling)
+                .absolute_at_most(HALF_PI_DIGITS, -(HALF_PI_DIGITS.len() as i128 - 1)),
             _ => {
                 return Err(CssNumericConstructionError::at(
                     CssNumericConstructionErrorKind::RootDomainMismatch,

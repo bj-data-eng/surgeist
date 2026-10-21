@@ -4,6 +4,8 @@ mod color_serialization_regressions;
 mod color_specified_serialization;
 mod declared_color_literal_formatting;
 mod hex_color_serialization;
+mod hsl_hwb_conversion_agreement;
+mod hue_unit_serialization;
 mod missing_alpha_color_serialization;
 mod numeric_srgb_scalar_serialization;
 mod retained_color_alpha_weight_formatting;

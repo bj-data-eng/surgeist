@@ -193,46 +193,26 @@ impl<'a> LexicalDecimal<'a> {
         let b_shift = i32::try_from(b.strip_decimal_zeros()).map_err(|_| overflow())?;
         Ok(a == b && self.shifted(a_shift).exponent_eq(&other.shifted(b_shift)))
     }
+    /// The inclusive percentage interval `[0, 100]`.
     pub(crate) fn in_percentage_range(&self) -> bool {
-        if self.len == 0 {
-            return true;
-        }
-        if self.negative {
-            return false;
-        }
-        let Some(exponent) = self.exponent else {
-            return self.exponent_negative;
-        };
-        let point = exponent.saturating_add(self.len as i128);
-        point < 3 || (point == 3 && self.len == 1 && self.digits().next() == Some(1))
+        !self.negative && self.absolute_at_most("1", 2)
     }
     /// Compares a checked number or percentage coefficient with the unit-alpha
     /// endpoint (1 or 100), without expanding its exponent or allocating storage.
     pub(crate) fn at_least_unit_endpoint(&self, percentage: bool) -> bool {
-        if self.len == 0 || self.negative {
-            return false;
-        }
-        let Some(exponent) = self.exponent else {
-            // An exponent outside i128 cannot cross a small fixed endpoint
-            // through the retained source-length adjustment.
-            return !self.exponent_negative;
-        };
-        exponent.saturating_add(self.len as i128) > if percentage { 2 } else { 0 }
+        !self.negative
+            && self
+                .compare_absolute("1", if percentage { 2 } else { 0 })
+                .is_ge()
     }
     /// Tests the Fonts 4 inclusive weight interval without rounded float tokens.
     pub(crate) fn in_font_weight_range(&self) -> bool {
-        if self.len == 0 || self.negative {
-            return false;
-        }
-        let Some(exponent) = self.exponent else {
-            return false;
-        };
-        let magnitude = exponent.saturating_add(i128::try_from(self.len).unwrap_or(i128::MAX));
-        magnitude >= 1
-            && (magnitude < 4
-                || (magnitude == 4
-                    && self.digits().next() == Some(1)
-                    && self.digits().skip(1).all(|digit| digit == 0)))
+        !self.negative && self.compare_absolute("1", 0).is_ge() && self.absolute_at_most("1", 3)
+    }
+    /// Whether the authored decimal is exactly the fixed positive value
+    /// `digits × 10^exponent`, regardless of spelling.
+    pub(crate) fn is_positive(&self, digits: &str, exponent: i128) -> bool {
+        !self.negative && self.compare_absolute(digits, exponent).is_eq()
     }
 
     /// Compares the absolute authored decimal with a fixed positive decimal
@@ -240,31 +220,45 @@ impl<'a> LexicalDecimal<'a> {
     /// significant digits contain no decimal point, and `bound_exponent` is
     /// its base-ten scale (for example, `("25", -2)` is one quarter).
     pub(crate) fn absolute_at_most(&self, bound_digits: &str, bound_exponent: i128) -> bool {
+        self.compare_absolute(bound_digits, bound_exponent).is_le()
+    }
+
+    /// Orders the absolute authored decimal against the fixed positive decimal
+    /// `bound_digits × 10^bound_exponent`. This is the one fixed-bound
+    /// comparison: it borrows the coefficient, never expands an exponent and
+    /// allocates nothing. An exponent outside i128 cannot cross a fixed bound
+    /// through the retained source-length adjustment.
+    pub(crate) fn compare_absolute(
+        &self,
+        bound_digits: &str,
+        bound_exponent: i128,
+    ) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
         if self.len == 0 {
-            return true;
+            return Ordering::Less;
         }
         let Some(exponent) = self.exponent else {
-            return self.exponent_negative;
+            return if self.exponent_negative {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            };
         };
         let magnitude = exponent.saturating_add(i128::try_from(self.len).unwrap_or(i128::MAX));
         let bound_magnitude = bound_exponent + bound_digits.len() as i128;
-        match magnitude.cmp(&bound_magnitude) {
-            std::cmp::Ordering::Less => true,
-            std::cmp::Ordering::Greater => false,
-            std::cmp::Ordering::Equal => {
-                let mut authored = self.digits();
-                let mut bound = bound_digits.bytes().map(|digit| digit - b'0');
-                loop {
-                    match (authored.next(), bound.next()) {
-                        (None, None) => return true,
-                        (Some(left), Some(right)) if left != right => return left < right,
-                        (Some(left), None) if left != 0 => return false,
-                        (None, Some(right)) if right != 0 => return true,
-                        _ => {}
-                    }
+        magnitude.cmp(&bound_magnitude).then_with(|| {
+            let mut authored = self.digits();
+            let mut bound = bound_digits.bytes().map(|digit| digit - b'0');
+            loop {
+                match (authored.next(), bound.next()) {
+                    (None, None) => return Ordering::Equal,
+                    (Some(left), Some(right)) if left != right => return left.cmp(&right),
+                    (Some(left), None) if left != 0 => return Ordering::Greater,
+                    (None, Some(right)) if right != 0 => return Ordering::Less,
+                    _ => {}
                 }
             }
-        }
+        })
     }
 }
 
@@ -480,52 +474,6 @@ impl BigCoefficient {
             carry /= u128::from(DECIMAL_LIMB_BASE);
         }
         Ok(Self { limbs })
-    }
-
-    fn multiply(
-        &self,
-        other: &Self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
-        if self.is_zero() || other.is_zero() {
-            return Ok(Self::zero());
-        }
-        let capacity = self
-            .limbs
-            .len()
-            .checked_add(other.limbs.len())
-            .ok_or_else(|| {
-                crate::CssSpecifiedValueSerializationError::new(
-                    crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-                )
-            })?;
-        context.charge_generated_projection(capacity)?;
-        let mut limbs = Vec::new();
-        limbs.try_reserve_exact(capacity).map_err(|_| {
-            crate::CssSpecifiedValueSerializationError::new(
-                crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-            )
-        })?;
-        limbs.resize(capacity, 0u32);
-        for (left_index, &left) in self.limbs.iter().enumerate() {
-            let mut carry = 0u128;
-            for (right_index, &right) in other.limbs.iter().enumerate() {
-                let index = left_index + right_index;
-                let value = u128::from(limbs[index]) + u128::from(left) * u128::from(right) + carry;
-                limbs[index] = (value % u128::from(DECIMAL_LIMB_BASE)) as u32;
-                carry = value / u128::from(DECIMAL_LIMB_BASE);
-            }
-            let mut index = left_index + other.limbs.len();
-            while carry != 0 {
-                let value = u128::from(limbs[index]) + carry;
-                limbs[index] = (value % u128::from(DECIMAL_LIMB_BASE)) as u32;
-                carry = value / u128::from(DECIMAL_LIMB_BASE);
-                index += 1;
-            }
-        }
-        let mut result = Self { limbs };
-        result.normalize();
-        Ok(result)
     }
 
     fn mul_pow10(
@@ -843,52 +791,6 @@ pub(crate) struct ExactRational {
 
 #[cfg_attr(not(test), allow(dead_code))]
 impl ExactRational {
-    /// Returns a bounded binary approximation without first forcing the exact
-    /// value into binary64's exponent range. The pair represents
-    /// `coefficient * 10^exponent`, with a zero coefficient for exact zero.
-    ///
-    /// Color conversion uses this only after exact lexical scaling and, for
-    /// hues, exact modular reduction. Keeping the decimal exponent separate
-    /// prevents large finite authored values from becoming infinities merely
-    /// because binary64 cannot hold their intermediate magnitude.
-    pub(crate) fn scaled_binary64(
-        &self,
-    ) -> Result<(f64, i128), crate::CssSpecifiedValueSerializationError> {
-        if self.coefficient.is_zero() || self.unbounded_tiny {
-            return Ok((0.0, 0));
-        }
-
-        let high_index = self.coefficient.limbs.len() - 1;
-        let mut coefficient = f64::from(self.coefficient.limbs[high_index]);
-        if high_index != 0 {
-            coefficient +=
-                f64::from(self.coefficient.limbs[high_index - 1]) / DECIMAL_LIMB_BASE as f64;
-        }
-        coefficient /= self.denominator as f64;
-        let decimal_shift = i128::try_from(high_index)
-            .ok()
-            .and_then(|index| index.checked_mul(DECIMAL_LIMB_DIGITS as i128))
-            .and_then(|shift| self.exponent.checked_add(shift))
-            .ok_or_else(|| {
-                crate::CssSpecifiedValueSerializationError::new(
-                    crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-                )
-            })?;
-        let normalization = coefficient.log10().floor() as i128;
-        let mut coefficient = coefficient / 10f64.powi(normalization as i32);
-        if self.negative {
-            coefficient = -coefficient;
-        }
-        Ok((
-            coefficient,
-            decimal_shift.checked_add(normalization).ok_or_else(|| {
-                crate::CssSpecifiedValueSerializationError::new(
-                    crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-                )
-            })?,
-        ))
-    }
-
     pub(crate) fn compare_integer(
         &self,
         value: u64,
@@ -896,214 +798,6 @@ impl ExactRational {
     ) -> Result<std::cmp::Ordering, crate::CssSpecifiedValueSerializationError> {
         let other = Self::integer(value, context)?;
         self.compare(&other, context)
-    }
-
-    pub(crate) fn max_zero(
-        self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
-        if self.negative || self.is_zero() {
-            Self::integer(0, context)
-        } else {
-            Ok(self)
-        }
-    }
-
-    pub(crate) fn add_signed(
-        self,
-        other: Self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
-        if self.unbounded_tiny || other.unbounded_tiny {
-            return Err(crate::CssSpecifiedValueSerializationError::new(
-                crate::CssSpecifiedValueSerializationErrorKind::ByteLimit,
-            ));
-        }
-        let left = self;
-        let right = other;
-        let exponent = left.exponent.min(right.exponent);
-        let denominator_gcd = greatest_common_divisor(left.denominator, right.denominator);
-        let left_factor = right.denominator / denominator_gcd;
-        let right_factor = left.denominator / denominator_gcd;
-        let denominator = left.denominator.checked_mul(left_factor).ok_or_else(|| {
-            crate::CssSpecifiedValueSerializationError::new(
-                crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-            )
-        })?;
-        let left_coefficient = left.scaled_coefficient(exponent, left_factor, context)?;
-        let right_coefficient = right.scaled_coefficient(exponent, right_factor, context)?;
-        let (coefficient, negative) = if left.negative == right.negative {
-            (
-                left_coefficient.add(&right_coefficient, context)?,
-                left.negative,
-            )
-        } else {
-            match left_coefficient.cmp(&right_coefficient) {
-                std::cmp::Ordering::Greater => (
-                    left_coefficient.subtract(&right_coefficient, context)?,
-                    left.negative,
-                ),
-                std::cmp::Ordering::Less => (
-                    right_coefficient.subtract(&left_coefficient, context)?,
-                    right.negative,
-                ),
-                std::cmp::Ordering::Equal => (BigCoefficient::zero(), false),
-            }
-        };
-        Self {
-            coefficient,
-            exponent,
-            denominator,
-            negative,
-            unbounded_tiny: false,
-        }
-        .reduce_fraction(context)
-    }
-
-    pub(crate) fn subtract_signed(
-        self,
-        mut other: Self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
-        if !other.is_zero() {
-            other.negative = !other.negative;
-        }
-        self.add_signed(other, context)
-    }
-
-    pub(crate) fn multiply_signed(
-        self,
-        other: Self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
-        if self.unbounded_tiny || other.unbounded_tiny {
-            return Err(crate::CssSpecifiedValueSerializationError::new(
-                crate::CssSpecifiedValueSerializationErrorKind::ByteLimit,
-            ));
-        }
-        let denominator = self
-            .denominator
-            .checked_mul(other.denominator)
-            .ok_or_else(|| {
-                crate::CssSpecifiedValueSerializationError::new(
-                    crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-                )
-            })?;
-        Self {
-            coefficient: self.coefficient.multiply(&other.coefficient, context)?,
-            exponent: self.exponent.checked_add(other.exponent).ok_or_else(|| {
-                crate::CssSpecifiedValueSerializationError::new(
-                    crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-                )
-            })?,
-            denominator,
-            negative: self.negative != other.negative,
-            unbounded_tiny: false,
-        }
-        .reduce_fraction(context)
-    }
-
-    pub(crate) fn scale_ratio(
-        mut self,
-        numerator: u64,
-        denominator: u64,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<Self, crate::CssSpecifiedValueSerializationError> {
-        if denominator == 0 {
-            return Err(crate::CssSpecifiedValueSerializationError::new(
-                crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-            ));
-        }
-        self.coefficient = self.coefficient.mul_small(numerator, context)?;
-        self.denominator = self.denominator.checked_mul(denominator).ok_or_else(|| {
-            crate::CssSpecifiedValueSerializationError::new(
-                crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-            )
-        })?;
-        self.reduce_fraction(context)
-    }
-
-    pub(crate) fn rounded_positive_ratio(
-        &self,
-        denominator: &Self,
-        unit_scale: u64,
-        places: u32,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> Result<u64, crate::CssSpecifiedValueSerializationError> {
-        debug_assert!(!self.negative && !denominator.negative);
-        debug_assert!(!denominator.is_zero());
-        if self.unbounded_tiny || denominator.unbounded_tiny {
-            return Err(crate::CssSpecifiedValueSerializationError::new(
-                crate::CssSpecifiedValueSerializationErrorKind::ByteLimit,
-            ));
-        }
-        let mut numerator = self
-            .coefficient
-            .mul_small(denominator.denominator, context)?;
-        let mut divisor = denominator
-            .coefficient
-            .mul_small(self.denominator, context)?;
-        match self.exponent.cmp(&denominator.exponent) {
-            std::cmp::Ordering::Greater => {
-                let shift =
-                    usize::try_from(self.exponent - denominator.exponent).map_err(|_| {
-                        crate::CssSpecifiedValueSerializationError::new(
-                            crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-                        )
-                    })?;
-                numerator = numerator.mul_pow10(shift, context)?;
-            }
-            std::cmp::Ordering::Less => {
-                let shift =
-                    usize::try_from(denominator.exponent - self.exponent).map_err(|_| {
-                        crate::CssSpecifiedValueSerializationError::new(
-                            crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-                        )
-                    })?;
-                divisor = divisor.mul_pow10(shift, context)?;
-            }
-            std::cmp::Ordering::Equal => {}
-        }
-        let decimal_scale = 10u64.checked_pow(places).ok_or_else(|| {
-            crate::CssSpecifiedValueSerializationError::new(
-                crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-            )
-        })?;
-        let maximum = unit_scale.checked_mul(decimal_scale).ok_or_else(|| {
-            crate::CssSpecifiedValueSerializationError::new(
-                crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-            )
-        })?;
-        let scaled = numerator.mul_small(maximum, context)?;
-        let mut low = 0u64;
-        let mut high = maximum;
-        while low < high {
-            let midpoint = low + (high - low).div_ceil(2);
-            if divisor.mul_small(midpoint, context)?.cmp(&scaled).is_le() {
-                low = midpoint;
-            } else {
-                high = midpoint - 1;
-            }
-        }
-        if low == maximum {
-            return Ok(low);
-        }
-        let doubled = scaled.mul_small(2, context)?;
-        let threshold = divisor.mul_small(
-            low.checked_mul(2)
-                .and_then(|value| value.checked_add(1))
-                .ok_or_else(|| {
-                    crate::CssSpecifiedValueSerializationError::new(
-                        crate::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-                    )
-                })?,
-            context,
-        )?;
-        Ok(if doubled.cmp(&threshold).is_ge() {
-            low + 1
-        } else {
-            low
-        })
     }
 
     fn reduce_fraction(

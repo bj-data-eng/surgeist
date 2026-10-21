@@ -173,10 +173,18 @@ impl HwbCoordinates {
 ///
 /// S and L use `0..100` reference numbers; RGB uses `0..1` reference numbers.
 /// Finite extended results are retained without clipping or gamut mapping.
-/// Missing hue substitutes 0 degrees, even at nonzero saturation. A required
-/// amplitude or channel that overflows returns [`HslHwbConversionError::UnrepresentableResult`].
-/// Ordinary binary64 rounding and underflow apply; exact round trips are not
-/// promised, including after powerless inverse conversion.
+/// Missing hue substitutes 0 degrees, even at nonzero saturation. Each
+/// channel is `L - S·min(L, 1 - L)·t`. For normalized L outside `[0, 2]`,
+/// where `1 - L` or `S·L` can lose the result, it is evaluated in the
+/// algebraically equal forms `L(1 - S·t)` (L < 0) and `L(1 + S·t) - S·t`
+/// (L > 2), so a hexagon vertex stays exact however large L is; elsewhere
+/// near the binary64 limit those forms round S·t and the product, an error
+/// negligible relative to the channel magnitude. A channel
+/// beyond binary64 is the signed closest finite value (CSS Values 4 closest
+/// supported value), never an infinity; this conversion does not currently
+/// return an error. Ordinary binary64 rounding
+/// and underflow apply; exact round trips are not promised, including after
+/// powerless inverse conversion.
 ///
 /// ```
 /// use surgeist_color::{HslCoordinates, convert_hsl_to_srgb};
@@ -186,13 +194,23 @@ impl HwbCoordinates {
 pub fn convert_hsl_to_srgb(hsl: &HslCoordinates) -> Result<[f64; 3], HslHwbConversionError> {
     let saturation = hsl.saturation / 100.0;
     let lightness = hsl.lightness / 100.0;
-    let amplitude = finite_result(saturation * lightness.min(1.0 - lightness))?;
     let hue = hsl.hue_degrees.unwrap_or(0.0);
     let mut rgb = [0.0; 3];
     for (channel, offset) in rgb.iter_mut().zip([0.0, 8.0, 4.0]) {
         let k = (offset + hue / 30.0) % 12.0;
         let shape = (k - 3.0).min(9.0 - k).clamp(-1.0, 1.0);
-        *channel = finite_result(lightness - amplitude * shape)?;
+        // Within [0, 2] |min(L, 1 - L)| <= 1 and 1 - L is exact, so the
+        // direct form is finite. Outside it |shape| <= 1 keeps S·t finite;
+        // only the product with L can overflow, and no infinity can meet an
+        // opposite infinity.
+        let st = saturation * shape;
+        *channel = closest_finite(if (0.0..=2.0).contains(&lightness) {
+            lightness - saturation * lightness.min(1.0 - lightness) * shape
+        } else if lightness < 0.0 {
+            lightness * (1.0 - st)
+        } else {
+            lightness * (1.0 + st) - st
+        });
     }
     Ok(rgb)
 }
@@ -257,7 +275,10 @@ pub fn convert_srgb_to_hsl(rgb: [f64; 3]) -> Result<HslCoordinates, HslHwbConver
 /// W/B use percentage reference numbers; RGB uses `0..1` reference numbers.
 /// Missing hue substitutes 0 degrees. When normalized W + B >= 1, all three
 /// channels equal W / (W + B); otherwise the hue basis is scaled by 1 - W - B
-/// and shifted by W. Extended coordinates are not clipped or gamut mapped.
+/// and shifted by W. When normalized |W| or |B| exceeds 1 this is evaluated
+/// as the equal `basis·(1 - B) + W·(1 - basis)`, so a hexagon vertex (1 - B
+/// or W) stays exact however large |W| or |B| is.
+/// Extended coordinates are not clipped or gamut mapped.
 ///
 /// Checked finite W/B divided by 100 bound all intermediate sums and channels,
 /// making this operation infallible even at finite extremes. Ordinary binary64
@@ -280,7 +301,11 @@ pub fn convert_hwb_to_srgb(hwb: &HwbCoordinates) -> [f64; 3] {
     [0.0, 8.0, 4.0].map(|offset| {
         let k = (offset + hue / 30.0) % 12.0;
         let basis = 0.5 - 0.5 * (k - 3.0).min(9.0 - k).clamp(-1.0, 1.0);
-        basis * (1.0 - sum) + whiteness
+        if whiteness.abs() <= 1.0 && blackness.abs() <= 1.0 {
+            basis * (1.0 - sum) + whiteness
+        } else {
+            basis * (1.0 - blackness) + whiteness * (1.0 - basis)
+        }
     })
 }
 
@@ -327,6 +352,15 @@ fn validate_input(input: [f64; 3]) -> Result<(), HslHwbConversionError> {
         }
     }
     Ok(())
+}
+
+/// Values 4: a value outside the supported range is the closest supported one.
+fn closest_finite(value: f64) -> f64 {
+    if value.is_infinite() {
+        f64::MAX.copysign(value)
+    } else {
+        value
+    }
 }
 
 fn finite_result(value: f64) -> Result<f64, HslHwbConversionError> {

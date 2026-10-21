@@ -1,14 +1,9 @@
 //! Public authored-color construction contracts from CSS Color 4 and the
 //! 2026-09-08 CSS Color 5 relative-color and color-mix definitions.
 
+use crate::css::support::color_components::token;
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 use surgeist_css::*;
-
-fn token(text: &str) -> CssComponentValue {
-    let values = parse_component_values(text).unwrap();
-    assert_eq!(values.items().len(), 1, "{text}");
-    values.items()[0].clone()
-}
 
 fn number(text: &str) -> CssColorComponent {
     CssColorComponent::Number(CssColorNumberLiteral::try_from_component(token(text)).unwrap())

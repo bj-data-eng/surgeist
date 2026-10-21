@@ -387,6 +387,90 @@ impl<'css> NameSpelling<'css> {
     }
 }
 
+/// Converts one authored number or angle exactly as used-value resolution
+/// converts a hue literal: the original spelling becomes Algorithm records,
+/// the shared literal owner produces its binary64 value (including the exact
+/// scaled gradian path), and an overflowing number takes the angle rule.
+/// `charge` admits every appended record before it is stored, so a caller
+/// accounts the storage proportional to the coefficient; the fixed decimal
+/// boundary bounds the remaining digit work.
+pub(crate) fn authored_hue_degrees<E>(
+    numeric: CssNumericTokenRef<'_>,
+    unit: Option<CssNumericUnit>,
+    mut charge: impl FnMut() -> Result<(), E>,
+) -> Result<f64, E> {
+    use super::super::literal::{LiteralAction, LiteralConversion};
+    use super::super::protocol::RecordTable;
+    let protocol = |error: CssColorProtocolError| -> f64 {
+        unreachable!("an admitted checked number completes its own protocol: {error:?}")
+    };
+    let owner = CssColorOperationOwner::new();
+    let phase = owner.current_phase();
+    let next = owner
+        .prepare_advance(phase)
+        .expect("a fresh owner can advance one phase");
+    owner.commit_phase(phase, next);
+    let mut slots = Vec::new();
+    let mut writer = NumberSpelling::start(&owner, next, numeric, unit, false, 0, 0);
+    let header = loop {
+        let step = match writer.action() {
+            Action::ReadByte { .. } => writer.read_byte(),
+            Action::Compute => writer.compute(),
+            Action::Append { index } => charge().map(|()| writer.record(index))?.and_then(|slot| {
+                slots.push(slot);
+                writer.written(index, &slots[index])
+            }),
+            Action::Done { record } => break record,
+        };
+        if let Err(error) = step {
+            return Ok(protocol(error));
+        }
+    };
+    let table = RecordTable {
+        owner: &owner,
+        phase: next,
+        length: slots.len(),
+    };
+    let mut conversion =
+        match LiteralConversion::start_authored(&table, header, &slots[header], slots.len()) {
+            Ok(conversion) => conversion,
+            Err(error) => return Ok(protocol(error)),
+        };
+    loop {
+        let step = match conversion.action() {
+            LiteralAction::ReadSource { index }
+            | LiteralAction::ReadScaled { index }
+            | LiteralAction::ReadScratch { index }
+            | LiteralAction::ReadHeader { index } => conversion.read(index, &slots[index]),
+            LiteralAction::Append { index } => charge()
+                .map(|()| conversion.record(index))?
+                .and_then(|slot| {
+                    slots.push(slot);
+                    conversion.written(index, &slots[index])
+                }),
+            LiteralAction::Replace { index } => conversion.record(index).and_then(|slot| {
+                slots[index] = slot;
+                conversion.written(index, &slots[index])
+            }),
+            LiteralAction::Compute => conversion.compute(),
+            LiteralAction::Done(value) => {
+                return Ok(if value.overflowed {
+                    crate::numeric::projection::finite_angle_overflow(
+                        f64::INFINITY.copysign(value.value),
+                        true,
+                    )
+                } else {
+                    value.value
+                });
+            }
+            LiteralAction::Stopped => Err(CssColorProtocolError::WrongAction),
+        };
+        if let Err(error) = step {
+            return Ok(protocol(error));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -402,7 +486,8 @@ mod tests {
             (".5", None, 0.5),
             ("9007199254740993", None, 9007199254740992.0),
             ("1e-9999", None, 0.0),
-            ("1e9999", None, f64::INFINITY),
+            // Values 4 §10.12: an unsupported finite value is the closest one.
+            ("1e9999", None, f64::MAX),
             (
                 "1.9e308",
                 Some(CssNumericUnit::Angle(crate::CssAngleUnit::Gradians)),

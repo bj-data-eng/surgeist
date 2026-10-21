@@ -558,3 +558,46 @@ fn numerical_failure_reports_reached_nested_recipe_in_original_utf16_units() {
         })
     );
 }
+
+#[test]
+fn used_hues_are_normalized_into_the_half_open_degree_range() {
+    // Color 4 CRD 2026-09-08 §4.3: a hue "is normalized to the range [0,360)";
+    // hsl(360 0 0) and hsl(calc(±infinity) 0 0) normalize to 0 degrees. Values 4
+    // makes -0 the unsigned zero. A negative hue smaller in magnitude than half
+    // an ulp of 360 therefore normalizes to 0, never to the excluded 360.
+    let facts = absent_facts();
+    for hue in [
+        "-1e-15",
+        "calc(-1e-15)",
+        "-0",
+        "0",
+        "360",
+        "-360",
+        "720",
+        "360deg",
+        "1turn",
+        "-400grad",
+        "calc(infinity)",
+        "calc(-infinity)",
+    ] {
+        for (input, space, index) in [
+            (format!("hsl({hue} none 50%)"), ColorSpace::Hsl, 0),
+            (format!("hwb({hue} none 50%)"), ColorSpace::Hwb, 0),
+            (format!("lch(50 none {hue})"), ColorSpace::Lch, 2),
+            (format!("oklch(0.5 0.1 {hue})"), ColorSpace::Oklch, 2),
+            (format!("lch(from red l c {hue})"), ColorSpace::Lch, 2),
+            (
+                format!("oklch(from red l none {hue})"),
+                ColorSpace::Oklch,
+                2,
+            ),
+            (format!("hsl(from red {hue} none l)"), ColorSpace::Hsl, 0),
+            (format!("hwb(from red {hue} w none)"), ColorSpace::Hwb, 0),
+        ] {
+            let actual = value(&input, &facts);
+            assert_eq!(actual.space(), space, "{input}");
+            let hue = actual.channels()[index].unwrap();
+            assert!(hue == 0.0 && hue.is_sign_positive(), "{input}: {hue:?}");
+        }
+    }
+}
