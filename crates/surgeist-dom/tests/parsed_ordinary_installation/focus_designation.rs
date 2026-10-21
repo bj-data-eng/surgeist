@@ -739,3 +739,120 @@ fn focus_removal_shadow_including_published_descendant_is_checked_after_unexpose
     );
     assert_eq!(after.nodes().count(), before.nodes().count());
 }
+
+fn controlled_original_focus_candidate() -> (Dom, DocumentId, NodeId, NodeId) {
+    use surgeist_html_parser::{
+        HtmlParseAssociationCaptureDisposition, HtmlParsePendingAssociationStep,
+    };
+    let report = parse(HtmlSource::utf8("<!doctype html><div tabindex=0></div>"));
+    let mut cursor = report.pending_associations();
+    let mut documents = 0;
+    loop {
+        match cursor.advance() {
+            HtmlParsePendingAssociationStep::Document(row) => {
+                documents += 1;
+                assert_eq!(
+                    row.disposition(),
+                    HtmlParseAssociationCaptureDisposition::PendingComplete
+                );
+                assert!(!row.has_obligations());
+            }
+            HtmlParsePendingAssociationStep::Occurrence(row) => {
+                assert!(!row.requires_processing());
+            }
+            HtmlParsePendingAssociationStep::Skipped => {}
+            HtmlParsePendingAssociationStep::Complete => break,
+        }
+    }
+    assert!(documents > 0);
+    let (mut dom, environment) = setup();
+    let installed = install(&mut dom, report, environment);
+    let document = installed.document();
+    let subject = element(&installed, "div");
+    let parent = element(&installed, "body");
+    let snapshot = installed.snapshot();
+    assert_eq!(snapshot.node(subject).unwrap().parent(), Some(parent));
+    assert_eq!(
+        snapshot.node(subject).unwrap().owner_document(),
+        Some(document)
+    );
+    assert_eq!(
+        snapshot
+            .node(subject)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .attribute(&"tabindex".into()),
+        Some(&"0".into())
+    );
+    assert!(installed.pending_association().is_none());
+    assert_eq!(dom.pending_parsed_html_association(document).unwrap(), None);
+    assert!(dom.pending_parsed_html_associations().next().is_none());
+    assert!(dom.pending_source_edit().is_none());
+    (dom, document, subject, parent)
+}
+
+#[test]
+fn focus_constructor_controlled_original_document_retains_known_null() {
+    let (dom, document, _, _) = controlled_original_focus_candidate();
+    assert_eq!(
+        dom.snapshot()
+            .document(document)
+            .unwrap()
+            .focused_area_designation(),
+        KnownNull
+    );
+}
+
+#[test]
+fn focus_constructor_controlled_original_element_atomic_removal_succeeds() {
+    let (mut dom, document, subject, parent) = controlled_original_focus_candidate();
+    let before = dom.snapshot();
+    let mut batch = DomBatch::new();
+    batch.detach(subject);
+    dom.apply(batch, &AtomicBool::new(false))
+        .expect("the original controlled constructor supplies a definite null comparison");
+    let after = dom.snapshot();
+    assert_eq!(after.node(subject).unwrap().parent(), None);
+    assert_eq!(
+        after.node(subject).unwrap().owner_document(),
+        Some(document)
+    );
+    assert_eq!(before.node(subject).unwrap().parent(), Some(parent));
+    assert_eq!(
+        after.document(document).unwrap().focused_area_designation(),
+        KnownNull
+    );
+}
+
+#[test]
+fn focus_constructor_controlled_original_element_source_removal_completes() {
+    let (mut dom, document, subject, parent) = controlled_original_focus_candidate();
+    let before = dom.snapshot();
+    let cancel = AtomicBool::new(false);
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::detach(subject),
+            DomSourceLimits::new(128_000_000, 1_000_000, 20_000_000, 64, 4096, 4096, 4),
+            &cancel,
+        )
+        .unwrap();
+    let DomSourceProgress::Complete(done) = lease
+        .advance(&cancel)
+        .expect("the original controlled constructor supplies a definite null comparison")
+    else {
+        panic!("a known-null removal needs no external focus service");
+    };
+    assert_eq!(done.output(), None);
+    let after = lease.snapshot();
+    assert_eq!(after.node(subject).unwrap().parent(), None);
+    assert_eq!(
+        after.node(subject).unwrap().owner_document(),
+        Some(document)
+    );
+    assert_eq!(before.node(subject).unwrap().parent(), Some(parent));
+    assert_eq!(
+        after.document(document).unwrap().focused_area_designation(),
+        KnownNull
+    );
+}
