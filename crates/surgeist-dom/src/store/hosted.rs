@@ -5,6 +5,7 @@ mod destruction;
 pub(crate) mod history;
 pub(in crate::store) mod operations;
 pub(in crate::store) mod queue;
+pub(super) mod style_root_withdrawal;
 use super::*;
 use crate::DomOpaqueOrigin;
 use crate::hosted::*;
@@ -1462,6 +1463,20 @@ impl Dom {
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedError> {
         self.require_source_idle()?;
+        self.require_hosted_cleanup_obligations(
+            operation,
+            document,
+            &self.style_cssom_roots,
+            cancel,
+        )
+    }
+    fn require_hosted_cleanup_obligations(
+        &self,
+        operation: &Operation,
+        document: DocumentId,
+        styles: &style_custody::Bank,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomHostedError> {
         let work = &operation.request().work;
         // HTML's destroy-Document path runs unloading cleanup even when event
         // unloading is suppressed for an initial child. Canonical fullscreen
@@ -1490,9 +1505,7 @@ impl Dom {
         // Mutable CSSOM custody is reconciled by its actual owner, never by a
         // lifecycle metadata transition. Unrelated Documents remain usable.
         work.step(cancel)?;
-        if self.style_cssom_roots.has_document(document)
-            || self.pending_associations.document(document).is_some()
-        {
+        if styles.has_document(document) || self.pending_associations.document(document).is_some() {
             return Err(DomHostedError::PendingDocumentObligations);
         }
         work.step(cancel)?;

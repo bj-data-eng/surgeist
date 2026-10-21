@@ -43,6 +43,19 @@ pub(in crate::store) struct InboundPlan {
     retain_undo: bool,
 }
 impl InboundIndex {
+    /// Existing reverse references to one exact target, including every current
+    /// node-document edge. The caller qualifies each owner and its current field.
+    pub(in crate::store) fn visit_target(
+        &self,
+        target: Key,
+        mut visit: impl FnMut(Key) -> Result<(), DomError>,
+        mut step: impl FnMut() -> Result<(), DomError>,
+    ) -> Result<(), DomError> {
+        step()?;
+        self.targets
+            .visit_group(target, &mut |owner, _| visit(owner), &mut step)
+    }
+
     #[cfg(test)]
     pub fn retained_usage(&self) -> custody::Usage {
         self.usage

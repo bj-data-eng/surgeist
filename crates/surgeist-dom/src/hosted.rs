@@ -4,6 +4,10 @@
 //! event loop, an agent, a clock or a second Document/activity table.
 
 mod destruction;
+pub use crate::store::{
+    DomHostedStyleRootWithdrawal, DomHostedStyleRootWithdrawalPreparation,
+    DomHostedStyleRootWithdrawalPublished,
+};
 pub use destruction::{
     DomHostedChildRemovalHandoff, DomHostedChildRemovalPublication, DomHostedDestructionInvocation,
     DomHostedDestructionInvocationRequest,
@@ -1936,6 +1940,22 @@ impl DomHostedSource {
             revision,
             cleanup: true,
         })
+    }
+
+    pub(crate) fn validate_style_root_withdrawal(
+        &self,
+        request: &DomHostedDestructionRequest,
+        publication: &DomHostedDestructionPublication,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomHostedError> {
+        let revision = self.validate_request(&request.request, cancel)?;
+        if publication.key != request.request.key || !publication.cleanup {
+            return Err(DomHostedError::WrongPhase);
+        }
+        if publication.revision != revision {
+            return Err(DomHostedError::StaleBasis);
+        }
+        Ok(())
     }
 }
 

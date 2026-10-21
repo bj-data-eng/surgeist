@@ -16,6 +16,9 @@ use surgeist_dom::*;
 use surgeist_html_semantics::HtmlAboutBaseUrl;
 use surgeist_runtime::*;
 
+#[path = "dom_style_hosted_base/idle_destruction.rs"]
+mod idle_destruction;
+
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }

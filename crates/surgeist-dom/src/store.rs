@@ -48,6 +48,10 @@ use history::HistoryEntry;
 mod image;
 mod import;
 mod inline_style;
+pub use hosted::style_root_withdrawal::{
+    DomHostedStyleRootWithdrawal, DomHostedStyleRootWithdrawalPreparation,
+    DomHostedStyleRootWithdrawalPublished,
+};
 pub use inline_style::feedback::DomInlineStyleOperation;
 mod input;
 mod input_processing;

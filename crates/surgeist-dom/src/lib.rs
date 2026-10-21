@@ -224,8 +224,10 @@ pub use hosted::{
     DomHostedOperationId, DomHostedPolicyPublication, DomHostedPolicyRequest,
     DomHostedPreparedChild, DomHostedPreparedTopLevel, DomHostedQueuedHistory,
     DomHostedRecordLimits, DomHostedResource, DomHostedRuntimeRetention, DomHostedSource,
-    DomHostedSourceId, DomHostedSourceRevision, DomHostedTopLevelPreparation,
-    DomInitialPermissionsPolicy, DomInitialPermissionsPolicyProfile, DomPermissionsPolicyValue,
+    DomHostedSourceId, DomHostedSourceRevision, DomHostedStyleRootWithdrawal,
+    DomHostedStyleRootWithdrawalPreparation, DomHostedStyleRootWithdrawalPublished,
+    DomHostedTopLevelPreparation, DomInitialPermissionsPolicy, DomInitialPermissionsPolicyProfile,
+    DomPermissionsPolicyValue,
 };
 pub use hyperlink::{DomEncodingUrlFactsError, DomHyperlink};
 pub use identity::{DocumentId, DomOwnerId, DomRevision, DomStamp, NodeId};

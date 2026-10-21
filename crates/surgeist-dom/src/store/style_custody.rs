@@ -88,6 +88,38 @@ impl Bank {
             .is_some_and(|record| record.document == document && record.count != 0)
     }
 
+    /// Explicit withdrawal of a live root at its authenticated hosted cleanup,
+    /// distinct from the identity-retirement publication input.
+    pub fn prepare_withdrawal(
+        &self,
+        owner: &DomStyleCssomRoot,
+        document: DocumentId,
+        mut admit: impl FnMut(Usage) -> Result<(), DomError>,
+        mut step: impl FnMut() -> Result<(), DomError>,
+    ) -> Result<Self, DomError> {
+        step()?;
+        let record = self
+            .roots
+            .get(owner.root().slot)
+            .filter(|record| record.document == document && record.owner.same_owner(owner))
+            .ok_or(DomError::StyleReceiptMismatch)?;
+        let id = record.owner.root();
+        self.registry.reconcile_releases();
+        admit(self.registry.total())?;
+        let mut candidate = self.clone();
+        let (roots, custody, removed) = candidate.roots.remove_controlled(
+            &candidate.root_custody,
+            id.slot,
+            &candidate.registry,
+            &mut admit,
+        )?;
+        candidate.roots = roots;
+        candidate.root_custody = custody;
+        drop(removed);
+        candidate.change_document_count(document, false, &mut admit)?;
+        Ok(candidate)
+    }
+
     /// Root payloads, index paths and control records share the canonical
     /// owner's registry. Admission receives its absolute live union; CSSOM's
     /// deep mutable internals remain excluded under their producer's contract.
