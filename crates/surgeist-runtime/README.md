@@ -38,6 +38,44 @@ Expected: one passing test checking a forwarded task intent and no diagnostics.
 - [Reference](docs/reference.md): package facts, public entry points, defaults and checks.
 - [Explanation](docs/explanation.md): ownership, state transitions, DOM orchestration and wake delivery.
 
+### Ordinary native Meta preferred-name composition
+
+`DomStyleRuntime::apply_meta` executes an explicit finite ordinary batch against
+its existing Document stylesheet-set owners. It consumes only actual reached
+nonempty default-style insertion occurrences, preserving UTF-16, invocation
+order and existing or original batch-qualified allocation identity even when a
+Meta is removed or destroyed later in that batch. Editing content/http-equiv alone does not
+replay insertion. Zero-sheet history remains in the same Document preference
+state and controls later real Style additions; explicit last-selected history
+continues to govern the conditional flag algorithm.
+
+The operation prepares every reached Document producer and optional inline
+producer before publishing any owner. Runtime supplies stable external root
+capabilities and admits their backing, names, temporary/output banks and old/new
+retention under its own limits and the explicit `DomMetaAtomicLimits`. Initial
+Runtime work is prepaid into that same native envelope before DOM preparation;
+subsequent work charges both owners. No private producer graph tariff is added.
+The final fallible DOM commit publishes the actual prepared producers and
+canonical tail. Runtime installs already-qualified name rows while root guards
+remain held, extracts authentic outputs, then fills only preallocated output
+revision fields. Old Runtime names and CSSOM retirement backing survive that
+whole fence. This does not claim bounded disposal for every existing DOM value.
+
+The returned outcome owns the real canonical/root/optional-inline commits and
+ordered preference observations. `DomStyleMetaError` preserves either the original
+Runtime refusal or the native root-qualified producer error; these native errors
+do not widen unrelated `DomStyleRuntimeError` results. Multiple operations on one Document report one
+authentic final producer revision, never fabricated intermediate CSSOM commits.
+Returned immutable observations are caller-owned history; current-bank storage
+admission does not cap all observations a caller may retain.
+
+Source and staged Style publication custody must both be idle for this ordinary
+front.
+Context-free DOM calls still refuse reached default-style without the owner.
+The native capability does not consume pending parsed associations or waive
+Runtime's intact-DOM Pending bootstrap refusal. Source continuation and public
+Source-driver integration remain unavailable through this ordinary front.
+
 ## Stewardship
 
 [MIT license](LICENSE) · [Attribution](NOTICE.md)

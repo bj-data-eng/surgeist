@@ -5056,3 +5056,57 @@ fn parsed_values_reuse_native_backing_without_rewriting_report_or_parser_state()
 
 #[path = "parsed_ordinary_installation/meta_selection.rs"]
 mod meta_selection;
+
+#[test]
+fn native_meta_atomic_capability_preserves_original_parsed_pending_guard() {
+    let report = parse(HtmlSource::utf8(
+        "<!doctype html><meta http-equiv=default-style content=chosen><p>retained",
+    ));
+    let (mut dom, environment) = setup();
+    let installed = dom
+        .install_parsed_html_document(
+            dom.snapshot().stamp(),
+            report,
+            environment,
+            limits(),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+    let document = installed.document();
+    let head = element(&installed, "head");
+    let pending = installed.pending_association().unwrap();
+    drop(installed);
+    // Native Meta interpretation must be admitted before it can reach the
+    // original pending-association guard; installation has its own envelope.
+    dom.set_limits(dom.limits().with_meta_processing_work(100_000))
+        .unwrap();
+    let before = dom.snapshot().stamp();
+    let usage = dom.usage();
+    let mut batch = DomBatch::new();
+    let meta = batch.create_element_ns(document, Namespace::html(), "meta");
+    batch.set_attribute(&meta, "http-equiv", "default-style");
+    batch.set_attribute(&meta, "content", "later");
+    batch.insert_before(&meta, head, None);
+    let limits = DomMetaAtomicLimits::new(16_000_000, 1_000_000, 1_000_000, 128).unwrap();
+    let prefix =
+        DomMetaRuntimePrefix::new(DomMetaRuntimeUsage::new(0, 0, 0).unwrap(), 0, limits).unwrap();
+    let error =
+        match dom.prepare_meta_batch(batch, &[], None, limits, prefix, &AtomicBool::new(false)) {
+            Err(error) => error,
+            Ok(_) => panic!("native Meta must preserve the pending parsed association guard"),
+        };
+    assert!(
+        matches!(
+            &error,
+            DomMetaAtomicError::Dom(DomError::ParsedAssociationPending { document: actual, pending: actual_pending })
+                if *actual == document && *actual_pending == pending
+        ),
+        "unexpected native Meta refusal: {error:?}"
+    );
+    assert_eq!(dom.snapshot().stamp(), before);
+    assert_eq!(dom.usage(), usage);
+    assert_eq!(
+        dom.pending_parsed_html_associations().next().unwrap().id(),
+        pending
+    );
+}

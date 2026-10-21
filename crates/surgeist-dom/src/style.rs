@@ -1,6 +1,7 @@
 //! Canonical native Style state and real CSSOM association provenance.
 use crate::{DomNode, DomSourceOperationId, NodeId};
 mod cssom_root;
+pub(crate) use cssom_root::AccessError as CssomRootAccessError;
 pub use cssom_root::{DomStyleCssomRoot, DomStyleCssomRootError};
 
 /// One checked association occurrence at an exact canonical Element generation.

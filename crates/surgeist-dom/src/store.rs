@@ -52,6 +52,7 @@ mod input;
 mod input_processing;
 mod installation;
 mod meta;
+pub(crate) mod meta_atomic;
 mod method;
 mod name_registry;
 mod navigable;
@@ -163,6 +164,9 @@ pub enum DomResource {
     NameWork,
     /// Simultaneously retained or reserved temporary name storage.
     NameScratch,
+    MetaAtomicRetainedBytes,
+    MetaAtomicRetainedUnits,
+    MetaAtomicOutputs,
     MetaColorSchemeRetainedBytes,
     MetaThemeColorScratch,
 }
@@ -1589,6 +1593,16 @@ impl Dom {
         recording: Option<inline_style::recording::Recording>,
         cancelled: &AtomicBool,
     ) -> Result<Prepared, DomError> {
+        self.prepare_with_recordings(batch, recording, None, cancelled)
+            .map(|(prepared, _)| prepared)
+    }
+    fn prepare_with_recordings(
+        &self,
+        batch: DomBatch,
+        recording: Option<inline_style::recording::Recording>,
+        mut meta: Option<meta_atomic::Recording>,
+        cancelled: &AtomicBool,
+    ) -> Result<(Prepared, Option<meta_atomic::Recording>), DomError> {
         self.require_source_entry()?;
         check_cancel(cancelled)?;
         self.admit_batch_inputs(&batch.commands, || check_cancel(cancelled))?;
@@ -1606,6 +1620,10 @@ impl Dom {
         } else {
             Draft::new(self, batch.owner, cancelled)?
         };
+        if let Some(meta) = &mut meta {
+            meta.attach(cancelled)?;
+        }
+        draft.meta_recording = meta;
         draft.inline_recording = self.blocked_inline_recording().or(recording);
         for command in batch.commands {
             check_cancel(cancelled)?;
@@ -1624,12 +1642,13 @@ impl Dom {
             }
         }
         check_cancel(cancelled)?;
+        let meta = draft.meta_recording.take();
         let mut prepared = draft.finish(self, cancelled)?;
         // An ordinary callback batch does not complete its observing Source.
         // Keep that owner's already-published marker and closing obligation;
         // only its original Source publication can advance or clear the marker.
         prepared.state.incomplete_source = self.state.incomplete_source;
-        Ok(prepared)
+        Ok((prepared, meta))
     }
     fn publish(
         &mut self,
@@ -1974,11 +1993,13 @@ impl PublicationFields<'_> {
                     .as_deref_mut()
                     .expect("prepared live inline owner") = index;
             }
-            if let Some(style_custody) = style_custody {
-                *self.style_cssom_roots = style_custody;
-            }
             *self.revision = revision;
             self.history.commit(history_plan);
+        }
+        // Mutable resource custody is independent of the tree revision. An
+        // authentic first Meta binding can accompany an unchanged final tree.
+        if let Some(style_custody) = style_custody {
+            *self.style_cssom_roots = style_custody;
         }
         retirement_publication.publish();
         if let Some(auth) = retired_authority {
@@ -2044,6 +2065,7 @@ struct Draft {
     event_recipients: Option<Arc<event::Owner>>,
     inline_membership: Option<inline_style::Membership>,
     pending_associations: pending_associations::Bank,
+    meta_recording: Option<meta_atomic::Recording>,
     inline_echo: Option<inline_style::feedback::Echo>,
     inline_recording: Option<inline_style::recording::Recording>,
     dom_limits: DomLimits,
@@ -2567,6 +2589,7 @@ impl Draft {
             event_recipients: dom.event_recipients.clone(),
             inline_membership: dom.inline_membership(),
             pending_associations: dom.pending_associations.clone(),
+            meta_recording: None,
             inline_recording: dom.blocked_inline_recording(),
             inline_echo: None,
             dom_limits: dom.limits,

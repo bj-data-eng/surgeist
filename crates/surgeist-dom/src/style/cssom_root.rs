@@ -31,6 +31,20 @@ impl std::error::Error for DomStyleCssomRootError {
         }
     }
 }
+/// The private lock phase cannot attempt a batch or return producer errors.
+#[derive(Debug)]
+pub(crate) enum AccessError {
+    Busy,
+    Poisoned,
+}
+impl From<AccessError> for DomStyleCssomRootError {
+    fn from(value: AccessError) -> Self {
+        match value {
+            AccessError::Busy => Self::Busy,
+            AccessError::Poisoned => Self::Poisoned,
+        }
+    }
+}
 impl DomStyleCssomRootError {
     pub(crate) fn into_dom_error(self) -> crate::DomError {
         match self {
@@ -89,10 +103,20 @@ impl DomStyleCssomRoot {
     pub(crate) fn lock(
         &self,
     ) -> Result<std::sync::MutexGuard<'_, CssomStore>, DomStyleCssomRootError> {
+        self.acquire().map_err(Into::into)
+    }
+    pub(crate) fn acquire(&self) -> Result<std::sync::MutexGuard<'_, CssomStore>, AccessError> {
         self.store.try_lock().map_err(|error| match error {
-            TryLockError::WouldBlock => DomStyleCssomRootError::Busy,
-            TryLockError::Poisoned(_) => DomStyleCssomRootError::Poisoned,
+            TryLockError::WouldBlock => AccessError::Busy,
+            TryLockError::Poisoned(_) => AccessError::Poisoned,
         })
+    }
+    #[cfg(test)]
+    pub(crate) fn poisoned_snapshot_for_test(&self) -> CssomSnapshot {
+        match self.store.try_lock() {
+            Err(TryLockError::Poisoned(error)) => error.into_inner().snapshot(),
+            _ => panic!("owning inspection requires an authentically poisoned owner"),
+        }
     }
     pub(crate) fn duplicate(&self) -> Self {
         Self {

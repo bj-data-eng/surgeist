@@ -171,9 +171,46 @@ The native constructor establishes an actual empty set of Meta UI recipients,
 independently of Document activity and focus/hover associations. Selection still
 runs and applies its result to that empty set. These results do not establish
 installed UI colors, computed root color-scheme or rendering resources.
-Reached preferred stylesheet-set and Meta CSP effects retain explicit refusal
-until their actual owners are available; a later refusal rolls back earlier
-private selection and history changes in the batch.
+Context-free preferred stylesheet-set and reached Meta CSP effects retain
+explicit refusal; a later refusal rolls back earlier private selection and
+history changes in the batch.
+
+`prepare_meta_batch` is the ordinary native composition building block for an
+actual association adapter. It records reached nonempty default-style names in
+invocation order, preserving exact UTF-16 and the original qualified subject even
+when that node is later destroyed. It borrows the actual canonical root
+capabilities once, exposes their held current captures for the adapter's genuine
+sheet-set flag edits, and stages optional inline ingestion with the original
+profiles and a borrowed resolver. Every root and inline CSSOM owner prepares
+before any publishes. `commit` is the final fallible operation; its published
+custody retains the root locks while Runtime installs its prepared preference
+history. Consuming `into_parts` unlocks and returns the genuine DOM and producer
+commits plus CSSOM retirement backing. Drop before commit publishes nothing.
+Retirement makes no new bounded-disposal guarantee for the existing DOM tail.
+
+A genuine supplied owner can establish the first binding of a reached Document,
+including an empty sheet list. Existing canonical ownership remains authoritative;
+conflicting stores bearing the same root are refused independently of input order.
+The first binding is staged in the existing canonical custody bank and publishes
+only at the composed fence. It does not invent a DOM revision when the final tree
+is unchanged, and a Document retired by the batch receives no new retained owner.
+The native envelope admits the actual additional controlled-registry union and
+its temporary peak alongside the other native holders and Runtime storage.
+
+The ordinary capability requires idle Source, including no active authenticated
+observer callback. Source/eventful/parent continuation integration remains a
+separate required capability; the ordinary prefix does not authorize or prepay
+an original Source. `DomMetaAtomicLimits` bounds extra actual holder/output
+storage, UTF-16 backing and orchestration work alongside existing domain limits.
+`DomMetaRuntimePrefix` declares the adapter's actual preadmitted bank storage and
+already-spent formation work; preparation rechecks it against its actual limits
+and starts with that work spent. Later Runtime usage reports describe the whole
+simultaneous union and retain their high-water rather than adding repeated
+reports. Bank growth admits old and replacement backing together; shared Meta
+content is retained once per actual allocation, while every occurrence and
+traversal is charged. Runtime owns preferred/last-selected history, including an
+empty current sheet list. This DOM capability stores no preference mirror and
+does not consume or bypass original parsed pending association contributions.
 
 `DomLimits::with_meta_processing_work` admits cumulative Meta work.
 `with_meta_theme_color_scratch_bytes` and `with_meta_color_scheme_limits` select

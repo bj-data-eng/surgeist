@@ -3,7 +3,9 @@
 //! DOM owns each synchronous source continuation; CSS/CSSOM own parsing, recovery
 //! and sheet identity. This owner binds actual root lists, services those source
 //! requests, and queues completion only after a parsed sheet has no imports.
+mod meta;
 mod sheet_sets;
+pub use meta::{DomStyleMetaError, DomStyleMetaOrdinaryOutcome, DomStyleMetaPreference};
 pub use sheet_sets::{DomStyleSheetSetCommit, DomStyleSheetSetObservation};
 
 use crate::dom_event::{
@@ -417,15 +419,21 @@ impl StyleState {
         cancel: &AtomicBool,
         maximum: u64,
     ) -> Result<(), DomStyleRuntimeError> {
+        Self::step_counter(&self.work, cancel, maximum)
+    }
+    fn step_counter(
+        work: &std::cell::Cell<u64>,
+        cancel: &AtomicBool,
+        maximum: u64,
+    ) -> Result<(), DomStyleRuntimeError> {
         if cancel.load(Ordering::Relaxed) {
             return Err(DomError::Cancelled.into());
         }
-        let next = self
-            .work
+        let next = work
             .get()
             .checked_add(1)
             .ok_or(DomStyleRuntimeError::Admission)?;
-        self.work.set(next);
+        work.set(next);
         if next > maximum {
             return Err(DomStyleRuntimeError::Admission);
         }
@@ -2322,6 +2330,7 @@ use crate::{
 use surgeist_dom::DomStyleInlineCspObservation;
 #[cfg(test)]
 mod tests {
+    mod meta;
     mod parsed_associations;
     mod preferred_sets;
     pub(super) fn session_limits(style: super::DomStyleRuntimeLimits) -> super::DomSessionLimits {

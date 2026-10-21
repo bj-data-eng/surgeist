@@ -30,6 +30,12 @@ impl RootSets {
             Self::Shadow => None,
         }
     }
+    pub(super) fn state_mut(&mut self) -> Option<&mut State> {
+        match self {
+            Self::Document(state) => Some(state),
+            Self::Shadow => None,
+        }
+    }
     pub(super) fn publish(&mut self, state: State) {
         match self {
             Self::Document(current) => *current = state,
@@ -42,8 +48,47 @@ impl RootSets {
     }
 }
 impl State {
-    fn names(&self) -> impl Iterator<Item = &DocumentString> {
+    pub(super) fn names(&self) -> impl Iterator<Item = &DocumentString> {
         std::iter::once(&self.preferred).chain(self.last_selected.iter())
+    }
+    /// One preference operation, independent of producer publication. Both the
+    /// standalone and native composing fronts use this same history transition.
+    pub(super) fn transition(
+        &self,
+        name: &DocumentString,
+        action: Action,
+        mut same: impl FnMut(&[u16], &[u16]) -> Result<bool, DomStyleRuntimeError>,
+    ) -> Result<(Self, bool), DomStyleRuntimeError> {
+        let mut next = self.clone();
+        let enable = match action {
+            Action::Enable => true,
+            Action::Select => {
+                let equal = match &self.last_selected {
+                    Some(old) => same(old.code_units(), name.code_units())?,
+                    None => false,
+                };
+                if !equal {
+                    next.last_selected = Some(name.clone());
+                    next.revision = next
+                        .revision
+                        .checked_add(1)
+                        .ok_or(DomStyleRuntimeError::Admission)?;
+                }
+                true
+            }
+            Action::Preferred => {
+                let changed = !same(self.preferred.code_units(), name.code_units())?;
+                if changed {
+                    next.preferred = name.clone();
+                    next.revision = next
+                        .revision
+                        .checked_add(1)
+                        .ok_or(DomStyleRuntimeError::Admission)?;
+                }
+                changed && self.last_selected.is_none()
+            }
+        };
+        Ok((next, enable))
     }
     // Candidate aliases of old names retain the same allocation. Charge new
     // immutable backing once within this exact Document's old/new state union.
@@ -74,6 +119,19 @@ impl State {
         Ok(bytes)
     }
 }
+/// The enable-set algorithm targets only named sheets; unnamed sheets keep
+/// their current flag. Both real producer adapters share this exact decision.
+pub(super) fn named_sheet_disabled(
+    title: &[u16],
+    name: &[u16],
+    mut same: impl FnMut(&[u16], &[u16]) -> Result<bool, DomStyleRuntimeError>,
+) -> Result<Option<bool>, DomStyleRuntimeError> {
+    if title.is_empty() {
+        return Ok(None);
+    }
+    let enabled = !name.is_empty() && same(title, name)?;
+    Ok(Some(!enabled))
+}
 impl StyleState {
     fn same_set_name(
         &self,
@@ -103,11 +161,11 @@ impl StyleState {
         for id in snapshot.sheets() {
             self.step(cancel)?;
             let title = &snapshot.sheet(id)?.inputs().title;
-            if title.is_empty() {
-                continue;
+            if let Some(disabled) = named_sheet_disabled(title, name, |left, right| {
+                self.same_set_name(left, right, cancel)
+            })? {
+                batch.set_disabled(id, disabled)?;
             }
-            let enabled = !name.is_empty() && self.same_set_name(title, name, cancel)?;
-            batch.set_disabled(id, !enabled)?;
         }
         Ok(())
     }
@@ -159,9 +217,12 @@ impl StyleState {
     }
 }
 
-/// Current Document preference history joined to its actual stylesheet owner.
-/// Immutable returned names are caller-owned observations, not retained history
-/// in Runtime's current-bank storage budget.
+/// Immutable Document preference history joined to its actual stylesheet owner.
+/// A standalone observation captures current state. Ordered native Meta outputs
+/// retain each actual preference transition with the one final joined producer
+/// revision; an earlier transition need not be the final canonical name.
+/// Returned names are caller-owned observations, not retained history in
+/// Runtime's current-bank storage budget.
 #[derive(Clone, Debug)]
 pub struct DomStyleSheetSetObservation {
     stamp: surgeist_dom::DomStamp,
@@ -172,7 +233,32 @@ pub struct DomStyleSheetSetObservation {
     last_selected: Option<DocumentString>,
 }
 impl DomStyleSheetSetObservation {
-    /// Canonical basis actually qualified.
+    pub(super) fn from_state(
+        stamp: surgeist_dom::DomStamp,
+        document: NodeId,
+        state: &State,
+        cssom_revision: surgeist_cssom::CssomRevision,
+    ) -> Self {
+        Self {
+            stamp,
+            document,
+            revision: state.revision,
+            cssom_revision,
+            preferred: state.preferred.clone(),
+            last_selected: state.last_selected.clone(),
+        }
+    }
+    // Output-only completion after the real guarded publication. The captured
+    // names/revision are already final; these are the authentic joined bases.
+    pub(super) fn finish_publication(
+        &mut self,
+        stamp: surgeist_dom::DomStamp,
+        cssom_revision: surgeist_cssom::CssomRevision,
+    ) {
+        self.stamp = stamp;
+        self.cssom_revision = cssom_revision;
+    }
+    /// Canonical observation or actual joined publication basis.
     pub fn stamp(&self) -> surgeist_dom::DomStamp {
         self.stamp
     }
@@ -184,7 +270,8 @@ impl DomStyleSheetSetObservation {
     pub fn revision(&self) -> u64 {
         self.revision
     }
-    /// Actual producer owner/revision inspected with this preference state.
+    /// Actual producer owner/revision inspected or jointly published. Ordered
+    /// native transitions share the genuine final producer publication basis.
     pub fn cssom_revision(&self) -> &surgeist_cssom::CssomRevision {
         &self.cssom_revision
     }
@@ -218,7 +305,7 @@ impl DomStyleSheetSetCommit {
     }
 }
 #[derive(Clone, Copy)]
-enum Action {
+pub(super) enum Action {
     Enable,
     Select,
     Preferred,
@@ -253,7 +340,7 @@ impl StyleState {
         }
         Err(DomStyleRuntimeError::SheetSetRootUnavailable { root: document })
     }
-    fn require_sheet_set_idle(
+    pub(super) fn require_sheet_set_idle(
         &self,
         dom: &DomEventDom<'_>,
     ) -> Result<DomSnapshot, DomStyleRuntimeError> {
@@ -319,36 +406,9 @@ impl StyleState {
         if max_output == 0 {
             return Err(DomStyleRuntimeError::SheetSetOutputLimit);
         }
-        let mut next = state.clone();
-        let enable = match action {
-            Action::Enable => true,
-            Action::Select => {
-                let same = match &state.last_selected {
-                    Some(old) => self.same_set_name(old.code_units(), name.code_units(), cancel)?,
-                    None => false,
-                };
-                if !same {
-                    next.last_selected = Some(name.clone());
-                    next.revision = next
-                        .revision
-                        .checked_add(1)
-                        .ok_or(DomStyleRuntimeError::Admission)?;
-                }
-                true
-            }
-            Action::Preferred => {
-                let changed =
-                    !self.same_set_name(state.preferred.code_units(), name.code_units(), cancel)?;
-                if changed {
-                    next.preferred = name.clone();
-                    next.revision = next
-                        .revision
-                        .checked_add(1)
-                        .ok_or(DomStyleRuntimeError::Admission)?;
-                }
-                changed && state.last_selected.is_none()
-            }
-        };
+        let (next, enable) = state.transition(name, action, |left, right| {
+            self.same_set_name(left, right, cancel)
+        })?;
         // Current names remain live during this new state and result wrapper.
         // Shared immutable names are aliases, not a second payload allocation.
         let backing = next.additional_backing(Some(state))?;

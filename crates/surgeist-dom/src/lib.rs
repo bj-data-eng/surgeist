@@ -155,6 +155,7 @@ pub use inline_style::{
 pub use store::DomInlineStyleOperation;
 mod installation;
 mod meta;
+mod meta_atomic;
 mod name;
 mod name_limits;
 mod names;
@@ -239,6 +240,7 @@ pub use meta::{
     DomDocumentPolicyContainer, DomMetaColorSchemeState, DomMetaDocumentState, DomMetaError,
     DomMetaThemeColorState,
 };
+pub use meta_atomic::*;
 pub use node_values::{DomDocumentType, DomProcessingInstruction};
 pub use output::{DomOutput, DomOutputState};
 pub use parsed_installation::{
@@ -271,6 +273,7 @@ pub use snapshot::{
     DomDocument, DomDocumentStamp, DomNode, DomNodeKind, DomShadowRoot, DomSnapshot, DomTreeOrder,
     DomTreeScope,
 };
+pub use store::meta_atomic::{DomMetaOrdinaryPreparation, DomMetaOrdinaryPublished};
 pub use store::source::operation::dialog_queue::{
     DomDialogCloseTaskInfo, DomDialogTask, DomDialogTaskInfo, DomDialogTaskQueueCommit,
     DomDialogTaskQueuePlan, DomDialogTaskQueuePublication, DomDialogToggleTaskInfo,

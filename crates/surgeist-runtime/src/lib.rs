@@ -235,6 +235,7 @@ pub use dom_source::{
 pub use dom_style::{
     DomSession, DomSessionCreateError, DomSessionCreateFailure, DomSessionLimits,
     DomShutdownOutcome, DomShutdownReason, DomStyleDisabledObservation, DomStyleEventContext,
+    DomStyleMetaError, DomStyleMetaOrdinaryOutcome, DomStyleMetaPreference,
     DomStyleNetworkingProgress, DomStyleNetworkingTaskId, DomStyleProcessedSheet, DomStyleRuntime,
     DomStyleRuntimeError, DomStyleRuntimeLimits, DomStyleSheetSetCommit,
     DomStyleSheetSetObservation, DomStyleUnavailable,

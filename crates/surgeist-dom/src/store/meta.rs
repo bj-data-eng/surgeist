@@ -9,6 +9,9 @@ mod tests_css;
 
 impl Draft {
     pub(super) fn meta_step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
+        if let Some(recording) = &self.meta_recording {
+            recording.envelope.local_step(cancel)?;
+        }
         self.source_step(cancel)?;
         let next = self
             .meta_work
@@ -258,7 +261,16 @@ impl Draft {
             }
             Pragma::DefaultStyle if !content.is_empty() => {
                 self.guard_pending_associations(document, cancel)?;
-                return Err(DomError::Meta(Failure::DefaultStyleUnsupported));
+                if self.meta_recording.is_some() {
+                    if !matches!(document, Key::Existing(_)) {
+                        return Err(DomError::Meta(Failure::DefaultStyleUnsupported));
+                    }
+                    self.admit_meta_content(content, cancel)?;
+                    let content = content.clone();
+                    self.record_meta_preferred(document, key, content, cancel)?;
+                } else {
+                    return Err(DomError::Meta(Failure::DefaultStyleUnsupported));
+                }
             }
             Pragma::ContentSecurityPolicy if !content.is_empty() => {
                 return Err(DomError::Meta(Failure::ContentSecurityPolicyUnsupported));
