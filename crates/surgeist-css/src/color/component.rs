@@ -134,7 +134,11 @@ impl ComponentContext {
         let number =
             if self.expectation == Expectation::Hue && domain == Domain::Number && value.overflowed
             {
-                crate::numeric::projection::closest_supported_value(f64::INFINITY.copysign(value.value), true, true)
+                crate::numeric::projection::closest_supported_value(
+                    f64::INFINITY.copysign(value.value),
+                    true,
+                    true,
+                )
             } else {
                 value.value
             };

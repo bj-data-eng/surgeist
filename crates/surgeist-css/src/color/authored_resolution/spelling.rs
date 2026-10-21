@@ -455,7 +455,11 @@ pub(crate) fn authored_hue_degrees<E>(
             LiteralAction::Compute => conversion.compute(),
             LiteralAction::Done(value) => {
                 return Ok(if value.overflowed {
-                    crate::numeric::projection::closest_supported_value(f64::INFINITY.copysign(value.value), true, true)
+                    crate::numeric::projection::closest_supported_value(
+                        f64::INFINITY.copysign(value.value),
+                        true,
+                        true,
+                    )
                 } else {
                     value.value
                 });

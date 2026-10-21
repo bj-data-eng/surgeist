@@ -946,7 +946,9 @@ fn exact_single_leaf(expression: &CssCalculationExpression) -> Option<&str> {
                         CssValueTokenRef::Number(number) | CssValueTokenRef::Percentage(number),
                     ) => Some(number.representation()),
                     CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
-                        if canonical_unit(unit).1.is_none_or(|scale| scale.unit_value() == 1.0) =>
+                        if canonical_unit(unit)
+                            .1
+                            .is_none_or(|scale| scale.unit_value() == 1.0) =>
                     {
                         Some(number.representation())
                     }

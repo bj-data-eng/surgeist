@@ -1437,7 +1437,8 @@ fn literal_hue_overflows(
     }
     let degrees =
         crate::color::authored_hue_degrees(numeric, unit, || context.charge_projection(1))?;
-    Ok(degrees.abs() == crate::numeric::projection::closest_supported_value(f64::INFINITY, true, true))
+    Ok(degrees.abs()
+        == crate::numeric::projection::closest_supported_value(f64::INFINITY, true, true))
 }
 
 type HueParts = (
