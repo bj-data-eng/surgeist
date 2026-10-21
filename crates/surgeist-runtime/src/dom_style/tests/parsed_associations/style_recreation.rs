@@ -11,6 +11,7 @@ use surgeist_html_parser::{
     HtmlParseAssociationOccurrenceKind as Kind, HtmlParsePendingAssociationStep as Step,
 };
 mod frontier;
+mod meta_occurrence;
 mod text_policy;
 
 fn next_parser_pop(

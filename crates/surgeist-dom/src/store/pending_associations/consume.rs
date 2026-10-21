@@ -116,7 +116,7 @@ fn document_source(value: HtmlParseMetadataDocument<'_>) -> crate::DomParsedHtml
         }
     }
 }
-fn mapped(
+pub(super) fn mapped(
     entry: &Entry,
     source: crate::DomParsedHtmlHistoricalDocument,
     meter: &Meter,
@@ -292,11 +292,60 @@ fn qualify_order(
     Ok(())
 }
 
+pub(super) fn decode_occurrence(
+    meter: &Meter,
+    row: &surgeist_html_parser::HtmlParseAssociationOccurrence<'_>,
+    cancel: &AtomicBool,
+) -> Result<DomParsedHtmlMetaOccurrence, DomParsedHtmlAssociationAdmissionError> {
+    use surgeist_html_parser::{HtmlParseHistoryFrame, HtmlParseHistoryStep};
+    let entry = meter.entry();
+    let report = &entry.report.value().value;
+    let document = mapped(entry, document_source(row.document()), meter, cancel)?;
+    let scratch = meter.fork();
+    let mut frames = Vec::new();
+    let history = report.history_view();
+    scratch.reserve(&mut frames, history.len(), cancel)?;
+    for _ in 0..history.len() {
+        scratch.step(cancel)?;
+        frames.push(HtmlParseHistoryFrame::default());
+    }
+    let group = row
+        .preferred_name()
+        .expect("sealed ChangePreferred has its original name");
+    let mut reader = history
+        .cursor(group, &mut frames, None)
+        .map_err(DomParsedHtmlAssociationAdmissionError::History)?;
+    let mut units = Vec::new();
+    loop {
+        meter.step(cancel)?;
+        match reader.advance() {
+            HtmlParseHistoryStep::Leaf(leaf) => {
+                meter.reserve_units(&mut units, leaf.units().len(), cancel)?;
+                for &unit in leaf.units() {
+                    meter.step(cancel)?;
+                    units.push(unit);
+                }
+            }
+            HtmlParseHistoryStep::Progress => (),
+            HtmlParseHistoryStep::Complete => break,
+            HtmlParseHistoryStep::Cancelled => return Err(DomError::Cancelled.into()),
+        }
+    }
+    meter.retain(size_of::<Vec<u16>>(), 0, 0, cancel)?;
+    let content = DocumentString::from_utf16(units);
+    Ok(DomParsedHtmlMetaOccurrence {
+        contribution: entry.id,
+        id: row.id(),
+        subject: row.subject().id(),
+        document,
+        content,
+    })
+}
+
 fn occurrences(
     meter: &Meter,
     cancel: &AtomicBool,
 ) -> Result<Vec<DomParsedHtmlMetaOccurrence>, DomParsedHtmlAssociationAdmissionError> {
-    use surgeist_html_parser::{HtmlParseHistoryFrame, HtmlParseHistoryStep};
     let entry = meter.entry();
     let report = &entry.report.value().value;
     let mut cursor = report.pending_associations();
@@ -306,47 +355,8 @@ fn occurrences(
         match cursor.advance() {
             Step::Complete => return Ok(result),
             Step::Occurrence(row) if row.kind() == Kind::ChangePreferred => {
-                let document = mapped(entry, document_source(row.document()), meter, cancel)?;
                 meter.reserve(&mut result, 1, cancel)?;
-                let scratch = meter.fork();
-                let mut frames = Vec::new();
-                let history = report.history_view();
-                scratch.reserve(&mut frames, history.len(), cancel)?;
-                for _ in 0..history.len() {
-                    scratch.step(cancel)?;
-                    frames.push(HtmlParseHistoryFrame::default());
-                }
-                let group = row
-                    .preferred_name()
-                    .expect("sealed ChangePreferred has its original name");
-                let mut reader = history
-                    .cursor(group, &mut frames, None)
-                    .map_err(DomParsedHtmlAssociationAdmissionError::History)?;
-                let mut units = Vec::new();
-                loop {
-                    meter.step(cancel)?;
-                    match reader.advance() {
-                        HtmlParseHistoryStep::Leaf(leaf) => {
-                            meter.reserve_units(&mut units, leaf.units().len(), cancel)?;
-                            for &unit in leaf.units() {
-                                meter.step(cancel)?;
-                                units.push(unit);
-                            }
-                        }
-                        HtmlParseHistoryStep::Progress => (),
-                        HtmlParseHistoryStep::Complete => break,
-                        HtmlParseHistoryStep::Cancelled => return Err(DomError::Cancelled.into()),
-                    }
-                }
-                meter.retain(size_of::<Vec<u16>>(), 0, 0, cancel)?;
-                let content = DocumentString::from_utf16(units);
-                result.push(DomParsedHtmlMetaOccurrence {
-                    contribution: entry.id,
-                    id: row.id(),
-                    subject: row.subject().id(),
-                    document,
-                    content,
-                });
+                result.push(decode_occurrence(meter, &row, cancel)?);
             }
             _ => (),
         }

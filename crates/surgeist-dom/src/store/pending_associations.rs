@@ -14,7 +14,9 @@ pub use consume::{
 };
 pub(crate) use style_prefix::NotificationCustody;
 pub use style_prefix::{
-    DomParsedHtmlDispatchCursor, DomParsedHtmlDispatchEntry,
+    DomParsedHtmlDispatchCursor, DomParsedHtmlDispatchEntry, DomParsedHtmlMetaOccurrenceCompletion,
+    DomParsedHtmlMetaOccurrenceError, DomParsedHtmlMetaOccurrencePreparation,
+    DomParsedHtmlMetaOccurrencePublished, DomParsedHtmlMetaOccurrenceRetirement,
     DomParsedHtmlStyleNotificationCompletion, DomParsedHtmlStyleNotificationPreparation,
     DomParsedHtmlStyleNotificationPublished, DomParsedHtmlStylePrefixView,
     DomParsedHtmlStyleRenderingCompletion, DomParsedHtmlStyleRuntimeHold,
@@ -41,6 +43,7 @@ pub(super) struct Entry {
     payload: custody::Usage,
     style_prefix: std::sync::Mutex<Option<custody::Held<Box<style_prefix::Graph>>>>,
     completed_style: std::sync::Mutex<Option<style_prefix::CompletedInvocation>>,
+    completed_meta: std::sync::Mutex<Option<style_prefix::meta_occurrence::CompletedMetaPrefix>>,
     control: control::Control,
 }
 impl Entry {
@@ -280,6 +283,7 @@ impl Bank {
                 payload,
                 style_prefix: std::sync::Mutex::new(None),
                 completed_style: std::sync::Mutex::new(None),
+                completed_meta: std::sync::Mutex::new(None),
                 control: control::Control::default(),
             },
             payload,

@@ -135,10 +135,24 @@ this synchronous step. The new request needs its own policy decision. An allowed
 successor can then create, exclude script bookkeeping and complete its rendering
 tail through the same owners. A blocked successor creates no sheet or task;
 real imports remain `PendingImports` until genuine resource outcomes exist.
+`consume_parsed_meta_occurrence` executes only the exact next original
+`ChangePreferred` after the completed first/ParserPopped Style prefix. It uses the
+retained original UTF-16 name and the existing stylesheet-set owner, publishing
+preferred-name history, actual named-sheet disabled flags and the canonical
+occurrence marker together under the real root lock. Repeated names can leave
+preference and CSSOM revisions unchanged while consuming their distinct row
+once. The owning outcome keeps preference backing ahead of its original output
+receipt in disposal order. Missing/wrong owners, out-of-order or duplicate IDs,
+cancellation and finite/producer refusal preserve all published owners; work
+spent remains cumulative. Historical Meta retirement does not replace original
+inputs with final attributes. Current Style requests, prior processing receipts,
+creation provenance, task serials and queued outcomes retain their existing
+owners. Meta consumption alone permits no task delivery or whole-history ack.
 `complete_parsed_html_synchronous_execution` validates the complete sealed
 ordinary inventory through the original cumulative controller. It admits a
 durable synchronous end only after every influencing supported invocation has
-returned, including genuine blocked decisions. Later influencing Style/Meta or
+returned, including genuine blocked decisions and consumed original Meta
+preferred-name operations. Later influencing Style/Link, an unconsumed Meta or
 unsupported context remains a precise requirement. The proof survives caller
 Drop; queued first and recreated events can then deliver in FIFO order and perform
 real current-Document cleanup. Import waits and unissued notifications are

@@ -8,6 +8,8 @@ use surgeist_dom::{
 };
 use surgeist_html::HtmlCspAssociation;
 mod admission;
+mod meta_occurrence;
+pub use meta_occurrence::{DomStyleParsedMetaOccurrenceError, DomStyleParsedMetaOccurrenceOutcome};
 mod create_sheet;
 mod frontier;
 mod notification;

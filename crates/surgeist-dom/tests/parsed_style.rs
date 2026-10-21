@@ -7,6 +7,8 @@ mod decision;
 mod exclusion;
 #[path = "parsed_style/frontier.rs"]
 mod frontier;
+#[path = "parsed_style/meta_occurrence.rs"]
+mod meta_occurrence;
 #[path = "parsed_style/notification.rs"]
 mod notification;
 #[path = "parsed_style/recreation.rs"]

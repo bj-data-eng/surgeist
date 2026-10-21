@@ -14,6 +14,13 @@ use surgeist_html_parser::{
     HtmlParseMetadataDocument, HtmlParseOriginGroup, HtmlParsePendingAssociationStep as Step,
 };
 
+pub(super) mod meta_occurrence;
+pub use meta_occurrence::{
+    DomParsedHtmlMetaOccurrenceCompletion, DomParsedHtmlMetaOccurrenceError,
+    DomParsedHtmlMetaOccurrencePreparation, DomParsedHtmlMetaOccurrencePublished,
+    DomParsedHtmlMetaOccurrenceRetirement,
+};
+
 mod successor;
 pub use successor::{
     DomParsedHtmlStyleSuccessorCompletion, DomParsedHtmlStyleSuccessorPreparation,

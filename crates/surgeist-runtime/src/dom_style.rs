@@ -16,7 +16,8 @@ pub use meta::{
     DomStyleMetaSourceOutcome,
 };
 pub use parsed_style::{
-    DomStyleParsedFrontierError, DomStyleParsedNotificationError,
+    DomStyleParsedFrontierError, DomStyleParsedMetaOccurrenceError,
+    DomStyleParsedMetaOccurrenceOutcome, DomStyleParsedNotificationError,
     DomStyleParsedNotificationProgress, DomStyleParsedPrefixError, DomStyleParsedSheetError,
     DomStyleParsedSheetOutcome, DomStyleParsedSuccessorError,
 };

@@ -149,7 +149,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
         Ok(result)
     }
 }
-fn original_document(
+pub(super) fn original_document(
     value: HtmlParseMetadataDocument<'_>,
 ) -> crate::DomParsedHtmlHistoricalDocument {
     match value {
@@ -207,6 +207,12 @@ pub(super) fn remaining(
         .completed_style
         .try_lock()
         .map_err(|e| notification::guard_error(e, id))?;
+    let meta = meter
+        .entry()
+        .completed_meta
+        .try_lock()
+        .map_err(|e| notification::guard_error(e, id))?;
+    let mut meta_pending = meta.as_ref().map(|prefix| &prefix.last);
     meter.step(cancel)?;
     // The final unavailable result may coexist with the first retained candidate.
     meter.retain(size_of::<Option<R>>() + size_of::<R>(), 0, 0, cancel)?;
@@ -261,6 +267,14 @@ pub(super) fn remaining(
                 }
             }
             Step::Occurrence(row) if row.requires_processing() => {
+                if row.kind() == Kind::ChangePreferred
+                    && let Some(last) = meta_pending
+                {
+                    if row.id() == *last {
+                        meta_pending = None;
+                    }
+                    continue;
+                }
                 let current_done = graph
                     .as_ref()
                     .is_some_and(|held| match held.value().as_ref() {
@@ -345,7 +359,7 @@ pub(super) fn remaining(
             _ => (),
         }
     }
-    if !ordinary || documents == 0 {
+    if !ordinary || documents == 0 || meta_pending.is_some() {
         missing.get_or_insert(U::UnsupportedInventory);
     }
     Ok(if let Some(reason) = missing {

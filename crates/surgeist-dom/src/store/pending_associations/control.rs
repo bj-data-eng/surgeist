@@ -261,6 +261,85 @@ impl Meter {
                 .expect("preadmitted retirement union"),
         );
     }
+    /// Validate a disjoint same-Entry custody move without changing counters.
+    pub(super) fn check_transfer_to(
+        &self,
+        target: &Self,
+        usage: custody::Usage,
+    ) -> Result<(), DomError> {
+        if !std::ptr::eq(self.entry(), target.entry()) {
+            return Err(DomError::RepresentationExhausted);
+        }
+        self.own.get().checked_sub(usage)?;
+        target.own.get().checked_add(usage)?;
+        if self
+            .debit
+            .borrow()
+            .as_ref()
+            .is_none_or(|d| !d.belongs_to(&target.ledger))
+        {
+            return Err(DomError::RepresentationExhausted);
+        }
+        Ok(())
+    }
+    /// Move already admitted storage; cumulative work/output and totals stay put.
+    pub(super) fn transfer_to(&self, target: &Self, usage: custody::Usage) -> Result<(), DomError> {
+        self.check_transfer_to(target, usage)?;
+        let left = self.own.get().checked_sub(usage)?;
+        let right = target.own.get().checked_add(usage)?;
+        let moved = self
+            .debit
+            .borrow_mut()
+            .as_mut()
+            .expect("checked receipt")
+            .split(usage)?;
+        let mut destination = target.debit.borrow_mut();
+        if let Some(destination) = destination.as_mut() {
+            destination
+                .absorb(moved)
+                .expect("checked same Entry ledger");
+        } else {
+            *destination = Some(moved);
+        }
+        self.own.set(left);
+        target.own.set(right);
+        Ok(())
+    }
+    #[cfg(test)]
+    pub(super) fn own_usage(&self) -> custody::Usage {
+        self.own.get()
+    }
+    pub(super) fn runtime_usage(&self) -> DomParsedHtmlAssociationRuntimeUsage {
+        self.runtime.get()
+    }
+    /// Only the prevalidated actual output leaves the still-live caller receipt.
+    pub(super) fn transfer_runtime_output_to(
+        &self,
+        target: &Self,
+        usage: DomParsedHtmlAssociationRuntimeUsage,
+        name: custody::Usage,
+    ) {
+        let old = self.runtime.get();
+        let remaining = DomParsedHtmlAssociationRuntimeUsage::new(
+            old.bytes()
+                .checked_sub(usage.bytes())
+                .expect("validated output bytes"),
+            old.units()
+                .checked_sub(usage.units())
+                .expect("validated output units"),
+            old.outputs()
+                .checked_sub(usage.outputs())
+                .expect("validated output count"),
+        )
+        .expect("prevalidated remaining Runtime extent");
+        self.transfer_to(
+            target,
+            name.checked_add(custody::Usage::new(usage.bytes(), usage.units()))
+                .expect("validated output union"),
+        )
+        .expect("prevalidated exclusive same-Entry output move");
+        self.runtime.set(remaining);
+    }
     pub(super) fn shrink_to(&self, usage: custody::Usage) {
         self.release(
             self.own

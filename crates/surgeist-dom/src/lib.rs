@@ -281,10 +281,13 @@ pub use parsed_style::*;
 mod parsed_meta;
 pub use parsed_meta::*;
 pub use store::pending_associations::{
-    DomParsedHtmlMetaPreparation, DomParsedHtmlMetaPublished, DomParsedHtmlMetaRetirement,
-    DomParsedHtmlMetaRuntimeHold, DomParsedHtmlStylePrefixView, DomParsedHtmlStyleRuntimeHold,
-    DomParsedHtmlStyleSheetCompletion, DomParsedHtmlStyleSheetPreparation,
-    DomParsedHtmlStyleSheetPublished, DomParsedHtmlStyleSheetRetirement,
+    DomParsedHtmlMetaOccurrenceCompletion, DomParsedHtmlMetaOccurrenceError,
+    DomParsedHtmlMetaOccurrencePreparation, DomParsedHtmlMetaOccurrencePublished,
+    DomParsedHtmlMetaOccurrenceRetirement, DomParsedHtmlMetaPreparation,
+    DomParsedHtmlMetaPublished, DomParsedHtmlMetaRetirement, DomParsedHtmlMetaRuntimeHold,
+    DomParsedHtmlStylePrefixView, DomParsedHtmlStyleRuntimeHold, DomParsedHtmlStyleSheetCompletion,
+    DomParsedHtmlStyleSheetPreparation, DomParsedHtmlStyleSheetPublished,
+    DomParsedHtmlStyleSheetRetirement,
 };
 pub use store::source::operation::dialog_queue::{
     DomDialogCloseTaskInfo, DomDialogTask, DomDialogTaskInfo, DomDialogTaskQueueCommit,

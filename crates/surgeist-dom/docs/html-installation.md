@@ -510,6 +510,33 @@ output, replacement and retirement overlap is admitted before publication;
 refusal keeps both published owners and the old graph unchanged, while work
 spent remains on the original controller for a raised-limit retry.
 
+### Original Meta preferred-name progress
+
+After the supported first and ParserPopped Style invocations have returned,
+`meta_occurrence_document` and `prepare_meta_occurrence` select the exact next
+original `ChangePreferred` by its opaque occurrence ID. Selection authenticates
+the complete inventory and dependencies. It reads the retained original UTF-16
+name, even if the historical Meta subject has been retired. A later, foreign or
+already consumed identity cannot execute another row.
+
+The preparation holds the real CSSOM root lock and exposes only its authentic
+snapshot and disabled-flag edits. A composing preference owner admits its actual
+candidate, names and output before `commit`; the commit's survivor report must
+be a subset of that admitted Runtime custody. The published result retains the
+root lock until the composing owner installs the preformed preferred-name state.
+The completion owns the original name and its receipt, while actual displaced
+producer and binding graphs remain with the separate retirement value. Dispose
+temporary Runtime graphs before that retirement. An outer owning result must
+dispose its preference fields before the completion; do not detach the receipt
+from the backing it represents.
+
+Each successful call records one compact contiguous completed prefix in the same
+entry. Repeated names may produce a genuine unchanged CSSOM publication while
+consuming a distinct occurrence once. Refusal or precommit Drop changes no flags,
+preference or progress, and original work remains cumulative. This operation
+preserves the active Style graph and asynchronous receipts/tasks. It neither
+acknowledges the contribution nor seals the synchronous end automatically.
+
 ### Original notification permission and the synchronous frontier
 
 After this invocation reaches `RenderingComplete`, a composing owner can use
@@ -546,8 +573,9 @@ inline decision is real synchronous execution, not missing processing.
 `complete_synchronous_execution` authenticates the completed ordinary offline
 no-executable-JavaScript report, every Document capture disposition, the entire
 sealed inventory, and the actual completed first and ParserPopped invocations.
-It recognizes producer-proved no-effect rows and genuine blocked returns. Any
-further influencing Style or Meta operation remains an exact requirement.
+It recognizes producer-proved no-effect rows, genuine blocked returns, and
+explicitly committed original Meta preferred-name progress. Further influencing
+Style/Link operations or an unconsumed Meta remain exact requirements.
 Capture completeness or an exhausted cursor alone does not establish end.
 The returned opaque end retains its actual original output custody; the
 canonical `parsed_html_synchronous_end` lender permits readback after that
