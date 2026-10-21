@@ -186,3 +186,43 @@ fn app_strict_matches_ordinary_empty_duplicate_and_recovered_keyframes() {
     };
     assert!(keyframes(rule).blocks()[0].declarations().is_empty());
 }
+
+// Syntax 3 (2026 CRD) §5.5.2 consumes the @keyframes block with consume a
+// block's contents: a `;` is discarded, and an item that is not a valid
+// keyframe rule is reconsumed as a nested qualified rule ending at its `;`.
+// https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
+// https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule
+#[test]
+fn keyframes_block_contents_discard_semicolons_and_stop_invalid_items_at_them() {
+    let source = "@keyframes k{;from{opacity:0};;color:red;50%{opacity:.5}x y;to{opacity:1};}";
+    let report = parse_sheet(source);
+    let [rule] = report.syntax().rules() else {
+        panic!("one keyframes rule: {report:?}");
+    };
+    let blocks = keyframes(rule).blocks();
+    assert_eq!(blocks.len(), 3, "{report:?}");
+    assert!(matches!(
+        blocks[0].selectors().selectors(),
+        [CssKeyframeSelector::From]
+    ));
+    assert!(matches!(
+        blocks[1].selectors().selectors(),
+        [CssKeyframeSelector::Percent(percent)] if percent.literal_value() == Some(50.0)
+    ));
+    assert!(matches!(
+        blocks[2].selectors().selectors(),
+        [CssKeyframeSelector::To]
+    ));
+    assert!(blocks.iter().all(|block| block.declarations().len() == 1));
+    let units: Vec<_> = report
+        .diagnostics()
+        .iter()
+        .map(|diagnostic| {
+            assert_eq!(diagnostic.action(), CssRecoveryAction::DropKeyframeBlock);
+            &source[diagnostic.span().start().byte_offset().value()
+                ..diagnostic.span().end().byte_offset().value()]
+        })
+        .collect();
+    assert_eq!(units, ["color:red", "x y"]);
+    assert!(report.into_validation_result().is_err());
+}

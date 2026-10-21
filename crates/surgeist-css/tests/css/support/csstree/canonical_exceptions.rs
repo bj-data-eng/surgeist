@@ -39,9 +39,10 @@ const STYLE_ATTRIBUTE_RULES: &str = "a style attribute holds declarations only, 
 const LEGACY_FILTER: &str = "proprietary progid filters are outside the filter grammar and are dropped; https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#FilterFunctions";
 const NEST_AT_RULE: &str = "the superseded @nest rule is an unknown at-rule under Nesting 1; https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nesting";
 const STARTING_STYLE: &str = "Transitions 2 is not a selected edition (references/SOURCE-EDITIONS.md), so @starting-style is an unknown at-rule and is ignored; CSS 2 https://www.w3.org/TR/2011/REC-CSS2-20110607/syndata.html#parsing-errors";
-const NESTED_SEMICOLON: &str = "a `;` between nested rules is not a block item; Nesting 1 https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nesting";
-const TOP_LEVEL_GROUP_DECLARATIONS: &str = "declarations in a top-level @media rule list parse as invalid qualified rules; Syntax 3 https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-list-of-rules";
-const RULE_LIST_SEMICOLON: &str = "a `;` in a rule list starts an invalid qualified-rule prelude; Syntax 3 https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule";
+const NESTED_SEMICOLON: &str = "consume a block's contents discards a `;` between nested rules, so it is not a block item; Syntax 3 https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents";
+const TOP_LEVEL_GROUP_DECLARATIONS: &str = "a declaration is invalid in a top-level @media rule list, so consume a block's contents reconsumes it as a qualified rule that returns nothing at its `;` stop token; Syntax 3 https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents";
+const BLOCK_SEMICOLON: &str = "consume a block's contents discards a `;` in an at-rule block, so it is not retained between rules; Syntax 3 https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents";
+const BLOCK_SEMICOLON_UNKNOWN_AT_RULE: &str = "consume a block's contents discards a `;` in an at-rule block, and the following nested at-rule with an unknown at-keyword is ignored; Syntax 3 https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents and CSS 2 https://www.w3.org/TR/2011/REC-CSS2-20110607/syndata.html#parsing-errors";
 const CDO_CDC: &str = "top-level CDO and CDC tokens are discarded; Syntax 3 https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-list-of-rules";
 const EOF_QUALIFIED_RULE: &str = "a qualified rule ending at EOF without a block returns nothing; Syntax 3 https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule";
 const UNMATCHED_CLOSER: &str = "a custom-property value with an unmatched closer is invalid; Syntax 3 https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value";
@@ -668,13 +669,13 @@ pub(crate) const EXCEPTIONS: &[CanonicalException] = &[
     ),
     deliberate(
         "stylesheet/tolerant.json#/correct fallback on error in at-rule block/1",
-        "@media (max-width:1000px){a{}}",
-        RULE_LIST_SEMICOLON,
+        "@media (max-width:1000px){a{}b{}}",
+        BLOCK_SEMICOLON,
     ),
     deliberate(
         "stylesheet/tolerant.json#/correct fallback on error in at-rule block/2",
         "@media (max-width:1000px){a{}}",
-        RULE_LIST_SEMICOLON,
+        BLOCK_SEMICOLON_UNKNOWN_AT_RULE,
     ),
     deliberate("stylesheet/tolerant.json#/no block", "", EOF_QUALIFIED_RULE),
     deliberate(

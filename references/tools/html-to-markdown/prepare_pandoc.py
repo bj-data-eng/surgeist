@@ -7,6 +7,14 @@ base=r.get('base','https://drafts.csswg.org/cssom/')
 body=html.fromstring((work/'capture-body.expected.html').read_text())
 from table_layouts import prepare_tables
 prepare_tables(body,work)
+# Inline SVG diagrams become passive local assets before presentation
+# attributes are normalized, so their geometry and exact-case names survive.
+from svg_assets import extract
+assets=extract(body,html.parse(str(work/'source.html')).getroot(),r['filename'].removesuffix('.md')) if body.xpath('.//svg') else []
+if assets:
+    (work/'assets').mkdir(exist_ok=True)
+    for name,data in assets: (work/'assets'/name).write_bytes(data)
+    (work/'svg-assets.json').write_text(json.dumps([name for name,_ in assets],indent=2))
 for caption in list(body.xpath('.//table/caption')):
     caption.tag='p'
     table=caption.getparent();table.remove(caption);table.addprevious(caption)
@@ -48,7 +56,9 @@ for n in list(body.iter()):
         value=n.get('href')
         if not value.startswith('#') or unquote(value[1:]) not in set(r['ids']): value=urljoin(base,value)
         n.set('href',value)
-    if n.get('src'):
+    if n.get('src','').startswith('surgeist-asset:'):
+        n.set('src','assets/'+n.get('src').removeprefix('surgeist-asset:'))
+    elif n.get('src'):
         from urllib.parse import urljoin
         n.set('src',urljoin(base,n.get('src')))
     if n.tag=='summary': n.tag='p'

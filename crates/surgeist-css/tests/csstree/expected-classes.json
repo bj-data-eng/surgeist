@@ -14362,6 +14362,16 @@
             "code": "invalid_qualified_rule",
             "action": "drop_qualified_rule",
             "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
           }
         ]
       }
@@ -14370,7 +14380,7 @@
       "id": "stylesheet/tolerant.json#/correct fallback on error in at-rule block/1",
       "expectation_sha256": "77ddb5a1dcdbea63fc142a402337780535907699619fe3c9407ff7e7fba208fc",
       "class": {
-        "kind": "recovered",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "sheet_rules"
@@ -14379,14 +14389,7 @@
             "relation": "exact",
             "value": 1
           }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_selector",
-            "action": "drop_qualified_rule",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       }
     },
     {
@@ -14405,8 +14408,8 @@
         },
         "diagnostics": [
           {
-            "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "code": "unknown_at_rule",
+            "action": "drop_at_rule",
             "payload_relation": "intersects"
           }
         ]

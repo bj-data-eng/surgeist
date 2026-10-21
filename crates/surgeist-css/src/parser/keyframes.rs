@@ -46,7 +46,7 @@ pub(super) fn parse_keyframes_rule<'i, 't>(
     diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
 ) -> std::result::Result<CssKeyframesRule, ParseError<'i, Error>> {
-    let blocks = parse_body(source, input, diagnostics, recovery);
+    let blocks = parse_body(source, input, diagnostics, recovery)?;
     Ok(CssKeyframesRule::new(
         name,
         blocks,
@@ -54,64 +54,79 @@ pub(super) fn parse_keyframes_rule<'i, 't>(
     ))
 }
 
+// Syntax 3 (2026 CRD) §5.5.2 consumes the @keyframes block with consume a
+// block's contents; the <qualified-rule-list> grammar then admits only
+// keyframe rules, so every other selected unit is one dropped keyframe block.
 pub(super) fn parse_body<'i>(
     source: &'i str,
     input: &mut Parser<'i, '_>,
     diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> Vec<CssKeyframeBlock> {
+) -> Result<Vec<CssKeyframeBlock>, ParseError<'i, Error>> {
     let mut parser = KeyframeBlockParser {
         source,
         diagnostics: Vec::new(),
-        recovery,
+        recovery: recovery.clone(),
     };
     let mut blocks = Vec::new();
     let mut previous_end = input.position().byte_index();
-    {
-        let mut items = RuleBodyParser::new(input, &mut parser);
-        loop {
-            let progress = RecoveryProgress::record(items.input);
-            let Some(item) = items.next() else {
-                break;
-            };
-            let failed_block_error = item.as_ref().err().and_then(|(_, failed_unit)| {
-                consume_failed_rule_block(
+    let (document, selected) = super::syntax_bridge::rules(
+        source,
+        input,
+        &recovery,
+        crate::syntax_consumption::RuleListSyntax::BlockContents,
+    )
+    .map_err(|error| {
+        crate::error::invalid_component_value(input.current_source_location(), error)
+    })?;
+    for selected in &selected {
+        let progress = RecoveryProgress::record(input);
+        let item = super::syntax_bridge::parse_selected(
+            source,
+            input,
+            &mut parser,
+            &recovery,
+            &document,
+            selected,
+        );
+        let failed_block_error = item.as_ref().err().and_then(|(_, failed_unit)| {
+            consume_failed_rule_block(
+                source,
+                input,
+                true,
+                &parser.recovery,
+                structural_recovery_production(failed_unit),
+            )
+            .1
+        });
+        let retained = item.is_ok();
+        let progress_outcome = progress.finish(input, retained);
+        let unit_end = input.position().byte_index();
+        match item {
+            Ok(block) => blocks.push(block),
+            Err((error, failed_unit)) => {
+                let error = failed_block_error.unwrap_or(*error);
+                if let Some(diagnostic) = structural_rule_diagnostic(
                     source,
-                    items.input,
-                    true,
-                    &items.parser.recovery,
-                    structural_recovery_production(failed_unit),
-                )
-                .1
-            });
-            let retained = item.is_ok();
-            let progress_outcome = progress.finish(items.input, retained);
-            let unit_end = items.input.position().byte_index();
-            match item {
-                Ok(block) => blocks.push(block),
-                Err((error, failed_unit)) => {
-                    let error = failed_block_error.unwrap_or(error);
-                    if let Some(diagnostic) = structural_rule_diagnostic(
-                        source,
-                        error,
-                        failed_unit,
-                        previous_end,
-                        unit_end,
-                        crate::CssRecoveryAction::DropKeyframeBlock,
-                    ) {
-                        items.parser.diagnostics.push(diagnostic);
-                    }
+                    error,
+                    failed_unit,
+                    previous_end,
+                    unit_end,
+                    crate::CssRecoveryAction::DropKeyframeBlock,
+                ) {
+                    parser.diagnostics.push(diagnostic);
                 }
             }
-            previous_end = unit_end;
-            if progress_outcome == RecoveryLoopOutcome::Terminated {
-                break;
-            }
+        }
+        previous_end = unit_end;
+        if progress_outcome == RecoveryLoopOutcome::Terminated {
+            break;
         }
     }
+    super::syntax_bridge::discard_block_contents_tail(input);
     diagnostics.append(&mut parser.diagnostics);
 
-    blocks
+    Ok(blocks)
 }
 
 pub(super) fn parse_declarations<'i>(
@@ -225,21 +240,6 @@ impl<'i> QualifiedRuleParser<'i> for KeyframeBlockParser<'i> {
         );
         depth.retain();
         Ok(result)
-    }
-}
-
-impl<'i> DeclarationParser<'i> for KeyframeBlockParser<'i> {
-    type Declaration = CssKeyframeBlock;
-    type Error = Error;
-}
-
-impl<'i> RuleBodyItemParser<'i, CssKeyframeBlock, Error> for KeyframeBlockParser<'i> {
-    fn parse_declarations(&self) -> bool {
-        false
-    }
-
-    fn parse_qualified(&self) -> bool {
-        true
     }
 }
 

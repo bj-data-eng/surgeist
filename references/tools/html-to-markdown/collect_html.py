@@ -2,11 +2,14 @@ from pathlib import Path
 from lxml import html, etree
 import json,hashlib,sys
 work=Path(sys.argv[1]); base=sys.argv[2]; shortname=sys.argv[3]; retrieved=sys.argv[4]
+# A dated publication is named by its edition label, for example
+# CRD-css-syntax-3-20261001; an undated editor page by its retrieval date.
+edition=sys.argv[5] if len(sys.argv)>5 else f"editor-capture-{retrieved.replace('-', '')}"
 source=work/'source.html'
 data=source.read_bytes();root=html.fromstring(data);body=root.find('body')
 for node in body.xpath('.//script|.//style'):node.drop_tree()
 sha=hashlib.sha256(data).hexdigest()
-filename=f'{shortname}--editor-capture-{retrieved.replace('-', '')}--{sha[:12]}.md'
+filename=f'{shortname}--{edition}--{sha[:12]}.md'
 ids=body.xpath('//@id');assert len(ids)==len(set(ids))
 pre=[];tables=[];links=0
 for p in body.xpath('.//pre'):

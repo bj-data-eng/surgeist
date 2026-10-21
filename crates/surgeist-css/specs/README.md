@@ -58,7 +58,11 @@ Filter Effects 2 in full.
 `bytes` identify the chosen published representation. The catalog deliberately
 uses the latest published editions available at that cutoff, which can be newer
 than editions cited in the Snapshot bibliography or the existing runtime
-conformance registry.
+conformance registry. One exception is recorded after the cutoff: the
+`css-syntax-3-2026-block-parsing` source selects the 1 October 2026 Syntax 3
+draft for block parsing by the [#1328](https://github.com/bj-data-eng/surgeist/issues/1328)
+decision, and the remaining move from the 2021 edition is tracked by
+[#1356](https://github.com/bj-data-eng/surgeist/issues/1356).
 
 W3C module publications use dated URLs. Fullscreen is the single full-module
 publication-model exception: W3C discontinued its document and explicitly

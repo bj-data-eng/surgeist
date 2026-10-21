@@ -267,6 +267,7 @@ use crate::error::{
 use crate::properties::*;
 use crate::source::{CssParsedOrigin, CssSourceSnapshot};
 use crate::syntax::*;
+use crate::syntax_consumption::RuleListSyntax;
 use crate::validation::parse_global_keyword;
 
 #[expect(
@@ -878,8 +879,14 @@ fn parse_sheet_inner(
     let mut previous_end = parser.position().byte_index();
 
     {
-        let (document, selected) = match syntax_bridge::rules(source, &parser, &recovery, top_level)
-        {
+        // A non-top-level sheet is the isolated replay of a unit from a group
+        // block, whose list is consumed as that block's contents.
+        let list = if top_level {
+            RuleListSyntax::Stylesheet
+        } else {
+            RuleListSyntax::BlockContents
+        };
+        let (document, selected) = match syntax_bridge::rules(source, &parser, &recovery, list) {
             Ok(selected) => selected,
             Err(error) => {
                 return crate::CssParseReport::new(
@@ -1961,9 +1968,11 @@ fn parse_nested_group_rules<'i, 't>(
     let mut previous_end = input.position().byte_index();
     {
         let (document, selected) =
-            syntax_bridge::rules(source, input, &recovery, false).map_err(|error| {
-                crate::error::invalid_component_value(input.current_source_location(), error)
-            })?;
+            syntax_bridge::rules(source, input, &recovery, RuleListSyntax::BlockContents).map_err(
+                |error| {
+                    crate::error::invalid_component_value(input.current_source_location(), error)
+                },
+            )?;
         for selected in &selected {
             let progress = RecoveryProgress::record(input);
             let item = syntax_bridge::parse_selected(
@@ -2011,6 +2020,7 @@ fn parse_nested_group_rules<'i, 't>(
             }
         }
     }
+    syntax_bridge::discard_block_contents_tail(input);
     Ok(Recovered {
         syntax: rules,
         diagnostics,
@@ -2068,14 +2078,19 @@ fn parse_scoped_rule_list<'i, 't>(
     let mut rules = Vec::new();
     let mut declarations = Vec::new();
     let mut previous_end = input.position().byte_index();
-    let mut generic = if !has_style_ancestor && matches!(body, ScopedBodyKind::OrdinaryGroup) {
-        let (document, selected) =
-            syntax_bridge::rules(source, input, &recovery, false).map_err(|error| {
-                crate::error::invalid_component_value(input.current_source_location(), error)
-            })?;
-        Some((document, selected, 0_usize))
-    } else {
+    // Without a style ancestor neither body admits declarations, so its rule
+    // grammar selects consume a block's contents units; with one, the native
+    // body parser tries each declaration before a nested rule.
+    let mut generic = if has_style_ancestor {
         None
+    } else {
+        let (document, selected) =
+            syntax_bridge::rules(source, input, &recovery, RuleListSyntax::BlockContents).map_err(
+                |error| {
+                    crate::error::invalid_component_value(input.current_source_location(), error)
+                },
+            )?;
+        Some((document, selected, 0_usize))
     };
     let mut items = RuleBodyParser::new(input, &mut rule_parser);
     loop {
@@ -2169,6 +2184,9 @@ fn parse_scoped_rule_list<'i, 't>(
         if progress_outcome == RecoveryLoopOutcome::Terminated {
             break;
         }
+    }
+    if generic.is_some() {
+        syntax_bridge::discard_block_contents_tail(items.input);
     }
     flush_scoped_declarations(&mut declarations, &mut rules);
     Ok(Recovered {

@@ -4981,15 +4981,17 @@
         "is_clean": false,
         "validation_accepts": false,
         "ordered_recovery_actions": [
+          "DropQualifiedRule",
+          "DropQualifiedRule",
           "DropQualifiedRule"
         ],
         "diagnostic_positions": null,
         "diagnostic_count_status": "one per listed recovery unit"
       },
-      "rationale": "Top-level media body is a rule list: declaration-looking text without a block becomes one discarded incomplete qualified rule; retain empty media and subsequent universal rule.",
+      "rationale": "The selected 2026-10-01 Syntax 3 block parsing (catalog source css-syntax-3-2026-block-parsing; https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents and #consume-qualified-rule) consumes the media block with consume a block's contents. Each declaration is invalid in the top-level media rule list, so it is reconsumed as a nested qualified rule that returns nothing at its semicolon stop token; the semicolons are discarded. Retain empty media and the subsequent universal rule. Module citations stay on the audited publications until the staged Syntax 3 citation audit.",
       "normative_sources": [
         "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#contents-of"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -5011,6 +5013,16 @@
             "code": "invalid_qualified_rule",
             "action": "drop_qualified_rule",
             "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "invalid_qualified_rule",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
           }
         ]
       },
@@ -5019,16 +5031,34 @@
           "code": "invalid_qualified_rule",
           "action": "drop_qualified_rule",
           "payload_relation": "intersects",
-          "byte_offset": 50,
+          "byte_offset": 31,
           "span_start": 26,
-          "span_end": 50,
+          "span_end": 31,
+          "multiplicity": 1
+        },
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 38,
+          "span_start": 32,
+          "span_end": 38,
+          "multiplicity": 1
+        },
+        {
+          "code": "invalid_qualified_rule",
+          "action": "drop_qualified_rule",
+          "payload_relation": "intersects",
+          "byte_offset": 49,
+          "span_start": 39,
+          "span_end": 49,
           "multiplicity": 1
         }
       ],
-      "diagnostic_count": 1,
+      "diagnostic_count": 3,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "Group rule-list consumes one incomplete qualified prelude top:0;left:0;width:100%; through bounded EOF, not three declarations. No curly in failed unit converts EOF to invalid_qualified_rule."
+        "Block contents tries top:0, left:0 and width:100% as declarations; the media rule list rejects each, and the qualified-rule retry ends at its semicolon stop token with no block, so each unit is dropped as invalid_qualified_rule spanning only its prelude, with the responsible stop token at the span end. The discarded semicolons are not parse errors."
       ],
       "uncertainties": []
     },
@@ -5066,33 +5096,34 @@
                 "selector": "a",
                 "declarations": [],
                 "nested_rules": []
+              },
+              {
+                "kind": "style",
+                "selector": "b",
+                "declarations": [],
+                "nested_rules": []
               }
             ]
           }
         ],
         "top_level_rule_count": 1,
-        "is_clean": false,
-        "validation_accepts": false,
-        "ordered_recovery_actions": [
-          "DropQualifiedRule"
-        ],
-        "diagnostic_positions": null,
-        "diagnostic_count_status": "one per listed recovery unit"
+        "is_clean": true,
+        "validation_accepts": true,
+        "ordered_recovery_actions": [],
+        "diagnostic_positions": [],
+        "diagnostic_count_status": "zero: consume a block's contents discards a semicolon without a parse error"
       },
-      "rationale": "Syntax 3 rule-list consumption includes semicolon in next prelude; ;b or ;@b invalidates that entire qualified rule. Retain media and its first a rule.",
+      "rationale": "The selected 2026-10-01 Syntax 3 block parsing (catalog source css-syntax-3-2026-block-parsing; https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-at-rule, #consume-block and #consume-block-contents) consumes the media block with consume a block's contents, which discards the semicolon; b{} is then an ordinary sibling. Retain media with a and b. Module citations stay on the audited publications until the staged Syntax 3 citation audit.",
       "normative_sources": [
         "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-list-of-rules",
-        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#contents-of",
-        "https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#syntax"
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#contents-of"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
-      "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
+      "position_status": "no diagnostic positions: the semicolon is cleanly discarded",
       "diagnostic_action_relation": "exact",
-      "registry_kind": "recovered",
+      "registry_kind": "clean",
       "expected_class": {
-        "kind": "recovered",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "sheet_rules"
@@ -5101,30 +5132,13 @@
             "relation": "exact",
             "value": 1
           }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_selector",
-            "action": "drop_qualified_rule",
-            "payload_relation": "intersects"
-          }
-        ]
-      },
-      "expected_raw_diagnostics": [
-        {
-          "code": "invalid_selector",
-          "action": "drop_qualified_rule",
-          "payload_relation": "intersects",
-          "byte_offset": 29,
-          "span_start": 29,
-          "span_end": 33,
-          "multiplicity": 1
         }
-      ],
-      "diagnostic_count": 1,
+      },
+      "expected_raw_diagnostics": [],
+      "diagnostic_count": 0,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor."
+        "Block contents discards the semicolon between a{} and b{}; both are valid style rules in the media rule list, so the report is clean."
       ],
       "uncertainties": []
     },
@@ -5170,18 +5184,15 @@
         "is_clean": false,
         "validation_accepts": false,
         "ordered_recovery_actions": [
-          "DropQualifiedRule"
+          "DropAtRule"
         ],
         "diagnostic_positions": null,
         "diagnostic_count_status": "one per listed recovery unit"
       },
-      "rationale": "Syntax 3 rule-list consumption includes semicolon in next prelude; ;b or ;@b invalidates that entire qualified rule. Retain media and its first a rule.",
+      "rationale": "The selected 2026-10-01 Syntax 3 block parsing (catalog source css-syntax-3-2026-block-parsing; https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-at-rule and #consume-block-contents) consumes the media block with consume a block's contents, which discards the semicolon; @b{} is then its own nested at-rule, whose unknown at-keyword makes it ignored (CSS 2 https://www.w3.org/TR/2011/REC-CSS2-20110607/syndata.html#parsing-errors). Retain media and its a rule. Module citations stay on the audited publications until the staged Syntax 3 citation audit.",
       "normative_sources": [
         "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-list-of-rules",
-        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#contents-of",
-        "https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#syntax"
+        "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#contents-of"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -5200,19 +5211,19 @@
         },
         "diagnostics": [
           {
-            "code": "invalid_selector",
-            "action": "drop_qualified_rule",
+            "code": "unknown_at_rule",
+            "action": "drop_at_rule",
             "payload_relation": "intersects"
           }
         ]
       },
       "expected_raw_diagnostics": [
         {
-          "code": "invalid_selector",
-          "action": "drop_qualified_rule",
+          "code": "unknown_at_rule",
+          "action": "drop_at_rule",
           "payload_relation": "intersects",
-          "byte_offset": 29,
-          "span_start": 29,
+          "byte_offset": 30,
+          "span_start": 30,
           "span_end": 34,
           "multiplicity": 1
         }
@@ -5220,7 +5231,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor."
+        "After the discarded semicolon, the unknown at-keyword @b begins a nested at-rule whose block ends the unit; the unknown at-rule is dropped with its block, and the responsible at-keyword starts the span."
       ],
       "uncertainties": []
     },

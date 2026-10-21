@@ -199,7 +199,7 @@ fn scoped_parent_eof_and_semicolon_controls_survive_batch_boundaries() {
 }
 
 #[test]
-fn nested_html_and_semicolon_prefixes_keep_one_failed_unit_at_batch_boundaries() {
+fn nested_html_prefixes_keep_one_failed_unit_and_semicolons_are_discarded_at_batch_boundaries() {
     for (prefix, kind) in [
         ("<!--", CssTokenKind::Cdo),
         ("-->", CssTokenKind::Cdc),
@@ -228,6 +228,25 @@ fn nested_html_and_semicolon_prefixes_keep_one_failed_unit_at_batch_boundaries()
                 "}".repeat(depth)
             );
             let report = parse_sheet(&source);
+            if kind == CssTokenKind::Semicolon {
+                // Syntax 3 (2026 CRD) consume a block's contents discards the
+                // nested `;`, so Supports is its own unit at every boundary.
+                // https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
+                let [CssRule::Supports(supports), CssRule::Style(kept)] =
+                    media_children(report.syntax(), depth)
+                else {
+                    panic!("depth {depth}: Supports and later child after a discarded semicolon")
+                };
+                let [CssRule::Style(hidden)] = supports.rules() else {
+                    panic!("Supports child")
+                };
+                original_style(hidden, &source, source.find(".hidden{").unwrap(), "red");
+                original_style(kept, &source, source.find(".kept{").unwrap(), "blue");
+                root_after(report.syntax(), &source);
+                assert!(report.is_clean(), "depth {depth}: {report:?}");
+                assert_eq!(validate_sheet(&source).unwrap(), *report.syntax());
+                continue;
+            }
             let [CssRule::Style(kept)] = media_children(report.syntax(), depth) else {
                 panic!("failed qualified unit cannot promote its hidden descendant")
             };
@@ -247,14 +266,7 @@ fn nested_html_and_semicolon_prefixes_keep_one_failed_unit_at_batch_boundaries()
             };
             let encountered = detail.encountered().unwrap();
             assert_eq!(encountered.kind(), kind);
-            assert_eq!(
-                encountered.authored(),
-                if kind == CssTokenKind::Semicolon {
-                    ";"
-                } else {
-                    prefix
-                }
-            );
+            assert_eq!(encountered.authored(), prefix);
             assert_eq!(
                 validate_sheet(&source).unwrap_err().diagnostics(),
                 report.diagnostics()

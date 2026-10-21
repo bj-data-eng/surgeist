@@ -43,8 +43,8 @@ the same reviewed change; the ordinary offline tests validate the complete
 
 The [committed oracle](../../csstree/oracle.json) binds the reconciled CSS-owned registry: 820 cases
 have full public-parser observations and 115 retain explicit panic-freedom-only
-policies. Across all 935 retained records, outcomes are 351 clean, 337 strict
-rejections, 94 recoveries, and 153 explicit unsupported dispositions. The
+policies. Across all 935 retained records, outcomes are 352 clean, 337 strict
+rejections, 93 recoveries, and 153 explicit unsupported dispositions. The
 unsupported count includes all 115 panic-freedom-only records and 38 active
 records; it is not an additional set of cases. The
 [census contract](../../css/corpora/csstree/csstree_oracle.rs) independently asserts this partition.

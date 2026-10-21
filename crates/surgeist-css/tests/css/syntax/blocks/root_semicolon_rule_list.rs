@@ -1,5 +1,9 @@
-//! Pinned Syntax 3 CRD20211224 §§5.4.1/5.4.3: unmatched root punctuation is
+//! Pinned Syntax 3 CRD20261001 §§5.5.1/5.5.3: unmatched root punctuation is
 //! qualified-rule input, not an independently discarded stylesheet separator.
+//! Only §5.5.5 "consume a block's contents" discards a `<semicolon-token>`.
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-stylesheet-contents
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
 use surgeist_css::{
     CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSelector, CssTokenKind,
     ErrorKind, parse_sheet, validate_sheet,
@@ -139,9 +143,11 @@ fn at_keyword_inside_punctuation_started_prelude_does_not_restart_at_rule_dispat
 }
 
 #[test]
-fn ordinary_nested_rule_lists_and_style_body_separators_keep_their_distinct_grammar() {
+fn block_contents_discard_semicolons_in_group_and_style_bodies_but_not_at_the_root() {
+    // A group block is consumed by consume a block's contents, which discards
+    // the `;`; only the stylesheet root keeps it as qualified-rule input.
     let nested_source =
-        "@media all{.before{color:red};.lost{color:blue}.last{color:green}}.outside{color:red}";
+        "@media all{.before{color:red};.kept{color:blue}.last{color:green}}.outside{color:red}";
     let style_source = ".host{;color:red;;}";
     let nested = parse_sheet(nested_source);
     let style = parse_sheet(style_source);
@@ -150,27 +156,15 @@ fn ordinary_nested_rule_lists_and_style_body_separators_keep_their_distinct_gram
     let [CssRule::Media(media), outside] = nested.syntax().rules() else {
         panic!("real parent closing brace ends nested list")
     };
-    let [before, last] = media.rules() else {
-        panic!("semicolon-prefixed nested qualified rule is dropped")
+    let [before, kept, last] = media.rules() else {
+        panic!("a rule after a discarded nested semicolon is retained: {media:?}")
     };
     assert_style(before, nested_source, "before", "red");
+    assert_style(kept, nested_source, "kept", "blue");
     assert_style(last, nested_source, "last", "green");
     assert_style(outside, nested_source, "outside", "red");
-    let [diagnostic] = nested.diagnostics() else {
-        panic!("one nested recovery unit")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
-    let unit = ";.lost{color:blue}";
-    let start = nested_source.find(unit).unwrap();
-    assert_eq!(diagnostic.span().start().byte_offset().value(), start);
-    assert_eq!(
-        diagnostic.span().end().byte_offset().value(),
-        start + unit.len()
-    );
-    assert_eq!(
-        nested_validation.unwrap_err().diagnostics(),
-        nested.diagnostics()
-    );
+    assert!(nested.is_clean(), "{nested:?}");
+    assert_eq!(nested_validation.unwrap(), *nested.syntax());
     assert!(style.is_clean(), "{style:?}");
     let [host] = style.syntax().rules() else {
         panic!("one clean style rule")
@@ -194,4 +188,33 @@ fn ordinary_nested_rule_lists_and_style_body_separators_keep_their_distinct_gram
         "red"
     );
     assert_eq!(style_validation.unwrap(), *style.syntax());
+}
+
+#[test]
+fn top_level_semicolon_still_begins_a_dropped_qualified_rule() {
+    // Consume a stylesheet's contents has no `<semicolon-token>` branch: `;.x{}`
+    // is one qualified rule whose selector is invalid.
+    let source = ";.x{color:red}.y{color:green}";
+    let report = parse_sheet(source);
+    let [CssRule::Style(y)] = report.syntax().rules() else {
+        panic!("only .y survives: {report:?}")
+    };
+    assert_eq!(
+        y.selectors().selectors()[0].selector(),
+        &CssSelector::Class("y".into())
+    );
+    let [diagnostic] = report.diagnostics() else {
+        panic!("one dropped qualified rule: {report:?}")
+    };
+    assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
+    assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);
+    assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
+    assert_eq!(
+        diagnostic.span().end().byte_offset().value(),
+        source.find(".y").unwrap()
+    );
+    assert_eq!(
+        validate_sheet(source).unwrap_err().diagnostics(),
+        report.diagnostics()
+    );
 }

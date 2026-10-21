@@ -69,7 +69,10 @@ function CodeBlock(el)
   return el
 end
 function Str(el)
-  if el.text:find('@',1,true) then
+  -- Pandoc 3.1.11.1's GFM writer mangles a backslash before ASCII
+  -- punctuation: `(\)` becomes `(\\` and `\\` becomes `\`. Such text is
+  -- written as entities; a backslash before other characters is unaffected.
+  if el.text:find('@',1,true) or el.text:find('\\%p') then
     return pandoc.RawInline('html',escape(el.text):gsub('@','&#64;'))
   end
 end

@@ -890,22 +890,29 @@ struct StructuralGroup {
     kind: GroupKind,
     style_context_starts: Vec<usize>,
     style_ancestry_starts: Vec<usize>,
-    list_context: StructuralListContext,
 }
 
+// The unit boundaries of one structural list, as its selected Syntax 3
+// (2026 CRD) consumer chooses them.
 #[derive(Clone, Copy)]
 pub(super) enum StructuralListContext {
-    Rules { top_level: bool },
+    /// Consume a stylesheet's contents (§5.5.1): CDO/CDC are discarded.
+    Stylesheet,
+    /// Parse a rule (§5.4.6): one unit, without CDO/CDC discard or a
+    /// qualified-rule stop token.
+    OneRule,
+    /// Consume a block's contents (§5.5.5), used for every curly block:
+    /// a `;` ends or precedes every unit.
     BlockContents,
 }
 
 impl StructuralListContext {
     fn ignores_prefix(self, token: &Token<'_>, at_unit_start: bool) -> bool {
-        let top_level = at_unit_start && matches!(self, Self::Rules { top_level: true });
-        crate::syntax_consumption::ignored_rule_list_prefix(
-            crate::syntax_consumption::native_token_kind(token),
-            top_level,
-        )
+        match token {
+            Token::WhiteSpace(_) | Token::Comment(_) => true,
+            Token::CDO | Token::CDC => at_unit_start && matches!(self, Self::Stylesheet),
+            _ => false,
+        }
     }
 
     fn semicolon_ends_unit(self, unit: Option<StructuralUnit>) -> bool {
@@ -928,7 +935,7 @@ pub(super) fn preflight_structural_nesting(
     root_style_context: bool,
     root_style_ancestor: bool,
     root_list_context: StructuralListContext,
-    fragment_body: Option<StructuralListContext>,
+    fragment_body: bool,
 ) -> Option<StructuralPreflight> {
     // Restarting cssparser at each verified token boundary exposes opening and
     // closing tokens without calling `parse_nested_block`; comments, strings,
@@ -963,9 +970,13 @@ pub(super) fn preflight_structural_nesting(
         // An unmatched closer is an ordinary generic prelude component.
 
         let directly_in_group = frames.last().is_none_or(|frame| frame.group.is_some());
-        let list_context = groups
-            .last()
-            .map_or(root_list_context, |group| group.list_context);
+        // Syntax 3 (2026 CRD) §5.5.4 consumes every curly block, including a
+        // body fragment's genuine root, with consume a block's contents.
+        let list_context = if groups.is_empty() {
+            root_list_context
+        } else {
+            StructuralListContext::BlockContents
+        };
         let unit = unit_starts.last().copied().flatten();
         if directly_in_group && list_context.ignores_prefix(&token, unit.is_none()) {
             continue;
@@ -1011,10 +1022,8 @@ pub(super) fn preflight_structural_nesting(
         // Only an actual prelude-free root brace can be a body
         // fragment. Existing rule/style callers have no override. Descendants
         // retain classification from their genuine authored preludes.
-        let is_fragment_root = fragment_body.is_some()
-            && groups.is_empty()
-            && frames.is_empty()
-            && unit_start == token_start;
+        let is_fragment_root =
+            fragment_body && groups.is_empty() && frames.is_empty() && unit_start == token_start;
         let group = if is_fragment_root {
             GroupKind::FragmentBody
         } else {
@@ -1122,22 +1131,11 @@ pub(super) fn preflight_structural_nesting(
             }
             _ => Vec::new(),
         };
-        let child_list_context = if is_fragment_root {
-            fragment_body.expect("the genuine root has a supplied body role")
-        } else if matches!(group, GroupKind::Style | GroupKind::Scope)
-            || !child_style_context_starts.is_empty()
-            || !child_style_ancestry_starts.is_empty()
-        {
-            StructuralListContext::BlockContents
-        } else {
-            StructuralListContext::Rules { top_level: false }
-        };
         groups.push(StructuralGroup {
             start: unit_start,
             kind: group,
             style_context_starts: child_style_context_starts,
             style_ancestry_starts: child_style_ancestry_starts,
-            list_context: child_list_context,
         });
         unit_starts.push(None);
         frames.push(StructuralFrame {
@@ -1449,7 +1447,10 @@ mod tests {
         let state =
             super::RecoveryState::at_depth(source, 256, super::StyleContextCaptures::default());
         let document = state.syntax_document(source).unwrap();
-        let selected = syntax::consume_rules(&mut document.cursor(document.root), false);
+        let selected = syntax::consume_rules(
+            &mut document.cursor(document.root),
+            syntax::RuleListSyntax::Stylesheet,
+        );
         let [Ok(GenericRule::At(page)), Ok(GenericRule::At(layer))] = selected.as_slice() else {
             panic!("denied Page and independent same-parent Layer units");
         };
@@ -1546,7 +1547,10 @@ mod tests {
         let state =
             super::RecoveryState::at_depth(source, 256, super::StyleContextCaptures::default());
         let document = state.syntax_document(source).unwrap();
-        let selected = syntax::consume_rules(&mut document.cursor(document.root), false);
+        let selected = syntax::consume_rules(
+            &mut document.cursor(document.root),
+            syntax::RuleListSyntax::Stylesheet,
+        );
         let [
             Ok(GenericRule::Qualified(qualified)),
             Ok(GenericRule::At(layer)),
@@ -1569,7 +1573,10 @@ mod tests {
             let state =
                 super::RecoveryState::at_depth(source, 256, super::StyleContextCaptures::default());
             let document = state.syntax_document(source).unwrap();
-            let selected = syntax::consume_rules(&mut document.cursor(document.root), false);
+            let selected = syntax::consume_rules(
+                &mut document.cursor(document.root),
+                syntax::RuleListSyntax::Stylesheet,
+            );
             let [Ok(GenericRule::At(rule))] = selected.as_slice() else {
                 panic!("one selected unit");
             };

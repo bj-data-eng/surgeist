@@ -244,7 +244,10 @@ fn style_ancestry_keeps_media_semicolon_separators_and_nearest_selector_at_63_64
 }
 
 #[test]
-fn unstyled_scoped_media_keeps_semicolon_in_one_failed_qualified_unit() {
+fn unstyled_scoped_media_discards_block_semicolon_before_supports() {
+    // Syntax 3 (2026 CRD) consume a block's contents discards the `;` in
+    // every scoped Media body, including across bounded structural chunks.
+    // https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
     on_two_mib(|| {
         for depth in [31, 32, 33, 63, 64, 65] {
             let groups = depth - 3;
@@ -255,6 +258,11 @@ fn unstyled_scoped_media_keeps_semicolon_in_one_failed_qualified_unit() {
                 "}".repeat(groups)
             );
             let report = bounded(&source);
+            assert!(
+                report.is_clean(),
+                "depth {depth}: {:?}",
+                report.diagnostics()
+            );
             let [
                 CssRule::Namespace(_),
                 CssRule::Scope(scope),
@@ -271,8 +279,23 @@ fn unstyled_scoped_media_keeps_semicolon_in_one_failed_qualified_unit() {
                 original(media.position().unwrap(), &source, offset);
                 children = media.rules().rules();
             }
-            let [CssScopedRule::Style(kept)] = children else {
-                panic!("hidden child cannot escape failed whole unit")
+            let [
+                CssScopedRule::Supports(supports),
+                CssScopedRule::Style(kept),
+            ] = children
+            else {
+                panic!("depth {depth}: Supports and later child after a discarded semicolon")
+            };
+            original(
+                supports.position().unwrap(),
+                &source,
+                source.find("@supports").unwrap(),
+            );
+            let [CssScopedRule::Style(hidden)] = supports.rules().rules() else {
+                panic!("Supports child")
+            };
+            let [hidden_color] = hidden.declarations().as_slice() else {
+                panic!("Supports child color")
             };
             let [kept_color] = kept.declarations().as_slice() else {
                 panic!("later child color")
@@ -280,27 +303,24 @@ fn unstyled_scoped_media_keeps_semicolon_in_one_failed_qualified_unit() {
             let [after_color] = after.declarations().as_slice() else {
                 panic!("later root color")
             };
+            // The Supports prelude also spells `color:red`; locate the child's.
+            original(
+                hidden_color.position().unwrap(),
+                &source,
+                source.find(".hidden{").unwrap() + ".hidden{".len(),
+            );
+            assert_eq!(
+                hidden_color
+                    .value_components()
+                    .serialize()
+                    .unwrap()
+                    .as_css(),
+                "red"
+            );
             color(kept_color, &source, "blue");
             color(after_color, &source, "black");
             original(kept.position(), &source, source.find(".kept{").unwrap());
             original(after.position(), &source, source.find(".after{").unwrap());
-            let [diagnostic] = report.diagnostics() else {
-                panic!("one whole failed qualified unit")
-            };
-            assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
-            assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);
-            let start = source.find(unit).unwrap();
-            original(diagnostic.error().position(), &source, start);
-            original(diagnostic.span().start(), &source, start);
-            original(diagnostic.span().end(), &source, start + unit.len());
-            let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-                panic!("qualified selector")
-            };
-            assert_eq!(
-                detail.encountered().unwrap().kind(),
-                CssTokenKind::Semicolon
-            );
-            assert_eq!(detail.encountered().unwrap().authored(), ";");
         }
     });
 }

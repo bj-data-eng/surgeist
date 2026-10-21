@@ -226,6 +226,16 @@
         "source_resolution": "The selected 2021-12-24 Syntax 3 publication lacks block-contents, which selected Conditional Rules 5 and Nesting 1 reference. Pin the latest source-file revision before the cutoff for only that production and its scoped block-parsing dependencies. Preserve the selected published Syntax 3 edition, tokenizer and other entry points. The definition record explicitly reconciles a missing terminal declaration transfer; this source is not adopted unqualified or selected in full."
       },
       {
+        "id": "css-syntax-3-2026-block-parsing",
+        "kind": "w3c-dated-publication",
+        "date": "2026-10-01",
+        "url": "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
+        "sha256": "8dc3adcc2b4e8fd8fa73c0be85cec67f006874ab42010cdf4528af4aa83f2878",
+        "bytes": 657320,
+        "latest_published_url": "https://www.w3.org/TR/css-syntax-3/",
+        "source_resolution": "Selected on 2026-10-20 after the publication cutoff by the #1328 decision to re-pin Syntax 3 to its latest publication, which settles semicolon recovery in blocks. The module publication record stays on the 2021-12-24 edition until the staged citation audit re-validates the corpus reconciliation records against this edition; until then this source governs block parsing only, and its definition names the css-syntax-3 module itself as the requiring module."
+      },
+      {
         "id": "css-env-1-authored-substitution-definitions",
         "kind": "w3c-dated-publication",
         "date": "2025-09-23",
@@ -712,6 +722,49 @@
           "root"
         ],
         "downstream_requirements": "Query-container selection, flat-tree and originating-element context, integer evaluation, dependency tracking and invalidation remain downstream. Other Values 5 definitions are not imported by this record."
+      },
+      {
+        "id": "block-contents-parsing-2026",
+        "source_id": "css-syntax-3-2026-block-parsing",
+        "sections": [
+          {
+            "anchor": "consume-stylesheet-contents",
+            "url": "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-stylesheet-contents"
+          },
+          {
+            "anchor": "consume-at-rule",
+            "url": "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-at-rule"
+          },
+          {
+            "anchor": "consume-qualified-rule",
+            "url": "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
+          },
+          {
+            "anchor": "consume-block",
+            "url": "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block"
+          },
+          {
+            "anchor": "consume-block-contents",
+            "url": "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents"
+          }
+        ],
+        "required_by": [
+          {
+            "module_id": "css-syntax-3",
+            "section_url": "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents",
+            "requirement": "Every at-rule and qualified-rule block is consumed as block contents, which discards a semicolon token and consumes declarations and nested rules; the owning rule's grammar then decides which items are valid. A top-level stylesheet still consumes a qualified rule for any token other than whitespace, CDO, CDC and an at-keyword."
+          }
+        ],
+        "authored_owner": "css",
+        "authored_requirements": [
+          "Rule-list bodies such as @media, @supports, @container, @layer and @keyframes drop a stray semicolon without losing the following rule, and drop declarations as invalid for a rule-list grammar while keeping the rules after them.",
+          "Top-level stylesheet recovery, the tokenizer and other entry points keep their selected definitions until the staged audit moves them to this edition."
+        ],
+        "downstream_owners": [
+          "style",
+          "root"
+        ],
+        "downstream_requirements": "Mutable CSSOM objects and identity, matching, cascade execution and application of the recovered rules remain downstream."
       },
       {
         "id": "block-contents-production",

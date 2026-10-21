@@ -448,39 +448,25 @@ fn original_separators_and_condition_origins_survive_every_structural_boundary()
             } else {
                 let start = source.find("@else").unwrap();
                 assert!(!normalized.items().iter().any(|item| matches!(item, CssNormalizedItem::Rule(rule) if rule.position().is_some_and(|position| position.byte_offset().value() == start))));
-                if gap == ";" {
-                    // Ordinary rule-list grammar consumes ';@else{...}' as one
-                    // invalid qualified rule before an Else member exists.
-                    let unit = ";@else{.ElseTake{color:blue}}";
-                    let failed_start = source.find(unit).unwrap();
-                    let qualified = report
-                        .diagnostics()
-                        .iter()
-                        .find(|diagnostic| {
-                            diagnostic.span().start().byte_offset().value() == failed_start
-                        })
-                        .unwrap();
-                    assert_eq!(qualified.action(), CssRecoveryAction::DropQualifiedRule);
-                    assert_eq!(
-                        qualified.span().end().byte_offset().value(),
-                        failed_start + unit.len()
-                    );
-                } else {
-                    let placement = report
-                        .diagnostics()
-                        .iter()
-                        .find(|diagnostic| {
-                            diagnostic.error().code() == CssErrorCode::InvalidAtRulePlacement
-                        })
-                        .unwrap();
-                    assert_eq!(placement.error().position().byte_offset().value(), start);
-                    assert_eq!(placement.action(), CssRecoveryAction::DropAtRule);
-                    assert_eq!(placement.span().start().byte_offset().value(), start);
-                    assert_eq!(
-                        placement.span().end().byte_offset().value(),
-                        start + "@else{.ElseTake{color:blue}}".len()
-                    );
-                }
+                // Syntax 3 (2026 CRD) consume a block's contents discards a
+                // ';' gap, so @else is its own at-rule; the authored ';' token
+                // still breaks the chain (Conditional 5 §4), orphaning @else.
+                // https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
+                // https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#conditional-rule-chain
+                let placement = report
+                    .diagnostics()
+                    .iter()
+                    .find(|diagnostic| {
+                        diagnostic.error().code() == CssErrorCode::InvalidAtRulePlacement
+                    })
+                    .unwrap();
+                assert_eq!(placement.error().position().byte_offset().value(), start);
+                assert_eq!(placement.action(), CssRecoveryAction::DropAtRule);
+                assert_eq!(placement.span().start().byte_offset().value(), start);
+                assert_eq!(
+                    placement.span().end().byte_offset().value(),
+                    start + "@else{.ElseTake{color:blue}}".len()
+                );
             }
             assert_eq!(report, original);
         }
