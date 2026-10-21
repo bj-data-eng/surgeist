@@ -4,6 +4,73 @@ use surgeist_html_parser::{
     HtmlParseAssociationOccurrenceKind as Kind, HtmlParsePendingAssociationStep as Step,
 };
 
+fn assert_ignored_style_has_known_null_sheet(source: &'static str) {
+    let report = parse(HtmlSource::utf8(source));
+    let weak = Arc::downgrade(&report);
+    let mut cursor = report.pending_associations();
+    let mut documents = 0;
+    let mut occurrences = 0;
+    let mut popped = false;
+    loop {
+        match cursor.advance() {
+            Step::Document(row) => {
+                documents += 1;
+                assert_eq!(
+                    row.disposition(),
+                    surgeist_html_parser::HtmlParseAssociationCaptureDisposition::PendingComplete
+                );
+                assert!(!row.has_obligations());
+            }
+            Step::Occurrence(row) => {
+                occurrences += 1;
+                assert!(!row.requires_processing());
+                assert_ne!(row.kind(), Kind::ChangePreferred);
+                popped |= matches!(
+                    row.kind(),
+                    Kind::StyleUpdate(surgeist_html::HtmlStyleTrigger::ParserPopped)
+                );
+            }
+            Step::Complete => break,
+            _ => {}
+        }
+    }
+    assert!(documents > 0 && occurrences > 0 && popped);
+    drop(cursor);
+    let (mut dom, environment) = setup();
+    let installed = install(&mut dom, report, environment);
+    let style = element(&installed, "style");
+    assert!(installed.pending_association().is_none());
+    drop(installed);
+    assert!(weak.upgrade().is_none());
+    assert_eq!(dom.pending_parsed_html_associations().count(), 0);
+
+    // HTML's update algorithm stops before CSP/CreateSheet for each original
+    // invocation in these fresh histories. There was never a sheet to remove;
+    // known null therefore needs no resource processing or preference owner.
+    let snapshot = dom.snapshot();
+    let style = snapshot.node(style).unwrap().as_style().unwrap();
+    assert!(
+        style
+            .sheet()
+            .expect("original ignored history proves null")
+            .is_none()
+    );
+}
+
+#[test]
+fn parsed_type_ineligible_style_has_known_null_sheet_after_packet_drop() {
+    assert_ignored_style_has_known_null_sheet(
+        "<!doctype html><style type=text/plain title=A>x</style>",
+    );
+}
+
+#[test]
+fn parsed_inert_template_style_has_known_null_sheet_after_packet_drop() {
+    assert_ignored_style_has_known_null_sheet(
+        "<!doctype html><template><style title=A>x</style></template>",
+    );
+}
+
 fn preferred(report: &HtmlParseReport) -> Vec<Vec<u16>> {
     let history = report.history_view();
     let mut rows = report.pending_associations();
