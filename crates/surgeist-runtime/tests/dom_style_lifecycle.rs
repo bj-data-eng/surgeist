@@ -306,6 +306,122 @@ fn imports_have_a_real_wait_and_no_networking_delivery_before_or_after_owner_rem
 }
 
 #[test]
+fn destroyed_import_waiting_target_is_retired_without_dispatching_to_a_live_replacement() {
+    let (mut session, mut context, document, parent, _, _) = fixture();
+    let mut dom = session.dom();
+    let (style, _) = detached(
+        &mut dom,
+        document,
+        "@import url(\"pending.css\"); p { color: red }",
+    );
+    connect(&mut dom, &mut context, style, parent);
+    let historical_dom = dom.snapshot();
+    let sheet = association(&historical_dom, style).unwrap();
+    let historical_cssom = cssom(&context, document);
+    assert!(matches!(
+        historical_cssom
+            .sheet(sheet.id())
+            .unwrap()
+            .authored()
+            .rules()[0],
+        CssRule::Import(_)
+    ));
+    let pending = (document.node(), sheet.id().clone());
+    assert_eq!(context.styles.waiting_resources().unwrap(), 1);
+    assert_eq!(
+        context.styles.pending_sheet(0).unwrap(),
+        Some(pending.clone())
+    );
+    let mut dispatcher = registry();
+    listen(&mut dom, &mut dispatcher, style);
+
+    // Clearing the owner is not target retirement or a resource outcome.
+    drive(&mut dom, &mut context, DomSourceEdit::detach(style));
+    assert!(dom.snapshot().node(style).is_ok());
+    assert!(association(&dom.snapshot(), style).is_none());
+    let removed_cssom = cssom(&context, document);
+    assert!(removed_cssom.sheets().is_empty());
+    assert!(
+        removed_cssom
+            .sheet(sheet.id())
+            .unwrap()
+            .inputs()
+            .owner
+            .is_none()
+    );
+    empty(&mut dom, &mut dispatcher, &mut context);
+    assert_eq!(context.styles.waiting_resources().unwrap(), 1);
+    assert_eq!(
+        context.styles.pending_sheet(0).unwrap(),
+        Some(pending.clone())
+    );
+    assert!(context.events.is_empty());
+
+    drive(&mut dom, &mut context, DomSourceEdit::destroy(style));
+    assert!(matches!(
+        dom.snapshot().node(style),
+        Err(DomError::StaleNode)
+    ));
+    // A real later allocation is unrelated; no public arena-slot assumption.
+    let (replacement, _) = detached(&mut dom, document, "p { color: blue }");
+    assert_ne!(replacement, style);
+    listen(&mut dom, &mut dispatcher, replacement);
+    let before_pump = dom.snapshot();
+    assert!(before_pump.node(replacement).unwrap().parent().is_none());
+    assert!(association(&before_pump, replacement).is_none());
+    assert_eq!(context.styles.waiting_resources().unwrap(), 1);
+    assert_eq!(context.styles.pending_sheet(0).unwrap(), Some(pending));
+    assert_eq!(
+        cssom(&context, document).revision(),
+        removed_cssom.revision()
+    );
+    assert_eq!(association(&historical_dom, style).unwrap(), sheet);
+    assert!(
+        historical_cssom
+            .sheet(sheet.id())
+            .unwrap()
+            .inputs()
+            .owner
+            .is_some()
+    );
+
+    match DomStyleRuntime::run_networking(
+        &mut dom,
+        &mut dispatcher,
+        &mut context,
+        event_limits(),
+        &cancel(),
+    )
+    .unwrap()
+    {
+        DomStyleNetworkingProgress::TargetDestroyed { target, .. } => assert_eq!(target, style),
+        other => panic!("expected exact destroyed import-Waiting target retirement, got {other:?}"),
+    }
+    assert!(context.events.is_empty());
+    assert_eq!(context.styles.waiting_resources().unwrap(), 0);
+    assert!(context.styles.pending_sheet(0).unwrap().is_none());
+    assert_eq!(dom.snapshot().stamp(), before_pump.stamp());
+    assert!(dom.snapshot().node(replacement).unwrap().parent().is_none());
+    assert!(association(&dom.snapshot(), replacement).is_none());
+    assert_eq!(
+        cssom(&context, document).revision(),
+        removed_cssom.revision()
+    );
+    assert!(cssom(&context, document).sheet(sheet.id()).is_ok());
+    assert_eq!(association(&historical_dom, style).unwrap(), sheet);
+    assert!(
+        historical_cssom
+            .sheet(sheet.id())
+            .unwrap()
+            .inputs()
+            .owner
+            .is_some()
+    );
+    empty(&mut dom, &mut dispatcher, &mut context);
+    assert!(context.events.is_empty());
+}
+
+#[test]
 fn already_queued_parse_recovery_load_survives_detachment_and_retains_old_objects() {
     let (mut session, mut context, document, parent, _, _) = fixture();
     let mut dom = session.dom();
