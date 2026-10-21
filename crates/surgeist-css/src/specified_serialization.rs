@@ -978,14 +978,14 @@ impl crate::CssTimeLiteral {
         if context.output_suppressed() {
             return Ok(());
         }
-        let shift = match self.unit() {
-            crate::CssTimeUnit::Seconds => 0,
-            crate::CssTimeUnit::Milliseconds => -3,
-        };
+        let unit = crate::CssNumericUnit::Time(self.unit());
+        let shift =
+            i128::from(crate::numeric::units::decimal_shift(unit).expect("decimal time ratio"));
         let text = format_coefficient(
             self.numeric().representation(),
             shift,
-            "s",
+            crate::numeric::units::canonical_suffix(crate::CssNumericDimension::Time)
+                .expect("canonical time unit"),
             context.remaining_bytes(),
         )?;
         context.append(output, &text)

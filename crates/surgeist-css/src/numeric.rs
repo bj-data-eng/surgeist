@@ -20,6 +20,7 @@ pub(crate) mod bounded_expression;
 mod controlled_check;
 mod ordinary_expression;
 pub(crate) mod projection;
+pub(crate) mod units;
 pub(crate) use projection::{
     DeferredNumericProjection, NumericComparisonCapture, NumericProjectionOutcome,
     NumericProjectionScale, capture_specified, capture_specified_for_comparison,
@@ -738,58 +739,15 @@ pub enum CssNumericUnit {
 }
 
 impl CssNumericUnit {
-    /// One shared decoded-unit registry. The bounded caller supplies its fixed
-    /// ASCII name cache; ordinary authored callers lend their existing name.
+    /// Decodes through the one unit registry. The bounded caller supplies its
+    /// fixed ASCII name cache; ordinary authored callers lend their existing name.
     pub(crate) fn parse(unit: &str) -> Option<Self> {
-        if let Some(unit) = CssLengthUnit::from_css_unit(unit) {
-            return Some(Self::Length(unit));
-        }
-        Some(cssparser::match_ignore_ascii_case! { unit,
-            "deg" => Self::Angle(crate::CssAngleUnit::Degrees),
-            "grad" => Self::Angle(crate::CssAngleUnit::Gradians),
-            "rad" => Self::Angle(crate::CssAngleUnit::Radians),
-            "turn" => Self::Angle(crate::CssAngleUnit::Turns),
-            "s" => Self::Time(crate::CssTimeUnit::Seconds),
-            "ms" => Self::Time(crate::CssTimeUnit::Milliseconds),
-            "hz" => Self::Frequency(crate::CssFrequencyUnit::Hertz),
-            "khz" => Self::Frequency(crate::CssFrequencyUnit::Kilohertz),
-            "dpi" => Self::Resolution(crate::CssResolutionUnit::Dpi),
-            "dpcm" => Self::Resolution(crate::CssResolutionUnit::Dpcm),
-            "dppx" | "x" => Self::Resolution(crate::CssResolutionUnit::Dppx),
-            "fr" => Self::Flex,
-            _ => return None,
-        })
+        units::parse(unit)
     }
-    /// Intrinsic canonical coefficient conversion. Contextual lengths and
-    /// flex values deliberately have no invented basis.
-    pub(crate) fn intrinsic_scale(self) -> Option<(&'static str, f64)> {
-        use CssLengthUnit as L;
-        Some(match self {
-            Self::Length(unit) => match unit {
-                L::Px => ("px", 1.0),
-                L::In => ("px", 96.0),
-                L::Cm => ("px", 96.0 / 2.54),
-                L::Mm => ("px", 96.0 / 25.4),
-                L::Q => ("px", 96.0 / 101.6),
-                L::Pt => ("px", 96.0 / 72.0),
-                L::Pc => ("px", 16.0),
-                _ => return None,
-            },
-            Self::Angle(unit) => match unit {
-                crate::CssAngleUnit::Degrees => ("deg", 1.0),
-                crate::CssAngleUnit::Gradians => ("deg", 0.9),
-                crate::CssAngleUnit::Radians => ("deg", 180.0 / std::f64::consts::PI),
-                crate::CssAngleUnit::Turns => ("deg", 360.0),
-            },
-            Self::Time(crate::CssTimeUnit::Seconds) => ("s", 1.0),
-            Self::Time(crate::CssTimeUnit::Milliseconds) => ("s", 0.001),
-            Self::Frequency(crate::CssFrequencyUnit::Hertz) => ("hz", 1.0),
-            Self::Frequency(crate::CssFrequencyUnit::Kilohertz) => ("hz", 1000.0),
-            Self::Resolution(crate::CssResolutionUnit::Dppx) => ("dppx", 1.0),
-            Self::Resolution(crate::CssResolutionUnit::Dpi) => ("dppx", 1.0 / 96.0),
-            Self::Resolution(crate::CssResolutionUnit::Dpcm) => ("dppx", 2.54 / 96.0),
-            Self::Flex => return None,
-        })
+    /// Intrinsic canonical coefficient conversion, derived from the registry's
+    /// exact ratio. Contextual lengths and flex values have no invented basis.
+    pub(crate) fn intrinsic_projection(self) -> Option<units::Binary64Projection> {
+        units::binary64_projection(self)
     }
     pub(crate) const fn dimension(self) -> CssNumericDimension {
         match self {
@@ -1167,6 +1125,14 @@ impl CssCalculationExpression {
     /// another owning boundary never scans syntax or reparses retained text.
     pub(crate) const fn admits_pure_context(&self) -> bool {
         self.admits_pure_context
+    }
+
+    /// The bare ordinary root, when this root is a leaf rather than math.
+    pub(crate) fn literal_root(&self) -> Option<&CssComponentValue> {
+        match &self.kind {
+            NodeKind::Value(component) => Some(component),
+            _ => None,
+        }
     }
 
     /// Compares checked numeric structure while excluding diagnostic source
@@ -2832,6 +2798,28 @@ root!(CssFrequencyCalculation, Frequency);
 root!(CssFrequencyPercentageCalculation, FrequencyPercentage);
 root!(CssResolutionCalculation, Resolution);
 
+macro_rules! dimension_calculation {
+    ($($name:ident),*) => {$(
+        impl crate::dimension::DimensionCalculation for $name {
+            fn components(&self) -> &CssComponentValues {
+                self.components()
+            }
+            fn origin(&self) -> &CssValueOrigin {
+                self.origin()
+            }
+            fn expression(&self) -> &CssCalculationExpression {
+                &self.expression
+            }
+        }
+    )*};
+}
+dimension_calculation!(
+    CssAngleCalculation,
+    CssTimeCalculation,
+    CssFrequencyCalculation,
+    CssResolutionCalculation
+);
+
 impl CssHintedNumberCalculation {
     pub(crate) fn structural_eq(&self, other: &Self) -> bool {
         self.expression.structural_eq(&other.expression)
@@ -3191,15 +3179,6 @@ impl CssAngleCalculation {
             .map_err(CssNumericConstructionError::component)?;
         Self::try_from_components(values)
     }
-    pub(crate) fn literal_root_component(&self) -> Option<&CssComponentValue> {
-        match &self.expression.kind {
-            NodeKind::Value(component) => Some(component),
-            _ => None,
-        }
-    }
-    pub(crate) fn structural_eq(&self, other: &Self) -> bool {
-        self.expression.structural_eq(&other.expression)
-    }
 }
 
 impl CssTimeCalculation {
@@ -3211,15 +3190,6 @@ impl CssTimeCalculation {
             .map_err(CssNumericConstructionError::component)?;
         Self::try_from_components(values)
     }
-    pub(crate) fn literal_root_component(&self) -> Option<&CssComponentValue> {
-        match &self.expression.kind {
-            NodeKind::Value(component) => Some(component),
-            _ => None,
-        }
-    }
-    pub(crate) fn structural_eq(&self, other: &Self) -> bool {
-        self.expression.structural_eq(&other.expression)
-    }
 }
 impl CssFrequencyCalculation {
     /// Constructs an exact ordinary frequency root, retaining the selected unit.
@@ -3229,20 +3199,6 @@ impl CssFrequencyCalculation {
         let values = CssComponentValues::try_new(vec![literal.component().clone()])
             .map_err(CssNumericConstructionError::component)?;
         Self::try_from_components(values)
-    }
-    pub(crate) fn literal_root_component(&self) -> Option<&CssComponentValue> {
-        match &self.expression.kind {
-            NodeKind::Value(component) => Some(component),
-            _ => None,
-        }
-    }
-}
-impl CssResolutionCalculation {
-    pub(crate) fn literal_root_component(&self) -> Option<&CssComponentValue> {
-        match &self.expression.kind {
-            NodeKind::Value(component) => Some(component),
-            _ => None,
-        }
     }
 }
 
@@ -4320,40 +4276,8 @@ pub(crate) fn exact_dimension_identity(
     Ok(Some(al.value_eq_scaled(bl, af, bf, context)?))
 }
 
-// Values4 §6.3/7 fixes these rational ratios; binary64 projection remains
-// independent. Relative units and nonzero radian conversions have no exact ratio here.
+// Values 4 §6.2/§7 fixes these rational ratios in the one unit registry.
+// Relative units and nonzero radian conversions have no exact ratio.
 fn exact_absolute_unit_factor(unit: &str) -> Option<crate::exact_decimal::ExactFactor> {
-    let (numerator, denominator) = match unit.to_ascii_lowercase().as_str() {
-        "px" | "deg" | "s" | "hz" => (1, 1),
-        "in" => (96, 1),
-        "cm" => (4800, 127),
-        "mm" => (480, 127),
-        "q" => (120, 127),
-        "pt" => (4, 3),
-        "pc" => (16, 1),
-        "grad" => (9, 10),
-        "turn" => (360, 1),
-        "ms" => (1, 1000),
-        "khz" => (1000, 1),
-        "dpi" => {
-            return Some(crate::resolution::exact_factor(
-                crate::CssResolutionUnit::Dpi,
-            ));
-        }
-        "dpcm" => {
-            return Some(crate::resolution::exact_factor(
-                crate::CssResolutionUnit::Dpcm,
-            ));
-        }
-        "dppx" | "x" => {
-            return Some(crate::resolution::exact_factor(
-                crate::CssResolutionUnit::Dppx,
-            ));
-        }
-        _ => return None,
-    };
-    Some(crate::exact_decimal::ExactFactor {
-        numerator,
-        denominator,
-    })
+    CssNumericUnit::parse(unit).and_then(units::exact_factor)
 }

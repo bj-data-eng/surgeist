@@ -419,7 +419,7 @@ fn parse_voice_rate_percentage<'i, 't>(
         numeric
             .admit(values, crate::numeric::CalculationRoot::Percentage)
             .and_then(|expression| {
-                crate::CssSpecifiedNonNegativePercentage::try_from_calculation(
+                crate::CssSpecifiedNonNegativePercentage::from_parser_calculation(
                     crate::CssPercentageCalculation::from_expression(expression),
                 )
             })

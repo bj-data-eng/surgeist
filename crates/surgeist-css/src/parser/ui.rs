@@ -3,7 +3,7 @@ use super::color::parse_color;
 use super::combinators::{Combinator, Tail, fill, keyword, parse_group};
 use super::property_input::Parser;
 use super::url::parse_url;
-use super::values::{next_is_ident, parse_length, parse_nonnegative_length};
+use super::values::{next_is_ident, parse_length};
 use crate::cursor_values::{
     CssCursor, CssCursorImage, CssCursorImageSource, CssCursorImages, CssCursorUrlSet,
     CssCursorUrlSetDescriptor, CssCursorUrlSetOption, CssCursorUrlSetReference,
@@ -441,15 +441,13 @@ pub(super) fn parse_outline_width<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssOutlineWidth, ParseError<'i, Error>> {
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        return match_ignore_ascii_case! { &ident,
-            "thin" => Ok(CssOutlineWidth::Thin),
-            "medium" => Ok(CssOutlineWidth::Medium),
-            "thick" => Ok(CssOutlineWidth::Thick),
-            _ => Err(unexpected_at(input.current_source_location())),
-        };
-    }
-    parse_nonnegative_length(input, numeric).map(CssOutlineWidth::Length)
+    // UI 4 `outline-width: <line-width>` reuses the one `<line-width>` grammar.
+    super::border_width::parse_exact_line_width(input, numeric).map(|width| match width {
+        CssLineWidth::Thin => CssOutlineWidth::Thin,
+        CssLineWidth::Medium => CssOutlineWidth::Medium,
+        CssLineWidth::Thick => CssOutlineWidth::Thick,
+        CssLineWidth::Length(length) => CssOutlineWidth::Length(length),
+    })
 }
 
 pub(super) fn parse_outline_offset<'i, 't>(

@@ -5,7 +5,8 @@ use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::{Token, match_ignore_ascii_case};
 
 use super::values::{
-    CalculationRoot, parse_integer_literal, parse_integer_value, parse_numeric_function,
+    CalculationRoot, LiteralTokens, NumericType, parse_integer_literal, parse_integer_value,
+    parse_numeric_function, parse_numeric_type,
 };
 use crate::CssOverflowValue;
 use crate::display::*;
@@ -121,26 +122,18 @@ pub(super) fn parse_page_line_minimum<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssPageLineMinimum, ParseError<'i, Error>> {
-    let numeric_start = input.state();
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Number { .. } => {
-            input.reset(&numeric_start);
-            let component = input
-                .collect_numeric_component(numeric)
-                .map_err(|_| unexpected_at(location))?;
-            CssPageLineMinimum::try_from_component(component).map_err(|_| unexpected_at(location))
-        }
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
-            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Integer)
-                .map(CssIntegerCalculation::from_expression)
-                .and_then(|value| {
-                    CssPageLineMinimum::try_from_calculation(value)
-                        .map_err(|_| unexpected_at(location))
-                })
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
+    /// Fragmentation 3 `<integer [1,∞]>`.
+    const PAGE_LINE_MINIMUM: NumericType<CssPageLineMinimum> = NumericType {
+        root: CalculationRoot::Integer,
+        tokens: LiteralTokens::Number,
+        literal: |component, _| CssPageLineMinimum::try_from_component(component),
+        calculation: |expression| {
+            CssPageLineMinimum::try_from_calculation(CssIntegerCalculation::from_expression(
+                expression,
+            ))
+        },
+    };
+    parse_numeric_type(input, numeric, &PAGE_LINE_MINIMUM)
 }
 
 pub(super) fn parse_break_between<'i, 't>(
@@ -503,27 +496,18 @@ fn parse_ratio_operand<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<crate::CssRatioOperand, ParseError<'i, Error>> {
-    let start = input.state();
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
-        Token::Number { .. } => {
-            input.reset(&start);
-            let component = input
-                .collect_numeric_component(numeric)
-                .map_err(|_| unexpected_at(location))?;
-            crate::CssRatioOperand::try_from_component(component)
-                .map_err(|_| unexpected_at(location))
-        }
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
-            parse_numeric_function(input, &start, numeric, CalculationRoot::Number)
-                .map(CssNumberCalculation::from_expression)
-                .and_then(|calculation| {
-                    crate::CssRatioOperand::try_from_calculation(calculation)
-                        .map_err(|_| unexpected_at(location))
-                })
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
+    /// Values 4 `<ratio>` operand: `<number [0,∞]>`.
+    const RATIO_OPERAND: NumericType<crate::CssRatioOperand> = NumericType {
+        root: CalculationRoot::Number,
+        tokens: LiteralTokens::Number,
+        literal: |component, _| crate::CssRatioOperand::try_from_component(component),
+        calculation: |expression| {
+            crate::CssRatioOperand::try_from_calculation(CssNumberCalculation::from_expression(
+                expression,
+            ))
+        },
+    };
+    parse_numeric_type(input, numeric, &RATIO_OPERAND)
 }
 
 pub(super) fn parse_scrollbar_width<'i, 't>(

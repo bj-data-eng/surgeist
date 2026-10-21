@@ -1,0 +1,152 @@
+//! Values 4 numeric property grammars report the first token they cannot
+//! accept. Every public front reports `InvalidPropertyValue`, names that token
+//! as encountered and positions the error at it.
+
+use surgeist_css::{
+    CssImportance, CssKnownProperty, CssParserContext, CssPropertyNameRef,
+    CssPropertyValueErrorKind, CssSerializedOrigin, CssTokenKind, CssValueOrigin, ErrorKind,
+    parse_component_values, parse_property_value, parse_property_value_for_grammar,
+    parse_style_attribute, validate_sheet,
+};
+
+/// The responsible token: its kind, authored spelling and offset in the value.
+struct Responsible {
+    kind: CssTokenKind,
+    authored: &'static str,
+    offset: usize,
+}
+
+fn assert_detail(
+    property: CssKnownProperty,
+    kind: &ErrorKind,
+    expected: &Responsible,
+    front: &str,
+) {
+    let ErrorKind::InvalidPropertyValue(detail) = kind else {
+        panic!("{front}: expected InvalidPropertyValue, got {kind:?}")
+    };
+    assert_eq!(detail.property(), property, "{front}");
+    let encountered = detail.encountered().expect("responsible token");
+    assert_eq!(encountered.kind(), expected.kind, "{front}");
+    assert_eq!(encountered.authored(), expected.authored, "{front}");
+}
+
+/// Checks the style-attribute, sheet, by-name, by-grammar and raw-text fronts.
+fn assert_every_front(name: &str, value: &str, expected: Responsible) {
+    let property = CssKnownProperty::from_name(name).unwrap();
+    let declaration = format!("{name}:{value}");
+    let value_offset = name.len() + 1;
+
+    let report = parse_style_attribute(&declaration);
+    let [diagnostic] = report.diagnostics() else {
+        panic!("{declaration}: one diagnostic")
+    };
+    let front = format!("attribute {declaration}");
+    assert_detail(property, diagnostic.error().kind(), &expected, &front);
+    assert_eq!(
+        diagnostic.error().position().byte_offset().value(),
+        value_offset + expected.offset,
+        "{front}"
+    );
+
+    let sheet = format!(".a{{{declaration}}}");
+    let failure = validate_sheet(&sheet).unwrap_err();
+    let [diagnostic] = failure.diagnostics() else {
+        panic!("{sheet}: one diagnostic")
+    };
+    let front = format!("sheet {sheet}");
+    assert_detail(property, diagnostic.error().kind(), &expected, &front);
+    assert_eq!(
+        diagnostic.error().position().byte_offset().value(),
+        3 + value_offset + expected.offset,
+        "{front}"
+    );
+
+    let components = parse_component_values(value).unwrap();
+    for (front, result) in [
+        (
+            "by-name",
+            parse_property_value(
+                CssPropertyNameRef::Known(property),
+                components.clone(),
+                CssImportance::Normal,
+            ),
+        ),
+        (
+            "by-grammar",
+            parse_property_value_for_grammar(
+                property.grammar(),
+                components.clone(),
+                CssImportance::Normal,
+            ),
+        ),
+    ] {
+        let front = format!("{front} {declaration}");
+        let error = result.unwrap_err();
+        let CssPropertyValueErrorKind::Grammar(kind) = error.kind() else {
+            panic!("{front}: grammar error")
+        };
+        assert_detail(property, kind, &expected, &front);
+        let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = error.origin() else {
+            panic!("{front}: parsed token origin")
+        };
+        assert_eq!(
+            origin.span().start().byte_offset().value(),
+            expected.offset,
+            "{front}"
+        );
+    }
+
+    let text = CssParserContext::default().parse_property_value_text(
+        value,
+        CssPropertyNameRef::Known(property),
+        CssImportance::Normal,
+    );
+    let [diagnostic] = text.diagnostics() else {
+        panic!("{declaration}: one raw-text diagnostic")
+    };
+    let front = format!("text {declaration}");
+    assert_detail(property, diagnostic.error().kind(), &expected, &front);
+    assert_eq!(
+        diagnostic.error().position().byte_offset().value(),
+        expected.offset,
+        "{front}"
+    );
+}
+
+fn ident(authored: &'static str, offset: usize) -> Responsible {
+    Responsible {
+        kind: CssTokenKind::Ident,
+        authored,
+        offset,
+    }
+}
+
+fn function(authored: &'static str, offset: usize) -> Responsible {
+    Responsible {
+        kind: CssTokenKind::Function,
+        authored,
+        offset,
+    }
+}
+
+#[test]
+fn length_grammars_report_a_non_numeric_identifier_or_function_as_encountered() {
+    // `<length>`, `<length [0,∞]>`, `<length-percentage>` and
+    // `<length-percentage [0,∞]>` owners each share one numeric parser.
+    for name in ["outline-offset", "perspective", "margin-top", "padding-top"] {
+        assert_every_front(name, "foo", ident("foo", 0));
+        assert_every_front(name, "foo()", function("foo(", 0));
+    }
+}
+
+#[test]
+fn outline_width_and_border_width_share_the_line_width_grammar() {
+    // UI 4 `outline-width: <line-width>`; Backgrounds 3 `border-*-width: <line-width>`.
+    for name in ["outline-width", "border-top-width"] {
+        assert_every_front(name, "foo", ident("foo", 0));
+        assert_every_front(name, "foo()", function("foo(", 0));
+        // An unknown keyword is the responsible token, not the length after it.
+        assert_every_front(name, "auto 1px", ident("auto", 0));
+    }
+}

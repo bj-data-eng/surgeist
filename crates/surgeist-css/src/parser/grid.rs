@@ -408,14 +408,14 @@ fn parse_grid_track_breadth<'i, 't>(
                 .map_err(|error| grid_numeric_error(numeric, &error, location, root_site))?
             {
                 crate::numeric::GridTrackMath::Flex(expression) => {
-                    let value = CssSpecifiedNonNegativeFlex::try_from_calculation(
+                    let value = CssSpecifiedNonNegativeFlex::from_parser_calculation(
                         CssFlexCalculation::from_expression(expression),
                     )
                     .map_err(|error| grid_numeric_error(numeric, &error, location, root_site))?;
                     Ok(CssGridTrackBreadth::from_flex(value))
                 }
                 crate::numeric::GridTrackMath::LengthPercentage(expression) => {
-                    let value = CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
+                    let value = CssSpecifiedNonNegativeLengthPercentage::from_parser_calculation(
                         CssLengthPercentageCalculation::from_expression(expression),
                     )
                     .map_err(|error| grid_numeric_error(numeric, &error, location, root_site))?;
@@ -464,7 +464,7 @@ fn parse_grid_length_percentage<'i, 't>(
         let expression = numeric
             .admit(values, crate::numeric::CalculationRoot::LengthPercentage)
             .map_err(|error| grid_numeric_error(numeric, &error, location, offset))?;
-        CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
+        CssSpecifiedNonNegativeLengthPercentage::from_parser_calculation(
             CssLengthPercentageCalculation::from_expression(expression),
         )
         .map_err(|error| grid_numeric_error(numeric, &error, location, offset))

@@ -6,11 +6,10 @@ use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::{Token, match_ignore_ascii_case};
 
 use super::sizing::parse_size_value;
-use super::values::{CalculationRoot, parse_numeric_function};
 use crate::numeric::NumericInputContext;
 use crate::{
     CssCalcSize, CssComponentValueLimits, CssFlexBasisValue, CssFlexComponents, CssFlexDirection,
-    CssFlexFlow, CssFlexValue, CssFlexWrap, CssNumberCalculation, CssSpecifiedNonNegativeNumber,
+    CssFlexFlow, CssFlexValue, CssFlexWrap, CssSpecifiedNonNegativeNumber,
 };
 
 pub(super) fn parse_flex_direction<'i, 't>(
@@ -64,32 +63,7 @@ pub(super) fn parse_flex_factor<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssSpecifiedNonNegativeNumber, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let state = input.state();
-    let location = input.current_source_location();
-    let root_site = input.position();
-    match input.next().map_err(basic)? {
-        Token::Number { .. } => {
-            input.reset(&state);
-            let component = input
-                .collect_numeric_component(numeric)
-                .map_err(|_| unexpected_at(location))?;
-            CssSpecifiedNonNegativeNumber::try_from_component(component).map_err(|error| {
-                unexpected_at(numeric.property_error_location(&error, location, root_site))
-            })
-        }
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
-            let expression =
-                parse_numeric_function(input, &state, numeric, CalculationRoot::Number)?;
-            CssSpecifiedNonNegativeNumber::try_from_calculation(
-                CssNumberCalculation::from_expression(expression),
-            )
-            .map_err(|error| {
-                unexpected_at(numeric.property_error_location(&error, location, root_site))
-            })
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
+    super::values::parse_nonnegative_number(input, numeric)
 }
 
 pub(super) fn parse_flex_basis<'i, 't>(

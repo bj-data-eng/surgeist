@@ -518,6 +518,15 @@ Quote- and comment-looking remnants remain URL payload. Recovery preserves the
 original token spelling and source coordinates, and later declarations and rules
 remain eligible at the actual boundary.
 
+Numeric property grammars share one parser for `<number>`, `<integer>`,
+`<percentage>`, `<length>` and `<length-percentage>` and their ranges. An
+invalid value reports `InvalidPropertyValue` at the first token the grammar
+cannot accept and names that token as encountered, for example the identifier
+in `outline-offset: foo` or the function in `padding-top: foo()`. `outline-width`
+and `border-*-width` share the one `<line-width>` grammar, so
+`outline-width: auto 1px` reports `auto`, the unknown keyword, rather than the
+length after it.
+
 ## Owned component values
 
 `CssComponentValues` retains an immutable sequence of tokens, functions, blocks,
@@ -935,6 +944,22 @@ policy. Thus `calc(1e16 - 1e16 + 1)` emits `calc(1)`, while
 Values 4 leaves supported numeric precision and range
 [implementation-defined](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types);
 the authored coefficients remain exact even when their projected magnitudes differ.
+
+Each unit's exact ratio to its canonical unit is declared once, following
+[Values 4's absolute lengths](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#absolute-lengths)
+and its angle, time, frequency and resolution units. A leaf projects as
+`(coefficient × numerator) / denominator`: when that product is exact, the leaf
+is the correctly rounded binary64 value of its exact canonical magnitude. Equal
+absolute lengths in different units therefore project identically, so
+`calc(round(down, 1cm / 10mm, 1))` emits `calc(1)`, `calc(sign(10mm - 1cm))`
+emits `calc(0)` and `mod(1cm, 10mm)` emits `calc(0px)`. Radians use `180/π`.
+Arithmetic after projection remains binary64. Correctly rounded canonical
+values of different multiples of one unit are not always exact multiples of
+each other, so some same-unit remainders are inexact: `rem(10mm, 1mm)`,
+`rem(3mm, 1mm)` and `rem(1cm, 1mm)` emit `calc(3.779528px)` rather than
+`calc(0px)`, and division multiplies by a binary64 reciprocal, so
+`calc(round(down, 3cm / 3cm, 1))` emits `calc(0)`. Exact evaluation of these
+operators is tracked separately.
 
 [#1297](https://github.com/bj-data-eng/surgeist/issues/1297) revises the
 [#735](https://github.com/bj-data-eng/surgeist/issues/735) precision and phase

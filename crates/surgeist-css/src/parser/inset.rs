@@ -1,15 +1,11 @@
 //! Authored positioned offsets from Position 3 and Logical Properties 1.
 
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
-use cssparser::Token;
+use crate::error::property::{Error, ParseError, unexpected_at};
 
-use super::values::{CalculationRoot, is_math_function, parse_numeric_function};
+use super::values::parse_length_percentage;
 use crate::numeric::NumericInputContext;
-use crate::{
-    CssBoxSideKind, CssInsetPair, CssInsetShorthand, CssInsetValue, CssLengthPercentageCalculation,
-    CssSpecifiedLengthPercentage,
-};
+use crate::{CssBoxSideKind, CssInsetPair, CssInsetShorthand, CssInsetValue};
 
 pub(super) fn parse_inset_value<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -21,35 +17,7 @@ pub(super) fn parse_inset_value<'i, 't>(
     {
         return Ok(CssInsetValue::Auto);
     }
-    input.skip_whitespace();
-    let state = input.state();
-    let location = input.current_source_location();
-    let root_site = input.position();
-    match input.next().map_err(basic)? {
-        Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
-            input.reset(&state);
-            let component = input
-                .collect_numeric_component(numeric)
-                .map_err(|_| unexpected_at(location))?;
-            CssSpecifiedLengthPercentage::from_property_component(component, numeric)
-                .map(CssInsetValue::LengthPercentage)
-                .map_err(|error| {
-                    unexpected_at(numeric.property_error_location(&error, location, root_site))
-                })
-        }
-        Token::Function(name) if is_math_function(name) => {
-            let expression =
-                parse_numeric_function(input, &state, numeric, CalculationRoot::LengthPercentage)?;
-            CssSpecifiedLengthPercentage::try_from_calculation(
-                CssLengthPercentageCalculation::from_expression(expression),
-            )
-            .map(CssInsetValue::LengthPercentage)
-            .map_err(|error| {
-                unexpected_at(numeric.property_error_location(&error, location, root_site))
-            })
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
+    parse_length_percentage(input, numeric).map(CssInsetValue::LengthPercentage)
 }
 
 pub(super) fn parse_inset_pair<'i, 't>(

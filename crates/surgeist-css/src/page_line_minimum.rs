@@ -1,34 +1,22 @@
 //! Exact authored line minima for `orphans` and `widows`.
 
 use crate::{
-    CssComponentValue, CssComponentValueRef, CssIntegerCalculation, CssIntegerLiteral,
-    CssNumericConstructionError, CssNumericConstructionErrorKind, CssPositiveIntegerLiteral,
+    CssComponentValue, CssIntegerCalculation, CssIntegerLiteral, CssNumericConstructionError,
+    CssNumericConstructionErrorKind, CssPositiveIntegerLiteral, CssPositiveIntegerValue,
     CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits, CssValueOrigin,
 };
 
-#[derive(Clone, Debug)]
-enum PageLineMinimumValue {
-    Literal(CssPositiveIntegerLiteral),
-    Calculation(CssIntegerCalculation),
-}
-
 /// A positive authored line count or deferred integer math.
+///
+/// Fragmentation 3 `<integer [1,∞]>` is the shared positive-integer production.
 #[derive(Clone, Debug)]
 pub struct CssPageLineMinimum {
-    value: PageLineMinimumValue,
+    value: CssPositiveIntegerValue,
 }
 
 impl PartialEq for CssPageLineMinimum {
     fn eq(&self, other: &Self) -> bool {
-        match (&self.value, &other.value) {
-            (PageLineMinimumValue::Literal(left), PageLineMinimumValue::Literal(right)) => {
-                left == right
-            }
-            (PageLineMinimumValue::Calculation(left), PageLineMinimumValue::Calculation(right)) => {
-                left.structural_eq(right)
-            }
-            _ => false,
-        }
+        self.value == other.value
     }
 }
 
@@ -67,7 +55,7 @@ impl CssPageLineMinimum {
             )
         })?;
         Ok(Self {
-            value: PageLineMinimumValue::Literal(positive),
+            value: CssPositiveIntegerValue::Literal(positive),
         })
     }
 
@@ -75,27 +63,24 @@ impl CssPageLineMinimum {
     pub fn try_from_calculation(
         calculation: CssIntegerCalculation,
     ) -> Result<Self, CssNumericConstructionError> {
-        let root = crate::specified_numeric::significant_root(calculation.components())?;
-        if matches!(root.view(), CssComponentValueRef::Token(_)) {
-            return Self::try_from_component(root.clone());
-        }
-        if !matches!(root.view(), CssComponentValueRef::Function(_)) {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::RootDomainMismatch,
-                Some(root),
-            ));
-        }
-        Ok(Self {
-            value: PageLineMinimumValue::Calculation(calculation),
-        })
+        // This domain still retains recovered syntax from checked construction.
+        crate::specified_numeric::admit_calculation(
+            calculation,
+            CssIntegerCalculation::components,
+            crate::specified_numeric::CalculationAdmission::Recovering,
+            Self::try_from_component,
+            |calculation| Self {
+                value: CssPositiveIntegerValue::Calculation(calculation),
+            },
+        )
     }
 
     /// Borrows the exact positive integer token, including its origin.
     #[must_use]
     pub fn exact_literal(&self) -> Option<&CssPositiveIntegerLiteral> {
         match &self.value {
-            PageLineMinimumValue::Literal(value) => Some(value),
-            PageLineMinimumValue::Calculation(_) => None,
+            CssPositiveIntegerValue::Literal(value) => Some(value),
+            CssPositiveIntegerValue::Calculation(_) => None,
         }
     }
 
@@ -111,8 +96,8 @@ impl CssPageLineMinimum {
     #[must_use]
     pub fn calculation(&self) -> Option<&CssIntegerCalculation> {
         match &self.value {
-            PageLineMinimumValue::Literal(_) => None,
-            PageLineMinimumValue::Calculation(value) => Some(value),
+            CssPositiveIntegerValue::Literal(_) => None,
+            CssPositiveIntegerValue::Calculation(value) => Some(value),
         }
     }
 
@@ -120,8 +105,8 @@ impl CssPageLineMinimum {
     #[must_use]
     pub fn origin(&self) -> &CssValueOrigin {
         match &self.value {
-            PageLineMinimumValue::Literal(value) => value.integer().origin(),
-            PageLineMinimumValue::Calculation(value) => value.origin(),
+            CssPositiveIntegerValue::Literal(value) => value.integer().origin(),
+            CssPositiveIntegerValue::Calculation(value) => value.origin(),
         }
     }
 
@@ -144,16 +129,6 @@ impl CssPageLineMinimum {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        match &self.value {
-            PageLineMinimumValue::Literal(value) => {
-                value.integer().append_specified(context, output)?;
-            }
-            PageLineMinimumValue::Calculation(value) => {
-                value.serialize_specified_into(context, output)?;
-            }
-        }
-        Ok(())
+        self.value.append_to_rule_writer(writer)
     }
 }

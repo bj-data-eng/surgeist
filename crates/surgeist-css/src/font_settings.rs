@@ -96,19 +96,16 @@ impl CssFontFeatureIndex {
     }
 
     pub fn try_from_calculation(calculation: CssIntegerCalculation) -> ConstructionResult<Self> {
-        let root = crate::specified_numeric::significant_root(calculation.components())?;
-        if matches!(root.view(), CssComponentValueRef::Token(_)) {
-            return Self::try_from_component(root.clone());
-        }
-        if !matches!(root.view(), CssComponentValueRef::Function(_)) {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::RootDomainMismatch,
-                Some(root),
-            ));
-        }
-        Ok(Self {
-            value: FeatureIndexValue::Calculation(calculation),
-        })
+        // This domain still retains recovered syntax from checked construction.
+        crate::specified_numeric::admit_calculation(
+            calculation,
+            CssIntegerCalculation::components,
+            crate::specified_numeric::CalculationAdmission::Recovering,
+            Self::try_from_component,
+            |calculation| Self {
+                value: FeatureIndexValue::Calculation(calculation),
+            },
+        )
     }
 
     #[must_use]

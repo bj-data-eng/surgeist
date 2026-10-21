@@ -271,7 +271,7 @@ impl<'a> LexicalDecimal<'a> {
 const DECIMAL_LIMB_DIGITS: usize = 9;
 const DECIMAL_LIMB_BASE: u64 = 1_000_000_000;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) struct ExactFactor {
     pub(crate) numerator: u64,

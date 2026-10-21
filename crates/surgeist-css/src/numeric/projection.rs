@@ -114,15 +114,17 @@ impl Unit {
         if ty.is(CssNumericDimension::Percentage) {
             return Self::Percentage;
         }
-        for (dimension, unit) in [
-            (CssNumericDimension::Length, "px"),
-            (CssNumericDimension::Angle, "deg"),
-            (CssNumericDimension::Time, "s"),
-            (CssNumericDimension::Frequency, "hz"),
-            (CssNumericDimension::Resolution, "dppx"),
+        for dimension in [
+            CssNumericDimension::Length,
+            CssNumericDimension::Angle,
+            CssNumericDimension::Time,
+            CssNumericDimension::Frequency,
+            CssNumericDimension::Resolution,
         ] {
             if ty.is(dimension) {
-                return Self::Canonical(unit);
+                return Self::Canonical(
+                    super::units::canonical_suffix(dimension).expect("intrinsic dimension"),
+                );
             }
         }
         // Flex magnitudes require their owning layout context.
@@ -1151,7 +1153,7 @@ fn prepare_specified_scaled_with_mode<'a>(
                         (number, Unit::Percentage)
                     }
                     CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) => {
-                        let (mut unit, factor) = canonical_unit(unit);
+                        let (mut unit, projection_scale) = canonical_unit(unit);
                         if projection.mode == ProjectionMode::KeyframeMatching
                             && node.ty.is(CssNumericDimension::Flex)
                         {
@@ -1162,12 +1164,16 @@ fn prepare_specified_scaled_with_mode<'a>(
                             // Genuine infinities are constants or calculation
                             // results and never enter this leaf conversion.
                             closest_supported_value(
-                                converted_leaf(number.representation(), factor),
+                                projection_scale.map_or_else(
+                                    || lexical_value(number.representation()),
+                                    |scale| converted_leaf(number.representation(), scale),
+                                ),
                                 true,
                                 unit == Unit::Canonical("deg"),
                             )
                         } else {
-                            lexical_value(number.representation()) * factor
+                            let coefficient = lexical_value(number.representation());
+                            projection_scale.map_or(coefficient, |scale| scale.apply(coefficient))
                         };
                         let id = projection.value(value, unit, node.ty)?;
                         results.push(id);
@@ -1364,10 +1370,11 @@ fn lexical_value(representation: &str) -> f64 {
 
 /// Converts an authored dimension coefficient to its canonical unit. The result
 /// may still be infinite; the caller applies the shared range rule.
-fn converted_leaf(representation: &str, factor: f64) -> f64 {
+fn converted_leaf(representation: &str, scale: super::units::Binary64Projection) -> f64 {
     let coefficient = lexical_value(representation);
+    let factor = scale.unit_value();
     if !(coefficient.is_infinite() && factor < 1.0) {
-        return coefficient * factor;
+        return scale.apply(coefficient);
     }
     // A coefficient outside binary64 can still fit after a scale below one
     // (grad, ms, Q, dpi, dpcm). Read a bounded normalized decimal prefix before
@@ -1392,13 +1399,13 @@ fn converted_leaf(representation: &str, factor: f64) -> f64 {
     (normalized * factor * shift * 1e308).copysign(coefficient)
 }
 
-fn canonical_unit(unit: &str) -> (Unit, f64) {
-    if let Some((canonical, factor)) =
-        super::CssNumericUnit::parse(unit).and_then(super::CssNumericUnit::intrinsic_scale)
+fn canonical_unit(unit: &str) -> (Unit, Option<super::units::Binary64Projection>) {
+    if let Some(scale) =
+        super::CssNumericUnit::parse(unit).and_then(super::CssNumericUnit::intrinsic_projection)
     {
-        (Unit::Canonical(canonical), factor)
+        (Unit::Canonical(scale.canonical()), Some(scale))
     } else {
-        (Unit::Context(unit.to_ascii_lowercase()), 1.0)
+        (Unit::Context(unit.to_ascii_lowercase()), None)
     }
 }
 

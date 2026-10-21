@@ -44,41 +44,37 @@ impl CssCoordBox {
     /// Admits a decoded coordinate-box keyword without selecting used geometry.
     #[must_use]
     pub fn from_keyword(keyword: &str) -> Option<Self> {
-        Some(match keyword.to_ascii_lowercase().as_str() {
-            "content-box" => Self::ContentBox,
-            "padding-box" => Self::PaddingBox,
-            "border-box" => Self::BorderBox,
-            "fill-box" => Self::FillBox,
-            "stroke-box" => Self::StrokeBox,
-            "view-box" => Self::ViewBox,
-            _ => return None,
-        })
+        CssBoxEdgeKeyword::from_keyword(keyword).and_then(|edge| Self::try_from(edge).ok())
     }
     /// Returns the canonical keyword.
     #[must_use]
     pub const fn as_css_str(self) -> &'static str {
+        self.mask_box().keyword()
+    }
+    /// Box 4 defines `<coord-box>` once; the masking box owns its keyword table.
+    const fn mask_box(self) -> crate::CssMaskBox {
         match self {
-            Self::ContentBox => "content-box",
-            Self::PaddingBox => "padding-box",
-            Self::BorderBox => "border-box",
-            Self::FillBox => "fill-box",
-            Self::StrokeBox => "stroke-box",
-            Self::ViewBox => "view-box",
+            Self::ContentBox => crate::CssMaskBox::ContentBox,
+            Self::PaddingBox => crate::CssMaskBox::PaddingBox,
+            Self::BorderBox => crate::CssMaskBox::BorderBox,
+            Self::FillBox => crate::CssMaskBox::FillBox,
+            Self::StrokeBox => crate::CssMaskBox::StrokeBox,
+            Self::ViewBox => crate::CssMaskBox::ViewBox,
         }
     }
 }
 impl TryFrom<CssBoxEdgeKeyword> for CssCoordBox {
     type Error = CssMotionConstructionError;
     fn try_from(value: CssBoxEdgeKeyword) -> Result<Self, Self::Error> {
-        match value {
-            CssBoxEdgeKeyword::ContentBox => Ok(Self::ContentBox),
-            CssBoxEdgeKeyword::PaddingBox => Ok(Self::PaddingBox),
-            CssBoxEdgeKeyword::BorderBox => Ok(Self::BorderBox),
-            CssBoxEdgeKeyword::FillBox => Ok(Self::FillBox),
-            CssBoxEdgeKeyword::StrokeBox => Ok(Self::StrokeBox),
-            CssBoxEdgeKeyword::ViewBox => Ok(Self::ViewBox),
-            CssBoxEdgeKeyword::MarginBox => Err(CssMotionConstructionError::InvalidCoordBox),
-        }
+        Ok(match crate::CssMaskBox::try_new(value) {
+            Some(crate::CssMaskBox::ContentBox) => Self::ContentBox,
+            Some(crate::CssMaskBox::PaddingBox) => Self::PaddingBox,
+            Some(crate::CssMaskBox::BorderBox) => Self::BorderBox,
+            Some(crate::CssMaskBox::FillBox) => Self::FillBox,
+            Some(crate::CssMaskBox::StrokeBox) => Self::StrokeBox,
+            Some(crate::CssMaskBox::ViewBox) => Self::ViewBox,
+            None => return Err(CssMotionConstructionError::InvalidCoordBox),
+        })
     }
 }
 

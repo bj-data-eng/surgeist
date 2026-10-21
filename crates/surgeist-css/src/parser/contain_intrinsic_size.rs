@@ -1,14 +1,12 @@
 //! Sizing 4 authored contained intrinsic-size declarations.
 
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
-use cssparser::Token;
+use crate::error::property::{Error, ParseError};
 
-use super::values::{CalculationRoot, is_math_function, parse_numeric_function};
+use super::values::parse_nonnegative_length;
 use crate::numeric::NumericInputContext;
 use crate::{
     CssContainIntrinsicSize, CssContainIntrinsicSizeFallback, CssContainIntrinsicSizeValue,
-    CssLengthCalculation, CssSpecifiedNonNegativeLength,
 };
 
 pub(super) fn parse_contain_intrinsic_size_value<'i, 't>(
@@ -44,36 +42,4 @@ pub(super) fn parse_contain_intrinsic_size<'i, 't>(
         Some(parse_contain_intrinsic_size_value(input, numeric)?)
     };
     Ok(CssContainIntrinsicSize::new(width, height))
-}
-
-fn parse_nonnegative_length<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
-) -> Result<CssSpecifiedNonNegativeLength, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let state = input.state();
-    let location = input.current_source_location();
-    let root_site = input.position();
-    match input.next().map_err(basic)? {
-        Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
-            input.reset(&state);
-            let component = input
-                .collect_numeric_component(numeric)
-                .map_err(|_| unexpected_at(location))?;
-            CssSpecifiedNonNegativeLength::try_from_component(component).map_err(|error| {
-                unexpected_at(numeric.property_error_location(&error, location, root_site))
-            })
-        }
-        Token::Function(name) if is_math_function(name) => {
-            let expression =
-                parse_numeric_function(input, &state, numeric, CalculationRoot::Length)?;
-            CssSpecifiedNonNegativeLength::try_from_calculation(
-                CssLengthCalculation::from_expression(expression),
-            )
-            .map_err(|error| {
-                unexpected_at(numeric.property_error_location(&error, location, root_site))
-            })
-        }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    }
 }

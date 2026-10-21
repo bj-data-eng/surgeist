@@ -53,31 +53,29 @@ impl CssSpecifiedFlex {
     }
 
     pub fn try_from_calculation(calculation: CssFlexCalculation) -> ConstructionResult<Self> {
-        if let Some(origin) = calculation.components().first_implicit_origin() {
-            return Err(CssNumericConstructionError::at_origin(
-                CssNumericConstructionErrorKind::RecoveredComponent,
-                origin.clone(),
-            ));
-        }
-        Self::from_parser_calculation(calculation)
+        Self::admit_calculation(calculation, CalculationAdmission::Checked)
     }
 
+    /// Parser admission retains recovered syntax, which parsing reports separately.
     pub(crate) fn from_parser_calculation(
         calculation: CssFlexCalculation,
     ) -> ConstructionResult<Self> {
-        let root = significant_root(calculation.components())?;
-        if matches!(root.view(), CssComponentValueRef::Token(_)) {
-            return Self::try_from_component(root.clone());
-        }
-        if !matches!(root.view(), CssComponentValueRef::Function(_)) {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::RootDomainMismatch,
-                Some(root),
-            ));
-        }
-        Ok(Self {
-            value: SpecifiedNumericValue::Calculation(calculation),
-        })
+        Self::admit_calculation(calculation, CalculationAdmission::Recovering)
+    }
+
+    fn admit_calculation(
+        calculation: CssFlexCalculation,
+        admission: CalculationAdmission,
+    ) -> ConstructionResult<Self> {
+        admit_calculation(
+            calculation,
+            CssFlexCalculation::components,
+            admission,
+            Self::try_from_component,
+            |calculation| Self {
+                value: SpecifiedNumericValue::Calculation(calculation),
+            },
+        )
     }
 
     pub fn literal_component(&self) -> Option<&CssComponentValue> {
@@ -197,19 +195,29 @@ impl CssSpecifiedNonNegativeFlex {
     }
 
     pub fn try_from_calculation(calculation: CssFlexCalculation) -> ConstructionResult<Self> {
-        let root = significant_root(calculation.components())?;
-        if matches!(root.view(), CssComponentValueRef::Token(_)) {
-            return Self::try_from_component(root.clone());
-        }
-        if !matches!(root.view(), CssComponentValueRef::Function(_)) {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::RootDomainMismatch,
-                Some(root),
-            ));
-        }
-        Ok(Self {
-            value: SpecifiedNumericValue::Calculation(calculation),
-        })
+        Self::admit_calculation(calculation, CalculationAdmission::Checked)
+    }
+
+    /// Parser admission retains recovered syntax, which parsing reports separately.
+    pub(crate) fn from_parser_calculation(
+        calculation: CssFlexCalculation,
+    ) -> ConstructionResult<Self> {
+        Self::admit_calculation(calculation, CalculationAdmission::Recovering)
+    }
+
+    fn admit_calculation(
+        calculation: CssFlexCalculation,
+        admission: CalculationAdmission,
+    ) -> ConstructionResult<Self> {
+        admit_calculation(
+            calculation,
+            CssFlexCalculation::components,
+            admission,
+            Self::try_from_component,
+            |calculation| Self {
+                value: SpecifiedNumericValue::Calculation(calculation),
+            },
+        )
     }
 
     pub fn literal_component(&self) -> Option<&CssComponentValue> {
@@ -293,6 +301,49 @@ impl CssSpecifiedNonNegativeFlex {
             }
         }
     }
+}
+
+/// How a specified numeric domain admits a calculation.
+#[derive(Clone, Copy)]
+pub(crate) enum CalculationAdmission {
+    /// Public checked construction admits only fully closed components.
+    Checked,
+    /// Parser admission retains implicit closure, reported as a diagnostic.
+    Recovering,
+}
+
+/// The one calculation rule shared by every specified numeric domain.
+///
+/// Checked admission rejects the first component recovered by implicit
+/// closure. A bare ordinary root then re-enters the domain's literal checks;
+/// only a math-function root is retained as a calculation.
+pub(crate) fn admit_calculation<C, T>(
+    calculation: C,
+    components: fn(&C) -> &crate::CssComponentValues,
+    admission: CalculationAdmission,
+    literal: fn(CssComponentValue) -> ConstructionResult<T>,
+    retain: fn(C) -> T,
+) -> ConstructionResult<T> {
+    let values = components(&calculation);
+    if matches!(admission, CalculationAdmission::Checked)
+        && let Some(origin) = values.first_implicit_origin()
+    {
+        return Err(CssNumericConstructionError::at_origin(
+            CssNumericConstructionErrorKind::RecoveredComponent,
+            origin.clone(),
+        ));
+    }
+    let root = significant_root(values)?;
+    if matches!(root.view(), CssComponentValueRef::Token(_)) {
+        return literal(root.clone());
+    }
+    if !matches!(root.view(), CssComponentValueRef::Function(_)) {
+        return Err(CssNumericConstructionError::at(
+            CssNumericConstructionErrorKind::RootDomainMismatch,
+            Some(root),
+        ));
+    }
+    Ok(retain(calculation))
 }
 
 pub(crate) fn significant_root(
@@ -494,19 +545,29 @@ impl CssSpecifiedNumber {
 
     /// Retains checked number math; a bare root reenters literal admission.
     pub fn try_from_calculation(calculation: CssNumberCalculation) -> ConstructionResult<Self> {
-        let root = significant_root(calculation.components())?;
-        if matches!(root.view(), CssComponentValueRef::Token(_)) {
-            return Self::try_from_component(root.clone());
-        }
-        if !matches!(root.view(), CssComponentValueRef::Function(_)) {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::RootDomainMismatch,
-                Some(root),
-            ));
-        }
-        Ok(Self {
-            value: SpecifiedNumericValue::Calculation(calculation),
-        })
+        Self::admit_calculation(calculation, CalculationAdmission::Checked)
+    }
+
+    /// Parser admission retains recovered syntax, which parsing reports separately.
+    pub(crate) fn from_parser_calculation(
+        calculation: CssNumberCalculation,
+    ) -> ConstructionResult<Self> {
+        Self::admit_calculation(calculation, CalculationAdmission::Recovering)
+    }
+
+    fn admit_calculation(
+        calculation: CssNumberCalculation,
+        admission: CalculationAdmission,
+    ) -> ConstructionResult<Self> {
+        admit_calculation(
+            calculation,
+            CssNumberCalculation::components,
+            admission,
+            Self::try_from_component,
+            |calculation| Self {
+                value: SpecifiedNumericValue::Calculation(calculation),
+            },
+        )
     }
 
     #[must_use]
@@ -607,19 +668,29 @@ impl CssSpecifiedPercentage {
 
     /// Retains checked percentage math; a bare root reenters literal admission.
     pub fn try_from_calculation(calculation: CssPercentageCalculation) -> ConstructionResult<Self> {
-        let root = significant_root(calculation.components())?;
-        if matches!(root.view(), CssComponentValueRef::Token(_)) {
-            return Self::try_from_component(root.clone());
-        }
-        if !matches!(root.view(), CssComponentValueRef::Function(_)) {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::RootDomainMismatch,
-                Some(root),
-            ));
-        }
-        Ok(Self {
-            value: SpecifiedNumericValue::Calculation(calculation),
-        })
+        Self::admit_calculation(calculation, CalculationAdmission::Checked)
+    }
+
+    /// Parser admission retains recovered syntax, which parsing reports separately.
+    pub(crate) fn from_parser_calculation(
+        calculation: CssPercentageCalculation,
+    ) -> ConstructionResult<Self> {
+        Self::admit_calculation(calculation, CalculationAdmission::Recovering)
+    }
+
+    fn admit_calculation(
+        calculation: CssPercentageCalculation,
+        admission: CalculationAdmission,
+    ) -> ConstructionResult<Self> {
+        admit_calculation(
+            calculation,
+            CssPercentageCalculation::components,
+            admission,
+            Self::try_from_component,
+            |calculation| Self {
+                value: SpecifiedNumericValue::Calculation(calculation),
+            },
+        )
     }
 
     /// Borrows the original ordinary percentage token, if present.
@@ -736,19 +807,29 @@ impl CssSpecifiedNonNegativeNumber {
 
     /// Retains admitted number math; a bare root re-enters exact literal checks.
     pub fn try_from_calculation(calculation: CssNumberCalculation) -> ConstructionResult<Self> {
-        let root = significant_root(calculation.components())?;
-        if matches!(root.view(), CssComponentValueRef::Token(_)) {
-            return Self::try_from_component(root.clone());
-        }
-        if !matches!(root.view(), CssComponentValueRef::Function(_)) {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::RootDomainMismatch,
-                Some(root),
-            ));
-        }
-        Ok(Self {
-            value: SpecifiedNumericValue::Calculation(calculation),
-        })
+        Self::admit_calculation(calculation, CalculationAdmission::Checked)
+    }
+
+    /// Parser admission retains recovered syntax, which parsing reports separately.
+    pub(crate) fn from_parser_calculation(
+        calculation: CssNumberCalculation,
+    ) -> ConstructionResult<Self> {
+        Self::admit_calculation(calculation, CalculationAdmission::Recovering)
+    }
+
+    fn admit_calculation(
+        calculation: CssNumberCalculation,
+        admission: CalculationAdmission,
+    ) -> ConstructionResult<Self> {
+        admit_calculation(
+            calculation,
+            CssNumberCalculation::components,
+            admission,
+            Self::try_from_component,
+            |calculation| Self {
+                value: SpecifiedNumericValue::Calculation(calculation),
+            },
+        )
     }
 
     /// Borrows the original ordinary number token, if present.
@@ -888,7 +969,7 @@ impl CssSpecifiedLength {
                 })
             }
             SpecifiedLengthValue::Calculation(calculation) => {
-                CssSpecifiedNonNegativeLength::try_from_calculation(calculation.clone())
+                CssSpecifiedNonNegativeLength::from_parser_calculation(calculation.clone())
             }
         }
     }
@@ -948,19 +1029,29 @@ impl CssSpecifiedLength {
 
     /// Retains checked length math; a bare numeric root re-enters literal admission.
     pub fn try_from_calculation(calculation: CssLengthCalculation) -> ConstructionResult<Self> {
-        let root = significant_root(calculation.components())?;
-        if matches!(root.view(), CssComponentValueRef::Token(_)) {
-            return Self::try_from_component(root.clone());
-        }
-        if !matches!(root.view(), CssComponentValueRef::Function(_)) {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::RootDomainMismatch,
-                Some(root),
-            ));
-        }
-        Ok(Self {
-            value: SpecifiedLengthValue::Calculation(calculation),
-        })
+        Self::admit_calculation(calculation, CalculationAdmission::Checked)
+    }
+
+    /// Parser admission retains recovered syntax, which parsing reports separately.
+    pub(crate) fn from_parser_calculation(
+        calculation: CssLengthCalculation,
+    ) -> ConstructionResult<Self> {
+        Self::admit_calculation(calculation, CalculationAdmission::Recovering)
+    }
+
+    fn admit_calculation(
+        calculation: CssLengthCalculation,
+        admission: CalculationAdmission,
+    ) -> ConstructionResult<Self> {
+        admit_calculation(
+            calculation,
+            CssLengthCalculation::components,
+            admission,
+            Self::try_from_component,
+            |calculation| Self {
+                value: SpecifiedLengthValue::Calculation(calculation),
+            },
+        )
     }
 
     /// Constructs the exact unitless-zero initial length.
@@ -1105,19 +1196,29 @@ impl CssSpecifiedNonNegativeLength {
 
     /// Retains checked length math; a bare numeric root re-enters literal admission.
     pub fn try_from_calculation(calculation: CssLengthCalculation) -> ConstructionResult<Self> {
-        let root = significant_root(calculation.components())?;
-        if matches!(root.view(), CssComponentValueRef::Token(_)) {
-            return Self::try_from_component(root.clone());
-        }
-        if !matches!(root.view(), CssComponentValueRef::Function(_)) {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::RootDomainMismatch,
-                Some(root),
-            ));
-        }
-        Ok(Self {
-            value: SpecifiedLengthValue::Calculation(calculation),
-        })
+        Self::admit_calculation(calculation, CalculationAdmission::Checked)
+    }
+
+    /// Parser admission retains recovered syntax, which parsing reports separately.
+    pub(crate) fn from_parser_calculation(
+        calculation: CssLengthCalculation,
+    ) -> ConstructionResult<Self> {
+        Self::admit_calculation(calculation, CalculationAdmission::Recovering)
+    }
+
+    fn admit_calculation(
+        calculation: CssLengthCalculation,
+        admission: CalculationAdmission,
+    ) -> ConstructionResult<Self> {
+        admit_calculation(
+            calculation,
+            CssLengthCalculation::components,
+            admission,
+            Self::try_from_component,
+            |calculation| Self {
+                value: SpecifiedLengthValue::Calculation(calculation),
+            },
+        )
     }
 
     /// Constructs the exact unitless-zero initial length.
@@ -1266,19 +1367,29 @@ impl CssSpecifiedLengthPercentage {
     pub fn try_from_calculation(
         calculation: CssLengthPercentageCalculation,
     ) -> ConstructionResult<Self> {
-        let root = significant_root(calculation.components())?;
-        if matches!(root.view(), CssComponentValueRef::Token(_)) {
-            return Self::try_from_component(root.clone());
-        }
-        if !matches!(root.view(), CssComponentValueRef::Function(_)) {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::RootDomainMismatch,
-                Some(root),
-            ));
-        }
-        Ok(Self {
-            value: SpecifiedLengthValue::Calculation(calculation),
-        })
+        Self::admit_calculation(calculation, CalculationAdmission::Checked)
+    }
+
+    /// Parser admission retains recovered syntax, which parsing reports separately.
+    pub(crate) fn from_parser_calculation(
+        calculation: CssLengthPercentageCalculation,
+    ) -> ConstructionResult<Self> {
+        Self::admit_calculation(calculation, CalculationAdmission::Recovering)
+    }
+
+    fn admit_calculation(
+        calculation: CssLengthPercentageCalculation,
+        admission: CalculationAdmission,
+    ) -> ConstructionResult<Self> {
+        admit_calculation(
+            calculation,
+            CssLengthPercentageCalculation::components,
+            admission,
+            Self::try_from_component,
+            |calculation| Self {
+                value: SpecifiedLengthValue::Calculation(calculation),
+            },
+        )
     }
 
     /// Constructs the exact unitless-zero initial length-percentage.
@@ -1433,19 +1544,29 @@ impl CssSpecifiedNonNegativeLengthPercentage {
     pub fn try_from_calculation(
         calculation: CssLengthPercentageCalculation,
     ) -> ConstructionResult<Self> {
-        let root = significant_root(calculation.components())?;
-        if matches!(root.view(), CssComponentValueRef::Token(_)) {
-            return Self::try_from_component(root.clone());
-        }
-        if !matches!(root.view(), CssComponentValueRef::Function(_)) {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::RootDomainMismatch,
-                Some(root),
-            ));
-        }
-        Ok(Self {
-            value: SpecifiedLengthValue::Calculation(calculation),
-        })
+        Self::admit_calculation(calculation, CalculationAdmission::Checked)
+    }
+
+    /// Parser admission retains recovered syntax, which parsing reports separately.
+    pub(crate) fn from_parser_calculation(
+        calculation: CssLengthPercentageCalculation,
+    ) -> ConstructionResult<Self> {
+        Self::admit_calculation(calculation, CalculationAdmission::Recovering)
+    }
+
+    fn admit_calculation(
+        calculation: CssLengthPercentageCalculation,
+        admission: CalculationAdmission,
+    ) -> ConstructionResult<Self> {
+        admit_calculation(
+            calculation,
+            CssLengthPercentageCalculation::components,
+            admission,
+            Self::try_from_component,
+            |calculation| Self {
+                value: SpecifiedLengthValue::Calculation(calculation),
+            },
+        )
     }
 
     /// Constructs the exact unitless-zero initial length-percentage.
@@ -1578,19 +1699,29 @@ impl CssSpecifiedNonNegativePercentage {
 
     /// Retains checked percentage math; a bare token re-enters literal validation.
     pub fn try_from_calculation(calculation: CssPercentageCalculation) -> ConstructionResult<Self> {
-        let root = significant_root(calculation.components())?;
-        if matches!(root.view(), CssComponentValueRef::Token(_)) {
-            return Self::try_from_component(root.clone());
-        }
-        if !matches!(root.view(), CssComponentValueRef::Function(_)) {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::RootDomainMismatch,
-                Some(root),
-            ));
-        }
-        Ok(Self {
-            value: SpecifiedNumericValue::Calculation(calculation),
-        })
+        Self::admit_calculation(calculation, CalculationAdmission::Checked)
+    }
+
+    /// Parser admission retains recovered syntax, which parsing reports separately.
+    pub(crate) fn from_parser_calculation(
+        calculation: CssPercentageCalculation,
+    ) -> ConstructionResult<Self> {
+        Self::admit_calculation(calculation, CalculationAdmission::Recovering)
+    }
+
+    fn admit_calculation(
+        calculation: CssPercentageCalculation,
+        admission: CalculationAdmission,
+    ) -> ConstructionResult<Self> {
+        admit_calculation(
+            calculation,
+            CssPercentageCalculation::components,
+            admission,
+            Self::try_from_component,
+            |calculation| Self {
+                value: SpecifiedNumericValue::Calculation(calculation),
+            },
+        )
     }
 
     /// Borrows the exact literal token, if this is an ordinary percentage.

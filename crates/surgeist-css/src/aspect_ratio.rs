@@ -50,31 +50,16 @@ impl CssRatioOperand {
     pub fn try_from_calculation(
         calculation: CssNumberCalculation,
     ) -> Result<Self, CssNumericConstructionError> {
-        let components = calculation.components().items();
-        let Some(component) = components.iter().find(|component| {
-            !matches!(
-                component.view(),
-                CssComponentValueRef::Comment(_)
-                    | CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
-            )
-        }) else {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::EmptyValue,
-                None,
-            ));
-        };
-        match component.view() {
-            CssComponentValueRef::Token(CssValueTokenRef::Number(_)) => {
-                Self::try_from_component(component.clone())
-            }
-            CssComponentValueRef::Function(_) => Ok(Self {
+        // This domain still retains recovered syntax from checked construction.
+        crate::specified_numeric::admit_calculation(
+            calculation,
+            CssNumberCalculation::components,
+            crate::specified_numeric::CalculationAdmission::Recovering,
+            Self::try_from_component,
+            |calculation| Self {
                 value: RatioOperandValue::Calculation(calculation),
-            }),
-            _ => Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::RootDomainMismatch,
-                Some(component),
-            )),
-        }
+            },
+        )
     }
 
     /// Borrows the exact ordinary number, if this operand has one.

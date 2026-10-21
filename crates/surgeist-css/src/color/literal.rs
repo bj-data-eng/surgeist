@@ -471,12 +471,12 @@ impl<'owner> LiteralConversion<'owner> {
         };
         let (value, unit) = match self.input.unit {
             Some(CssNumericUnit::Angle(unit)) => {
-                let (_, factor) = CssNumericUnit::Angle(unit)
-                    .intrinsic_scale()
+                let scale = CssNumericUnit::Angle(unit)
+                    .intrinsic_projection()
                     .expect("all canonical angle units are intrinsic");
                 (
                     crate::numeric::projection::closest_supported_value(
-                        if scaled { value } else { value * factor },
+                        if scaled { value } else { scale.apply(value) },
                         true,
                         true,
                     ),

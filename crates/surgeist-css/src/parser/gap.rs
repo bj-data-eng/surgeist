@@ -1,15 +1,11 @@
 //! Exact Box Alignment gap grammars.
 
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
-use cssparser::Token;
+use crate::error::property::{Error, ParseError};
 
-use super::values::{CalculationRoot, is_math_function, parse_numeric_function};
+use super::values::parse_nonnegative_length_percentage;
 use crate::numeric::NumericInputContext;
-use crate::{
-    CssGapShorthand, CssGapValue, CssLengthPercentageCalculation,
-    CssSpecifiedNonNegativeLengthPercentage,
-};
+use crate::{CssGapShorthand, CssGapValue};
 
 pub(super) fn parse_gap_value<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -22,29 +18,7 @@ pub(super) fn parse_gap_value<'i, 't>(
     {
         return Ok(CssGapValue::Normal);
     }
-    let state = input.state();
-    let location = input.current_source_location();
-    let root_site = input.position();
-    let checked = match input.next().map_err(basic)? {
-        Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {
-            input.reset(&state);
-            let component = input
-                .collect_numeric_component(numeric)
-                .map_err(|_| unexpected_at(location))?;
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(component)
-        }
-        Token::Function(name) if is_math_function(name) => {
-            let expression =
-                parse_numeric_function(input, &state, numeric, CalculationRoot::LengthPercentage)?;
-            CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-                CssLengthPercentageCalculation::from_expression(expression),
-            )
-        }
-        token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
-    };
-    checked.map(CssGapValue::LengthPercentage).map_err(|error| {
-        unexpected_at(numeric.property_error_location(&error, location, root_site))
-    })
+    parse_nonnegative_length_percentage(input, numeric).map(CssGapValue::LengthPercentage)
 }
 
 pub(super) fn parse_gap_shorthand<'i, 't>(

@@ -46,7 +46,7 @@ impl CssStripeLengthPercentage {
         if matches!(root.view(), CssComponentValueRef::Token(_)) {
             return Self::try_from_component(root.clone());
         }
-        CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(calculation)
+        CssSpecifiedNonNegativeLengthPercentage::from_parser_calculation(calculation)
             .map(|value| Self { value })
     }
     pub const fn value(&self) -> &CssSpecifiedNonNegativeLengthPercentage {

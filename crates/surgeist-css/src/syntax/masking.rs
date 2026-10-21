@@ -31,13 +31,17 @@ impl CssMaskBox {
     }
     #[must_use]
     pub const fn keyword(self) -> &'static str {
+        self.edge().as_css_str()
+    }
+    /// The geometry-box keyword this Box 4 `<coord-box>` names.
+    const fn edge(self) -> CssBoxEdgeKeyword {
         match self {
-            Self::ContentBox => "content-box",
-            Self::PaddingBox => "padding-box",
-            Self::BorderBox => "border-box",
-            Self::FillBox => "fill-box",
-            Self::StrokeBox => "stroke-box",
-            Self::ViewBox => "view-box",
+            Self::ContentBox => CssBoxEdgeKeyword::ContentBox,
+            Self::PaddingBox => CssBoxEdgeKeyword::PaddingBox,
+            Self::BorderBox => CssBoxEdgeKeyword::BorderBox,
+            Self::FillBox => CssBoxEdgeKeyword::FillBox,
+            Self::StrokeBox => CssBoxEdgeKeyword::StrokeBox,
+            Self::ViewBox => CssBoxEdgeKeyword::ViewBox,
         }
     }
 }

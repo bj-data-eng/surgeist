@@ -624,7 +624,15 @@ impl CssKeyframePercent {
     /// exact authored coefficients and provenance without evaluation or clamping.
     #[must_use]
     pub fn try_from_calculation(calculation: CssPercentageCalculation) -> Option<Self> {
-        let value = CssSpecifiedPercentage::try_from_calculation(calculation).ok()?;
+        Self::from_specified(CssSpecifiedPercentage::try_from_calculation(calculation).ok()?)
+    }
+
+    /// Parser admission retains recovered syntax, which parsing reports separately.
+    pub(crate) fn from_parser_calculation(calculation: CssPercentageCalculation) -> Option<Self> {
+        Self::from_specified(CssSpecifiedPercentage::from_parser_calculation(calculation).ok()?)
+    }
+
+    fn from_specified(value: CssSpecifiedPercentage) -> Option<Self> {
         if let Some(component) = value.literal_component() {
             let crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Percentage(number)) =
                 component.view()
@@ -6119,113 +6127,15 @@ pub enum CssLengthUnit {
 
 impl CssLengthUnit {
     pub(crate) fn from_css_unit(unit: &str) -> Option<Self> {
-        Some(cssparser::match_ignore_ascii_case! { unit,
-            "px" => Self::Px,
-            "em" => Self::Em,
-            "rem" => Self::Rem,
-            "ex" => Self::Ex,
-            "rex" => Self::Rex,
-            "cap" => Self::Cap,
-            "rcap" => Self::Rcap,
-            "ch" => Self::Ch,
-            "rch" => Self::Rch,
-            "ic" => Self::Ic,
-            "ric" => Self::Ric,
-            "lh" => Self::Lh,
-            "rlh" => Self::Rlh,
-            "vw" => Self::Vw,
-            "vh" => Self::Vh,
-            "vi" => Self::Vi,
-            "vb" => Self::Vb,
-            "vmin" => Self::Vmin,
-            "vmax" => Self::Vmax,
-            "svw" => Self::Svw,
-            "svh" => Self::Svh,
-            "svi" => Self::Svi,
-            "svb" => Self::Svb,
-            "svmin" => Self::Svmin,
-            "svmax" => Self::Svmax,
-            "lvw" => Self::Lvw,
-            "lvh" => Self::Lvh,
-            "lvi" => Self::Lvi,
-            "lvb" => Self::Lvb,
-            "lvmin" => Self::Lvmin,
-            "lvmax" => Self::Lvmax,
-            "dvw" => Self::Dvw,
-            "dvh" => Self::Dvh,
-            "dvi" => Self::Dvi,
-            "dvb" => Self::Dvb,
-            "dvmin" => Self::Dvmin,
-            "dvmax" => Self::Dvmax,
-            "cqw" => Self::Cqw,
-            "cqh" => Self::Cqh,
-            "cqi" => Self::Cqi,
-            "cqb" => Self::Cqb,
-            "cqmin" => Self::Cqmin,
-            "cqmax" => Self::Cqmax,
-            "cm" => Self::Cm,
-            "mm" => Self::Mm,
-            "q" => Self::Q,
-            "in" => Self::In,
-            "pc" => Self::Pc,
-            "pt" => Self::Pt,
-            _ => return None,
-        })
+        match crate::numeric::units::parse(unit)? {
+            crate::CssNumericUnit::Length(unit) => Some(unit),
+            _ => None,
+        }
     }
 
     #[must_use]
     pub const fn as_css_str(self) -> &'static str {
-        match self {
-            Self::Px => "px",
-            Self::Em => "em",
-            Self::Rem => "rem",
-            Self::Ex => "ex",
-            Self::Rex => "rex",
-            Self::Cap => "cap",
-            Self::Rcap => "rcap",
-            Self::Ch => "ch",
-            Self::Rch => "rch",
-            Self::Ic => "ic",
-            Self::Ric => "ric",
-            Self::Lh => "lh",
-            Self::Rlh => "rlh",
-            Self::Vw => "vw",
-            Self::Vh => "vh",
-            Self::Vi => "vi",
-            Self::Vb => "vb",
-            Self::Vmin => "vmin",
-            Self::Vmax => "vmax",
-            Self::Svw => "svw",
-            Self::Svh => "svh",
-            Self::Svi => "svi",
-            Self::Svb => "svb",
-            Self::Svmin => "svmin",
-            Self::Svmax => "svmax",
-            Self::Lvw => "lvw",
-            Self::Lvh => "lvh",
-            Self::Lvi => "lvi",
-            Self::Lvb => "lvb",
-            Self::Lvmin => "lvmin",
-            Self::Lvmax => "lvmax",
-            Self::Dvw => "dvw",
-            Self::Dvh => "dvh",
-            Self::Dvi => "dvi",
-            Self::Dvb => "dvb",
-            Self::Dvmin => "dvmin",
-            Self::Dvmax => "dvmax",
-            Self::Cqw => "cqw",
-            Self::Cqh => "cqh",
-            Self::Cqi => "cqi",
-            Self::Cqb => "cqb",
-            Self::Cqmin => "cqmin",
-            Self::Cqmax => "cqmax",
-            Self::Cm => "cm",
-            Self::Mm => "mm",
-            Self::Q => "q",
-            Self::In => "in",
-            Self::Pc => "pc",
-            Self::Pt => "pt",
-        }
+        crate::numeric::units::suffix(crate::CssNumericUnit::Length(self))
     }
 }
 
