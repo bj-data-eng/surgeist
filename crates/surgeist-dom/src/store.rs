@@ -313,6 +313,14 @@ pub enum DomError {
     },
     DialogFocusingProtocol(surgeist_html::HtmlDialogFocusingError),
     FocusDelegateProtocol(surgeist_html::HtmlFocusDelegateError),
+    /// The reached HTML removing step cannot compare this Element with its
+    /// node-Document's unavailable focused-area designation. Identities are
+    /// present only when the actual Draft keys have been published; `None`
+    /// denotes unpublished identity, not an absent subject or Document.
+    FocusedAreaDesignationUnavailable {
+        subject: Option<NodeId>,
+        document: Option<DocumentId>,
+    },
     AutofocusDelegateProtocol(surgeist_html::HtmlAutofocusDelegateError),
     TopLayerAlreadyActive {
         subject: NodeId,

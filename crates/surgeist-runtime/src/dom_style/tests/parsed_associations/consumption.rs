@@ -503,7 +503,7 @@ fn refusal_after_an_earlier_complete_contribution_preserves_its_actual_original_
 }
 
 #[test]
-fn removed_original_meta_still_executes_its_retained_occurrence_without_a_live_subject() {
+fn unavailable_original_meta_removal_preserves_its_retained_occurrence() {
     let (mut dom, installed) =
         raw("<!doctype html><meta http-equiv=default-style content=survives>");
     let mut cursor = installed.report().pending_associations();
@@ -517,19 +517,37 @@ fn removed_original_meta_still_executes_its_retained_occurrence_without_a_live_s
         }
     };
     let meta = installed.node_for(&subject).unwrap();
+    let document = installed.document();
+    let before = dom.snapshot();
+    let parent = before.node(meta).unwrap().parent();
+    assert!(parent.is_some());
+    assert_eq!(
+        before
+            .document(document)
+            .unwrap()
+            .focused_area_designation(),
+        surgeist_dom::DomFocusedAreaDesignation::Unavailable
+    );
     let mut batch = DomBatch::new();
     batch.detach(meta);
     batch.destroy(meta);
-    dom.apply(batch, &cancel()).unwrap();
-    assert!(matches!(
-        dom.snapshot().node(meta),
-        Err(DomError::StaleNode)
-    ));
+    assert_eq!(
+        dom.apply(batch, &cancel()).unwrap_err(),
+        DomError::FocusedAreaDesignationUnavailable {
+            subject: Some(meta),
+            document: Some(document),
+        }
+    );
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(dom.snapshot().node(meta).unwrap().parent(), parent);
     let id = installed.pending_association().unwrap();
-    let document = installed.document();
+    assert_eq!(
+        dom.pending_parsed_html_association(document).unwrap(),
+        Some(id)
+    );
     let mut session =
         DomSession::admit_parsed(dom, session_limits(limits()), envelope(), &cancel()).unwrap();
-    bind(&mut session, document, "removed", Default::default());
+    bind(&mut session, document, "retained", Default::default());
     let done = session
         .style_execution()
         .consume_parsed_meta(&mut session.dom(), id, envelope(), &cancel())

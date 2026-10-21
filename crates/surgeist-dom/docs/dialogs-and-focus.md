@@ -73,6 +73,21 @@ again; old snapshots retain the original value after later edits or owner drop.
 The inline field shares the Document's ordinary staged and canonical storage
 admission. Created-Document change records cover its initialization.
 
+The shared HTML removing step compares each actual invocation subject against
+its removal-time node-Document designation before Element-family hooks. A
+`KnownNull` designation and intrinsically non-area Node kinds are definite
+negative comparisons. An Element of any namespace in an `Unavailable` Document
+refuses with `DomError::FocusedAreaDesignationUnavailable` unless its actual
+Draft key is created and wholly unpublished in an already published Document.
+That narrowly unexposed fresh identity cannot equal the Document's pre-existing
+designation. Published aliases and private original Document materialization do
+not receive this exemption. Missing diagnostic
+IDs mean unpublished Draft keys, not absent nodes. Atomic edits roll back their
+Range, unlink and slot prefix. Source uses its existing checkpoint restoration
+and cumulative admission; dropping a wholly unpublished operation discards it.
+An already detached root runs no removing step. Inactivity or lack of a presenter
+cannot replace the missing original history.
+
 This qualification does not identify a positive focused area, resolve a viewport
 or focus chain, describe system focus, change Window state or authorize focus
 effects. No designation setter is exposed. Direct Document cloning, import and

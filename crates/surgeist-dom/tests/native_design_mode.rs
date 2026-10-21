@@ -555,7 +555,7 @@ fn parsed_document(dom: &mut Dom) -> DocumentId {
 }
 
 #[test]
-fn real_parsed_unavailable_selection_is_not_null_even_after_actual_root_removal() {
+fn real_parsed_unavailable_selection_stays_unknown_when_root_removal_refuses() {
     let mut dom = owner();
     let document = parsed_document(&mut dom);
     let root = dom
@@ -566,13 +566,22 @@ fn real_parsed_unavailable_selection_is_not_null_even_after_actual_root_removal(
         .unwrap();
     let mut remove = DomBatch::new();
     remove.detach(root);
-    apply(&mut dom, remove);
+    assert_eq!(
+        dom.apply(remove, &AtomicBool::new(false)).unwrap_err(),
+        DomError::FocusedAreaDesignationUnavailable {
+            subject: Some(root),
+            document: Some(document)
+        }
+    );
     let before = dom.snapshot();
     assert_eq!(
         before.document(document).unwrap().active_range(),
         DomActiveRangeState::Unavailable
     );
-    assert_eq!(before.document(document).unwrap().document_element(), None);
+    assert_eq!(
+        before.document(document).unwrap().document_element(),
+        Some(root)
+    );
     let mut atomic = DomBatch::new();
     atomic.set_design_mode(document, "on");
     assert_eq!(
@@ -637,7 +646,7 @@ fn real_parsed_unavailable_selection_is_not_null_even_after_actual_root_removal(
 }
 
 #[test]
-fn explicit_native_null_association_makes_real_parsed_null_root_setter_complete() {
+fn explicit_null_selection_does_not_bypass_unknown_focus_history_or_the_root_focus_call() {
     let mut dom = owner();
     let document = parsed_document(&mut dom);
     let before = dom.snapshot();
@@ -653,16 +662,48 @@ fn explicit_native_null_association_makes_real_parsed_null_root_setter_complete(
     let mut batch = DomBatch::new();
     batch.detach(root);
     batch.set_active_range(document, None);
+    assert_eq!(
+        dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
+        DomError::FocusedAreaDesignationUnavailable {
+            subject: Some(root),
+            document: Some(document)
+        }
+    );
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(
+        dom.snapshot().document(document).unwrap().active_range(),
+        DomActiveRangeState::Unavailable
+    );
+    let mut batch = DomBatch::new();
+    batch.set_active_range(document, None);
     apply(&mut dom, batch);
     assert_eq!(active(&dom.snapshot(), document), None);
-    let done = source_set(&mut dom, document, "ON");
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::set_design_mode(document, "ON"),
+            source_limits(),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::DesignMode(request)) =
+        lease.advance(&AtomicBool::new(false)).unwrap()
+    else {
+        panic!("the surviving root still requires actual focusing");
+    };
     assert_eq!(
-        done.design_mode_range_disposition(),
+        request.range_disposition(),
         Some(DomDesignModeRangeDisposition::NoActiveRange)
     );
-    assert!(enabled(&dom.snapshot(), document));
-    assert_eq!(dom.usage().ranges(), 0);
-    assert!(dom.pending_source_edit().is_none());
+    assert_eq!(request.focus_target(), Some(root));
+    assert!(enabled(&lease.snapshot(), document));
+    assert_eq!(
+        lease
+            .snapshot()
+            .document(document)
+            .unwrap()
+            .document_element(),
+        Some(root)
+    );
     assert_eq!(
         before.document(document).unwrap().active_range(),
         DomActiveRangeState::Unavailable

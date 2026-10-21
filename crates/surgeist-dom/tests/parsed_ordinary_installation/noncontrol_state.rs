@@ -164,9 +164,19 @@ fn assert_original_patch(
 #[test]
 fn retiring_only_the_template_target_preserves_live_markers_and_never_retargets_a_replacement() {
     let markup = "<body><div><?marker name='x'?></div><template for=x><p>N";
-    let report = parse(HtmlSource::utf8(markup));
-    let (mut dom, environment) = setup();
-    let installed = install(&mut dom, report.clone(), environment);
+    let (mut dom, capture, _, host) = fragment_fixture("div");
+    let report = fragment_report(&capture, host, HtmlSource::utf8(markup), false);
+    let installed = dom
+        .install_parsed_html_fragment(report.clone(), &capture, limits(), &AtomicBool::new(false))
+        .unwrap();
+    assert_eq!(
+        installed
+            .snapshot()
+            .document(installed.document())
+            .unwrap()
+            .focused_area_designation(),
+        DomFocusedAreaDesignation::KnownNull
+    );
     let template = element(&installed, "template");
     let target = element(&installed, "div");
     let marker = installed

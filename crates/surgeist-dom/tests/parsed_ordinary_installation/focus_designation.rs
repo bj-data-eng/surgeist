@@ -230,10 +230,18 @@ fn focused_designation_subtree_transfer_preserves_documents_and_cannot_clone_doc
     let same_owner_copy = commit.created(&same_owner_copy).unwrap().unwrap();
     let mut batch = DomBatch::new();
     batch.adopt(subtree, native);
+    assert_eq!(
+        dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
+        DomError::FocusedAreaDesignationUnavailable {
+            subject: Some(subtree),
+            document: Some(parsed)
+        }
+    );
+    let mut batch = DomBatch::new();
     batch.adopt(copy, parsed);
     dom.apply(batch, &AtomicBool::new(false)).unwrap();
     let after = dom.snapshot();
-    assert_eq!(after.node(subtree).unwrap().owner_document(), Some(native));
+    assert_eq!(after.node(subtree).unwrap().owner_document(), Some(parsed));
     assert_eq!(after.node(copy).unwrap().owner_document(), Some(parsed));
     assert_eq!(
         after.node(same_owner_copy).unwrap().owner_document(),
@@ -331,10 +339,12 @@ fn focus_removal_unavailable_original_element_atomic_detach_refuses() {
     let before = dom.snapshot();
     let mut batch = DomBatch::new();
     batch.detach(subject);
-    let result = dom.apply(batch, &AtomicBool::new(false));
-    assert!(
-        result.is_err(),
-        "removing an original potentially-area Element cannot complete an unavailable focused-area comparison; atomic detach succeeded"
+    assert_eq!(
+        dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
+        DomError::FocusedAreaDesignationUnavailable {
+            subject: Some(subject),
+            document: Some(document)
+        }
     );
     let after = dom.snapshot();
     assert_eq!(after.stamp(), before.stamp());
@@ -358,16 +368,21 @@ fn focus_removal_unavailable_original_element_source_detach_refuses() {
         )
         .expect("the authentic plain Element has no competing Source or parsed obligation");
     assert!(!lease.status().has_published());
-    let result = lease.advance(&AtomicBool::new(false));
-    let outcome = match &result {
-        Ok(DomSourceProgress::Complete(_)) => "Complete",
-        Ok(DomSourceProgress::Request(_)) => "external request",
-        Err(_) => "refusal",
+    let expected = DomError::FocusedAreaDesignationUnavailable {
+        subject: Some(subject),
+        document: Some(document),
     };
-    assert!(
-        result.is_err(),
-        "removing an original potentially-area Element cannot complete an unavailable focused-area comparison; Source advance returned {outcome}"
+    assert_eq!(
+        lease.advance(&AtomicBool::new(false)).unwrap_err(),
+        expected
     );
+    let spent = lease.status().spent_work();
+    assert_eq!(
+        lease.advance(&AtomicBool::new(false)).unwrap_err(),
+        expected
+    );
+    assert!(lease.status().spent_work() > spent);
+    assert!(!lease.status().has_published());
     let after = lease.snapshot();
     assert_eq!(after.stamp(), before.stamp());
     assert_eq!(after.node(subject).unwrap().parent(), Some(parent));
@@ -375,4 +390,352 @@ fn focus_removal_unavailable_original_element_source_detach_refuses() {
         after.document(document).unwrap().focused_area_designation(),
         Unavailable
     );
+    let operation = lease.operation();
+    assert_eq!(
+        lease.advance(&AtomicBool::new(true)).unwrap_err(),
+        DomError::Cancelled
+    );
+    assert_eq!(lease.snapshot().stamp(), before.stamp());
+    drop(lease);
+    assert!(dom.pending_source_edit().is_none());
+    assert_eq!(
+        dom.resume_source_edit(operation, limits, &AtomicBool::new(false))
+            .err(),
+        Some(DomError::InvalidSourceOperation)
+    );
+    let mut retry = dom
+        .begin_source_edit(
+            DomSourceEdit::detach(subject),
+            limits,
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+    assert_ne!(retry.operation(), operation);
+    assert_eq!(
+        retry.advance(&AtomicBool::new(false)).unwrap_err(),
+        expected
+    );
+    assert_eq!(retry.snapshot().stamp(), before.stamp());
+}
+
+#[test]
+fn focus_removal_range_and_slot_prefix_roll_back_on_the_same_comparison() {
+    let (mut dom, document, host, _) = attached_original_focus_candidate();
+    dom.set_limits(dom.limits().with_ranges(2).unwrap())
+        .unwrap();
+    let cancel = AtomicBool::new(false);
+    let mut batch = DomBatch::new();
+    let shadow = batch.attach_shadow(host, DomShadowRootInit::new(HtmlShadowRootMode::Open));
+    let slot = batch.create_element_ns(document, Namespace::html(), "slot");
+    batch.insert_before(&slot, &shadow, None);
+    let subject = batch.create_element_ns(document, Namespace::html(), "span");
+    batch.insert_before(&subject, host, None);
+    let range = batch.create_range(document);
+    batch.set_range_start(&range, &subject, 0);
+    batch.set_range_end(&range, &subject, 0);
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let subject = commit.created(&subject).unwrap().unwrap();
+    let slot = commit.created(&slot).unwrap().unwrap();
+    let range = commit.created_range(&range).unwrap().unwrap();
+    let before = dom.snapshot();
+    let usage = dom.usage();
+    assert_eq!(
+        before
+            .node(subject)
+            .unwrap()
+            .stored_assigned_slot()
+            .unwrap(),
+        Some(slot)
+    );
+    let mut batch = DomBatch::new();
+    batch.detach(subject);
+    assert_eq!(
+        dom.apply(batch, &cancel).unwrap_err(),
+        DomError::FocusedAreaDesignationUnavailable {
+            subject: Some(subject),
+            document: Some(document)
+        }
+    );
+    let after = dom.snapshot();
+    assert_eq!(after.stamp(), before.stamp());
+    assert_eq!(dom.usage(), usage);
+    assert_eq!(after.node(subject).unwrap().parent(), Some(host));
+    assert_eq!(
+        after.node(subject).unwrap().stored_assigned_slot().unwrap(),
+        Some(slot)
+    );
+    assert_eq!(after.slot(slot).unwrap().assigned_nodes(), &[subject]);
+    for snapshot in [&before, &after] {
+        assert_eq!(snapshot.range(range).unwrap().start().container(), subject);
+        assert_eq!(snapshot.range(range).unwrap().end().container(), subject);
+        assert_eq!(snapshot.range(range).unwrap().start().offset(), 0);
+    }
+}
+
+#[test]
+fn focus_removal_unexposed_native_identity_is_negative_but_published_subject_still_refuses() {
+    for namespace in [
+        Namespace::html(),
+        Namespace::svg(),
+        Namespace::none(),
+        Namespace::from_uri("urn:test"),
+    ] {
+        let (mut dom, document, parent, _) = attached_original_focus_candidate();
+        let before = dom.snapshot();
+        let mut batch = DomBatch::new();
+        let subject = batch.create_element_ns(document, namespace.clone(), "candidate");
+        batch.insert_before(&subject, parent, None);
+        batch.detach(&subject);
+        let commit = dom
+            .apply(batch, &AtomicBool::new(false))
+            .expect("a wholly unpublished fresh identity cannot equal a pre-existing designation");
+        let unexposed = commit.created(&subject).unwrap().unwrap();
+        let after = dom.snapshot();
+        assert_eq!(after.node(unexposed).unwrap().parent(), None);
+        assert_eq!(
+            after.node(unexposed).unwrap().owner_document(),
+            Some(document)
+        );
+        assert_eq!(
+            after.document(document).unwrap().focused_area_designation(),
+            Unavailable
+        );
+        assert_eq!(
+            after.node(parent).unwrap().children(),
+            before.node(parent).unwrap().children()
+        );
+        let mut batch = DomBatch::new();
+        let subject = batch.create_element_ns(document, namespace, "candidate");
+        batch.insert_before(&subject, parent, None);
+        let subject = dom
+            .apply(batch, &AtomicBool::new(false))
+            .unwrap()
+            .created(&subject)
+            .unwrap()
+            .unwrap();
+        let before = dom.snapshot();
+        let mut batch = DomBatch::new();
+        batch.detach(subject);
+        assert_eq!(
+            dom.apply(batch, &AtomicBool::new(false)).unwrap_err(),
+            DomError::FocusedAreaDesignationUnavailable {
+                subject: Some(subject),
+                document: Some(document)
+            }
+        );
+        assert_eq!(dom.snapshot().stamp(), before.stamp());
+    }
+}
+
+#[test]
+fn focus_removal_adoption_replacement_replace_all_and_destruction_share_the_guard() {
+    let cancel = AtomicBool::new(false);
+    for operation in 0..4 {
+        let (mut dom, document, original, parent) = attached_original_focus_candidate();
+        let mut setup = DomBatch::new();
+        let other = setup.create_document();
+        let fragment = setup.create_fragment(document);
+        let child = setup.create_element_ns(document, Namespace::html(), "span");
+        setup.insert_before(&child, &fragment, None);
+        let output = setup.create_element_ns(document, Namespace::html(), "output");
+        let output_child = setup.create_element_ns(document, Namespace::html(), "span");
+        setup.insert_before(&output_child, &output, None);
+        let commit = dom.apply(setup, &cancel).unwrap();
+        let other = commit.document(&other).unwrap();
+        let fragment = commit.created(&fragment).unwrap().unwrap();
+        let child = commit.created(&child).unwrap().unwrap();
+        let output = commit.created(&output).unwrap().unwrap();
+        let output_child = commit.created(&output_child).unwrap().unwrap();
+        let before = dom.snapshot();
+        let mut batch = DomBatch::new();
+        let subject = match operation {
+            0 => {
+                batch.adopt(original, other);
+                original
+            }
+            1 => {
+                let text = batch.create_text(document, "replacement");
+                batch.replace_child(&text, parent, original);
+                original
+            }
+            2 => {
+                batch.set_output_value(output, "replacement");
+                output_child
+            }
+            _ => {
+                batch.destroy(fragment);
+                child
+            }
+        };
+        assert_eq!(
+            dom.apply(batch, &cancel).unwrap_err(),
+            DomError::FocusedAreaDesignationUnavailable {
+                subject: Some(subject),
+                document: Some(document)
+            }
+        );
+        assert_eq!(dom.snapshot().stamp(), before.stamp());
+        assert_eq!(
+            dom.snapshot().node(original).unwrap().parent(),
+            Some(parent)
+        );
+        assert_eq!(
+            dom.snapshot().node(original).unwrap().owner_document(),
+            Some(document)
+        );
+        assert_eq!(dom.snapshot().node(child).unwrap().parent(), Some(fragment));
+        assert_eq!(
+            dom.snapshot().node(output_child).unwrap().parent(),
+            Some(output)
+        );
+    }
+}
+
+#[test]
+fn focus_removal_intrinsic_nonareas_and_detached_elements_do_not_need_unknown_history() {
+    let (mut dom, document, parent, _) = attached_original_focus_candidate();
+    let cancel = AtomicBool::new(false);
+    let mut batch = DomBatch::new();
+    let text = batch.create_text(document, "text");
+    let comment = batch.create_comment(document, "comment");
+    batch.insert_before(&text, parent, None);
+    batch.insert_before(&comment, parent, None);
+    let detached = batch.create_element_ns(document, Namespace::html(), "div");
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let text = commit.created(&text).unwrap().unwrap();
+    let comment = commit.created(&comment).unwrap().unwrap();
+    let detached = commit.created(&detached).unwrap().unwrap();
+    for subject in [text, comment] {
+        let mut batch = DomBatch::new();
+        batch.detach(subject);
+        dom.apply(batch, &cancel).unwrap();
+        assert_eq!(dom.snapshot().node(subject).unwrap().parent(), None);
+    }
+    let before = dom.snapshot();
+    let mut batch = DomBatch::new();
+    batch.detach(detached);
+    assert!(
+        dom.apply(batch, &cancel)
+            .unwrap()
+            .changes()
+            .changes()
+            .is_empty()
+    );
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::detach(detached),
+            DomSourceLimits::new(128_000_000, 1_000_000, 20_000_000, 64, 4096, 4096, 4),
+            &cancel,
+        )
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    assert_eq!(lease.snapshot().stamp(), before.stamp());
+}
+
+#[test]
+fn focus_removal_known_null_native_source_completes_without_window_or_focus_effects() {
+    let (mut dom, _) = setup();
+    let cancel = AtomicBool::new(false);
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let parent = batch.create_element_ns(&document, Namespace::svg(), "svg");
+    let child = batch.create_element_ns(&document, Namespace::svg(), "g");
+    batch.insert_before(&parent, &document, None);
+    batch.insert_before(&child, &parent, None);
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let document = commit.document(&document).unwrap();
+    let parent = commit.created(&parent).unwrap().unwrap();
+    let child = commit.created(&child).unwrap().unwrap();
+    let before = dom.snapshot();
+    assert_eq!(
+        before
+            .document(document)
+            .unwrap()
+            .focused_area_designation(),
+        KnownNull
+    );
+    assert!(
+        !before
+            .document(document)
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::detach(child),
+            DomSourceLimits::new(128_000_000, 1_000_000, 20_000_000, 64, 4096, 4096, 4),
+            &cancel,
+        )
+        .unwrap();
+    let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
+        panic!("known-null comparison needs no service");
+    };
+    assert_eq!(done.output(), None);
+    assert_eq!(lease.snapshot().node(child).unwrap().parent(), None);
+    assert_eq!(lease.snapshot().node(parent).unwrap().children(), &[]);
+    assert_eq!(before.node(child).unwrap().parent(), Some(parent));
+    assert_eq!(
+        lease
+            .snapshot()
+            .document(document)
+            .unwrap()
+            .focused_area_designation(),
+        KnownNull
+    );
+}
+
+#[test]
+fn focus_removal_shadow_including_published_descendant_is_checked_after_unexposed_host() {
+    let (mut dom, document, _, parent) = attached_original_focus_candidate();
+    let cancel = AtomicBool::new(false);
+    let mut setup = DomBatch::new();
+    let descendant = setup.create_element_ns(document, Namespace::html(), "span");
+    setup.set_attribute(&descendant, "tabindex", "0");
+    let descendant = dom
+        .apply(setup, &cancel)
+        .unwrap()
+        .created(&descendant)
+        .unwrap()
+        .unwrap();
+    let before = dom.snapshot();
+    let usage = dom.usage();
+    assert_eq!(before.node(descendant).unwrap().parent(), None);
+    assert_eq!(
+        before
+            .document(document)
+            .unwrap()
+            .focused_area_designation(),
+        Unavailable
+    );
+    let mut batch = DomBatch::new();
+    let host = batch.create_element_ns(document, Namespace::html(), "div");
+    let shadow = batch.attach_shadow(&host, DomShadowRootInit::new(HtmlShadowRootMode::Open));
+    batch.insert_before(&host, parent, None);
+    batch.insert_before(descendant, &shadow, None);
+    batch.detach(&host);
+    assert_eq!(
+        dom.apply(batch, &cancel).unwrap_err(),
+        DomError::FocusedAreaDesignationUnavailable {
+            subject: Some(descendant),
+            document: Some(document)
+        }
+    );
+    let after = dom.snapshot();
+    assert_eq!(after.stamp(), before.stamp());
+    assert_eq!(dom.usage(), usage);
+    assert_eq!(after.node(descendant).unwrap().parent(), None);
+    assert_eq!(
+        after.node(descendant).unwrap().owner_document(),
+        Some(document)
+    );
+    assert_eq!(
+        after.node(parent).unwrap().children(),
+        before.node(parent).unwrap().children()
+    );
+    assert_eq!(after.nodes().count(), before.nodes().count());
 }
