@@ -1,7 +1,7 @@
 use surgeist_css::{CssMediaQuery, parse_media_query, parse_media_query_list};
 
 // MQ5 section 3 prefers media conditions/features before general-enclosed,
-// whose optional any-value contents come from Syntax 3 section 8.2.
+// whose optional any-value contents come from Syntax 3 section 7.2.
 // https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax
 #[test]
 fn arbitrary_enclosures_remain_clean_query_syntax() {

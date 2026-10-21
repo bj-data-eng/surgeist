@@ -86,7 +86,7 @@ fn assert_context(sheet: &CssSheet, expected: &CssContainerPrelude) {
         declaration.source().known().unwrap().property(),
         CssKnownProperty::Color
     );
-    // value_components retains source trivia; Syntax §5.4.6 excludes edge
+    // value_components retains source trivia; Syntax §5.5.6 excludes edge
     // whitespace from the semantic value. Specified text is checked separately.
     assert_eq!(
         declaration

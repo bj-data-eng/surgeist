@@ -189,9 +189,10 @@ fn document_offset(error: &syntax::GenericSyntaxFault) -> usize {
 
 // Syntax 3 (2026 CRD) §5.5.3: a nested qualified rule that meets its `;`
 // stop token is a parse error and returns nothing, and one whose prelude
-// begins like a custom property consumes the remnants of a bad declaration.
-// Neither returns a rule, so no contextual grammar is admitted; the selected
-// range ends before the `;` that the enclosing block's contents discards.
+// begins like a custom property consumes the remnants of a bad declaration
+// (nested) or its block (top level). None returns a rule, so no contextual
+// grammar is admitted; a nested range ends before the `;` that the enclosing
+// block's contents discards.
 #[inline(never)]
 fn reject_bounded_qualified<'i, R>(
     input: &mut Parser<'i, '_>,

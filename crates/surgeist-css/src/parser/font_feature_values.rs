@@ -201,8 +201,10 @@ impl<'i> RuleBodyItemParser<'i, Member, Error> for BodyParser<'i> {
     fn parse_declarations(&self) -> bool {
         true
     }
+    // Syntax 3 (2026 CRD) §5.5.5 reconsumes a failed declaration, and any
+    // other non-at-rule unit, as a nested qualified rule with a `;` stop token.
     fn parse_qualified(&self) -> bool {
-        false
+        true
     }
 }
 impl<'i> DeclarationParser<'i> for BodyParser<'i> {

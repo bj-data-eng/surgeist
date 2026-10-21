@@ -330,14 +330,14 @@ report remains an external citation with metadata only in the public references.
 ### W3C reference documents and CSSWG source witnesses
 
 The checkout includes reformatted W3C documents and readable generated renderings
-of six pinned CSSWG sources as software implementation support, distributed by the World Wide Web
+of five pinned CSSWG sources as software implementation support, distributed by the World Wide Web
 Consortium and the contributors identified in the exact originals. These
 source-based references and 81 passive SVG figures are bounded by the
 [source catalog](references/SOURCE-CATALOG.md). The collection also preserves a
 factual GitHub source-history metadata capture as a supporting provenance
 witness, not as a separate specification or copied source-code component. The figures
-comprise 53 source-extracted SVGs and 28 railroad diagrams generated from the pinned
-CSS Syntax 3 source; the corresponding source grammars and attribution are retained.
+are extracted from their sources, including the 28 railroad diagrams of the captured
+CSS Syntax 3 publication; the corresponding diagram text and attribution are retained.
 
 * Licenses: [W3C Software and Document License, 2023](licenses/w3c/software-license-2023.txt) and [2015](licenses/w3c/software-license-2015.txt), and [W3C Document License, 2023](licenses/w3c/document-license-2023.txt) and [2015](licenses/w3c/document-license-2015.txt), as identified per document
 * Historical legal material: [W3C Document License, 2002](licenses/w3c/document-license-2002.txt)

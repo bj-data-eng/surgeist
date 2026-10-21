@@ -2,7 +2,7 @@
 //! callable boundary could express this complete output before implementation.
 //! Pinned CSSOM1 §6.6 supplies punctuation and importance; each owning property
 //! grammar and its focused serialization fixtures supply the typed value text.
-//! Syntax3 §10 requires reparsing, while Variables1 §4.1 preserves custom text.
+//! Syntax3 §9 requires reparsing, while Variables1 §4.1 preserves custom text.
 
 use surgeist_css::*;
 

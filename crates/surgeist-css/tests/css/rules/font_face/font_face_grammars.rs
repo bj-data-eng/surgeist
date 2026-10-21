@@ -135,9 +135,15 @@ fn font_face_family_and_local_names_distinguish_quoted_reserved_names() {
 fn font_source_lists_retain_fallbacks_beside_empty_members() {
     // Fonts4 parses src members independently; an empty member does not remove
     // a valid fallback: https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-face-src-parsing
+    // Its "parse a list" uses Syntax 3 (2026-10-01) §5.4.10, where a final
+    // comma followed by no token adds no member, but whitespace does.
+    // https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-comma-separated-list-of-component-values
+    let report = parse_sheet("@font-face{font-family:Demo;src:url(a),}");
+    assert!(report.is_clean(), "{report:?}");
+    assert_strict_parity("@font-face{font-family:Demo;src:url(a),}");
     for source in [
         "@font-face{font-family:Demo;src:,url(a)}",
-        "@font-face{font-family:Demo;src:url(a),}",
+        "@font-face{font-family:Demo;src:url(a), }",
     ] {
         let report = parse_sheet(source);
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {

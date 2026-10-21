@@ -3,7 +3,7 @@
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#generic-family-name-syntax
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#local-font-fallback
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#custom-idents
-//! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#input-preprocessing
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#input-preprocessing
 //! Fonts4 section 2.7 limits system-font keyword meaning to the initial position:
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-prop
 //! Its explicit family-name rule and property-specific exclusions govern literal

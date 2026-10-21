@@ -1,7 +1,18 @@
-//! Token grammar and representation interpretation from CSS Syntax 3 §7.1.
-//! Original token identity is checked before interpreting borrowed spellings.
+//! Unicode-range descriptor values from CSS Syntax 3 (2026-10-01) §5.5.11.
+//!
+//! The value is re-tokenized from its original text with unicode ranges
+//! allowed, so each range is one contiguous `<unicode-range-token>` (§4.3.14)
+//! starting with a literal `U` or `u` (§4.3.1). The provider tokens covering
+//! that text are collected and their original spellings are consumed as the
+//! token's code points; whitespace or a comment ends the token (§4.3.1
+//! consumes comments before every token).
+//! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-unicode-range-value>
+//! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-unicode-range-token>
 
-use cssparser::{ParseError, Parser, SourceLocation, Token};
+use cssparser::{ParseError, Parser, SourceLocation, SourcePosition, Token};
+
+use crate::CssSerializedOrigin;
+use crate::numeric::NumericInputContext;
 
 use crate::error::{Error, incomplete_descriptor_at, invalid_descriptor_token_at};
 use crate::syntax::CssUnicodeRange;
@@ -30,11 +41,13 @@ fn missing<'i>(end: SourceLocation) -> ParseError<'i, Error> {
 
 pub(super) fn parse<'i, 't>(
     input: &mut Parser<'i, 't>,
+    numeric: &NumericInputContext<'_>,
 ) -> Result<CssUnicodeRange, ParseError<'i, Error>> {
     // A valid range has at most eight tokens (u, +, six question marks).
     // A ninth token suffices to prove failure, even for unbounded malformed input.
     let mut tokens = Vec::with_capacity(9);
-    let mut whitespace = None;
+    // The first whitespace or comment after the range's first token ends it.
+    let mut separator = None;
     loop {
         let state = input.state();
         let start = input.position();
@@ -42,6 +55,9 @@ pub(super) fn parse<'i, 't>(
         let Ok(token) = input.next_including_whitespace_and_comments().cloned() else {
             break;
         };
+        if matches!(token, Token::Comment(_)) && inserted_separator(numeric, start) {
+            continue;
+        }
         if matches!(token, Token::Comma) {
             if tokens.is_empty() {
                 return Err(invalid_descriptor_token_at(
@@ -55,21 +71,18 @@ pub(super) fn parse<'i, 't>(
             input.reset(&state);
             break;
         }
-        if matches!(token, Token::Comment(_)) {
-            continue;
-        }
         let token = RangeToken {
             token,
             spelling: input.slice_from(start),
             location,
         };
-        if matches!(token.token, Token::WhiteSpace(_)) {
-            if !tokens.is_empty() && whitespace.is_none() {
-                whitespace = Some(token);
+        if matches!(token.token, Token::WhiteSpace(_) | Token::Comment(_)) {
+            if !tokens.is_empty() && separator.is_none() {
+                separator = Some(token);
             }
             continue;
         }
-        if let Some(space) = whitespace.take() {
+        if let Some(space) = separator.take() {
             tokens.push(space);
             if tokens.len() == 9 {
                 break;
@@ -92,12 +105,26 @@ pub(super) fn parse<'i, 't>(
     interpret(&tokens[1..], end)
 }
 
+// Checked components have no source text. Their serialization inserts empty
+// comments only where the category table requires one; such a separator is not
+// authored, so the components' own adjacent spellings remain one range text.
+fn inserted_separator(numeric: &NumericInputContext<'_>, start: SourcePosition) -> bool {
+    let NumericInputContext::Components(_, serialized) = numeric.ordinary() else {
+        return false;
+    };
+    matches!(
+        serialized.origin_at(start.byte_index()),
+        Some(CssSerializedOrigin::Separator { .. })
+    )
+}
+
 fn check_token_grammar<'i>(
     tokens: &[RangeToken<'_>],
     end: SourceLocation,
 ) -> Result<(), ParseError<'i, Error>> {
     let first = tokens.first().ok_or_else(|| missing(end))?;
-    if !matches!(&first.token, Token::Ident(value) if value.eq_ignore_ascii_case("u")) {
+    // An escaped `u` decodes to the same ident but does not start the token.
+    if !matches!(first.token, Token::Ident(_)) || !first.spelling.eq_ignore_ascii_case("u") {
         return Err(first.error());
     }
     let second = tokens.get(1).ok_or_else(|| missing(end))?;

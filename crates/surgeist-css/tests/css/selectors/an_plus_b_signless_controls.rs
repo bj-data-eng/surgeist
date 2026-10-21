@@ -1,8 +1,8 @@
-//! Supplemental public An+B controls from CSS Syntax 3 CRD 2021-12-24 §6.2.
+//! Supplemental public An+B controls from CSS Syntax 3 CRD 2026-10-01 §6.2.
 //! Literal pairs use the full signless integer before applying the separate '-'.
-//! Canonical text follows §10.1. The final test separately characterizes the
+//! Canonical text follows §9.1. The final test separately characterizes the
 //! established bounded-provider behavior outside the public i32 coefficient model.
-//! <https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/>
+//! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/>
 
 use crate::css::support::admitted_selector as parsed;
 use surgeist_css::{

@@ -1,9 +1,9 @@
 //! Selectors 4 (2026-01-22) section 16.1 checks <any-value>? before forgiving
-//! selector-member filtering. Syntax 3 (2021-12-24) sections 5.3.1, 5.4.8 and
-//! 8.2 retain an unmatched ')' inside an unclosed '{'; nested bad tokens are
+//! selector-member filtering. Syntax 3 (2026-10-01) sections 5.4.1, 5.5.9 and
+//! 7.2 retain an unmatched ')' inside an unclosed '{'; nested bad tokens are
 //! excluded from any-value. A missing EOF closure alone is recoverable.
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#parse-as-a-forgiving-selector-list
-//! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value
 use surgeist_css::{
     CssErrorCode, CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem,
     CssRecoveryAction, CssSelector, CssTokenKind, ErrorKind, parse_selector,

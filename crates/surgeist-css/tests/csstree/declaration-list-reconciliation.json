@@ -13,10 +13,10 @@
       "tier": "official",
       "latest_published_url": "https://www.w3.org/TR/css-syntax-3/",
       "publication": {
-        "url": "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
-        "sha256": "413b27acb4e16721d28b487456359ecbcecba472c4310bd2f6a4939ad393738b",
-        "bytes": 511620,
-        "date": "2021-12-24",
+        "url": "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
+        "sha256": "8dc3adcc2b4e8fd8fa73c0be85cec67f006874ab42010cdf4528af4aa83f2878",
+        "bytes": 657320,
+        "date": "2026-10-01",
         "kind": "w3c-dated-publication"
       },
       "authored_scope": "complete-applicable-grammar",
@@ -62,9 +62,9 @@
   ],
   "normative_anchors": [
     "https://www.w3.org/TR/2013/REC-css-style-attr-20131107/#syntax",
-    "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-list-of-declarations",
-    "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-declaration",
-    "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+    "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents",
+    "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-declaration",
+    "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
   ],
   "desired_adapter": {
     "entry_point": "style_attribute",

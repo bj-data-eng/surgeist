@@ -1,6 +1,6 @@
 //! CSS Syntax 3 section 4.3.7 consumes one whitespace after a hex escape,
-//! including a six-digit escape. Section 10 requires token-preserving output.
-//! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/
+//! including a six-digit escape. Section 9 requires token-preserving output.
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/
 
 use surgeist_css::{
     CssComponentValue, CssComponentValueErrorKind, CssComponentValueRef, CssComponentValues,

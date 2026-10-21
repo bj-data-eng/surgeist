@@ -1,8 +1,11 @@
-//! Public Unicode-range oracles from CSS Syntax 3 (2021-12-24) §§4.2 and 7.1
-//! and the catalog-selected CSS Fonts 3 (2018-09-20) §4.5.
-//! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#urange-syntax
+//! Public Unicode-range oracles from CSS Syntax 3 (2026-10-01) §§4.3.11,
+//! 4.3.14 and 5.5.11 and the catalog-selected CSS Fonts 3 (2018-09-20) §4.5.
+//! The descriptor value is re-tokenized from its original text with unicode
+//! ranges allowed, so one range is one contiguous unicode-range token.
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-unicode-range-value
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-unicode-range-token
 //! https://www.w3.org/TR/2018/REC-css-fonts-3-20180920/#unicode-range-desc
-//! These literal endpoints use consumed representations, not decoded numeric values.
+//! These literal endpoints use consumed source text, not decoded numeric values.
 use surgeist_css::{
     CssAuthoredFontFaceDescriptorValue as Authored, CssComponentValue,
     CssComponentValueRef as Component, CssComponentValues, CssErrorCode,
@@ -109,7 +112,8 @@ fn assert_invalid_lifecycle(source: &str) {
 
 #[test]
 fn all_six_ordinary_token_patterns_share_descriptor_sheet_and_checked_admission() {
-    // The six rows are the six alternatives printed in Syntax §7.1, in order.
+    // Each row is one contiguous unicode-range token text; ordinary
+    // tokenization splits these six spellings into distinct token shapes.
     let cases = [
         ("u+a", (10, 10), "U+A"),
         ("u+0a", (10, 10), "U+A"),
@@ -227,17 +231,21 @@ fn u_plus_a_remains_two_type_selectors_and_a_sibling_combinator() {
 }
 
 #[test]
-fn comments_can_separate_range_tokens_but_actual_internal_whitespace_cannot() {
-    for (source, expected, canonical) in [
-        ("U/**/+/**/A", (10, 10), "U+A"),
-        ("u+1/**/2", (18, 18), "U+12"),
-        ("u+1/**/-2", (1, 2), "U+1-2"),
-        ("u/**/+?/**/?", (0, 255), "U+0-FF"),
-        (" \t/*head*/u+0 /*tail*/ ", (0, 0), "U+0"),
+fn comments_and_whitespace_surround_but_never_split_a_range_token() {
+    // Syntax 3 (2026) §4.3.1 consumes comments before each token, so a comment
+    // ends a unicode-range token exactly as whitespace does.
+    assert_lifecycle(" \t/*head*/u+0 /*tail*/ ", &[(0, 0)], "U+0");
+    for source in [
+        "U/**/+/**/A",
+        "u+1/**/2",
+        "u+1/**/-2",
+        "u/**/+?/**/?",
+        "u +a",
+        "u+\ta",
+        "u+1 /**/2",
+        "u+?\r\n?",
+        "u+1/**/ -2",
     ] {
-        assert_lifecycle(source, &[expected], canonical);
-    }
-    for source in ["u +a", "u+\ta", "u+1 /**/2", "u+?\r\n?", "u+1/**/ -2"] {
         assert_invalid_lifecycle(source);
     }
     assert_lifecycle(
@@ -253,8 +261,6 @@ fn numeric_and_escape_representations_control_ranges_instead_of_decoded_payloads
         ("u+0e0", (224, 224), "U+E0"),
         ("u+1e1", (481, 481), "U+1E1"),
         ("u+12e-130", (302, 304), "U+12E-130"),
-        (r"\75+0", (0, 0), "U+0"),
-        (r"\75 +0", (0, 0), "U+0"),
     ] {
         assert_lifecycle(source, &[expected], canonical);
     }
@@ -272,7 +278,10 @@ fn numeric_and_escape_representations_control_ranges_instead_of_decoded_payloads
         Component::Token(Token::Ident("a"))
     ));
     // Decoded 'a' is a hex digit, but its original representation is an escape.
+    // A unicode-range token starts only with a literal U or u (§4.3.1).
     for source in [
+        r"\75+0",
+        r"\75 +0",
         r"u+/**/\61",
         r"u+/**/\000061",
         "u+0/**/-ff",
@@ -357,9 +366,11 @@ fn a_raw_value_requires_a_complete_nonempty_comma_list_and_consumes_no_trailing_
 fn invalid_members_drop_only_their_occurrence_and_keep_original_token_coordinates() {
     for (invalid, responsible, spelling) in [
         ("u+1,u+g", "g", "g"),
-        (r"u+/**/\61", r"\61", r"\61"),
+        (r"u+\61", r"\61", r"\61"),
+        (r"u+/**/\61", r"/**/\61", "/**/"),
         ("u+110000", "+110000", "+110000"),
-        ("u+1/**/ -2", " -2", " "),
+        ("u+1/**/ -2", "/**/ -2", "/**/"),
+        ("u+1 /**/-2", " /**/-2", " "),
     ] {
         let source = format!(
             "/*😀*/\r\n@font-face{{unicode-range:u+0;unicode-range:{invalid};font-display:swap;unicode-range:u+2}}.after{{color:red}}"

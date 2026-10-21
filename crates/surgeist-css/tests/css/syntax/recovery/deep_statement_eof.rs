@@ -1,4 +1,4 @@
-//! Syntax 3 §5.4.2 returns an at-rule with an EOF fault. These cases compose
+//! Syntax 3 §5.5.2 returns an at-rule with an EOF fault. These cases compose
 //! that contract with existing ordinary/scoped structural recovery boundaries.
 use surgeist_css::{
     CssErrorCode, CssLayerNameList, CssParseReport, CssRecoveryAction, CssRule, CssScopedRule,

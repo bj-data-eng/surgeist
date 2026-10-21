@@ -1,8 +1,8 @@
-//! Independent CSS Syntax 3 CRD 2021-12-24 §§6, 6.2 and 10.1 expectations.
+//! Independent CSS Syntax 3 CRD 2026-10-01 §§6, 6.2 and 9.1 expectations.
 //! Coefficients and canonical strings below are derived from those clauses.
 //! The index oracle interprets the public symbolic pair; it is not a production
 //! selector matcher. Endpoint cases require only representable final i32 pairs.
-//! <https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/>
+//! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/>
 
 use crate::css::support::admitted_selector as parsed;
 use surgeist_css::{

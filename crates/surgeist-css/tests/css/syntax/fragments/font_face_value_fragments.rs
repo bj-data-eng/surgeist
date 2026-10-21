@@ -1,5 +1,5 @@
 //! Raw values use font-face grammar without inventing a descriptor-name occurrence.
-//! Unicode-range expectations follow CSS Syntax 3 section 7.1.
+//! Unicode-range expectations follow CSS Syntax 3 sections 4.3.14 and 5.5.11.
 
 use surgeist_css::{
     CssAbsoluteFontWeight, CssAuthoredFontFeatureSettings, CssComponentValue, CssErrorCode,

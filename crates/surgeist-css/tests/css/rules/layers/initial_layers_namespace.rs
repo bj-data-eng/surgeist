@@ -35,7 +35,7 @@ fn initial_layer_statements_allow_namespaces_with_or_without_imports() {
         let source = format!("{prefix}@namespace svg 'urn:svg'; svg|rect {{margin:0}}");
         let report = parse_sheet(&source);
         if prefix.starts_with("@charset") {
-            // Syntax 3 section 9.3: encoding prefixes are not grammar rules.
+            // Syntax 3 section 8.3: encoding prefixes are not grammar rules.
             let [diagnostic] = report.diagnostics() else {
                 panic!(
                     "only the charset rule is dropped: {:?}",

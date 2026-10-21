@@ -374,7 +374,7 @@
           "error_byte_offset": 13,
           "recovery_byte_span": [
             13,
-            20
+            19
           ],
           "action": "DropDescriptor"
         }
@@ -398,10 +398,12 @@
           }
         ]
       },
-      "rationale": "Invalid descriptor/body item is discarded locally; retain enclosing font-face.",
+      "rationale": "Invalid descriptor/body item is discarded locally; retain enclosing font-face. Syntax 3 (2026-10-01) consume a block's contents first fails `a:b {}` as a declaration (a top-level {}-block beside other value tokens), then reconsumes it as a nested qualified rule that ends after its block; the following whitespace is not part of the unit.",
       "sources": [
         "https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/",
-        "crates/surgeist-css/src/parser/fragments.rs:534"
+        "crates/surgeist-css/src/parser/fragments.rs:534",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-declaration"
       ]
     },
     {
@@ -512,7 +514,7 @@
           "error_byte_offset": 15,
           "recovery_byte_span": [
             13,
-            18
+            17
           ],
           "action": "DropDescriptor"
         }
@@ -536,10 +538,12 @@
           }
         ]
       },
-      "rationale": "Invalid descriptor/body item is discarded locally; retain enclosing font-face.",
+      "rationale": "Invalid descriptor/body item is discarded locally; retain enclosing font-face. Syntax 3 (2026-10-01) consume a block's contents fails `a` as a declaration (no colon), restores the mark and reconsumes `a {}` as a nested qualified rule that ends after its block; the following whitespace is not part of the unit.",
       "sources": [
         "https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/",
-        "crates/surgeist-css/src/parser/fragments.rs:534"
+        "crates/surgeist-css/src/parser/fragments.rs:534",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ]
     },
     {
@@ -2909,7 +2913,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -2954,7 +2958,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -2999,7 +3003,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -3044,7 +3048,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -3089,7 +3093,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -3134,7 +3138,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -3179,7 +3183,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -3224,7 +3228,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -3269,7 +3273,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -3314,7 +3318,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -3359,7 +3363,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -3437,7 +3441,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -3487,7 +3491,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -3532,7 +3536,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -3577,7 +3581,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -3622,7 +3626,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -3667,7 +3671,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -3740,7 +3744,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -3785,7 +3789,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -3830,7 +3834,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -3875,7 +3879,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -3920,7 +3924,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -3965,7 +3969,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -4060,7 +4064,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -4110,7 +4114,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -4155,7 +4159,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -4200,7 +4204,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -4245,7 +4249,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -4290,7 +4294,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -4335,7 +4339,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -4380,7 +4384,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -4425,7 +4429,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -4470,7 +4474,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -4515,7 +4519,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -4560,7 +4564,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -4610,7 +4614,7 @@
       },
       "rationale": "Vendor grammar outside ordinary selected production.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -4818,7 +4822,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -4863,7 +4867,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     },
@@ -4998,7 +5002,7 @@
       },
       "rationale": "Unknown outer at-rule.",
       "sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
         "crates/surgeist-css/src/parser/fragments.rs:534"
       ]
     }

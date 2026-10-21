@@ -3,7 +3,7 @@
 //! still legal in general-enclosed <any-value>, so this is interpretation rather
 //! than support evaluation or blanket invalidation.
 //! https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#at-supports
-//! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value
 //! Import clauses are optional, and the complete absent-supports derivation may
 //! interpret the whole supports(...) function as an opaque media operand.
 //! https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/#at-import

@@ -400,7 +400,7 @@ fn nested_structural_keyframe_declaration_loss_retains_empty_authored_parents() 
 }
 
 #[test]
-fn nested_structural_keyframes_drop_malformed_and_repeated_balanced_blocks_only() {
+fn nested_structural_keyframes_drop_nested_children_and_invalid_blocks_only() {
     let malformed = "25% { opacity: .25; @media fn(a, b) { width: 1px; } height: 2px; }";
     let invalid_selector = "fn(a, b) { opacity: .5; }";
     let source = format!(
@@ -411,23 +411,27 @@ fn nested_structural_keyframes_drop_malformed_and_repeated_balanced_blocks_only(
     let [CssRule::Keyframes(keyframes)] = report.syntax().rules() else {
         panic!("expected representable keyframes after dropping malformed blocks");
     };
-    assert_eq!(keyframes.blocks().len(), 2);
+    // Syntax 3 (2026-10-01) §5.5.5 and §7.1: the nested at-rule is invalid in
+    // the keyframe's `<declaration-list>` and is dropped alone, so the 25%
+    // keyframe keeps the declarations around it.
+    assert_eq!(keyframes.blocks().len(), 3);
     assert!(matches!(
         keyframes.blocks()[0].selectors().selectors(),
         [CssKeyframeSelector::From]
     ));
+    assert_eq!(keyframes.blocks()[1].declarations().len(), 2);
     assert!(matches!(
-        keyframes.blocks()[1].selectors().selectors(),
+        keyframes.blocks()[2].selectors().selectors(),
         [CssKeyframeSelector::To]
     ));
     assert_eq!(report.diagnostics().len(), 2);
     assert_drop(
         &source,
         &report.diagnostics()[0],
-        malformed,
+        "@media fn(a, b) { width: 1px; }",
         0,
         CssErrorCode::InvalidAtRulePlacement,
-        CssRecoveryAction::DropKeyframeBlock,
+        CssRecoveryAction::DropAtRule,
         source.find("@media").unwrap(),
     );
     let ErrorKind::InvalidAtRulePlacement(detail) = report.diagnostics()[0].error().kind() else {

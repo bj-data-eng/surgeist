@@ -1,7 +1,7 @@
 //! Counter Styles 3 (2021-07-27) §3: decoded counter-style names, predefined
 //! identity, and the six rule-definition exclusions. Section 3.8 defines
 //! identifier symbols through Values 4 (2024-03-12) §4.2 `<custom-ident>`.
-//! CSS Syntax 3 (2021-12-24) §4.3.9 and §4.3.11 establish that valid escapes
+//! CSS Syntax 3 (2026-10-01) §4.3.9 and §4.3.12 establish that valid escapes
 //! contribute decoded code points to one identifier token.
 
 use crate::css::support::descriptor_phases;

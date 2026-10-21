@@ -1,13 +1,14 @@
 //! Numeric token boundaries through the public checked component interface.
 //!
-//! Independent expectations: CSS Syntax 3 CRD 2021-12-24 §§4.3.3,
-//! 4.3.10, 4.3.12 and 4.3.13. Failed fraction/exponent lookahead leaves the
+//! Independent expectations: CSS Syntax 3 CRD 2026-10-01 §§4.3.3,
+//! 4.3.10 and 4.3.13. Failed fraction/exponent lookahead leaves the
 //! following code points pending; exponent signs belong to successful numbers.
 //! The public checked token contract preserves spelling, lexical flags and
 //! genuine consumed origins. Simple decimal value goldens below are calculated
-//! directly from s * (i + f * 10^-d) * 10^(t*e), without host-float oracles.
+//! directly from s * (i + f * 10^-d) * 10^(t*e), the base-10 value §4.3.13
+//! interprets from the number and exponent parts, without host-float oracles.
 //! Existing huge-exponent/zero and exact-arithmetic suites remain separate.
-//! <https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/>
+//! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/>
 
 use std::ops::Range;
 

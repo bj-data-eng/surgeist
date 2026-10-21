@@ -1,9 +1,9 @@
-//! Dated CSS Syntax 3 (2021-12-24) section 4.3.1's fallback consumes one
+//! Dated CSS Syntax 3 (2026-10-01) section 4.3.1's fallback consumes one
 //! delimiter code point. Thus ~ =, | =, ^ =, $ = and * = are pairs of Delims,
 //! even when their authored code points are adjacent. The public component
 //! contract preserves consumed spelling, origins and exact-one construction.
 //! Selectors 4's attribute matcher semantics remain a separate grammar.
-//! <https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-token>
+//! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-token>
 
 use std::ops::Range;
 

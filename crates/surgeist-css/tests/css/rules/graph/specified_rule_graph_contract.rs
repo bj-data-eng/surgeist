@@ -1,5 +1,5 @@
 //! Authored rule composition, cumulative resource and immutable graph contracts.
-//! CSS Syntax 3 §9.3/10 and the specified-output provider contracts.
+//! CSS Syntax 3 §8.3/9 and the specified-output provider contracts.
 use std::error::Error;
 use surgeist_css::{
     CssMediaRule, CssNamespaceContext, CssRecoveryAction, CssRule, CssSheet,

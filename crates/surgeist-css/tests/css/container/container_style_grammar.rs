@@ -1,7 +1,7 @@
 //! Authored style-query recognition follows Conditional Rules 5 (2025-10-30)
 //! sections 5.4 and 6.2. Values remain syntax, without computed-value evaluation.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#style-container
-//! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#typedef-declaration-value
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#typedef-declaration-value
 use surgeist_css::*;
 
 fn checked(source: &str) -> CssContainerCondition {
@@ -119,7 +119,7 @@ fn style_ranges_preserve_broad_operands_and_both_chain_directions() {
 
 #[test]
 fn explicit_declaration_value_production_counts_whitespace_but_not_comments() {
-    // Syntax 3 sections 5.3.1 and 8.2 match component tokens directly here;
+    // Syntax 3 sections 5.4.1 and 7.2 match component tokens directly here;
     // consume-a-declaration's whitespace trimming is not this production.
     for source in ["style(--x: )", "style(--x:/**/ )", "style(1px< )"] {
         assert_style(source);

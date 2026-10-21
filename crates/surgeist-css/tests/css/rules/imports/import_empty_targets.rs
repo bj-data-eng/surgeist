@@ -1,6 +1,6 @@
 //! Cascade 5 #at-import admits string/URL targets independently of loading.
 //! Values 4 (2024-03-12) #urls and #empty-urls recognize empty URL values;
-//! Syntax 3 (2021-12-24) #consume-url-token distinguishes them from bad URLs.
+//! Syntax 3 (2026-10-01) #consume-url-token distinguishes them from bad URLs.
 use surgeist_css::{
     CssImportLayer, CssImportRule, CssImportString, CssImportTarget, CssImportUrl, CssMediaQuery,
     CssMediaType, CssNamespaceContext, CssRecoveryAction, CssRule, CssSerializedOrigin,

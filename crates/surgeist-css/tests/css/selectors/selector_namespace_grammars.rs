@@ -349,7 +349,7 @@ fn malformed_late_and_nested_namespace_rules_drop_one_at_rule_and_keep_siblings(
 
 #[test]
 fn namespace_statement_at_eof_retains_payload_and_reports_its_missing_terminator() {
-    // Syntax 3 section 5.4.2 returns an admitted at-rule plus its EOF fault.
+    // Syntax 3 section 5.5.2 returns an admitted at-rule plus its EOF fault.
     let source = "@namespace svg \"urn:test\"";
     let missing_semicolon = parse_sheet(source);
     assert!(!missing_semicolon.is_clean());

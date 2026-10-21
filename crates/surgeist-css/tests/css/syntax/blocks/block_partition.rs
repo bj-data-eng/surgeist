@@ -1,6 +1,7 @@
-//! Block partition follows the selected immutable Syntax 3 consume-block-contents
+//! Block partition follows the selected Syntax 3 (2026-10-01) consume-block-contents
 //! and consume-qualified-rule algorithms (including the custom-property exception):
-//! https://github.com/w3c/csswg-drafts/blob/f971255463f01fb740e2a3a7ecfe83e319cddab9/css-syntax-3/Overview.bs
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule
 //! Terminal runs are retained under the catalog's narrow terminal-retention
 //! reconciliation with CSS Nesting 1 sections 3.3 and 5:
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/

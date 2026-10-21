@@ -1,17 +1,16 @@
 use surgeist_css::{CssErrorCode, CssRecoveryAction, CssRule, parse_sheet};
 
-// Admission and numeric expectations: pinned CSS Syntax 3 (2021-12-24), §7.1.
+// Admission and numeric expectations: selected CSS Syntax 3 (2026-10-01),
+// §§4.3.14 and 5.5.11. Comments may surround a range and its commas.
 #[test]
-fn unicode_ranges_preserve_token_representations_across_comments() {
+fn unicode_ranges_preserve_token_text_between_surrounding_comments() {
     for (value, expected) in [
         ("u+0", vec![(0, 0)]),
-        ("u/**/+0", vec![(0, 0)]),
-        ("u+/**/a", vec![(10, 10)]),
-        ("u+1/**/2", vec![(0x12, 0x12)]),
-        ("u+1/**/-2", vec![(1, 2)]),
+        ("u+a", vec![(10, 10)]),
+        ("u+12", vec![(0x12, 0x12)]),
+        ("u+1-2", vec![(1, 2)]),
         ("u+12e-130", vec![(0x12e, 0x130)]),
-        (r"\75+0", vec![(0, 0)]),
-        (r"\75 +0", vec![(0, 0)]),
+        ("/**/u+0/**/", vec![(0, 0)]),
         ("u+1 /*tail*/ , /*head*/ u+2", vec![(1, 1), (2, 2)]),
         ("u+?", vec![(0, 15)]),
         ("u+10????", vec![(0x100000, 0x10ffff)]),
@@ -43,21 +42,25 @@ fn unicode_ranges_preserve_token_representations_across_comments() {
 #[test]
 fn invalid_unicode_ranges_point_to_the_responsible_original_token() {
     for (value, responsible, spelling) in [
-        ("u+0/**/-ff", "-ff", "-ff"), // Number then Ident is not an admitted pair.
-        ("u+1/**/-/**/2", "-/**/2", "-"), // Number then Delim is not an admitted pair.
-        ("u+ /**/?", " /**/?", " "),  // Actual whitespace, not a comment.
-        (r"u+/**/\61", r"\61", r"\61"), // Preserve original escaped representation.
-        ("u+/**/😀", "😀", "😀"),
+        // A comment ends the unicode-range token, like whitespace (2026 §4.3.1).
+        ("u+0/**/-ff", "/**/-ff", "/**/"),
+        ("u+1/**/-/**/2", "/**/-/**/2", "/**/"),
+        ("u/**/+0", "/**/+0", "/**/"),
+        ("u+1/**/2", "/**/2", "/**/"),
+        ("u+ /**/?", " /**/?", " "),
+        (r"u+\61", r"\61", r"\61"), // Preserve original escaped representation.
+        (r"\75+0", r"\75+0", r"\75"), // Only a literal U or u starts a range.
+        ("u+😀", "😀", "😀"),
         ("u+12-", "-", "-"), // A lone hyphen is a Delim after Number(+12).
         ("u+12-/**/", "-", "-"),
         ("u+0g", "+0g", "+0g"), // Bad character within the original Dimension token.
         ("u+110000", "+110000", "+110000"),
-        ("u+0/**/-110000", "-110000", "-110000"),
+        ("u+0-110000", "-110000", "-110000"),
         ("u+ff-0", "ff-0", "ff-0"),
-        ("u+1/**/-0", "-0", "-0"),
+        ("u+1-0", "-0", "-0"),
         ("u+??????", "?", "?"), // Wildcard endpoint domain overflow.
         ("u+1234567", "+1234567", "+1234567"),
-        ("u+0, /*😀*/ u+/**/g", "g", "g"),
+        ("u+0, /*😀*/ u+g", "g", "g"),
     ] {
         let source = format!(
             "/*😀*/\r\n@font-face{{unicode-range:{value};font-display:swap}} .after{{color:red}}"
@@ -149,7 +152,7 @@ fn incomplete_unicode_ranges_keep_their_genuine_end_position() {
 
 #[test]
 fn rejected_unicode_range_occurrences_preserve_ordered_valid_occurrences() {
-    let source = "@font-face{unicode-range:u+0;unicode-range:u+1,u+g;unicode-range:u/**/+2;font-display:swap}";
+    let source = "@font-face{unicode-range:u+0;unicode-range:u+1,u+g;unicode-range:/**/u+2/**/;font-display:swap}";
     let report = parse_sheet(source);
     let [diagnostic] = report.diagnostics() else {
         panic!("{:?}", report.diagnostics());

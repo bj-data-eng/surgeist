@@ -106,6 +106,8 @@ fn component_boolean_selection_and_empty_media_body_remain_distinct() {
         ("--x FALSE", "@custom-media --x false;"),
         ("--x", "@custom-media --x;"),
         ("--x true, false", "@custom-media --x true, false;"),
+        // Syntax 3 (2026-10-01) §5.4.10: a final comma adds no member.
+        ("--x screen,", "@custom-media --x screen;"),
     ] {
         let rule = CssCustomMediaRule::try_from_components(components(input)).unwrap();
         assert_eq!(rule.serialize().unwrap().as_css(), expected);
@@ -114,7 +116,7 @@ fn component_boolean_selection_and_empty_media_body_remain_distinct() {
         CssCustomMediaRule::try_from_components(components("")),
         Err(CssCustomMediaConstructionError::InvalidPrelude { .. })
     ));
-    for input in ["--x ,screen", "--x screen,", "--x (--x: 1)"] {
+    for input in ["--x ,screen", "--x screen, ", "--x (--x: 1)"] {
         assert!(
             matches!(
                 CssCustomMediaRule::try_from_components(components(input)),

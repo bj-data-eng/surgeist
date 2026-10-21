@@ -2,7 +2,7 @@ use surgeist_css::{CssKnownProperty, CssRecoveryAction, CssRule, ErrorKind, pars
 
 // The public nesting-limit contract identifies the enclosing grammar production.
 // CSS Syntax token identity is case-insensitive for at-rule names, including
-// escaped spellings: https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#at-rules
+// escaped spellings: https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#at-rules
 // EOF recovery must retain that identity and the original source coordinates.
 fn assert_eof_limit(at_keyword: &str, condition: &str, production: &str) {
     let prelude = format!("{at_keyword} ");

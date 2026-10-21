@@ -10,7 +10,7 @@
 
 Eight redundant plain-text extractions were removed from the public collection after whole-document comparison with their exact HTML editions. Their structured Markdown copies remain below; no distinct specification edition was removed. Each listed SHA-256 identifies the retained source snapshot for that row.
 
-Six pinned Bikeshed sources are rendered as readable Markdown using an offline compiler. Their SHA-256 values still identify the original source bytes. Generated supporting matter and the compiler support-data version are disclosed in the [conversion report](CONVERSION-REPORT.md#pinned-bikeshed-renderings); these are not official publications or captured historical HTML renderings.
+Five pinned Bikeshed sources are rendered as readable Markdown using an offline compiler. Their SHA-256 values still identify the original source bytes. Generated supporting matter and the compiler support-data version are disclosed in the [conversion report](CONVERSION-REPORT.md#pinned-bikeshed-renderings); these are not official publications or captured historical HTML renderings.
 
 | Source | Exact snapshot | Source SHA-256 | Representation |
 |---|---|---|---|
@@ -71,7 +71,7 @@ Six pinned Bikeshed sources are rendered as readable Markdown using an offline c
 | [CSS Speech Module Level 1](css-speech-1--CRD-css-speech-1-20230214--bb7b59c92564.md) | [upstream](https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/) | bb7b59c925640f089f19196a9d72f0c381bdcb10cec8ec411ba99cb9bc9b5c9a | readable HTML conversion |
 | [CSS Style Attributes](css-style-attr--REC-css-style-attr-20131107--711c9a43978f.md) | [upstream](https://www.w3.org/TR/2013/REC-css-style-attr-20131107/) | 711c9a43978ff186225d21d7a7bff580037bc032ba70a7ba33c4fab16e396746 | readable HTML conversion |
 | [CSS Syntax Module Level 3](css-syntax-3--CRD-css-syntax-3-20211224--413b27acb4e1.md) | [upstream](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/) | 413b27acb4e16721d28b487456359ecbcecba472c4310bd2f6a4939ad393738b | readable HTML conversion |
-| [CSS Syntax Module Level 3](css-syntax-3-block-contents-definition--f971255463f01fb740e2a3a7ecfe83e319cddab9--Overview.bs--b3b69f509779.md) | [upstream](https://raw.githubusercontent.com/w3c/csswg-drafts/f971255463f01fb740e2a3a7ecfe83e319cddab9/css-syntax-3/Overview.bs) | b3b69f509779b1af89d8f299e2b250f27f17896c2dd3d486665117073e6a32cf | readable pinned Bikeshed rendering |
+| [CSS Syntax Module Level 3](css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md) | [upstream](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/) | 8dc3adcc2b4e8fd8fa73c0be85cec67f006874ab42010cdf4528af4aa83f2878 | readable HTML conversion |
 | [CSS Text Module Level 3](css-text-3--CRD-css-text-3-20260814--17c26f1b4145.md) | [upstream](https://www.w3.org/TR/2026/CRD-css-text-3-20260814/) | 17c26f1b41455947f106dac81736944b12da328ee4892c7c5b601f5b65ced55a | readable HTML conversion |
 | [CSS Text Module Level 4](css-text-4--WD-css-text-4-20260814--106c5cd086ab.md) | [upstream](https://www.w3.org/TR/2026/WD-css-text-4-20260814/) | 106c5cd086ab23b0edea5aa3ff6876b61cc623154f728aa269b74f0527dba19d | readable HTML conversion |
 | [CSS Text Module Level 3](css-text-4-character-alignment-grammar--WD-css3-text-20121113--cc1cba0eebc9.md) | [upstream](https://www.w3.org/TR/2012/WD-css3-text-20121113/) | cc1cba0eebc9b4eed5b292763b75a57c142af82797ca767a0ac3944220fb6bef | readable HTML conversion |

@@ -411,9 +411,9 @@ struct GroupFixture {
 }
 
 // Conditional 3 section 6 and Cascade 6 section 2.5.2 accept a <rule-list>;
-// Syntax 3 section 5.4.1 permits that list to be empty. Conditional 4 section 2
+// Syntax 3 section 5.5.1 permits that list to be empty. Conditional 4 section 2
 // supplies selector() in the two supports cases. These are the catalog's pinned
-// 2024-08-15, 2024-09-06, 2021-12-24, and 2025-09-04 publications, respectively.
+// 2024-08-15, 2024-09-06, 2026-10-01, and 2025-09-04 publications, respectively.
 // The case labels, inputs, and child counts below come from the independently
 // imported CSSTree fixtures, not from the Surgeist parser or captured oracle.
 const GROUP_FIXTURES: [GroupFixture; 2] = [

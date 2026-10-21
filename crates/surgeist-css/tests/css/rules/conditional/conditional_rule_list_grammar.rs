@@ -14,7 +14,7 @@
 use surgeist_css::{
     CssComponentValue, CssComponentValueRef, CssErrorCode, CssImportance, CssKnownProperty,
     CssKnownPropertyValueRef, CssMarginValue, CssPagePseudo, CssRecoveryAction, CssRule,
-    CssSelector, CssValueTokenRef, parse_sheet,
+    CssSelector, CssValueTokenRef, parse_sheet, validate_sheet,
 };
 
 fn assert_tag(rule: &CssRule, expected: &str) {
@@ -258,6 +258,37 @@ fn custom_property_shaped_rule_consumes_the_remnants_of_a_bad_declaration() {
         kept.selectors().selectors()[0].selector(),
         &CssSelector::Class("kept".into())
     );
+}
+
+#[test]
+fn top_level_custom_property_shaped_rule_is_dropped_even_as_a_valid_selector() {
+    // Syntax 3 (2026-10-01) §5.5.3 checks the first two non-whitespace prelude
+    // values before any selector grammar: `--foo:hover` and `--foo :hover`
+    // would be valid selectors, but a top-level rule consumes its block and
+    // returns nothing.
+    for dropped in ["--foo:hover{color:red}", "--foo :hover{color:red}"] {
+        let source = format!("{dropped}.kept{{color:blue}}");
+        let report = parse_sheet(&source);
+        let [CssRule::Style(kept)] = report.syntax().rules() else {
+            panic!("{source}: {report:?}")
+        };
+        assert_eq!(
+            kept.selectors().selectors()[0].selector(),
+            &CssSelector::Class("kept".into())
+        );
+        assert_eq!(kept.declarations().len(), 1);
+        let [diagnostic] = report.diagnostics() else {
+            panic!("{source}: {report:?}")
+        };
+        assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
+        assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
+        assert_eq!(diagnostic.span().end().byte_offset().value(), dropped.len());
+        assert!(validate_sheet(&source).is_err());
+    }
+    // An ordinary ident prelude remains a style rule.
+    let report = parse_sheet("foo:hover{color:red}");
+    assert!(report.is_clean(), "{report:?}");
+    assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
 }
 #[test]
 fn style_body_semicolons_remain_valid_declaration_separators() {

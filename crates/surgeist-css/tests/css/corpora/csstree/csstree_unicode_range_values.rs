@@ -1,5 +1,5 @@
-//! Original-token Unicode-range expectations from pinned Syntax 3 section 7.1.
-//! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#urange-syntax
+//! Unicode-range expectations from selected Syntax 3 (2026-10-01) §§4.3.14 and 5.5.11.
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-unicode-range-value
 use surgeist_css::{
     CssFontFaceDescriptorKind, CssFontFaceDescriptorValue, CssRecoveryAction, ErrorKind,
     parse_font_face_descriptor_value,

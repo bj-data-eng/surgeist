@@ -1,9 +1,9 @@
 //! Independent expectations: Conditional5 2025-10-30 sections 5.1–5.3;
-//! Values4 2024-03-12 sections 2 and 4.1–4.2; Syntax3 2021-12-24 section 4;
+//! Values4 2024-03-12 sections 2 and 4.1–4.2; Syntax3 2026-10-01 section 4;
 //! Cascade5 2022-01-13 sections 3 and 7.3; Variables1 2022-06-16 section 3.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-type
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#custom-idents
-//! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#tokenization
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#tokenization
 //! https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/#shorthand
 //! https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#variables-in-shorthands
 //! No new type/variant assumptions, containment execution, or variable resolution.

@@ -84,12 +84,12 @@
         ]
       },
       "expected_inner_members_when_recovered": null,
-      "rationale": "Malformed brace block includes unmatched closing parenthesis. Inference from mandatory <any-value>? syntax gate: unmatched ) inside the unclosed { block fails CSS Syntax §8.2 before forgiving member filtering. At the audit basis, implementation only parsed/filtered members; retaining the outer pseudo violated this grammar. No RetainWithImplicitClosure when rejecting outer syntax.",
+      "rationale": "Malformed brace block includes unmatched closing parenthesis. Inference from mandatory <any-value>? syntax gate: unmatched ) inside the unclosed { block fails CSS Syntax (2026-10-01) §7.2 before forgiving member filtering. At the audit basis, implementation only parsed/filtered members; retaining the outer pseudo violated this grammar. No RetainWithImplicitClosure when rejecting outer syntax.",
       "sources": [
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#matches",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-a-simple-block"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-a-simple-block"
       ],
       "diagnostic_basis": "planned_adjudicated_envelope_rejection"
     },
@@ -153,20 +153,10 @@
       "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/is.json",
       "expectation_sha256": "b83c826039585f0307c96bc08e776264bbb121403fab2edeae5e8e48b7f90f4e",
       "present": true,
-      "clean": false,
-      "diagnostics": [
-        {
-          "code": "invalid_selector",
-          "action": "drop_selector_list_item",
-          "byte_offset": 7,
-          "span_start": 6,
-          "span_end": 7,
-          "payload_relation": "intersects",
-          "multiplicity": 1
-        }
-      ],
+      "clean": true,
+      "diagnostics": [],
       "expected_class": {
-        "kind": "recovered",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
@@ -174,22 +164,17 @@
           "predicate": {
             "relation": "nonempty"
           }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_selector",
-            "action": "drop_selector_list_item",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       },
       "expected_inner_members_when_recovered": [
         ".a"
       ],
-      "rationale": "Empty trailing list member. Forgiving filtering retains the outer pseudo, even when its inner list becomes empty.",
+      "rationale": "Final comma followed by no token. Selectors 4 parses the forgiving list with Syntax 3 \"parse a list\", whose comma-separated list (2026-10-01 §5.4.10) stops once its input is empty, so no empty member exists to drop.",
       "sources": [
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#matches",
-        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector"
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-comma-list",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-comma-separated-list-of-component-values"
       ],
       "diagnostic_basis": "unchanged_source_contract"
     },
@@ -213,15 +198,6 @@
           "span_end": 8,
           "payload_relation": "intersects",
           "multiplicity": 1
-        },
-        {
-          "code": "invalid_selector",
-          "action": "drop_selector_list_item",
-          "byte_offset": 8,
-          "span_start": 7,
-          "span_end": 8,
-          "payload_relation": "intersects",
-          "multiplicity": 1
         }
       ],
       "expected_class": {
@@ -239,21 +215,18 @@
             "code": "invalid_selector",
             "action": "drop_selector_list_item",
             "payload_relation": "intersects"
-          },
-          {
-            "code": "invalid_selector",
-            "action": "drop_selector_list_item",
-            "payload_relation": "intersects"
           }
         ]
       },
       "expected_inner_members_when_recovered": [
         ".a"
       ],
-      "rationale": "Two empty list members. Forgiving filtering retains the outer pseudo, even when its inner list becomes empty.",
+      "rationale": "One empty member between the two commas. The final comma is followed by no token, so Syntax 3 (2026-10-01 §5.4.10) appends no further member. Forgiving filtering retains the outer pseudo, even when its inner list becomes empty.",
       "sources": [
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#matches",
-        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector"
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-comma-list",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-comma-separated-list-of-component-values"
       ],
       "diagnostic_basis": "unchanged_source_contract"
     },
@@ -298,12 +271,12 @@
         ]
       },
       "expected_inner_members_when_recovered": null,
-      "rationale": "Second member contains malformed brace block with unmatched closing parenthesis. Inference from mandatory <any-value>? syntax gate: unmatched ) inside the unclosed { block fails CSS Syntax §8.2 before forgiving member filtering. At the audit basis, implementation only parsed/filtered members; retaining the outer pseudo violated this grammar. No RetainWithImplicitClosure when rejecting outer syntax.",
+      "rationale": "Second member contains malformed brace block with unmatched closing parenthesis. Inference from mandatory <any-value>? syntax gate: unmatched ) inside the unclosed { block fails CSS Syntax (2026-10-01) §7.2 before forgiving member filtering. At the audit basis, implementation only parsed/filtered members; retaining the outer pseudo violated this grammar. No RetainWithImplicitClosure when rejecting outer syntax.",
       "sources": [
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#matches",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-a-simple-block"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-a-simple-block"
       ],
       "diagnostic_basis": "planned_adjudicated_envelope_rejection"
     },
@@ -579,12 +552,12 @@
         ]
       },
       "expected_inner_members_when_recovered": null,
-      "rationale": "Malformed brace block includes unmatched closing parenthesis. Inference from mandatory <any-value>? syntax gate: unmatched ) inside the unclosed { block fails CSS Syntax §8.2 before forgiving member filtering. At the audit basis, implementation only parsed/filtered members; retaining the outer pseudo violated this grammar. No RetainWithImplicitClosure when rejecting outer syntax.",
+      "rationale": "Malformed brace block includes unmatched closing parenthesis. Inference from mandatory <any-value>? syntax gate: unmatched ) inside the unclosed { block fails CSS Syntax (2026-10-01) §7.2 before forgiving member filtering. At the audit basis, implementation only parsed/filtered members; retaining the outer pseudo violated this grammar. No RetainWithImplicitClosure when rejecting outer syntax.",
       "sources": [
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#zero-matches",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-a-simple-block"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-a-simple-block"
       ],
       "diagnostic_basis": "planned_adjudicated_envelope_rejection"
     },
@@ -648,20 +621,10 @@
       "expectation_path": "corpus/csstree/expectations/selector/functional-pseudo/where.json",
       "expectation_sha256": "a4eefdd9e655c9290360b998c455c785f1f2f42fc3712aeb40cdf4a270924bd0",
       "present": true,
-      "clean": false,
-      "diagnostics": [
-        {
-          "code": "invalid_selector",
-          "action": "drop_selector_list_item",
-          "byte_offset": 10,
-          "span_start": 9,
-          "span_end": 10,
-          "payload_relation": "intersects",
-          "multiplicity": 1
-        }
-      ],
+      "clean": true,
+      "diagnostics": [],
       "expected_class": {
-        "kind": "recovered",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "selector"
@@ -669,22 +632,17 @@
           "predicate": {
             "relation": "nonempty"
           }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_selector",
-            "action": "drop_selector_list_item",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       },
       "expected_inner_members_when_recovered": [
         ".a"
       ],
-      "rationale": "Empty trailing list member. Forgiving filtering retains the outer pseudo, even when its inner list becomes empty.",
+      "rationale": "Final comma followed by no token. Selectors 4 parses the forgiving list with Syntax 3 \"parse a list\", whose comma-separated list (2026-10-01 §5.4.10) stops once its input is empty, so no empty member exists to drop.",
       "sources": [
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#zero-matches",
-        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector"
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-comma-list",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-comma-separated-list-of-component-values"
       ],
       "diagnostic_basis": "unchanged_source_contract"
     },
@@ -708,15 +666,6 @@
           "span_end": 11,
           "payload_relation": "intersects",
           "multiplicity": 1
-        },
-        {
-          "code": "invalid_selector",
-          "action": "drop_selector_list_item",
-          "byte_offset": 11,
-          "span_start": 10,
-          "span_end": 11,
-          "payload_relation": "intersects",
-          "multiplicity": 1
         }
       ],
       "expected_class": {
@@ -734,21 +683,18 @@
             "code": "invalid_selector",
             "action": "drop_selector_list_item",
             "payload_relation": "intersects"
-          },
-          {
-            "code": "invalid_selector",
-            "action": "drop_selector_list_item",
-            "payload_relation": "intersects"
           }
         ]
       },
       "expected_inner_members_when_recovered": [
         ".a"
       ],
-      "rationale": "Two empty list members. Forgiving filtering retains the outer pseudo, even when its inner list becomes empty.",
+      "rationale": "One empty member between the two commas. The final comma is followed by no token, so Syntax 3 (2026-10-01 §5.4.10) appends no further member. Forgiving filtering retains the outer pseudo, even when its inner list becomes empty.",
       "sources": [
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#zero-matches",
-        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector"
+        "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-comma-list",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-comma-separated-list-of-component-values"
       ],
       "diagnostic_basis": "unchanged_source_contract"
     },
@@ -793,12 +739,12 @@
         ]
       },
       "expected_inner_members_when_recovered": null,
-      "rationale": "Second member contains malformed brace block with unmatched closing parenthesis. Inference from mandatory <any-value>? syntax gate: unmatched ) inside the unclosed { block fails CSS Syntax §8.2 before forgiving member filtering. At the audit basis, implementation only parsed/filtered members; retaining the outer pseudo violated this grammar. No RetainWithImplicitClosure when rejecting outer syntax.",
+      "rationale": "Second member contains malformed brace block with unmatched closing parenthesis. Inference from mandatory <any-value>? syntax gate: unmatched ) inside the unclosed { block fails CSS Syntax (2026-10-01) §7.2 before forgiving member filtering. At the audit basis, implementation only parsed/filtered members; retaining the outer pseudo violated this grammar. No RetainWithImplicitClosure when rejecting outer syntax.",
       "sources": [
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#zero-matches",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-a-simple-block"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-a-simple-block"
       ],
       "diagnostic_basis": "planned_adjudicated_envelope_rejection"
     },

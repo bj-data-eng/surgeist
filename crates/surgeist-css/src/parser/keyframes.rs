@@ -10,9 +10,8 @@ use super::values::{
     parse_numeric_function,
 };
 use super::{
-    DeclarationMode, block_item_diagnostic, consume_failed_rule_block,
-    is_declaration_recovery_unit, parse_declaration_core, structural_recovery_production,
-    structural_rule_diagnostic,
+    DeclarationMode, consume_failed_rule_block, is_declaration_recovery_unit,
+    parse_declaration_core, structural_recovery_production, structural_rule_diagnostic,
 };
 use crate::error::{CssFeatureId, Error, basic, invalid_at_rule_placement, unexpected_at};
 use crate::syntax::*;
@@ -138,34 +137,53 @@ pub(super) fn parse_declarations<'i>(
     let mut declarations = Vec::new();
     let mut declaration_parser = KeyframeDeclarationParser { source, recovery };
     let mut items = RuleBodyParser::new(input, &mut declaration_parser);
+    let mut previous_end = items.input.position().byte_index();
     loop {
         let progress = RecoveryProgress::record(items.input);
         let Some(item) = items.next() else {
             break;
         };
-        let position = items.input.position().byte_index();
-        let failed_at_block =
-            item.is_err() && position > 0 && source.as_bytes().get(position - 1) == Some(&b'{');
+        // A failed nested rule leaves its block pending; consume it as part
+        // of the dropped unit so the recovery span covers the whole unit.
+        let failed_block_error = item.as_ref().err().and_then(|_| {
+            consume_failed_rule_block(
+                source,
+                items.input,
+                true,
+                &items.parser.recovery,
+                "baseline.rule.keyframes",
+            )
+            .1
+        });
         let retained = item.is_ok();
         let progress_outcome = progress.finish(items.input, retained);
         let unit_end = items.input.position().byte_index();
         match item {
             Ok(declaration) => declarations.push(declaration),
-            Err((error, failed_unit))
-                if is_declaration_recovery_unit(failed_unit) && !failed_at_block =>
-            {
-                if let Some(diagnostic) = block_item_diagnostic(
+            // Syntax 3 (2026 CRD) §7.1: qualified rules and at-rules are
+            // invalid in a keyframe's `<declaration-list>` and are dropped one
+            // by one; the keyframe block itself survives.
+            Err((error, failed_unit)) => {
+                let action = if is_declaration_recovery_unit(failed_unit) {
+                    crate::CssRecoveryAction::DropDeclaration
+                } else if failed_unit.trim_start().starts_with('@') {
+                    crate::CssRecoveryAction::DropAtRule
+                } else {
+                    crate::CssRecoveryAction::DropQualifiedRule
+                };
+                if let Some(diagnostic) = structural_rule_diagnostic(
                     source,
-                    error,
+                    failed_block_error.unwrap_or(error),
                     failed_unit,
+                    previous_end,
                     unit_end,
-                    crate::CssRecoveryAction::DropDeclaration,
+                    action,
                 ) {
                     diagnostics.push(diagnostic);
                 }
             }
-            Err((error, _)) => return Err(error),
         }
+        previous_end = unit_end;
         if progress_outcome == RecoveryLoopOutcome::Terminated {
             break;
         }
@@ -338,8 +356,10 @@ impl<'i> RuleBodyItemParser<'i, CssKeyframeDeclaration, Error> for KeyframeDecla
         true
     }
 
+    // Syntax 3 (2026 CRD) §5.5.5 reconsumes a failed declaration, and any
+    // other non-at-rule unit, as a nested qualified rule with a `;` stop token.
     fn parse_qualified(&self) -> bool {
-        false
+        true
     }
 }
 

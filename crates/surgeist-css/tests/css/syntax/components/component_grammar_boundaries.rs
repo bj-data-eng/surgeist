@@ -1,5 +1,5 @@
 //! Caller grammar boundaries through existing public parsing interfaces.
-//! Independent authority: Syntax 3 CRD20211224 §§5.3.1–2, 5.4.7–9, 8, 8.2;
+//! Independent authority: Syntax 3 CRD20261001 §§5.4.1–2, 5.4.10, 5.5.7–10, 7, 7.2;
 //! selected MQ5 WD20260219 §3, Variables CR20220616 §2,
 //! Sizing3 WD20260904 §3.1.1 and Transforms1 CR20190214 §9.1.
 //! This is not a public raw-error stream or generic grammar DSL test.
@@ -121,6 +121,8 @@ fn whole_width_production_matches_complete_input_and_rejects_a_valid_prefix_with
 
 #[test]
 fn media_whitespace_only_has_no_results_but_empty_comma_segments_have_individual_failures() {
+    // Syntax 3 (2026-10-01) §5.4.10 appends a member only while input remains,
+    // so a final comma followed by no token adds no member.
     for source in ["", " \t\r\n", " /**/ "] {
         let report = parse_media_query_list(source);
         assert!(report.is_clean(), "{source:?}: {report:?}");
@@ -133,14 +135,13 @@ fn media_whitespace_only_has_no_results_but_empty_comma_segments_have_individual
         CssMediaQuery::Typed(screen),
         CssMediaQuery::Never(middle),
         CssMediaQuery::Typed(print),
-        CssMediaQuery::Never(last),
     ] = report.syntax().queries()
     else {
-        panic!("leading, consecutive and trailing empty members retain failures in place")
+        panic!("leading and consecutive empty members retain failures in place")
     };
     assert_eq!(screen.media_type(), CssMediaType::Screen);
     assert_eq!(print.media_type(), CssMediaType::Print);
-    for (never, at) in [(first, 0), (middle, 8), (last, 15)] {
+    for (never, at) in [(first, 0), (middle, 8)] {
         let origin = parsed(never.origin());
         assert_eq!(origin.source().as_str(), source);
         assert_eq!(origin.span().start().byte_offset().value(), at);
@@ -152,7 +153,7 @@ fn media_whitespace_only_has_no_results_but_empty_comma_segments_have_individual
             .iter()
             .map(|d| d.action())
             .collect::<Vec<_>>(),
-        [CssRecoveryAction::ReplaceMediaQueryWithNever; 3]
+        [CssRecoveryAction::ReplaceMediaQueryWithNever; 2]
     );
     assert!(
         report
@@ -164,9 +165,9 @@ fn media_whitespace_only_has_no_results_but_empty_comma_segments_have_individual
     let comma = parse_media_query_list(",");
     assert!(matches!(
         comma.syntax().queries(),
-        [CssMediaQuery::Never(_), CssMediaQuery::Never(_)]
+        [CssMediaQuery::Never(_)]
     ));
-    assert_eq!(comma.diagnostics().len(), 2);
+    assert_eq!(comma.diagnostics().len(), 1);
 }
 
 #[test]

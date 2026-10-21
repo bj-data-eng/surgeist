@@ -87,10 +87,50 @@ recovery diagnostic. It does not rerun a grammar or test contextual usability.
 sequence through `diagnostics()`, `first()`, and `into_diagnostics()`. See the
 [report definitions](../src/report.rs) for their contracts.
 
+## CSS Syntax 3 edition differences
+
+The selected [CSS Syntax 3 edition](../../../references/SOURCE-EDITIONS.md#css-syntax-3-edition)
+is the [1 October 2026 Candidate Recommendation Draft](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md).
+This inventory compares it with the [24 December 2021 draft](../../../references/css-syntax-3--CRD-css-syntax-3-20211224--413b27acb4e1.md)
+for every normative difference that reaches this crate, read from both captured
+texts and the 2026 draft's
+[changes section](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#changes-CR-20211224). Each row states Surgeist's
+behavior and whether the move changed it.
+
+| Difference (2026 text) | Surgeist behavior | Outcome |
+| --- | --- | --- |
+| §3.3 input preprocessing adds only a note on surrogates from object-model strings. | CR, FF, CRLF and NUL filtering is unchanged. | Unchanged |
+| §4.2 restricts *non-ASCII ident code point* to the HTML custom-element ranges; for example U+0080–U+00B6, U+00A0, U+00D7, U+2000–U+200B, U+2028, U+E000–U+F8FF and U+FFFE no longer start or continue an ident sequence. | Identifiers still accept every code point at or above U+0080: `.a\u{a0}b`, `.\u{2603}` and a U+FFFE type selector remain valid. | Deferred, tracked separately: the crate's own lexical correction layer (`src/tokenization.rs`, `src/tokenization/name.rs`) can implement it, but every grammar consumes the pinned `cssparser` 0.37 identifier tokens, so splitting them at excluded code points is a non-trivial tokenizer change. |
+| §4 tokens carry a sign character, and §4.3.13 interprets the number and exponent parts directly; the 2021 *representation* and "convert a string to a number" are removed. | Numeric tokens keep their exact spelling and sign; values are equal. | Unchanged |
+| §6.2 renames `<an+b>` to `<a-n-plus-b>` and defines signed and signless integers by the sign character. | The same tokens are admitted and §9.1 serialization is unchanged. | Unchanged |
+| §§4.3.11, 4.3.14 and 5.5.11 replace the 2021 §7 `<urange>` token production: a `unicode-range` value is re-tokenized from its original text, where one contiguous token starts with a literal `U` or `u`. | A comment inside a range, or an escaped `u`, now makes the range invalid. Range endpoint validity remains the Fonts descriptor rule. | Behavior change |
+| §5.4.3 parse a stylesheet uses §5.5.1 consume a stylesheet's contents (no top-level flag); CDO/CDC are discarded. | Unchanged top-level dispatch. | Unchanged |
+| §5.5.3 at the top level: a prelude whose first two non-whitespace values are a `--` ident and a colon consumes its block and returns nothing. | `--foo:hover {}` was a valid type-plus-pseudo-class rule; it is now dropped with `DropQualifiedRule`. | Behavior change |
+| §5.5.4 and §5.5.5 consume every block as block contents; a failed declaration is reconsumed as a qualified rule with a `;` stop token, and §7.1 makes rules invalid in a `<declaration-list>`. | Rule-list bodies moved under #1328. Declaration-list bodies (`@font-face`, keyframe blocks, `@font-palette-values`, `@color-profile`, `@font-feature-values` and its blocks) now drop a nested rule as one unit and keep the declarations around it; `@font-face` and keyframe blocks are no longer dropped whole. | Behavior change |
+| §5.5.6 rejects a non-custom declaration whose value holds a top-level `{}` block beside other tokens, and §5.5.5 keeps interleaved declarations as nested declaration runs. | Already implemented through the block-contents definition. | Unchanged |
+| §5.4.10 parse a comma-separated list of component values appends a group only while input remains, so a final comma followed by no token adds no group. | Media query lists, forgiving selector lists and `@font-face` `src` lists no longer report an empty final member; `@media screen,{}` keeps one clean query. Checked import and custom-media construction agree. | Behavior change |
+| §5.4.4 parse a stylesheet's contents and §5.4.5 parse a block's contents replace "parse a list of rules" and "parse a list of declarations". | `parse_declaration_list_text` still implements the removed 2021 list-of-declarations entry point; `parse_declaration_block_contents` already implements block contents. | Deferred: reconciling or removing the historical public front is a public API decision for #1353. |
+| §5.4.6 parse a rule, §5.4.7 parse a declaration (no trailing-input check; value stops at `;`), §5.4.8 and §5.4.9. | `parse_rule`, `parse_declaration`, `parse_component_values` and related fragment fronts keep their whole-input contracts; the conformance registry excludes these entry points (`excluded.O-SYNTAX3.fragment-api`). | Unchanged (outside the claimed boundary) |
+| §5.4.5 is the intended parser for style attributes, where a root `}` ends the block. | `parse_style_attribute` follows the selected CSS Style Attributes recommendation and discards a stray closer; CSSOM declaration-block parsing already uses `parse_declaration_block_contents`. | Deferred: changing the style-attribute front is a public contract decision for #1353. |
+| §5.5.2, §5.5.9 and §5.5.10 no longer mark EOF inside an at-rule, block or function as a parse error. | EOF closures keep their `ImplicitClosure` recovery diagnostics, which are this crate's report contract rather than a claim about parse errors. | Unchanged (report contract) |
+| §7.1 no longer states that `!important` is invalid on descriptors; validity is left to the owning rule's prose. | Descriptor grammars still reject an importance annotation. | Unchanged (owning rules define no important descriptors) |
+| §9 reuses preserved comments only when comments were originally between a token pair. | Component serialization already reuses authored comments and inserts `/**/` only where required. | Unchanged |
+| §8.1 style rules parse `<declaration-list>` contents with nested style rules. | Nesting was already implemented. | Unchanged |
+| §7 drops the 2021 §8 grammar-matching conventions (literal tokens, implicit whitespace between components, ASCII case-insensitive matching, an escaped ident ending in `(` not being a function, and an unclosed function or block still matching) and defers to Values 4 §2; the unclosed-construct rule remains as the non-normative Syntax 3 §2.2 example. | Grammars keep the same matching: EOF-closed functions and blocks match with `ImplicitClosure` diagnostics, keywords match ASCII case-insensitively, whitespace is implicit between components, and only a `<function-token>` is a function. | Unchanged (the convention owner is now Values 4) |
+| §5.5.7 makes a stray `}` in a non-nested component list an explicit parse error that is still appended. | `parse_component_values` and value fronts already reject an unmatched closer with a typed error, and top-level preludes keep it as invalid prelude content. | Unchanged |
+| §12.1 records the `<foo()>` and `<@foo>` productions; §7.1 uses them, for example `<@font-face> = @font-face { <declaration-list> }`. | Rule and function grammars are implemented directly; the notation changes no accepted syntax. | Unchanged |
+| §5.2 and §5.5.6 give a custom property declaration an "original text", and §5.3 requires token streams to reproduce declaration text. | Every parsed declaration already keeps its original name and value source snapshots, and custom values keep their authored text. | Unchanged |
+
+The public conformance registry keeps the Snapshot-official Syntax 3 source
+identity `O-SYNTAX3`, which names the 2021 publication and its anchors, such as
+`#urange-syntax`; moving that public metadata is deferred to #1353.
+
 ## Raw declaration lists
 
 `parse_declaration_list_text` consumes unwrapped ordinary-property declaration-list
-text using [selected CSS Syntax 3 §§5.3.8 and 5.4.5](../../../references/css-syntax-3--CRD-css-syntax-3-20211224--413b27acb4e1.md).
+text using [CSS Syntax 3 (2021-12-24) §§5.3.8 and 5.4.5](../../../references/css-syntax-3--CRD-css-syntax-3-20211224--413b27acb4e1.md),
+the historical "parse a list of declarations" entry point that the selected
+2026 edition removes; see [deferred differences](#css-syntax-3-edition-differences).
 Ident-started units extend through the next root semicolon or actual EOF and use
 the shared property/custom/substitution/importance grammar. Complete generic
 at-rules are consumed through their block or semicolon and rejected once in this
@@ -135,8 +175,9 @@ declarations as separate typed occurrences. `CssParserContext` provides the Page
 counterparts for document mode. Declaration replacement supplies no margin child
 rules. `CssPageDeclarationBlock::try_specified` composes the admitted block with
 the existing selected-block formatter. FontFace uses its descriptor grammar,
-rejects importance and recovers valid `src` members; its real-brace fragment
-continues to reject structural children. `CssFontFaceDescriptors::effective`
+rejects importance and recovers valid `src` members; its real-brace fragment,
+like `@font-face` in a sheet, drops a nested rule as one invalid unit and keeps
+the descriptors around it. `CssFontFaceDescriptors::effective`
 and existing font-rule specified formatting select admitted descriptors without
 reparsing authored text.
 
@@ -381,7 +422,12 @@ context.
 
 `parse_media_query` replaces a malformed complete query with `CssMediaQuery::Never`.
 `parse_media_query_list` recovers each root comma member independently, preserving
-valid neighbors. A grammatically valid unknown feature remains an unknown
+valid neighbors. Members are split by
+[parse a comma-separated list of component values](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-comma-separated-list-of-component-values),
+which appends a member only while input remains: `screen,` is one clean query,
+while `screen, ` and `screen,,` each add one `not all` member. Media rule,
+import and custom-media lists, forgiving `:is()`/`:where()` lists and `@font-face`
+`src` lists share this final-comma boundary. A grammatically valid unknown feature remains an unknown
 condition. An empty media query list is
 valid and clean; an empty single query is malformed.
 `CssMediaQueryList::new` also accepts an empty vector and preserves every
@@ -440,7 +486,7 @@ token and closure diagnostics. Clean-report validation rejects these recovered
 inputs while ordinary parsing can retain their valid surrounding syntax.
 
 Bad unquoted URL tokens consume their remnants through the first unescaped
-closing parenthesis or EOF, following CSS Syntax 3 §4.3.6 and §4.3.14. The first
+closing parenthesis or EOF, following CSS Syntax 3 §4.3.6 and §4.3.15. The first
 escape after value whitespace participates in that consumption: `url(a \)still)`
 is one complete bad token, while `url(a \\)tail` ends the bad token before `tail`.
 Quote- and comment-looking remnants remain URL payload. Recovery preserves the
@@ -463,7 +509,7 @@ number it leaves a number and delimiters rather than a dimension. Every split
 component owns its original source span and counts separately toward the
 component limit. A rejected split capture returns no partial component sequence.
 
-The selected [2021 CSS Syntax token vocabulary](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#tokenization)
+The selected [CSS Syntax 3 token vocabulary](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#tokenization)
 represents `~=`, `|=`, `^=`, `$=` and `*=` as two delimiter tokens. Each
 delimiter retains its one-character source representation and original span;
 the pair serializes without an inserted boundary comment. `try_token` requires
@@ -526,7 +572,7 @@ recover one valid sibling. Apparent `@charset` rules are unrecognized and
 rejected with `UnknownAtRule`; they cannot produce a `CssRule`. The raw parser
 does not strip a BOM or stylesheet CDO/CDC sentinels. Top-level CDO/CDC tokens
 are cleanly ignored by `parse_sheet`, as required by
-[Syntax 3 §5.4.1](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-list-of-rules).
+[Syntax 3 §5.5.1](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-stylesheet-contents).
 Block contents reconsume them as qualified-rule input under the selected 2026
 [consume a block's contents](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents),
 which instead discards a `;`. Encoding fallback
@@ -3970,7 +4016,9 @@ timeline. Empty rules and blocks remain present. Repeated selector blocks,
 equivalent offsets in different blocks, and repeated equivalent selectors within
 one list remain in source order without sorting, merging, or deduplication. When
 an invalid declaration is dropped, its now-empty block and rule remain; an
-invalid selector still drops the smallest invalid keyframe block. These recovery
+invalid selector still drops the smallest invalid keyframe block. A nested
+qualified rule or at-rule inside a keyframe block is dropped on its own, as
+`DropQualifiedRule` or `DropAtRule`, and the block keeps its other declarations. These recovery
 observables replace older expectations that accepted structurally invalid Grid
 cross-products or discarded valid empty keyframe parents.
 
@@ -4751,12 +4799,14 @@ and rules missing `font-family` or `src` remain valid authored syntax. Those two
 effective lookups return `Option`; their absence excludes the face from downstream font
 matching under the pinned Fonts 4 §4.1, rather than causing a grammar error.
 
-`unicode-range` checks the original token sequence before interpreting the
-tokens' original spellings, following
-[Syntax 3 §7.1](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#urange).
-Comments can separate tokens without changing their identity: `u+1/**/2`
-denotes U+0012, while `u+0/**/-ff` fails the token grammar. Whitespace is
-permitted around list items but not inside a range. Numeric spellings are
+`unicode-range` reads each range as one contiguous unicode-range token from
+the original text, following [Syntax 3 §§4.3.14 and 5.5.11](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-unicode-range-value):
+the token starts with a literal `U` or `u`, and whitespace or a comment ends it.
+So `u+1/**/2`, `u/**/+1` and the escaped `\75+0` are invalid, while
+`/**/u+0/**/` and `u+0 /**/, u+1` are valid. The first whitespace or comment
+inside a range is the responsible token. Checked components, which have no
+source text, read their own adjacent spellings; an empty comment that their
+serialization inserts is not authored and does not end the token. Numeric spellings are
 interpreted as hexadecimal text, so `u+12e-130` denotes U+012E through U+0130.
 An invalid member drops the whole descriptor occurrence, preserving earlier
 valid occurrences and neighboring descriptors.
@@ -5684,10 +5734,17 @@ reconsumed as a qualified rule that stops at its `;` stop token, so
 diagnostic spanning only `color: red`. A nested qualified-rule prelude that
 begins like a custom property, such as `--x: y {}`, instead consumes the
 remnants of a bad declaration through the next `;` or the end of the block.
-Only the stylesheet top level still follows
+Declaration-list bodies, including `@font-face`, keyframe blocks,
+`@font-palette-values`, `@color-profile` and `@font-feature-values` blocks, use
+the same algorithm: a failed declaration is reconsumed as a qualified rule with
+a `;` stop token, and a nested qualified rule or at-rule is dropped as one unit
+while the declarations around it remain. Only the stylesheet top level still follows
 [consume a stylesheet's contents](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-stylesheet-contents),
-where `;.x {}` is one invalid qualified rule. Style bodies retain their
-declaration grammar, where extra semicolons are valid separators.
+where `;.x {}` is one invalid qualified rule. A top-level prelude that begins
+like a custom property, such as `--foo:hover {}`, consumes its block and is
+dropped with `DropQualifiedRule`, even though it would otherwise be a valid
+selector. Style bodies retain their declaration grammar, where extra semicolons
+are valid separators.
 
 ```rust
 use surgeist_css::{CssCounterStyleSystem, CssPagePseudo, CssRule, parse_sheet};
@@ -6934,7 +6991,8 @@ valid bare function-body spelling, while a standalone condition adds the
 required parentheses. CSS does not activate definitions, choose a duplicate,
 evaluate support, or produce live CSSOM. The selected source is
 [Conditional Rules 5](https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#supports-condition-rule),
-with the narrow [extension-name and block-contents imports](../specs/catalog.json).
+with the narrow [extension-name import](../specs/catalog.json) and the selected
+2026 Syntax 3 `block-contents-production` definition in the same catalog.
 
 #### Checked supports values
 
@@ -8106,7 +8164,7 @@ scalar name returns `UnrepresentableValue` rather than changing its identity.
 The selected [CSSOM selector algorithms](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serializing-selectors)
 supply identifier/string escaping, attribute-value strings, quoted `:lang()`
 arguments, comma-space lists and combinator spacing. The selected
-[Syntax 3 An+B algorithm](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#serializing-anb)
+[Syntax 3 An+B algorithm](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#serializing-anb)
 emits `odd` as `2n+1`, `even` as `2n`, omits zero coefficients and emits signed
 integer offsets without surrounding spaces. Authored qualified-name retention
 continues the existing namespace provider policy. This selector operation is
@@ -9193,11 +9251,11 @@ top-level rules. Declaration occurrences, duplicates, importance and nested
 runs remain in their authored order. Existing descriptor owners retain their
 selected effective-value rules.
 
-This output follows [Syntax 3 serialization](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#serialization)
+This output follows [Syntax 3 serialization](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#serialization)
 and Surgeist's deterministic specified-output policy. It preserves symbolic
 values without cascade, substitution, query evaluation, resource loading or
 layout. It does not apply live CSSOM declaration selection or shorthand
-recombination to the immutable authored graph. [Syntax 3 §9.3](https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#charset-rule)
+recombination to the immutable authored graph. [Syntax 3 §8.3](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#charset-rule)
 defines every apparent parsed `@charset` rule as unrecognized. Ordinary parsing
 drops it with an `UnknownAtRule` diagnostic; specified output serializes only
 the retained rules while the original report keeps that recovery provenance.

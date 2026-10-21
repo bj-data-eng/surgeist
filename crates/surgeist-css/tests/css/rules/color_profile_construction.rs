@@ -361,7 +361,7 @@ fn root_annotations_fail_before_environment_deferral() {
 
 #[test]
 fn matched_root_blocks_remain_data_under_environment_whole_grammar_deferral() {
-    // Syntax 3 CRD 2021-12-24 #declaration-value admits matched blocks;
+    // Syntax 3 CRD 2026-10-01 #typedef-declaration-value admits matched blocks;
     // Env 1 WD 2025-09-23 §3 assumes the entire descriptor grammar valid.
     for source in ["env(intent) { x }", "{ x } env(intent)"] {
         let parsed = fragment(source, Kind::RenderingIntent);

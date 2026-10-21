@@ -898,7 +898,7 @@ struct StructuralGroup {
 pub(super) enum StructuralListContext {
     /// Consume a stylesheet's contents (§5.5.1): CDO/CDC are discarded.
     Stylesheet,
-    /// Parse a rule (§5.4.6): one unit, without CDO/CDC discard or a
+    /// Parse a rule (Syntax 3 (2026 CRD) §5.4.6): one unit, without CDO/CDC discard or a
     /// qualified-rule stop token.
     OneRule,
     /// Consume a block's contents (§5.5.5), used for every curly block:

@@ -4,11 +4,12 @@
 //!
 //! Admission follows Selectors 4 (2026-01-22), sections 3.9 and 18; media
 //! recovery follows Media Queries 4 (2026-02-19), section 3.2. Actual EOF
-//! closes retained components under CSS Syntax 3 (2021-12-24), “consume a
-//! simple block” and “consume a function”, preserving source and parse error.
+//! closes retained components under CSS Syntax 3 (2026-10-01), “consume a
+//! simple block” and “consume a function”, preserving source and the report's
+//! closure diagnostic.
 //! Sources: https://www.w3.org/TR/2026/WD-selectors-4-20260122/
 //! https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/
-//! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/
 //!
 //! Literal coordinates and semantic expectations below are independent of
 //! parser output. The current public responsible-position/report contract
@@ -658,8 +659,14 @@ fn media_admission_and_recovery() {
         assert_position(diagnostic.error().position(), (offset, 0, offset as u32));
     }
     assert_validation_parity(&list);
+    // Syntax 3 (2026-10-01) §5.4.10: a final comma followed by no token adds
+    // no member, so `screen,` is one clean query.
+    let report = parse_media_query_list("screen,");
+    assert!(report.is_clean());
+    assert_typed_query(&report.syntax().queries()[0], CssMediaType::Screen, 0);
+    assert_eq!(report.syntax().queries().len(), 1);
     for (source, span_start, span_end, responsible, never_index) in
-        [(",screen", 0, 1, 0, 0), ("screen,", 6, 7, 7, 1)]
+        [(",screen", 0, 1, 0, 0), (",screen,", 0, 1, 0, 0)]
     {
         let report = parse_media_query_list(source);
         assert_eq!(report.syntax().queries().len(), 2);

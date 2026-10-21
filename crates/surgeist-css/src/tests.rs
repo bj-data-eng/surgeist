@@ -3241,7 +3241,10 @@ fn functional_selector_lists_reject_invalid_entries_strictly() {
     assert!(parse_sheet(":is(.valid, .bad..selector) { color: black; }").is_err());
     assert!(parse_sheet(":where(.valid, .col ||) { color: black; }").is_err());
     assert!(parse_sheet(":not(.valid, ::before) { color: black; }").is_err());
-    assert!(parse_sheet(":is(.valid,) { color: black; }").is_err());
+    // Selectors 4 "parse a list" splits with Syntax 3 (2026 CRD) §5.4.10, so a
+    // final comma followed by no token adds no failing member; whitespace does.
+    assert!(parse_sheet(":is(.valid,) { color: black; }").is_ok());
+    assert!(parse_sheet(":is(.valid, ) { color: black; }").is_err());
 }
 
 #[test]

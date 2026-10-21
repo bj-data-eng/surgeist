@@ -1,4 +1,4 @@
-//! Singular declaration contracts follow CSS Syntax 3 section 5.3.6 and
+//! Singular declaration contracts follow CSS Syntax 3 section 5.4.7 and
 //! declaration-value restrictions in section 8.2, with typed property validation.
 use surgeist_css::{
     CssImportance, CssKnownProperty, CssPropertyNameRef, CssRecoveryAction, CssRule,

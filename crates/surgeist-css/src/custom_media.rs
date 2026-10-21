@@ -295,6 +295,16 @@ impl CssCustomMediaRule {
                 let empty = tail.iter().all(trivia);
                 if !empty {
                     for end in 0..=tail.len() {
+                        // Syntax 3 (2026 CRD) §5.4.10: a final comma followed
+                        // by no token, only comments, appends no member.
+                        if end == tail.len()
+                            && start > 0
+                            && tail[start..]
+                                .iter()
+                                .all(|v| matches!(v.view(), CssComponentValueRef::Comment(_)))
+                        {
+                            break;
+                        }
                         if end == tail.len()
                             || matches!(
                                 tail[end].view(),

@@ -34,9 +34,9 @@ The [WebKit wrapper and dispatch witness](webkit-cssom-wrapper-rules--73aa6c89e2
 
 ## Supporting resources
 
-The assets subdirectory contains 81 passive SVG figures: 53 extracted from the exact stored HTML sources and 28 railroad diagrams generated from the pinned CSS Syntax 3 Bikeshed source. The original railroad grammars remain beside the generated diagrams. Other source images, PNG equations, videos and interactive figures remain external resources. The bundle is not fully self-contained for those figures. The pinned HTML embedded-content capture additionally preserves six inline SVG diagrams as semantic source markup; these are separate from the 81 asset files.
+The assets subdirectory contains 81 passive SVG figures: 53 extracted from the exact stored HTML sources and 28 railroad diagrams extracted from the CSS Syntax 3 2026-10-01 HTML capture, each followed by its diagram text. Other source images, PNG equations, videos and interactive figures remain external resources. The bundle is not fully self-contained for those figures. The pinned HTML embedded-content capture additionally preserves six inline SVG diagrams as semantic source markup; these are separate from the 81 asset files.
 
-Six pinned Bikeshed sources are presented as readable, generated Markdown renderings, with the original source hashes and compiler/support-data provenance retained. They are not official publications or captured historical HTML renderings. The separate JSON source-history capture remains a supporting provenance witness.
+Five pinned Bikeshed sources are presented as readable, generated Markdown renderings, with the original source hashes and compiler/support-data provenance retained. They are not official publications or captured historical HTML renderings. The separate JSON source-history capture remains a supporting provenance witness.
 
 ## Link policy
 

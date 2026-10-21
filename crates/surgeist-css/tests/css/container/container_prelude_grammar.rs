@@ -4,7 +4,7 @@
 //! Values 4 section 4.2 defines case-sensitive custom identifiers and exclusions.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#custom-idents
 //! CSS Syntax section 2.1 decodes identifier escapes before grammar admission.
-//! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#escaping
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#escaping
 use surgeist_css::{
     CssContainerName, CssErrorCode, CssRecoveryAction, CssRule, CssScopedRule, parse_sheet,
     validate_sheet,

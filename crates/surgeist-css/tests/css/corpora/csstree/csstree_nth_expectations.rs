@@ -1,5 +1,5 @@
 //! Declared Nth corpus rejection follows token-level An+B grammar and raw input.
-//! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#anb-type
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#the-anb-type
 #[test]
 fn nth_invalid_expectations_use_raw_fragment_rejection() {
     let expected = serde_json::json!({

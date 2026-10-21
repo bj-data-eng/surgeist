@@ -13,10 +13,10 @@
       "tier": "official",
       "latest_published_url": "https://www.w3.org/TR/css-syntax-3/",
       "publication": {
-        "url": "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
-        "sha256": "413b27acb4e16721d28b487456359ecbcecba472c4310bd2f6a4939ad393738b",
-        "bytes": 511620,
-        "date": "2021-12-24",
+        "url": "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
+        "sha256": "8dc3adcc2b4e8fd8fa73c0be85cec67f006874ab42010cdf4528af4aa83f2878",
+        "bytes": 657320,
+        "date": "2026-10-01",
         "kind": "w3c-dated-publication"
       },
       "authored_scope": "complete-applicable-grammar",
@@ -45,7 +45,7 @@
     "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#grouping",
     "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#grammar",
     "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector",
-    "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-simple-block"
+    "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-simple-block"
   ],
   "adapter_contract": {
     "entry_point": "selector_list",

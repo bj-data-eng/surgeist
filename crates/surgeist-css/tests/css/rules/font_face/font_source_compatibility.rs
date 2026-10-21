@@ -85,7 +85,7 @@ fn legacy_variation_strings_project_to_their_base_format_without_rewriting_autho
 fn compatibility_matching_preserves_ascii_case_and_decodes_css_string_escapes() {
     // Matching is ASCII-insensitive; decoding precedes semantic recognition.
     // CSS Syntax 3 section 4.3.7 consumes the escaped code point into the string:
-    // https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-string-token
+    // https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-string-token
     for (argument, decoded, expected) in [
         (
             r#""WoFf2-VaRiAtIoNs""#,

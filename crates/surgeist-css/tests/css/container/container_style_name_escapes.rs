@@ -1,7 +1,7 @@
 //! Conditional 5 section 6.2 admits custom-property style features. CSS Syntax
 //! section 2.1 decodes escapes into the identifier token's value exactly once.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#style-container
-//! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#escaping
+//! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#escaping
 use surgeist_css::*;
 
 fn style_query(authored: &str) -> CssContainerStyleQuery {

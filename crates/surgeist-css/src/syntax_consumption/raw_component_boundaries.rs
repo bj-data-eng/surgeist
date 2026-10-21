@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 //! Raw component boundaries through the normalized syntax arena.
-//! Syntax 3 CRD20211224 §§5.3.10, 5.4.7–9 define the independent raw oracles.
+//! Syntax 3 CRD20261001 §§5.4.9, 5.5.7–10 define the independent raw oracles.
 //! Exact/comma tests call the real adopted production selectors, never a test splitter.
 use super::*;
 

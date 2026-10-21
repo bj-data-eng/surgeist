@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 //! Generic declaration boundaries through the existing syntax owner.
-//! Oracles: selected Syntax 3 CRD20211224 §§5.3.6, 5.3.8, 5.4.5, 5.4.6.
+//! Oracles: selected Syntax 3 CRD20261001 §§5.4.7 and 5.5.6; the declaration-list
+//! cases follow CRD20211224 §§5.3.8 and 5.4.5 for the deferred raw
+//! declaration-list front (docs/reference.md#css-syntax-3-edition-differences).
 //! Node identity and ranges exercise the retained-input contract, not a relex.
 use super::*;
 
@@ -52,7 +54,7 @@ fn unknown_and_empty_generic_declarations_reach_exact_eof_before_property_admiss
     ] {
         let (snapshot, document) = source(text);
         let mut cursor = document.cursor(document.root);
-        // The real caller owns leading-trivia handling; §5.4.6 starts at ident.
+        // The real caller owns leading-trivia handling; §5.5.6 starts at ident.
         cursor.skip_trivia();
         let declaration = consume_declaration(&mut cursor).unwrap();
         assert_eq!(

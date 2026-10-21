@@ -1,10 +1,10 @@
-//! CSS Syntax 3 CRD (2021-12-24), §§3.3, 4.3.1, 4.3.3 and 4.3.9:
+//! CSS Syntax 3 CRD (2026-10-01), §§3.3, 4.3.1, 4.3.3 and 4.3.9:
 //! a hyphen followed by backslash-newline does not start an identifier. The
 //! at-keyword and dimension dispatch branches must leave that hyphen for the
 //! next token. Split components retain their genuine authored byte ranges and
 //! count separately toward admission limits. Literal NUL is preprocessed to
 //! U+FFFD before identifier lookahead.
-//! <https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/>
+//! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/>
 
 use std::ops::Range;
 

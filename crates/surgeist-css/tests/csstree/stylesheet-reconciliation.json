@@ -40,13 +40,13 @@
         ],
         "diagnostic_count_status": "one per listed recovery unit"
       },
-      "rationale": "Already-decoded Unicode string input: U+FEFF and U+FFFE are non-ASCII name code points, not byte-order detection. No block follows the prelude; EOF discards the qualified rule.",
+      "rationale": "Already-decoded Unicode string input, not byte-order detection: U+FEFF is a non-ASCII ident code point and U+FFFE is not (Syntax 3 (2026-10-01) section 4.2), so U+FFFE starts a delimiter. Either way the code point starts a qualified-rule prelude; no block follows it, and EOF discards the qualified rule.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#input-byte-stream",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#input-preprocessing",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#input-byte-stream",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#input-preprocessing",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "exact public-contract inference",
@@ -121,13 +121,13 @@
         ],
         "diagnostic_count_status": "one per listed recovery unit"
       },
-      "rationale": "Already-decoded Unicode string input: U+FEFF and U+FFFE are non-ASCII name code points, not byte-order detection. No block follows the prelude; EOF discards the qualified rule.",
+      "rationale": "Already-decoded Unicode string input, not byte-order detection: U+FEFF is a non-ASCII ident code point and U+FFFE is not (Syntax 3 (2026-10-01) section 4.2), so U+FFFE starts a delimiter. Either way the code point starts a qualified-rule prelude; no block follows it, and EOF discards the qualified rule.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#input-byte-stream",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#input-preprocessing",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#input-byte-stream",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#input-preprocessing",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "exact public-contract inference",
@@ -202,13 +202,13 @@
         ],
         "diagnostic_count_status": "one per listed recovery unit"
       },
-      "rationale": "Already-decoded Unicode string input: U+FEFF and U+FFFE are non-ASCII name code points, not byte-order detection. No block follows the prelude; EOF discards the qualified rule.",
+      "rationale": "Already-decoded Unicode string input, not byte-order detection: U+FEFF is a non-ASCII ident code point and U+FFFE is not (Syntax 3 (2026-10-01) section 4.2), so U+FFFE starts a delimiter. Either way the code point starts a qualified-rule prelude; no block follows it, and EOF discards the qualified rule.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#input-byte-stream",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#input-preprocessing",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#input-byte-stream",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#input-preprocessing",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "exact public-contract inference",
@@ -283,13 +283,13 @@
         ],
         "diagnostic_count_status": "one per listed recovery unit"
       },
-      "rationale": "Already-decoded Unicode string input: U+FEFF and U+FFFE are non-ASCII name code points, not byte-order detection. No block follows the prelude; EOF discards the qualified rule.",
+      "rationale": "Already-decoded Unicode string input, not byte-order detection: U+FEFF is a non-ASCII ident code point and U+FFFE is not (Syntax 3 (2026-10-01) section 4.2), so U+FFFE starts a delimiter. Either way the code point starts a qualified-rule prelude; no block follows it, and EOF discards the qualified rule.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#input-byte-stream",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#input-preprocessing",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#input-byte-stream",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#input-preprocessing",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "exact public-contract inference",
@@ -359,14 +359,14 @@
         "diagnostic_positions": [],
         "diagnostic_count_status": "zero: top-level CDO/CDC has no parse-error condition"
       },
-      "rationale": "CSS Syntax 3 (2021-12-24) section 5.4.1 ignores top-level CDO/CDC without a parse error; section 3 does not permit invented conformance errors.",
+      "rationale": "CSS Syntax 3 (2026-10-01) section 5.5.1 discards top-level CDO/CDC without a parse error; section 3 does not permit invented conformance errors.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-list-of-rules",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#tokenizing-and-parsing"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-stylesheet-contents",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#tokenizing-and-parsing"
       ],
-      "diagnostic_policy_source": "Selected Syntax 3 sections 3 and 5.4.1; tests/syntax_stylesheet_source_contract.rs",
+      "diagnostic_policy_source": "Selected Syntax 3 (2026-10-01) sections 3 and 5.5.1; tests/syntax_stylesheet_source_contract.rs",
       "position_status": "no diagnostic positions: tokens are cleanly ignored",
       "diagnostic_action_relation": "exact",
       "registry_kind": "clean",
@@ -417,14 +417,14 @@
         "diagnostic_positions": [],
         "diagnostic_count_status": "zero: top-level CDO/CDC has no parse-error condition"
       },
-      "rationale": "CSS Syntax 3 (2021-12-24) section 5.4.1 ignores top-level CDO/CDC without a parse error; section 3 does not permit invented conformance errors.",
+      "rationale": "CSS Syntax 3 (2026-10-01) section 5.5.1 discards top-level CDO/CDC without a parse error; section 3 does not permit invented conformance errors.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-list-of-rules",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#tokenizing-and-parsing"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-stylesheet-contents",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#tokenizing-and-parsing"
       ],
-      "diagnostic_policy_source": "Selected Syntax 3 sections 3 and 5.4.1; tests/syntax_stylesheet_source_contract.rs",
+      "diagnostic_policy_source": "Selected Syntax 3 (2026-10-01) sections 3 and 5.5.1; tests/syntax_stylesheet_source_contract.rs",
       "position_status": "no diagnostic positions: tokens are cleanly ignored",
       "diagnostic_action_relation": "exact",
       "registry_kind": "clean",
@@ -482,14 +482,14 @@
         "diagnostic_positions": [],
         "diagnostic_count_status": "zero: top-level CDO/CDC has no parse-error condition"
       },
-      "rationale": "CSS Syntax 3 (2021-12-24) section 5.4.1 ignores top-level CDO/CDC without a parse error; section 3 does not permit invented conformance errors.",
+      "rationale": "CSS Syntax 3 (2026-10-01) section 5.5.1 discards top-level CDO/CDC without a parse error; section 3 does not permit invented conformance errors.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-list-of-rules",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#tokenizing-and-parsing"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-stylesheet-contents",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#tokenizing-and-parsing"
       ],
-      "diagnostic_policy_source": "Selected Syntax 3 sections 3 and 5.4.1; tests/syntax_stylesheet_source_contract.rs",
+      "diagnostic_policy_source": "Selected Syntax 3 (2026-10-01) sections 3 and 5.5.1; tests/syntax_stylesheet_source_contract.rs",
       "position_status": "no diagnostic positions: tokens are cleanly ignored",
       "diagnostic_action_relation": "exact",
       "registry_kind": "clean",
@@ -543,8 +543,8 @@
       },
       "rationale": "Empty input, whitespace, and terminated comments yield no rules or recovery.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -600,8 +600,8 @@
       },
       "rationale": "Empty input, whitespace, and terminated comments yield no rules or recovery.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -656,8 +656,8 @@
       },
       "rationale": "Empty input, whitespace, and terminated comments yield no rules or recovery.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -713,8 +713,8 @@
       },
       "rationale": "Empty selector invalidates its entire style rule.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
@@ -791,8 +791,8 @@
       },
       "rationale": "Unknown @x rules are discarded as units; their internal declarations are not independently parsed.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -882,8 +882,8 @@
       },
       "rationale": "The x namespace prefix has no sheet declaration; :not uses an unforgiving selector list. This is stylesheet grammar-context validity, not downstream matching.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#negation"
       ],
@@ -972,8 +972,8 @@
       },
       "rationale": "Unknown media type is syntactically valid. @page is allowed within conditional group; unknown p is discarded inside retained page rule.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#contents-of"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
@@ -1089,8 +1089,8 @@
       },
       "rationale": "Retain ordered x/media/y and nested a/page/b; discard five unknown p declarations.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#contents-of"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
@@ -1244,8 +1244,8 @@
       },
       "rationale": "Bad-string invalidates first color declaration; newline ends bad string so subsequent block and rule remain independent.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -1326,8 +1326,8 @@
       },
       "rationale": "Unknown p is discarded without discarding valid empty s rule.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -1415,8 +1415,8 @@
       },
       "rationale": "Discard unknown p0 and p1 while retaining both ordered style rules.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -1505,8 +1505,8 @@
       },
       "rationale": "Unknown @test family rules are discarded.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -1581,8 +1581,8 @@
       },
       "rationale": "Unknown @test family rules are discarded.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -1679,8 +1679,8 @@
       },
       "rationale": "Unknown p is discarded without discarding valid empty s rule. Unknown following @test is discarded.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -1777,8 +1777,8 @@
       },
       "rationale": "Unknown p is discarded without discarding valid empty s rule.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -1860,8 +1860,8 @@
       },
       "rationale": "Unknown p is discarded without discarding valid empty s rule.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -1950,8 +1950,8 @@
       },
       "rationale": "Discard unknown p0 and p1 while retaining both ordered style rules.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -2042,8 +2042,8 @@
       },
       "rationale": "Unknown @test family rules are discarded.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -2141,8 +2141,8 @@
       },
       "rationale": "Unknown p is discarded without discarding valid empty s rule. Unknown following @test is discarded.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -2230,8 +2230,8 @@
       },
       "rationale": "Empty input, whitespace, and terminated comments yield no rules or recovery.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -2291,8 +2291,8 @@
       },
       "rationale": "Comment consumes through EOF; no syntax retained. Tokenizer recovery is independently diagnosed.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "exact public-contract inference",
@@ -2369,8 +2369,8 @@
       },
       "rationale": "Comment consumes through EOF; no syntax retained. Tokenizer recovery is independently diagnosed.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "exact public-contract inference",
@@ -2442,8 +2442,8 @@
       },
       "rationale": "Terminated comment yields empty clean stylesheet.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -2498,8 +2498,8 @@
       },
       "rationale": "Terminated comment yields empty clean stylesheet.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -2554,8 +2554,8 @@
       },
       "rationale": "Terminated comment yields empty clean stylesheet.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -2610,8 +2610,8 @@
       },
       "rationale": "Terminated comment yields empty clean stylesheet.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -2666,8 +2666,8 @@
       },
       "rationale": "Terminated comment yields empty clean stylesheet.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -2723,10 +2723,10 @@
       },
       "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -2799,10 +2799,10 @@
       },
       "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -2883,8 +2883,8 @@
       },
       "rationale": "Invalid or missing declaration value/colon is discarded; valid enclosing rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -2957,10 +2957,10 @@
       },
       "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -3034,10 +3034,10 @@
       },
       "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -3111,10 +3111,10 @@
       },
       "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -3187,10 +3187,10 @@
       },
       "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -3263,10 +3263,10 @@
       },
       "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -3339,10 +3339,10 @@
       },
       "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -3415,10 +3415,10 @@
       },
       "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -3491,10 +3491,10 @@
       },
       "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -3567,10 +3567,10 @@
       },
       "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -3643,10 +3643,10 @@
       },
       "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -3718,12 +3718,12 @@
         "diagnostic_positions": null,
         "diagnostic_count_status": "one per listed recovery unit"
       },
-      "rationale": "Syntax 3 section 5.4.1 dispatches the unmatched closing curly into qualified-rule consumption. With no curly body, section 5.4.3 fails at the actual EOF and discards the complete qualified unit; no valid rule remains.",
+      "rationale": "Syntax 3 (2026-10-01) section 5.5.1 dispatches the unmatched closing curly into qualified-rule consumption, and section 5.5.3 appends it to the prelude at the top level. With no curly body, section 5.5.3 fails at the actual EOF and discards the complete qualified unit; no valid rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -3796,10 +3796,10 @@
       },
       "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -3872,10 +3872,10 @@
       },
       "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -3948,10 +3948,10 @@
       },
       "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -4024,10 +4024,10 @@
       },
       "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -4107,8 +4107,8 @@
       },
       "rationale": "var(--side):20px is neither declaration (name is function token) nor valid nested relative selector rule (no rule block). Retain .foo with no declarations or children; reject clean validation. Normative retention is settled independently of which diagnostic action names this malformed style-body unit.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nesting"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
@@ -4182,10 +4182,10 @@
       },
       "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -4258,10 +4258,10 @@
       },
       "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -4334,10 +4334,10 @@
       },
       "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -4410,10 +4410,10 @@
       },
       "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -4486,10 +4486,10 @@
       },
       "rationale": "Malformed selector or incomplete qualified rule is discarded; no valid rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
         "https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -4569,8 +4569,8 @@
       },
       "rationale": "Invalid or missing declaration value/colon is discarded; valid enclosing rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -4650,8 +4650,8 @@
       },
       "rationale": "Invalid or missing declaration value/colon is discarded; valid enclosing rule remains.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -4726,8 +4726,8 @@
       },
       "rationale": "Invalid selector or no top-level block; nested bracket/function block is not the qualified rule block. Discard incomplete/invalid rule.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -4809,8 +4809,8 @@
       },
       "rationale": "Discard invalid .a! rule and retain later .a empty rule. Upstream tolerant option does not select a different Surgeist grammar.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -4891,8 +4891,8 @@
       },
       "rationale": "Discard invalid .a! rule and retain later .a empty rule. Upstream tolerant option does not select a different Surgeist grammar.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -4990,7 +4990,7 @@
       },
       "rationale": "The selected 2026-10-01 Syntax 3 block parsing (catalog source css-syntax-3-2026-block-parsing; https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents and #consume-qualified-rule) consumes the media block with consume a block's contents. Each declaration is invalid in the top-level media rule list, so it is reconsumed as a nested qualified rule that returns nothing at its semicolon stop token; the semicolons are discarded. Retain empty media and the subsequent universal rule. Module citations stay on the audited publications until the staged Syntax 3 citation audit.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
         "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#contents-of"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
@@ -5115,7 +5115,7 @@
       },
       "rationale": "The selected 2026-10-01 Syntax 3 block parsing (catalog source css-syntax-3-2026-block-parsing; https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-at-rule, #consume-block and #consume-block-contents) consumes the media block with consume a block's contents, which discards the semicolon; b{} is then an ordinary sibling. Retain media with a and b. Module citations stay on the audited publications until the staged Syntax 3 citation audit.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
         "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#contents-of"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
@@ -5191,7 +5191,7 @@
       },
       "rationale": "The selected 2026-10-01 Syntax 3 block parsing (catalog source css-syntax-3-2026-block-parsing; https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-at-rule and #consume-block-contents) consumes the media block with consume a block's contents, which discards the semicolon; @b{} is then its own nested at-rule, whose unknown at-keyword makes it ignored (CSS 2 https://www.w3.org/TR/2011/REC-CSS2-20110607/syndata.html#parsing-errors). Retain media and its a rule. Module citations stay on the audited publications until the staged Syntax 3 citation audit.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
         "https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#contents-of"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
@@ -5267,8 +5267,8 @@
       },
       "rationale": "Invalid selector or no top-level block; nested bracket/function block is not the qualified rule block. Discard incomplete/invalid rule.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -5351,10 +5351,10 @@
       },
       "rationale": "Balanced component consumption prevents .b becoming sibling. --x contains unmatched closing } inside parentheses and is invalid under declaration-value grammar. Second case recovers width after closed parentheses; first consumes width within nested block and closes outer units at EOF.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-simple-block"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-simple-block"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -5455,10 +5455,10 @@
       },
       "rationale": "Balanced component consumption prevents .b becoming sibling. --x contains unmatched closing } inside parentheses and is invalid under declaration-value grammar. Second case recovers width after closed parentheses; first consumes width within nested block and closes outer units at EOF.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#any-value",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-simple-block"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-simple-block"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -5532,8 +5532,8 @@
       },
       "rationale": "Invalid selector or no top-level block; nested bracket/function block is not the qualified rule block. Discard incomplete/invalid rule.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -5607,8 +5607,8 @@
       },
       "rationale": "Invalid selector or no top-level block; nested bracket/function block is not the qualified rule block. Discard incomplete/invalid rule.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -5682,8 +5682,8 @@
       },
       "rationale": "Invalid selector or no top-level block; nested bracket/function block is not the qualified rule block. Discard incomplete/invalid rule.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -5757,8 +5757,8 @@
       },
       "rationale": "Invalid selector or no top-level block; nested bracket/function block is not the qualified rule block. Discard incomplete/invalid rule.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -5842,8 +5842,8 @@
       },
       "rationale": "EOF implicitly closes empty style block; retained rule is valid but report diagnoses closure.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "exact public-contract inference",
@@ -5918,8 +5918,8 @@
       },
       "rationale": "Invalid selector or no top-level block; nested bracket/function block is not the qualified rule block. Discard incomplete/invalid rule.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -5994,8 +5994,8 @@
       },
       "rationale": "Invalid selector or no top-level block; nested bracket/function block is not the qualified rule block. Discard incomplete/invalid rule.",
       "normative_sources": [
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#parse-stylesheet",
-        "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#css-stylesheets"
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets"
       ],
       "diagnostic_policy_source": "696e3c09ee723dbaed9ea451029074eb0b669ffb:crates/surgeist-css/src/report.rs; tests/stylesheet_recovery.rs",
       "position_status": "not proposed; error subtype and first-responsible offset require source-contract characterization",
@@ -6057,8 +6057,8 @@
       "locked cssparser rules_and_declarations.rs RuleBodyParser::next and parse_qualified_rule"
     ],
     "normative_basis": [
-      "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-qualified-rule",
-      "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#consume-declaration"
+      "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule",
+      "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-declaration"
     ],
     "policy_separation": "W3C governs retention/discard and tokenization, not these Rust error codes, byte spans, cleanliness, or diagnostic multiplicities. Those are project public recovery policy and independently source-characterized implementation expectations.",
     "coordinate_contract": "No adapter prefix or suffix. UTF-8 original bytes. intersects requires responsible offset strictly before payload end; recovery_ends_at uses EOF responsible offset with nonempty unit ending EOF; ends_at uses zero-width EOF span. Every vector entry multiplicity1; repeated entries represent separate diagnostics.",
@@ -6068,10 +6068,10 @@
     {
       "module_id": "css-syntax-3",
       "publication": {
-        "url": "https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/",
-        "sha256": "413b27acb4e16721d28b487456359ecbcecba472c4310bd2f6a4939ad393738b",
-        "bytes": 511620,
-        "date": "2021-12-24",
+        "url": "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
+        "sha256": "8dc3adcc2b4e8fd8fa73c0be85cec67f006874ab42010cdf4528af4aa83f2878",
+        "bytes": 657320,
+        "date": "2026-10-01",
         "kind": "w3c-dated-publication"
       }
     },

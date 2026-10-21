@@ -1,5 +1,5 @@
 //! Native style-body missing-input and recovery contracts.
-//! Syntax3 CRD 20211224 §§5.4.2,5.4.8–9 and 9; selected Nesting1
+//! Syntax3 CRD 20261001 §§5.5.2, 5.5.9–10 and 8; selected Nesting1
 //! WD20260122 §§3.3–3.4; original-source error and clean-report contracts.
 use surgeist_css::*;
 
