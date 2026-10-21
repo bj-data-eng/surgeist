@@ -171,6 +171,7 @@ impl Draft {
                                 BaseDocumentGroup::Known(Group::Canonical(value)) => {
                                     BaseDocumentFields {
                                         facts: value.value.value.facts.clone(),
+                                        policy_basis: value.value.value.policy_basis.clone(),
                                         metadata_credit: MetadataCredit::Captured {
                                             _custody: value.custody.clone(),
                                         },
@@ -184,6 +185,7 @@ impl Draft {
                                 }
                                 BaseDocumentGroup::KnownEmpty => BaseDocumentFields {
                                     facts: None,
+                                    policy_basis: None,
                                     metadata_credit: MetadataCredit::None,
                                     first: None,
                                     render: Sequence::empty(

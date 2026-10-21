@@ -195,6 +195,13 @@ impl Draft {
             return Err(DomError::WrongNodeKind);
         };
         self.base_step(cancel)?;
+        let policy_basis = match metadata.policy_container().csp() {
+            crate::DomDocumentCspState::Associated(value) => {
+                self.base_step(cancel)?;
+                Some(crate::base::CspBasis::new(value))
+            }
+            _ => None,
+        };
         let env = facts.document();
         let url = env
             .document_url()
@@ -303,6 +310,7 @@ impl Draft {
                 );
                 Ok(Some(crate::base::BaseDocument {
                     facts: Some(facts),
+                    policy_basis,
                     first,
                     render_blocking: Vec::new(),
                 }))
@@ -458,6 +466,17 @@ impl Draft {
             }?;
             return Ok(());
         };
+        if let crate::DomDocumentCspState::Associated(policy) =
+            self.document_metadata(document)?.policy_container().csp()
+        {
+            self.base_step(cancel)?;
+            if !state
+                .policy_basis
+                .is_some_and(|basis| basis.matches(policy))
+            {
+                return Err(failure(Failure::PolicyMismatch));
+            }
+        }
         let facts = state
             .facts
             .ok_or_else(|| failure(Failure::Missing(HtmlBaseMissing::DocumentFacts)))?;

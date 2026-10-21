@@ -554,6 +554,13 @@ impl<'source> HeadStage<'source> {
     /// Pulls only the actual tokenizer, after completing any pending reprocess.
     /// Lexical/preprocessing evidence remains owned; nothing is silently dropped.
     pub(super) fn step(&mut self, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
+        self.step_with_meta_csp(c, &mut None)
+    }
+    pub(super) fn step_with_meta_csp(
+        &mut self,
+        c: &mut ParseControl,
+        service: &mut Option<&mut dyn crate::meta_csp::Service>,
+    ) -> Result<HeadStep, HeadError> {
         self.require(c)?;
         let state = self.state.as_mut().ok_or(HeadError::Consumed)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
@@ -647,7 +654,7 @@ impl<'source> HeadStage<'source> {
                 }
             }
         }
-        state.advance(self.source, c)
+        state.advance(self.source, c, service)
     }
     #[cfg(test)]
     pub(super) fn take_continuation(
@@ -1022,6 +1029,13 @@ impl HeadState<'_> {
         self.finish(c)
     }
     pub(super) fn insert_tag(&mut self, c: &mut ParseControl) -> Result<ParserNode, HeadError> {
+        self.insert_tag_with_meta_csp(c, &mut None)
+    }
+    pub(super) fn insert_tag_with_meta_csp(
+        &mut self,
+        c: &mut ParseControl,
+        service: &mut Option<&mut dyn crate::meta_csp::Service>,
+    ) -> Result<ParserNode, HeadError> {
         let place = self.before.kernel.appropriate_place(None, c)?;
         let template = self.before.kernel.last_template(c)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
@@ -1044,11 +1058,12 @@ impl HeadState<'_> {
             ),
         )?;
         let location = self.before.kernel.adjusted_location(None, c)?;
-        self.before.kernel.insert_element_at(
+        self.before.kernel.insert_element_at_with_meta_csp(
             &node,
             &location,
             c,
             self.script.as_ref().map(|script| &script.capability),
+            service,
         )?;
         self.before.kernel.push(&node, c)?;
         Ok(node)
@@ -1573,6 +1588,7 @@ impl HeadState<'_> {
         &mut self,
         source: &HtmlSource,
         c: &mut ParseControl,
+        service: &mut Option<&mut dyn crate::meta_csp::Service>,
     ) -> Result<HeadStep, HeadError> {
         loop {
             c.charge(WorkCategory::StateStep, 1)?;
@@ -1597,7 +1613,7 @@ impl HeadState<'_> {
                     | InsertionMode::AfterBody
                     | InsertionMode::AfterAfterBody
             ) {
-                if let Some(step) = self.body_rules(mode, source, c)? {
+                if let Some(step) = self.body_rules_with_meta_csp(mode, source, c, service)? {
                     return Ok(step);
                 }
                 continue;
@@ -1828,7 +1844,7 @@ impl HeadState<'_> {
                     Name::Base | Name::Basefont | Name::Bgsound | Name::Link | Name::Meta,
                     _,
                 ) => {
-                    self.insert_tag(c)?;
+                    self.insert_tag_with_meta_csp(c, service)?;
                     self.before
                         .kernel
                         .pop(c, self.script.as_ref().map(|script| &script.capability))?

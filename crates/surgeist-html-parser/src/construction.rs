@@ -49,6 +49,7 @@ use construction_owner::{ConstructionOwner, ConstructionView, prepare_attribute_
 pub(crate) mod associated;
 mod base;
 mod clone;
+mod csp;
 mod css_color;
 mod input_color;
 mod input_image;
@@ -121,6 +122,8 @@ enum InputAttributeInitialization {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SessionError {
     NonceMetadataUnavailable,
+    CspService,
+    CspProtocol(surgeist_html::HtmlCspProtocolError),
     Stop(ParseStop),
     ForeignNode,
     RootMove,
@@ -311,6 +314,7 @@ impl FormattingCreation {
 }
 
 struct SessionStorage {
+    csp_slot: Option<usize>,
     #[cfg(test)]
     cancel_after_details_shift: Option<crate::HtmlParseCancellation>,
     #[cfg(test)]
@@ -376,6 +380,9 @@ struct AppendFields {
     textarea: Option<usize>,
 }
 enum RetainedPayload {
+    CspState(Option<Box<csp::State>>),
+    CspPolicy(Box<csp::Policy>),
+    CspTransition(Box<csp::Transition>),
     AssociationDocument(pending_association::DocumentCapture),
     AssociationOccurrence(OwnedVec<pending_association::Occurrence>),
     AssociationCapturedContext(pending_association::CapturedContext),
@@ -762,7 +769,10 @@ impl PayloadStorage {
                     AttributeStorage::Building { .. } | AttributeStorage::Transferring { .. },
                 )) => {}
                 RetainedPayload::Attributes(None) => return Err(SessionError::Consumed),
-                RetainedPayload::BaseDocument { .. }
+                RetainedPayload::CspState(_)
+                | RetainedPayload::CspPolicy(_)
+                | RetainedPayload::CspTransition(_)
+                | RetainedPayload::BaseDocument { .. }
                 | RetainedPayload::Base { .. }
                 | RetainedPayload::SvgScript { .. }
                 | RetainedPayload::ConstructionCause { .. }
@@ -813,6 +823,7 @@ impl PayloadStorage {
             append_fields_allocation,
             ..
         } = self;
+        let mut csp_storage = crate::meta_csp::Storage::ZERO;
         let append_entries = append_fields.len() as u64;
         release_vector(control, append_fields, append_fields_allocation)
             .expect("actual append-field index capacity");
@@ -908,6 +919,13 @@ impl PayloadStorage {
                 usage.release(control, owner);
                 continue;
             }
+            if let RetainedPayload::CspState(value) = payload {
+                if let Some(value) = value {
+                    csp_storage = value.account.live;
+                    drop(value);
+                }
+                continue;
+            }
             if let RetainedPayload::Document { mut meta, .. } = payload {
                 if let Some(scheme) = meta.scheme.take() {
                     scheme.release(control);
@@ -954,6 +972,7 @@ impl PayloadStorage {
                 drop(origins);
             }
         }
+        csp_storage.release(control);
         release_vector(control, values, allocation).expect("actual payload registry capacity");
         release_logical(control, owner, HtmlParseResource::AuxiliaryEntries, entries);
     }
@@ -1168,6 +1187,7 @@ impl SessionStorage {
             }
         };
         let mut session = Self {
+            csp_slot: None,
             #[cfg(test)]
             cancel_after_details_shift: None,
             #[cfg(test)]
@@ -4314,6 +4334,13 @@ impl SessionStorage {
     /// Called synchronously only by the mutation that installed this phase.
     /// No consumer resume method exists. After a stop only disposal is allowed.
     fn step_form_effects(&mut self, control: &mut ParseControl) -> Result<(), SessionError> {
+        self.step_form_effects_with_meta_csp(control, &mut None)
+    }
+    fn step_form_effects_with_meta_csp(
+        &mut self,
+        control: &mut ParseControl,
+        service: &mut Option<&mut dyn crate::meta_csp::Service>,
+    ) -> Result<(), SessionError> {
         let result = (|| {
             control.require_identity(&self.control)?;
             control.charge(WorkCategory::RecordVisit, 1)?;
@@ -4543,6 +4570,7 @@ impl SessionStorage {
                             detached,
                             effects.stage == FormEffectStage::Removal,
                             effects.old_parent,
+                            service,
                         )?;
                         self.association_tree_hook(
                             control,
@@ -4616,7 +4644,11 @@ impl SessionStorage {
             Ok(())
         })();
         match result {
-            Err(SessionError::Stop(stop)) => Err(SessionError::Stop(stop)),
+            Err(
+                error @ (SessionError::Stop(_)
+                | SessionError::CspService
+                | SessionError::CspProtocol(_)),
+            ) => Err(error),
             Err(_) => Err(control
                 .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
                 .into()),
@@ -4634,11 +4666,22 @@ impl SessionStorage {
         before: Option<&ParserNode>,
         cause: InsertionCause,
     ) -> Result<(), SessionError> {
+        self.insert_with_meta_csp(control, parent, node, before, cause, &mut None)
+    }
+    fn insert_with_meta_csp(
+        &mut self,
+        control: &mut ParseControl,
+        parent: &ParserNode,
+        node: &ParserNode,
+        before: Option<&ParserNode>,
+        cause: InsertionCause,
+        service: &mut Option<&mut dyn crate::meta_csp::Service>,
+    ) -> Result<(), SessionError> {
         let parent = self.index(control, parent)?;
         let node = self.index(control, node)?;
         let before = before.map(|node| self.index(control, node)).transpose()?;
         self.insert_indices_with_cause(control, parent, node, before, cause)?;
-        self.drain_construction_effects(control)
+        self.drain_construction_effects_with_meta_csp(control, service)
     }
 
     fn insert_indices(
@@ -5081,6 +5124,7 @@ impl SessionStorage {
     /// consumes actual storage; exact private tickets prove the release invariant.
     fn release(self, control: &mut ParseControl) {
         let Self {
+            csp_slot: _,
             control: owner,
             effects,
             evidence,
@@ -7162,6 +7206,7 @@ impl ParserArenaSession {
             .insert(control, parent, node, before, InsertionCause::NonParser)
     }
     /// Actual parser insertion; qualification precedes topology/effect mutation.
+    #[cfg(test)]
     pub(crate) fn insert_parser(
         &mut self,
         control: &mut ParseControl,
@@ -7170,11 +7215,28 @@ impl ParserArenaSession {
         before: Option<&ParserNode>,
         capability: &crate::parser::tree_builder::ConstructionCapability<'_>,
     ) -> Result<(), SessionError> {
+        self.insert_parser_with_meta_csp(control, parent, node, before, capability, &mut None)
+    }
+    pub(crate) fn insert_parser_with_meta_csp(
+        &mut self,
+        control: &mut ParseControl,
+        parent: &ParserNode,
+        node: &ParserNode,
+        before: Option<&ParserNode>,
+        capability: &crate::parser::tree_builder::ConstructionCapability<'_>,
+        service: &mut Option<&mut dyn crate::meta_csp::Service>,
+    ) -> Result<(), SessionError> {
         capability.validate_session(control, self)?;
         self.qualify_base_response(control, node, capability)?;
         self.qualify_intrinsic_mutation(control, node, Some(capability))?;
-        self.active_mut()?
-            .insert(control, parent, node, before, InsertionCause::Parser)
+        self.active_mut()?.insert_with_meta_csp(
+            control,
+            parent,
+            node,
+            before,
+            InsertionCause::Parser,
+            service,
+        )
     }
     pub(crate) fn remove(
         &mut self,
@@ -7250,6 +7312,7 @@ impl ParserArenaSession {
             .handle();
         let (result, lease) = self.active_mut()?.construction.publish(control, root)?;
         let SessionStorage {
+            csp_slot: _,
             control: owner,
             effects,
             evidence,

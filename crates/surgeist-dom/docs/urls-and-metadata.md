@@ -149,6 +149,11 @@ Native Meta processing keeps Document history and current CSS selections
 separately. Content-language and referrer processing consume HTML-owned rules;
 refresh retains its actual source flag and the native Do-nothing terminal action.
 These histories are not reconstructed from currently attached nodes.
+The canonical policy container separately exposes source-qualified CSP knowledge:
+a real constructor's initial empty container, unavailable history, or an actual
+immutable transferred association. The DOM-owned issuer has no live policy map;
+snapshots clone immutable policy custody. Qualified parsed artifacts can transfer
+without replay, while reached native Meta CSP processing still refuses.
 `metadata().meta_theme_color()` and `meta_color_scheme()` capture the independent
 last completed selections at that publication. Like other raw canonical fields,
 these getters can be read during incomplete Source execution; interpret them as
@@ -171,6 +176,12 @@ The native constructor establishes an actual empty set of Meta UI recipients,
 independently of Document activity and focus/hover associations. Selection still
 runs and applies its result to that empty set. These results do not establish
 installed UI colors, computed root color-scheme or rendering resources.
+Native Base refreezing uses only a bank explicitly qualified to the current
+associated CSP policy. Parsed banks retain their original basis; a later CSP
+change does not retroactively qualify earlier permissions. Trusted native
+`bind_base_facts` supplies a new pairing against the exact current Document
+stamp. Historical frozen values remain readable.
+
 Context-free preferred stylesheet-set and reached Meta CSP effects retain
 explicit refusal; a later refusal rolls back earlier private selection and
 history changes in the batch.

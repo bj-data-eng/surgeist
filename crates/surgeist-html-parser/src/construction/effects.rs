@@ -269,12 +269,19 @@ impl SessionStorage {
         &mut self,
         c: &mut ParseControl,
     ) -> Result<(), SessionError> {
+        self.drain_construction_effects_with_meta_csp(c, &mut None)
+    }
+    pub(super) fn drain_construction_effects_with_meta_csp(
+        &mut self,
+        c: &mut ParseControl,
+        service: &mut Option<&mut dyn crate::meta_csp::Service>,
+    ) -> Result<(), SessionError> {
         let result = (|| {
             loop {
                 c.require_identity(&self.control)?;
                 c.charge(WorkCategory::RecordVisit, 2)?;
                 if self.effects.form.is_some() {
-                    self.step_form_effects(c)?;
+                    self.step_form_effects_with_meta_csp(c, service)?;
                     continue;
                 }
                 if self.effects.current.is_some() {
@@ -303,7 +310,11 @@ impl SessionStorage {
             }
         })();
         match result {
-            Err(SessionError::Stop(stop)) => Err(SessionError::Stop(stop)),
+            Err(
+                error @ (SessionError::Stop(_)
+                | SessionError::CspService
+                | SessionError::CspProtocol(_)),
+            ) => Err(error),
             Err(
                 error @ (SessionError::ContextFactUnavailable(_)
                 | SessionError::ContextReactionUnavailable),

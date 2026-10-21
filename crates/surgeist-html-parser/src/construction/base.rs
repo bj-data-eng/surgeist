@@ -302,6 +302,9 @@ impl SessionStorage {
         } else {
             self.base_slot(c, first)?
         };
+        if !self.csp_base_current(c, document)? {
+            return Err(c.stop_base_facts(HtmlBaseMissing::DocumentFacts).into());
+        }
         let environment = facts.document();
         let fallback = environment
             .fallback()

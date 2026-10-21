@@ -341,6 +341,12 @@ fn select_next(
                 }
                 let context = row.context();
                 let requirement = context.requirement(Role::InitialPolicy);
+                if context.csp_association().is_some() {
+                    return Err(DomParsedHtmlStyleError::PolicyContext {
+                        requirement: Requirement::Known,
+                    }
+                    .into());
+                }
                 if requirement != Requirement::OfflineUnbound {
                     return Err(DomParsedHtmlStyleError::PolicyContext { requirement }.into());
                 }
@@ -467,6 +473,7 @@ pub(super) fn qualify_creation(
                 if row.kind() != Kind::StyleUpdate(surgeist_html::HtmlStyleTrigger::ParserPopped)
                     || row.subject().id() != *q.subject()
                     || row.context().epoch() != *q.context_epoch()
+                    || row.context().csp_association().is_some()
                     || row.context().slot(Role::InitialPolicy).as_ref() != Some(q.slot())
                     || row.context().input_epoch(Role::InitialPolicy) != *q.slot().epoch()
                     || row

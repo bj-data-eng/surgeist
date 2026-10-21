@@ -400,7 +400,9 @@ impl DomSourceEdit {
             },
         }
     }
-    /// Request one `bind_base_facts` operation on the canonical owner.
+    /// Request the same current-Document and current-policy attestation as
+    /// [`crate::DomBatch::bind_base_facts`]. Imported history is not automatically
+    /// qualified to a later associated CSP policy.
     pub fn bind_base_facts(
         basis: DomDocumentStamp,
         facts: &surgeist_html_semantics::HtmlParseBaseFacts,

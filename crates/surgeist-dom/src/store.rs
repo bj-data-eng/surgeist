@@ -26,6 +26,7 @@ mod children;
 #[cfg(test)]
 pub(crate) mod compact_tests;
 mod control;
+mod csp;
 pub(crate) mod custody;
 pub(crate) use custody::{MaterializationId, Usage as MaterializationUsage};
 mod design_mode;
@@ -1266,6 +1267,7 @@ pub struct Dom {
     hosted_operations: hosted::operations::Operations,
     hosted_revisions: u64,
     value_sharing: value_sharing::Owner,
+    csp_owner: custody::Held<std::cell::RefCell<surgeist_html::HtmlCspOwner>>,
     _custody_administration: custody::Debit,
 }
 impl Dom {
@@ -1281,6 +1283,7 @@ impl Dom {
         let ledger = custody::Ledger::default();
         let administration = ledger.retain(custody::Ledger::administration_usage(), |_| Ok(()))?;
         let registry = bank::CustodyRegistry::new(&ledger, |_| Ok(()))?;
+        let csp_owner = csp::owner(&ledger)?;
         let state = State {
             identity: custody::MaterializationId::fresh()?,
             counts: transaction::Counts::default(),
@@ -1342,6 +1345,7 @@ impl Dom {
             owner,
             names,
             value_sharing,
+            csp_owner,
             revision: DomRevision(0),
             limits,
             state: Arc::new(state),

@@ -106,6 +106,7 @@ pub(super) struct Context {
     base_observation: Option<usize>,
     captured: Option<usize>,
     policy_missing: bool,
+    csp: Option<usize>,
     missing: bool,
 }
 pub(super) struct Occurrence {
@@ -400,6 +401,7 @@ impl SessionStorage {
             base_observation: None,
             captured: None,
             policy_missing: false,
+            csp: None,
             missing: false,
         };
         match document {
@@ -538,6 +540,10 @@ impl SessionStorage {
                     }
                 }
             }
+        }
+        if let DocumentRef::Owned(document) = document {
+            self.ensure_csp_policy(c, *document)?;
+            context.csp = self.csp_policy_slot(c, *document)?;
         }
         Ok(context)
     }
@@ -1215,6 +1221,17 @@ pub struct ContextView<'a> {
     value: &'a Context,
 }
 impl<'a> ContextView<'a> {
+    /// The exact association applicable at this occurrence, never final policy.
+    pub fn csp_association(&self) -> Option<&'a surgeist_html::HtmlCspAssociation> {
+        if self.value.policy_missing {
+            return None;
+        }
+        let slot = self.value.csp?;
+        let RetainedPayload::CspPolicy(value) = &self.storage.payloads.values[slot] else {
+            unreachable!("qualified policy")
+        };
+        value.value.as_ref()
+    }
     pub fn epoch(&self) -> ContextEpochId {
         context_epoch(self.storage, self.slot)
     }
@@ -1250,6 +1267,9 @@ impl<'a> ContextView<'a> {
         }
         if role == ContextRole::InitialPolicy && self.value.policy_missing {
             return ContextRequirement::Unavailable(MissingKind::PolicyHistory);
+        }
+        if role == ContextRole::InitialPolicy && self.value.csp.is_some() {
+            return ContextRequirement::Known;
         }
         if matches!(self.document, DocumentRef::Captured(_)) {
             if (self.value.captured.is_some()

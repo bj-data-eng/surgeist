@@ -75,6 +75,7 @@ pub(in crate::store) enum MetadataCredit {
 }
 pub(in crate::store) struct BaseDocumentFields {
     pub facts: Option<surgeist_html_semantics::HtmlParseBaseFacts>,
+    pub policy_basis: Option<crate::base::CspBasis>,
     pub first: Option<Key>,
     pub render: Sequence<NodeId, Key>,
     pub metadata_credit: MetadataCredit,

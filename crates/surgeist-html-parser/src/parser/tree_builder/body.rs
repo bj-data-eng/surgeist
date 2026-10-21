@@ -425,6 +425,15 @@ impl HeadState<'_> {
         close: bool,
         c: &mut ParseControl,
     ) -> Result<HeadStep, HeadError> {
+        self.head_delegation_with_meta_csp(late, close, c, &mut None)
+    }
+    pub(super) fn head_delegation_with_meta_csp(
+        &mut self,
+        late: bool,
+        close: bool,
+        c: &mut ParseControl,
+        service: &mut Option<&mut dyn crate::meta_csp::Service>,
+    ) -> Result<HeadStep, HeadError> {
         // The pending token is now processed using the InHead rules, even
         // when its actual insertion mode belongs to the delegating caller.
         self.record_trigger(
@@ -467,7 +476,7 @@ impl HeadState<'_> {
         } else if self.token_in(&["style", "noframes"], c)?.is_some() {
             self.raw_text(Raw::Rawtext, close, c)?
         } else {
-            self.insert_tag(c)?;
+            self.insert_tag_with_meta_csp(c, service)?;
             self.before
                 .kernel
                 .pop(c, self.script.as_ref().map(|script| &script.capability))?
@@ -549,6 +558,15 @@ impl HeadState<'_> {
         source: &HtmlSource,
         c: &mut ParseControl,
     ) -> Result<Option<HeadStep>, HeadError> {
+        self.body_rules_with_meta_csp(mode, source, c, &mut None)
+    }
+    pub(super) fn body_rules_with_meta_csp(
+        &mut self,
+        mode: InsertionMode,
+        source: &HtmlSource,
+        c: &mut ParseControl,
+        service: &mut Option<&mut dyn crate::meta_csp::Service>,
+    ) -> Result<Option<HeadStep>, HeadError> {
         self.record_trigger(crate::construction::provenance::ParserRule::Tree(mode), c)?;
         if self.first_lf(c)? {
             return Ok(Some(self.finish(c)?));
@@ -624,7 +642,9 @@ impl HeadState<'_> {
                     return Ok(Some(self.finish(c)?));
                 }
                 if self.token_in(HEAD, c)?.is_some() {
-                    return Ok(Some(self.head_delegation(true, close, c)?));
+                    return Ok(Some(
+                        self.head_delegation_with_meta_csp(true, close, c, service)?,
+                    ));
                 }
                 if self.token_in(&["frameset"], c)?.is_some() {
                     return Ok(Some(self.frameset_start(
@@ -866,7 +886,9 @@ impl HeadState<'_> {
                 return Ok(Some(self.form_start(close, c)?));
             }
             if self.token_in(HEAD, c)?.is_some() {
-                return Ok(Some(self.head_delegation(false, close, c)?));
+                return Ok(Some(
+                    self.head_delegation_with_meta_csp(false, close, c, service)?,
+                ));
             }
             if self.token_in(FORMATTING, c)?.is_some() {
                 return Ok(Some(self.formatting_start(close, c)?));

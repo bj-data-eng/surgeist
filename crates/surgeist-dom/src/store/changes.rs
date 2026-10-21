@@ -156,6 +156,7 @@ fn same_base_document(left: &Node, right: &Node) -> bool {
         (None, None) => true,
         (Some(a), Some(b)) => {
             a.first == b.first
+                && a.policy_basis == b.policy_basis
                 && same_slice(a.render_blocking, b.render_blocking)
                 && match (a.facts, b.facts) {
                     (None, None) => true,

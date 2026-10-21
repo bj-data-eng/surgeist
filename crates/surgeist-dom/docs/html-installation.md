@@ -82,12 +82,50 @@ historical request data; it does not override the current canonical bindings.
 ## Meta Document history
 
 Installation transfers qualified per-Document language, referrer, refresh,
-theme-color and authored color-scheme history. The original parser selects CSS
+theme-color, authored color-scheme and qualified CSP history. The original parser
+selects CSS
 values under its own finite admission; installation retains the sealed result
 without parsing CSS or replaying native Meta hooks. Selected color-scheme backing
 also consumes the canonical retained-report allowance. Untouched Template-owner
 Documents retain their own known absence. Reached unavailable media/CSS facts
-or intrinsic CSP processing still refuse the entire installation.
+or CSP processing without its original supplied processor still refuse the entire
+installation.
+
+Reports produced by HTML's explicit `parse_with_meta_csp` front retain the actual
+per-Document immutable CSP association. Installation issues a distinct destination
+association through the canonical DOM issuer with `Installation` provenance,
+sharing the same policy artifact, processing origin and original qualification.
+It does not call the processor again or reconstruct policy from final Meta nodes.
+The complete native/protocol graph, its wrapper and destruction work participate
+in the original installation admission and canonical metadata custody. Installing
+the same report twice creates independent destination associations.
+
+`metadata().policy_container().csp()` distinguishes `ConstructorInitialEmpty`,
+`Unavailable` and `Associated`. A default report with no protocol association
+remains unavailable even when untouched CSP history is complete; absence is not
+an empty-policy proof. Immutable snapshots retain the actual association and
+artifact independently of report/output lifetime. Hosted child construction
+inherits a known artifact through the same DOM issuer with distinct `Inheritance`
+provenance; its exact formed result remains parked across refusal and retry.
+
+Original Style's current offline-policy binder accepts only a genuine
+`OfflineUnbound` slot without a known original association. A qualified original
+policy receives a precise `PolicyContext` refusal from that limited executor;
+callers cannot replace it with a different artifact, and the final canonical
+Document policy is not substituted for occurrence-time context. Header-delivered
+CSP capture remains independently unavailable without its own source proof.
+
+A retained Base bank carries a canonical policy basis only when the producer
+explicitly paired it with its original initial association and that policy ID
+and revision still match the final original policy. Installation remaps that
+basis to the destination association; it never labels an earlier bank with a
+later policy. Existing frozen Base history remains unchanged. A subsequent
+policy-dependent native refreeze under an associated CSP refuses an unqualified
+or different basis with `DomBaseFactsError::PolicyMismatch`. The existing
+`bind_base_facts` command binds explicitly supplied trusted observations to the
+actual current Document stamp and policy. An unchanged CSP operation retains
+policy identity and does not invalidate a matching bank merely by advancing its
+association generation.
 
 ## Pending stylesheet associations
 

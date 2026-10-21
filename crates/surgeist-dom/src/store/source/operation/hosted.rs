@@ -39,6 +39,12 @@ pub(in crate::store) struct Child {
     work_charge: Option<checkpoint::Charge>,
     phase_charge: Option<checkpoint::Charge>,
     handoff_charge: Option<checkpoint::Charge>,
+    inherited_policy: Option<InheritedPolicy>,
+}
+struct InheritedPolicy {
+    csp: crate::meta::CspState,
+    _formation: Option<checkpoint::Charge>,
+    _retained: Retained,
 }
 struct ChildPrefix {
     host: DomHostedHostId,
@@ -166,6 +172,7 @@ impl Child {
             work_charge: None,
             phase_charge: None,
             handoff_charge: None,
+            inherited_policy: None,
         })
     }
     fn check(&self, request: &DomHostedChildRequest) -> Result<(), DomHostedError> {
@@ -960,15 +967,130 @@ impl DomSourceLease<'_> {
     }
 }
 impl Draft {
+    fn inherit_child_policy(
+        &self,
+        issuer: &custody::Held<std::cell::RefCell<surgeist_html::HtmlCspOwner>>,
+        source: &DomHostedSource,
+        inner: &canonical::Operation,
+        cancel: &AtomicBool,
+    ) -> Result<InheritedPolicy, DomHostedError> {
+        let parent = inner.request().parent.ok_or(DomHostedError::WrongPhase)?;
+        self.source_step(cancel)?;
+        let key = self.resolve(parent.document.document().node().into())?;
+        let transaction::KindRead::Document(metadata) = self.node(key)?.kind() else {
+            return Err(DomError::WrongDocument.into());
+        };
+        let mut csp = metadata.policy_container().csp.clone();
+        let formation = formation::Formation::new(self, cancel)?;
+        let retained = if let crate::DomDocumentCspState::Associated(original) = csp.view() {
+            // Cache the complete producer layout before acquiring a new strong
+            // occurrence. The descriptor itself is immutable and already sealed.
+            self.source_step(cancel)?;
+            let layout = original
+                .retained_layout()
+                .map_err(DomHostedError::CspProtocol)?;
+            let bytes = layout
+                .storage()
+                .bytes()
+                .checked_add(crate::meta::SelectedCsp::wrapper_bytes())
+                .ok_or(DomError::RepresentationExhausted)?;
+            if let Some(formation) = &formation {
+                formation.retain_payload(
+                    storage::Payload {
+                        bytes,
+                        units: layout.storage().utf16_units(),
+                    },
+                    cancel,
+                )?;
+            }
+            let retained = source.retain(bytes, cancel)?;
+            for _ in 0..4 {
+                // actual immutable wrapper formation and closing
+                self.source_step(cancel)?;
+                inner.request().work.step(cancel)?;
+            }
+            let mut owner = issuer
+                .value()
+                .try_borrow_mut()
+                .map_err(|_| DomHostedError::CspIssuerBusy)?;
+            // Retain each action's real peak reservation until its native
+            // action has returned; it is not a released preflight estimate.
+            let mut action_reservation = None;
+            let association = owner
+                .associate_document_with(
+                    original,
+                    surgeist_html::HtmlCspAssociationCause::Inheritance,
+                    &mut |action| {
+                        // A new callback starts only after the previous native
+                        // action returned, so its temporary frame is retired.
+                        drop(action_reservation.take());
+                        let work = action
+                            .work_credits()
+                            .checked_add(action.closing_work().work_credits())
+                            .ok_or(DomError::RepresentationExhausted)?;
+                        for _ in 0..work {
+                            self.source_step(cancel)?;
+                            inner.request().work.step(cancel)?;
+                        }
+                        let peak = action
+                            .peak()
+                            .bytes()
+                            .checked_add(action.atomic_bytes())
+                            .ok_or(DomError::RepresentationExhausted)?;
+                        let scratch = formation.as_ref().map(formation::Formation::fork);
+                        if let Some(scratch) = &scratch {
+                            scratch.retain_payload(
+                                storage::Payload {
+                                    bytes: peak,
+                                    units: action.peak().utf16_units(),
+                                },
+                                cancel,
+                            )?;
+                        }
+                        let retained = source.retain(peak, cancel)?;
+                        action_reservation = Some((scratch, retained));
+                        Ok(())
+                    },
+                )
+                .map_err(|error| match error {
+                    surgeist_html::HtmlCspError::Protocol(error) => {
+                        DomHostedError::CspProtocol(error)
+                    }
+                    surgeist_html::HtmlCspError::Interrupted(error) => error,
+                })?;
+            csp = crate::meta::CspState::Associated(crate::meta::SelectedCsp::new(
+                association,
+                layout,
+            ));
+            drop(action_reservation);
+            retained
+        } else {
+            source.retain(0, cancel)?
+        };
+        // Stored before later Draft/checkpoint/publication fallibility. A retry
+        // retains this exact issued destination rather than minting another ID.
+        Ok(InheritedPolicy {
+            csp,
+            _formation: formation.map(formation::Formation::into_charge),
+            _retained: retained,
+        })
+    }
     fn child_document(
         &mut self,
         source: &DomHostedSource,
         inner: &canonical::Operation,
-        global: DomHostedGlobalId,
-        navigation_start: DomHostedMoment,
+        inherited_csp: &crate::meta::CspState,
+        publication: &PublicationValue,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<Key, DomHostedError> {
+        let PublicationValue::NativeExecution {
+            global,
+            navigation_start,
+        } = publication
+        else {
+            return Err(DomHostedError::WrongPhase);
+        };
         let canonical::CreationPhase::Execution(execution) = &inner.phase else {
             return Err(DomHostedError::WrongPhase);
         };
@@ -992,8 +1114,8 @@ impl Draft {
             source: source.observe(),
             host: request.host,
             context: request.context,
-            global,
-            navigation_start,
+            global: *global,
+            navigation_start: *navigation_start,
             policy: inner.policy.ok_or(DomHostedError::WrongPhase)?,
             phase: DocumentPhase::Constructed,
             _retained: retained,
@@ -1030,7 +1152,25 @@ impl Draft {
             return Err(DomError::WrongDocument.into());
         };
         let platform = parent_metadata.document_environment().input_platform();
-        let parent_policy = *parent_metadata.policy_container();
+        if let crate::meta::CspState::Associated(value) = inherited_csp {
+            // The parked issuance remains live through retry/publication. This
+            // distinct metadata occurrence needs its own admitted extent before
+            // copying the immutable graph into the newly formed Document.
+            self.source_step(cancel)?;
+            if let Some(formation) = &formation {
+                formation.retain_payload(
+                    storage::Payload {
+                        bytes: value.bytes().ok_or(DomError::RepresentationExhausted)?,
+                        units: value.units(),
+                    },
+                    cancel,
+                )?;
+            }
+        }
+        let mut parent_policy = parent_metadata.policy_container().clone();
+        // Keep the existing referrer sampling point; only CSP issuance is an
+        // already admitted original result retained across publication retry.
+        parent_policy.csp = inherited_csp.clone();
         let mut metadata = DomDocumentMetadata::hosted_initial(
             platform,
             inner.origin.clone(),
@@ -1119,12 +1259,29 @@ impl DomSourceLease<'_> {
         };
         let result = (|| {
             child.check(request)?;
-            let inner = child.creating()?;
+            let Phase::Creating(inner) = &child.phase else {
+                return Err(DomHostedError::WrongPhase);
+            };
             let current = publication
                 .as_ref()
                 .ok_or(DomHostedError::MissingPublication)?;
             if current.key != inner.request().key {
                 return Err(DomHostedError::WrongPhase);
+            }
+            if matches!(
+                (&inner.phase, &current.value),
+                (
+                    canonical::CreationPhase::Execution(_),
+                    PublicationValue::NativeExecution { .. }
+                )
+            ) && child.inherited_policy.is_none()
+            {
+                child.inherited_policy = Some(operation.draft.inherit_child_policy(
+                    &self.dom.csp_owner,
+                    source,
+                    inner,
+                    cancel,
+                )?);
             }
             let next = inner.next_request()?;
             let input_bytes = operation.input_bytes()?;
@@ -1148,13 +1305,7 @@ impl DomSourceLease<'_> {
             let attempt = (|| {
                 use canonical::CreationPhase as P;
                 let next_phase = match (&inner.phase, &current.value) {
-                    (
-                        P::Execution(_),
-                        PublicationValue::NativeExecution {
-                            global,
-                            navigation_start,
-                        },
-                    ) => {
+                    (P::Execution(_), PublicationValue::NativeExecution { global, .. }) => {
                         let graph = operation
                             .draft
                             .hosted_history
@@ -1169,8 +1320,12 @@ impl DomSourceLease<'_> {
                         let key = operation.draft.child_document(
                             source,
                             inner,
-                            *global,
-                            *navigation_start,
+                            &child
+                                .inherited_policy
+                                .as_ref()
+                                .expect("execution policy formed")
+                                .csp,
+                            &current.value,
                             self.dom.limits,
                             cancel,
                         )?;
@@ -1354,6 +1509,7 @@ impl DomSourceLease<'_> {
                     // Drop the private request occurrence before its debit;
                     // published metadata already owns its independent extent.
                     child.phase_charge = None;
+                    child.inherited_policy = None;
                 }
                 Next::Active {
                     document,

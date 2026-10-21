@@ -1,7 +1,8 @@
 //! Document-owned native Meta processing history and explicit service boundaries.
 
 use crate::DocumentString;
-use surgeist_html::HtmlReferrerPolicy;
+use std::sync::Arc;
+use surgeist_html::{HtmlCspArtifactLayout, HtmlCspAssociation, HtmlReferrerPolicy};
 
 /// Last completed theme selection at this publication, independently qualified
 /// from Meta processing history. Current-tree interpretation requires a complete
@@ -60,25 +61,119 @@ impl DomMetaDocumentState {
     }
 }
 
+/// Source-qualified knowledge of this Document's CSP policy container.
+/// Absence of protocol qualification is never an empty-policy assertion.
+#[derive(Clone, Copy, Debug)]
+pub enum DomDocumentCspState<'a> {
+    /// A real native constructor established the initial empty policy container.
+    ConstructorInitialEmpty,
+    /// No qualified policy association was supplied for this Document.
+    Unavailable,
+    /// An immutable original association transferred to this destination owner.
+    Associated(&'a HtmlCspAssociation),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum CspState {
+    ConstructorInitialEmpty,
+    Unavailable,
+    Associated(SelectedCsp),
+}
+
+impl CspState {
+    pub(crate) fn view(&self) -> DomDocumentCspState<'_> {
+        match self {
+            Self::ConstructorInitialEmpty => DomDocumentCspState::ConstructorInitialEmpty,
+            Self::Unavailable => DomDocumentCspState::Unavailable,
+            Self::Associated(value) => DomDocumentCspState::Associated(&value.0.association),
+        }
+    }
+}
+
+/// The complete producer receipt includes native graph storage and disposal.
+/// Cloning metadata shares this immutable value, never the mutable issuer.
+#[derive(Clone, Debug)]
+pub(crate) struct SelectedCsp(Arc<CspAssociation>);
+#[derive(Debug)]
+struct CspAssociation {
+    association: HtmlCspAssociation,
+    layout: HtmlCspArtifactLayout,
+}
+impl PartialEq for SelectedCsp {
+    fn eq(&self, other: &Self) -> bool {
+        let left = &self.0.association;
+        let right = &other.0.association;
+        left.document() == right.document()
+            && left.generation() == right.generation()
+            && left.policy().id() == right.policy().id()
+            && left.policy().revision() == right.policy().revision()
+            && left.latest().map(|value| value.occurrence())
+                == right.latest().map(|value| value.occurrence())
+            && left.origin() == right.origin()
+    }
+}
+impl Eq for SelectedCsp {}
+impl SelectedCsp {
+    pub(crate) fn new(association: HtmlCspAssociation, layout: HtmlCspArtifactLayout) -> Self {
+        Self(Arc::new(CspAssociation {
+            association,
+            layout,
+        }))
+    }
+    pub(crate) fn wrapper_bytes() -> usize {
+        // The protocol receipt already includes the inline association.
+        size_of::<CspAssociation>() - size_of::<HtmlCspAssociation>()
+    }
+    pub(crate) fn bytes(&self) -> Option<usize> {
+        self.0
+            .layout
+            .storage()
+            .bytes()
+            .checked_add(Self::wrapper_bytes())
+    }
+    pub(crate) fn units(&self) -> usize {
+        self.0.layout.storage().utf16_units()
+    }
+}
+
 /// Canonical Document policy-container state supported by this owner.
-/// Parsed policy history remains unavailable until its producer supplies it.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DomDocumentPolicyContainer {
     pub(crate) referrer: Option<HtmlReferrerPolicy>,
+    pub(crate) csp: CspState,
 }
 impl DomDocumentPolicyContainer {
     pub(crate) const fn native() -> Self {
         Self {
             referrer: Some(surgeist_html::default_document_referrer_policy()),
+            csp: CspState::ConstructorInitialEmpty,
         }
     }
     pub(crate) const fn unavailable() -> Self {
-        Self { referrer: None }
+        Self {
+            referrer: None,
+            csp: CspState::Unavailable,
+        }
     }
-    /// Current policy-container referrer policy; `None` is unavailable history.
-    /// The native initial policy is distinct from an attribute's empty fallback.
-    pub const fn referrer_policy(self) -> Option<HtmlReferrerPolicy> {
+    /// Current referrer policy; `None` is unavailable history.
+    pub const fn referrer_policy(&self) -> Option<HtmlReferrerPolicy> {
         self.referrer
+    }
+    /// Qualified original CSP knowledge, independent of current Meta nodes.
+    pub fn csp(&self) -> DomDocumentCspState<'_> {
+        self.csp.view()
+    }
+    pub(crate) fn csp_bytes(&self) -> Option<usize> {
+        match &self.csp {
+            CspState::Associated(value) => value.bytes(),
+            _ => Some(0),
+        }
+    }
+    pub(crate) fn csp_units(&self) -> usize {
+        match &self.csp {
+            CspState::Associated(value) => value.units(),
+            _ => 0,
+        }
     }
 }
 

@@ -72,7 +72,10 @@ impl DomParsedDocumentEnvironment {
 /// bytes cover the peak of actual adapter/output and newly assembled child-vector
 /// capacities, including both old and replacement banks during geometric growth,
 /// plus the two mandatory shared output Vec-header payloads reserved before
-/// collection. Their reservation covers actual future backing and is not a
+/// collection. Qualified CSP transfers also admit the producer's complete
+/// retained association graph, actual canonical wrapper, action overlap and
+/// bounded atomic cleanup frame; protocol closing work is prepaid before action.
+/// Their reservation covers actual future backing and is not a
 /// simultaneous-allocator-occupancy measurement;
 /// canonical Draft/publication storage retains its existing DOM admission.
 /// Historical bytes admit the report payload, parser's complete retained
@@ -141,6 +144,8 @@ pub enum DomParsedHtmlInstallError {
     NotCompletedFragmentReport,
     ForeignContext,
     CurrentPolicyUnavailable,
+    CspProtocol(surgeist_html::HtmlCspProtocolError),
+    CspIssuerBusy,
     CapturedStateUnavailable,
     EnvironmentMismatch,
     MissingMetadata {
@@ -200,6 +205,7 @@ impl std::error::Error for DomParsedHtmlInstallError {
         match self {
             Self::Target(error) => Some(error),
             Self::SourceLookup { error, .. } => Some(error),
+            Self::CspProtocol(error) => Some(error),
             _ => None,
         }
     }

@@ -1070,3 +1070,166 @@ fn parsed_dialog_owned_history_is_prepared_before_publication_and_late_stop_is_a
         }
     }
 }
+
+#[test]
+fn csp_transfer_prices_real_graph_overlap_and_closing_without_retaining_atomic_scratch() {
+    use surgeist_html::*;
+    let mut allow = |_: HtmlCspLayout| Ok::<_, ()>(());
+    let mut source = HtmlCspOwner::new_with(&mut allow).unwrap();
+    let original = source.initial_document_with(&mut allow).unwrap();
+    let mut destination = HtmlCspOwner::new_with(&mut allow).unwrap();
+    let layout = original.retained_layout().unwrap();
+    let graph = layout.storage().bytes();
+    // The association protocol retains a new occurrence while the incoming
+    // graph remains live, plus its documented independent atomic cleanup frame.
+    let peak = graph * 2 + size_of::<HtmlCspAssociation>().max(layout.disposal().atomic_bytes());
+    let cancel = AtomicBool::new(false);
+    let mut control = Control {
+        limits: Limits::new(256, 10_000_000, peak - 1, 100_000_000),
+        work: 0,
+        bytes: 0,
+        peak_bytes: 0,
+        cancel: &cancel,
+    };
+    assert!(matches!(
+        destination.associate_document_with(
+            &original,
+            HtmlCspAssociationCause::Installation,
+            &mut |action| control.csp(action)
+        ),
+        Err(HtmlCspError::Interrupted(Error::ResourceLimit {
+            resource: Resource::ScratchBytes,
+            ..
+        }))
+    ));
+    assert_eq!(
+        control.bytes, 0,
+        "read/atomic frames are not retained graph custody"
+    );
+    control.limits.scratch_bytes = peak;
+    let transferred = destination
+        .associate_document_with(
+            &original,
+            HtmlCspAssociationCause::Installation,
+            &mut |action| control.csp(action),
+        )
+        .unwrap();
+    assert_eq!(control.bytes, graph);
+    assert_eq!(control.peak_bytes, peak);
+    assert_eq!(transferred.policy(), original.policy());
+    assert!(control.work >= 2 * (10 + 8 + layout.disposal().work_credits()));
+    let before = control.bytes;
+    let cancelled = AtomicBool::new(true);
+    control.cancel = &cancelled;
+    assert!(matches!(
+        destination.associate_document_with(
+            &original,
+            HtmlCspAssociationCause::Installation,
+            &mut |action| control.csp(action)
+        ),
+        Err(HtmlCspError::Interrupted(Error::Cancelled))
+    ));
+    assert_eq!(control.bytes, before);
+}
+
+#[test]
+fn csp_destination_authority_is_prepared_atomically_and_abandoned_ids_are_not_reissued() {
+    use surgeist_html::*;
+    struct NoReachedMeta {
+        profile: HtmlCspProcessorProfile,
+    }
+    impl HtmlMetaCspProcessor for NoReachedMeta {
+        type Error = ();
+        fn profile(&self) -> &HtmlCspProcessorProfile {
+            &self.profile
+        }
+        fn prepare<E>(
+            &mut self,
+            _: &HtmlMetaCspRequest,
+            _: &mut impl FnMut(HtmlCspLayout) -> Result<(), E>,
+            _: &mut impl FnMut(HtmlCspStorage),
+        ) -> Result<HtmlMetaCspOutcome<()>, HtmlCspError<E>> {
+            Ok(HtmlMetaCspOutcome::Unavailable(
+                HtmlCspUnavailable::Processor,
+            ))
+        }
+    }
+    let mut allow = |_: HtmlCspLayout| Ok::<_, ()>(());
+    let processor_owner = HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
+    let mut service = NoReachedMeta {
+        profile: processor_owner.profile_with(1, &mut allow).unwrap(),
+    };
+    let report = Arc::new(
+        HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<!doctype html><p>no reached Meta"),
+            parser_limits(),
+        )
+        .parse_with_meta_csp(&mut service)
+        .unwrap(),
+    );
+    let mut dom = Dom::new(
+        DomLimits::new(
+            256,
+            65536,
+            256,
+            1024,
+            1024,
+            16,
+            1_000_000,
+            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let env = environment(&mut dom);
+    let cancel = AtomicBool::new(false);
+    let before = dom.snapshot();
+    let usage = dom.usage();
+    let full = Limits::new(256, 10_000_000, 16_000_000, 100_000_000);
+    let pending = dom
+        .prepare_parsed_html_installation(
+            before.stamp(),
+            report.clone(),
+            env.clone(),
+            full,
+            &cancel,
+        )
+        .unwrap();
+    let DomNodeKind::Document(metadata) = pending
+        .prepared
+        .state
+        .node(dom.owner, pending.document.node())
+        .unwrap()
+        .kind()
+    else {
+        panic!("staged actual Document")
+    };
+    let crate::DomDocumentCspState::Associated(association) = metadata.policy_container().csp()
+    else {
+        panic!("formed destination authority")
+    };
+    let abandoned = association.document().clone();
+    assert!(association.policy().profile().is_none());
+    assert!(pending.admitted_work > 0);
+    assert!(matches!(
+        dom.publish_parsed_html_installation(pending, &AtomicBool::new(true)),
+        Err(Error::Cancelled)
+    ));
+    assert_eq!(*dom.state, *before.state);
+    assert_eq!(dom.usage(), usage);
+    let installed = dom
+        .install_parsed_html_document(before.stamp(), report, env, full, &cancel)
+        .unwrap();
+    let metadata = installed.snapshot().document(installed.document()).unwrap();
+    let crate::DomDocumentCspState::Associated(association) =
+        metadata.metadata().policy_container().csp()
+    else {
+        panic!("published destination")
+    };
+    assert_ne!(
+        association.document(),
+        &abandoned,
+        "operational serials never roll back on refusal"
+    );
+    crate::store::oracle_tests::assert_full_canonical(&dom);
+}

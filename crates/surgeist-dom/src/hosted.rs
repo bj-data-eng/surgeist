@@ -200,6 +200,8 @@ pub enum DomHostedError {
     IncompleteOperation,
     UnsupportedProfile,
     PendingDocumentObligations,
+    CspProtocol(surgeist_html::HtmlCspProtocolError),
+    CspIssuerBusy,
     ClockRegression,
     InvalidClockSample,
     InvalidEntryInitialization,

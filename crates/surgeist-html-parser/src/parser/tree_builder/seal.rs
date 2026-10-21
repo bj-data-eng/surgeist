@@ -301,6 +301,9 @@ pub(crate) struct OwnedOrdinaryFailure {
     failure: super::terminal::DetachedStandaloneFailure,
 }
 impl OwnedOrdinaryFailure {
+    pub(crate) fn release_csp_storage(&mut self, storage: crate::meta_csp::Storage) {
+        self.failure.release_csp_storage(storage)
+    }
     pub(super) fn original_request(&self) -> &DocumentRequestParts {
         &self.request
     }

@@ -503,6 +503,7 @@ impl Draft {
 
 pub(in crate::store) struct BaseMetadata {
     pub facts: Option<surgeist_html_semantics::HtmlParseBaseFacts>,
+    pub policy_basis: Option<crate::base::CspBasis>,
     pub first: Option<Key>,
     pub credit: MetadataCredit,
 }
@@ -528,6 +529,10 @@ pub(super) fn swap_base_metadata(
     };
     let current = fields.value_mut();
     std::mem::swap(&mut current.facts, &mut incoming.value_mut().facts);
+    std::mem::swap(
+        &mut current.policy_basis,
+        &mut incoming.value_mut().policy_basis,
+    );
     std::mem::swap(&mut current.first, &mut incoming.value_mut().first);
     std::mem::swap(
         &mut current.metadata_credit,
@@ -564,6 +569,7 @@ fn prepare_base_document(
         let value = value.expect("selected Base Document");
         BaseMetadata {
             facts: value.facts,
+            policy_basis: value.policy_basis,
             first: value.first,
             credit: MetadataCredit::None,
         }
@@ -591,6 +597,7 @@ fn prepare_base_document(
     })?;
     let next = transform(incoming, draft, cancel, |metadata| BaseDocumentFields {
         facts: metadata.facts,
+        policy_basis: metadata.policy_basis,
         first: metadata.first,
         render,
         metadata_credit: metadata.credit,
@@ -635,6 +642,7 @@ impl Draft {
             |node| {
                 Ok(node.base_document().map(|value| crate::base::BaseDocument {
                     facts: value.facts.cloned(),
+                    policy_basis: value.policy_basis.cloned(),
                     first: value.first,
                     render_blocking: Vec::new(),
                 }))

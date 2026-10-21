@@ -453,6 +453,9 @@ impl SessionStorage {
                 *state = DocumentState::Ordinary {
                     inert: Some(node.index),
                 };
+                // HTML's new inert Document has its own constructor policy;
+                // it does not inherit the outer Document's processed policy.
+                self.ensure_csp_policy(c, node.index)?;
                 self.bind_template_base(c, node.index)?;
                 Ok(DocumentRef::Owned(node.index))
             }

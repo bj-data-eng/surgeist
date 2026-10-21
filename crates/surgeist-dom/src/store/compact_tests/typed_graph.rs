@@ -125,6 +125,17 @@ impl Walker<'_> {
             raw.bytes(report.bytes());
             raw.units(report.utf16_units());
         }
+        if let crate::DomDocumentCspState::Associated(association) =
+            metadata.policy_container().csp()
+        {
+            // Ask the actual immutable producer graph, not SelectedCsp's cached
+            // layout or this metadata target's receipt. Its enclosing wrapper
+            // adds only its fixed layout descriptor beside the association.
+            let layout = association.retained_layout().unwrap();
+            raw.bytes(layout.storage().bytes());
+            raw.bytes(size_of::<surgeist_html::HtmlCspArtifactLayout>());
+            raw.units(layout.storage().utf16_units());
+        }
         if let crate::DomDocumentCreationCause::ParsedOffline { url, .. } =
             metadata.creation_cause()
         {

@@ -2073,6 +2073,23 @@ cursor, tokenizer, construction arena and controller execute each request. The
 into the report without reparsing or rebuilding an output tree. The native tree
 is read through the existing `HtmlDocument`/`HtmlFragment` construction API.
 
+`HtmlDocumentParseRequest::parse_with_meta_csp(&mut processor)` additionally
+borrows an explicit HTML `HtmlMetaCspProcessor` for reached Meta CSP processing.
+The original controller retains each resulting immutable policy and its actual
+Document qualification; reports retain no executable processor. Installation
+[transfers that policy association](../../crates/surgeist-dom/docs/html-installation.md#meta-document-history)
+without invoking the processor again. Ordinary `parse()` retains its precise
+missing-CSP disposition when actual processing is unavailable.
+
+Use `with_initial_policy_base_facts` to qualify supplied Base observations against
+the actual fresh constructor's initial policy. Later changed policies do not
+inherit those permissions. Original Style occurrences retain their applicable
+policy, so the final policy cannot replace earlier context. Processor refusal or
+failure retains the original typed error and accounted ownership alongside the
+terminal parse failure; consuming failures do not resume. See the
+[parser guide](../../crates/surgeist-html-parser/README.md) for finite provider
+custody and supported execution boundaries.
+
 The document execution profile is a fresh ordinary document with Disabled
 scripting. Captured-document, hosted, srcdoc and mode-fixed document execution
 remain unsupported even when a request can retain their configuration.

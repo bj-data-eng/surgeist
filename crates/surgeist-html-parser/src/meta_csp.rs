@@ -1,0 +1,321 @@
+//! Explicit caller-supplied processing for original Meta CSP transitions.
+use crate::construction::SessionError;
+use crate::parser::control::{ParseControl, ParseStop, WorkCategory};
+use crate::{HtmlDocumentParseRequest, HtmlParseFailure, HtmlParseReport};
+use std::{cell::RefCell, mem::size_of};
+use surgeist_html::*;
+
+/// Original external failure; no owned native error is erased or stringified.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlParseCspFailureKind {
+    Refused,
+    Failed,
+    Cancelled,
+    Protocol(HtmlCspProtocolError),
+    Interrupted(ParseStop),
+    Parse,
+}
+/// A terminal consuming parse, its native error and original accounting owner.
+/// Backend error custody cannot be extracted separately from this envelope.
+pub struct HtmlParseCspFailure<E> {
+    pub(crate) parse: Option<HtmlParseFailure>,
+    pub(crate) native: Option<E>,
+    pub(crate) kind: HtmlParseCspFailureKind,
+    pub(crate) storage: Storage,
+}
+impl<E> HtmlParseCspFailure<E> {
+    pub fn parse_failure(&self) -> &HtmlParseFailure {
+        self.parse.as_ref().expect("terminal original owner")
+    }
+    pub fn kind(&self) -> HtmlParseCspFailureKind {
+        self.kind
+    }
+    pub fn backend_error(&self) -> Option<&E> {
+        self.native.as_ref()
+    }
+}
+impl<E> std::fmt::Debug for HtmlParseCspFailure<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HtmlParseCspFailure")
+            .field("kind", &self.kind)
+            .field("parse", &self.parse)
+            .field("backend_error_retained", &self.native.is_some())
+            .finish()
+    }
+}
+impl<E> std::fmt::Display for HtmlParseCspFailure<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "HTML Meta CSP parse failed: {:?}", self.kind)
+    }
+}
+impl<E: std::error::Error + 'static> std::error::Error for HtmlParseCspFailure<E> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self.backend_error() {
+            Some(error) => Some(error),
+            None => Some(self.parse_failure()),
+        }
+    }
+}
+impl<E> Drop for HtmlParseCspFailure<E> {
+    fn drop(&mut self) {
+        drop(self.native.take());
+        if self.storage != Storage::ZERO {
+            self.parse
+                .as_mut()
+                .expect("native error retains original control")
+                .release_csp_storage(self.storage);
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct Storage {
+    pub bytes: usize,
+    pub units: usize,
+    pub entries: usize,
+}
+impl Storage {
+    pub const ZERO: Self = Self {
+        bytes: 0,
+        units: 0,
+        entries: 0,
+    };
+    pub fn from(value: HtmlCspStorage) -> Self {
+        Self {
+            bytes: value.bytes(),
+            units: value.utf16_units(),
+            entries: value.entries(),
+        }
+    }
+    pub fn add(self, b: Self) -> Option<Self> {
+        Some(Self {
+            bytes: self.bytes.checked_add(b.bytes)?,
+            units: self.units.checked_add(b.units)?,
+            entries: self.entries.checked_add(b.entries)?,
+        })
+    }
+    pub fn sub(self, b: Self) -> Option<Self> {
+        Some(Self {
+            bytes: self.bytes.checked_sub(b.bytes)?,
+            units: self.units.checked_sub(b.units)?,
+            entries: self.entries.checked_sub(b.entries)?,
+        })
+    }
+    pub fn acquire(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+        c.acquire_retained_provider(self.bytes as u64, self.units as u64, self.entries as u64)
+    }
+    pub fn release(self, c: &mut ParseControl) {
+        let owner = c.identity();
+        c.release_retained_provider(
+            &owner,
+            self.bytes as u64,
+            self.units as u64,
+            self.entries as u64,
+        );
+    }
+}
+/// Complete protocol-owned aggregate. Transferred occurrences already have a
+/// receipt; only genuinely new storage and closing work are introduced.
+#[derive(Default)]
+pub(crate) struct Account {
+    pub live: Storage,
+    overlap: Storage,
+    pub last: Storage,
+}
+impl Account {
+    pub fn settle(&mut self, c: &mut ParseControl) {
+        self.overlap.release(c);
+        self.overlap = Storage::ZERO;
+    }
+    pub fn admit(&mut self, c: &mut ParseControl, a: HtmlCspLayout) -> Result<(), ParseStop> {
+        self.settle(c);
+        let work = a
+            .work_credits()
+            .checked_add(a.closing_work().work_credits())
+            .ok_or_else(|| {
+                c.representation::<()>(crate::HtmlParseResource::WorkCredits)
+                    .unwrap_err()
+            })?;
+        c.charge(WorkCategory::ProviderCall, work)?;
+        c.admit_atomic_layout(a.atomic_bytes())?;
+        let base = self
+            .live
+            .sub(Storage::from(a.transferred().storage()))
+            .ok_or_else(|| c.invalid_associated_facts::<()>().unwrap_err())?;
+        let peak = base.add(Storage::from(a.peak())).ok_or_else(|| {
+            c.representation::<()>(crate::HtmlParseResource::ManagedCapacityBytes)
+                .unwrap_err()
+        })?;
+        let next = base
+            .add(Storage::from(a.retained().storage()))
+            .ok_or_else(|| {
+                c.representation::<()>(crate::HtmlParseResource::ManagedCapacityBytes)
+                    .unwrap_err()
+            })?;
+        // Temporarily admit the declared overlap before the native action.
+        let extra = Storage {
+            bytes: peak
+                .bytes
+                .saturating_sub(self.live.bytes)
+                .max(next.bytes.saturating_sub(self.live.bytes)),
+            units: peak
+                .units
+                .saturating_sub(self.live.units)
+                .max(next.units.saturating_sub(self.live.units)),
+            entries: peak
+                .entries
+                .saturating_sub(self.live.entries)
+                .max(next.entries.saturating_sub(self.live.entries)),
+        };
+        extra.acquire(c)?;
+        let admitted = self.live.add(extra).expect("checked admitted aggregate");
+        self.overlap = admitted.sub(next).expect("peak covers returned custody");
+        self.live = next;
+        self.last = Storage::from(a.retained().storage());
+        Ok(())
+    }
+    pub fn release(&mut self, c: &mut ParseControl, v: HtmlCspStorage) -> Result<(), ParseStop> {
+        self.settle(c);
+        let n = Storage::from(v);
+        self.live = self
+            .live
+            .sub(n)
+            .ok_or_else(|| c.invalid_associated_facts::<()>().unwrap_err())?;
+        n.release(c);
+        Ok(())
+    }
+}
+pub(crate) enum Outcome {
+    Completed(HtmlMetaCspPrepared),
+    Unavailable(HtmlCspUnavailable),
+    Terminal,
+}
+pub(crate) trait Service {
+    fn profile(&self) -> &HtmlCspProcessorProfile;
+    fn call(
+        &mut self,
+        c: &mut ParseControl,
+        account: &mut Account,
+        request: &HtmlMetaCspRequest,
+    ) -> Result<Outcome, SessionError>;
+}
+struct Adapter<'a, P: HtmlMetaCspProcessor> {
+    processor: &'a mut P,
+    error: Option<P::Error>,
+    kind: HtmlParseCspFailureKind,
+    storage: Storage,
+}
+impl<P: HtmlMetaCspProcessor> Service for Adapter<'_, P> {
+    fn profile(&self) -> &HtmlCspProcessorProfile {
+        self.processor.profile()
+    }
+    fn call(
+        &mut self,
+        c: &mut ParseControl,
+        account: &mut Account,
+        request: &HtmlMetaCspRequest,
+    ) -> Result<Outcome, SessionError> {
+        let before = account.live;
+        let pair = RefCell::new((c, account));
+        let mut release_error = None;
+        let result = self.processor.prepare(
+            request,
+            &mut |a| {
+                let mut p = pair.borrow_mut();
+                let (c, a0) = &mut *p;
+                a0.admit(c, a)
+            },
+            &mut |s| {
+                let mut p = pair.borrow_mut();
+                let (c, a) = &mut *p;
+                if let Err(e) = a.release(c, s) {
+                    release_error = Some(e);
+                }
+            },
+        );
+        let (c, account) = pair.into_inner();
+        if let Some(e) = release_error {
+            return Err(e.into());
+        }
+        account.settle(c);
+        let refused = matches!(&result, Ok(HtmlMetaCspOutcome::Refused(_)));
+        match result {
+            Ok(HtmlMetaCspOutcome::Completed(p)) => Ok(Outcome::Completed(p)),
+            Ok(HtmlMetaCspOutcome::Refused(e)) | Ok(HtmlMetaCspOutcome::Failed(e)) => {
+                // The provider's remaining aggregate travels with the real E.
+                self.storage = account.live.sub(before).ok_or(SessionError::WrongToken)?;
+                account.live = before;
+                self.error = Some(e);
+                self.kind = if refused {
+                    HtmlParseCspFailureKind::Refused
+                } else {
+                    HtmlParseCspFailureKind::Failed
+                };
+                // Set below through the outcome discriminant before moving E.
+                c.csp_processing_stop();
+                Ok(Outcome::Terminal)
+            }
+            Ok(HtmlMetaCspOutcome::Unavailable(u)) => {
+                if account.live != before {
+                    return Err(SessionError::WrongToken);
+                }
+                Ok(Outcome::Unavailable(u))
+            }
+            Ok(HtmlMetaCspOutcome::Cancelled) => {
+                self.kind = HtmlParseCspFailureKind::Cancelled;
+                if account.live != before {
+                    return Err(SessionError::WrongToken);
+                }
+                Err(c.cancelled_stop().into())
+            }
+            Err(HtmlCspError::Protocol(p)) => {
+                self.kind = HtmlParseCspFailureKind::Protocol(p);
+                if account.live != before {
+                    return Err(SessionError::WrongToken);
+                }
+                c.csp_protocol_stop(p);
+                Err(SessionError::CspProtocol(p))
+            }
+            Err(HtmlCspError::Interrupted(e)) => {
+                self.kind = HtmlParseCspFailureKind::Interrupted(e);
+                if account.live != before {
+                    return Err(SessionError::WrongToken);
+                }
+                Err(e.into())
+            }
+        }
+    }
+}
+#[expect(
+    clippy::result_large_err,
+    reason = "returns the actual original request, controller and native error custody without allocating after a stop"
+)]
+pub(crate) fn parse<P: HtmlMetaCspProcessor>(
+    request: HtmlDocumentParseRequest,
+    processor: &mut P,
+) -> Result<HtmlParseReport, HtmlParseCspFailure<P::Error>> {
+    let mut adapter = Adapter {
+        processor,
+        error: None,
+        kind: HtmlParseCspFailureKind::Parse,
+        storage: Storage::ZERO,
+    };
+    let fixed =
+        size_of::<Option<P::Error>>().saturating_add(size_of::<HtmlParseCspFailure<P::Error>>());
+    match crate::parser::tree_builder::parse::document(request, Some(&mut adapter), fixed) {
+        Ok(report) => Ok(report),
+        Err(parse) => {
+            let kind = match parse.reason() {
+                crate::HtmlParseFailureReason::CspProtocol(p) => {
+                    HtmlParseCspFailureKind::Protocol(p)
+                }
+                _ => adapter.kind,
+            };
+            Err(HtmlParseCspFailure {
+                parse: Some(parse),
+                native: adapter.error,
+                kind,
+                storage: adapter.storage,
+            })
+        }
+    }
+}

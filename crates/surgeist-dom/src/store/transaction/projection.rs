@@ -562,6 +562,7 @@ impl Draft {
                     |debit| {
                         Ok(canonical::BaseDocument {
                             facts: value.facts.clone(),
+                            policy_basis: value.policy_basis.clone(),
                             first: value.first.map(map),
                             render_blocking: projected_values(
                                 value.render.view(),

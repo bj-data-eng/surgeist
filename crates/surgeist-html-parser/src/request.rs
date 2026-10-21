@@ -101,11 +101,15 @@ pub struct HtmlDocumentParseRequest {
     cancellation: HtmlParseCancellation,
     context: DocumentContext,
     base_facts: Option<crate::HtmlParseBaseFacts>,
+    initial_policy_base: bool,
     associated: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
     #[cfg(test)]
     value_sharing: ValueSharingMode,
 }
 impl HtmlDocumentParseRequest {
+    pub(crate) fn initial_policy_base(&self) -> bool {
+        self.initial_policy_base
+    }
     #[cfg(test)]
     pub(crate) fn with_value_sharing(mut self, mode: ValueSharingMode) -> Self {
         self.value_sharing = mode;
@@ -117,7 +121,29 @@ impl HtmlDocumentParseRequest {
         reason = "returns the actual original request, stopped control and cleanup owner without allocating after a stop"
     )]
     pub fn parse(self) -> Result<crate::HtmlParseReport, crate::HtmlParseFailure> {
-        crate::parser::tree_builder::parse::document(self)
+        crate::parser::tree_builder::parse::document(self, None, 0)
+    }
+    /// Process reached original Meta CSP through the explicitly supplied service.
+    /// The processor is borrowed only during this consuming ordinary parse.
+    #[expect(
+        clippy::result_large_err,
+        reason = "returns the actual original request, controller and native error custody without allocating after a stop"
+    )]
+    pub fn parse_with_meta_csp<P: surgeist_html::HtmlMetaCspProcessor>(
+        self,
+        processor: &mut P,
+    ) -> Result<crate::HtmlParseReport, crate::HtmlParseCspFailure<P::Error>> {
+        crate::meta_csp::parse(self, processor)
+    }
+    /// Qualifies this ordinary Base bank against the actual fresh constructor's
+    /// initial policy. A changed policy never retargets this observation bank.
+    pub fn with_initial_policy_base_facts(
+        self,
+        facts: crate::HtmlParseBaseFacts,
+    ) -> Result<Self, HtmlParseRequestError> {
+        let mut request = self.with_base_facts(facts)?;
+        request.initial_policy_base = true;
+        Ok(request)
     }
     /// Consumes the original configuration after borrowed execution ends.
     /// This move does not clone source backing or imply parse admission.
@@ -142,6 +168,7 @@ impl HtmlDocumentParseRequest {
             cancellation: HtmlParseCancellation::new(),
             context: DocumentContext::Offline,
             base_facts: None,
+            initial_policy_base: false,
             associated: None,
             #[cfg(test)]
             value_sharing: ValueSharingMode::Combined,
@@ -183,6 +210,7 @@ impl HtmlDocumentParseRequest {
             cancellation: HtmlParseCancellation::new(),
             context: DocumentContext::Captured { capture, document },
             base_facts: None,
+            initial_policy_base: false,
             associated: None,
             #[cfg(test)]
             value_sharing: ValueSharingMode::Combined,
@@ -200,6 +228,7 @@ impl HtmlDocumentParseRequest {
             ));
         }
         self.base_facts = Some(facts);
+        self.initial_policy_base = false;
         Ok(self)
     }
     pub fn base_facts(&self) -> Option<&crate::HtmlParseBaseFacts> {

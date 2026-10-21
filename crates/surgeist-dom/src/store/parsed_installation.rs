@@ -73,6 +73,36 @@ impl Control<'_> {
         self.peak_bytes = self.peak_bytes.max(next);
         Ok(())
     }
+    /// Prepay transitive closing work before acquiring any new protocol graph.
+    fn csp(&mut self, layout: surgeist_html::HtmlCspLayout) -> Result<(), Error> {
+        let work = layout
+            .work_credits()
+            .checked_add(layout.closing_work().work_credits())
+            .ok_or(Error::RepresentationExhausted)?;
+        self.step(usize::try_from(work).map_err(|_| Error::RepresentationExhausted)?)?;
+        let peak = layout
+            .peak()
+            .bytes()
+            .checked_add(layout.atomic_bytes())
+            .ok_or(Error::RepresentationExhausted)?;
+        let total = self
+            .bytes
+            .checked_add(peak)
+            .ok_or(Error::RepresentationExhausted)?;
+        self.limit(
+            Resource::ScratchBytes,
+            total as u64,
+            self.limits.scratch_bytes as u64,
+        )?;
+        self.peak_bytes = self.peak_bytes.max(total);
+        let retained = layout
+            .retained()
+            .storage()
+            .bytes()
+            .checked_sub(layout.transferred().storage().bytes())
+            .ok_or(Error::RepresentationExhausted)?;
+        self.retain(retained)
+    }
     fn reserve<T>(&mut self, values: &mut Vec<T>, additional: usize) -> Result<(), Error> {
         #[cfg(test)]
         let mut written = crate::store::CopyObservation::default();
@@ -1129,7 +1159,7 @@ impl Dom {
                     design_mode_enabled,
                 )
             };
-            state::transfer_document_meta(&source, node, &mut metadata, &mut c)?;
+            state::transfer_document_meta(&source, node, &mut metadata, &self.csp_owner, &mut c)?;
             if capture.is_some() {
                 qualify_svg_destination(&metadata)?;
             }

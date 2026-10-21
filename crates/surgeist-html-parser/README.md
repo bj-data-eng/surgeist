@@ -38,6 +38,18 @@ Unsupported execution or required construction facts return typed failures. Fail
 the original request and live ownership until explicit cleanup; no successful
 partial report is returned.
 
+Ordinary requests may explicitly call `parse_with_meta_csp` with a borrowed
+`HtmlMetaCspProcessor`. The original construction owner creates qualified
+Document associations and services each reached Meta synchronously before later
+insertion effects. Reports retain accepted artifacts and exact Style policy
+epochs; they retain no executable processor. `Unavailable` remains an intrinsic
+gap, and typed consuming failures preserve original backend error custody and
+prepaid disposal. The default `parse` path has no processor qualification.
+`with_initial_policy_base_facts` explicitly pairs an initial Base bank with the
+fresh constructor policy; changing policy never retargets that bank or rewrites
+previously frozen Base values. Replacing it through `with_base_facts` removes
+that qualification. No CSP grammar or enforcement engine is supplied here.
+
 Completed reports retain each ordinary element's no-definition custom-element
 state and independent creation-time `is` value through the public metadata
 cursor. Formatting reconstruction and cloning preserve their actual creation

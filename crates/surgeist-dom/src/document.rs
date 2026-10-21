@@ -659,9 +659,11 @@ impl DomDocumentMetadata {
     /// Retained payload owned by this metadata; its inline header is counted by
     /// the enclosing node or source record. Keep consumers out of field pricing.
     pub(crate) fn retained_payload_units(&self) -> Result<usize, crate::DomError> {
-        let mut units = 0usize;
+        let mut units = self.policy.csp_units();
         if let Some(Some(value)) = &self.meta_color_scheme {
-            units = value.units;
+            units = units
+                .checked_add(value.units)
+                .ok_or(DomError::RepresentationExhausted)?;
         }
         for string in self.retained_strings() {
             units = units
@@ -681,9 +683,14 @@ impl DomDocumentMetadata {
         Ok(units)
     }
     pub(crate) fn retained_payload_bytes(&self) -> Result<usize, crate::DomError> {
-        let mut bytes = 0usize;
+        let mut bytes = self
+            .policy
+            .csp_bytes()
+            .ok_or(DomError::RepresentationExhausted)?;
         if let Some(Some(value)) = &self.meta_color_scheme {
-            bytes = value.bytes;
+            bytes = bytes
+                .checked_add(value.bytes)
+                .ok_or(DomError::RepresentationExhausted)?;
         }
         for string in self.retained_strings() {
             bytes = bytes
@@ -718,6 +725,7 @@ impl DomDocumentMetadata {
     pub(crate) fn units(&self) -> Option<usize> {
         self.content_type
             .len()
+            .checked_add(self.policy.csp_units())?
             .checked_add(self.encoding.len())?
             .checked_add(self.url.len())?
             .checked_add(

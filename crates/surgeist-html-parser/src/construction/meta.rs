@@ -33,6 +33,7 @@ impl MetaDomain {
 pub enum MetaMissingKind {
     RefreshUrl(HyperlinkUnavailable),
     Csp,
+    CspProcessing(surgeist_html::HtmlCspUnavailable),
     ThemeColor,
     ThemeColorProcessing(crate::parser::control::HtmlColorProcessingError),
 }
@@ -40,7 +41,7 @@ impl MetaMissingKind {
     pub(super) fn domain(&self) -> MetaDomain {
         match self {
             Self::RefreshUrl(_) => MetaDomain::Refresh,
-            Self::Csp => MetaDomain::Csp,
+            Self::Csp | Self::CspProcessing(_) => MetaDomain::Csp,
             Self::ThemeColor | Self::ThemeColorProcessing(_) => MetaDomain::ThemeColor,
         }
     }
@@ -51,6 +52,8 @@ impl MetaMissingKind {
 /// Gap slots are at most one per domain, never a transition/event log.
 pub(super) struct MetaHistory {
     pub(super) language: Option<usize>,
+    pub(super) csp: Option<usize>,
+    pub(super) base_csp: Option<usize>,
     pub(super) referrer: HtmlReferrerPolicy,
     pub(super) refresh: bool,
     pub(super) theme: Option<surgeist_color::Color>,
@@ -62,6 +65,8 @@ impl MetaHistory {
     pub(super) fn offline() -> Self {
         Self {
             language: None,
+            csp: None,
+            base_csp: None,
             referrer: default_document_referrer_policy(),
             refresh: false,
             theme: None,
@@ -99,13 +104,13 @@ fn after_commit(point: CancelPoint) {
     });
 }
 impl SessionStorage {
-    fn meta_history(&self, slot: usize) -> &MetaHistory {
+    pub(super) fn meta_history(&self, slot: usize) -> &MetaHistory {
         let RetainedPayload::Document { meta, .. } = &self.payloads.values[slot] else {
             unreachable!("qualified actual Document row")
         };
         meta
     }
-    fn meta_history_mut(&mut self, slot: usize) -> &mut MetaHistory {
+    pub(super) fn meta_history_mut(&mut self, slot: usize) -> &mut MetaHistory {
         let RetainedPayload::Document { meta, .. } = &mut self.payloads.values[slot] else {
             unreachable!("qualified actual Document row")
         };
@@ -120,7 +125,7 @@ impl SessionStorage {
         c.charge(WorkCategory::RecordVisit, 1)?;
         Ok(self.meta_history(slot).gaps[MetaDomain::Csp.index()])
     }
-    fn meta_missing(
+    pub(super) fn meta_missing(
         &mut self,
         c: &mut ParseControl,
         document: usize,
@@ -207,6 +212,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
         document: usize,
+        service: &mut Option<&mut dyn crate::meta_csp::Service>,
     ) -> Result<(), SessionError> {
         let Some(raw) = self.meta_attribute(c, node, "http-equiv")? else {
             return Ok(());
@@ -299,7 +305,14 @@ impl SessionStorage {
                 )?;
             }
             Pragma::ContentSecurityPolicy if !content.is_empty() => {
-                self.meta_missing(c, document, node, MetaMissingKind::Csp)?;
+                if !self.defer_csp(c, node, document, content)? {
+                    self.meta_missing(c, document, node, MetaMissingKind::Csp)?;
+                } else {
+                    self.service_meta_csp(
+                        c,
+                        service.as_deref_mut().ok_or(SessionError::WrongToken)?,
+                    )?;
+                }
             }
             _ => (),
         }
@@ -497,6 +510,7 @@ impl SessionStorage {
         detached: Option<usize>,
         removal: bool,
         old_parent: Option<usize>,
+        service: &mut Option<&mut dyn crate::meta_csp::Service>,
     ) -> Result<(), SessionError> {
         if !self.html_local(c, node, "meta")? {
             return Ok(());
@@ -512,7 +526,7 @@ impl SessionStorage {
             return Ok(());
         };
         if !removal {
-            self.meta_pragma(c, node, document)?;
+            self.meta_pragma(c, node, document, service)?;
             self.meta_referrer(c, node)?;
         }
         self.meta_candidates(c, document, detached, true, true)
@@ -663,6 +677,121 @@ fn meta_ascii(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[derive(Debug)]
+    struct RedPolicy;
+    impl surgeist_html::HtmlCspPolicyArtifact for RedPolicy {
+        fn retained_layout(&self) -> surgeist_html::HtmlCspArtifactLayout {
+            surgeist_html::HtmlCspArtifactLayout::default()
+        }
+    }
+    struct RedProcessor {
+        authority: surgeist_html::HtmlCspProcessorAuthority,
+        profile: surgeist_html::HtmlCspProcessorProfile,
+        refuse: bool,
+        calls: usize,
+        completed: usize,
+    }
+    impl surgeist_html::HtmlMetaCspProcessor for RedProcessor {
+        type Error = ();
+        fn profile(&self) -> &surgeist_html::HtmlCspProcessorProfile {
+            &self.profile
+        }
+        fn prepare<E>(
+            &mut self,
+            request: &surgeist_html::HtmlMetaCspRequest,
+            admit: &mut impl FnMut(surgeist_html::HtmlCspLayout) -> Result<(), E>,
+            release: &mut impl FnMut(surgeist_html::HtmlCspStorage),
+        ) -> Result<surgeist_html::HtmlMetaCspOutcome<()>, surgeist_html::HtmlCspError<E>> {
+            use surgeist_html::*;
+            self.profile
+                .validate_selected_with(request.qualification().processor(), admit)?;
+            admit(HtmlCspLayout::processing(
+                3,
+                Default::default(),
+                Default::default(),
+                0,
+            )?)
+            .map_err(HtmlCspError::Interrupted)?;
+            assert_eq!(
+                request.qualification().content().code_units(),
+                [114, 101, 100]
+            );
+            self.calls += 1;
+            if self.refuse {
+                return Ok(HtmlMetaCspOutcome::Refused(()));
+            }
+            // This closed adapter recognizes exactly the request-derived red
+            // fixture policy, independently of the later CSS color parser.
+            let layout = surgeist_html::HtmlCspArtifactLayout::default();
+            admit(HtmlCspLayout::processing(
+                1,
+                layout.storage(),
+                layout.disposal(),
+                0,
+            )?)
+            .map_err(HtmlCspError::Interrupted)?;
+            let policy = std::sync::Arc::new(RedPolicy);
+            match self.authority.attest_changed_with(request, policy, admit) {
+                Ok(p) => {
+                    self.completed += 1;
+                    Ok(HtmlMetaCspOutcome::Completed(p))
+                }
+                Err(e) => {
+                    drop(e.retained);
+                    release(layout.storage());
+                    Err(e.error)
+                }
+            }
+        }
+    }
+    #[test]
+    fn csp_result_precedes_dual_meta_theme_cancellation_and_later_tail_stop() {
+        use surgeist_html::*;
+        for refuse in [true, false] {
+            let mut allow = |_: HtmlCspLayout| Ok::<_, std::convert::Infallible>(());
+            let authority = HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
+            let profile = authority.profile_with(1, &mut allow).unwrap();
+            let mut processor = RedProcessor {
+                authority,
+                profile,
+                refuse,
+                calls: 0,
+                completed: 0,
+            };
+            let request = crate::HtmlDocumentParseRequest::offline(
+                crate::HtmlSource::utf8(
+                    "<!doctype html><meta http-equiv=content-security-policy name=theme-color content=red>",
+                ),
+                super::super::tests::limits(),
+            );
+            CANCEL_AFTER_COMMIT.with(|hook| {
+                *hook.borrow_mut() = Some((CancelPoint::Theme, 0, request.cancellation().clone()))
+            });
+            let failure = request.parse_with_meta_csp(&mut processor).unwrap_err();
+            assert_eq!(processor.calls, 1);
+            assert_eq!(processor.completed, usize::from(!refuse));
+            assert_eq!(failure.parse_failure().cleanup_error(), None);
+            if refuse {
+                assert_eq!(failure.kind(), crate::HtmlParseCspFailureKind::Refused);
+                assert_eq!(
+                    failure.parse_failure().first_stop(),
+                    Some(ParseStop::CspProcessing)
+                );
+                assert_eq!(
+                    failure.parse_failure().reason(),
+                    crate::HtmlParseFailureReason::CspProcessing
+                );
+                CANCEL_AFTER_COMMIT.with(|hook| assert!(hook.borrow_mut().take().is_some()));
+            } else {
+                assert_eq!(
+                    failure.parse_failure().first_stop(),
+                    Some(ParseStop::Cancelled)
+                );
+                CANCEL_AFTER_COMMIT.with(|hook| assert!(hook.borrow().is_none()));
+            }
+        }
+    }
+
     use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::Event};
 
     fn next_node(

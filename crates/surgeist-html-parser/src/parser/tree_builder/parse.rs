@@ -20,6 +20,8 @@ use crate::{HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseLimits,
 /// A terminal reason is separate from recoverable syntax diagnostics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlParseFailureReason {
+    CspProtocol(surgeist_html::HtmlCspProtocolError),
+    CspProcessing,
     Stop(ParseStop),
     UnsupportedDocumentInitialization,
     UnsupportedExecutionProfile,
@@ -52,6 +54,13 @@ pub struct HtmlParseFailure {
     cleanup_error: Option<HtmlParseEngineCondition>,
 }
 impl HtmlParseFailure {
+    pub(crate) fn release_csp_storage(&mut self, storage: crate::meta_csp::Storage) {
+        match &mut self.storage {
+            FailureStorage::Ordinary(owner) => owner.release_csp_storage(storage),
+            _ => panic!("native error was issued only by the original ordinary driver"),
+        }
+    }
+
     fn associated_inputs(&self) -> Option<&crate::construction::associated::Inputs> {
         match &self.storage {
             FailureStorage::OrdinaryInitialization(owner) => {
@@ -324,6 +333,8 @@ impl std::error::Error for HtmlParseFailure {}
 
 fn session_reason(e: SessionError) -> HtmlParseFailureReason {
     match e {
+        SessionError::CspService => HtmlParseFailureReason::CspProcessing,
+        SessionError::CspProtocol(p) => HtmlParseFailureReason::CspProtocol(p),
         SessionError::Stop(s) => HtmlParseFailureReason::Stop(s),
         SessionError::AssociatedFacts => {
             HtmlParseFailureReason::Stop(ParseStop::InvalidAssociatedFacts)
@@ -389,6 +400,9 @@ fn ordinary_attempt(
     owner: &mut OrdinaryInitializationOwner,
     ready: &mut Option<FrozenStandaloneParts>,
     failed_output: &mut Option<DetachedStandaloneFailure>,
+    mut service: Option<&mut dyn crate::meta_csp::Service>,
+    fixed: usize,
+    initial_base: bool,
 ) -> OrdinaryAttempt {
     let mut attempt = match owner.begin_report() {
         Ok(a) => a,
@@ -413,8 +427,29 @@ fn ordinary_attempt(
     )
     .err()
     .map(HtmlParseFailureReason::Stop);
+    if service.is_some() && reason.is_none() {
+        if let Err(e) = super::write(
+            fixed,
+            2,
+            &mut driver.as_mut().expect("actual driver").control,
+        ) {
+            reason = Some(HtmlParseFailureReason::Stop(e));
+        }
+        if reason.is_none()
+            && let Err(e) = driver
+                .as_mut()
+                .expect("actual driver")
+                .enable_meta_csp(initial_base)
+        {
+            reason = Some(ordinary_reason(&e));
+        }
+    }
     while reason.is_none() {
-        match driver.as_mut().expect("actual driver").step() {
+        match driver
+            .as_mut()
+            .expect("actual driver")
+            .step_with_meta_csp(&mut service)
+        {
             Ok(HeadStep::Consumed) => {}
             Ok(HeadStep::NeedInput) => {
                 reason = Some(HtmlParseFailureReason::Engine(
@@ -495,11 +530,21 @@ fn ordinary_attempt(
 )]
 pub(crate) fn document(
     request: HtmlDocumentParseRequest,
+    service: Option<&mut dyn crate::meta_csp::Service>,
+    fixed: usize,
 ) -> Result<ImmutableParseReport, HtmlParseFailure> {
+    let initial_base = request.initial_policy_base();
     let mut owner = OrdinaryInitializationOwner::new(request);
     let mut parts = None;
     let mut failed = None;
-    match ordinary_attempt(&mut owner, &mut parts, &mut failed) {
+    match ordinary_attempt(
+        &mut owner,
+        &mut parts,
+        &mut failed,
+        service,
+        fixed,
+        initial_base,
+    ) {
         OrdinaryAttempt::Ready => {}
         OrdinaryAttempt::Initialization(reason, refused) => {
             return Err(HtmlParseFailure {

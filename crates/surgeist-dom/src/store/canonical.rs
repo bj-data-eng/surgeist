@@ -103,12 +103,14 @@ pub(crate) enum Autofocus<K> {
 #[derive(Clone, Debug)]
 pub(crate) struct BaseDocument<K> {
     pub facts: Option<HtmlParseBaseFacts>,
+    pub policy_basis: Option<crate::base::CspBasis>,
     pub first: Option<K>,
     pub render_blocking: SharedVec<K>,
 }
 impl<K: PartialEq> PartialEq for BaseDocument<K> {
     fn eq(&self, other: &Self) -> bool {
         self.first == other.first
+            && self.policy_basis == other.policy_basis
             && self.render_blocking == other.render_blocking
             && match (&self.facts, &other.facts) {
                 (None, None) => true,
@@ -430,6 +432,7 @@ pub(crate) enum AutofocusView<'a> {
 #[derive(Clone, Copy)]
 pub(crate) struct BaseDocumentView<'a> {
     pub facts: Option<&'a HtmlParseBaseFacts>,
+    pub policy_basis: Option<&'a crate::base::CspBasis>,
     pub first: Option<NodeId>,
     pub render_blocking: &'a [NodeId],
 }
@@ -482,11 +485,13 @@ impl Node {
             BaseDocumentState::Absent => return None,
             BaseDocumentState::KnownEmpty => BaseDocumentView {
                 facts: None,
+                policy_basis: None,
                 first: None,
                 render_blocking: &[],
             },
             BaseDocumentState::Known(v) => BaseDocumentView {
                 facts: v.value.facts.as_ref(),
+                policy_basis: v.value.policy_basis.as_ref(),
                 first: v.value.first,
                 render_blocking: v.value.render_blocking.as_slice(),
             },

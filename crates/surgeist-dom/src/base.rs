@@ -12,6 +12,7 @@ pub enum DomBaseFactsError {
     InputsMismatch,
     BasisRevisionMismatch,
     Missing(HtmlBaseMissing),
+    PolicyMismatch,
 }
 /// Actual native response publication, never a UI/style/task delivery claim.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -62,15 +63,39 @@ impl<K> BaseState<K> {
             .map_or(0, |f| f.value.serialization().len())
     }
 }
+/// A trusted Base observation bank paired to the actual canonical policy.
+/// Opaque identities retain no native policy graph and grant no CSP execution.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct CspBasis {
+    document: surgeist_html::HtmlCspDocumentId,
+    policy: surgeist_html::HtmlCspPolicyId,
+    revision: surgeist_html::HtmlCspPolicyRevision,
+}
+impl CspBasis {
+    pub(crate) fn new(value: &surgeist_html::HtmlCspAssociation) -> Self {
+        Self {
+            document: value.document().clone(),
+            policy: value.policy().id().clone(),
+            revision: value.policy().revision(),
+        }
+    }
+    pub(crate) fn matches(&self, value: &surgeist_html::HtmlCspAssociation) -> bool {
+        self.document == *value.document()
+            && self.policy == *value.policy().id()
+            && self.revision == value.policy().revision()
+    }
+}
 #[derive(Clone, Debug)]
 pub(crate) struct BaseDocument<K> {
     pub(crate) facts: Option<HtmlParseBaseFacts>,
+    pub(crate) policy_basis: Option<CspBasis>,
     pub(crate) first: Option<K>,
     pub(crate) render_blocking: Vec<K>,
 }
 impl<K: PartialEq> PartialEq for BaseDocument<K> {
     fn eq(&self, other: &Self) -> bool {
         self.render_blocking == other.render_blocking
+            && self.policy_basis == other.policy_basis
             && self.first == other.first
             && match (&self.facts, &other.facts) {
                 (None, None) => true,
@@ -260,5 +285,24 @@ impl<'a> crate::DomDocument<'a> {
             .node
             .base_document()
             .and_then(|state| state.first))
+    }
+}
+
+#[cfg(test)]
+mod csp_basis_tests {
+    use super::*;
+    use surgeist_html::*;
+    #[test]
+    fn equal_revision_numbers_from_independent_issuers_are_not_policy_qualification() {
+        let mut admit = |_: HtmlCspLayout| Ok::<_, ()>(());
+        let mut first = HtmlCspOwner::new_with(&mut admit).unwrap();
+        let mut other = HtmlCspOwner::new_with(&mut admit).unwrap();
+        let first = first.initial_document_with(&mut admit).unwrap();
+        let other = other.initial_document_with(&mut admit).unwrap();
+        assert_eq!(first.policy().revision(), other.policy().revision());
+        assert_ne!(first.policy().id(), other.policy().id());
+        let basis = CspBasis::new(&first);
+        assert!(basis.matches(&first));
+        assert!(!basis.matches(&other));
     }
 }

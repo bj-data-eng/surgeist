@@ -63,6 +63,8 @@ pub enum Invariant {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ParseStop {
     Cancelled,
+    CspProcessing,
+    CspProtocol(surgeist_html::HtmlCspProtocolError),
     LimitExceeded {
         resource: HtmlParseResource,
         limit: u64,
@@ -311,6 +313,18 @@ impl ParseControl {
         self.source
             .take()
             .ok_or(ParseStop::InternalInvariant(Invariant::MissingSource))
+    }
+    pub(crate) fn csp_processing_stop(&mut self) -> ParseStop {
+        self.latch_stop(ParseStop::CspProcessing)
+    }
+    pub(crate) fn csp_protocol_stop(
+        &mut self,
+        error: surgeist_html::HtmlCspProtocolError,
+    ) -> ParseStop {
+        self.latch_stop(ParseStop::CspProtocol(error))
+    }
+    pub(crate) fn cancelled_stop(&mut self) -> ParseStop {
+        self.latch_stop(ParseStop::Cancelled)
     }
     fn latch_stop(&mut self, reason: ParseStop) -> ParseStop {
         if let Some(first) = self.terminal {
@@ -1504,6 +1518,44 @@ impl ParseControl {
         self.set(HtmlParseResource::ManagedUtf16Units, managed);
         allocation.resource = HtmlParseResource::ManagedUtf16Units;
         Ok(())
+    }
+
+    /// Transfers this producer's actual independent text ticket into the CSP
+    /// provider aggregate. The aggregate is acquired before the vector ticket
+    /// retires; the immutable backing remains live under its new sole receipt.
+    pub(crate) fn csp_document_string(
+        &mut self,
+        source: &crate::DocumentString,
+    ) -> Result<(crate::DocumentString, usize, usize), ParseStop> {
+        let mut buffer = OwnedVec::new(HtmlParseResource::BufferedUtf16Units)?;
+        for &unit in source.code_units() {
+            if let Err(stop) = buffer.try_push(self, unit) {
+                buffer.release(self)?;
+                return Err(stop);
+            }
+        }
+        let (text, allocation) = self.freeze_document_string(buffer)?;
+        let bytes =
+            allocation.vector_capacity * size_of::<u16>() + allocation.wrapper_bytes as usize;
+        let units = text.shared_code_units().capacity();
+        let admitted = self
+            .charge(WorkCategory::ProviderCall, 2)
+            .and_then(|()| self.acquire_retained_provider(bytes as u64, units as u64, 1));
+        if let Err(stop) = admitted {
+            drop(text);
+            self.release_document_string(allocation)?;
+            return Err(stop);
+        }
+        // This is an ownership transfer, not finalization or destruction of
+        // live backing. The new aggregate is already admitted; consume the
+        // unique prior ticket and retire only its duplicate debit.
+        self.commit_prepared_release(&[
+            (HtmlParseResource::ManagedCapacityBytes, bytes as u64),
+            (HtmlParseResource::PeakTransientBytes, bytes as u64),
+            (allocation.resource, allocation.units),
+        ]);
+        drop(allocation);
+        Ok((text, bytes, units))
     }
 
     pub(crate) fn release_document_string(

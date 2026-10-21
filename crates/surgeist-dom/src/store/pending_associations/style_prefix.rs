@@ -697,6 +697,11 @@ fn select(
                 }
                 let context = row.context();
                 let requirement = context.requirement(Role::InitialPolicy);
+                if context.csp_association().is_some() {
+                    return Err(DomParsedHtmlStyleError::PolicyContext {
+                        requirement: Requirement::Known,
+                    });
+                }
                 if requirement != Requirement::OfflineUnbound {
                     return Err(DomParsedHtmlStyleError::PolicyContext { requirement });
                 }

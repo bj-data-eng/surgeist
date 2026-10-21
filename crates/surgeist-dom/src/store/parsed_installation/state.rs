@@ -49,6 +49,7 @@ pub(super) fn transfer_document_meta<'a>(
     source: &Source<'a>,
     node: HtmlNode<'a>,
     metadata: &mut DomDocumentMetadata,
+    issuer: &custody::Held<std::cell::RefCell<surgeist_html::HtmlCspOwner>>,
     c: &mut Control<'_>,
 ) -> Result<(), Error> {
     use surgeist_html_parser::{
@@ -103,6 +104,29 @@ pub(super) fn transfer_document_meta<'a>(
             units: usage.utf16_units(),
         }
     });
+    if let Some(original) = view.csp_association() {
+        let mut owner = issuer
+            .value()
+            .try_borrow_mut()
+            .map_err(|_| Error::CspIssuerBusy)?;
+        let association = owner
+            .associate_document_with(
+                original,
+                surgeist_html::HtmlCspAssociationCause::Installation,
+                &mut |layout| c.csp(layout),
+            )
+            .map_err(|error| match error {
+                surgeist_html::HtmlCspError::Protocol(error) => Error::CspProtocol(error),
+                surgeist_html::HtmlCspError::Interrupted(error) => error,
+            })?;
+        let layout = association.retained_layout().map_err(Error::CspProtocol)?;
+        // Protocol admission covered the actual transitive graph and closing;
+        // this is the additional real wrapper allocated by the canonical owner.
+        c.step(4)?; // actual wrapper formation and last-owner destruction are prepaid
+        c.retain(crate::meta::SelectedCsp::wrapper_bytes())?;
+        metadata.policy_container_mut().csp =
+            crate::meta::CspState::Associated(crate::meta::SelectedCsp::new(association, layout));
+    }
     metadata.establish_parsed_meta_history(
         language.cloned(),
         view.referrer_policy(),
@@ -444,6 +468,41 @@ pub(super) fn metadata(
             )?;
         }
         if let Some(facts) = record.document_base_facts() {
+            let policy_basis = if let crate::DomDocumentCspState::Associated(destination) =
+                draft.document_metadata(key)?.policy_container().csp()
+            {
+                if let Some(original) =
+                    source.observation(&node.id(), c, |row| row.document_meta())?
+                {
+                    c.step(1)?;
+                    if original.document().id() != node.id() {
+                        return Err(Error::UnsupportedState { subject: node.id() });
+                    }
+                    c.step(5)?;
+                    match (
+                        original.base_policy_association(),
+                        original.csp_association(),
+                    ) {
+                        (Some(basis), Some(final_policy))
+                            if basis.document() == final_policy.document()
+                                && basis.policy().id() == final_policy.policy().id()
+                                && basis.policy().revision()
+                                    == final_policy.policy().revision()
+                                && destination.policy().id() == final_policy.policy().id()
+                                && destination.policy().revision()
+                                    == final_policy.policy().revision() =>
+                        {
+                            c.step(3)?;
+                            Some(crate::base::CspBasis::new(destination))
+                        }
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
             let old = draft
                 .node(key)?
                 .base_document()
@@ -460,6 +519,7 @@ pub(super) fn metadata(
                 || {
                     Ok(Some(crate::base::BaseDocument {
                         facts: Some(facts.clone()),
+                        policy_basis,
                         first,
                         render_blocking: Vec::new(),
                     }))

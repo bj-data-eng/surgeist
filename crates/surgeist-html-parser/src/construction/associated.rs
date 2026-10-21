@@ -517,7 +517,8 @@ impl SessionStorage {
                 return self.captured_encoding_url_context(c, &document);
             }
         };
-        if self.meta_policy_missing(c, document)?.is_some() {
+        if !self.csp_base_current(c, document)? || self.meta_policy_missing(c, document)?.is_some()
+        {
             return Ok(Err(HyperlinkUnavailable::PolicyHistory));
         }
         let mut environment = None;

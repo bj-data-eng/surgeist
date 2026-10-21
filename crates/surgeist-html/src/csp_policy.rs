@@ -163,6 +163,21 @@ impl Eq for HtmlCspPolicyState {}
 /// External actual processing, not a successful capability flag. Implementors
 /// admit all native reads/work/allocation before doing them and preserve typed
 /// failures. The explicitly supplied service is never retained by policy values.
+///
+/// Each call declares its actual native custody as an aggregate: retained
+/// allocations include all backing and prepaid disposal, including a returned
+/// owned `Error`. A processing action ends before the next admission or release
+/// callback; temporary peak-only backing must have dropped by that boundary.
+/// `release` follows actual disposal, never merely a decision to discard.
+/// Completed custody transfers to the prepared result; remaining admitted
+/// custody on Refused/Failed transfers with the original owned error. Other
+/// outcomes and interrupted/protocol errors must first dispose and release all
+/// call-specific native temporaries. Persistent provider caches require their
+/// own external ownership and must not be refunded while still live.
+/// Returned owned errors obey the artifact disposal contract too: destruction
+/// is bounded, allocation-free, nonpanicking, nonblocking, and performs no
+/// callbacks. Its complete destruction work is prepaid before formation, so
+/// the original consumer may safely destroy it after terminal interruption.
 pub trait HtmlMetaCspProcessor {
     type Error;
     fn profile(&self) -> &HtmlCspProcessorProfile;

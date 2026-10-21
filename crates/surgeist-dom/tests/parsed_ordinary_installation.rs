@@ -8,6 +8,8 @@ mod noncontrol_state;
 #[path = "parsed_ordinary_installation/pending_associations.rs"]
 mod pending_associations;
 
+#[path = "parsed_ordinary_installation/meta_csp.rs"]
+mod meta_csp;
 use std::sync::{Arc, atomic::AtomicBool};
 use surgeist_dom::*;
 use surgeist_html::{HtmlCustomElementState, HtmlDocumentMode};

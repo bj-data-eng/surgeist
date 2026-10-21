@@ -311,6 +311,9 @@ impl DomBatch {
     /// Native creation supplies its about:blank/UTF8 attestation; parsed
     /// installation supplies stored opaque URL/encoding identities. A spelling
     /// alone never substitutes for the selected creation cause's qualification.
+    /// For an associated CSP policy, the caller supplies trusted observations
+    /// applicable to that exact current Document policy. The owner records its
+    /// policy identity/revision; imported historical banks are not relabelled.
     /// This changes no URL/encoding metadata and does not itself refreeze Base.
     pub fn bind_base_facts(
         &mut self,

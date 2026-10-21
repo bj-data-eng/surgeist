@@ -22,6 +22,7 @@ pub(in crate::store) struct BaseRead<'a> {
 #[derive(Clone, Copy)]
 pub(in crate::store) struct BaseDocumentRead<'a> {
     pub facts: Option<&'a surgeist_html_semantics::HtmlParseBaseFacts>,
+    pub policy_basis: Option<&'a crate::base::CspBasis>,
     pub first: Option<Key>,
     pub render_blocking: Relations<'a>,
 }
@@ -891,6 +892,7 @@ impl<'a> NodeRead<'a> {
         if let Some(Overlay::BaseDocument(v)) = self.overlay {
             return v.as_ref().map(|v| BaseDocumentRead {
                 facts: v.facts.as_ref(),
+                policy_basis: v.policy_basis.as_ref(),
                 first: v.first.map(|k| self.alias(k)),
                 render_blocking: self.base_render(),
             });
@@ -900,11 +902,13 @@ impl<'a> NodeRead<'a> {
                 canonical::BaseDocumentState::Absent => None,
                 canonical::BaseDocumentState::KnownEmpty => Some(BaseDocumentRead {
                     facts: None,
+                    policy_basis: None,
                     first: None,
                     render_blocking: Relations::Empty,
                 }),
                 canonical::BaseDocumentState::Known(v) => Some(BaseDocumentRead {
                     facts: v.value.facts.as_ref(),
+                    policy_basis: v.value.policy_basis.as_ref(),
                     first: v.value.first.map(|id| self.id(id)),
                     render_blocking: self.relation_aliases(Relations::Canonical(
                         &v.value.render_blocking,
@@ -916,12 +920,14 @@ impl<'a> NodeRead<'a> {
                 BaseDocumentGroup::Absent => None,
                 BaseDocumentGroup::KnownEmpty => Some(BaseDocumentRead {
                     facts: None,
+                    policy_basis: None,
                     first: None,
                     render_blocking: Relations::Empty,
                 }),
                 BaseDocumentGroup::Known(v) => Some(match v.read() {
                     GroupRead::Canonical(v) => BaseDocumentRead {
                         facts: v.facts.as_ref(),
+                        policy_basis: v.policy_basis.as_ref(),
                         first: v.first.map(|id| self.id(id)),
                         render_blocking: self.relation_aliases(Relations::Canonical(
                             &v.render_blocking,
@@ -930,6 +936,7 @@ impl<'a> NodeRead<'a> {
                     },
                     GroupRead::Changed(v) => BaseDocumentRead {
                         facts: v.facts.as_ref(),
+                        policy_basis: v.policy_basis.as_ref(),
                         first: v.first.map(|k| self.alias(k)),
                         render_blocking: self.relation_aliases(v.render.view()),
                     },

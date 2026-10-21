@@ -640,6 +640,16 @@ impl LocationKernel {
         control: &mut ParseControl,
         capability: Option<&ConstructionCapability<'_>>,
     ) -> Result<ElementInsertionOutcome, KernelError> {
+        self.insert_element_at_with_meta_csp(element, location, control, capability, &mut None)
+    }
+    fn insert_element_at_with_meta_csp(
+        &mut self,
+        element: &ParserNode,
+        location: &InsertionLocation,
+        control: &mut ParseControl,
+        capability: Option<&ConstructionCapability<'_>>,
+        service: &mut Option<&mut dyn crate::meta_csp::Service>,
+    ) -> Result<ElementInsertionOutcome, KernelError> {
         let outcome =
             match self
                 .session
@@ -648,12 +658,13 @@ impl LocationKernel {
                 Some(reason) => ElementInsertionOutcome::Ignored(reason),
                 None => {
                     if let Some(capability) = capability {
-                        self.session.insert_parser(
+                        self.session.insert_parser_with_meta_csp(
                             control,
                             &location.parent,
                             element,
                             location.before.as_ref(),
                             capability,
+                            service,
                         )?;
                     } else {
                         self.session.insert(
@@ -905,8 +916,26 @@ pub(crate) struct StandaloneDocumentDriver<'source> {
     failure_usage: Option<super::control::ParseUsage>,
 }
 impl<'source> StandaloneDocumentDriver<'source> {
+    pub(super) fn enable_meta_csp(&mut self, initial_base: bool) -> Result<(), StandaloneError> {
+        let session = &mut self
+            .prologue
+            .as_mut()
+            .ok_or(StandaloneError::Consumed)?
+            .kernel()?
+            .session;
+        session
+            .enable_meta_csp(&mut self.control, initial_base)
+            .map_err(|e| StandaloneError::Head(e.into()))
+    }
+    #[cfg(test)]
     pub(crate) fn step(&mut self) -> Result<head::HeadStep, StandaloneError> {
-        let result = self.step_inner();
+        self.step_with_meta_csp(&mut None)
+    }
+    pub(crate) fn step_with_meta_csp(
+        &mut self,
+        service: &mut Option<&mut dyn crate::meta_csp::Service>,
+    ) -> Result<head::HeadStep, StandaloneError> {
+        let result = self.step_inner(service);
         self.retain_terminal_failure(&result);
         result
     }
@@ -996,12 +1025,15 @@ impl<'source> StandaloneDocumentDriver<'source> {
         }
         Ok(())
     }
-    fn step_inner(&mut self) -> Result<head::HeadStep, StandaloneError> {
+    fn step_inner(
+        &mut self,
+        service: &mut Option<&mut dyn crate::meta_csp::Service>,
+    ) -> Result<head::HeadStep, StandaloneError> {
         use super::tokenizer::token::Event;
         self.control.require_source(self.source)?;
         self.control.charge(WorkCategory::RecordVisit, 1)?;
         if let Some(head) = &mut self.head {
-            let step = head.step(&mut self.control)?;
+            let step = head.step_with_meta_csp(&mut self.control, service)?;
             if step == head::HeadStep::Boundary(head::HeadBoundary::AfterHead) {
                 let state = head.state.as_mut().ok_or(StandaloneError::Consumed)?;
                 // Consume the actual phase handoff in the sole fresh driver.

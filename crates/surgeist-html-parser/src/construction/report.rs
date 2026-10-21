@@ -250,7 +250,8 @@ impl<'a> PreparedReportStorage<'a> {
                         if !matches!(
                             storage.payloads.values.get(*missing),
                             Some(RetainedPayload::MetaMissing {
-                                kind: meta::MetaMissingKind::Csp,
+                                kind: meta::MetaMissingKind::Csp
+                                    | meta::MetaMissingKind::CspProcessing(_),
                                 ..
                             })
                         ) {
@@ -987,6 +988,28 @@ pub struct MetadataDocumentMeta<'a> {
     meta: &'a meta::MetaHistory,
 }
 impl<'a> MetadataDocumentMeta<'a> {
+    /// Exact original construction policy; absent means no protocol qualification.
+    pub fn csp_association(&self) -> Option<&'a surgeist_html::HtmlCspAssociation> {
+        self.meta.gaps[meta::MetaDomain::Csp.index()]
+            .is_none()
+            .then_some(())?;
+        let slot = self.meta.csp?;
+        let RetainedPayload::CspPolicy(value) = &self.storage.payloads.values[slot] else {
+            unreachable!("qualified policy")
+        };
+        value.value.as_ref()
+    }
+
+    /// Original policy explicitly paired with the supplied initial Base facts.
+    /// A later policy never substitutes for this historical qualification.
+    pub fn base_policy_association(&self) -> Option<&'a surgeist_html::HtmlCspAssociation> {
+        let slot = self.meta.base_csp?;
+        let RetainedPayload::CspPolicy(value) = &self.storage.payloads.values[slot] else {
+            unreachable!("qualified initial Base policy")
+        };
+        value.value.as_ref()
+    }
+
     pub fn document(&self) -> HtmlNode<'a> {
         self.arena
             .node_at(self.document)
