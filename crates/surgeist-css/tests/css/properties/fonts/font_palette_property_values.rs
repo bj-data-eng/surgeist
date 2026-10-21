@@ -342,7 +342,14 @@ fn checked_palette_and_math_graphs_share_the_complete_256_level_ceiling() {
                 .unwrap(),
         ));
     }
-    assert!(value.serialize_specified().is_ok());
+    // Fonts 4 (WD 2026-09-07) §9.1: palette-mix( <color-interpolation-method>?
+    // , ... ) with an absent method and weight serializes neither,
+    // so 256 single-component levels serialize as 256 nested `palette-mix(`
+    // openings around `dark`, built here independently of the serializer.
+    assert_eq!(
+        value.serialize_specified().unwrap(),
+        format!("{}dark{}", "palette-mix(".repeat(256), ")".repeat(256))
+    );
     assert_eq!(
         CssFontPaletteMix::try_new(None, vec![CssFontPaletteMixComponent::new(value, None),])
             .unwrap_err(),

@@ -18,6 +18,15 @@ fn source_position(line: u32, column: u32) -> CssSourcePosition {
     CssSourcePosition::from_cssparser(parser.position(), parser.current_source_location())
 }
 
+/// The property name authored in a `.panel { name: value; }` fixture.
+fn declared_property(input: &'static str) -> &'static str {
+    let (_, declaration) = input.split_once("{ ").expect("one style rule fixture");
+    let (name, _) = declaration
+        .split_once(':')
+        .expect("one declaration fixture");
+    name
+}
+
 fn style_rule(rule: &CssRule) -> &CssStyleRule {
     match rule {
         CssRule::Style(rule) => rule,
@@ -351,10 +360,61 @@ fn parses_css_system_colors_symbolically() {
     );
 }
 
+/// The authored token a color rejection names.
+#[derive(Clone, Copy, Debug)]
+enum ResponsibleToken {
+    /// The first token the grammar cannot accept.
+    Token(CssTokenKind, &'static str),
+    /// The function's arguments end before its grammar completes. The
+    /// specifications name no responsible token for a truncated argument
+    /// list, so only the diagnostic's placement inside the value is required.
+    Truncated,
+}
+
+/// Typed evidence that `color` rejected `value` by the color grammar: the
+/// declaration alone is dropped with an `InvalidColorSyntax` diagnostic (the
+/// documented kind for invalid authored color syntax) that names the
+/// responsible authored token at that token's source offset.
+fn assert_color_rejected(value: &str, responsible: ResponsibleToken) {
+    let input = format!(".panel {{ color: {value}; }}");
+    let error = crate::test_support::assert_drops_sole_declaration(&input);
+    let ErrorKind::InvalidColorSyntax(detail) = error.kind() else {
+        panic!("{input}: not a color syntax rejection: {error:?}");
+    };
+    let offset = error.position().byte_offset().value();
+    match responsible {
+        ResponsibleToken::Token(kind, spelling) => {
+            let token = detail
+                .encountered()
+                .unwrap_or_else(|| panic!("{input}: responsible token"));
+            assert_eq!(
+                (token.kind(), token.authored()),
+                (kind, spelling),
+                "{input}"
+            );
+            assert_eq!(
+                offset,
+                input.find(spelling).unwrap(),
+                "{input}: diagnostic offset is the responsible token"
+            );
+        }
+        ResponsibleToken::Truncated => {
+            let start = input.find(value).unwrap();
+            assert!(
+                (start..start + value.len()).contains(&offset),
+                "{input}: diagnostic at {offset} lies inside the color value"
+            );
+        }
+    }
+}
+
 #[test]
 fn rejects_unknown_system_color_like_identifiers() {
-    assert!(parse_sheet(".panel { color: MadeUpSystemColor; }").is_err());
-    assert!(parse_sheet(".panel { color: PlatformAccent; }").is_err());
+    // Color 4 (CRD 2026-09-08) §6.2 enumerates <system-color>; neither name
+    // is a system color nor a <named-color>.
+    for name in ["MadeUpSystemColor", "PlatformAccent"] {
+        assert_color_rejected(name, ResponsibleToken::Token(CssTokenKind::Ident, name));
+    }
 }
 
 #[test]
@@ -421,9 +481,22 @@ fn parses_color_mix_with_hue_interpolation() {
 
 #[test]
 fn rejects_invalid_color_mix_forms_strictly() {
-    assert!(parse_sheet(".panel { color: color-mix(); }").is_err());
-    assert!(parse_sheet(".panel { color: color-mix(in unknown, red, blue); }").is_err());
-    assert!(parse_sheet(".panel { color: color-mix(in oklch, red 10% 20%, blue); }").is_err());
+    // Color 5 (WD 2026-09-08) §3: color-mix( <color-interpolation-method>? ,
+    // [ <color> && <percentage [0,100]>? ]# ). The list needs one <color>,
+    // `in` takes a color space, and each item takes at most one percentage.
+    for (value, responsible) in [
+        ("color-mix()", ResponsibleToken::Truncated),
+        (
+            "color-mix(in unknown, red, blue)",
+            ResponsibleToken::Token(CssTokenKind::Ident, "unknown"),
+        ),
+        (
+            "color-mix(in oklch, red 10% 20%, blue)",
+            ResponsibleToken::Token(CssTokenKind::Percentage, "20%"),
+        ),
+    ] {
+        assert_color_rejected(value, responsible);
+    }
 }
 
 #[test]
@@ -471,13 +544,33 @@ fn parses_relative_oklch_with_component_expressions() {
 
 #[test]
 fn rejects_invalid_relative_color_forms_strictly() {
-    assert!(parse_sheet(".panel { color: rgb(from red r g); }").is_err());
-    assert!(parse_sheet(".panel { color: rgb(from red r g b /); }").is_err());
-    assert!(parse_sheet(".panel { color: rgb(from red r g b extra); }").is_err());
-    assert!(parse_sheet(".panel { color: hsl(from red h s); }").is_err());
-    assert!(parse_sheet(".panel { color: rgb(from red foo(r) g b); }").is_err());
-    assert!(parse_sheet(".panel { color: rgb(from red calc() g b); }").is_err());
-    assert!(parse_sheet(".panel { color: rgb(from red calc(h +) g b); }").is_err());
+    // Color 5 (WD 2026-09-08) §4.2 and §5.1: a relative rgb() or hsl() takes
+    // exactly three channel values and an optional `/ <alpha-value>`; a
+    // channel is a number, percentage, `none`, a channel keyword of that
+    // function, or a math function over those keywords (Values 4 §10).
+    use ResponsibleToken::{Token, Truncated};
+    for (value, responsible) in [
+        ("rgb(from red r g)", Truncated),
+        ("rgb(from red r g b /)", Truncated),
+        (
+            "rgb(from red r g b extra)",
+            Token(CssTokenKind::Ident, "extra"),
+        ),
+        ("hsl(from red h s)", Truncated),
+        (
+            "rgb(from red foo(r) g b)",
+            Token(CssTokenKind::Function, "foo("),
+        ),
+        // calc() needs a <calc-sum> (Values 4 §10.1), so its arguments are truncated.
+        ("rgb(from red calc() g b)", Truncated),
+        // `h` is not an rgb() channel keyword.
+        (
+            "rgb(from red calc(h +) g b)",
+            Token(CssTokenKind::Ident, "h"),
+        ),
+    ] {
+        assert_color_rejected(value, responsible);
+    }
 }
 
 #[test]
@@ -551,15 +644,25 @@ fn color_surface_accepts_expanded_strict_forms() {
 
 #[test]
 fn color_surface_rejects_invalid_forms_without_recovery() {
-    for css in [
-        ".panel { color: rgb(1, 2 3); }",
-        ".panel { color: color(unknown-space 1 0 0); }",
-        ".panel { color: MadeUpSystemColor; }",
-        ".panel { color: color-mix(); }",
-        ".panel { color: rgb(from red r g); }",
-        ".panel { color: rgb(from red r g b /); }",
+    // Color 4 (CRD 2026-09-08) §5.1: legacy rgb() separates every channel
+    // with a comma; §10.1: color() takes a predefined color space or a
+    // dashed-ident profile. The remaining forms are covered above.
+    use ResponsibleToken::{Token, Truncated};
+    for (value, responsible) in [
+        ("rgb(1, 2 3)", Token(CssTokenKind::Number, "3")),
+        (
+            "color(unknown-space 1 0 0)",
+            Token(CssTokenKind::Ident, "unknown-space"),
+        ),
+        (
+            "MadeUpSystemColor",
+            Token(CssTokenKind::Ident, "MadeUpSystemColor"),
+        ),
+        ("color-mix()", Truncated),
+        ("rgb(from red r g)", Truncated),
+        ("rgb(from red r g b /)", Truncated),
     ] {
-        assert!(parse_sheet(css).is_err(), "{css} should reject strictly");
+        assert_color_rejected(value, responsible);
     }
 }
 
@@ -2259,7 +2362,7 @@ fn rejects_invalid_generated_content_and_list_counter_forms() {
             label: authored_value,
             property_name,
             authored_value,
-            expected_error: ExpectedErrorKind::InvalidSyntaxOrUnsupportedValueForProperty {
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
                 property: property_name,
             },
             property_name_should_be_recognized: true,
@@ -2473,14 +2576,41 @@ fn variable_dependent_values_skip_post_substitution_validation() {
 }
 
 #[test]
-fn malformed_var_in_supported_property_rejects_whole_sheet() {
-    assert!(parse_sheet(".panel { gap: var(color); }").is_err());
-    assert!(parse_sheet(".panel { color: var(--brand); bogus: 1; }").is_err());
+fn malformed_var_in_supported_property_drops_the_declaration() {
+    // Variables 1 (CR 2022-06-16) §3: var( <custom-property-name> ,
+    // <declaration-value>? ). `color` is not a custom property name, and a
+    // fallback needs its comma, so neither reference is syntactically valid
+    // and the declaration is invalid at parse time.
+    for (input, property) in [
+        (".panel { gap: var(color); }", CssKnownProperty::Gap),
+        (
+            ".panel { color: var(--brand red); }",
+            CssKnownProperty::Color,
+        ),
+    ] {
+        // The declaration's own value grammar rejects it, for its property.
+        let error = crate::test_support::assert_drops_sole_declaration(input);
+        let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
+            panic!("{input}: property value rejection: {error:?}");
+        };
+        assert_eq!(detail.property(), property, "{input}");
+    }
 }
 
 #[test]
-fn no_var_invalid_supported_values_still_reject_strictly() {
-    assert!(parse_sheet(".panel { gap: auto; }").is_err());
+fn invalid_supported_value_without_var_drops_the_declaration() {
+    // Box Alignment 3 (WD 2026-01-30) §8.2 and §8.1: gap is <'row-gap'> <'column-gap'>?,
+    // each normal | <length-percentage [0,∞]>; `auto` is neither.
+    let error = crate::test_support::assert_drops_sole_declaration(".panel { gap: auto; }");
+    let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
+        panic!("gap value rejection: {error:?}");
+    };
+    assert_eq!(detail.property(), CssKnownProperty::Gap);
+    let token = detail.encountered().expect("responsible keyword");
+    assert_eq!(
+        (token.kind(), token.authored()),
+        (CssTokenKind::Ident, "auto")
+    );
 }
 
 #[test]
@@ -4691,13 +4821,13 @@ macro_rules! value_case {
 fn invalid_mixed_declarations_emit_expected_typed_diagnostics() {
     assert_sheet_rejected(
         ".panel { width: 10px; display: block inline; }",
-        &ExpectedErrorKind::UnsupportedValue {
-            property: Some("display"),
+        &ExpectedErrorKind::InvalidPropertyValue {
+            property: "display",
         },
     );
     assert_sheet_rejected(
         ".panel { width: inherit 10px; height: 20px; }",
-        &ExpectedErrorKind::InvalidSyntax,
+        &ExpectedErrorKind::InvalidPropertyValue { property: "width" },
     );
 }
 
@@ -4705,57 +4835,55 @@ fn invalid_mixed_declarations_emit_expected_typed_diagnostics() {
 fn malformed_sheet_surfaces_emit_expected_typed_diagnostics() {
     assert_rejects_sheets(&[
         RejectedSheetCase {
-            label: "valid declaration before invalid declaration fails the whole sheet",
+            label: "invalid declaration after a valid declaration is diagnosed",
             input: ".panel { width: 10px; display: block inline; height: 20px; }",
-            expected_error: ExpectedErrorKind::UnsupportedValue {
-                property: Some("display"),
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
+                property: "display",
             },
         },
         RejectedSheetCase {
-            label: "invalid declaration before valid declaration fails the whole sheet",
+            label: "invalid declaration before a valid declaration is diagnosed",
             input: ".panel { display: block inline; width: 10px; }",
-            expected_error: ExpectedErrorKind::UnsupportedValue {
-                property: Some("display"),
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
+                property: "display",
             },
         },
         RejectedSheetCase {
-            label: "unknown property fails the whole sheet",
+            label: "unknown property is diagnosed",
             input: ".panel { widht: 10px; width: 20px; }",
             expected_error: ExpectedErrorKind::UnknownProperty { name: "widht" },
         },
         RejectedSheetCase {
-            label: "unsupported at-rule fails the whole sheet",
+            label: "unknown at-rule is diagnosed",
             input: "@unknown screen { .panel { width: 10px; } }",
-            expected_error: ExpectedErrorKind::UnsupportedAtRule { name: "unknown" },
+            expected_error: ExpectedErrorKind::UnknownAtRule { name: "unknown" },
         },
         RejectedSheetCase {
-            label: "invalid selector fails the whole sheet",
+            label: "invalid selector is diagnosed",
             input: "??? { width: 10px; }",
             expected_error: ExpectedErrorKind::InvalidSelector,
         },
         RejectedSheetCase {
-            label: "malformed declaration block fails the whole sheet",
+            label: "malformed declaration block is diagnosed",
             input: ".panel { width 10px; height: 20px; }",
-            expected_error: ExpectedErrorKind::InvalidSyntax,
+            expected_error: ExpectedErrorKind::UnexpectedToken,
         },
         RejectedSheetCase {
-            label: "trailing junk after a value fails the whole sheet",
+            label: "trailing junk after a value is diagnosed",
             input: ".panel { width: 10px solid; }",
-            expected_error: ExpectedErrorKind::InvalidSyntax,
+            expected_error: ExpectedErrorKind::InvalidPropertyValue { property: "width" },
         },
         RejectedSheetCase {
-            label: "invalid comma-list item fails the whole sheet",
+            label: "invalid comma-list item is diagnosed",
             input: ".panel { transition-duration: 150ms, solid; }",
-            expected_error: ExpectedErrorKind::InvalidSyntaxOrUnsupportedValueForProperty {
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
                 property: "transition-duration",
             },
         },
         RejectedSheetCase {
-            label: "invalid shorthand component fails the whole sheet",
+            label: "invalid shorthand component is diagnosed",
             input: ".panel { border: 1px solid dotted; }",
-            expected_error: ExpectedErrorKind::InvalidSyntaxOrUnsupportedValueForProperty {
-                property: "border",
-            },
+            expected_error: ExpectedErrorKind::InvalidPropertyValue { property: "border" },
         },
     ]);
 }
@@ -4780,7 +4908,7 @@ fn leakage_wrong_keyword_and_unit_matrix_rejects_property_family_crossovers() {
             label: "display rejects border style keyword",
             property_name: "display",
             authored_value: "solid",
-            expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
                 property: "display",
             },
             property_name_should_be_recognized: true,
@@ -4789,7 +4917,7 @@ fn leakage_wrong_keyword_and_unit_matrix_rejects_property_family_crossovers() {
             label: "overflow rejects none keyword",
             property_name: "overflow",
             authored_value: "none",
-            expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
                 property: "overflow",
             },
             property_name_should_be_recognized: true,
@@ -4798,7 +4926,7 @@ fn leakage_wrong_keyword_and_unit_matrix_rejects_property_family_crossovers() {
             label: "align-items rejects content distribution keyword",
             property_name: "align-items",
             authored_value: "space-between",
-            expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
                 property: "align-items",
             },
             property_name_should_be_recognized: true,
@@ -4807,7 +4935,7 @@ fn leakage_wrong_keyword_and_unit_matrix_rejects_property_family_crossovers() {
             label: "padding rejects auto keyword",
             property_name: "padding",
             authored_value: "auto",
-            expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
                 property: "padding",
             },
             property_name_should_be_recognized: true,
@@ -4816,7 +4944,7 @@ fn leakage_wrong_keyword_and_unit_matrix_rejects_property_family_crossovers() {
             label: "border-width rejects percentage",
             property_name: "border-width",
             authored_value: "10%",
-            expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
                 property: "border-width",
             },
             property_name_should_be_recognized: true,
@@ -4825,8 +4953,8 @@ fn leakage_wrong_keyword_and_unit_matrix_rejects_property_family_crossovers() {
             label: "border-color rejects border style keyword",
             property_name: "border-color",
             authored_value: "solid",
-            expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
-                property: "border-color",
+            expected_error: ExpectedErrorKind::InvalidColorSyntax {
+                encountered: "solid",
             },
             property_name_should_be_recognized: true,
         },
@@ -4834,7 +4962,7 @@ fn leakage_wrong_keyword_and_unit_matrix_rejects_property_family_crossovers() {
             label: "font-size rejects auto keyword",
             property_name: "font-size",
             authored_value: "auto",
-            expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
                 property: "font-size",
             },
             property_name_should_be_recognized: true,
@@ -4843,7 +4971,7 @@ fn leakage_wrong_keyword_and_unit_matrix_rejects_property_family_crossovers() {
             label: "grid-auto-flow rejects position keyword",
             property_name: "grid-auto-flow",
             authored_value: "left",
-            expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
                 property: "grid-auto-flow",
             },
             property_name_should_be_recognized: true,
@@ -4852,16 +4980,14 @@ fn leakage_wrong_keyword_and_unit_matrix_rejects_property_family_crossovers() {
             label: "cursor rejects length",
             property_name: "cursor",
             authored_value: "10px",
-            expected_error: ExpectedErrorKind::InvalidSyntaxOrUnsupportedValueForProperty {
-                property: "cursor",
-            },
+            expected_error: ExpectedErrorKind::InvalidPropertyValue { property: "cursor" },
             property_name_should_be_recognized: true,
         },
         RejectedDeclarationCase {
             label: "transition-duration rejects length unit",
             property_name: "transition-duration",
             authored_value: "10px",
-            expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
                 property: "transition-duration",
             },
             property_name_should_be_recognized: true,
@@ -4888,17 +5014,11 @@ fn rejection_malformed_functions_lists_and_shorthands_matrix() {
         ".panel { transition: opacity 1s 2s 3s; }",
         ".panel { animation: fade 1s 2s 3s; }",
     ] {
-        let error = parse_sheet(input).expect_err(input);
-        assert!(
-            matches!(
-                error.kind(),
-                ErrorKind::InvalidPropertyValue(_)
-                    | ErrorKind::UnexpectedEnd(_)
-                    | ErrorKind::UnexpectedToken(_)
-                    | ErrorKind::InvalidQualifiedRule(_)
-            ),
-            "{input} rejected with unexpected error kind: {:?}",
-            error.kind(),
+        assert_sheet_rejected(
+            input,
+            &ExpectedErrorKind::InvalidPropertyValue {
+                property: declared_property(input),
+            },
         );
     }
 }
@@ -4910,7 +5030,7 @@ fn rejection_negative_numbers_and_public_constructor_invariants_matrix() {
             label: "flex-grow rejects negative numbers",
             property_name: "flex-grow",
             authored_value: "-1",
-            expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
                 property: "flex-grow",
             },
             property_name_should_be_recognized: true,
@@ -4919,7 +5039,7 @@ fn rejection_negative_numbers_and_public_constructor_invariants_matrix() {
             label: "flex-shrink rejects negative numbers",
             property_name: "flex-shrink",
             authored_value: "-1",
-            expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
                 property: "flex-shrink",
             },
             property_name_should_be_recognized: true,
@@ -4928,7 +5048,7 @@ fn rejection_negative_numbers_and_public_constructor_invariants_matrix() {
             label: "padding rejects negative lengths",
             property_name: "padding",
             authored_value: "-1px",
-            expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
                 property: "padding",
             },
             property_name_should_be_recognized: true,
@@ -4937,7 +5057,7 @@ fn rejection_negative_numbers_and_public_constructor_invariants_matrix() {
             label: "border-radius rejects negative lengths",
             property_name: "border-radius",
             authored_value: "-1px",
-            expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
                 property: "border-radius",
             },
             property_name_should_be_recognized: true,
@@ -4946,7 +5066,7 @@ fn rejection_negative_numbers_and_public_constructor_invariants_matrix() {
             label: "animation-iteration-count rejects negative numbers",
             property_name: "animation-iteration-count",
             authored_value: "-1",
-            expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
                 property: "animation-iteration-count",
             },
             property_name_should_be_recognized: true,
@@ -5021,7 +5141,7 @@ fn numeric_property_models_reject_invalid_authored_values() {
             label: "flex-grow rejects negative values",
             property_name: "flex-grow",
             authored_value: "-1",
-            expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
                 property: "flex-grow",
             },
             property_name_should_be_recognized: true,
@@ -5030,7 +5150,7 @@ fn numeric_property_models_reject_invalid_authored_values() {
             label: "flex-shrink rejects negative values",
             property_name: "flex-shrink",
             authored_value: "-1",
-            expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
                 property: "flex-shrink",
             },
             property_name_should_be_recognized: true,
@@ -5039,7 +5159,7 @@ fn numeric_property_models_reject_invalid_authored_values() {
             label: "aspect-ratio rejects a negative operand",
             property_name: "aspect-ratio",
             authored_value: "-1e-999",
-            expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
                 property: "aspect-ratio",
             },
             property_name_should_be_recognized: true,
@@ -5048,7 +5168,7 @@ fn numeric_property_models_reject_invalid_authored_values() {
             label: "aspect-ratio rejects negative values",
             property_name: "aspect-ratio",
             authored_value: "-1",
-            expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
                 property: "aspect-ratio",
             },
             property_name_should_be_recognized: true,
@@ -5057,7 +5177,7 @@ fn numeric_property_models_reject_invalid_authored_values() {
             label: "scrollbar-width rejects numbers",
             property_name: "scrollbar-width",
             authored_value: "8",
-            expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
                 property: "scrollbar-width",
             },
             property_name_should_be_recognized: true,
@@ -6451,12 +6571,16 @@ fn color_model_rejects_invalid_hex_and_named_tokens() {
 
 #[test]
 fn symbolic_color_model_rejects_invalid_mix_weights_and_component_counts() {
+    // Color 5 (WD 2026-09-08) §3: each mix weight is <percentage [0,100]>.
     for invalid in ["-0.1%", "100.1%", "1e999%"] {
-        assert!(
+        assert_eq!(
             CssColorMixPercentage::try_from_component(
                 CssComponentValue::try_token(invalid).unwrap()
             )
-            .is_err()
+            .unwrap_err()
+            .kind(),
+            CssColorScalarErrorKind::OutOfRange,
+            "{invalid}"
         );
     }
     assert_eq!(
@@ -6480,8 +6604,8 @@ fn rejection_unsupported_but_syntactically_valid_css_keywords_stay_rejected() {
             label: "overflow none remains unsupported",
             property_name: "overflow",
             authored_value: "none",
-            expected_error: ExpectedErrorKind::UnsupportedValue {
-                property: Some("overflow"),
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
+                property: "overflow",
             },
             property_name_should_be_recognized: true,
         },
@@ -6489,7 +6613,7 @@ fn rejection_unsupported_but_syntactically_valid_css_keywords_stay_rejected() {
             label: "background-origin margin-box remains unsupported",
             property_name: "background-origin",
             authored_value: "margin-box",
-            expected_error: ExpectedErrorKind::UnsupportedValueForProperty {
+            expected_error: ExpectedErrorKind::InvalidPropertyValue {
                 property: "background-origin",
             },
             property_name_should_be_recognized: true,
@@ -8006,8 +8130,8 @@ fn parses_supported_calc_length_units_as_authored_dimensions() {
 
 #[test]
 fn unit_matrix_accepts_every_supported_length_unit_in_ordinary_length_contexts() {
-    for unit in supported_length_units() {
-        let authored = format!("1{}", unit.as_css_str());
+    for (spelling, unit) in VALUES_4_LENGTH_UNITS {
+        let authored = format!("1{spelling}");
         let declaration = parse_single_declaration("width", &authored);
 
         assert_eq!(declaration.property(), &CssProperty::Width);
@@ -8022,18 +8146,30 @@ fn unit_matrix_accepts_every_supported_length_unit_in_ordinary_length_contexts()
         let Some(component) = length.literal_component() else {
             panic!("ordinary token")
         };
-        assert!(
-            matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit: authored_unit })
-            if number.representation() == "1" && authored_unit.eq_ignore_ascii_case(unit.as_css_str())),
-            "{authored} should preserve its supported length unit"
+        let CssComponentValueRef::Token(CssValueTokenRef::Dimension {
+            number,
+            unit: authored_unit,
+        }) = component.view()
+        else {
+            panic!("{authored} should retain a dimension token")
+        };
+        assert_eq!(number.representation(), "1", "{authored}");
+        assert_eq!(
+            authored_unit, spelling,
+            "{authored} retains its unit spelling"
+        );
+        assert_eq!(
+            CssLengthUnit::from_css_unit(authored_unit),
+            Some(unit),
+            "{authored} names its Values 4 length unit"
         );
     }
 }
 
 #[test]
 fn unit_matrix_accepts_every_supported_length_unit_in_calc_contexts() {
-    for unit in supported_length_units() {
-        let authored = format!("calc(1{} + 2px)", unit.as_css_str());
+    for (spelling, unit) in VALUES_4_LENGTH_UNITS {
+        let authored = format!("calc(1{spelling} + 2px)");
         let declaration = parse_single_declaration("width", &authored);
         let Some(CssKnownPropertyValueRef::Width(value)) =
             declaration.known().and_then(|known| known.property_value())
@@ -8049,7 +8185,8 @@ fn unit_matrix_accepts_every_supported_length_unit_in_calc_contexts() {
         };
         assert_eq!(terms.len(), 2);
         assert!(
-            matches!(terms.term(0).unwrap().expression(), CssCalculationExpressionRef::Value(CssCalculationValueRef::Length(v)) if v.representation() == "1" && v.canonical_unit() == Some(CssNumericUnit::Length(unit)))
+            matches!(terms.term(0).unwrap().expression(), CssCalculationExpressionRef::Value(CssCalculationValueRef::Length(v)) if v.representation() == "1" && v.unit() == Some(spelling) && v.canonical_unit() == Some(CssNumericUnit::Length(unit))),
+            "{authored} names its Values 4 length unit"
         );
         assert!(
             matches!(terms.term(1).unwrap().expression(), CssCalculationExpressionRef::Value(CssCalculationValueRef::Length(v)) if v.representation() == "2" && v.unit() == Some("px"))
@@ -8061,71 +8198,70 @@ fn unit_matrix_accepts_every_supported_length_unit_in_calc_contexts() {
 fn unit_matrix_rejects_unknown_length_units_in_ordinary_and_calc_contexts() {
     assert_sheet_rejected(
         ".panel { width: 1quux; }",
-        &ExpectedErrorKind::UnsupportedValue {
-            property: Some("width"),
-        },
+        &ExpectedErrorKind::InvalidPropertyValue { property: "width" },
     );
     assert_sheet_rejected(
         ".panel { width: calc(1quux + 2px); }",
-        &ExpectedErrorKind::UnsupportedValue {
-            property: Some("width"),
-        },
+        &ExpectedErrorKind::InvalidPropertyValue { property: "width" },
     );
 }
 
-fn supported_length_units() -> [CssLengthUnit; 49] {
-    [
-        CssLengthUnit::Px,
-        CssLengthUnit::Em,
-        CssLengthUnit::Rem,
-        CssLengthUnit::Ex,
-        CssLengthUnit::Rex,
-        CssLengthUnit::Cap,
-        CssLengthUnit::Rcap,
-        CssLengthUnit::Ch,
-        CssLengthUnit::Rch,
-        CssLengthUnit::Ic,
-        CssLengthUnit::Ric,
-        CssLengthUnit::Lh,
-        CssLengthUnit::Rlh,
-        CssLengthUnit::Vw,
-        CssLengthUnit::Vh,
-        CssLengthUnit::Vi,
-        CssLengthUnit::Vb,
-        CssLengthUnit::Vmin,
-        CssLengthUnit::Vmax,
-        CssLengthUnit::Svw,
-        CssLengthUnit::Svh,
-        CssLengthUnit::Svi,
-        CssLengthUnit::Svb,
-        CssLengthUnit::Svmin,
-        CssLengthUnit::Svmax,
-        CssLengthUnit::Lvw,
-        CssLengthUnit::Lvh,
-        CssLengthUnit::Lvi,
-        CssLengthUnit::Lvb,
-        CssLengthUnit::Lvmin,
-        CssLengthUnit::Lvmax,
-        CssLengthUnit::Dvw,
-        CssLengthUnit::Dvh,
-        CssLengthUnit::Dvi,
-        CssLengthUnit::Dvb,
-        CssLengthUnit::Dvmin,
-        CssLengthUnit::Dvmax,
-        CssLengthUnit::Cqw,
-        CssLengthUnit::Cqh,
-        CssLengthUnit::Cqi,
-        CssLengthUnit::Cqb,
-        CssLengthUnit::Cqmin,
-        CssLengthUnit::Cqmax,
-        CssLengthUnit::Cm,
-        CssLengthUnit::Mm,
-        CssLengthUnit::Q,
-        CssLengthUnit::In,
-        CssLengthUnit::Pc,
-        CssLengthUnit::Pt,
-    ]
-}
+/// Every `<length>` unit, written from the specifications rather than from
+/// the crate's unit enumeration: Values 4 (WD 2024-03-12) §6.1.1 font-relative
+/// (12), §6.1.2 viewport-percentage with its small, large and dynamic variants
+/// (24) and §6.2 absolute (7) units, and Contain 3 (WD 2022-08-18) §6
+/// container-relative units (6).
+const VALUES_4_LENGTH_UNITS: [(&str, CssLengthUnit); 49] = [
+    ("em", CssLengthUnit::Em),
+    ("rem", CssLengthUnit::Rem),
+    ("ex", CssLengthUnit::Ex),
+    ("rex", CssLengthUnit::Rex),
+    ("cap", CssLengthUnit::Cap),
+    ("rcap", CssLengthUnit::Rcap),
+    ("ch", CssLengthUnit::Ch),
+    ("rch", CssLengthUnit::Rch),
+    ("ic", CssLengthUnit::Ic),
+    ("ric", CssLengthUnit::Ric),
+    ("lh", CssLengthUnit::Lh),
+    ("rlh", CssLengthUnit::Rlh),
+    ("vw", CssLengthUnit::Vw),
+    ("vh", CssLengthUnit::Vh),
+    ("vi", CssLengthUnit::Vi),
+    ("vb", CssLengthUnit::Vb),
+    ("vmin", CssLengthUnit::Vmin),
+    ("vmax", CssLengthUnit::Vmax),
+    ("svw", CssLengthUnit::Svw),
+    ("svh", CssLengthUnit::Svh),
+    ("svi", CssLengthUnit::Svi),
+    ("svb", CssLengthUnit::Svb),
+    ("svmin", CssLengthUnit::Svmin),
+    ("svmax", CssLengthUnit::Svmax),
+    ("lvw", CssLengthUnit::Lvw),
+    ("lvh", CssLengthUnit::Lvh),
+    ("lvi", CssLengthUnit::Lvi),
+    ("lvb", CssLengthUnit::Lvb),
+    ("lvmin", CssLengthUnit::Lvmin),
+    ("lvmax", CssLengthUnit::Lvmax),
+    ("dvw", CssLengthUnit::Dvw),
+    ("dvh", CssLengthUnit::Dvh),
+    ("dvi", CssLengthUnit::Dvi),
+    ("dvb", CssLengthUnit::Dvb),
+    ("dvmin", CssLengthUnit::Dvmin),
+    ("dvmax", CssLengthUnit::Dvmax),
+    ("cqw", CssLengthUnit::Cqw),
+    ("cqh", CssLengthUnit::Cqh),
+    ("cqi", CssLengthUnit::Cqi),
+    ("cqb", CssLengthUnit::Cqb),
+    ("cqmin", CssLengthUnit::Cqmin),
+    ("cqmax", CssLengthUnit::Cqmax),
+    ("cm", CssLengthUnit::Cm),
+    ("mm", CssLengthUnit::Mm),
+    ("Q", CssLengthUnit::Q),
+    ("in", CssLengthUnit::In),
+    ("pt", CssLengthUnit::Pt),
+    ("pc", CssLengthUnit::Pc),
+    ("px", CssLengthUnit::Px),
+];
 
 #[test]
 fn typo_property_has_unknown_property_error_kind() {
@@ -8985,15 +9121,12 @@ fn typography_and_text_properties_reject_cross_family_values() {
         ".panel { font-feature-settings: \"abc\" on; }",
         ".panel { font-feature-settings: \"abcde\" on; }",
     ] {
-        let error = parse_sheet(input).expect_err(input);
-        assert!(matches!(
-            error.kind(),
-            ErrorKind::InvalidPropertyValue(_)
-                | ErrorKind::UnexpectedEnd(_)
-                | ErrorKind::UnexpectedToken(_)
-                | ErrorKind::InvalidQualifiedRule(_)
-                | ErrorKind::InvalidColorSyntax(_)
-        ));
+        assert_sheet_rejected(
+            input,
+            &ExpectedErrorKind::InvalidPropertyValue {
+                property: declared_property(input),
+            },
+        );
     }
 }
 
@@ -9533,14 +9666,12 @@ fn background_effect_and_animation_properties_reject_cross_family_values_and_emp
         ".panel { transition: opacity 1s, ; }",
         ".panel { animation: fade 1s, ; }",
     ] {
-        let error = parse_sheet(input).expect_err(input);
-        assert!(matches!(
-            error.kind(),
-            ErrorKind::InvalidPropertyValue(_)
-                | ErrorKind::UnexpectedEnd(_)
-                | ErrorKind::UnexpectedToken(_)
-                | ErrorKind::InvalidQualifiedRule(_)
-        ));
+        assert_sheet_rejected(
+            input,
+            &ExpectedErrorKind::InvalidPropertyValue {
+                property: declared_property(input),
+            },
+        );
     }
 }
 
@@ -9558,14 +9689,12 @@ fn rejects_duplicate_axis_position_keywords_across_shared_position_properties() 
         ".panel { mask: url(mask.png) left right / contain no-repeat; }",
         ".panel { mask: url(mask.png) top bottom / contain no-repeat; }",
     ] {
-        let error = parse_sheet(input).expect_err(input);
-        assert!(matches!(
-            error.kind(),
-            ErrorKind::InvalidPropertyValue(_)
-                | ErrorKind::UnexpectedEnd(_)
-                | ErrorKind::UnexpectedToken(_)
-                | ErrorKind::InvalidQualifiedRule(_)
-        ));
+        assert_sheet_rejected(
+            input,
+            &ExpectedErrorKind::InvalidPropertyValue {
+                property: declared_property(input),
+            },
+        );
     }
 }
 
@@ -9592,14 +9721,12 @@ fn transform_filter_shape_and_easing_functions_reject_invalid_arguments() {
         ".panel { clip-path: circle(red); }",
         ".panel { transition-timing-function: cubic-bezier(red); }",
     ] {
-        let error = parse_sheet(input).expect_err(input);
-        assert!(matches!(
-            error.kind(),
-            ErrorKind::InvalidPropertyValue(_)
-                | ErrorKind::UnexpectedEnd(_)
-                | ErrorKind::UnexpectedToken(_)
-                | ErrorKind::InvalidQualifiedRule(_)
-        ));
+        assert_sheet_rejected(
+            input,
+            &ExpectedErrorKind::InvalidPropertyValue {
+                property: declared_property(input),
+            },
+        );
     }
 }
 
@@ -10082,21 +10209,24 @@ fn box_model_properties_reject_cross_family_values() {
         ".panel { padding-top: auto; }",
         ".panel { border-width: 10%; }",
         ".panel { border-style: 10px; }",
-        ".panel { border-color: solid; }",
         ".panel { border-radius: auto; }",
         ".panel { box-shadow: auto; }",
         ".panel { z-index: 1.5; }",
     ] {
-        let error = parse_sheet(input).expect_err(input);
-        assert!(matches!(
-            error.kind(),
-            ErrorKind::InvalidPropertyValue(_)
-                | ErrorKind::UnexpectedEnd(_)
-                | ErrorKind::UnexpectedToken(_)
-                | ErrorKind::InvalidQualifiedRule(_)
-                | ErrorKind::InvalidColorSyntax(_)
-        ));
+        assert_sheet_rejected(
+            input,
+            &ExpectedErrorKind::InvalidPropertyValue {
+                property: declared_property(input),
+            },
+        );
     }
+    // A <color> value is rejected by the color grammar itself.
+    assert_sheet_rejected(
+        ".panel { border-color: solid; }",
+        &ExpectedErrorKind::InvalidColorSyntax {
+            encountered: "solid",
+        },
+    );
 }
 
 #[test]
@@ -10358,14 +10488,12 @@ fn grid_and_flex_properties_reject_cross_family_values() {
         ".panel { flex: solid; }",
         ".panel { justify-content: auto; }",
     ] {
-        let error = parse_sheet(input).expect_err(input);
-        assert!(matches!(
-            error.kind(),
-            ErrorKind::InvalidPropertyValue(_)
-                | ErrorKind::UnexpectedEnd(_)
-                | ErrorKind::UnexpectedToken(_)
-                | ErrorKind::InvalidQualifiedRule(_)
-        ));
+        assert_sheet_rejected(
+            input,
+            &ExpectedErrorKind::InvalidPropertyValue {
+                property: declared_property(input),
+            },
+        );
     }
 }
 
@@ -10401,14 +10529,12 @@ fn rejects_grid_auto_flow_shorthand_without_explicit_tracks() {
         ".panel { grid: auto-flow dense; }",
         ".panel { grid: auto-flow 12px; }",
     ] {
-        let error = parse_sheet(input).expect_err(input);
-        assert!(matches!(
-            error.kind(),
-            ErrorKind::InvalidPropertyValue(_)
-                | ErrorKind::UnexpectedEnd(_)
-                | ErrorKind::UnexpectedToken(_)
-                | ErrorKind::InvalidQualifiedRule(_)
-        ));
+        assert_sheet_rejected(
+            input,
+            &ExpectedErrorKind::InvalidPropertyValue {
+                property: declared_property(input),
+            },
+        );
     }
 }
 

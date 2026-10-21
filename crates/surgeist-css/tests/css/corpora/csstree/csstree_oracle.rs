@@ -10,12 +10,10 @@ use crate::css::support;
 use support::csstree::{
     OracleContractFailureKind, canonicalize_csstree_oracle_schema, load_csstree_corpus,
     load_csstree_oracle, load_csstree_oracle_schema, validate_csstree_oracle_contract,
-    validate_shared_support_surface,
 };
 
 #[test]
 fn committed_csstree_oracle_has_validated_metadata_and_outcome_partition() {
-    assert!(validate_shared_support_surface());
     let oracle = load_csstree_oracle().expect("committed CSS oracle should remain validated");
     let cached = load_csstree_oracle().expect("validated CSS oracle should remain cached");
     assert!(std::ptr::eq(oracle, cached));

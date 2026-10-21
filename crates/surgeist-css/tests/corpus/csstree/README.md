@@ -89,8 +89,12 @@ or retain no syntax after a whole-input rejection (161 cases). A case is
 excluded as a whole-input rejection only when its expected class records one:
 empty retained syntax with a `RejectInput` diagnostic, as a strict rejection
 (142 cases) or a fully observed unsupported disposition (19 outside-profile,
-vendor or upstream-option cases). Retaining nothing under any other class
-fails. A listed case that starts matching fails the comparison, matched exactly
+vendor or upstream-option cases); the comparison test asserts that split and
+recounts it from the raw expected-class registry. The outside-profile cases
+include `:matches()`: [Selectors 4 §4.2](../../../../../references/selectors-4--WD-selectors-4-20260122--5d3b3f7e1fcc.md)
+lets UAs "additionally implement this obsolete name as a legacy selector
+alias" for `:is()`, which permits but does not require it, and the selected
+profile does not adopt it. Retaining nothing under any other class fails. A listed case that starts matching fails the comparison, matched exactly
 by case ID.
 
 Some matches show only that retained tokens replay faithfully, because Surgeist

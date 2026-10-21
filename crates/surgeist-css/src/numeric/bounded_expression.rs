@@ -2294,21 +2294,6 @@ mod tests {
     }
 
     #[test]
-    fn fixed_storage_layout_measurement() {
-        println!(
-            "State={} Frame={} Node={} Record={} Request={} Cursor={}",
-            std::mem::size_of::<State>(),
-            std::mem::size_of::<Frame>(),
-            std::mem::size_of::<Node>(),
-            std::mem::size_of::<Record>(),
-            std::mem::size_of::<Request>(),
-            std::mem::size_of::<ExpressionCursor>()
-        );
-        // Layout is measured for parent admission; this does not impose an ABI
-        // or guessed byte cap. The actual all-target lint checks enum disparity.
-    }
-
-    #[test]
     fn root_marker_and_last_admitted_index_do_not_collide_or_wrap() {
         let root = Frame {
             suspended: State::new(Context::Sum, None, 0),

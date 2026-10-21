@@ -43,23 +43,11 @@ fn component_css(component: &CssComponentValue) -> String {
 fn mapped_collection_lends_root_without_transport_allocation() {
     const TEST: &str = "numeric::borrowed_admission_tests::mapped_collection_lends_root_without_transport_allocation";
     const CHILD: &str = "SURGEIST_CSS_COMPONENT_BORROW_ALLOCATION_CHILD";
-    if std::env::var(CHILD).as_deref() != Ok(TEST) {
-        let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", TEST, "--nocapture"])
-            .env(CHILD, TEST)
-            .stdin(std::process::Stdio::null())
-            .output()
-            .unwrap();
-        assert!(
-            output.status.success(),
-            "isolated allocation witness: {}\n{}\n{}",
-            output.status,
-            String::from_utf8(output.stdout).unwrap(),
-            String::from_utf8(output.stderr).unwrap(),
-        );
-        return;
-    }
+    const COMPLETED: &str = "mapped collection transport allocation checked";
+    crate::test_support::run_in_isolated_child(TEST, CHILD, COMPLETED, check_mapped_collection);
+}
 
+fn check_mapped_collection() {
     const CHILDREN: &str = "calc(1 + max(2, min(3,4))) 5 6";
     const ROOT: &str = "rgb(calc(1 + max(2, min(3,4))) 5 6)";
     const SOURCE: &str = "rgb(calc(1 + max(2, min(3,4))) 5 6) blue";
@@ -148,23 +136,11 @@ fn read_only_component_check_skips_input_graph_retention() {
     const TEST: &str =
         "numeric::borrowed_admission_tests::read_only_component_check_skips_input_graph_retention";
     const CHILD: &str = "SURGEIST_CSS_READ_ONLY_CALCULATION_CHECK_CHILD";
-    if std::env::var(CHILD).as_deref() != Ok(TEST) {
-        let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", TEST, "--nocapture"])
-            .env(CHILD, TEST)
-            .stdin(std::process::Stdio::null())
-            .output()
-            .unwrap();
-        assert!(
-            output.status.success(),
-            "{}\n{}\n{}",
-            output.status,
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-        return;
-    }
+    const COMPLETED: &str = "read-only calculation retention checked";
+    crate::test_support::run_in_isolated_child(TEST, CHILD, COMPLETED, check_read_only_retention);
+}
 
+fn check_read_only_retention() {
     // Input construction and retention assertions remain outside the measured
     // call. The calculation needs integer-domain validation, not a public result.
     let values = [128, 65_536].map(|length| {

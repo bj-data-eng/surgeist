@@ -191,70 +191,60 @@ impl AcceptedValueCase {
     }
 }
 
+/// One exact diagnostic kind, with the authored identity it names.
+///
+/// Each variant accepts exactly one [`ErrorKind`] variant, so a rejection by an
+/// unrelated rule (another property, a tokenizer failure or a different
+/// production) fails the expectation.
 pub(crate) enum ExpectedErrorKind {
-    InvalidSyntax,
+    UnexpectedToken,
     InvalidSelector,
-    InvalidSyntaxOrUnsupportedValueForProperty { property: &'static str },
-    UnsupportedAtRule { name: &'static str },
-    UnknownProperty { name: &'static str },
-    UnsupportedValueForProperty { property: &'static str },
-    UnsupportedValue { property: Option<&'static str> },
+    InvalidPropertyValue {
+        property: &'static str,
+    },
+    /// A `<color>` value rejected by the color grammar; its diagnostic names
+    /// no property, so the responsible token identifies the failure.
+    InvalidColorSyntax {
+        encountered: &'static str,
+    },
+    UnknownAtRule {
+        name: &'static str,
+    },
+    UnknownProperty {
+        name: &'static str,
+    },
 }
 
 impl ExpectedErrorKind {
     fn assert_matches(&self, actual: &ErrorKind, label: &str) {
-        match (self, actual) {
-            (
-                Self::InvalidSyntax,
-                ErrorKind::UnexpectedEnd(_)
-                | ErrorKind::UnexpectedToken(_)
-                | ErrorKind::InvalidQualifiedRule(_)
-                | ErrorKind::InvalidAtRulePrelude(_)
-                | ErrorKind::InvalidAtRuleBody(_)
-                | ErrorKind::InvalidPropertyValue(_),
-            ) => {}
-            (Self::InvalidSelector, ErrorKind::InvalidSelector(_)) => {}
-            (
-                Self::InvalidSyntaxOrUnsupportedValueForProperty { property },
-                ErrorKind::InvalidPropertyValue(detail),
-            ) if crate::validation::property_for_supported_name(property)
-                == Some(detail.property()) => {}
-            (
-                Self::InvalidSyntaxOrUnsupportedValueForProperty { .. },
-                ErrorKind::UnexpectedEnd(_)
-                | ErrorKind::UnexpectedToken(_)
-                | ErrorKind::InvalidQualifiedRule(_)
-                | ErrorKind::InvalidColorSyntax(_),
-            ) => {}
-            (Self::UnsupportedAtRule { name }, ErrorKind::UnsupportedAtRule(detail))
-                if *name == detail.name().as_str() => {}
-            (Self::UnsupportedAtRule { name }, ErrorKind::UnknownAtRule(detail))
-                if *name == detail.name().as_str() => {}
-            (Self::UnknownProperty { name }, ErrorKind::UnknownProperty(detail))
-                if *name == detail.name().as_str() => {}
-            (
-                Self::UnsupportedValueForProperty { property },
-                ErrorKind::InvalidPropertyValue(detail),
-            ) if crate::validation::property_for_supported_name(property)
-                == Some(detail.property()) => {}
-            (Self::UnsupportedValueForProperty { .. }, ErrorKind::InvalidColorSyntax(_)) => {}
-            (
-                Self::UnsupportedValue {
-                    property: Some(property),
-                },
-                ErrorKind::InvalidPropertyValue(detail),
-            ) if crate::validation::property_for_supported_name(property)
-                == Some(detail.property()) => {}
-            (
-                Self::UnsupportedValue { property: None },
-                ErrorKind::UnexpectedEnd(_)
-                | ErrorKind::UnexpectedToken(_)
-                | ErrorKind::InvalidQualifiedRule(_)
-                | ErrorKind::InvalidColorSyntax(_)
-                | ErrorKind::InvalidMediaQuery(_),
-            ) => {}
-            _ => panic!("{label} rejected with unexpected error kind: {actual:?}"),
-        }
+        let matched = match (self, actual) {
+            (Self::UnexpectedToken, ErrorKind::UnexpectedToken(_))
+            | (Self::InvalidSelector, ErrorKind::InvalidSelector(_)) => true,
+            (Self::InvalidPropertyValue { property }, ErrorKind::InvalidPropertyValue(detail)) => {
+                let expected = crate::validation::property_for_supported_name(property);
+                assert!(
+                    expected.is_some(),
+                    "{label}: `{property}` is not a known property"
+                );
+                expected == Some(detail.property())
+            }
+            (Self::InvalidColorSyntax { encountered }, ErrorKind::InvalidColorSyntax(detail)) => {
+                detail
+                    .encountered()
+                    .is_some_and(|token| token.authored() == *encountered)
+            }
+            (Self::UnknownAtRule { name }, ErrorKind::UnknownAtRule(detail)) => {
+                *name == detail.name().as_str()
+            }
+            (Self::UnknownProperty { name }, ErrorKind::UnknownProperty(detail)) => {
+                *name == detail.name().as_str()
+            }
+            _ => false,
+        };
+        assert!(
+            matched,
+            "{label} rejected with unexpected error kind: {actual:?}"
+        );
     }
 }
 
@@ -266,7 +256,7 @@ pub(crate) struct RejectedSheetCase {
 
 impl RejectedSheetCase {
     pub(crate) fn assert_rejects(&self) -> Error {
-        let error = parse_sheet(self.input).expect_err("invalid CSS must reject the whole sheet");
+        let error = parse_sheet(self.input).expect_err("invalid CSS must report a diagnostic");
         self.expected_error.assert_matches(error.kind(), self.label);
         error
     }
@@ -331,9 +321,74 @@ pub(crate) fn parse_single_declaration_from_sheet(input: &str) -> CssDeclaration
 }
 
 pub(crate) fn assert_sheet_rejected(input: &str, expected_error: &ExpectedErrorKind) -> Error {
-    let error = parse_sheet(input).expect_err("invalid CSS must reject the whole sheet");
+    let error = parse_sheet(input).expect_err("invalid CSS must report a diagnostic");
     expected_error.assert_matches(error.kind(), input);
     error
+}
+
+/// Asserts that the sole declaration of the sole style rule in `input` is
+/// dropped with exactly one diagnostic while its rule is retained: CSS Syntax 3
+/// (CRD 2026-10-01) §5.5.5-§5.5.6 consumes and discards an invalid declaration
+/// inside a block's contents without discarding the enclosing rule. Returns
+/// that diagnostic.
+pub(crate) fn assert_drops_sole_declaration(input: &str) -> Error {
+    let report = parse_sheet(input);
+    let [diagnostic] = report.diagnostics() else {
+        panic!(
+            "{input}: exactly one diagnostic: {:?}",
+            report.diagnostics()
+        );
+    };
+    assert_eq!(
+        diagnostic.action(),
+        crate::CssRecoveryAction::DropDeclaration,
+        "{input}: the invalid declaration alone is dropped"
+    );
+    let [CssRule::Style(rule)] = report.syntax().rules() else {
+        panic!("{input}: the enclosing style rule is retained");
+    };
+    assert!(
+        rule.declarations().is_empty(),
+        "{input}: the invalid declaration is not retained"
+    );
+    diagnostic.error().clone()
+}
+
+/// Runs `operation` alone in a re-executed child of this test binary, so its
+/// process-global allocation counters see no other test.
+///
+/// libtest exits successfully when `--exact` selects no test, so the parent
+/// also requires the `completed` line that the child prints only after
+/// `operation` returns. A renamed or misspelled `test` therefore fails.
+#[track_caller]
+pub(crate) fn run_in_isolated_child(
+    test: &str,
+    child_environment: &str,
+    completed: &str,
+    operation: impl FnOnce(),
+) {
+    if std::env::var(child_environment).as_deref() == Ok(test) {
+        operation();
+        println!("{completed}");
+        return;
+    }
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", test, "--nocapture"])
+        .env(child_environment, test)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("run and reap the isolated child");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "isolated child failed: {}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+        output.status,
+    );
+    assert!(
+        stdout.contains(completed),
+        "the isolated child must select `{test}` and complete it\nstdout:\n{stdout}\nstderr:\n{stderr}",
+    );
 }
 
 fn declaration_sheet(property_name: &str, authored_value: &str) -> String {

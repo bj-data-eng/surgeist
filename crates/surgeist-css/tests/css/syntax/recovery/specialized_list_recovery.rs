@@ -1,6 +1,7 @@
 use surgeist_css::{
-    CssErrorCode, CssMediaConditionKind, CssMediaQuery, CssNamespaceConstraint, CssPseudoClass,
-    CssPseudoSelectorListItem, CssRecoveryAction, CssRule, CssSelector, ErrorKind, parse_sheet,
+    CssErrorCode, CssMediaConditionKind, CssMediaQuery, CssMediaType, CssNamespaceConstraint,
+    CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction, CssRule, CssSelector, ErrorKind,
+    parse_sheet,
 };
 
 fn style_rule(
@@ -363,9 +364,20 @@ fn specialized_list_repeated_failures_emit_one_ordered_action_per_member() {
     let queries = media_rule(&media_report).query().queries();
     assert_eq!(queries.len(), 5);
     assert!(matches!(queries[0], CssMediaQuery::Never(_)));
-    assert!(matches!(queries[1], CssMediaQuery::Typed(_)));
+    // Media Queries 4 (CRD 2026-02-19) §3.2: each malformed member becomes `not all` while the
+    // valid `screen` and `print` members keep their bare media types.
+    for (query, expected) in [
+        (&queries[1], CssMediaType::Screen),
+        (&queries[3], CssMediaType::Print),
+    ] {
+        let CssMediaQuery::Typed(typed) = query else {
+            panic!("typed {expected:?} member: {query:?}");
+        };
+        assert_eq!(typed.media_type(), expected);
+        assert_eq!(typed.modifier(), None);
+        assert!(typed.condition().is_none());
+    }
     assert!(matches!(queries[2], CssMediaQuery::Never(_)));
-    assert!(matches!(queries[3], CssMediaQuery::Typed(_)));
     assert!(matches!(queries[4], CssMediaQuery::Never(_)));
     assert_eq!(media_report.diagnostics().len(), 3);
     for (diagnostic, (span_start, span_end, responsible)) in media_report

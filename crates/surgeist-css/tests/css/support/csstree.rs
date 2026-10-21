@@ -25,9 +25,8 @@ use capture::validate_replacement_bindings;
 #[path = "csstree/canonical.rs"]
 mod canonical;
 pub(crate) use canonical::{
-    CanonicalExceptionKind, CanonicalExclusion, CanonicalSummary,
-    EXCEPTIONS as CANONICAL_EXCEPTIONS, canonically_equal, compare_csstree_canonical_forms,
-    normalize as normalize_canonical_css,
+    CanonicalExceptionKind, EXCEPTIONS as CANONICAL_EXCEPTIONS, canonically_equal,
+    compare_csstree_canonical_forms,
 };
 
 use adapters::{
@@ -70,45 +69,6 @@ const EXPECTED_CONTEXT_COUNTS: [(Context, usize); 11] = [
 
 static NEUTRAL_INVENTORY: OnceLock<Result<NeutralInventory, String>> = OnceLock::new();
 static CORPUS: OnceLock<Result<ValidatedCorpus, String>> = OnceLock::new();
-
-pub(crate) fn validate_shared_support_surface() -> bool {
-    let _ = load_csstree_corpus as fn() -> Result<&'static ValidatedCorpus, &'static str>;
-    let _ = load_csstree_oracle as fn() -> Result<&'static Oracle, &'static str>;
-    let _ = validate_csstree_oracle_contract as fn(&[u8]) -> Result<(), Vec<OracleContractFailure>>;
-    let _ = regenerate_csstree_oracle as fn() -> Result<Vec<u8>, Vec<BaselineFailure>>;
-    let _ = capture_csstree_oracle_from_public_parser as fn() -> Result<(), String>;
-    let _ = compare_csstree_canonical_forms as fn() -> Result<CanonicalSummary, Vec<String>>;
-    let _ = normalize_canonical_css as fn(&str) -> String;
-    let _ = canonically_equal as fn(&str, &str) -> bool;
-    let _ = CANONICAL_EXCEPTIONS;
-    let _ = CanonicalExclusion::name as fn(CanonicalExclusion) -> &'static str;
-    // Defects are listed only while a known product defect remains open.
-    let _ = CanonicalExceptionKind::Defect.name();
-    let _ =
-        CanonicalSummary::compared as fn(&CanonicalSummary) -> Vec<(&'static str, usize, usize)>;
-    let _ = CanonicalSummary::excluded
-        as fn(&CanonicalSummary) -> Vec<(&'static str, &'static str, usize)>;
-    let _ = CanonicalSummary::exceptions
-        as fn(&CanonicalSummary, CanonicalExceptionKind) -> &[&'static str];
-    let _ = validate_csstree_expected_classes_contract
-        as fn(&[u8]) -> Result<ExpectedClassSummary, String>;
-    // Summary accessors that only some corpus tests call.
-    let _ = ExpectedClassSummary::digest as fn(&ExpectedClassSummary) -> &str;
-    let _ = ExpectedClassSummary::class_counts
-        as fn(&ExpectedClassSummary) -> [(&'static str, usize); 4];
-    let _ = ExpectedClassSummary::policy_counts
-        as fn(&ExpectedClassSummary) -> [(&'static str, usize); 2];
-    let _ = expected_payload_relation_holds
-        as fn(&str, std::ops::Range<usize>, usize, usize, usize) -> bool;
-    let _ = ValidatedCorpus::artifact_count as fn(&ValidatedCorpus) -> usize;
-    let _ = ValidatedCorpus::case_count as fn(&ValidatedCorpus) -> usize;
-    let _ = ValidatedCorpus::parsed_count as fn(&ValidatedCorpus) -> usize;
-    let _ = ValidatedCorpus::rejected_count as fn(&ValidatedCorpus) -> usize;
-    let _ = ValidatedCorpus::context_counts as fn(&ValidatedCorpus) -> [(&'static str, usize); 11];
-    true
-}
-
-const _: fn() -> bool = validate_shared_support_surface;
 
 pub(crate) fn load_csstree_corpus() -> Result<&'static ValidatedCorpus, &'static str> {
     let corpus = load_validated_csstree()?;

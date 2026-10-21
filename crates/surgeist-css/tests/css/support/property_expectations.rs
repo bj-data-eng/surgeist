@@ -75,6 +75,18 @@ pub enum CatalogExpectation {
     Grammar {
         feature_id: &'static str,
         positive: &'static str,
+        /// The specified serialization of `positive` when it differs from the
+        /// authored text; `None` records that `positive` is already written
+        /// in its specified serialization. Each stated form follows CSSOM 1
+        /// (WD 2021-08-26) §6.7.2 (canonical grammar order for `||`/`&&`
+        /// components, omitted defaults, lowercase keywords, `url("…")`,
+        /// double-quoted strings, `<time>` in seconds, `, ` separators), Values
+        /// 4 (WD 2024-03-12) §8.3.2 two-component `<position>`, §5.7 both-term
+        /// `<ratio>` and §10.13 calculation simplification and term order,
+        /// Color 4 (CRD 2026-09-08) §16 `rgb()` and number-alpha forms, Box
+        /// Alignment 3 (WD 2026-01-30) §4.2 `first baseline` as `baseline`, and
+        /// Transforms 2 (WD 2021-11-09) §5 numeric scale percentages.
+        serialization: Option<&'static str>,
         boundary: BoundaryExpectation,
         production: Option<&'static str>,
         status: Option<CssSupportStatus>,
@@ -168,16 +180,17 @@ const fn accepted(
 }
 
 macro_rules! grammar_catalog {
-    ($id:literal, $positive:literal, $boundary:expr $(, $production:literal)?) => {
-        CatalogExpectation::Grammar { feature_id: $id, positive: $positive, boundary: $boundary, production: optional!($($production)?), status: None }
+    ($id:literal, $positive:literal $(=> $serialization:literal)?, $boundary:expr $(, $production:literal)?) => {
+        CatalogExpectation::Grammar { feature_id: $id, positive: $positive, serialization: optional!($($serialization)?), boundary: $boundary, production: optional!($($production)?), status: None }
     };
 }
 
 macro_rules! complete_grammar_catalog {
-    ($id:literal, $positive:literal, $boundary:expr) => {
+    ($id:literal, $positive:literal $(=> $serialization:literal)?, $boundary:expr) => {
         CatalogExpectation::Grammar {
             feature_id: $id,
             positive: $positive,
+            serialization: optional!($($serialization)?),
             boundary: $boundary,
             production: None,
             status: Some(CssSupportStatus::Complete),

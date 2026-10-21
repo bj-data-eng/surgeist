@@ -1,6 +1,5 @@
 //! Images and gradients.
 
-mod c13_image_foundation_red;
 mod gradient_interpolation_opt_in_contract;
 mod gradient_interpolation_projection_contract;
 mod gradient_snapshot_authored_contract;
@@ -17,4 +16,5 @@ mod image_serialization;
 mod images_authored_contract;
 mod images_composed_contract;
 mod images_typed_lifecycle;
+mod linear_gradient_background_image;
 mod radial_radius_diagnostics;
