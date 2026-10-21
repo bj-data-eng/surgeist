@@ -2,13 +2,14 @@
 use super::super::meta::cancel;
 use super::super::*;
 use super::consumption::{envelope, report};
-use super::style_decision::{empty_policy, installed, observe, request_ready};
+use super::style_decision::{installed, observe, request_ready};
 use super::style_sheet::{bind, create, pending, ready};
 use surgeist_dom::*;
 use surgeist_html::HtmlStyleTrigger;
 use surgeist_html_parser::{
     HtmlParseAssociationOccurrenceKind as Kind, HtmlParsePendingAssociationStep as Step,
 };
+mod text_policy;
 
 fn next_parser_pop(
     session: &DomSession,
@@ -139,7 +140,8 @@ fn blocked_first_without_cssom_owner_advances_to_fresh_original_parser_pop_reque
         "<!doctype html><style nonce='original'>p{color:red}</style>",
     ));
     let id = installation.pending_association().unwrap();
-    request_ready(&mut session, id, empty_policy(), envelope());
+    let (policy, profile) = text_policy::policy(true);
+    request_ready(&mut session, id, policy, envelope());
     let old = session
         .parsed_html_style_prefix(id)
         .unwrap()
@@ -149,9 +151,7 @@ fn blocked_first_without_cssom_owner_advances_to_fresh_original_parser_pop_reque
     let expected = next_parser_pop(&session, &old);
     let mut decision = observe(&session, id, &mut |request| {
         assert!(request.text().is_empty());
-        Some(DomParsedHtmlStyleInlinePolicyObservation::evaluated(
-            request, false,
-        ))
+        Some(text_policy::decision(request, &profile))
     });
     assert_eq!(
         session
