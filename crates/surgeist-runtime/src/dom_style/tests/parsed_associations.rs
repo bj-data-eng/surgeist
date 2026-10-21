@@ -97,3 +97,5 @@ fn parsed_pending_associations_return_original_dom_before_session_owner_adoption
     assert!(!dom.has_element_task_source());
     assert!(!dom.has_source_event_executor());
 }
+
+mod consumption;

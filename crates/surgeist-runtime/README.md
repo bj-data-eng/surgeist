@@ -15,9 +15,46 @@ The actual Style association owner also retains [Document stylesheet-set
 preferences](docs/explanation.md#document-stylesheet-set-preferences), including
 empty-list history and source-defined enable/select behavior. `DomSession::new`
 returns the original DOM intact with `PendingParsedAssociations` when parsed
-association history remains pending under canonical custody. No current public
-Session mutation front installs a parsed report after bootstrap. Retaining that
-history does not establish a Style processing service or association readiness.
+association history remains pending under canonical custody. Explicit
+`DomSession::admit_parsed` adopts complete supported contributions into the real
+Session before readiness and before any CSSOM operation. Original contribution
+work and raise-only processing policy survive a refused attempt; structural
+state, identities and effects remain unchanged. Successful admission carries its
+actual Runtime discovery work into that Session.
+
+The Session's borrowed `pending_parsed_html_associations` iterator discovers
+original canonical custody even after installation outputs are dropped; it lends
+no execution authority and performs no eager scan. The parsed document/fragment
+installation fronts publish original structure and genuine Pending evidence
+separately from execution.
+`DomStyleRuntime::consume_parsed_meta` consumes a whole supported contribution
+exactly once through the existing Document stylesheet-set owner. It preserves
+original occurrence identity/order and UTF-16 names, including removed subjects
+and zero-sheet history. Every producer flag, prepared name and canonical pending
+acknowledgement is admitted before publication; names install while the actual
+producer locks remain held. Failed preparation keeps original work and custody,
+without acknowledging or replaying effects. Completing one contribution leaves
+other contributions on the same Document guarded.
+
+Current public parsing produces executable Meta history for fresh Documents.
+Contextual fragment Meta is an original no-effect path, preserving an existing
+owner's preferred/last-selected names and sheet flags. Historical Meta effects on
+existing selected owners remain conditional on a producer that can genuinely
+capture that profile. A later captured shadow-Style contribution can already
+share the same Document; completing its earlier Meta contribution preserves the
+remaining Style guard.
+
+Influencing Style histories remain Pending; this consumer supplies no historical
+Style processing, resource completion or unused URL/policy/media binding facade.
+Meta change-preferred does not read those external context slots. Read-only
+captures remain historical; standalone enable/select/change-preferred mutations
+refuse an affected Document while its original contribution is pending.
+`try_shutdown` returns the same Session with
+`DomShutdownReason::ParsedAssociations(id)` until that custody is consumed;
+creation refusal uses `DomSessionCreateFailure::Parsed(error)`. These variants
+extend existing exhaustive enums, so exhaustive callers must handle the parsed
+case. Retaining or structurally installing history does not by itself establish
+association readiness.
 
 ## Start
 

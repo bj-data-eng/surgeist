@@ -66,7 +66,10 @@ Each topic keeps its exact supported paths, limits and failure behavior beside
 the relevant API. Completed parser installation retains sealed pending stylesheet
 association history on the canonical owner, independently of output packets.
 [Pending association custody](docs/html-installation.md#pending-stylesheet-associations)
-explains discovery, finite backing admission and native crossing refusals.
+explains discovery, finite backing admission and native crossing refusals. The
+[whole parsed-Meta consumer](docs/html-installation.md#whole-parsed-meta-consumption)
+joins authentic supported history with real CSSOM owners; influencing Style
+processing remains pending.
 
 Inline-style identity is an explicit lazy capability. After installing
 `DomInlineStyleLimits`, `Dom::inline_style` binds a live HTML, SVG or MathML

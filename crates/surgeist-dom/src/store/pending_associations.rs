@@ -5,11 +5,16 @@ use crate::parsed_installation::{
     DomParsedHtmlCapturedBinding, DomParsedHtmlPendingAssociations,
 };
 use surgeist_html_parser::HtmlParseReport;
+mod consume;
+mod control;
+pub use consume::{
+    DomParsedHtmlMetaPreparation, DomParsedHtmlMetaPublished, DomParsedHtmlMetaRetirement,
+    DomParsedHtmlMetaRuntimeHold,
+};
 
 struct Report {
     value: Arc<HtmlParseReport>,
     usage: custody::Usage,
-    first: DomParsedHtmlAssociationId,
 }
 pub(super) struct Entry {
     context_basis: Option<crate::DomDocumentStamp>,
@@ -19,6 +24,7 @@ pub(super) struct Entry {
     bindings: Arc<Vec<DomParsedHtmlBinding>>,
     captured: Arc<Vec<DomParsedHtmlCapturedBinding>>,
     payload: custody::Usage,
+    control: control::Control,
 }
 impl Entry {
     fn view(&self) -> DomParsedHtmlPendingAssociations<'_> {
@@ -200,7 +206,6 @@ impl Bank {
                     Report {
                         value: report,
                         usage: new_report,
-                        first: id,
                     },
                     debit,
                 ))
@@ -256,6 +261,7 @@ impl Bank {
                 bindings,
                 captured,
                 payload,
+                control: control::Control::default(),
             },
             payload,
             registry,
@@ -293,7 +299,162 @@ impl Bank {
         for entry in candidate.entries.values() {
             admit_storage(custody::Usage::ZERO)?;
             usage = usage.checked_add(entry.payload)?;
-            if entry.report.value().first == entry.id {
+            let mut first = true;
+            for preceding in candidate.entries.values() {
+                admit_storage(custody::Usage::ZERO)?;
+                if preceding.id == entry.id {
+                    break;
+                }
+                if Arc::ptr_eq(&entry.report, &preceding.report) {
+                    first = false;
+                    break;
+                }
+            }
+            if first {
+                usage = usage.checked_add(entry.report.value().usage)?;
+            }
+        }
+        Self::admit_usage(usage, limits)?;
+        candidate.usage = usage;
+        Ok(candidate)
+    }
+
+    fn controlled_entry(
+        &self,
+        id: DomParsedHtmlAssociationId,
+    ) -> Result<bank::ControlledRecord<Entry>, crate::parsed_meta::DomParsedHtmlMetaAdmissionError>
+    {
+        let key = usize::try_from(id.stamp.revision().get())
+            .map_err(|_| DomError::RepresentationExhausted)?;
+        self.entries
+            .controlled_record(&self.entry_custody, key)
+            .filter(|record| record.value().id == id)
+            .ok_or(
+                crate::parsed_meta::DomParsedHtmlMetaAdmissionError::NotPending {
+                    contribution: id,
+                },
+            )
+    }
+
+    fn prepare_remove(
+        &self,
+        id: DomParsedHtmlAssociationId,
+        limits: DomLimits,
+        mut admit_extra: impl FnMut(custody::Usage) -> Result<(), DomError>,
+        mut step: impl FnMut() -> Result<(), DomError>,
+    ) -> Result<Self, crate::parsed_meta::DomParsedHtmlMetaAdmissionError> {
+        let original = self.controlled_entry(id)?;
+        let registry = &self.registry;
+        registry.reconcile_releases();
+        let baseline = registry.total();
+        let mut admission = |total: custody::Usage| {
+            step()?;
+            let extra = custody::Usage::new(
+                total.bytes().saturating_sub(baseline.bytes()),
+                total.units().saturating_sub(baseline.units()),
+            );
+            Self::admit_usage(self.usage.checked_add(extra)?, limits)?;
+            admit_extra(total)
+        };
+        let mut candidate = self.clone();
+        let key = usize::try_from(id.stamp.revision().get())
+            .map_err(|_| DomError::RepresentationExhausted)?;
+        let (entries, custody, removed) = candidate.entries.remove_controlled(
+            &candidate.entry_custody,
+            key,
+            registry,
+            &mut admission,
+        )?;
+        candidate.entries = entries;
+        candidate.entry_custody = custody;
+        drop(removed);
+        for document in &original.value().documents {
+            admission(registry.total())?;
+            let slot = document.document.node().slot;
+            let Some(old) = candidate.documents.get(slot) else {
+                return Err(DomError::StaleNode.into());
+            };
+            if old.id != document.document {
+                return Err(DomError::StaleNode.into());
+            }
+            if old.pending != id {
+                continue;
+            }
+            let mut next = None;
+            for entry in candidate.entries.values() {
+                admission(registry.total())?;
+                for row in &entry.documents {
+                    admission(registry.total())?;
+                    if row.document == document.document {
+                        next = Some(entry.id);
+                        break;
+                    }
+                }
+                if next.is_some() {
+                    break;
+                }
+            }
+            if let Some(next) = next {
+                let bytes = size_of::<Document>();
+                let replacement = bank::ControlledRecord::new(
+                    Document {
+                        id: document.document,
+                        pending: next,
+                    },
+                    custody::Usage::new(bytes, 0),
+                    registry,
+                    &mut admission,
+                )?;
+                let (documents, custody) = candidate.documents.set_controlled(
+                    &candidate.document_custody,
+                    slot,
+                    replacement,
+                    false,
+                    bank::Totals {
+                        bytes,
+                        units: 0,
+                        occurrences: 1,
+                    },
+                    registry,
+                    &mut admission,
+                )?;
+                candidate.documents = documents;
+                candidate.document_custody = custody;
+            } else {
+                let (documents, custody, removed) = candidate.documents.remove_controlled(
+                    &candidate.document_custody,
+                    slot,
+                    registry,
+                    &mut admission,
+                )?;
+                candidate.documents = documents;
+                candidate.document_custody = custody;
+                drop(removed);
+            }
+        }
+        let bytes = candidate
+            .entries
+            .index_charge()
+            .bytes
+            .checked_add(candidate.documents.index_charge().bytes)
+            .and_then(|n| n.checked_add(candidate.documents.totals().bytes))
+            .ok_or(DomError::RepresentationExhausted)?;
+        let mut usage = custody::Usage::new(bytes, 0);
+        for entry in candidate.entries.values() {
+            admission(registry.total())?;
+            usage = usage.checked_add(entry.payload)?;
+            let mut first = true;
+            for preceding in candidate.entries.values() {
+                admission(registry.total())?;
+                if preceding.id == entry.id {
+                    break;
+                }
+                if Arc::ptr_eq(&preceding.report, &entry.report) {
+                    first = false;
+                    break;
+                }
+            }
+            if first {
                 usage = usage.checked_add(entry.report.value().usage)?;
             }
         }
@@ -303,6 +464,15 @@ impl Bank {
     }
 }
 impl Dom {
+    /// First original pending contribution affecting this exact live Document.
+    /// Other Documents remain independently usable.
+    pub fn pending_parsed_html_association(
+        &self,
+        document: DocumentId,
+    ) -> Result<Option<DomParsedHtmlAssociationId>, DomError> {
+        self.snapshot().document(document)?;
+        Ok(self.pending_associations.document(document))
+    }
     /// Original parsed obligations retained independently of installation outputs.
     /// A returned immutable view grants no execution/admission authority. Each
     /// iterator step visits the finite sparse canonical bank; callers choose

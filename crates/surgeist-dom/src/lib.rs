@@ -274,6 +274,12 @@ pub use snapshot::{
     DomTreeScope,
 };
 pub use store::meta_atomic::{DomMetaOrdinaryPreparation, DomMetaOrdinaryPublished};
+mod parsed_meta;
+pub use parsed_meta::*;
+pub use store::pending_associations::{
+    DomParsedHtmlMetaPreparation, DomParsedHtmlMetaPublished, DomParsedHtmlMetaRetirement,
+    DomParsedHtmlMetaRuntimeHold,
+};
 pub use store::source::operation::dialog_queue::{
     DomDialogCloseTaskInfo, DomDialogTask, DomDialogTaskInfo, DomDialogTaskQueueCommit,
     DomDialogTaskQueuePlan, DomDialogTaskQueuePublication, DomDialogToggleTaskInfo,

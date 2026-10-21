@@ -5,6 +5,10 @@
 //! requests, and queues completion only after a parsed sheet has no imports.
 mod meta;
 mod sheet_sets;
+pub use meta::parsed::{
+    DomStyleParsedAdmissionError, DomStyleParsedInstallError, DomStyleParsedMetaError,
+    DomStyleParsedMetaOutcome, DomStyleParsedMetaPreference,
+};
 pub use meta::{
     DomStyleMetaError, DomStyleMetaOrdinaryOutcome, DomStyleMetaPreference,
     DomStyleMetaSourceOutcome,
@@ -1458,6 +1462,8 @@ pub enum DomSessionCreateFailure {
     SourceEvents(crate::dom_dialog::DomSourceEventRuntimeError),
     /// Existing Style source/resource custody prevents adoption or admission.
     Style(DomStyleRuntimeError),
+    /// Qualified original parsed admission was not completed.
+    Parsed(DomStyleParsedAdmissionError),
     /// The actual shared element-task owner could not be admitted.
     ElementTasks(crate::element_tasks::DomElementTaskRuntimeError),
     /// The actual hosted source/domain owner could not be admitted.
@@ -1468,6 +1474,7 @@ impl std::fmt::Display for DomSessionCreateFailure {
         match self {
             Self::SourceEvents(error) => std::fmt::Display::fmt(error, f),
             Self::Style(error) => std::fmt::Display::fmt(error, f),
+            Self::Parsed(error) => std::fmt::Display::fmt(error, f),
             Self::ElementTasks(error) => std::fmt::Display::fmt(error, f),
             Self::Hosted(error) => std::fmt::Display::fmt(error, f),
         }
@@ -1478,6 +1485,7 @@ impl std::error::Error for DomSessionCreateFailure {
         match self {
             Self::SourceEvents(error) => Some(error),
             Self::Style(error) => Some(error),
+            Self::Parsed(error) => Some(error),
             Self::ElementTasks(error) => Some(error),
             Self::Hosted(error) => Some(error),
         }
@@ -1500,7 +1508,9 @@ impl std::fmt::Debug for DomSession {
             .finish_non_exhaustive()
     }
 }
-/// Rejected session creation preserves the actual unchanged input owner.
+/// Rejected creation returns the actual input owner. Structure, identities and
+/// effects stay unchanged; explicit parsed admission retains its original
+/// cumulative processing work and bound policy for a genuine retry.
 pub struct DomSessionCreateError {
     dom: Dom,
     error: DomSessionCreateFailure,
@@ -1543,6 +1553,8 @@ pub enum DomShutdownReason {
     DomElementTask(crate::element_tasks::DomElementTaskId),
     /// Canonical hooks are not complete.
     SourceTail(DomSourceOperationId),
+    /// Original installed parser association history has not been consumed.
+    ParsedAssociations(surgeist_dom::DomParsedHtmlAssociationId),
     /// A canonical root still retains its actual mutable resource.
     LiveResources,
     /// An actual queued/running task remains.
@@ -1582,7 +1594,34 @@ impl DomSession {
         clippy::result_large_err,
         reason = "Creation refusal returns the actual unchanged input Dom without another allocation or resource-loss failure"
     )]
-    pub fn new(mut dom: Dom, limits: DomSessionLimits) -> Result<Self, DomSessionCreateError> {
+    pub fn new(dom: Dom, limits: DomSessionLimits) -> Result<Self, DomSessionCreateError> {
+        Self::create(dom, limits, None)
+    }
+    /// Adopt actual complete supported parsed contributions before readiness.
+    /// No stylesheet operation runs during admission. Refusal returns the same
+    /// DOM with structure/effects unchanged; admitted original contribution work
+    /// and raise-only policy remain with it, rather than resetting on retry.
+    #[expect(
+        clippy::result_large_err,
+        reason = "Intake refusal returns the actual original Dom and retained contribution custody without allocation"
+    )]
+    pub fn admit_parsed(
+        dom: Dom,
+        limits: DomSessionLimits,
+        processing: surgeist_dom::DomMetaAtomicLimits,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomSessionCreateError> {
+        Self::create(dom, limits, Some((processing, cancel)))
+    }
+    #[expect(
+        clippy::result_large_err,
+        reason = "Session construction refusal returns the actual original Dom without allocation or custody loss"
+    )]
+    fn create(
+        mut dom: Dom,
+        limits: DomSessionLimits,
+        parsed: Option<(surgeist_dom::DomMetaAtomicLimits, &AtomicBool)>,
+    ) -> Result<Self, DomSessionCreateError> {
         if dom.has_element_task_source() {
             return Err(DomSessionCreateError {
                 dom,
@@ -1599,10 +1638,13 @@ impl DomSession {
                 ),
             });
         }
-        let pending_parsed = dom
-            .pending_parsed_html_associations()
-            .next()
-            .map(|entry| entry.id());
+        let pending_parsed = if parsed.is_none() {
+            dom.pending_parsed_html_associations()
+                .next()
+                .map(|entry| entry.id())
+        } else {
+            None
+        };
         let reject = if let Some(id) = pending_parsed {
             Some(DomStyleRuntimeError::PendingParsedAssociations(id))
         } else if dom.has_style_cssom_roots() {
@@ -1643,6 +1685,19 @@ impl DomSession {
                 error: DomSessionCreateFailure::Hosted(error),
             });
         }
+        let parsed_work = if let Some((processing, cancel)) = parsed {
+            match meta::parsed::admit(&mut dom, limits.style, processing, cancel) {
+                Ok(work) => work,
+                Err(error) => {
+                    return Err(DomSessionCreateError {
+                        dom,
+                        error: DomSessionCreateFailure::Parsed(error),
+                    });
+                }
+            }
+        } else {
+            0
+        };
         let owner = dom.owner();
         let details = match crate::element_tasks::ElementTaskOwner::new(owner, limits.element_tasks)
         {
@@ -1674,12 +1729,11 @@ impl DomSession {
         let events =
             crate::dom_dialog::SourceEventOwner::new(owner, executor, limits.source_events);
         details.bind_events(events.execution());
+        let state = StyleState::new(owner, limits.style);
+        state.work.set(parsed_work);
         Ok(Self {
             dom,
-            state: std::rc::Rc::new(std::cell::RefCell::new(StyleState::new(
-                owner,
-                limits.style,
-            ))),
+            state: std::rc::Rc::new(std::cell::RefCell::new(state)),
             element_tasks: details,
             hosted,
             events,
@@ -1752,8 +1806,15 @@ impl DomSession {
             }
             Err(_) => Some(DomShutdownReason::Admission),
         };
+        let parsed = self
+            .dom
+            .pending_parsed_html_associations()
+            .next()
+            .map(|entry| entry.id());
         let reason = if let Some(pending) = self.dom.pending_source_edit() {
             Some(DomShutdownReason::SourceTail(pending.operation()))
+        } else if let Some(id) = parsed {
+            Some(DomShutdownReason::ParsedAssociations(id))
         } else if events.is_some() {
             events
         } else if self.dom.pending_details_toggle_intentions() != 0 {

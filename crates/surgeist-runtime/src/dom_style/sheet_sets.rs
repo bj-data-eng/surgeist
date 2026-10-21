@@ -393,6 +393,17 @@ impl StyleState {
         self.step(cancel)?;
         let snapshot = self.require_sheet_set_idle(dom)?;
         self.prune_retired_roots(&snapshot, cancel)?;
+        let document = snapshot
+            .node(basis.document)?
+            .as_document()
+            .ok_or(DomStyleRuntimeError::SheetSetDocumentRequired {
+                root: basis.document,
+            })?
+            .id();
+        self.step(cancel)?;
+        if let Some(id) = dom.raw().pending_parsed_html_association(document)? {
+            return Err(DomStyleRuntimeError::PendingParsedAssociations(id));
+        }
         let index = self.sheet_set_root(&snapshot, basis.document, cancel)?;
         let root = &self.roots[index];
         let current = root.store.snapshot()?;

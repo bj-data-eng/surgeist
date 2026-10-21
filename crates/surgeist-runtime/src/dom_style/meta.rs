@@ -1,5 +1,6 @@
 //! Ordinary native Meta composition on the existing association owner.
 use super::*;
+pub(super) mod parsed;
 use std::cell::Cell;
 use std::rc::Rc;
 use surgeist_dom::{

@@ -61,7 +61,7 @@ mod oracle_tests;
 mod output;
 pub(crate) mod parsed_installation;
 pub(crate) mod payload;
-mod pending_associations;
+pub(crate) mod pending_associations;
 mod range;
 mod reflected;
 pub(crate) mod registry;
@@ -235,6 +235,11 @@ pub enum DomError {
     },
     /// A raise-only Source policy call attempted to reduce an allowance.
     SourceLimitReduction,
+    /// This parsed contribution's one consuming preparation has sealed its
+    /// prefix, either while outstanding or after it closed.
+    ParsedAssociationOperationPending {
+        pending: crate::DomParsedHtmlAssociationId,
+    },
     InvalidSourceEvent,
     SourceInvariantFailed {
         operation: crate::DomSourceOperationId,

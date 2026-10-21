@@ -137,10 +137,60 @@ Document cleanup refuses pending obligations; ordinary public destruction does
 not support Document destruction. No positive Document-retirement path is
 claimed here.
 
-Association admission, external context binding, actual CSSOM/preference effects
-and completion acknowledgement belong to the later association consumer. These
-read views grant none of that authority and native hooks are not replayed as an
-execution shortcut.
+The read views grant no processing or acknowledgement authority. The explicit
+Meta consumer below joins supported original history; external context binding
+and influencing Style processing remain separate work. Native hooks are never
+replayed as an execution shortcut.
+
+### Whole parsed-Meta consumption
+
+`Dom::begin_parsed_html_meta` exclusively borrows one authentic pending
+contribution and binds its finite `DomMetaAtomicLimits`. The original entry
+retains cumulative work and output admission across retries; limits can only
+increase componentwise. Runtime must charge and admit its actual temporary
+banks through the hold before forming them. Repeated whole storage reports
+retain their positive high-water deltas, rather than repeatedly charging the
+same backing. Disposed temporary storage is released; spent work and reserved
+output evidence remain cumulative.
+
+`validate_meta` traverses the complete original parser report without accessing
+CSSOM. It accepts original default-style changes and producer-proven no-effect
+occurrences. Any influencing Style or another unsupported operation refuses the
+whole contribution. No URL, CSP or media binder is requested for this slice.
+Validation may inspect a later contribution, while preparation requires that
+this contribution is first for every affected canonical Document.
+
+`prepare` receives genuine destination CSSOM capabilities, qualifies actual
+canonical bindings and holds each real root lock once. It returns ordered
+original occurrence IDs, historical HTML subjects, mapped Documents and exact
+UTF16 names. Runtime stages its existing sheet-set preference algorithm and
+sheet flags through these held snapshots and batches. All producer preparation,
+canonical acknowledgement, output and replacement storage admission completes
+before the first producer publishes. `commit` publishes those prepared CSSOM
+batches and the canonical acknowledgement without advancing the tree revision.
+Its published value retains the root locks while Runtime installs its already
+qualified preference names. `into_parts` then unlocks and returns the authentic
+completion and retirement; large retired backing is disposed outside that fence.
+A first empty CSSOM owner can bind through this same atomic publication.
+
+Dropping a preparation publishes nothing and permits a later hold to retry the
+original contribution. Its own hold is sealed after preparation, so further
+work requires dropping it and reentering. Forgetting a preparation leaves its
+actual private graph, root locks and admission debits retained; it does not
+reopen execution or refund live storage. A completed identity is no longer
+pending and cannot replay; no registry of all completed identities is kept.
+Shared reports remain charged once while any installed contribution retains
+them. Removing the first pending contribution repoints each affected Document
+to its next surviving contribution instead of clearing another obligation.
+
+The current parser's default-style effects arise in its active Document tree.
+Fragment-context Meta and Template contents do not become new influencing Meta
+history merely because their node Document names a live target. Fresh-Document
+reports and independent installations are supported. Broader existing-Document
+and multiple-contribution execution depends on authentic producer history; this
+front does not manufacture such reports or infer processing from the final tree.
+Runtime owns the corresponding Session admission, preference state and output
+orchestration; the lower DOM front does not create another preference owner.
 
 ## Control state and form associations
 
