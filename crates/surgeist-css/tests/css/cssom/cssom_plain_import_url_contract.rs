@@ -1,4 +1,6 @@
-//! CSSOM WD20210826 §2.1 URL/string escaping and §6.4 CSSImportRule text.
+//! CSSOM WD20210826 §2.1 URL/string escaping and the CSSOM editor capture
+//! 2026-10-09 CSSImportRule text, which serializes every import location as a
+//! URL (#1327).
 //! Locations remain decoded authored values; resolution and loading are external.
 
 use std::error::Error;
@@ -123,6 +125,13 @@ fn optional_media_list_follows_the_cssom_url_before_the_semicolon() {
             "@import 'x' (color);",
             "@import url(\"x\") (color);",
         ),
+        // CSSOM "serialize a media query" never emits `only` (#1378); the
+        // authored and specified forms keep it.
+        (
+            "@import 'x' ONLY SCREEN, only all and (color);",
+            "@import 'x' only screen, only all and (color);",
+            "@import url(\"x\") screen, (color);",
+        ),
     ] {
         let value = rule(source);
         let before = value.clone();
@@ -158,14 +167,55 @@ fn compact_tokens_keep_original_coordinates_and_modern_clause_structure() {
         assert_eq!(origin.span().start().byte_offset().value(), original);
         assert_eq!(origin.source().as_str(), source);
     }
-    for source in [
-        "@import 'x' layer(theme) supports(display:grid) print;",
-        "@import url(x) layer supports(display:grid) print;",
+    // The URL comes first, then `layer` and `supports()` in grammar order
+    // (pinned WebKit witness order), then media; the authored form is retained.
+    for (source, expected) in [
+        (
+            "@import 'x' layer(theme) supports(display:grid) print;",
+            "@import url(\"x\") layer(theme) supports(display:grid) print;",
+        ),
+        (
+            "@import url(x) layer supports(display:grid) print;",
+            "@import url(\"x\") layer supports(display:grid) print;",
+        ),
+        ("@import \"x\" layer;", "@import url(\"x\") layer;"),
+        (
+            "@import 'x' supports(not (display:grid)) (color);",
+            "@import url(\"x\") supports(not (display:grid)) (color);",
+        ),
     ] {
         let value = rule(source);
         let before = value.clone();
         assert_eq!(value.to_specified_css().unwrap(), source);
-        assert_eq!(value.serialize_cssom().unwrap(), source);
+        assert_eq!(value.serialize_cssom().unwrap(), expected);
+        assert_eq!(
+            parse_sheet(source).syntax().serialize_cssom().unwrap(),
+            expected
+        );
+        assert_eq!(value, before);
+    }
+}
+
+#[test]
+fn src_and_modified_urls_serialize_the_location_as_a_cssom_url() {
+    // Serialize a URL takes only the location; CSSOM has no request-modifier
+    // step, and the pinned WebKit witness builds its URL with no modifiers.
+    // Specified output keeps the authored function and modifiers.
+    for (source, expected) in [
+        (
+            "@import src(\"theme.css\" cors) layer(theme) screen;",
+            "@import url(\"theme.css\") layer(theme) screen;",
+        ),
+        (
+            "@import url(\"base.css\" integrity(\"sha256\"));",
+            "@import url(\"base.css\");",
+        ),
+        ("@import src('x');", "@import url(\"x\");"),
+    ] {
+        let value = rule(source);
+        let before = value.clone();
+        assert_eq!(value.to_specified_css().unwrap(), source);
+        assert_eq!(value.serialize_cssom().unwrap(), expected, "{source}");
         assert_eq!(value, before);
     }
 }

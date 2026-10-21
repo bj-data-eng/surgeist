@@ -240,6 +240,33 @@ fn generic_import_projects_recovered_members_while_authored_import_rejects_them(
     assert_eq!(sheet(expected).to_specified_css().unwrap(), expected);
 }
 
+/// Only CSSOM "serialize a media query" drops `only` (#1378); the specified
+/// rule-graph projection keeps the authored prefix, top level and scoped.
+#[test]
+fn generic_custom_media_and_media_projection_keep_the_authored_only_prefix() {
+    for (source, expected) in [
+        (
+            "@custom-media --m ONLY SCREEN;",
+            "@custom-media --m only screen;",
+        ),
+        (
+            "@custom-media --m only ALL and (COLOR);",
+            "@custom-media --m only all and (color);",
+        ),
+        (
+            "@scope{@custom-media --m only screen, only all and (color);}",
+            "@scope { @custom-media --m only screen, only all and (color); }",
+        ),
+        (
+            "@import 'x' only all and (color);@media only screen{}",
+            "@import 'x' only all and (color);\n@media only screen { }",
+        ),
+    ] {
+        let input = sheet(source);
+        assert_eq!(input.to_specified_css().unwrap(), expected, "{source}");
+    }
+}
+
 #[test]
 fn generic_custom_media_projects_recovered_members_while_authored_definition_rejects_them() {
     let report = parse_sheet("/* λ */\n@custom-media --x (color),???,screen;");

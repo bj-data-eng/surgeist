@@ -289,6 +289,25 @@ fn slotted_suffixes_follow_tree_abiding_and_general_pseudo_class_rules() {
     }
 }
 
+/// Pseudo-Elements 4 (WD 2025-06-27) §5 "Element-backed Pseudo-Elements"
+/// syntactically allows all pseudo-classes and pseudo-elements after an
+/// element-backed pseudo-element, while structural pseudo-classes, `:has()`,
+/// `:scope`, `:host*` and a nested `::part()` never match. Selectors 4
+/// (WD 2026-01-22) §3.6.3 "Pseudo-classing Pseudo-elements" normatively allows
+/// any pseudo-element to be followed by the logical combination and user
+/// action pseudo-classes, lets other specifications allow more, and states
+/// "Combinations that are not explicitly allowed are invalid selectors". Its
+/// accompanying note says the logical combination pseudo-classes "pass any
+/// restrictions on validity of selectors at their position to their
+/// arguments", so `:not()` after `::part()` admits only pseudo-class
+/// arguments: `:not(:first-child)` is valid (and never matches), while a
+/// class, type, attribute or combinator argument is invalid.
+///
+/// Recorded witness divergence (#1326), not followed: WPT
+/// `css/css-shadow/part/pseudo-classes-after-part.html`, byte-identical to the
+/// pinned WebKit import and passed by pinned WebKit and Servo, expects
+/// structural pseudo-classes and `:not(:first-child)` after `::part()` to be
+/// invalid; it predates the Pseudo-Elements 4 text.
 #[test]
 fn element_backed_suffixes_retain_even_never_matching_authored_selectors() {
     for source in [

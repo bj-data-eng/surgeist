@@ -299,19 +299,21 @@ impl CssImportRule {
             let protect = self.import_protection(
                 media,
                 context.remaining_bytes(),
-                crate::media::emit_query_cssom,
+                crate::media::emit_query_projected,
             )?;
             let mut out = CssCanonicalBuilder::new(context.remaining_bytes());
-            self.emit_import_into(&mut out, media, protect, crate::media::emit_query_cssom)?;
+            self.emit_import_into(&mut out, media, protect, crate::media::emit_query_projected)?;
             Ok::<_, CssImportSerializationError>(out.finish()?)
         })?;
         context.append(output, value.as_css())?;
         Ok(())
     }
 
-    /// CSSOM WD20210826 defines plain import locations as serialized URLs.
-    /// Modern clauses and extended URL forms keep their retained-output contract
-    /// until their complete literal wrapper has an independently selected source.
+    /// The CSSOM editor capture (`references/cssom-1--editor-capture-20261009--d42e145ec395.md`,
+    /// CSSImportRule) serializes every import as `@import`, one space, serialize a
+    /// URL on the decoded location, the media list and `;` (#1327). Its steps have
+    /// no `layer` or `supports()` clause; they follow the URL in `@import` grammar
+    /// order, the pinned WebKit `CSSImportRule::cssTextInternal` witness order.
     pub(crate) fn append_cssom(
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
@@ -324,38 +326,34 @@ impl CssImportRule {
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
         media: Option<&CssMediaQueryList>,
     ) -> Result<(), crate::query_rule_serialization::QueryRuleSerializationError> {
+        // Serialize a URL takes only the location: string, `url()` and `src()`
+        // targets share it, and request modifiers have no CSSOM step.
         let location = match self.target() {
             CssImportTarget::String(value) => value.as_str(),
-            CssImportTarget::Url(value)
-                if value.url().function() == CssUrlFunction::Url
-                    && value.url().modifiers().is_empty() =>
-            {
-                value.as_str()
-            }
-            _ => {
-                return self.append_specified_with_media(
-                    &mut writer.context,
-                    &mut writer.css,
-                    media,
-                );
-            }
+            CssImportTarget::Url(value) => value.as_str(),
         };
-        if self.layer().is_some() || self.supports().is_some() {
-            return self.append_specified_with_media(&mut writer.context, &mut writer.css, media);
-        }
         // Charge retained syntax rather than a newly manufactured URL graph.
-        crate::component_values::charge_specified_components(
-            &mut writer.context,
-            std::slice::from_ref(&self.syntax.prelude.target),
-        )?;
+        for component in [&self.syntax.prelude.target]
+            .into_iter()
+            .chain(self.syntax.prelude.layer.iter())
+            .chain(self.syntax.prelude.supports.iter())
+        {
+            crate::component_values::charge_specified_components(
+                &mut writer.context,
+                std::slice::from_ref(component),
+            )?;
+        }
         if let Some(media) = media {
             media.charge_cssom(&mut writer.context)?;
         }
         if writer.context.output_suppressed() {
             return Ok(());
         }
-        let deep =
-            media.is_some_and(|media| media.queries().iter().any(crate::media::query_is_deep));
+        let deep = [&self.syntax.prelude.layer, &self.syntax.prelude.supports]
+            .into_iter()
+            .flatten()
+            .any(|component| crate::media::component_depth(component) >= 64)
+            || media.is_some_and(|media| media.queries().iter().any(crate::media::query_is_deep));
         crate::media::with_media_stack(deep, || {
             // Reuse clause/media interpretation probes even when the URL target
             // itself has been normalized. Scratch stays within remaining bytes.

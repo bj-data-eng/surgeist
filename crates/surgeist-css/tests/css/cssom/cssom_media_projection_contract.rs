@@ -98,12 +98,24 @@ fn a_recovered_single_query_keeps_its_authored_fail_closed_serialization() {
     assert_eq!(report, original);
 }
 
+/// CSSOM "serialize a media query" (editor capture 2026-10-09 and WD
+/// 2021-08-26): step 1 appends `not` for a negated query, step 3 appends the
+/// lowercased type when there are no features, and step 4 appends `type and`
+/// only "If type is not "all" or if the media query is negated". No step emits
+/// `only` (#1378). Pinned WebKit 73aa6c89e2cb keeps `only`; that witness
+/// divergence is recorded, not followed.
 #[test]
-fn canonical_output_preserves_only_not_modern_conditions_and_list_order() {
+fn cssom_output_drops_only_and_redundant_all_and_keeps_negated_types_and_list_order() {
     for (source, expected) in [
-        ("only ALL and (COLOR)", "only all and (color)"),
+        ("only SCREEN", "screen"),
+        ("only ALL", "all"),
+        ("only ALL and (COLOR)", "(color)"),
+        ("only SCREEN and (COLOR)", "screen and (color)"),
+        ("ALL and (COLOR)", "(color)"),
         ("NOT ALL and (COLOR)", "not all and (color)"),
-        ("only SCREEN", "only screen"),
+        ("NOT SCREEN and (COLOR)", "not screen and (color)"),
+        ("not ALL", "not all"),
+        ("not PRINT", "not print"),
         ("all", "all"),
         ("(COLOR) OR (MONOCHROME)", "(color) or (monochrome)"),
         (
@@ -111,15 +123,65 @@ fn canonical_output_preserves_only_not_modern_conditions_and_list_order() {
             "not ((color) or (monochrome))",
         ),
     ] {
-        assert_eq!(query(source).serialize_cssom().unwrap().as_css(), expected);
+        assert_eq!(
+            query(source).serialize_cssom().unwrap().as_css(),
+            expected,
+            "{source}"
+        );
+    }
+    for (source, expected) in [
+        (
+            "PRINT, ALL and (COLOR), ONLY SCREEN",
+            "print, (color), screen",
+        ),
+        (
+            "only screen and (color), NOT all and (monochrome), only all",
+            "screen and (color), not all and (monochrome), all",
+        ),
+    ] {
+        let list = parse_media_query_list(source);
+        assert_eq!(
+            list.syntax().serialize_cssom().unwrap().as_css(),
+            expected,
+            "{source}"
+        );
+        let members = list.syntax().serialize_cssom_members().unwrap();
+        assert_eq!(
+            members
+                .iter()
+                .map(|m| m.as_css())
+                .collect::<Vec<_>>()
+                .join(", "),
+            expected,
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn authored_output_keeps_the_authored_only_prefix() {
+    for (source, expected) in [
+        ("only SCREEN", "only screen"),
+        ("only ALL and (COLOR)", "only all and (color)"),
+        ("NOT ALL and (COLOR)", "not all and (color)"),
+    ] {
+        assert_eq!(
+            parse_media_query(source)
+                .syntax()
+                .serialize()
+                .unwrap()
+                .as_css(),
+            expected,
+            "{source}"
+        );
     }
     assert_eq!(
-        parse_media_query_list("PRINT, ALL and (COLOR), ONLY SCREEN")
+        parse_media_query_list("PRINT, ONLY SCREEN")
             .syntax()
-            .serialize_cssom()
+            .serialize()
             .unwrap()
             .as_css(),
-        "print, (color), only screen"
+        "print, only screen"
     );
 }
 

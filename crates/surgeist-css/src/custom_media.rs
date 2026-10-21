@@ -390,7 +390,7 @@ impl CssCustomMediaRule {
         let deep = matches!(&self.data.body,CssCustomMediaBody::Media(list) if list.queries().iter().any(crate::media::query_is_deep));
         let value = crate::media::with_media_stack(deep, || {
             let mut out = CssCanonicalBuilder::new(context.remaining_bytes());
-            self.emit_into(&mut out, crate::media::emit_query_cssom)?;
+            self.emit_into(&mut out, crate::media::emit_query_projected)?;
             Ok::<_, CssCustomMediaSerializationError>(out.finish()?)
         })?;
         context.append(output, value.as_css())?;

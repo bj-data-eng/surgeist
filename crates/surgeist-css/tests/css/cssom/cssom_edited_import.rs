@@ -1,6 +1,7 @@
 //! Current import-owned media: CSSOM's selected plain-import URL writer and
 //! #836's adopted WebKit rule-owned media, independent of child-sheet presence.
-//! Modern imports retain the existing CSS qualification, not a new wrapper policy.
+//! Every import, including modern clauses and `src()`, uses the CSSOM editor
+//! capture's URL-first CSSImportRule text (#1327).
 
 use std::error::Error;
 use surgeist_css::{
@@ -125,14 +126,19 @@ fn current_opaque_media_preserves_absent_optional_clause_interpretation() {
 }
 
 #[test]
-fn modern_clause_and_extended_target_output_retains_existing_qualification() {
+fn modern_clause_and_extended_target_output_uses_the_cssom_url_first() {
     let current = media("print");
-    for (source, expected) in [
+    for (source, expected, compact) in [
         (
             "@import 'x' layer(theme) supports(display:grid) screen;",
+            "@import url(\"x\") layer(theme) supports(display:grid) print;",
             "@import 'x' layer(theme) supports(display:grid) print;",
         ),
-        ("@import src('x') screen;", "@import src('x') print;"),
+        (
+            "@import src('x') screen;",
+            "@import url(\"x\") print;",
+            "@import src('x') print;",
+        ),
     ] {
         let original = import(source);
         let before = original.clone();
@@ -143,7 +149,7 @@ fn modern_clause_and_extended_target_output_retains_existing_qualification() {
                 .unwrap()
                 .to_specified_css()
                 .unwrap(),
-            expected
+            compact
         );
         assert_eq!(original, before);
     }
