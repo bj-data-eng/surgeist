@@ -99,6 +99,15 @@ recovery remains unavailable. Native completion notifications use the same
 explicit profile exclusion after actual event delivery and before real rendering
 unblocking. Rust event listeners do not provide a JavaScript execution engine.
 
+`process_parsed_style_rendering` continues that same original cursor. Absent,
+empty and ASCII-whitespace media use HTML's classification; nontrivial media
+returns `MediaEnvironment` without inventing a match. Original Document class
+and body-presence facts govern rendering membership, even when the installed
+final tree already has a body. Completion carries the actual DOM commit and
+retirement custody plus a narrow membership witness. It creates no sheet or
+preference effect and leaves the whole history and general Style readiness
+Pending; resource completion and later original actions still remain.
+
 Each public CSS preparation/pre-grammar/post-grammar poll charges the same
 original contribution and Runtime work before publication. CSS owns its finite
 UTF16 preparation and existing grammar limits. Private grammar work, temporary

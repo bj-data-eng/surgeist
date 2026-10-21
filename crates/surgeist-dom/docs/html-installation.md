@@ -342,9 +342,10 @@ phase; raised-limit retry retains spent work. No sheet, issuer or cursor is
 recreated. Drop/resume preserves the exact original occurrence.
 
 Acceptance reaches `ReadRenderBlockingPending`. The canonical view's
-`script_bookkeeping_exclusion` returns the accepted profile only at this reached
-phase; selecting the profile earlier returns no such disposition. Repeated
-advance observes this same phase, while repeated exclusion or a wrong-phase,
+`script_bookkeeping_exclusion` returns the accepted profile at this reached
+phase and after this invocation completes rendering; selecting the profile
+earlier returns no such disposition. Repeated advance observes the stored
+phase, while repeated exclusion or a wrong-phase,
 profile or qualification refuses. Both unresolved media and a universal media
 query can reach this render wait: neither is a reason to keep the excluded
 script phase pending, and exclusion supplies no rendering/media observation.
@@ -354,6 +355,38 @@ text updates and subsequent occurrences retain their separate authority. Whole
 contribution completion is not performed. DOM provides no CSP evaluator. Use the
 Session structural-installation route; raw Session admission keeps its existing
 influencing-Style refusal.
+
+### Original rendering actions
+
+After the accepted script exclusion, `process_rendering` uses the retained
+occurrence's Style inputs, exact parser-Document identity and HTML media cursor.
+Absent Style media has its all-media default; empty and ASCII-whitespace-only
+values match without an environment. A nontrivial value (including `all`) returns
+`Pending(MediaEnvironment)` when the potential-render predicate still needs its
+match. A genuinely false potential predicate needs no media observation.
+Unavailable original Document facts remain `Pending(OriginalContext)`.
+
+The media/potential predicate is separate from the original Document eligibility
+gate. A head Style can add canonical render-blocking membership even though the
+installed final Document already has a body. A body Style completes the same
+invocation without adding membership. The current mapped element and its actual
+Document must still match the original qualification; original body facts do
+not authorize an effect in an adopted or different destination.
+
+`Complete` owns the genuine `DomCommit`, narrow publication-coordinate membership
+evidence and actual output/retirement backing under the same original admission.
+A no-op gate returns the actual empty commit. Draft, change/history backing,
+retired State/custody and the cursor successor are prepared before the infallible
+publication tail. Refusal/cancellation preserves the reached cursor and canonical
+state while retaining spent work; retry may raise the same envelope. Every owned
+Pending result and completed publication consumes finite cumulative output.
+
+The new `RenderingComplete` phase completes only this original invocation's
+rendering actions. It preserves the accepted script exclusion, original sheet
+and whole Pending history. General `is_render_blocking`/sheet readiness queries
+continue to refuse `PendingParsedProcessing`; the narrow completion is historical
+evidence rather than a general live query. Later parser-pop text updates,
+resource and notification processing remain separate work.
 
 ## Control state and form associations
 

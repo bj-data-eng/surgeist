@@ -13,7 +13,8 @@ pub use consume::{
     DomParsedHtmlMetaRuntimeHold,
 };
 pub use style_prefix::{
-    DomParsedHtmlStylePrefixView, DomParsedHtmlStyleRuntimeHold, DomParsedHtmlStyleSheetCompletion,
+    DomParsedHtmlStylePrefixView, DomParsedHtmlStyleRenderingCompletion,
+    DomParsedHtmlStyleRuntimeHold, DomParsedHtmlStyleSheetCompletion,
     DomParsedHtmlStyleSheetPreparation, DomParsedHtmlStyleSheetPublished,
     DomParsedHtmlStyleSheetRetirement,
 };

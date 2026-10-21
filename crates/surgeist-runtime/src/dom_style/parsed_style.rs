@@ -3,7 +3,7 @@ use super::*;
 use surgeist_dom::{
     DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits, DomParsedHtmlStyleError,
     DomParsedHtmlStyleInitialPolicyRequest, DomParsedHtmlStyleInlinePolicyObservation,
-    DomParsedHtmlStylePhase, DomParsedHtmlStylePrefixView,
+    DomParsedHtmlStylePhase, DomParsedHtmlStylePrefixView, DomParsedHtmlStyleRenderingProgress,
 };
 use surgeist_html::HtmlCspAssociation;
 mod create_sheet;
@@ -45,6 +45,33 @@ impl From<DomParsedHtmlStyleError> for DomStyleParsedPrefixError {
 }
 
 impl DomStyleRuntime {
+    /// Process the retained original rendering actions using HTML's bounded
+    /// media classification and original Document context. Unsupported context
+    /// remains a precise requirement. A completion owns the actual DOM output
+    /// and retirement custody; the whole contribution remains Pending.
+    pub fn process_parsed_style_rendering(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        qualification: &DomParsedHtmlStyleInitialPolicyRequest,
+        limits: DomParsedHtmlAssociationLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomParsedHtmlStyleRenderingProgress, DomStyleParsedPrefixError> {
+        let owner = self.original()?;
+        let state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomStyleRuntimeError::Binding)?;
+        if state.dom != dom.owner() {
+            return Err(DomStyleRuntimeError::WrongSession.into());
+        }
+        drop(state.require_sheet_set_idle(dom)?);
+        let mut hold =
+            dom.raw_mut()
+                .begin_parsed_html_style(qualification.contribution(), limits, cancel)?;
+        hold.step(cancel).map_err(DomStyleRuntimeError::from)?;
+        state.step(cancel)?;
+        Ok(hold.process_rendering(qualification, cancel)?)
+    }
+
     /// Advance the original first influencing Style only as far as its
     /// historical inline-policy request. No decision, sheet or contribution
     /// completion is produced. Original work and phase survive refusal/Drop.

@@ -79,10 +79,23 @@ impl Draft {
         }
         let media =
             self.control_attribute(key, surgeist_html::KnownHtmlAttribute::Media, cancel)?;
-        self.source_step(cancel)?;
-        // Missing/empty media is the source-defined all-media default. An actual
-        // nonempty query requires a qualified environment match, not readiness.
-        Ok(media.is_none_or(DocumentString::is_empty).then_some(true))
+        let Some(media) = media else {
+            self.source_step(cancel)?;
+            // Style's absent-media default is distinct from an absent media value.
+            return Ok(Some(true));
+        };
+        let mut cursor = surgeist_html::HtmlMediaValueCursor::new(Some(media.code_units()));
+        while cursor.next_action() != surgeist_html::HtmlMediaCursorAction::Complete {
+            self.source_step(cancel)?;
+            cursor.advance();
+        }
+        // Empty and ASCII-whitespace-only values match without an environment.
+        // Other queries still require a qualified media observation.
+        Ok(cursor
+            .result()
+            .expect("completed media cursor")
+            .matches_unconditionally()
+            .then_some(true))
     }
     fn style_document_has_body(
         &self,
@@ -127,6 +140,14 @@ impl Draft {
         if !surgeist_html::document_allows_render_blocking(html, body) {
             return Ok(());
         }
+        self.style_add_render_blocking(key, cancel)
+    }
+    pub(in crate::store) fn style_add_render_blocking(
+        &mut self,
+        key: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let document = self.node(key)?.document();
         let node = self.node(document)?;
         let list = node
             .base_document()

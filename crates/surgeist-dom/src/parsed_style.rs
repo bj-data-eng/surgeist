@@ -23,7 +23,32 @@ pub enum DomParsedHtmlStylePhase {
     InlinePolicyBlocked,
     ReadScriptBlockingPending,
     ReadRenderBlockingPending,
+    /// This invocation finished rendering actions; the whole history is Pending.
+    RenderingComplete,
 }
+/// Original facts still required by this rendering invocation. No current
+/// environment or final-tree body observation can replace the retained basis.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomParsedHtmlStyleRenderingRequirement {
+    /// The nontrivial original media value requires an original environment.
+    MediaEnvironment,
+    /// A required original Document fact was unavailable or deliberately unbound.
+    OriginalContext {
+        role: surgeist_html_parser::HtmlParseAssociationContextRole,
+        requirement: HtmlParseAssociationContextRequirement,
+    },
+}
+/// Only supported rendering actions of one original invocation. Neither variant
+/// acknowledges the contribution or establishes general Style readiness.
+#[derive(Debug)]
+pub enum DomParsedHtmlStyleRenderingProgress {
+    /// The same original cursor remains at ReadRenderBlocking.
+    Pending(DomParsedHtmlStyleRenderingRequirement),
+    /// Actual DOM publication and narrow, operation-qualified membership evidence.
+    Complete(DomParsedHtmlStyleRenderingCompletion),
+}
+pub use crate::store::pending_associations::DomParsedHtmlStyleRenderingCompletion;
+
 #[derive(Debug)]
 pub enum DomParsedHtmlStyleError {
     Admission(DomParsedHtmlAssociationAdmissionError),
