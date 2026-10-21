@@ -112,13 +112,19 @@ text_case!(
 );
 text_case!(
     alpha_binary_micro_below,
-    "color(--P 0 / calc(5e-7))",
+    "color(--P 0 / calc(5e-7 * 1))",
     "color(--P 0 / calc(0))"
 );
 text_case!(
     alpha_negative_binary_micro_below,
-    "color(--P 0 / calc(-5e-7))",
+    "color(--P 0 / calc(-5e-7 * 1))",
     "color(--P 0 / calc(0))"
+);
+// An operation-free calculation leaf keeps its exact authored coefficient (#1297).
+text_case!(
+    alpha_operation_free_leaf_keeps_its_exact_coefficient,
+    "color(--P 0 / calc(5e-7))",
+    "color(--P 0 / calc(0.000001))"
 );
 text_case!(
     alpha_carry_to_explicit_unity,
@@ -414,8 +420,15 @@ text_case!(
 );
 text_case!(
     weight_binary_micro_below,
-    "color-mix(red calc(5e-7%), blue)",
+    "color-mix(red calc(5e-7% * 1), blue)",
     "color-mix(red calc(0%), blue)"
+);
+// A mix weight's operation-free leaf keeps its exact coefficient (#1297):
+// 5e-7 rounds to six places with ties away from zero, keeping `%` and calc().
+text_case!(
+    weight_exact_operation_free_leaf,
+    "color-mix(red calc(5e-7%), blue)",
+    "color-mix(red calc(0.000001%), blue)"
 );
 text_case!(
     weight_carry,

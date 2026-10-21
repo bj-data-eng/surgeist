@@ -16,6 +16,7 @@ mod numeric_contextual_comparison_lifecycle;
 mod numeric_contextual_magnitude_projection_lifecycle;
 mod numeric_finite_angle_arithmetic_range_projection;
 mod numeric_finite_angle_range_projection;
+mod numeric_finite_overflow_closest_value;
 mod numeric_hinted_noncolor_contexts;
 mod numeric_hinted_noncolor_values;
 mod numeric_hinted_number_construction;

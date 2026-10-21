@@ -252,11 +252,15 @@ text_case!(
     "hwb(none calc(infinity) 20%)",
     "hwb(none calc(infinity * 1%) 20%)"
 );
-text_case!(
-    hwb_finite_lexical_overflow,
-    "hwb(none calc(1e400) 20%)",
-    "hwb(none calc(infinity * 1%) 20%)"
-);
+#[test]
+fn hwb_finite_lexical_overflow() {
+    // A finite authored value converts to the closest finite binary64 value,
+    // not an infinity (Values 4 numeric types; #1297).
+    assert_text(
+        "hwb(none calc(1e400) 20%)",
+        &format!("hwb(none {:.0}% 20%)", f64::MAX),
+    );
+}
 text_case!(
     hwb_signed_zero,
     "hwb(none calc(0 * -1) calc(0))",

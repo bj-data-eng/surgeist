@@ -23,9 +23,20 @@ type Id = usize;
 // binary64 degrees remain supported, including the 31 values above this one.
 const ANGLE_OVERFLOW_ENDPOINT: f64 = f64::from_bits(f64::MAX.to_bits() - 31);
 
-pub(crate) fn finite_angle_overflow(value: f64, finite_operands: bool) -> f64 {
+/// Values 4 numeric-types range rule, the one owner for finite overflow (#1297):
+/// a finite value outside the binary64 range converts to the closest supported
+/// value, `f64::MAX` with its sign, and an angle to the nearest supported
+/// multiple of 360deg. An infinity from an infinite operand or a defined
+/// exception (division by zero, pow(0, -1), log(0), tan asymptotes) is genuine
+/// and passes through unchanged; callers report it as non-finite operands.
+pub(crate) fn closest_supported_value(value: f64, finite_operands: bool, angle: bool) -> f64 {
     if value.is_infinite() && finite_operands {
-        ANGLE_OVERFLOW_ENDPOINT.copysign(value)
+        let endpoint = if angle {
+            ANGLE_OVERFLOW_ENDPOINT
+        } else {
+            f64::MAX
+        };
+        endpoint.copysign(value)
     } else {
         value
     }
@@ -170,6 +181,27 @@ struct Projection<'a> {
     context: &'a mut SpecifiedSerializationContext,
 }
 impl Projection<'_> {
+    /// Output projection applies the shared range rule; keyframe matching keeps
+    /// the selected native tree's IEEE outcomes.
+    fn closest(&self, value: f64, finite_operands: bool, ty: CssNumericType) -> f64 {
+        if self.mode == ProjectionMode::SpecifiedOutput {
+            closest_supported_value(value, finite_operands, ty.is(CssNumericDimension::Angle))
+        } else {
+            value
+        }
+    }
+    /// One source-order accumulation step. A finite intermediate is itself a
+    /// value that must be supported, so a finite pair that overflows converts
+    /// before the next operand: `MAX * 0` is zero and `MAX - infinity` is the
+    /// genuine negative infinity, independent of grouping.
+    fn step(&self, previous: f64, value: f64, product: bool, ty: CssNumericType) -> f64 {
+        let result = if product {
+            previous * value
+        } else {
+            previous + value
+        };
+        self.closest(result, previous.is_finite() && value.is_finite(), ty)
+    }
     fn unit_for_type(&self, ty: CssNumericType) -> Unit {
         if self.mode == ProjectionMode::KeyframeMatching && ty.is(CssNumericDimension::Flex) {
             // The selected specified tree treats fr as a canonical dimension;
@@ -192,12 +224,14 @@ impl Projection<'_> {
             {
                 Some(value.value)
             }
-            Kind::Product(children) => self.resolved_terms(children, true),
-            Kind::Sum(children) => self.resolved_terms(children, false),
+            Kind::Product(children) => self.resolved_terms(children, true, ty),
+            Kind::Sum(children) => self.resolved_terms(children, false, ty),
             Kind::Negate(child) => self.arena[*child].resolved_magnitude.map(|value| -value),
+            // Division by zero is a genuine infinity; a nonzero finite divisor
+            // can only overflow a finite quotient.
             Kind::Invert(child) => self.arena[*child]
                 .resolved_magnitude
-                .map(|value| 1.0 / value),
+                .map(|value| self.closest(1.0 / value, value != 0.0, ty)),
             _ => None,
         };
         let id = self.arena.len();
@@ -210,7 +244,7 @@ impl Projection<'_> {
     }
     // An exceptional numeric subset poisons the operation even when another
     // term still requires external context. No contextual magnitude is guessed.
-    fn resolved_terms(&self, children: &[Id], product: bool) -> Option<f64> {
+    fn resolved_terms(&self, children: &[Id], product: bool, ty: CssNumericType) -> Option<f64> {
         if product && self.mode == ProjectionMode::KeyframeMatching {
             return self
                 .keyframe_product_result(children)
@@ -218,11 +252,17 @@ impl Projection<'_> {
         }
         let mut known = None;
         let mut all_resolved = true;
-        for &child in children {
+        for (index, &child) in children.iter().enumerate() {
             if let Some(value) = self.arena[child].resolved_magnitude {
+                // A Sum prefix has the Sum's type. A Product prefix has a
+                // partial compound type, never an Angle, until the last factor.
+                let step_type = if product && index + 1 < children.len() {
+                    CssNumericType::NUMBER
+                } else {
+                    ty
+                };
                 known = Some(match known {
-                    Some(previous) if product => previous * value,
-                    Some(previous) => previous + value,
+                    Some(previous) => self.step(previous, value, product, step_type),
                     None => value,
                 });
             } else {
@@ -322,7 +362,12 @@ impl Projection<'_> {
         if let Some(scalar) = self.scalar(id)
             && scalar.unit == Unit::Number
         {
-            return self.value(1.0 / scalar.value, Unit::Number, CssNumericType::NUMBER);
+            let value = self.closest(
+                1.0 / scalar.value,
+                scalar.value != 0.0,
+                CssNumericType::NUMBER,
+            );
+            return self.value(value, Unit::Number, CssNumericType::NUMBER);
         }
         if let Kind::Invert(child) = self.arena[id].kind {
             return Ok(child);
@@ -339,7 +384,7 @@ impl Projection<'_> {
         let mut pending = ids;
         pending.reverse();
         let mut other = Vec::new();
-        let mut scalars: BTreeMap<Unit, (f64, bool, usize)> = BTreeMap::new();
+        let mut scalars: BTreeMap<Unit, (f64, usize)> = BTreeMap::new();
         let mut position = 0;
         // Visit flattened children in source order, including binary64 sums.
         while let Some(id) = pending.pop() {
@@ -353,34 +398,21 @@ impl Projection<'_> {
             } else if let Some(scalar) = self.scalar(id) {
                 scalars
                     .entry(scalar.unit.clone())
-                    .and_modify(|(value, finite_operands, _)| {
-                        *value += scalar.value;
-                        *finite_operands &= scalar.value.is_finite();
-                    })
-                    .or_insert((scalar.value, scalar.value.is_finite(), position));
+                    .and_modify(|(value, _)| *value = self.step(*value, scalar.value, false, ty))
+                    .or_insert((scalar.value, position));
                 position += 1;
             } else {
                 other.push((position, id));
                 position += 1;
             }
         }
-        if ty.simple() && scalars.values().any(|(value, _, _)| value.is_nan()) {
+        if ty.simple() && scalars.values().any(|(value, _)| value.is_nan()) {
             return self.value(f64::NAN, self.unit_for_type(ty), ty);
         }
         let mut combined = Vec::new();
-        for (unit, (value, finite_operands, position)) in scalars {
-            // Each same-unit set creates one replacement. Range conversion
-            // occurs here, after source-order accumulation, not at prefixes.
-            // The accumulator may overflow although every source operand was
-            // finite; a genuine infinite operand must remain distinguishable.
-            let value = if self.mode == ProjectionMode::SpecifiedOutput
-                && ty.is(CssNumericDimension::Angle)
-                && unit == Unit::Canonical("deg")
-            {
-                finite_angle_overflow(value, finite_operands)
-            } else {
-                value
-            };
+        for (unit, (value, position)) in scalars {
+            // Each same-unit set creates one replacement after source-order
+            // accumulation; every step already applied the range rule.
             combined.push((position, self.value(value, unit, ty)?));
         }
         combined.extend(other);
@@ -421,7 +453,8 @@ impl Projection<'_> {
                 && value.unit == Unit::Number
             {
                 if let Some((_, coefficient, count, _)) = &mut number {
-                    *coefficient *= value.value;
+                    *coefficient =
+                        self.step(*coefficient, value.value, true, CssNumericType::NUMBER);
                     *count += 1;
                 } else {
                     number = Some((id, value.value, 1, other.len()));
@@ -459,11 +492,13 @@ impl Projection<'_> {
                     let mut distributed = Vec::new();
                     for id in children {
                         let value = self.scalar(id).expect("checked scalar child").clone();
-                        distributed.push(self.value(
+                        let ty = self.arena[id].ty;
+                        let product = self.closest(
                             coefficient * value.value,
-                            value.unit,
-                            self.arena[id].ty,
-                        )?);
+                            coefficient.is_finite() && value.value.is_finite(),
+                            ty,
+                        );
+                        distributed.push(self.value(product, value.unit, ty)?);
                     }
                     return self.sum(distributed, ty);
                 }
@@ -483,25 +518,13 @@ impl Projection<'_> {
         let resolved = if self.mode == ProjectionMode::KeyframeMatching {
             self.keyframe_product_result(&other)
         } else if ty.simple() {
-            self.resolved_terms(&other, true).map(|value| (value, ty))
+            // Output projection applies the range rule inside resolved_terms.
+            self.resolved_terms(&other, true, ty)
+                .map(|value| (value, ty))
         } else {
             None
         };
         if let Some((value, result_type)) = resolved {
-            let value = if self.mode == ProjectionMode::SpecifiedOutput
-                && ty.is(CssNumericDimension::Angle)
-            {
-                finite_angle_overflow(
-                    value,
-                    other.iter().all(|&id| {
-                        self.arena[id]
-                            .resolved_magnitude
-                            .is_some_and(f64::is_finite)
-                    }),
-                )
-            } else {
-                value
-            };
             return self.value(value, self.unit_for_type(result_type), result_type);
         }
         if let Some((_, coefficient, _, position)) = number
@@ -514,7 +537,12 @@ impl Projection<'_> {
             };
             let child = other[1 - position];
             if let Some(value) = self.scalar(child).cloned() {
-                return self.value(coefficient * value.value, value.unit, ty);
+                let product = self.closest(
+                    coefficient * value.value,
+                    coefficient.is_finite() && value.value.is_finite(),
+                    ty,
+                );
+                return self.value(product, value.unit, ty);
             }
         }
         self.add(Kind::Product(other), ty)
@@ -579,16 +607,12 @@ impl Projection<'_> {
                         .all(|&id| self.magnitude_comparable(id))
             {
                 let output = math::evaluate(function, &values, strategy);
-                let output = if self.mode == ProjectionMode::SpecifiedOutput
-                    && ty.is(CssNumericDimension::Angle)
-                {
-                    finite_angle_overflow(
-                        output,
-                        values.iter().flatten().all(|value| value.value.is_finite()),
-                    )
-                } else {
-                    output
-                };
+                let output = self.closest(
+                    output,
+                    values.iter().flatten().all(|value| value.value.is_finite())
+                        && !math::defines_infinity(function, &values),
+                    ty,
+                );
                 let unit = if resolved || function == Function::Sign {
                     self.unit_for_type(ty)
                 } else {
@@ -863,14 +887,85 @@ fn project_specified_impl_mode(
 
 /// A checked projection waiting for its owning slot to choose emission.
 /// It owns only the existing bounded arena, never a second resource context.
-pub(crate) struct DeferredNumericProjection {
+pub(crate) struct DeferredNumericProjection<'a> {
     arena: Vec<Node>,
     root: Id,
     outcome: NumericProjectionOutcome,
+    exact: Option<ExactCoefficient<'a>>,
 }
-impl DeferredNumericProjection {
+
+/// The authored coefficient of a calculation whose simplified tree is one
+/// numeric leaf needing no unit conversion or arithmetic. Such a root emits
+/// this exact decimal under the ordinary literal policy (#1297); its projected
+/// scalar still supplies the outcome and comparison bits.
+#[derive(Clone, Copy)]
+struct ExactCoefficient<'a> {
+    root: Id,
+    representation: &'a str,
+    negate: bool,
+}
+
+/// Walks only operation-free wrappers: calc(), groups, single-term sums and
+/// products, clamp(none, A, none), and one-argument min()/max(), which Values 4
+/// simplification replaces with their argument.
+fn exact_single_leaf(expression: &CssCalculationExpression) -> Option<&str> {
+    let mut node = expression;
+    loop {
+        node = match &node.kind {
+            NodeKind::Group(child) => child,
+            NodeKind::Function {
+                function: Function::Calc,
+                args,
+                ..
+            } => args.first()?.as_ref()?,
+            NodeKind::Function {
+                function: Function::Clamp,
+                args,
+                ..
+            } if args.len() == 3 && args[0].is_none() && args[2].is_none() => args[1].as_ref()?,
+            // Values 4 simplification replaces a one-argument comparison with
+            // its argument; no other single-argument function is an identity.
+            NodeKind::Function {
+                function: Function::Min | Function::Max,
+                args,
+                ..
+            } if args.len() == 1 => args[0].as_ref()?,
+            NodeKind::Sum(children) => match children.as_slice() {
+                [(None, child)] => child,
+                _ => return None,
+            },
+            NodeKind::Product(children) => match children.as_slice() {
+                [(None, child)] => child,
+                _ => return None,
+            },
+            NodeKind::Value(component) => {
+                return match component.view() {
+                    CssComponentValueRef::Token(
+                        CssValueTokenRef::Number(number) | CssValueTokenRef::Percentage(number),
+                    ) => Some(number.representation()),
+                    CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
+                        if canonical_unit(unit).1 == 1.0 =>
+                    {
+                        Some(number.representation())
+                    }
+                    _ => None,
+                };
+            }
+            _ => return None,
+        };
+    }
+}
+impl DeferredNumericProjection<'_> {
     pub(crate) fn outcome(&self) -> NumericProjectionOutcome {
         self.outcome
+    }
+
+    /// The authored coefficient an operation-free leaf root will emit, so an
+    /// owning slot can classify its rounded text as the literal path does.
+    pub(crate) fn exact_coefficient(&self) -> Option<&str> {
+        self.exact
+            .filter(|exact| exact.root == self.root && !exact.negate)
+            .map(|exact| exact.representation)
     }
 
     /// Compares normalized specified roots, without emission or numeric censorship.
@@ -964,6 +1059,10 @@ impl DeferredNumericProjection {
             };
             prepared.root = projection.negate(prepared.root)?;
             prepared.arena = projection.arena;
+            if let Some(exact) = &mut prepared.exact {
+                exact.root = prepared.root;
+                exact.negate = !exact.negate;
+            }
         }
         emit_prepared(
             prepared,
@@ -977,20 +1076,20 @@ impl DeferredNumericProjection {
     }
 }
 
-pub(crate) fn prepare_specified(
-    expression: &CssCalculationExpression,
+pub(crate) fn prepare_specified<'a>(
+    expression: &'a CssCalculationExpression,
     context: &mut SpecifiedSerializationContext,
-) -> Result<DeferredNumericProjection> {
+) -> Result<DeferredNumericProjection<'a>> {
     prepare_specified_scaled(expression, NumericProjectionScale::Identity, context)
 }
 
 /// The native specified-tree phase selected for keyframe lookup. This reuses
 /// the checked walk, numeric folding and resource owner while retaining the
 /// pinned tree ordering rather than output-canonical ordering.
-pub(crate) fn prepare_keyframe_matching(
-    expression: &CssCalculationExpression,
+pub(crate) fn prepare_keyframe_matching<'a>(
+    expression: &'a CssCalculationExpression,
     context: &mut SpecifiedSerializationContext,
-) -> Result<DeferredNumericProjection> {
+) -> Result<DeferredNumericProjection<'a>> {
     prepare_specified_scaled_with_mode(
         expression,
         NumericProjectionScale::Identity,
@@ -999,20 +1098,20 @@ pub(crate) fn prepare_keyframe_matching(
     )
 }
 
-fn prepare_specified_scaled(
-    expression: &CssCalculationExpression,
+fn prepare_specified_scaled<'a>(
+    expression: &'a CssCalculationExpression,
     scale: NumericProjectionScale,
     context: &mut SpecifiedSerializationContext,
-) -> Result<DeferredNumericProjection> {
+) -> Result<DeferredNumericProjection<'a>> {
     prepare_specified_scaled_with_mode(expression, scale, context, ProjectionMode::SpecifiedOutput)
 }
 
-fn prepare_specified_scaled_with_mode(
-    expression: &CssCalculationExpression,
+fn prepare_specified_scaled_with_mode<'a>(
+    expression: &'a CssCalculationExpression,
     scale: NumericProjectionScale,
     context: &mut SpecifiedSerializationContext,
     mode: ProjectionMode,
-) -> Result<DeferredNumericProjection> {
+) -> Result<DeferredNumericProjection<'a>> {
     let mut projection = Projection {
         mode,
         arena: Vec::new(),
@@ -1058,10 +1157,15 @@ fn prepare_specified_scaled_with_mode(
                         {
                             unit = projection.unit_for_type(node.ty);
                         }
-                        let value = if projection.mode == ProjectionMode::SpecifiedOutput
-                            && unit == Unit::Canonical("deg")
-                        {
-                            finite_angle_leaf(number.representation(), factor)
+                        let value = if projection.mode == ProjectionMode::SpecifiedOutput {
+                            // Dimension tokens are authored finite decimals.
+                            // Genuine infinities are constants or calculation
+                            // results and never enter this leaf conversion.
+                            closest_supported_value(
+                                converted_leaf(number.representation(), factor),
+                                true,
+                                unit == Unit::Canonical("deg"),
+                            )
                         } else {
                             lexical_value(number.representation()) * factor
                         };
@@ -1071,7 +1175,9 @@ fn prepare_specified_scaled_with_mode(
                     }
                     _ => unreachable!("checked numeric leaf"),
                 };
-                projection.value(lexical_value(number.representation()), unit, node.ty)?
+                let value = lexical_value(number.representation());
+                let value = projection.closest(value, true, CssNumericType::NUMBER);
+                projection.value(value, unit, node.ty)?
             }
             NodeKind::Constant(constant) => {
                 projection.value(constant.magnitude(), Unit::Number, node.ty)?
@@ -1140,15 +1246,27 @@ fn prepare_specified_scaled_with_mode(
         context_dependent: projection.arena[root].resolved_magnitude.is_none(),
         scalar_value: projection.scalar(root).map(|value| value.value),
     };
+    // A scale is slot-owned arithmetic, so only identity can keep the leaf.
+    let exact = (mode == ProjectionMode::SpecifiedOutput
+        && scale == NumericProjectionScale::Identity
+        && projection.scalar(root).is_some())
+    .then(|| exact_single_leaf(expression))
+    .flatten()
+    .map(|representation| ExactCoefficient {
+        root,
+        representation,
+        negate: false,
+    });
     Ok(DeferredNumericProjection {
         arena: projection.arena,
         root,
         outcome,
+        exact,
     })
 }
 
 fn emit_prepared(
-    prepared: DeferredNumericProjection,
+    prepared: DeferredNumericProjection<'_>,
     context: &mut SpecifiedSerializationContext,
     output: &mut String,
     charge_output: bool,
@@ -1169,16 +1287,23 @@ fn emit_prepared(
         NumericEmission::ColorComponentCalculation => NumericEmission::ColorCalculation,
         emission => emission,
     };
+    // Color calculation roles keep their separate binary64 text policies.
+    let exact = prepared
+        .exact
+        .filter(|_| matches!(emission, NumericEmission::CssComponent(_)));
     // Discarded values still perform the same checked projection and arithmetic.
     // Their formatting does not consume the surviving value's output budget.
     if projection.context.output_suppressed() {
         return Ok(outcome);
     }
-    if outer_calc {
-        projection.serialize(root, output, charge_output, &mut emission)?;
-    } else {
-        projection.serialize_mode(root, output, charge_output, false, &mut emission)?;
-    }
+    projection.serialize_mode(
+        root,
+        output,
+        charge_output,
+        outer_calc,
+        &mut emission,
+        exact,
+    )?;
     Ok(outcome)
 }
 
@@ -1237,34 +1362,34 @@ fn lexical_value(representation: &str) -> f64 {
     }
 }
 
-fn finite_angle_leaf(representation: &str, factor: f64) -> f64 {
+/// Converts an authored dimension coefficient to its canonical unit. The result
+/// may still be infinite; the caller applies the shared range rule.
+fn converted_leaf(representation: &str, factor: f64) -> f64 {
     let coefficient = lexical_value(representation);
-    let converted = if coefficient.is_infinite() && factor < 1.0 {
-        // A grad coefficient outside binary64 can still fit in degrees. Read
-        // a bounded normalized decimal prefix before applying its 9/10 scale;
-        // neither the authored token nor its exponent is materialized anew.
-        let lexical = crate::exact_decimal::LexicalDecimal::new(representation);
-        let point = lexical
-            .exponent
-            .map(|exponent| exponent.saturating_add(lexical.len as i128));
-        if point == Some(309) {
-            let mut prefix = 0u64;
-            let mut digits = 0;
-            for digit in lexical.digits().take(19) {
-                prefix = prefix * 10 + u64::from(digit);
-                digits += 1;
-            }
-            let normalized = prefix as f64 / 10f64.powi(digits - 1);
-            (normalized * factor * 1e308).copysign(coefficient)
-        } else {
-            coefficient
-        }
-    } else {
-        coefficient * factor
+    if !(coefficient.is_infinite() && factor < 1.0) {
+        return coefficient * factor;
+    }
+    // A coefficient outside binary64 can still fit after a scale below one
+    // (grad, ms, Q, dpi, dpcm). Read a bounded normalized decimal prefix before
+    // applying the scale; neither the authored token nor its exponent is
+    // materialized anew. Every intrinsic scale is at least 1/1000, so points
+    // above 312 cannot reach the supported range.
+    let lexical = crate::exact_decimal::LexicalDecimal::new(representation);
+    let point = lexical
+        .exponent
+        .map(|exponent| exponent.saturating_add(lexical.len as i128));
+    let Some(shift @ 0..=3) = point.map(|point| point - 309) else {
+        return coefficient;
     };
-    // Dimension tokens are authored finite decimals. Genuine infinities are
-    // constants or calculation results and never enter this leaf conversion.
-    finite_angle_overflow(converted, true)
+    let mut prefix = 0u64;
+    let mut digits = 0;
+    for digit in lexical.digits().take(19) {
+        prefix = prefix * 10 + u64::from(digit);
+        digits += 1;
+    }
+    let normalized = prefix as f64 / 10f64.powi(digits - 1);
+    let shift = 10f64.powi(i32::try_from(shift).expect("bounded decimal shift"));
+    (normalized * factor * shift * 1e308).copysign(coefficient)
 }
 
 fn canonical_unit(unit: &str) -> (Unit, f64) {
@@ -1291,6 +1416,7 @@ enum Output {
 }
 
 impl Projection<'_> {
+    #[cfg(test)]
     fn serialize(
         &mut self,
         root: Id,
@@ -1298,7 +1424,7 @@ impl Projection<'_> {
         charge_output: bool,
         emission: &mut NumericEmission<'_>,
     ) -> Result<()> {
-        self.serialize_mode(root, output, charge_output, true, emission)
+        self.serialize_mode(root, output, charge_output, true, emission, None)
     }
 
     fn serialize_mode(
@@ -1308,6 +1434,7 @@ impl Projection<'_> {
         charge_output: bool,
         outer_calc: bool,
         emission: &mut NumericEmission<'_>,
+        exact: Option<ExactCoefficient<'_>>,
     ) -> Result<()> {
         let mut work = Vec::new();
         if !outer_calc
@@ -1337,12 +1464,13 @@ impl Projection<'_> {
                     } else {
                         self.context.remaining_bytes().saturating_sub(output.len())
                     };
-                    let piece = emission.scalar_piece(
-                        self.scalar(id).expect("scalar emission"),
-                        root,
-                        negate,
-                        limit,
-                    )?;
+                    let scalar = self.scalar(id).expect("scalar emission");
+                    let piece = match exact {
+                        Some(exact) if root && exact.root == id => {
+                            emission.exact_piece(scalar, exact, limit)?
+                        }
+                        _ => emission.scalar_piece(scalar, root, negate, limit)?,
+                    };
                     append_piece(
                         self.context,
                         output,
@@ -1597,6 +1725,46 @@ struct ScalarPiece {
     count: usize,
 }
 impl NumericEmission<'_> {
+    /// Emits an operation-free leaf from its authored decimal, exactly as the
+    /// ordinary literal path rounds it. Comparison captures keep the projected
+    /// binary64 bits, so math equality retains the documented phase policy.
+    fn exact_piece(
+        &self,
+        scalar: &Scalar,
+        exact: ExactCoefficient<'_>,
+        limit: usize,
+    ) -> Result<ScalarPiece> {
+        let unit = scalar.unit.name();
+        let coefficient_limit = limit
+            .checked_sub(unit.len())
+            .ok_or_else(|| Error::new(ErrorKind::ByteLimit))?;
+        let mut css = crate::numeric_formatting::format_css_number_with_sign(
+            exact.representation,
+            0,
+            exact.negate,
+            coefficient_limit,
+        )?
+        .text;
+        let end = css.len();
+        css.try_reserve(unit.len())
+            .map_err(|_| Error::new(ErrorKind::CapacityOverflow))?;
+        css.push_str(unit);
+        let value = if scalar.value == 0.0 {
+            0.0
+        } else {
+            scalar.value
+        };
+        let span = FiniteCoefficientSpan {
+            start: 0,
+            end,
+            bits: value.to_bits(),
+        };
+        Ok(ScalarPiece {
+            css,
+            spans: [span; 2],
+            count: usize::from(matches!(self, Self::CssComponent(Some(_)))),
+        })
+    }
     fn scalar_piece(
         &self,
         scalar: &Scalar,
@@ -2471,8 +2639,26 @@ mod scaled_capture_tests {
                 1.0_f64 / 128.0,
             ),
             (
+                "calc(5e-7 * 1)",
+                NumericProjectionScale::Identity,
+                "calc(0)",
+                5e-7_f64,
+            ),
+            // An operation-free leaf emits its exact coefficient; its outcome
+            // keeps the projected binary64 value (#1297).
+            (
                 "calc(5e-7)",
                 NumericProjectionScale::Identity,
+                "calc(0.000001)",
+                5e-7_f64,
+            ),
+            // A slot scale is arithmetic, so the leaf keeps binary64 text.
+            (
+                "calc(5e-7)",
+                NumericProjectionScale::Number {
+                    numerator: 1,
+                    denominator: 1,
+                },
                 "calc(0)",
                 5e-7_f64,
             ),

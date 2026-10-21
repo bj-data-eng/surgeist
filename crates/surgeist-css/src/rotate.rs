@@ -11,7 +11,7 @@ pub enum CssRotate {
 }
 
 /// An optional authored rotation axis, retaining exact symbolic vector operands.
-/// A zero vector is valid syntax; canonical output preserves its identity effect.
+/// A zero vector is valid syntax; specified output retains it as authored.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssRotateAxis {
@@ -114,7 +114,9 @@ type SerializationResult<T> = Result<T, CssSpecifiedValueSerializationError>;
 
 impl CssRotate {
     /// Serializes the individual rotation in canonical axis-before-angle order.
-    /// `none` remains distinct from a proved identity, which emits `0deg`.
+    /// `none` remains distinct from every rotation; full turns, zero angles and an
+    /// unnormalizable zero axis keep their authored form, since the computed
+    /// value is an angle with an axis rather than a normalized orientation.
     /// Directed parallel axes reduce to keywords (or an omitted z axis), with
     /// angle sign inversion for negative vectors. Authored operands are unchanged.
     pub fn serialize_specified(&self) -> SerializationResult<String> {
@@ -178,14 +180,9 @@ impl CssRotate {
             }
         };
         let angle = PreparedAngle::new(values.angle(), &mut writer.context)?;
-        let axis = axis.reduce();
-        // All children have been projected once, including those omitted here.
-        if matches!(axis, PreparedAxis::Zero) || angle.is_identity() {
-            writer.context.charge_projection(1)?;
-            return writer.append("0deg");
-        }
-        match axis {
-            PreparedAxis::Zero => unreachable!("identity emitted above"),
+        // The computed value is an angle with an axis, not an orientation:
+        // full turns and an unnormalizable zero axis keep their authored form.
+        match axis.reduce() {
             PreparedAxis::Parallel { keyword, negate } => {
                 if let Some(keyword) = keyword {
                     writer.append(keyword)?;
@@ -193,7 +190,7 @@ impl CssRotate {
                 }
                 angle.append(writer, negate)
             }
-            PreparedAxis::Vector(vector) => {
+            PreparedAxis::Zero(vector) | PreparedAxis::Vector(vector) => {
                 for number in vector {
                     number.append(writer)?;
                     writer.append(" ")?;
@@ -226,6 +223,16 @@ impl NumberClass {
             _ => Self::Unknown,
         }
     }
+    fn exact(text: &str) -> Self {
+        let decimal = LexicalDecimal::new(text);
+        if decimal.len == 0 {
+            Self::Zero
+        } else if decimal.negative {
+            Self::Negative
+        } else {
+            Self::Positive
+        }
+    }
     fn nonzero(self) -> bool {
         matches!(self, Self::Positive | Self::Negative)
     }
@@ -233,7 +240,7 @@ impl NumberClass {
 
 enum PreparedNumber<'a> {
     Literal { text: &'a str, class: NumberClass },
-    Calculation(DeferredNumericProjection),
+    Calculation(DeferredNumericProjection<'a>),
 }
 impl<'a> PreparedNumber<'a> {
     fn new(
@@ -248,15 +255,10 @@ impl<'a> PreparedNumber<'a> {
                 unreachable!("checked number literal");
             };
             let text = token.representation();
-            let decimal = LexicalDecimal::new(text);
-            let class = if decimal.len == 0 {
-                NumberClass::Zero
-            } else if decimal.negative {
-                NumberClass::Negative
-            } else {
-                NumberClass::Positive
-            };
-            Ok(Self::Literal { text, class })
+            Ok(Self::Literal {
+                text,
+                class: NumberClass::exact(text),
+            })
         } else {
             crate::numeric::prepare_calculation_specified(
                 crate::numeric::SpecifiedCalculationRef::Number(
@@ -270,7 +272,12 @@ impl<'a> PreparedNumber<'a> {
     fn class(&self) -> NumberClass {
         match self {
             Self::Literal { class, .. } => *class,
-            Self::Calculation(value) => NumberClass::projected(value.outcome().scalar_value),
+            // An operation-free leaf is classified from its exact coefficient,
+            // as a literal is; other math uses the projected outcome.
+            Self::Calculation(value) => match value.exact_coefficient() {
+                Some(text) => NumberClass::exact(text),
+                None => NumberClass::projected(value.outcome().scalar_value),
+            },
         }
     }
     fn append(self, writer: &mut SpecifiedRuleWriter) -> SerializationResult<()> {
@@ -292,11 +299,25 @@ impl<'a> PreparedNumber<'a> {
                 writer.append(&number.text)
             }
             Self::Calculation(value) => {
-                if let Some(scalar) = value.outcome().scalar_value
-                    && scalar.is_finite()
-                    && scalar != 0.0
-                    && crate::numeric_formatting::projected_number_rounds_to_zero(scalar)
-                {
+                // An operation-free leaf emits its exact coefficient, so its
+                // rounded text is checked as the literal's is.
+                let rounds_to_zero = if let Some(text) = value.exact_coefficient() {
+                    LexicalDecimal::new(text).len != 0
+                        && crate::numeric_formatting::format_css_number_with_sign(
+                            text,
+                            0,
+                            false,
+                            writer.context.remaining_bytes(),
+                        )?
+                        .is_zero
+                } else {
+                    value.outcome().scalar_value.is_some_and(|scalar| {
+                        scalar.is_finite()
+                            && scalar != 0.0
+                            && crate::numeric_formatting::projected_number_rounds_to_zero(scalar)
+                    })
+                };
+                if rounds_to_zero {
                     return Err(unrepresentable());
                 }
                 value.append(&mut writer.context, &mut writer.css, false)
@@ -312,7 +333,7 @@ fn unrepresentable() -> CssSpecifiedValueSerializationError {
 }
 
 enum PreparedAxis<'a> {
-    Zero,
+    Zero([PreparedNumber<'a>; 3]),
     Parallel {
         keyword: Option<&'static str>,
         negate: bool,
@@ -326,7 +347,7 @@ impl PreparedAxis<'_> {
         };
         let classes = vector.each_ref().map(PreparedNumber::class);
         if classes.iter().all(|class| *class == NumberClass::Zero) {
-            return Self::Zero;
+            return Self::Zero(vector);
         }
         for index in 0..3 {
             if classes[index].nonzero()
@@ -349,7 +370,7 @@ impl PreparedAxis<'_> {
 enum PreparedAngle<'a> {
     Literal(&'a CssAngleLiteral),
     Zero,
-    Calculation(DeferredNumericProjection),
+    Calculation(DeferredNumericProjection<'a>),
 }
 impl<'a> PreparedAngle<'a> {
     fn from_transform_angle(
@@ -438,8 +459,9 @@ impl<'a> PreparedAngle<'a> {
 
 impl crate::CssTransformRotate3d {
     /// The rotation owner prepares all operands once and emits mandatory function
-    /// arguments. Parallel/identity reduction shares the individual rotation's
-    /// policy; general vectors retain its documented six-place capability guard.
+    /// arguments. Parallel reduction shares the individual rotation's policy;
+    /// this function alone retains its identity replacement. General vectors
+    /// retain the documented six-place capability guard.
     pub(crate) fn append_rotation_arguments_to_rule_writer(
         &self,
         writer: &mut SpecifiedRuleWriter,
@@ -451,13 +473,13 @@ impl crate::CssTransformRotate3d {
         ]);
         let angle = PreparedAngle::from_transform_angle(self.angle(), &mut writer.context)?;
         let axis = axis.reduce();
-        if matches!(axis, PreparedAxis::Zero) || angle.is_identity() {
+        if matches!(axis, PreparedAxis::Zero(_)) || angle.is_identity() {
             // Three replacement axis components and one identity angle.
             writer.context.charge_projection(4)?;
             return writer.append("0, 0, 1, 0deg");
         }
         match axis {
-            PreparedAxis::Zero => unreachable!("identity emitted above"),
+            PreparedAxis::Zero(_) => unreachable!("identity emitted above"),
             PreparedAxis::Parallel { keyword, negate } => {
                 writer.context.charge_projection(3)?;
                 writer.append(match keyword {
@@ -603,14 +625,15 @@ mod serialization_tests {
     fn zero_axis_angle_math_is_visited_once_in_an_already_used_context() {
         // Three literal vector leaves, one Calc node, one Sum node and two
         // angle leaves: 9 input nodes including rotate and axis aggregates.
-        // Literal projections plus three angle scalar nodes and identity: 9.
+        // Literal projections plus three angle scalar nodes: 8. The authored
+        // zero axis is emitted; no identity replacement is derived.
         let value = rotation(["0", "0", "0"], math_angle());
-        let mut writer = SpecifiedRuleWriter::new(Limits::new(11, 12, 6));
+        let mut writer = SpecifiedRuleWriter::new(Limits::new(11, 11, 19));
         writer.context.charge_input(2).unwrap();
         writer.context.charge_projection(3).unwrap();
         writer.append("p:").unwrap();
         value.append_to_rule_writer(&mut writer).unwrap();
-        assert_eq!(writer.css, "p:0deg");
+        assert_eq!(writer.css, "p:0 0 0 calc(30deg)");
         assert_eq!(
             writer.context.charge_input(1).unwrap_err().kind(),
             Kind::InputNodeLimit
@@ -619,6 +642,7 @@ mod serialization_tests {
             writer.context.charge_projection(1).unwrap_err().kind(),
             Kind::ProjectionNodeLimit
         );
+        assert_eq!(writer.append(" ").unwrap_err().kind(), Kind::ByteLimit);
     }
 
     #[test]

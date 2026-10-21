@@ -563,7 +563,7 @@ text_case!(
 );
 text_case!(
     binary_calculation_control,
-    "rgb(from red calc(5e-7) g b)",
+    "rgb(from red calc(5e-7 * 1) g b)",
     "rgb(from red calc(0) g b)"
 );
 text_case!(

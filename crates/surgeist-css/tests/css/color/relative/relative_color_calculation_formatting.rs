@@ -93,12 +93,12 @@ text_case!(
 // strictly below 1/2000000. Rounding its shortest decimal would give the wrong 1.
 text_case!(
     predefined_actual_binary_below_half_micro_unit,
-    "rgb(from red calc(5e-7) g b)",
+    "rgb(from red calc(5e-7 * 1) g b)",
     "rgb(from red calc(0) g b)"
 );
 text_case!(
     custom_actual_binary_below_half_micro_unit,
-    "color(from red --P calc(5e-7))",
+    "color(from red --P calc(5e-7 * 1))",
     "color(from red --P calc(0))"
 );
 text_case!(
@@ -124,13 +124,24 @@ text_case!(
 // The nearest binary64 integer is 7812500000000001 * 128 = ...0128.
 text_case!(
     predefined_large_integral_coefficient_has_full_digits,
-    "rgb(from red calc(1000000000000000100) g b)",
+    "rgb(from red calc(1000000000000000100 * 1) g b)",
     "rgb(from red calc(1000000000000000128) g b)"
 );
 text_case!(
     custom_large_integral_coefficient_has_full_digits,
-    "color(from red --P calc(1000000000000000100))",
+    "color(from red --P calc(1000000000000000100 * 1))",
     "color(from red --P calc(1000000000000000128))"
+);
+// An operation-free calculation leaf keeps its exact authored coefficient (#1297).
+text_case!(
+    predefined_operation_free_leaf_keeps_its_exact_coefficient,
+    "rgb(from red calc(5e-7) g b)",
+    "rgb(from red calc(0.000001) g b)"
+);
+text_case!(
+    custom_operation_free_leaf_keeps_its_exact_coefficient,
+    "color(from red --P calc(1000000000000000100))",
+    "color(from red --P calc(1000000000000000100))"
 );
 
 // .78125% becomes .78125/100 = 1/128 exactly. Calculated alpha remains

@@ -204,7 +204,9 @@ fn ordinary_integer_limits_charge_canonical_bytes_and_one_node_per_stage() {
 }
 
 #[test]
-fn explicit_calculation_leaf_uses_shared_binary64_without_mutating_exact_input() {
+fn explicit_calculation_leaf_keeps_its_exact_coefficient_without_mutating_input() {
+    // An operation-free calculation leaf serializes its exact authored
+    // coefficient, as the literal does (#1297), not binary64 9007199254740992.
     let components = parse_component_values("9007199254740993").unwrap();
     let calculation = CssIntegerCalculation::try_from_components(components.clone()).unwrap();
     let CssCalculationExpressionRef::Value(leaf) = calculation.expression() else {
@@ -214,7 +216,7 @@ fn explicit_calculation_leaf_uses_shared_binary64_without_mutating_exact_input()
     assert_eq!(calculation.components(), &components);
     assert_output(
         &CssIntegerValue::Calculation(calculation.clone()),
-        "calc(9007199254740992)",
+        "calc(9007199254740993)",
     );
     assert_eq!(calculation.components(), &components);
     assert_output(&exact("9007199254740993"), "9007199254740993");
@@ -318,15 +320,21 @@ fn parsed_exact_payloads_retain_the_original_source_token() {
 }
 
 #[test]
-fn ordinary_huge_integers_stay_finite_while_calculation_leaves_follow_binary64() {
+fn ordinary_huge_integers_and_operation_free_calculation_leaves_stay_exact() {
     let digits = "9".repeat(400);
     let components = parse_component_values(&digits).unwrap();
     let calculation = CssIntegerCalculation::try_from_components(components.clone()).unwrap();
     assert_output(
         &CssIntegerValue::Calculation(calculation.clone()),
-        "calc(infinity)",
+        &format!("calc({digits})"),
     );
     assert_eq!(calculation.components(), &components);
+    // Arithmetic keeps binary64 projection; its finite overflow converts to the
+    // closest finite value rather than an infinity (#1297).
+    assert_output(
+        &order(&format!("calc({digits} * 1)")),
+        &format!("calc({:.0})", f64::MAX),
+    );
     assert_output(&exact(&digits), &digits);
     assert_output(&order("calc(1em / 1px)"), "calc(1em / 1px)");
 }
