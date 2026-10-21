@@ -904,10 +904,25 @@ fn family(
         Requirement::KnownHtml(Element::Style) => {
             let style = required(source.observation(&node.id(), c, |r| r.style())?, node)?;
             let surgeist_html_parser::HtmlParseStyleAssociation::Pending = style.association();
+            let index = source
+                .index(&node.id(), c)?
+                .ok_or_else(|| Error::MissingMetadata { subject: node.id() })?;
+            c.step(1)?;
+            let availability = match source.rows[index].style_association {
+                ParsedStyleAssociation::KnownNull => crate::DomStyleSheetAvailability::Established,
+                ParsedStyleAssociation::Unqualified | ParsedStyleAssociation::Pending => {
+                    crate::DomStyleSheetAvailability::PendingParsedProcessing
+                }
+            };
             NativeFamily::Style(formation.native(
                 source::storage::Payload::default(),
                 source::storage::Payload::default(),
-                || Ok(crate::DomStyleState::from_parsed(style.state())),
+                || {
+                    Ok(crate::DomStyleState::from_parsed(
+                        style.state(),
+                        availability,
+                    ))
+                },
             )?)
         }
         Requirement::KnownHtml(Element::Slot) => NativeFamily::Slot,

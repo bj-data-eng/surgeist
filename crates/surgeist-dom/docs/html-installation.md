@@ -111,6 +111,14 @@ history independently of installation packets, owner moves and later permitted
 node retirement. Intrinsic-only installs retain no additional report owner.
 Removing a Meta, Style or fragment never acknowledges pending work.
 
+For an exact Style whose complete original inventory proves initial creation
+and no reached association obligation, installation establishes its null sheet.
+Disconnected Template-only and consistently type-ineligible histories can supply
+this proof. Another Style in the same Document may remain pending. Final
+attributes, disconnectedness or an absent pending entry do not establish it;
+any potentially influencing earlier processing stays pending. Later native edits
+use the ordinary Style processing protocol and preserve parser creation history.
+
 `DomLimits::with_parsed_associations` selects finite pending byte and UTF-16
 allowances; the constructor selects 64 MiB and 16 Mi units. Current backing
 accounting includes each actual report graph once, each destination's maps and

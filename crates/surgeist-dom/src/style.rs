@@ -63,14 +63,18 @@ impl DomStyleState {
             availability: DomStyleSheetAvailability::Established,
         }
     }
-    /// The ordinary completed-report adapter retains actual creation history;
-    /// it does not perform CSSOM processing or certify a null association.
-    pub(crate) fn from_parsed(creation: surgeist_html::HtmlStyleState) -> Self {
+    /// Retain actual creation history and the adapter's complete original
+    /// association qualification. Only a proved no-effect history is established
+    /// without downstream CSSOM processing.
+    pub(crate) fn from_parsed(
+        creation: surgeist_html::HtmlStyleState,
+        availability: DomStyleSheetAvailability,
+    ) -> Self {
         Self {
             creation,
             sheet: None,
             next_association: 0,
-            availability: DomStyleSheetAvailability::PendingParsedProcessing,
+            availability,
         }
     }
     pub fn association_availability(&self) -> DomStyleSheetAvailability {

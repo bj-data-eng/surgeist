@@ -3216,14 +3216,6 @@ fn parsed_style_retains_parser_and_general_clone_causes_with_real_pending_associ
         let Some(style) = node.as_style() else {
             continue;
         };
-        assert_eq!(
-            style.state().association_availability(),
-            DomStyleSheetAvailability::PendingParsedProcessing
-        );
-        assert!(matches!(
-            style.sheet(),
-            Err(DomError::StyleProcessingUnavailable)
-        ));
         assert!(!style.state().creation_state().on_parser_stack());
         let parent = result.snapshot().node(node.parent().unwrap()).unwrap();
         let role = match parent.kind() {
@@ -3250,6 +3242,22 @@ fn parsed_style_retains_parser_and_general_clone_causes_with_real_pending_associ
             other => panic!("unexpected literal Style parent {other:?}"),
         };
         let parser_created = role != "clone";
+        if role == "template" {
+            assert_eq!(
+                style.state().association_availability(),
+                DomStyleSheetAvailability::Established
+            );
+            assert!(style.sheet().unwrap().is_none());
+        } else {
+            assert_eq!(
+                style.state().association_availability(),
+                DomStyleSheetAvailability::PendingParsedProcessing
+            );
+            assert!(matches!(
+                style.sheet(),
+                Err(DomError::StyleProcessingUnavailable)
+            ));
+        }
         assert_eq!(
             style.state().creation_state().created_by_document_parser(),
             parser_created

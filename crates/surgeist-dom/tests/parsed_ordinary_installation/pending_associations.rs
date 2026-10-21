@@ -35,7 +35,6 @@ fn assert_ignored_style_has_known_null_sheet(source: &'static str) {
         }
     }
     assert!(documents > 0 && occurrences > 0 && popped);
-    drop(cursor);
     let (mut dom, environment) = setup();
     let installed = install(&mut dom, report, environment);
     let style = element(&installed, "style");
@@ -68,6 +67,156 @@ fn parsed_type_ineligible_style_has_known_null_sheet_after_packet_drop() {
 fn parsed_inert_template_style_has_known_null_sheet_after_packet_drop() {
     assert_ignored_style_has_known_null_sheet(
         "<!doctype html><template><style title=A>x</style></template>",
+    );
+}
+
+#[test]
+fn parsed_mixed_style_history_establishes_only_original_no_effect_subjects() {
+    let report = parse(HtmlSource::utf8(
+        "<!doctype html><style title=pending>a{}</style><style type=text/plain title=ignored>x</style><template><style title=inert>y</style></template>",
+    ));
+    let (mut dom, environment) = setup();
+    let installed = install(&mut dom, report, environment);
+    assert!(installed.pending_association().is_some());
+    let mut subjects = Vec::new();
+    for binding in installed.bindings() {
+        let node = installed.snapshot().node(binding.node()).unwrap();
+        if let Some(style) = node.as_style() {
+            let title = node
+                .as_element()
+                .unwrap()
+                .attribute(&DocumentString::from("title"))
+                .unwrap();
+            let pending = title == &DocumentString::from("pending");
+            if pending {
+                assert!(matches!(
+                    style.sheet(),
+                    Err(DomError::StyleProcessingUnavailable)
+                ));
+            } else {
+                assert!(style.sheet().unwrap().is_none());
+            }
+            assert!(style.state().creation_state().created_by_document_parser());
+            assert!(!style.state().creation_state().on_parser_stack());
+            assert_eq!(style.parser_document(), Some(installed.document()));
+            subjects.push((style.id(), pending));
+        }
+    }
+    assert_eq!(subjects.len(), 3);
+    drop(installed);
+    assert_eq!(dom.pending_parsed_html_associations().count(), 1);
+    let snapshot = dom.snapshot();
+    for (id, pending) in subjects {
+        let style = snapshot.node(id).unwrap().as_style().unwrap();
+        if pending {
+            assert!(matches!(
+                style.sheet(),
+                Err(DomError::StyleProcessingUnavailable)
+            ));
+        } else {
+            assert!(style.sheet().unwrap().is_none());
+        }
+    }
+}
+
+#[test]
+fn parsed_known_null_style_later_edits_use_actual_native_processing() {
+    let report = parse(HtmlSource::utf8(
+        "<!doctype html><style type=text/plain>x</style>",
+    ));
+    let (mut dom, environment) = setup();
+    // The native closed Document protocol supports its actual about:blank
+    // fallback. Arbitrary URLs additionally require hosted Base constructor
+    // facts; this fixture supplies the supported environment explicitly.
+    let environment = DomParsedDocumentEnvironment::headless(
+        environment.origin().clone(),
+        HtmlBaseUrlRecord::observed(
+            HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3),
+            "about:blank".into(),
+            HtmlBaseUrlScheme::Other,
+            true,
+            None,
+        )
+        .unwrap(),
+        environment.encoding().clone(),
+        environment.encoding_label().clone(),
+        environment.input_platform(),
+    );
+    let installed = install(&mut dom, report, environment);
+    let style = element(&installed, "style");
+    let text = installed.snapshot().node(style).unwrap().children()[0];
+    let original = installed.snapshot().clone();
+    let parser_document = installed.document();
+    drop(installed);
+    let mut edit = DomBatch::new();
+    edit.replace_data(text, 0, usize::MAX, "ignored");
+    dom.apply(edit, &AtomicBool::new(false)).unwrap();
+    assert!(
+        dom.snapshot()
+            .node(style)
+            .unwrap()
+            .as_style()
+            .unwrap()
+            .sheet()
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        original.node(text).unwrap().data().unwrap(),
+        &DocumentString::from("x")
+    );
+
+    // A type change alone is not a Style update. The next real child-text
+    // change must reach the ordinary native policy request, not a parsed gate.
+    let mut edit = DomBatch::new();
+    edit.set_attribute(style, "type", "text/css");
+    dom.apply(edit, &AtomicBool::new(false)).unwrap();
+    let cancel = AtomicBool::new(false);
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::replace_data(text, 0, usize::MAX, "a{}"),
+            DomSourceLimits::new(128_000_000, 1_000_000, 20_000_000, 64, 4096, 4096, 4),
+            &cancel,
+        )
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::Style(request)) =
+        lease.advance(&cancel).unwrap()
+    else {
+        panic!("native Style update must reach its actual policy boundary")
+    };
+    assert_eq!(
+        request.action(),
+        DomStyleAction::Update(surgeist_html::HtmlStyleUpdateAction::CheckInlineCsp)
+    );
+    assert_eq!(request.source().element(), style);
+    let blocked = DomStyleInlineCspObservation::evaluated(
+        request.source(),
+        Arc::new(vec!["style-src 'none'".into()]),
+        19,
+        false,
+    );
+    lease
+        .accept_inline_csp(&request, &blocked, &cancel)
+        .unwrap();
+    assert!(matches!(
+        lease.advance(&cancel).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    drop(lease);
+    let current = dom.snapshot();
+    let style = current.node(style).unwrap().as_style().unwrap();
+    assert!(style.sheet().unwrap().is_none());
+    assert_eq!(style.parser_document(), Some(parser_document));
+    assert!(style.state().creation_state().created_by_document_parser());
+    assert!(
+        original
+            .node(style.id())
+            .unwrap()
+            .as_style()
+            .unwrap()
+            .sheet()
+            .unwrap()
+            .is_none()
     );
 }
 

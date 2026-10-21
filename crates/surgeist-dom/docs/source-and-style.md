@@ -68,7 +68,8 @@ for a later-created sheet. The operation preserves sheet identity and associatio
 serial and queues no new load/error notification. Current CSSOM flags must be
 read from the actual retained owner, independently of a historical association's
 receipt revision; a flag read does not establish resource readiness. Pending
-parsed Style processing remains explicit and cannot certify a null sheet.
+parsed Style processing remains explicit. A complete original no-effect history
+can establish a null sheet during installation; unresolved processing cannot.
 
 ## Native Meta composition
 

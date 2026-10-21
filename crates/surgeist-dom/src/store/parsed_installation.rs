@@ -194,6 +194,15 @@ impl OutputHeaders {
 struct Row<'a> {
     source: HtmlNode<'a>,
     key: Option<Key>,
+    style_association: ParsedStyleAssociation,
+}
+/// Transient qualification from the complete original occurrence inventory.
+/// A reached obligation stays pending even if later inputs are ineligible.
+#[derive(Clone, Copy)]
+enum ParsedStyleAssociation {
+    Unqualified,
+    KnownNull,
+    Pending,
 }
 /// Qualification of the actual sealed completed construction producer.
 /// It is not derivable from a node's origin, browsing-context or scripting flag.
@@ -293,6 +302,7 @@ impl<'a> Source<'a> {
         self.rows.push(Row {
             source: node,
             key: None,
+            style_association: ParsedStyleAssociation::Unqualified,
         });
         #[cfg(test)]
         written.pushed::<Row<'a>>();
@@ -774,6 +784,20 @@ fn collect_rows<'a>(
                 }
             }
             HtmlParsePendingAssociationStep::Occurrence(view) => {
+                if view.style().is_some()
+                    && let Some(index) = source.index(&view.subject().id(), c)?
+                {
+                    c.step(1)?;
+                    let association = &mut source.rows[index].style_association;
+                    if view.requires_processing() {
+                        *association = ParsedStyleAssociation::Pending;
+                    } else if view.kind()
+                        == surgeist_html_parser::HtmlParseAssociationOccurrenceKind::StyleCreated
+                        && matches!(association, ParsedStyleAssociation::Unqualified)
+                    {
+                        *association = ParsedStyleAssociation::KnownNull;
+                    }
+                }
                 source.add_document(view.document(), c)?;
                 if let Some(previous) = view.previous_document() {
                     source.add_document(previous, c)?;
