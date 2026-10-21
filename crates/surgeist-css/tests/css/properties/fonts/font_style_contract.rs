@@ -68,7 +68,22 @@ fn keywords_and_optional_oblique_angle_preserve_authored_distinctions() {
         }
     );
     assert_ne!(explicit, property("oblique"));
-    assert_eq!(explicit.serialize_specified().unwrap(), "oblique 14deg");
+    // Fonts 4 (WD 2026-09-07) §2.4:"The lack of an <angle> represents 14deg".
+    // CSSOM (editor capture 2026-10-09) "serialize a CSS value": omit component
+    // values whose omission does not change the meaning. The retained model above
+    // still distinguishes the explicit angle from its omission. Witness
+    // divergence: Chromium 152 (2026-10-21) keeps `oblique 14deg`; the spec governs.
+    for text in ["oblique 14deg", "oblique 14.0deg", "oblique +1.4e1DEG"] {
+        assert_eq!(property(text).serialize_specified().unwrap(), "oblique");
+    }
+    for (text, expected) in [
+        ("oblique 15deg", "oblique 15deg"),
+        ("oblique -14deg", "oblique -14deg"),
+        // 14deg is a nonterminating number of gradians or turns.
+        ("oblique 15.5556grad", "oblique 15.5556grad"),
+    ] {
+        assert_eq!(property(text).serialize_specified().unwrap(), expected);
+    }
 }
 
 #[test]

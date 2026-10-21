@@ -4,7 +4,9 @@
 //! keywords and iteration-count variants charge one each; numeric children use
 //! their existing domain policy. Duration wrappers add no node around a time.
 //! Required disambiguating defaults add one projection node and no input node.
-//! Punctuation adds only bytes. Explicit optional values are never suppressed.
+//! Punctuation adds only bytes. Transition items omit explicit initials whose
+//! omission keeps the meaning, still charging their nodes; every other explicit
+//! optional value, including each animation initial, is emitted.
 
 use crate::{
     CssAnimation, CssAnimationDirection, CssAnimationDirectionList, CssAnimationFillMode,
@@ -212,22 +214,94 @@ fn default_slot(writer: &mut SpecifiedRuleWriter, started: &mut bool, text: &str
     writer.append(text)
 }
 
+/// Whether a literal time is exactly zero; symbolic math is not evaluated.
+fn zero_time(writer: &mut SpecifiedRuleWriter, value: &crate::CssTimeValue) -> Result<bool> {
+    let Some(literal) = value.literal() else {
+        return Ok(false);
+    };
+    let zero = crate::CssComponentValue::try_token("0s").expect("static zero time");
+    Ok(crate::numeric::exact_dimension_identity(
+        Some(literal.component()),
+        Some(&zero),
+        &mut writer.context,
+    )?
+    .unwrap_or(false))
+}
+
+/// Visits an omitted explicit component so it still costs its checked work.
+fn omitted(
+    writer: &mut SpecifiedRuleWriter,
+    visit: impl FnOnce(&mut SpecifiedRuleWriter) -> Result<()>,
+) -> Result<()> {
+    let previous = writer.context.replace_output_suppression(true);
+    let result = visit(writer);
+    writer.context.replace_output_suppression(previous);
+    result
+}
+
+/// CSSOM's shortest serialization over Transitions 1 §2.5: an explicit initial
+/// (`all`, `0s`, `ease`, `0s`) is omitted when omission keeps the meaning. The
+/// first <time> is the duration, so a duration stays whenever a delay follows,
+/// and a property spelled like an easing keyword keeps an easing before it.
+/// An item whose components are all initial keeps its first present component.
 fn transition(writer: &mut SpecifiedRuleWriter, value: &CssTransition) -> Result<()> {
     writer.source_property(crate::CssKnownProperty::TransitionProperty, node)?;
     let mut started = false;
     let collision = matches!(value.property(), Some(CssTransitionProperty::Custom(name)) if easing_name(name.as_str()));
+    let delay_initial = match value.delay() {
+        Some(delay) => zero_time(writer, delay)?,
+        None => false,
+    };
+    let duration_initial = match value.duration() {
+        Some(duration) => zero_time(writer, duration.time())?,
+        None => false,
+    };
+    let emit_delay = value.delay().is_some() && !delay_initial;
+    let mut emit_property = collision
+        || value
+            .property()
+            .is_some_and(|p| *p != CssTransitionProperty::All);
+    let mut emit_duration = value.duration().is_some() && (!duration_initial || emit_delay);
+    let mut emit_easing = value.timing_function().is_some_and(|easing| {
+        collision
+            || !matches!(
+                easing,
+                crate::CssEasing::Keyword(crate::CssEasingKeyword::Ease)
+            )
+    });
+    if !(emit_property || emit_duration || emit_easing || emit_delay) {
+        if value.property().is_some() {
+            emit_property = true;
+        } else if value.duration().is_some() {
+            emit_duration = true;
+        } else if value.timing_function().is_some() {
+            emit_easing = true;
+        } else {
+            // A lone initial delay is written as the first, duration, time.
+            let delay = value.delay().expect("a transition item has a component");
+            return writer.source_property(crate::CssKnownProperty::TransitionDelay, |writer| {
+                delay.append_to_rule_writer(writer)
+            });
+        }
+    }
     if !collision && let Some(property) = value.property() {
         writer.source_property(crate::CssKnownProperty::TransitionProperty, |writer| {
+            if !emit_property {
+                return omitted(writer, |writer| transition_property(writer, property));
+            }
             separator(writer, &mut started)?;
             transition_property(writer, property)
         })?;
     }
     if let Some(duration) = value.duration() {
         writer.source_property(crate::CssKnownProperty::TransitionDuration, |writer| {
+            if !emit_duration {
+                return omitted(writer, |writer| duration.append_to_rule_writer(writer));
+            }
             separator(writer, &mut started)?;
             duration.append_to_rule_writer(writer)
         })?;
-    } else if value.delay().is_some() {
+    } else if emit_delay {
         writer.source_property(crate::CssKnownProperty::TransitionDuration, |writer| {
             default_slot(writer, &mut started, "0s")
         })?;
@@ -236,6 +310,9 @@ fn transition(writer: &mut SpecifiedRuleWriter, value: &CssTransition) -> Result
         writer.source_property(
             crate::CssKnownProperty::TransitionTimingFunction,
             |writer| {
+                if !emit_easing {
+                    return omitted(writer, |writer| easing.append_to_rule_writer(writer));
+                }
                 separator(writer, &mut started)?;
                 easing.append_to_rule_writer(writer)
             },
@@ -248,6 +325,9 @@ fn transition(writer: &mut SpecifiedRuleWriter, value: &CssTransition) -> Result
     }
     if let Some(delay) = value.delay() {
         writer.source_property(crate::CssKnownProperty::TransitionDelay, |writer| {
+            if !emit_delay {
+                return omitted(writer, |writer| delay.append_to_rule_writer(writer));
+            }
             separator(writer, &mut started)?;
             delay.append_to_rule_writer(writer)
         })?;
@@ -454,9 +534,7 @@ mod tests {
             .unwrap(),
         ])
         .unwrap();
-        shared("0s ease -1s", 4, 5, |writer| {
-            value.append_to_rule_writer(writer)
-        });
+        shared("0s -1s", 4, 5, |writer| value.append_to_rule_writer(writer));
         let value = CssAnimationNameList::try_new(vec![CssAnimationName::None]).unwrap();
         shared("none", 2, 2, |writer| value.append_to_rule_writer(writer));
         let value =

@@ -176,7 +176,7 @@ fn longhand_lists_keep_item_order_and_charge_exact_nodes_and_bytes() {
 }
 
 #[test]
-fn full_shorthands_follow_grammar_order_and_keep_explicit_initials() {
+fn full_shorthands_follow_grammar_order_and_omit_meaningless_transition_initials() {
     let transition = CssTransitionList::try_new(vec![
         CssTransition::try_new(
             Some(property("opacity")),
@@ -187,13 +187,48 @@ fn full_shorthands_follow_grammar_order_and_keep_explicit_initials() {
         .unwrap(),
     ])
     .unwrap();
-    check!(&transition, 6, 6, "opacity 0s ease -1s");
+    // CSSOM (editor capture 2026-10-09) "serialize a CSS value" omits component
+    // values whose omission keeps the meaning. Transitions 1 §2.5: initials are
+    // `all`, `0s`, `ease` and `0s`, and the first <time> is always the duration,
+    // so an initial duration stays whenever a delay follows. Omitted initials
+    // still cost their nodes. Chromium 152 (2026-10-21) also drops `ease` but
+    // emits the ambiguous `opacity -1s` here; the grammar governs.
+    check!(&transition, 6, 6, "opacity 0s -1s");
     assert_eq!(
         transitions("0s ease opacity -1s")
             .serialize_specified()
             .unwrap(),
-        "opacity 0s ease -1s"
+        "opacity 0s -1s"
     );
+    for (authored, expected) in [
+        ("opacity 1s ease", "opacity 1s"),
+        ("all 1s", "1s"),
+        ("opacity 0s", "opacity"),
+        ("opacity 0ms ease 0ms", "opacity"),
+        ("opacity 1s -0s", "opacity 1s"),
+        ("opacity 1s ease-in 0s", "opacity 1s ease-in"),
+        ("none 1s", "none 1s"),
+        ("opacity calc(0s)", "opacity calc(0s)"),
+        ("opacity 1s ease, all 0s", "opacity 1s, all"),
+        // Every component initial: the first present one in canonical order stays.
+        ("all 0s ease 0s", "all"),
+        ("ease", "ease"),
+        ("0s 0s", "0s"),
+        // A property spelled like an easing keyword needs an easing before it.
+        ("ease-out linear", "ease-out linear"),
+        ("linear ease", "linear ease"),
+    ] {
+        assert_eq!(
+            transitions(authored).serialize_specified().unwrap(),
+            expected,
+            "{authored}"
+        );
+        // The shortest form reenters the grammar and is already shortest.
+        assert_eq!(
+            transitions(expected).serialize_specified().unwrap(),
+            expected
+        );
+    }
     let animation = CssAnimationList::try_new(vec![
         CssAnimation::try_new(CssAnimationComponents {
             name: Some(name("slide")),
@@ -208,6 +243,11 @@ fn full_shorthands_follow_grammar_order_and_keep_explicit_initials() {
         .unwrap(),
     ])
     .unwrap();
+    // Recorded exception: the animation shorthand keeps explicit initials.
+    // Animations 1 §3.10 lists its components with no omission rule, and CSSOM's
+    // note leaves property-specific legacy serialization to implementations;
+    // Chromium 152 (2026-10-21) emits `1s ease 0s 1 normal none running fade`
+    // for an all-explicit animation, keeping every initial.
     check!(
         &animation,
         11,

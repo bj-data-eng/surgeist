@@ -721,21 +721,38 @@ pub(super) fn check_media_import_components<'i>(
         }
     }
 }
+/// Whether component construction needs the bounded thread, and the
+/// responsible component if that thread is unavailable.
+fn deep_media_components(values: &CssComponentValues) -> (bool, CssValueOrigin) {
+    let deep = values.nesting_depth() >= 64;
+    let origin = if deep {
+        super::bounded_execution::deep_component_origin(values.items())
+    } else {
+        CssValueOrigin::Programmatic
+    };
+    (deep, origin)
+}
 pub(crate) fn construct_media_query(
     values: CssComponentValues,
     limits: CssComponentValueLimits,
 ) -> Result<CssMediaQuery, CssMediaConstructionError> {
-    crate::media::with_media_stack(values.nesting_depth() >= 64, move || {
-        construct_media(values, limits, false)
-    })
+    let (deep, origin) = deep_media_components(&values);
+    crate::media::with_media_stack(
+        deep,
+        || origin,
+        move || construct_media(values, limits, false),
+    )
 }
 pub(crate) fn construct_media_condition(
     values: CssComponentValues,
     limits: CssComponentValueLimits,
 ) -> Result<CssMediaCondition, CssMediaConstructionError> {
-    match crate::media::with_media_stack(values.nesting_depth() >= 64, move || {
-        construct_media(values, limits, true)
-    })? {
+    let (deep, origin) = deep_media_components(&values);
+    match crate::media::with_media_stack(
+        deep,
+        || origin,
+        move || construct_media(values, limits, true),
+    )? {
         CssMediaQuery::Condition(condition) => Ok(condition),
         _ => unreachable!("condition construction context"),
     }

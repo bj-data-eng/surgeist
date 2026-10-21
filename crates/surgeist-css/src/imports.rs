@@ -252,7 +252,8 @@ impl CssImportRule {
             || self
                 .media()
                 .is_some_and(|media| media.queries().iter().any(crate::media::query_is_deep));
-        crate::media::with_media_stack(deep, || self.serialize_import(max_css_bytes))
+        let origin = || self.syntax.prelude.target.origin().clone();
+        crate::media::with_media_stack(deep, origin, || self.serialize_import(max_css_bytes))
     }
     /// Generic graph projection: the enclosing graph owns the rule node.
     /// Targets and clauses own their retained component trees; the media provider
@@ -293,7 +294,8 @@ impl CssImportRule {
             .chain(self.syntax.prelude.supports.iter())
             .any(|component| crate::media::component_depth(component) >= 64)
             || media.is_some_and(|media| media.queries().iter().any(crate::media::query_is_deep));
-        let value = crate::media::with_media_stack(deep, || {
+        let origin = || self.syntax.prelude.target.origin().clone();
+        let value = crate::media::with_media_stack(deep, origin, || {
             // Interpretation probes use the same grammar and protections as the
             // direct owner, but scratch is bounded by remaining operation bytes.
             let protect = self.import_protection(
@@ -356,7 +358,8 @@ impl CssImportRule {
         }
         let deep =
             media.is_some_and(|media| media.queries().iter().any(crate::media::query_is_deep));
-        crate::media::with_media_stack(deep, || {
+        let origin = || self.syntax.prelude.target.origin().clone();
+        crate::media::with_media_stack(deep, origin, || {
             // Reuse clause/media interpretation probes even when the URL target
             // itself has been normalized. Scratch stays within remaining bytes.
             let protect = self.import_protection(

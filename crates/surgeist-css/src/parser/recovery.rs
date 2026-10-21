@@ -22,7 +22,6 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::CssFeatureId] = &[
 ];
 
 pub(super) use crate::STRUCTURAL_NESTING_LIMIT;
-pub(super) const DIRECT_PARSE_DEPTH: u32 = 128;
 
 /// Domain replacement/admission must not publish a payload after a typed
 /// resource failure, including one recovered inside a member callback.
@@ -135,6 +134,27 @@ fn escape_diagnostic(
 
 pub(super) fn maximum_nested_depth(source: &str) -> u32 {
     scan_delimiters(source, 0).maximum
+}
+
+/// Returns the first opening delimiter enclosed by exactly `depth` open blocks,
+/// matching blocks as [`maximum_nested_depth`] does.
+pub(super) fn first_opening_at_depth(source: &str, depth: u32) -> Option<usize> {
+    let mut offset = 0;
+    let mut blocks: Vec<BlockKind> = Vec::new();
+    while let Some((token_start, token_end, token)) = next_source_token(source, offset) {
+        offset = token_end;
+        if let Some(opening) = opening_block(&token) {
+            if blocks.len() as u32 == depth {
+                return Some(token_start);
+            }
+            blocks.push(opening);
+        } else if let Some(closing) = closing_block(&token)
+            && blocks.last() == Some(&closing)
+        {
+            blocks.pop();
+        }
+    }
+    None
 }
 
 pub(super) struct SpecializedEofLimit {

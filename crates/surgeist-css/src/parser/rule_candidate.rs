@@ -125,7 +125,8 @@ impl CssRuleSyntax {
         parser_context: CssParserContext,
     ) -> CssParseReport<Option<CssAdmittedRule>> {
         let source = self.origin.source().as_str();
-        let report = fragments::bounded_execution(source, || {
+        let refused = || None;
+        let report = fragments::bounded_report(source, refused, || {
             let (syntax, diagnostics) = parse_bounded(
                 source,
                 self.origin.source(),
@@ -183,7 +184,8 @@ impl CssRuleSyntax {
         parser_context: CssParserContext,
     ) -> CssParseReport<Option<crate::CssMarginRule>> {
         let source = self.origin.source().as_str();
-        let report = fragments::bounded_execution(source, || {
+        let refused = || None;
+        let report = fragments::bounded_report(source, refused, || {
             let state = RecoveryState::at_depth_with_snapshot(
                 source,
                 0,

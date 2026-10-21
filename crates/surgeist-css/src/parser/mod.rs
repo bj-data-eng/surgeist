@@ -13,6 +13,7 @@ mod border_color;
 mod border_radius;
 mod border_style;
 mod border_width;
+pub(crate) mod bounded_execution;
 mod box_model;
 mod box_spacing;
 pub(crate) mod color_profile;
@@ -615,7 +616,11 @@ fn parse_all_property<'i, 't>(
 /// ignored without diagnostics. The UTF-8 input is not decoded. The stylesheet
 /// root is structural depth zero; up to 256 shared rule-block/component/function
 /// levels are retained, and the first level
-/// beyond that drops its smallest enclosing recovery unit. Recovery does not
+/// beyond that drops its smallest enclosing recovery unit. Input deeper than 128
+/// levels is parsed on a bounded larger-stack thread; if the platform cannot
+/// start it, the report retains no rules and carries a `NestingLimit` refusal
+/// (limit 128, action `StopAtNestingLimit`), followed only by any tokenizer EOF
+/// or escape diagnostics, rather than recursing on the caller's stack. Recovery does not
 /// apply cascade, substitution, selector matching, contextual resolution, or
 /// resource loading.
 ///
@@ -666,49 +671,19 @@ fn parse_sheet_snapshot_inner(
     parser_context: crate::CssParserContext,
 ) -> crate::CssParseReport<CssSheet> {
     let source = source_snapshot.as_str();
-    if recovery::maximum_nested_depth(source) > recovery::DIRECT_PARSE_DEPTH {
-        // The public limit is intentionally higher than the platform's small
-        // default test-thread stack. A bounded parser thread preserves the exact
-        // 256-level contract without making ordinary shallow parses pay for it.
-        let report = std::thread::scope(|scope| {
-            let parser = std::thread::Builder::new()
-                .name("surgeist-css-bounded-parser".to_owned())
-                .stack_size(16 * 1024 * 1024)
-                .spawn_scoped(scope, || {
-                    parse_sheet_bounded(
-                        source,
-                        source_snapshot,
-                        0,
-                        BoundedParseContext::Rules { top_level: true },
-                        StyleContextCaptures::default(),
-                        parser_context,
-                    )
-                });
-            match parser {
-                Ok(parser) => match parser.join() {
-                    Ok(report) => report,
-                    Err(panic) => std::panic::resume_unwind(panic),
-                },
-                Err(_) => parse_sheet_bounded(
-                    source,
-                    source_snapshot,
-                    0,
-                    BoundedParseContext::Rules { top_level: true },
-                    StyleContextCaptures::default(),
-                    parser_context,
-                ),
-            }
-        });
-        return recovery::finish_report(source, conditional_chains::sheet(source, report));
-    }
-    let report = parse_sheet_bounded(
-        source,
-        source_snapshot,
-        0,
-        BoundedParseContext::Rules { top_level: true },
-        StyleContextCaptures::default(),
-        parser_context,
-    );
+    // The 256-level public limit exceeds small default thread stacks; deep
+    // input runs on the bounded parser thread or is refused, never deep here.
+    let profile = bounded_execution::StackProfile::Structural;
+    let report = bounded_execution::report(profile, source, CssSheet::new, || {
+        parse_sheet_bounded(
+            source,
+            source_snapshot,
+            0,
+            BoundedParseContext::Rules { top_level: true },
+            StyleContextCaptures::default(),
+            parser_context,
+        )
+    });
     recovery::finish_report(source, conditional_chains::sheet(source, report))
 }
 
@@ -719,6 +694,10 @@ fn parse_sheet_snapshot_inner(
 /// eligible. Retained declarations use the same property, custom-property, substitution, and
 /// importance grammar as declarations in ordinary style-rule blocks. At-rules, qualified rules,
 /// and other non-declaration input never produce a rule node from this front door.
+/// Input deeper than 128 levels needs a bounded larger-stack thread; if the
+/// platform cannot start it, the report retains no declarations and carries a
+/// `NestingLimit` refusal (limit 128), followed only by any tokenizer EOF or escape
+/// diagnostics, instead of recursing on the caller's stack.
 ///
 /// ```
 /// use surgeist_css::{CssPropertyNameRef, CssRecoveryAction, parse_style_attribute};
@@ -743,25 +722,12 @@ pub(crate) fn parse_style_attribute_with_context(
     source: &str,
     parser_context: crate::CssParserContext,
 ) -> crate::CssParseReport<CssDeclarationList> {
-    if recovery::maximum_nested_depth(source) > recovery::DIRECT_PARSE_DEPTH {
-        let report = std::thread::scope(|scope| {
-            let parser = std::thread::Builder::new()
-                .name("surgeist-css-bounded-style-attribute-parser".to_owned())
-                .stack_size(16 * 1024 * 1024)
-                .spawn_scoped(scope, || {
-                    parse_style_attribute_inner(source, parser_context)
-                });
-            match parser {
-                Ok(parser) => match parser.join() {
-                    Ok(report) => report,
-                    Err(panic) => std::panic::resume_unwind(panic),
-                },
-                Err(_) => parse_style_attribute_inner(source, parser_context),
-            }
-        });
-        return recovery::finish_report(source, report);
-    }
-    recovery::finish_report(source, parse_style_attribute_inner(source, parser_context))
+    let profile = bounded_execution::StackProfile::Structural;
+    let refused = || CssDeclarationList::new(Vec::new());
+    let report = bounded_execution::report(profile, source, refused, || {
+        parse_style_attribute_inner(source, parser_context)
+    });
+    recovery::finish_report(source, report)
 }
 
 fn parse_style_attribute_inner(
@@ -3423,7 +3389,8 @@ fn parse_property_value_slice_selected(
     depth: u32,
     parser_context: crate::CssParserContext,
 ) -> Result<CssDeclarationBody, crate::CssPropertyValueParseError> {
-    fragments::bounded_execution_at_depth(depth, || {
+    let refused = crate::CssPropertyValueParseError::from_component;
+    bounded_execution::components(components, depth, refused, || {
         let document = crate::syntax_consumption::normalize(
             crate::syntax_consumption::SyntaxInput::CheckedComponents(components),
             crate::syntax_consumption::SyntaxInputLimits::default(),

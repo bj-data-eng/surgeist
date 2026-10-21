@@ -366,8 +366,17 @@ impl CssFontStyle {
                 context.charge_projection(1)?;
                 context.append(output, "oblique")?;
                 if let Some(angle) = angle {
-                    context.append(output, " ")?;
-                    angle.append_specified(context, output)?;
+                    // Fonts 4 §2.4: a missing angle represents 14deg, so CSSOM's
+                    // shortest serialization omits an exactly equal literal. The
+                    // omitted angle is still visited under the cumulative budget.
+                    let omit = context.output_suppressed() || angle.is_default_oblique(context)?;
+                    let previous = context.replace_output_suppression(omit);
+                    let result = (|| {
+                        context.append(output, " ")?;
+                        angle.append_specified(context, output)
+                    })();
+                    context.replace_output_suppression(previous);
+                    result?;
                 }
             }
         }
@@ -432,6 +441,22 @@ fn append_text(
 }
 
 impl CssFontObliqueAngle {
+    /// Whether this literal is exactly the 14deg that an omitted angle represents.
+    /// Symbolic math stays explicit: its specified form is not evaluated here.
+    fn is_default_oblique(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+    ) -> SerializationResult<bool> {
+        let Some(literal) = self.literal_component() else {
+            return Ok(false);
+        };
+        let default = CssComponentValue::try_token("14deg").expect("static 14deg dimension");
+        Ok(
+            crate::numeric::exact_dimension_identity(Some(literal), Some(&default), context)?
+                .unwrap_or(false),
+        )
+    }
+
     fn specified_semantically_eq(
         &self,
         other: &Self,

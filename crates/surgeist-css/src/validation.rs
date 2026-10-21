@@ -1,26 +1,7 @@
 use crate::{CssGlobalKeyword, CssKnownProperty};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum PropertyNameStatus {
-    Supported,
-    KnownUnsupported,
-    Unknown,
-}
-
-const KNOWN_UNSUPPORTED_PROPERTY_NAMES: &[&str] = &[];
-
 pub(crate) fn property_for_supported_name(name: &str) -> Option<CssKnownProperty> {
     CssKnownProperty::from_name(name)
-}
-
-pub(crate) fn classify_property_name(name: &str) -> PropertyNameStatus {
-    if property_for_supported_name(name).is_some() {
-        PropertyNameStatus::Supported
-    } else if contains_ascii_case(KNOWN_UNSUPPORTED_PROPERTY_NAMES, name) {
-        PropertyNameStatus::KnownUnsupported
-    } else {
-        PropertyNameStatus::Unknown
-    }
 }
 
 pub(crate) fn parse_global_keyword(name: &str) -> Option<CssGlobalKeyword> {
@@ -37,10 +18,4 @@ pub(crate) fn parse_global_keyword(name: &str) -> Option<CssGlobalKeyword> {
     } else {
         None
     }
-}
-
-fn contains_ascii_case(haystack: &[&str], needle: &str) -> bool {
-    haystack
-        .iter()
-        .any(|candidate| candidate.eq_ignore_ascii_case(needle))
 }

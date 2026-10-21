@@ -12,7 +12,7 @@ use cssparser::{
 use crate::properties::CssKnownProperty;
 use crate::source::CssSourcePosition;
 use crate::syntax::CssCustomPropertyName;
-use crate::validation::{PropertyNameStatus, classify_property_name, property_for_supported_name};
+use crate::validation::property_for_supported_name;
 
 /// A stable machine-readable category for a CSS grammar or conformance diagnostic.
 ///
@@ -999,6 +999,11 @@ pub struct CssNestingLimitError {
 impl CssNestingLimitError {
     #[must_use]
     /// Returns the maximum nesting depth accepted by the strict parser.
+    ///
+    /// This is ordinarily the 256-level structural limit. A limit of 128
+    /// (stylesheets and style attributes) or 63 (fragments) instead reports
+    /// that the bounded larger-stack parser thread could not be started, so
+    /// input deeper than the caller's stack can hold was refused.
     pub const fn limit(&self) -> u32 {
         self.limit
     }
@@ -1688,29 +1693,21 @@ pub(crate) fn invalid_selector_at<'i>(
     )
 }
 
-pub(crate) fn unsupported_property<'i>(
-    location: cssparser::SourceLocation,
-    name: impl Into<String>,
-) -> ParseError<'i, Error> {
-    let name = name.into();
-    error_at(
-        location,
-        ErrorKind::UnsupportedProperty(CssUnsupportedPropertyError {
-            feature: property_feature_id(&name),
-            name: CssPropertyName::new(name),
-        }),
-    )
-}
-
+/// A recognized property refused by the active grammar, such as `size` in a
+/// margin rule, names that property's support-catalog record.
 pub(crate) fn property_name_error<'i>(
     location: cssparser::SourceLocation,
     name: &str,
 ) -> ParseError<'i, Error> {
-    match classify_property_name(name) {
-        PropertyNameStatus::Supported | PropertyNameStatus::KnownUnsupported => {
-            unsupported_property(location, name)
-        }
-        PropertyNameStatus::Unknown => error_at(
+    match property_for_supported_name(name) {
+        Some(property) => error_at(
+            location,
+            ErrorKind::UnsupportedProperty(CssUnsupportedPropertyError {
+                feature: CssFeatureId::new(property.stable_id()),
+                name: CssPropertyName::new(name),
+            }),
+        ),
+        None => error_at(
             location,
             ErrorKind::UnknownProperty(CssUnknownPropertyError {
                 name: CssPropertyName::new(name),
@@ -2200,11 +2197,6 @@ fn at_rule_requires_block(name: &str) -> bool {
         || name.eq_ignore_ascii_case("container")
         || name.eq_ignore_ascii_case("scope")
         || name.eq_ignore_ascii_case("page")
-}
-
-fn property_feature_id(name: &str) -> CssFeatureId {
-    let _ = name;
-    CssFeatureId::new("baseline.property.recognized-unsupported")
 }
 
 #[cfg(test)]

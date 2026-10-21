@@ -34,9 +34,10 @@ pub(crate) fn parse_declaration_list_text_with_context(
     source: &str,
     parser_context: crate::CssParserContext,
 ) -> crate::CssParseReport<CssDeclarationList> {
+    let refused = || CssDeclarationList::new(Vec::new());
     recovery::finish_report(
         source,
-        fragments::bounded_execution(source, || {
+        fragments::bounded_report(source, refused, || {
             let recovery = RecoveryState::at_depth(source, 0, StyleContextCaptures::default())
                 .with_parser_context(parser_context);
             let working_source = crate::tokenization::prepare(source);

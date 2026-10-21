@@ -511,6 +511,9 @@ impl CssCalculationType {
         if t.hint == Some(CssNumericDimension::Length) && t.is(CssNumericDimension::Length) {
             return Self::LengthPercentage;
         }
+        if t.hint == Some(CssNumericDimension::Time) && t.is(CssNumericDimension::Time) {
+            return Self::TimePercentage;
+        }
         if t.hint == Some(CssNumericDimension::Frequency) && t.is(CssNumericDimension::Frequency) {
             return Self::FrequencyPercentage;
         }
@@ -556,6 +559,56 @@ impl CssCalculationType {
     /// its percentage basis.
     pub fn percent_hint(self) -> Option<CssNumericDimension> {
         self.numeric().hint
+    }
+}
+
+#[cfg(test)]
+mod calculation_type_classification_tests {
+    use super::CssCalculationType;
+
+    /// Values 4 §5.6 names one mixed-percentage type per dimension that admits
+    /// percentages; every named classification must survive its own numeric
+    /// type, so a missing branch cannot fall through to `Algebra` silently.
+    #[test]
+    fn every_named_calculation_type_classifies_its_own_numeric_type() {
+        use CssCalculationType as T;
+        let named = [
+            T::Number,
+            T::Percentage,
+            T::Length,
+            T::LengthPercentage,
+            T::Angle,
+            T::AnglePercentage,
+            T::Time,
+            T::TimePercentage,
+            T::Frequency,
+            T::FrequencyPercentage,
+            T::Resolution,
+            T::Flex,
+        ];
+        for classification in named {
+            // Exhaustive without a wildcard: a new named variant must join `named`.
+            match classification {
+                T::Number
+                | T::Percentage
+                | T::Length
+                | T::LengthPercentage
+                | T::Angle
+                | T::AnglePercentage
+                | T::Time
+                | T::TimePercentage
+                | T::Frequency
+                | T::FrequencyPercentage
+                | T::Resolution
+                | T::Flex => {}
+                T::Algebra(_) => unreachable!("only named classifications are listed"),
+            }
+            assert_eq!(
+                T::from_numeric(classification.numeric()),
+                classification,
+                "{classification:?}"
+            );
+        }
     }
 }
 

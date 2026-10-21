@@ -504,6 +504,13 @@ struct ProjectedScalar {
     direct_text_pending: bool,
 }
 
+/// The least decimal exponent whose power of ten is a normal binary64 value.
+const MIN_NORMAL_DECIMAL_EXPONENT: i32 = -307;
+
+/// A binary64 coefficient in `[1, 10)` with an unbounded decimal exponent.
+///
+/// Finite input, including subnormal input, always yields a finite
+/// coefficient; non-finite coefficients carry calculation infinities and NaN.
 #[derive(Clone, Copy, Debug)]
 struct ScaledNumber {
     coefficient: f64,
@@ -526,10 +533,17 @@ impl ScaledNumber {
                 exponent: 0,
             };
         }
-        let normalization = coefficient.abs().log10().floor() as i128;
+        let normalization = coefficient.abs().log10().floor() as i32;
         Self {
-            coefficient: coefficient / 10f64.powi(normalization as i32),
-            exponent: exponent.saturating_add(normalization),
+            coefficient: if normalization < MIN_NORMAL_DECIMAL_EXPONENT {
+                // 10^normalization is subnormal or zero here. Lift the
+                // subnormal coefficient into the normal range first so the
+                // divisor stays a normal binary64 power.
+                coefficient * 1e300 / 10f64.powi(normalization + 300)
+            } else {
+                coefficient / 10f64.powi(normalization)
+            },
+            exponent: exponent.saturating_add(i128::from(normalization)),
         }
     }
 
@@ -621,7 +635,12 @@ impl ScaledNumber {
     }
 
     fn divide(self, other: Self) -> Self {
-        debug_assert_ne!(other.coefficient, 0.0);
+        if other.coefficient == 0.0 {
+            // Values 4 §10.9.1: x / 0 is an infinity and 0 / 0 is NaN. The
+            // scaled zero is always +0 (`new` collapses -0), so the infinity's
+            // sign follows the dividend; either exponent is irrelevant.
+            return Self::new(self.coefficient / other.coefficient, 0);
+        }
         Self::new(
             self.coefficient / other.coefficient,
             self.exponent.saturating_sub(other.exponent),
@@ -656,7 +675,13 @@ impl ScaledNumber {
             return 0.0;
         }
         debug_assert!(self.exponent <= 308);
-        self.coefficient * 10f64.powi(self.exponent as i32)
+        let exponent = self.exponent as i32;
+        if exponent < MIN_NORMAL_DECIMAL_EXPONENT {
+            // Keep the power of ten normal. The two products may each round, so
+            // the subnormal result can differ from exact by one binary64 step.
+            return self.coefficient * 10f64.powi(exponent + 300) * 1e-300;
+        }
+        self.coefficient * 10f64.powi(exponent)
     }
 }
 
@@ -3268,5 +3293,79 @@ mod declared_literal_tests {
             );
             assert_eq!(value, original);
         }
+    }
+}
+
+#[cfg(test)]
+mod scaled_number_tests {
+    use super::ScaledNumber;
+
+    /// IEEE 754 binary64: bits 1 is the minimum positive subnormal (about
+    /// 4.94e-324, decimal exponent -324); `MIN_POSITIVE` is 2^-1022.
+    fn assert_normalized(value: f64, decimal_exponent: i128) {
+        let scaled = ScaledNumber::from_binary64(value);
+        assert!(scaled.coefficient.is_finite(), "{value:e}: {scaled:?}");
+        assert!(
+            (1.0..10.0).contains(&scaled.coefficient.abs()),
+            "{value:e}: {scaled:?}"
+        );
+        assert_eq!(scaled.exponent, decimal_exponent, "{value:e}");
+        // Decimal scaling rounds; recovery stays within one binary64 step and
+        // never collapses a nonzero value to zero or flips its sign.
+        let recovered = scaled.binary64();
+        assert_ne!(recovered, 0.0, "{value:e}: {scaled:?}");
+        assert_eq!(recovered.is_sign_negative(), value.is_sign_negative());
+        assert!(
+            recovered.abs().to_bits().abs_diff(value.abs().to_bits()) <= 1,
+            "{value:e} recovered as {recovered:e}"
+        );
+    }
+
+    #[test]
+    fn subnormal_values_normalize_to_finite_coefficients() {
+        for (value, decimal_exponent) in [
+            (f64::from_bits(1), -324),
+            (f64::from_bits(2), -324),
+            (f64::from_bits(3), -323),
+            (f64::from_bits(0xff), -321),
+            (3e-310, -310),
+            (f64::from_bits(0x000f_ffff_ffff_ffff), -308),
+        ] {
+            assert!(value.is_subnormal(), "{value:e}");
+            assert_normalized(value, decimal_exponent);
+            assert_normalized(-value, decimal_exponent);
+        }
+        assert_normalized(f64::MIN_POSITIVE, -308);
+        assert_normalized(2e-300, -300);
+    }
+
+    #[test]
+    fn subnormal_operands_keep_finite_arithmetic() {
+        let tiny = ScaledNumber::from_binary64(f64::from_bits(1));
+        let one = ScaledNumber::from_binary64(1.0);
+        assert_eq!(tiny.add(one).binary64(), 1.0);
+        assert_eq!(one.add(tiny).binary64(), 1.0);
+        assert_eq!(tiny.scale(0.01).binary64(), 0.0);
+        assert!(tiny.multiply(tiny).coefficient.is_finite());
+        assert!(tiny.compare(ScaledNumber::ZERO).is_gt());
+        assert!(tiny.compare(one).is_lt());
+    }
+
+    /// Values 4 §10.9.1: division by zero yields an infinity, and 0/0 yields NaN.
+    #[test]
+    fn division_by_zero_follows_calculation_semantics_in_every_build() {
+        let one = ScaledNumber::from_binary64(1.0);
+        assert_eq!(one.divide(ScaledNumber::ZERO).binary64(), f64::INFINITY);
+        let negative = ScaledNumber::from_binary64(-1.0);
+        assert_eq!(
+            negative.divide(ScaledNumber::ZERO).binary64(),
+            f64::NEG_INFINITY
+        );
+        assert!(
+            ScaledNumber::ZERO
+                .divide(ScaledNumber::ZERO)
+                .binary64()
+                .is_nan()
+        );
     }
 }

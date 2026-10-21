@@ -34,7 +34,8 @@ fn checked<T: Send>(
     ) -> Result<T, ParseError<'i, Error>>
     + Send,
 ) -> Result<T, CssImage1DConstructionError> {
-    super::fragments::bounded_execution_at_depth(values.nesting_depth(), || {
+    let refused = CssImage1DConstructionError::Component;
+    super::bounded_execution::components(values.items(), values.nesting_depth(), refused, || {
         let document = crate::syntax_consumption::normalize(
             crate::syntax_consumption::SyntaxInput::CheckedComponents(values.items()),
             crate::syntax_consumption::SyntaxInputLimits::default(),
