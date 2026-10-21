@@ -603,7 +603,7 @@ Capture completeness or an exhausted cursor alone does not establish end.
 The returned opaque end retains its actual original output custody; the
 canonical `parsed_html_synchronous_end` lender permits readback after that
 output drops. An absent entry is never treated as completed. The history and
-general Style availability remain Pending.
+general Style availability remain Pending until explicit whole settlement.
 
 `parsed_html_dispatch_cursor` lends canonical entry headers without eager
 scanning or an additional registry. The composing dispatcher admits one of its
@@ -625,19 +625,62 @@ otherwise it returns exact influencing work or unavailable evidence. An old
 queued event keeps its actual original target and qualification through sheet
 replacement; queue issuance does not complete or revoke another invocation.
 
-`finish_style_notification` takes an explicit finite `dispatch_work` allowance
+`finish_style_notification` requires explicit `Native` or `Parsed` delivery
+input, together with a finite `dispatch_work` allowance
 for its owner-wide header walk, spending before every advance including end.
 Zero is exhausted. This caller allowance is per-call; activated inventory reads
 retain their separate original cumulative work on retry. A blocking entry is
 identified by `ParsedAssociationSynchronousPending`; the header query provides
 its exact remaining diagnostic. Source/hosted guards and target retirement are
 checked first. A live parsed task additionally requires its own canonical end.
-After actual event delivery, cleanup unblocks the target's **current** Document
-and returns `ParsedComplete` with its genuine DOM commit and original
-output/retirement custody. Native cleanup returns `Complete`. Refusal preserves
-the token; a composing owner retains its delivered phase and must not dispatch
-again. No resource completion, whole-history acknowledgment or arbitrary later
-original execution is supplied by these operations.
+After actual event delivery, the existing bound `DomSourceEventExecutor` seals
+the exact parsed token into a once-only `DomParsedHtmlStyleDeliveryPublication`.
+This is a trusted external-dispatch attestation: the executor must use its real
+completed Load receipt, not equal target/type data or an incomplete invocation.
+DOM verifies the actual binding, original occurrence and sheet association; it
+does not independently inspect external callbacks. Parsed cleanup requires
+`Parsed(&mut publication)` and refuses absent, foreign or mismatched authority.
+`Native` is valid only for a native token.
+
+Cleanup unblocks the target's **current** Document and returns `ParsedComplete`
+with its genuine DOM commit and original output/retirement custody. Native
+cleanup returns `Complete`. Refusal preserves the token and sealed publication;
+a composing owner retains its delivered phase and must not dispatch again.
+Successful parsed cleanup consumes that same authority and settles its canonical
+obligation once. These operations supply no resource completion or arbitrary
+later original execution.
+
+### Whole original Style settlement
+
+Actual original CSS reports are validated and classified before CSSOM consumes
+them. The created-sheet preparation/completion lends `NoImports` or
+`ImportsUnresolved`; this is independent of later CSSOM edits. Each genuinely
+rendered created-sheet invocation mints one affine notification right and one
+checked canonical obligation. Retain, explicit transfer, queue and delivery move
+that same right. Historical output Drop does not own another right, and dropping
+an actual continuation, token or delivery publication never settles work. A real
+`OwnerAssociationRemoved` consuming commit settles once without an event.
+Imports remain unresolved even after owner clearing or authority Drop.
+
+`complete_contribution` consumes its command Hold on either outcome. A refusal
+keeps the same canonical Entry and cumulative controller; retry starts a fresh
+Hold with valid raise-only limits. The operation requires the authentic End, the
+no-import domain and zero unsettled notification rights. It authenticates and
+deduplicates actual covered original Style bindings, preserving their sheets,
+nullable blocked results, creation/parser state and association serials. It
+prepares only `PendingParsedProcessing` to `Established` availability changes
+through the ordinary Draft, plus exact pending-bank removal, output and all old
+State/history/bank retirement under the same original finite controller. One
+infallible publication commits both readiness and acknowledgement. The owning
+completion exposes the real `DomCommit` and contribution identity.
+
+New snapshots can read settled sheet/render-blocking state; old snapshots keep
+their actual Pending field and original getter refusal. Already-established
+no-effect Styles require no write. The acknowledgement changes no CSSOM state,
+sheet owner, preference name or tree structure. Cancellation, finite refusal and
+precommit Drop preserve both canonical readiness and guards; raised-limit retry
+keeps cumulative work. Missing or duplicate contributions are not completion
+proof. Import/resource outcomes and wider retirement remain separate work.
 
 ## Control state and form associations
 

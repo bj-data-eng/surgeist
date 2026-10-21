@@ -832,13 +832,23 @@ fn actual_style_publication_parks_original_constructor_then_finishes_origin_mime
         &DocumentString::from("application/xml")
     );
     assert!(matches!(
-        dom.finish_style_notification(&mut notification, 1024, &cancel)
-            .unwrap(),
+        dom.finish_style_notification(
+            &mut notification,
+            surgeist_dom::DomStyleNotificationDelivery::Native,
+            1024,
+            &cancel
+        )
+        .unwrap(),
         DomStyleNotificationCompletion::Complete(_)
     ));
     assert_eq!(
-        dom.finish_style_notification(&mut notification, 1024, &cancel)
-            .unwrap_err(),
+        dom.finish_style_notification(
+            &mut notification,
+            surgeist_dom::DomStyleNotificationDelivery::Native,
+            1024,
+            &cancel
+        )
+        .unwrap_err(),
         DomError::StyleProtocol
     );
 }

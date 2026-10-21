@@ -161,7 +161,10 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
             }
             .into());
         }
-        let old = request.created_sheet.clone();
+        let old = request
+            .created_sheet
+            .as_ref()
+            .map(|created| created.sheet.clone());
         let root = request.qualification.document().node();
         // This validates the optional capability against the authenticated
         // outcome, never inferring no-sheet from a missing caller owner.
@@ -556,8 +559,8 @@ impl<'caps> DomParsedHtmlStyleSuccessorPreparation<'_, '_, 'caps> {
             ..
         } = request;
         let outcome = match created_sheet {
-            Some(sheet) => CompletedOutcome::Created {
-                sheet,
+            Some(created) => CompletedOutcome::Created {
+                sheet: created.sheet,
                 notification: issuance.expect("actual rendered predecessor"),
             },
             None => CompletedOutcome::InlinePolicyBlocked,

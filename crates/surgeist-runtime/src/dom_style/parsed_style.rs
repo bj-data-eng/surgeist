@@ -15,11 +15,13 @@ mod frontier;
 mod notification;
 mod subject;
 mod successor;
+mod terminal;
 pub use create_sheet::{DomStyleParsedSheetError, DomStyleParsedSheetOutcome};
 pub use frontier::DomStyleParsedFrontierError;
 pub use notification::{DomStyleParsedNotificationError, DomStyleParsedNotificationProgress};
 pub use subject::DomStyleParsedSubjectError;
 pub use successor::DomStyleParsedSuccessorError;
+pub use terminal::DomStyleParsedTerminalError;
 
 /// The actual Session or original parsed Style prefix refused a command.
 #[derive(Debug)]

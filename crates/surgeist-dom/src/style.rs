@@ -535,3 +535,11 @@ pub enum DomStyleNotificationCompletion {
     ParsedComplete(crate::DomParsedHtmlStyleNotificationCompletion),
     TargetDestroyed,
 }
+
+/// Actual delivery authority required by the notification's semantic origin.
+/// Parsed delivery is sealed by the bound trusted executor after completed Load
+/// dispatch. Missing or mismatched input is retained and refuses cleanup.
+pub enum DomStyleNotificationDelivery<'a> {
+    Native,
+    Parsed(&'a mut Option<crate::DomParsedHtmlStyleDeliveryPublication>),
+}

@@ -68,8 +68,10 @@ association history on the canonical owner, independently of output packets.
 [Pending association custody](docs/html-installation.md#pending-stylesheet-associations)
 explains discovery, finite backing admission and native crossing refusals. The
 [whole parsed-Meta consumer](docs/html-installation.md#whole-parsed-meta-consumption)
-joins authentic supported history with real CSSOM owners; influencing Style
-processing remains pending.
+joins authentic supported history with real CSSOM owners. Original Style
+processing retains its exact synchronous and asynchronous obligations until
+[explicit whole settlement](docs/html-installation.md#whole-original-style-settlement)
+publishes authenticated readiness and removes that contribution's guards.
 
 Inline-style identity is an explicit lazy capability. After installing
 `DomInlineStyleLimits`, `Dom::inline_style` binds a live HTML, SVG or MathML

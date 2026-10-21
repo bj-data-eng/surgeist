@@ -829,13 +829,23 @@ fn actual_creation_receipt(
     assert_eq!(owner.snapshot().unwrap().revision(), &revision);
     assert_eq!(owner.snapshot().unwrap().sheets().len(), 1);
     assert!(matches!(
-        dom.finish_style_notification(&mut token, 1024, &cancel)
-            .unwrap(),
+        dom.finish_style_notification(
+            &mut token,
+            surgeist_dom::DomStyleNotificationDelivery::Native,
+            1024,
+            &cancel
+        )
+        .unwrap(),
         surgeist_dom::DomStyleNotificationCompletion::Complete(_)
     ));
     assert_eq!(
-        dom.finish_style_notification(&mut token, 1024, &cancel)
-            .unwrap_err(),
+        dom.finish_style_notification(
+            &mut token,
+            surgeist_dom::DomStyleNotificationDelivery::Native,
+            1024,
+            &cancel
+        )
+        .unwrap_err(),
         DomError::StyleProtocol
     );
     if exercise_disabled {

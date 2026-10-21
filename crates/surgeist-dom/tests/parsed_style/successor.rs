@@ -173,7 +173,7 @@ fn parser_pop_removes_real_sheet_and_forms_distinct_original_full_text_request()
     );
 }
 #[test]
-fn queued_predecessor_keeps_execution_and_direct_cleanup_remains_blocked_by_new_request() {
+fn queued_predecessor_reports_new_request_and_bare_cleanup_refuses() {
     let mut value = rendered();
     let mut token = issue(&mut value);
     let completion = advance(&mut value);
@@ -185,9 +185,17 @@ fn queued_predecessor_keeps_execution_and_direct_cleanup_remains_blocked_by_new_
     assert!(
         matches!(requirement, DomParsedHtmlStyleNotificationRequirement::Invocation { occurrence, phase: DomParsedHtmlStylePhase::InlinePolicyPending, .. } if &occurrence==completion.qualification().occurrence())
     );
-    assert!(
-        matches!(value.dom.finish_style_notification(&mut token, 1024, &flag()), Err(DomError::ParsedAssociationSynchronousPending{pending}) if pending==value.id)
-    );
+    // This bare call refuses mandatory delivery authority before cleanup;
+    // the independent query above still names the actual successor request.
+    assert!(matches!(
+        value.dom.finish_style_notification(
+            &mut token,
+            surgeist_dom::DomStyleNotificationDelivery::Native,
+            1024,
+            &flag()
+        ),
+        Err(DomError::StyleProtocol)
+    ));
     let mut hold = value
         .dom
         .begin_parsed_html_style(value.id, envelope(), &flag())

@@ -12,6 +12,7 @@ use surgeist_cssom::{
 // diagnostic/source graphs drop before their original controlling receipt.
 struct Media {
     construction: CssomSheetConstruction,
+    resources: crate::DomParsedHtmlStyleResources,
     meter: Meter,
 }
 /// A completed creation cannot be confused with whole-contribution readiness.
@@ -42,6 +43,9 @@ impl DomParsedHtmlStyleSheetCompletion {
     }
     pub fn phase(&self) -> DomParsedHtmlStylePhase {
         DomParsedHtmlStylePhase::ReadScriptBlockingPending
+    }
+    pub fn resources(&self) -> crate::DomParsedHtmlStyleResources {
+        self.media.resources
     }
     pub fn media_diagnostics(&self) -> &[CssRecoveryDiagnostic] {
         self.media.construction.media_diagnostics()
@@ -535,6 +539,15 @@ impl DomParsedHtmlStyleSheetPreparation<'_, '_, '_> {
             &self.meter,
             cancel,
         )?;
+        let mut resources = crate::DomParsedHtmlStyleResources::NoImports;
+        self.step(cancel)?;
+        for rule in supplied.sheet.syntax().rules() {
+            self.step(cancel)?;
+            if matches!(rule, surgeist_css::CssRule::Import(_)) {
+                resources = crate::DomParsedHtmlStyleResources::ImportsUnresolved;
+                break;
+            }
+        }
         self.step(cancel)?;
         let supplied = input.take().expect("validated owned input");
         let mut inputs = CssomSheetInputs::external(supplied.version, true);
@@ -552,6 +565,7 @@ impl DomParsedHtmlStyleSheetPreparation<'_, '_, '_> {
             })?;
         let media = Media {
             construction,
+            resources,
             meter: self.meter.fork(),
         };
         admit_construction(&media.construction, &media.meter, cancel)?;
@@ -828,7 +842,10 @@ impl<'caps> DomParsedHtmlStyleSheetPreparation<'_, '_, 'caps> {
             unreachable!("qualified original creation")
         };
         request.cursor = successor;
-        request.created_sheet = Some(sheet.clone());
+        request.created_sheet = Some(crate::parsed_style::CreatedSheetProcessing {
+            sheet: sheet.clone(),
+            resources: media.resources,
+        });
         let contribution = self.meter.entry().id;
         let completion = DomParsedHtmlStyleSheetCompletion {
             contribution,
@@ -863,3 +880,10 @@ thread_local! { pub(super) static PREPARED_FRONTIER: std::cell::Cell<usize> = co
 
 #[cfg(test)]
 mod tests;
+
+impl DomParsedHtmlStyleSheetPreparation<'_, '_, '_> {
+    /// Classification borrowed from the actual staged original report.
+    pub fn resources(&self) -> Option<crate::DomParsedHtmlStyleResources> {
+        self.media.as_ref().map(|media| media.resources)
+    }
+}

@@ -20,6 +20,7 @@ pub use parsed_style::{
     DomStyleParsedMetaOccurrenceOutcome, DomStyleParsedNotificationError,
     DomStyleParsedNotificationProgress, DomStyleParsedPrefixError, DomStyleParsedSheetError,
     DomStyleParsedSheetOutcome, DomStyleParsedSubjectError, DomStyleParsedSuccessorError,
+    DomStyleParsedTerminalError,
 };
 pub use sheet_sets::{DomStyleSheetSetCommit, DomStyleSheetSetObservation};
 
@@ -44,9 +45,8 @@ use surgeist_cssom::{
 use surgeist_dom::{
     Dom, DomError, DomOwnerId, DomParsedHtmlStyleNotificationRequirement, DomSnapshot,
     DomSourceLease, DomSourceOperationId, DomStyleAction, DomStyleCssomOwnerBinding,
-    DomStyleCssomRoot, DomStyleCssomRootError, DomStyleNotificationCompletion,
-    DomStyleNotificationOrigin, DomStyleNotificationToken, DomStyleRequest, DomStyleSheetPlacement,
-    DomStyleSource, NodeId,
+    DomStyleCssomRoot, DomStyleCssomRootError, DomStyleNotificationOrigin,
+    DomStyleNotificationToken, DomStyleRequest, DomStyleSheetPlacement, DomStyleSource, NodeId,
 };
 use surgeist_html::{
     HtmlDocumentMode, HtmlStyleExecutionProfile, HtmlStyleNotificationAction,
@@ -134,6 +134,8 @@ pub enum DomStyleRuntimeError {
     SourcePending(DomSourceOperationId),
     /// The exact retained CSSOM resource is temporarily unavailable or refused work.
     Resource(DomStyleCssomRootError),
+    /// Actual bound trusted event executor refused Style attestation.
+    EventExecutor(crate::DomSourceEventRuntimeError),
 }
 impl std::fmt::Display for DomStyleRuntimeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -148,6 +150,7 @@ impl std::error::Error for DomStyleRuntimeError {
             Self::Css(error) => Some(error),
             Self::Dispatch(error) => Some(error),
             Self::Resource(error) => Some(error),
+            Self::EventExecutor(error) => Some(error),
             _ => None,
         }
     }
@@ -302,6 +305,7 @@ struct Task {
     parsed: Option<ParsedProcessing>,
     cursor: HtmlStyleNotificationCursor,
     delivery: Delivery,
+    delivery_publication: Option<surgeist_dom::DomParsedHtmlStyleDeliveryPublication>,
     running: bool,
     dispatch_reserved: usize,
     // Any original admission carried by this token outlives represented task,
@@ -487,6 +491,7 @@ struct StyleState {
     next_task: u64,
     work: std::cell::Cell<u64>,
     dom: DomOwnerId,
+    events: Option<crate::dom_dialog::SourceEventRuntime>,
 }
 // The current storage observation already includes the old backing. A full
 // persistent bank additionally needs its entire requested replacement; spare
@@ -601,6 +606,7 @@ impl StyleState {
             next_task: 1,
             work: std::cell::Cell::new(0),
             dom,
+            events: None,
         }
     }
     fn step(&self, cancel: &AtomicBool) -> Result<(), DomStyleRuntimeError> {
@@ -1217,6 +1223,7 @@ impl StyleState {
                             true,
                         ),
                         delivery: Delivery::NotStarted,
+                        delivery_publication: None,
                         running: false,
                         dispatch_reserved: 0,
                     };
@@ -1846,7 +1853,8 @@ impl DomSession {
         let events =
             crate::dom_dialog::SourceEventOwner::new(owner, executor, limits.source_events);
         details.bind_events(events.execution());
-        let state = StyleState::new(owner, limits.style);
+        let mut state = StyleState::new(owner, limits.style);
+        state.events = Some(events.execution());
         state.work.set(parsed_work);
         Ok(Self {
             dom,
@@ -2516,7 +2524,7 @@ impl DomStyleRuntime {
                         || dom.snapshot().incomplete_hosted_operation().is_some()
                     {
                         let task = state.completions[index].task_mut();
-                        let error = dom.raw_mut().finish_style_notification(&mut task.token, 0, cancel)
+                        let error = dom.raw_mut().finish_style_notification(&mut task.token, if task.parsed.is_some() { surgeist_dom::DomStyleNotificationDelivery::Parsed(&mut task.delivery_publication) } else { surgeist_dom::DomStyleNotificationDelivery::Native }, 0, cancel)
                             .expect_err("actual unchanged Source/hosted guard refuses before dispatch admission");
                         return Err(error.into());
                     }
@@ -2541,19 +2549,64 @@ impl DomStyleRuntime {
                             requirement,
                         });
                     }
-                    let task = state.completions[index].task_mut();
-                    match dom.raw_mut().finish_style_notification(
-                        &mut task.token,
-                        dispatch_work,
-                        cancel,
-                    )? {
-                        DomStyleNotificationCompletion::Complete(_)
-                        | DomStyleNotificationCompletion::ParsedComplete(_)
-                        | DomStyleNotificationCompletion::TargetDestroyed => {}
+                    let parsed_cleanup = state.completions[index].task().parsed.is_some();
+                    if parsed_cleanup {
+                        // Prepay the real same-bank suffix moves and fixed return
+                        // before canonical cleanup settles the affine right.
+                        for _ in index + 1..state.completions.len() {
+                            state.step(cancel)?;
+                        }
                     }
-                    task.cursor
+                    let events = state.events.clone();
+                    let task = state.completions[index].task_mut();
+                    let Delivery::Delivered(receipt) = &task.delivery else {
+                        return Err(DomStyleRuntimeError::Protocol);
+                    };
+                    if parsed_cleanup
+                        && (receipt.original_target() != task.token.target()
+                            || receipt.event_type() != surgeist_dom::DomEventType::Load)
+                    {
+                        return Err(DomStyleRuntimeError::Protocol);
+                    }
+                    if task.parsed.is_some() && task.delivery_publication.is_none() {
+                        task.delivery_publication = Some(
+                            events
+                                .ok_or(DomStyleRuntimeError::SessionUnavailable)?
+                                .seal_style_dispatch(dom, &mut task.token, cancel)
+                                .map_err(DomStyleRuntimeError::EventExecutor)?,
+                        );
+                    }
+                    let mut successor = task.cursor;
+                    successor
                         .reply(HtmlStyleNotificationReply::Applied)
                         .map_err(|_| DomStyleRuntimeError::Protocol)?;
+                    let cleanup = dom.raw_mut().finish_style_notification(
+                        &mut task.token,
+                        if task.parsed.is_some() {
+                            surgeist_dom::DomStyleNotificationDelivery::Parsed(
+                                &mut task.delivery_publication,
+                            )
+                        } else {
+                            surgeist_dom::DomStyleNotificationDelivery::Native
+                        },
+                        dispatch_work,
+                        cancel,
+                    )?;
+                    task.cursor = successor;
+                    if parsed_cleanup {
+                        // The queued row/index, Delivered receipt, cursor and
+                        // removal work were qualified before the lower fence.
+                        // No callback, allocation or fallible lookup follows it.
+                        let Completion::Queued(task) = state.completions.remove(index) else {
+                            unreachable!("prequalified queued cleanup")
+                        };
+                        let Delivery::Delivered(receipt) = task.delivery else {
+                            unreachable!("prequalified delivered cleanup")
+                        };
+                        drop(cleanup);
+                        return Ok(DomStyleNetworkingProgress::Complete { task: id, receipt });
+                    }
+                    drop(cleanup);
                 }
                 HtmlStyleNotificationAction::Complete => {
                     let mut state = original.borrow_mut();

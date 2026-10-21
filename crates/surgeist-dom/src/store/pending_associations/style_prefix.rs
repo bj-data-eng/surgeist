@@ -21,6 +21,8 @@ pub use meta_occurrence::{
     DomParsedHtmlMetaOccurrenceRetirement,
 };
 
+mod terminal;
+pub use terminal::DomParsedHtmlContributionCompletion;
 mod subject;
 pub use subject::DomParsedHtmlStyleSubjectCompletion;
 mod successor;
@@ -36,8 +38,9 @@ pub use frontier::{
 mod notification;
 pub(crate) use notification::NotificationCustody;
 pub use notification::{
-    DomParsedHtmlStyleNotificationCompletion, DomParsedHtmlStyleNotificationContinuation,
-    DomParsedHtmlStyleNotificationPreparation, DomParsedHtmlStyleNotificationPublished,
+    DomParsedHtmlStyleDeliveryPublication, DomParsedHtmlStyleNotificationCompletion,
+    DomParsedHtmlStyleNotificationContinuation, DomParsedHtmlStyleNotificationPreparation,
+    DomParsedHtmlStyleNotificationPublished,
 };
 mod rendering;
 pub use rendering::DomParsedHtmlStyleRenderingCompletion;
@@ -57,7 +60,7 @@ pub(super) enum Graph {
     Inline(DomParsedHtmlStyleInlinePolicyRequest),
     Rendered {
         request: DomParsedHtmlStyleInlinePolicyRequest,
-        notification: DomParsedHtmlStyleNotificationHandoffStatus,
+        notification: notification::Handoff,
     },
     Transition,
 }
@@ -72,7 +75,7 @@ pub(super) struct CompletedInvocation {
 pub(super) enum CompletedOutcome {
     Created {
         sheet: crate::DomStyleSheet,
-        notification: DomParsedHtmlStyleNotificationHandoffStatus,
+        notification: notification::Handoff,
     },
     InlinePolicyBlocked,
 }
@@ -204,7 +207,7 @@ impl DomParsedHtmlStylePrefixView<'_> {
     }
     pub fn notification_handoff(&self) -> Option<DomParsedHtmlStyleNotificationHandoffStatus> {
         match self.state.as_ref().map(|held| held.value().as_ref()) {
-            Some(Graph::Rendered { notification, .. }) => Some(*notification),
+            Some(Graph::Rendered { notification, .. }) => Some(notification.status()),
             _ => None,
         }
     }

@@ -17,6 +17,8 @@ mod recreation;
 mod rendering;
 #[path = "parsed_style/successor.rs"]
 mod successor;
+#[path = "parsed_style/terminal.rs"]
+mod terminal;
 use std::sync::{Arc, atomic::AtomicBool};
 use surgeist_dom::*;
 use surgeist_html_parser::{

@@ -33,7 +33,7 @@ pub(super) fn ensure_transferred(
 ) -> Result<(), DomParsedHtmlStyleError> {
     if let Graph::Rendered {
         request,
-        notification: DomParsedHtmlStyleNotificationHandoffStatus::Retained,
+        notification: notification::Handoff::Retained(_),
     } = graph
     {
         return Err(DomParsedHtmlStyleError::HandoffRequired {
@@ -44,7 +44,7 @@ pub(super) fn ensure_transferred(
         qualification,
         outcome:
             CompletedOutcome::Created {
-                notification: DomParsedHtmlStyleNotificationHandoffStatus::Retained,
+                notification: notification::Handoff::Retained(_),
                 ..
             },
         ..

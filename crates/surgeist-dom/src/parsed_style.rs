@@ -202,6 +202,17 @@ impl StylePolicyOrigin {
         }
     }
 }
+/// Critical-import disposition of the exact validated original CSS report.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomParsedHtmlStyleResources {
+    NoImports,
+    ImportsUnresolved,
+}
+#[derive(Clone)]
+pub(crate) struct CreatedSheetProcessing {
+    pub(crate) sheet: crate::DomStyleSheet,
+    pub(crate) resources: DomParsedHtmlStyleResources,
+}
 /// One stored historical inline-policy request, not native current Style source
 /// or a Meta CSP insertion request. The canonical hold consumes observations.
 pub struct DomParsedHtmlStyleInlinePolicyRequest {
@@ -212,7 +223,7 @@ pub struct DomParsedHtmlStyleInlinePolicyRequest {
     pub(crate) policy: HtmlCspAssociation,
     pub(crate) origin: StylePolicyOrigin,
     pub(crate) cursor: surgeist_html::HtmlStyleUpdateCursor,
-    pub(crate) created_sheet: Option<crate::DomStyleSheet>,
+    pub(crate) created_sheet: Option<CreatedSheetProcessing>,
 }
 impl DomParsedHtmlStyleInlinePolicyRequest {
     pub fn qualification(&self) -> &DomParsedHtmlStyleQualification {
@@ -295,3 +306,6 @@ impl DomParsedHtmlStyleInlinePolicyObservation {
         self.allowed
     }
 }
+
+mod terminal;
+pub use terminal::*;

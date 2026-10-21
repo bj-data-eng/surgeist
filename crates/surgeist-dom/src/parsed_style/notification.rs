@@ -85,6 +85,7 @@ impl std::error::Error for DomParsedHtmlStyleNotificationError {
     }
 }
 pub use crate::store::pending_associations::{
-    DomParsedHtmlStyleNotificationCompletion, DomParsedHtmlStyleNotificationContinuation,
-    DomParsedHtmlStyleNotificationPreparation, DomParsedHtmlStyleNotificationPublished,
+    DomParsedHtmlStyleDeliveryPublication, DomParsedHtmlStyleNotificationCompletion,
+    DomParsedHtmlStyleNotificationContinuation, DomParsedHtmlStyleNotificationPreparation,
+    DomParsedHtmlStyleNotificationPublished,
 };

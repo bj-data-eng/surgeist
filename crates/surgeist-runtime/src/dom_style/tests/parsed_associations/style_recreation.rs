@@ -13,6 +13,7 @@ use surgeist_html_parser::{
 mod frontier;
 mod meta_occurrence;
 mod subjects;
+mod terminal;
 mod text_policy;
 
 fn next_parser_pop(

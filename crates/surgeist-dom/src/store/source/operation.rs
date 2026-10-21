@@ -3418,6 +3418,7 @@ impl Dom {
     pub fn finish_style_notification(
         &mut self,
         token: &mut DomStyleNotificationToken,
+        delivery: crate::DomStyleNotificationDelivery<'_>,
         dispatch_work: u64,
         cancel: &AtomicBool,
     ) -> Result<DomStyleNotificationCompletion, DomError> {
@@ -3429,8 +3430,20 @@ impl Dom {
         if token.complete {
             return Err(DomError::StyleProtocol);
         }
+        let parsed = matches!(
+            token.origin(),
+            crate::DomStyleNotificationOrigin::ParsedOccurrence { .. }
+        );
+        match (&delivery, parsed) {
+            (crate::DomStyleNotificationDelivery::Native, false) => {}
+            (crate::DomStyleNotificationDelivery::Parsed(input), true) if input.is_some() => {}
+            _ => return Err(DomError::StyleProtocol),
+        }
         let target = token.target();
         if self.state.node(self.owner, target).is_err() {
+            if parsed {
+                return Err(DomError::StaleNode);
+            }
             token.complete = true;
             return Ok(DomStyleNotificationCompletion::TargetDestroyed);
         }
@@ -3459,7 +3472,10 @@ impl Dom {
             token.origin(),
             crate::DomStyleNotificationOrigin::ParsedOccurrence { .. }
         ) {
-            return self.finish_parsed_style_notification(token, cancel);
+            let crate::DomStyleNotificationDelivery::Parsed(input) = delivery else {
+                unreachable!()
+            };
+            return self.finish_parsed_style_notification(token, input, cancel);
         }
         let mut draft = Draft::new(
             self,

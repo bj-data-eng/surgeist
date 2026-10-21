@@ -10,6 +10,8 @@ pub(super) struct Control {
     active: AtomicBool,
     // Durable scheduling admission is independent of the transient command loan.
     execution: std::sync::atomic::AtomicU8,
+    notifications: AtomicU64,
+    imports_observed: AtomicBool,
     bytes_limit: AtomicUsize,
     units_limit: AtomicUsize,
     work_limit: AtomicU64,
@@ -25,6 +27,32 @@ pub(super) struct Control {
     cleanup_atomic: AtomicUsize,
 }
 impl Control {
+    pub(super) fn notification_count(&self) -> u64 {
+        self.notifications.load(Ordering::Relaxed)
+    }
+    pub(super) fn mint_notification(&self) -> Result<u64, DomError> {
+        self.notification_count()
+            .checked_add(1)
+            .ok_or(DomError::RepresentationExhausted)
+    }
+    pub(super) fn discharge_notification(&self) -> Result<u64, DomError> {
+        self.notification_count()
+            .checked_sub(1)
+            .ok_or(DomError::StyleProtocol)
+    }
+    pub(super) fn publish_mint(&self, next: u64, resources: crate::DomParsedHtmlStyleResources) {
+        self.notifications.store(next, Ordering::Relaxed);
+        if resources == crate::DomParsedHtmlStyleResources::ImportsUnresolved {
+            self.imports_observed.store(true, Ordering::Relaxed);
+        }
+    }
+    pub(super) fn publish_discharge(&self, next: u64) {
+        self.notifications.store(next, Ordering::Relaxed);
+    }
+    pub(super) fn has_imports(&self) -> bool {
+        self.imports_observed.load(Ordering::Relaxed)
+    }
+
     pub(super) fn execution(&self) -> crate::DomParsedHtmlExecutionState {
         match self.execution.load(Ordering::Acquire) {
             0 => crate::DomParsedHtmlExecutionState::Unstarted,

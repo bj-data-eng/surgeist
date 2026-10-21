@@ -156,9 +156,15 @@ fn forbidden_cleanup_keeps_canonical_membership_and_token_phase_unchanged() {
             .render_blocking
             .contains(&sheet.association().element())
     );
-    assert!(
-        matches!(dom.finish_style_notification(&mut token, 1024, &flag()),Err(DomError::ParsedAssociationSynchronousPending{pending}) if pending==id)
-    );
+    assert!(matches!(
+        dom.finish_style_notification(
+            &mut token,
+            crate::DomStyleNotificationDelivery::Native,
+            1024,
+            &flag()
+        ),
+        Err(DomError::StyleProtocol)
+    ));
     assert!(!token.complete);
     assert_eq!(dom.snapshot().stamp(), stamp);
     assert!(
@@ -171,4 +177,147 @@ fn forbidden_cleanup_keeps_canonical_membership_and_token_phase_unchanged() {
             .render_blocking
             .contains(&sheet.association().element())
     );
+}
+
+#[test]
+fn explicit_continuation_and_token_drop_do_not_settle_rendered_work() {
+    for token_drop in [false, true] {
+        let (mut dom, id, _q, cap, _sheet, mut input) = rendered();
+        assert_eq!(
+            dom.pending_associations
+                .controlled_entry(id)
+                .unwrap()
+                .value()
+                .control
+                .notification_count(),
+            1
+        );
+        if token_drop {
+            let mut hold = dom
+                .begin_parsed_html_style(id, envelope(), &flag())
+                .unwrap();
+            let mut published = hold
+                .prepare_notification(&mut input, "owner", &cap, &flag())
+                .unwrap()
+                .commit(&flag())
+                .unwrap();
+            let token = published.take_disposition().unwrap();
+            drop(published);
+            drop(hold);
+            drop(token);
+        } else {
+            drop(input.take());
+        }
+        assert_eq!(
+            dom.pending_associations
+                .controlled_entry(id)
+                .unwrap()
+                .value()
+                .control
+                .notification_count(),
+            1,
+            "storage release cannot acknowledge actual notification work"
+        );
+    }
+}
+#[test]
+fn trusted_style_attestation_moves_once_and_its_drop_keeps_the_obligation() {
+    let (mut dom, id, _q, cap, _sheet, mut input) = rendered();
+    let mut token = {
+        let mut hold = dom
+            .begin_parsed_html_style(id, envelope(), &flag())
+            .unwrap();
+        let mut published = hold
+            .prepare_notification(&mut input, "owner", &cap, &flag())
+            .unwrap()
+            .commit(&flag())
+            .unwrap();
+        let DomParsedHtmlStyleNotificationDisposition::Token(token) =
+            published.take_disposition().unwrap()
+        else {
+            panic!("actual owner")
+        };
+        token
+    };
+    let (mut foreign, _) = super::super::tests::setup();
+    let foreign_executor = foreign.bind_source_event_executor(&flag()).unwrap();
+    assert!(matches!(
+        foreign_executor.seal_style_notification(&dom, &mut token, &flag()),
+        Err(DomError::ForeignOwner)
+    ));
+    assert!(matches!(
+        dom.finish_style_notification(
+            &mut token,
+            crate::DomStyleNotificationDelivery::Native,
+            1024,
+            &flag()
+        ),
+        Err(DomError::StyleProtocol)
+    ));
+    let mut missing = None;
+    assert!(matches!(
+        dom.finish_style_notification(
+            &mut token,
+            crate::DomStyleNotificationDelivery::Parsed(&mut missing),
+            1024,
+            &flag()
+        ),
+        Err(DomError::StyleProtocol)
+    ));
+    let executor = dom.bind_source_event_executor(&flag()).unwrap();
+    // The external executor is the actual trusted attestation boundary. These
+    // owning checks exercise its affine authority; Runtime tests use receipts.
+    let publication = executor
+        .seal_style_notification(&dom, &mut token, &flag())
+        .unwrap();
+    assert!(matches!(
+        executor.seal_style_notification(&dom, &mut token, &flag()),
+        Err(DomError::StyleProtocol)
+    ));
+    drop(publication);
+    assert_eq!(
+        dom.pending_associations
+            .controlled_entry(id)
+            .unwrap()
+            .value()
+            .control
+            .notification_count(),
+        1
+    );
+    assert!(matches!(
+        dom.finish_style_notification(
+            &mut token,
+            crate::DomStyleNotificationDelivery::Parsed(&mut missing),
+            1024,
+            &flag()
+        ),
+        Err(DomError::StyleProtocol)
+    ));
+}
+#[test]
+fn actual_owner_removed_commit_settles_exactly_once() {
+    let (mut dom, id, _q, cap, sheet, mut input) = rendered();
+    let snapshot = cap.snapshot().unwrap();
+    let mut batch = Some(cap.batch(CssomEditGuard::from_snapshot(&snapshot)).unwrap());
+    assert!(batch.as_mut().unwrap().remove_sheet(sheet.id()).unwrap());
+    cap.commit(&mut batch).unwrap();
+    let mut hold = dom
+        .begin_parsed_html_style(id, envelope(), &flag())
+        .unwrap();
+    let prep = hold
+        .prepare_notification(&mut input, "owner", &cap, &flag())
+        .unwrap();
+    assert!(prep.owner_association_removed());
+    let mut published = prep.commit(&flag()).unwrap();
+    assert!(matches!(
+        published.take_disposition(),
+        Some(DomParsedHtmlStyleNotificationDisposition::OwnerAssociationRemoved { .. })
+    ));
+    drop(published);
+    assert_eq!(hold.meter.entry().control.notification_count(), 0);
+    assert!(matches!(
+        hold.prepare_notification(&mut input, "owner", &cap, &flag()),
+        Err(Error::MissingContinuation)
+    ));
+    assert_eq!(hold.meter.entry().control.notification_count(), 0);
 }

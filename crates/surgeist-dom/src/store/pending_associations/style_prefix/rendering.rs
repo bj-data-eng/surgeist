@@ -358,6 +358,13 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
             false
         };
         debug_assert_eq!(successor.action(), Action::Complete);
+        let resources = request
+            .created_sheet
+            .as_ref()
+            .ok_or(DomParsedHtmlStyleError::InvalidSheetInput)?
+            .resources;
+        let next_notifications = self.meter.entry().control.mint_notification()?;
+        let mut right = Some(notification::Right);
         let transfer = match handoff {
             DomParsedHtmlStyleNotificationHandoff::Retain => None,
             DomParsedHtmlStyleNotificationHandoff::Transfer(receiver) => Some((
@@ -443,9 +450,9 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
         **held.value_mut() = Graph::Rendered {
             request,
             notification: if transfer.is_some() {
-                DomParsedHtmlStyleNotificationHandoffStatus::Transferred
+                notification::Handoff::Transferred
             } else {
-                DomParsedHtmlStyleNotificationHandoffStatus::Retained
+                notification::Handoff::Retained(right.take().expect("preformed right"))
             },
         };
         completion
@@ -453,9 +460,14 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
             .as_mut()
             .expect("preformed output")
             ._prefix = prefix.replace(next_prefix);
-        if let Some((receiver, value)) = transfer {
+        if let Some((receiver, mut value)) = transfer {
+            value.right = right.take();
             *receiver = Some(value);
         }
+        self.meter
+            .entry()
+            .control
+            .publish_mint(next_notifications, resources);
         Ok(DomParsedHtmlStyleRenderingProgress::Complete(completion))
     }
 }

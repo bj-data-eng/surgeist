@@ -14,9 +14,10 @@ pub use consume::{
 };
 pub(crate) use style_prefix::NotificationCustody;
 pub use style_prefix::{
-    DomParsedHtmlDispatchCursor, DomParsedHtmlDispatchEntry, DomParsedHtmlMetaOccurrenceCompletion,
-    DomParsedHtmlMetaOccurrenceError, DomParsedHtmlMetaOccurrencePreparation,
-    DomParsedHtmlMetaOccurrencePublished, DomParsedHtmlMetaOccurrenceRetirement,
+    DomParsedHtmlContributionCompletion, DomParsedHtmlDispatchCursor, DomParsedHtmlDispatchEntry,
+    DomParsedHtmlMetaOccurrenceCompletion, DomParsedHtmlMetaOccurrenceError,
+    DomParsedHtmlMetaOccurrencePreparation, DomParsedHtmlMetaOccurrencePublished,
+    DomParsedHtmlMetaOccurrenceRetirement, DomParsedHtmlStyleDeliveryPublication,
     DomParsedHtmlStyleNotificationCompletion, DomParsedHtmlStyleNotificationContinuation,
     DomParsedHtmlStyleNotificationPreparation, DomParsedHtmlStyleNotificationPublished,
     DomParsedHtmlStylePrefixView, DomParsedHtmlStyleRenderingCompletion,

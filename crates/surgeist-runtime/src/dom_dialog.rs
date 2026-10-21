@@ -391,6 +391,28 @@ impl SourceEventOwner {
     }
 }
 impl SourceEventRuntime {
+    pub(crate) fn seal_style_dispatch(
+        &self,
+        dom: &DomEventDom<'_>,
+        token: &mut surgeist_dom::DomStyleNotificationToken,
+        cancel: &AtomicBool,
+    ) -> Result<surgeist_dom::DomParsedHtmlStyleDeliveryPublication, DomSourceEventRuntimeError>
+    {
+        let owner = self
+            .state
+            .upgrade()
+            .ok_or(DomSourceEventRuntimeError::ExpiredOwner)?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomSourceEventRuntimeError::Busy)?;
+        if state.owner != dom.owner() {
+            return Err(DomSourceEventRuntimeError::ForeignOwner);
+        }
+        state.step(1, cancel)?;
+        Ok(state
+            .executor
+            .seal_style_notification(dom.raw(), token, cancel)?)
+    }
     pub(crate) fn task_dispatch_scope(
         &self,
         dom: &DomEventDom<'_>,

@@ -40,7 +40,7 @@ fn completed_predecessor_is_same_entry_and_canonical_serial_membership_are_prese
     let completed = completed_guard.as_ref().unwrap();
     assert_eq!(completed.qualification, q);
     assert!(
-        matches!(&completed.outcome, CompletedOutcome::Created { sheet,notification:DomParsedHtmlStyleNotificationHandoffStatus::Retained } if sheet==old_state.sheet.as_ref().unwrap())
+        matches!(&completed.outcome, CompletedOutcome::Created { sheet,notification:super::super::notification::Handoff::Retained(_) } if sheet==old_state.sheet.as_ref().unwrap())
     );
     assert_ne!(completion.qualification(), &q);
     let retained = ledger.total().bytes();

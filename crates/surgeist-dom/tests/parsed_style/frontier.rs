@@ -236,8 +236,21 @@ fn queued_predecessor_reaches_end_before_delivery_and_real_cleanup_unblocks_curr
             .unwrap()
             .is_none()
     );
+    // This lower-level test acts as the bound trusted external executor after
+    // this token's own genuine End. Runtime separately supplies actual receipts.
+    let executor = value.dom.bind_source_event_executor(&flag()).unwrap();
+    let mut delivery = Some(
+        executor
+            .seal_style_notification(&value.dom, &mut token, &flag())
+            .unwrap(),
+    );
     assert!(matches!(
-        value.dom.finish_style_notification(&mut token, 0, &flag()),
+        value.dom.finish_style_notification(
+            &mut token,
+            surgeist_dom::DomStyleNotificationDelivery::Parsed(&mut delivery),
+            0,
+            &flag()
+        ),
         Err(DomError::WorkLimit {
             resource: DomResource::ParsedAssociationDispatchWork,
             limit: 0
@@ -280,7 +293,7 @@ fn queued_predecessor_reaches_end_before_delivery_and_real_cleanup_unblocks_curr
         "own end is insufficient for owner-wide dispatch"
     );
     assert!(
-        matches!(value.dom.finish_style_notification(&mut token,1024,&flag()),Err(DomError::ParsedAssociationSynchronousPending{pending}) if pending==other)
+        matches!(value.dom.finish_style_notification(&mut token,surgeist_dom::DomStyleNotificationDelivery::Parsed(&mut delivery),1024,&flag()),Err(DomError::ParsedAssociationSynchronousPending{pending}) if pending==other)
     );
     recreation::no_sheet(&mut value.dom, other, envelope());
     let mut observation = Some(recreation::observed(&value.dom, other));
@@ -298,7 +311,12 @@ fn queued_predecessor_reaches_end_before_delivery_and_real_cleanup_unblocks_curr
         .unwrap();
     // Two actual canonical headers plus the final end advance, all prepaid.
     assert!(matches!(
-        value.dom.finish_style_notification(&mut token, 2, &flag()),
+        value.dom.finish_style_notification(
+            &mut token,
+            surgeist_dom::DomStyleNotificationDelivery::Parsed(&mut delivery),
+            2,
+            &flag()
+        ),
         Err(DomError::WorkLimit {
             resource: DomResource::ParsedAssociationDispatchWork,
             limit: 2
@@ -306,7 +324,12 @@ fn queued_predecessor_reaches_end_before_delivery_and_real_cleanup_unblocks_curr
     ));
     let cleanup = value
         .dom
-        .finish_style_notification(&mut token, 3, &flag())
+        .finish_style_notification(
+            &mut token,
+            surgeist_dom::DomStyleNotificationDelivery::Parsed(&mut delivery),
+            3,
+            &flag(),
+        )
         .unwrap();
     let DomStyleNotificationCompletion::ParsedComplete(cleanup) = cleanup else {
         panic!("real parsed custody")
@@ -318,9 +341,12 @@ fn queued_predecessor_reaches_end_before_delivery_and_real_cleanup_unblocks_curr
         "cleanup never republishes a producer"
     );
     assert!(matches!(
-        value
-            .dom
-            .finish_style_notification(&mut token, 1024, &flag()),
+        value.dom.finish_style_notification(
+            &mut token,
+            surgeist_dom::DomStyleNotificationDelivery::Parsed(&mut delivery),
+            1024,
+            &flag()
+        ),
         Err(DomError::StyleProtocol)
     ));
 }

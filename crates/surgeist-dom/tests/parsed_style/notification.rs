@@ -79,7 +79,7 @@ fn assert_next(value: &Ready, token: &DomStyleNotificationToken) {
     );
 }
 #[test]
-fn actual_parsed_origin_is_once_only_and_remaining_parser_pop_blocks_direct_cleanup() {
+fn actual_parsed_origin_is_once_only_and_bare_cleanup_cannot_substitute_for_delivery() {
     fn send_sync<T: Send + Sync>() {}
     send_sync::<DomStyleNotificationToken>();
     let mut value = rendered(1024);
@@ -90,9 +90,17 @@ fn actual_parsed_origin_is_once_only_and_remaining_parser_pop_blocks_direct_clea
     );
     assert_eq!(token.association(), value.association.association());
     assert_next(&value, &token);
-    assert!(
-        matches!(value.dom.finish_style_notification(&mut token, 1024, &flag()),Err(DomError::ParsedAssociationSynchronousPending{pending}) if pending==value.id)
-    );
+    // The remaining requirement is reported independently; bare native input
+    // does not provide this parsed invocation's completed delivery authority.
+    assert!(matches!(
+        value.dom.finish_style_notification(
+            &mut token,
+            surgeist_dom::DomStyleNotificationDelivery::Native,
+            1024,
+            &flag()
+        ),
+        Err(DomError::StyleProtocol)
+    ));
     assert_eq!(value.dom.snapshot().stamp(), before);
     assert_next(&value, &token);
     assert_eq!(
@@ -221,7 +229,12 @@ fn wrong_label_foreign_owner_cancellation_and_dropped_preparation_do_not_issue()
     ));
     let mut foreign = other.dom;
     assert!(matches!(
-        foreign.finish_style_notification(&mut token, 1024, &flag()),
+        foreign.finish_style_notification(
+            &mut token,
+            surgeist_dom::DomStyleNotificationDelivery::Native,
+            1024,
+            &flag()
+        ),
         Err(DomError::ForeignOwner)
     ));
     assert_next(&value, &token);

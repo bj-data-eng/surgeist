@@ -100,8 +100,8 @@ whole history and Style readiness remain Pending. Repeated creation of the same
 invocation refuses; a separately allowed ParserPopped invocation creates a new
 sheet and association with its own processing receipt.
 The same fence retains a compact original processing receipt in the Session's
-completion lifecycle bank. It records import dependencies from the actual parsed
-rules, original qualification, execution profile and genuine sheet/association
+completion lifecycle bank. It records the DOM producer's classification of the
+exact validated original CSS report, original qualification, execution profile and genuine sheet/association
 identity and creation revision. Caller output Drop and later CSSOM edits do not
 rewrite it. This pre-task record is included in Runtime storage and live-resource
 custody; it is neither an import-resource wait nor a networking task. It issues
@@ -167,6 +167,26 @@ Drop; queued first and recreated events can then deliver in FIFO order and perfo
 real current-Document cleanup. Import waits and unissued notifications are
 independent async obligations. Whole history remains Pending, with no resource
 completion or general acknowledgment implied.
+
+After actual Load dispatch, Runtime asks its existing bound external executor to
+seal that same task's non-Clone Delivered receipt into the exact parsed cleanup
+authority. It retains the publication through cleanup refusal and retries without
+redispatch. Successful cleanup settles the canonical right and retires the actual
+same-task row in its preadmitted suffix. Native tasks use explicit native cleanup.
+The executor permission is weak and follows the original Session; this creates
+no Source operation, second executor or resource-outcome service.
+
+`complete_parsed_html_contribution` explicitly joins the authentic existing End,
+canonical no-import/zero-obligation proof and the actual Session's same-contribution
+processing/delivery/cleanup-tail checks. It forwards the lower owner's real
+readiness `DomCommit` and pending-bank acknowledgement. Covered Style availability
+becomes Established in new snapshots, preserving sheet/null and serials; older
+snapshots keep their actual Pending state. Preference names, CSSOM revisions,
+structure, unrelated contribution resources and task serials are unchanged.
+Dropping real affine authority leaves an unsettled obligation; empty Runtime
+banks or discarded caller outputs cannot certify completion. Refusal preserves
+all owners and cumulative admission for same-owner retry.
+
 `exclude_parsed_style_script_bookkeeping` binds the actual Session's
 no-executable-JavaScript profile to the exact original occurrence. It advances
 that retained cursor to `ReadRenderBlockingPending`, without inventing a false

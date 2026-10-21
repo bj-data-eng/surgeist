@@ -1918,7 +1918,7 @@ fn retained_dispatch_survives_permission_replacement_and_never_repeats_listeners
 }
 
 #[test]
-fn actual_completed_receipt_survives_canceled_acceptance_without_listener_replay() {
+fn callback_cancellation_retains_frontier_before_acceptance_without_listener_replay() {
     let cancel = Arc::new(AtomicBool::new(false));
     let (mut session, subject) = fixture(session_limits());
     let mut listeners = dispatcher();
@@ -1941,6 +1941,8 @@ fn actual_completed_receipt_survives_canceled_acceptance_without_listener_replay
         .unwrap();
     let request = request(&mut session, subject);
     let mut context = (0, cancel.clone());
+    let before = session.snapshot().stamp();
+    let pending = session.dom().pending_source_edit().unwrap();
     let permission = session.source_execution();
     assert!(matches!(
         permission.service_event(
@@ -1951,11 +1953,24 @@ fn actual_completed_receipt_survives_canceled_acceptance_without_listener_replay
             service_limits(),
             &cancel
         ),
-        Err(DomSourceRuntimeError::SourceEvent(
-            DomSourceEventRuntimeError::Dom(DomError::Cancelled)
-        ))
+        Ok(DomSourceEventServiceProgress::Retained {
+            dispatch: DomEventDispatchOutcome::RetainedParsedAdmission(DomError::Cancelled)
+        })
     ));
     assert_eq!(context.0, 1);
+    assert_eq!(session.snapshot().stamp(), before);
+    let retained = session.dom().pending_source_edit().unwrap();
+    assert_eq!(retained.operation(), pending.operation());
+    assert_eq!(retained.phase(), pending.phase());
+    assert_eq!(retained.parent_operation(), pending.parent_operation());
+    assert_eq!(retained.has_published(), pending.has_published());
+    assert_eq!(retained.published_phases(), pending.published_phases());
+    assert_eq!(retained.cleanup_cause(), pending.cleanup_cause());
+    assert_eq!(
+        retained.cancellation_requested(),
+        pending.cancellation_requested()
+    );
+    assert!(retained.spent_work() > pending.spent_work());
     drop(permission);
     cancel.store(false, Ordering::Relaxed);
     let receipt = serviced(
@@ -1973,6 +1988,7 @@ fn actual_completed_receipt_survives_canceled_acceptance_without_listener_replay
     );
     assert_eq!(context.0, 1);
     assert_eq!(receipt.callbacks(), 1);
+    assert!(receipt.default_prevented());
     assert!(matches!(
         resume(&mut session, request.operation()),
         DomSourceDriveProgress::Complete(_)
@@ -2624,6 +2640,25 @@ fn late_adapter_work_refusal_recovers_same_receipt_through_qualified_monotonic_p
         "the actual listener ran before late adapter refusal"
     );
     let status = session.dom().pending_source_edit();
+    assert_eq!(session.snapshot().stamp(), before);
+    // The genuine dispatcher receipt is already retained after the late work
+    // refusal. Cancellation now refuses acceptance, rather than interrupting
+    // the earlier callback/dispatch phase exercised above.
+    assert!(matches!(
+        permission.service_event(
+            &mut session.dom(),
+            &request,
+            &mut listeners,
+            &mut calls,
+            service_limits(),
+            &AtomicBool::new(true)
+        ),
+        Err(DomSourceRuntimeError::SourceEvent(
+            DomSourceEventRuntimeError::Dom(DomError::Cancelled)
+        ))
+    ));
+    assert_eq!(calls, 1);
+    assert_eq!(session.dom().pending_source_edit(), status);
     assert_eq!(session.snapshot().stamp(), before);
     assert!(matches!(
         permission.raise_event_runtime_limits(&foreign.dom(), raised, &cancel),

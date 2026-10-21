@@ -10,12 +10,34 @@ use std::sync::{Mutex, MutexGuard};
 use surgeist_cssom::CssomStore;
 
 type HandoffStatus = DomParsedHtmlStyleNotificationHandoffStatus;
+/// One private affine settlement right. Drop deliberately performs no work.
+pub(in crate::store::pending_associations) struct Right;
+pub(in crate::store::pending_associations) enum Handoff {
+    Retained(Right),
+    Transferred,
+}
+impl Handoff {
+    pub(super) fn status(&self) -> HandoffStatus {
+        match self {
+            Self::Retained(_) => HandoffStatus::Retained,
+            Self::Transferred => HandoffStatus::Transferred,
+        }
+    }
+    pub(super) fn take(&mut self) -> Right {
+        match std::mem::replace(self, Self::Transferred) {
+            Self::Retained(right) => right,
+            Self::Transferred => unreachable!("qualified retained authority"),
+        }
+    }
+}
+
 /// Affine completed-rendering authority. It neither proves resource completion
 /// nor grants dispatch permission. Ordinary historical output Drop never owns it.
 pub struct DomParsedHtmlStyleNotificationContinuation {
     qualification: DomParsedHtmlStyleQualification,
     sheet: DomStyleSheet,
     profile: HtmlStyleExecutionProfile,
+    pub(super) right: Option<Right>,
     _meter: Meter,
 }
 impl std::fmt::Debug for DomParsedHtmlStyleNotificationContinuation {
@@ -55,8 +77,9 @@ pub(super) fn form_continuation(
         .ok_or(DomParsedHtmlStyleError::InvalidSheetInput)?;
     Ok(DomParsedHtmlStyleNotificationContinuation {
         qualification: request.qualification.clone(),
-        sheet: sheet.clone(),
+        sheet: sheet.sheet.clone(),
         profile: request.cursor.profile(),
+        right: None,
         _meter: own,
     })
 }
@@ -64,6 +87,8 @@ pub(super) fn form_continuation(
 /// before its Meter. Mutex preserves token Send/Sync without an async loan.
 pub(crate) struct NotificationCustody {
     qualification: DomParsedHtmlStyleQualification,
+    right: Option<Right>,
+    attested: bool,
     meter: Mutex<Meter>,
 }
 pub struct DomParsedHtmlStyleNotificationPreparation<'hold, 'dom, 'caps> {
@@ -122,13 +147,13 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
                     phase: current.value().phase(),
                 });
             };
-            if *notification != HandoffStatus::Retained {
+            if notification.status() != HandoffStatus::Retained {
                 return Err(DomParsedHtmlStyleError::NotificationTransferred);
             }
-            let value = form_continuation(&self.meter, request, cancel)?;
+            let mut value = form_continuation(&self.meter, request, cancel)?;
             self.meter.step(cancel)?;
+            value.right = Some(notification.take());
             *receiver = Some(value);
-            *notification = HandoffStatus::Transferred;
             return Ok(());
         }
         let old = completed
@@ -142,7 +167,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
         else {
             return Err(DomParsedHtmlStyleError::WrongRequest);
         };
-        if *notification != HandoffStatus::Retained {
+        if notification.status() != HandoffStatus::Retained {
             return Err(DomParsedHtmlStyleError::NotificationTransferred);
         }
         let own = self.meter.fork();
@@ -152,15 +177,16 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
             1,
             cancel,
         )?;
-        let value = DomParsedHtmlStyleNotificationContinuation {
+        let mut value = DomParsedHtmlStyleNotificationContinuation {
             qualification: q.clone(),
             sheet: sheet.clone(),
             profile: old.profile,
+            right: None,
             _meter: own,
         };
         self.meter.step(cancel)?;
+        value.right = Some(notification.take());
         *receiver = Some(value);
-        *notification = HandoffStatus::Transferred;
         Ok(())
     }
 }
@@ -173,6 +199,9 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
         cancel: &AtomicBool,
     ) -> Result<DomParsedHtmlStyleNotificationPreparation<'hold, 'dom, 'caps>, Error> {
         let continuation = input.as_ref().ok_or(Error::MissingContinuation)?;
+        if continuation.right.is_none() {
+            return Err(DomError::StyleProtocol.into());
+        }
         let qualification = &continuation.qualification;
         let expected = &continuation.sheet;
         self.meter
@@ -286,6 +315,8 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
                 complete: false,
                 parsed: Some(Box::new(NotificationCustody {
                     qualification: qualification.clone(),
+                    right: None,
+                    attested: false,
                     meter: Mutex::new(own),
                 })),
             })
@@ -323,10 +354,23 @@ impl<'caps> DomParsedHtmlStyleNotificationPreparation<'_, '_, 'caps> {
     ) -> Result<DomParsedHtmlStyleNotificationPublished<'caps>, Error> {
         self.meter.retain(0, 0, 1, cancel)?;
         self.meter.step(cancel)?;
-        let continuation = self
+        let next = if self.owner_association_removed() {
+            Some(self.meter.entry().control.discharge_notification()?)
+        } else {
+            None
+        };
+        let mut continuation = self
             .input
             .take()
             .expect("exclusive authenticated continuation");
+        if let Some(next) = next {
+            let _settled = continuation.right.take().expect("authenticated right");
+            self.meter.entry().control.publish_discharge(next);
+        } else if let Some(DomParsedHtmlStyleNotificationDisposition::Token(token)) =
+            self.disposition.as_mut()
+        {
+            token.parsed.as_mut().expect("actual parsed token").right = continuation.right.take();
+        }
         Ok(DomParsedHtmlStyleNotificationPublished {
             _store: self.store,
             disposition: self.disposition.take(),
@@ -417,3 +461,81 @@ impl Dom {
 
 #[cfg(test)]
 mod tests;
+
+/// Actual trusted completed Style delivery, retaining the one settlement right.
+/// Dropping it never decrements the original canonical obligation count.
+pub struct DomParsedHtmlStyleDeliveryPublication {
+    qualification: DomParsedHtmlStyleQualification,
+    association: crate::DomStyleAssociationId,
+    _right: Right,
+    _meter: Meter,
+}
+impl std::fmt::Debug for DomParsedHtmlStyleDeliveryPublication {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DomParsedHtmlStyleDeliveryPublication")
+            .field("qualification", &self.qualification)
+            .field("association", &self.association)
+            .finish_non_exhaustive()
+    }
+}
+impl crate::DomSourceEventExecutor {
+    /// Trusted attestation of this exact parsed token's completed Load dispatch.
+    /// The bound executor must use its actual completed event receipt. DOM
+    /// authenticates binding, lineage and affine consumption, not host callbacks.
+    pub fn seal_style_notification(
+        &self,
+        dom: &Dom,
+        token: &mut DomStyleNotificationToken,
+        cancel: &AtomicBool,
+    ) -> Result<DomParsedHtmlStyleDeliveryPublication, DomError> {
+        check_cancel(cancel)?;
+        if self.binding.owner != dom.owner || token.owner() != dom.owner {
+            return Err(DomError::ForeignOwner);
+        }
+        if !self.binding.live.load(Ordering::Relaxed)
+            || !dom
+                .source_event_executor
+                .as_ref()
+                .and_then(|binding| binding.upgrade())
+                .is_some_and(|binding| Arc::ptr_eq(&binding, &self.binding))
+        {
+            return Err(DomError::InvalidSourceEvent);
+        }
+        if token.complete {
+            return Err(DomError::StyleProtocol);
+        }
+        let custody = token.parsed.as_mut().ok_or(DomError::StyleProtocol)?;
+        if custody.attested || custody.right.is_none() {
+            return Err(DomError::StyleProtocol);
+        }
+        let guard = custody
+            .meter
+            .try_lock()
+            .map_err(|e| guard_error(e, custody.qualification.contribution()))?;
+        let meter = guard.fork();
+        meter.step(cancel)?;
+        let record = dom
+            .pending_associations
+            .controlled_entry(custody.qualification.contribution())
+            .map_err(|_| DomError::StyleProtocol)?;
+        if !std::ptr::eq(record.value().as_ref(), meter.entry()) {
+            return Err(DomError::StyleProtocol);
+        }
+        meter.retain(
+            size_of::<DomParsedHtmlStyleDeliveryPublication>(),
+            0,
+            1,
+            cancel,
+        )?;
+        let qualification = custody.qualification.clone();
+        meter.step(cancel)?;
+        let right = custody.right.take().expect("qualified live right");
+        custody.attested = true;
+        Ok(DomParsedHtmlStyleDeliveryPublication {
+            qualification,
+            association: token.association,
+            _right: right,
+            _meter: meter,
+        })
+    }
+}

@@ -328,22 +328,12 @@ impl DomStyleRuntime {
         let report = context
             .parse_sheet_utf16_with_limits(text, state.limits.css_input, || steps.joined(&prep))
             .map_err(DomStyleParsedSheetError::Css)?;
-        let dependencies = import_dependencies_with(&report, || steps.joined(&prep))?;
         steps.joined(&prep)?;
         let mut owner_label = custody.string(label.len(), &mut prep, &steps)?;
         for ch in label.chars() {
             steps.joined(&prep)?;
             owner_label.push(ch);
         }
-        let processing = ParsedProcessingCandidate {
-            qualification: prep.request().qualification().clone(),
-            owner: cap.clone(),
-            // This closed original front uses the actual Session no-engine
-            // profile; media, headlessness and CSS text do not establish it.
-            profile: HtmlStyleExecutionProfile::NoExecutableJavaScript,
-            dependencies,
-            owner_label,
-        };
         steps.joined(&prep)?;
         let media = prep
             .request()
@@ -409,6 +399,25 @@ impl DomStyleRuntime {
             disabled,
         ));
         prep.stage_sheet(&mut input, cancel)?;
+        let dependencies = match prep
+            .resources()
+            .expect("actual staged report classification")
+        {
+            surgeist_dom::DomParsedHtmlStyleResources::NoImports => ImportDependencies::NoImports,
+            surgeist_dom::DomParsedHtmlStyleResources::ImportsUnresolved => {
+                ImportDependencies::Imports
+            }
+        };
+        let processing = ParsedProcessingCandidate {
+            qualification: prep.request().qualification().clone(),
+            owner: cap.clone(),
+            // This closed original front uses the actual Session no-engine
+            // profile; media, headlessness and CSS text do not establish it.
+            profile: HtmlStyleExecutionProfile::NoExecutableJavaScript,
+            dependencies,
+            owner_label,
+        };
+
         steps.joined(&prep)?;
         let mut observation = DomStyleSheetSetObservation::from_state(
             stamp,

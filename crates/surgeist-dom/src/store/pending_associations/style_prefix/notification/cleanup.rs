@@ -6,6 +6,7 @@ struct Output {
     _state_custody: transaction::StateCustody,
     _history: history::Retirement,
     _formation: Option<source::formation::Formation>,
+    _delivery: Option<DomParsedHtmlStyleDeliveryPublication>,
     _admission: control::Admission,
     _meter: Meter,
 }
@@ -46,6 +47,7 @@ impl Dom {
     pub(in crate::store) fn finish_parsed_style_notification(
         &mut self,
         token: &mut DomStyleNotificationToken,
+        input: &mut Option<DomParsedHtmlStyleDeliveryPublication>,
         cancel: &AtomicBool,
     ) -> Result<crate::DomStyleNotificationCompletion, DomError> {
         if self
@@ -62,7 +64,24 @@ impl Dom {
             });
         }
         let custody = token.parsed.as_deref().ok_or(DomError::StyleProtocol)?;
+        let actual = input.as_ref().ok_or(DomError::StyleProtocol)?;
+        if !custody.attested
+            || custody.right.is_some()
+            || actual.qualification != custody.qualification
+            || actual.association != token.association()
+            || !std::ptr::eq(
+                actual._meter.entry(),
+                custody
+                    .meter
+                    .try_lock()
+                    .map_err(|e| guard_error(e, custody.qualification.contribution()))?
+                    .entry(),
+            )
+        {
+            return Err(DomError::StyleProtocol);
+        }
         let id = custody.qualification.contribution();
+        let next_notifications = actual._meter.entry().control.discharge_notification()?;
         let guard = custody
             .meter
             .try_lock()
@@ -119,6 +138,7 @@ impl Dom {
                 _state_custody: self.state_custody.clone(),
                 _history: history,
                 _formation: publication._formation.take(),
+                _delivery: None,
                 _admission: admission,
                 _meter: meter,
             })),
@@ -131,6 +151,13 @@ impl Dom {
             .step(cancel)?;
         result.output.as_mut().expect("preformed cleanup").commit =
             Some(self.publish_prepared(publication));
+        let output = result.output.as_mut().expect("preformed cleanup");
+        output
+            ._meter
+            .entry()
+            .control
+            .publish_discharge(next_notifications);
+        output._delivery = input.take();
         token.complete = true;
         Ok(crate::DomStyleNotificationCompletion::ParsedComplete(
             result,

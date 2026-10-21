@@ -226,6 +226,7 @@ impl DomStyleRuntime {
                     parsed: None,
                     cursor,
                     delivery: Delivery::NotStarted,
+                    delivery_publication: None,
                     running: false,
                     dispatch_reserved: 0,
                     token,
