@@ -1,4 +1,5 @@
 //! Original parsed Style processing and its bounded external-owner joins.
+mod frontier;
 mod notification;
 mod sheet;
 mod successor;
@@ -6,6 +7,7 @@ use crate::{
     DocumentId, DocumentString, DomError, DomParsedHtmlAssociationAdmissionError,
     DomParsedHtmlAssociationId, DomParsedHtmlHistoricalDocument,
 };
+pub use frontier::*;
 pub use notification::*;
 pub use sheet::*;
 pub use successor::*;
@@ -66,6 +68,9 @@ pub enum DomParsedHtmlStyleError {
         contribution: DomParsedHtmlAssociationId,
     },
     WrongRequest,
+    ExecutionNotAdmitted {
+        contribution: DomParsedHtmlAssociationId,
+    },
     WrongExecutionProfile {
         profile: surgeist_html::HtmlStyleExecutionProfile,
     },

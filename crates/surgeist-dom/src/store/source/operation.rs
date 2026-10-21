@@ -3412,9 +3412,13 @@ impl Dom {
     /// Execute the source post-event unblock against the target's CURRENT
     /// Document. No sheet equality test is made after legitimate event reentry.
     /// Failure leaves the token available; callers must not dispatch again.
+    /// `dispatch_work` admits one caller-owned header advance, including the
+    /// final end check. It is per-call, finite, and zero is exhausted. Original
+    /// activated-entry scans retain their cumulative processing work on retry.
     pub fn finish_style_notification(
         &mut self,
         token: &mut DomStyleNotificationToken,
+        dispatch_work: u64,
         cancel: &AtomicBool,
     ) -> Result<DomStyleNotificationCompletion, DomError> {
         self.require_source_idle()?;
@@ -3430,19 +3434,32 @@ impl Dom {
             token.complete = true;
             return Ok(DomStyleNotificationCompletion::TargetDestroyed);
         }
+        // Every actual header advance, including end, consumes caller work.
+        // Original activated-inventory reads keep their own cumulative Control.
+        let mut cursor = self.parsed_html_dispatch_cursor();
+        let mut spent = 0u64;
+        loop {
+            if spent == dispatch_work {
+                return Err(DomError::WorkLimit {
+                    resource: DomResource::ParsedAssociationDispatchWork,
+                    limit: dispatch_work,
+                });
+            }
+            spent += 1;
+            let Some(entry) = cursor.advance(cancel)? else {
+                break;
+            };
+            if entry.requirement(cancel)?.is_some() {
+                return Err(DomError::ParsedAssociationSynchronousPending {
+                    pending: entry.contribution(),
+                });
+            }
+        }
         if matches!(
             token.origin(),
             crate::DomStyleNotificationOrigin::ParsedOccurrence { .. }
         ) {
-            let _requirement = self.parsed_style_notification_requirement(token, cancel)?;
-            let crate::DomStyleNotificationOrigin::ParsedOccurrence { contribution, .. } =
-                token.origin()
-            else {
-                unreachable!()
-            };
-            return Err(DomError::ParsedAssociationSynchronousPending {
-                pending: *contribution,
-            });
+            return self.finish_parsed_style_notification(token, cancel);
         }
         let mut draft = Draft::new(
             self,

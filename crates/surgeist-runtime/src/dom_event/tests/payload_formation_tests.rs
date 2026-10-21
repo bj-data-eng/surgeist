@@ -128,19 +128,28 @@ fn failure_copy_work_refusal_preserves_original_banks_and_cursor_for_no_replay_r
         )
     };
     let stamp = fixture.dom.snapshot().stamp();
-    // Zero work refuses before allocation; one permits allocation but refuses
-    // the first retained failure copy. Neither may replace the original bank.
-    for work in [0, 1] {
-        assert!(matches!(
-            dispatcher.resume(
-                &mut fixture.dom,
-                &mut calls,
-                &event,
-                DomEventDispatchLimits { work, ..retry() },
-                &AtomicBool::new(false)
-            ),
-            Err(DomEventDispatchError::Admission(DomEventResource::Work))
-        ));
+    // Zero work retains at the canonical header gate. One reaches failure
+    // bank admission before allocation; two permits allocation but refuses the
+    // first retained failure copy. None may replace the original bank.
+    for work in [0, 1, 2] {
+        let result = dispatcher.resume(
+            &mut fixture.dom,
+            &mut calls,
+            &event,
+            DomEventDispatchLimits { work, ..retry() },
+            &AtomicBool::new(false),
+        );
+        if work == 0 {
+            assert!(matches!(
+                result,
+                Ok(DomEventDispatchOutcome::Retained(DomEventResource::Work))
+            ));
+        } else {
+            assert!(matches!(
+                result,
+                Err(DomEventDispatchError::Admission(DomEventResource::Work))
+            ));
+        }
         assert_eq!(calls, [0]);
         assert_eq!(fixture.dom.snapshot().stamp(), stamp);
         assert_eq!(event.0.status.get(), Status::Retained);

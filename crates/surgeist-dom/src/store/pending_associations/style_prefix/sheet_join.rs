@@ -147,6 +147,10 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
         cap: &'caps DomStyleCssomRoot,
         cancel: &AtomicBool,
     ) -> Result<DomParsedHtmlStyleSheetPreparation<'hold, 'dom, 'caps>, Error> {
+        self.meter
+            .entry()
+            .control
+            .require_execution(self.meter.entry().id)?;
         self.meter.step(cancel)?;
         let graph = lock(self.meter.entry())?;
         let completed = completed_lock(self.meter.entry())?;

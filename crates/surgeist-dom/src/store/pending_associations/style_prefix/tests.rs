@@ -691,3 +691,130 @@ fn blocked_successor_final_work_refusal_preserves_policy_and_real_null_removal_r
         "policy was moved, not rebound/re-described"
     );
 }
+
+#[test]
+fn failed_decision_output_admission_stays_unstarted_and_raise_admits_the_same_input_once() {
+    let (mut dom, env) = setup();
+    let (_, id) = install(&mut dom, parse("<style>x</style>"), env);
+    let limits = DomParsedHtmlAssociationLimits::new(
+        envelope().retained_bytes(),
+        envelope().retained_units(),
+        envelope().work(),
+        1,
+    )
+    .unwrap();
+    begin_await(&mut dom, id, limits);
+    let q = qualifier(&dom, id);
+    let mut allow = |_: HtmlCspLayout| Ok::<_, ()>(());
+    let mut owner = HtmlCspOwner::new_with(&mut allow).unwrap();
+    let mut policy = Some(owner.initial_document_with(&mut allow).unwrap());
+    {
+        let mut hold = dom.begin_parsed_html_style(id, limits, &flag()).unwrap();
+        hold.bind_initial_policy(&q, &mut policy, &flag()).unwrap();
+        hold.advance(&flag()).unwrap();
+    }
+    let mut observation = Some(decision(&dom, id, true));
+    let spent = {
+        let mut hold = dom.begin_parsed_html_style(id, limits, &flag()).unwrap();
+        assert!(matches!(
+            hold.accept_inline_policy(&mut observation, &flag()),
+            Err(DomParsedHtmlStyleError::Admission(
+                DomParsedHtmlAssociationAdmissionError::Dom(DomError::ResourceLimit {
+                    resource: DomResource::ParsedAssociationProcessingOutputs,
+                    limit: 1
+                })
+            ))
+        ));
+        assert_eq!(
+            hold.meter.entry().control.execution(),
+            DomParsedHtmlExecutionState::Unstarted
+        );
+        hold.spent_work()
+    };
+    assert!(observation.is_some());
+    let mut hold = dom
+        .begin_parsed_html_style(id, envelope(), &flag())
+        .unwrap();
+    assert!(hold.spent_work() >= spent);
+    hold.accept_inline_policy(&mut observation, &flag())
+        .unwrap();
+    assert!(observation.is_none());
+    assert_eq!(
+        hold.meter.entry().control.execution(),
+        DomParsedHtmlExecutionState::Activated
+    );
+}
+
+#[test]
+fn real_blocked_pair_end_work_refusal_keeps_controller_and_raise_does_not_rebind_policy() {
+    let (mut dom, env) = setup();
+    let (_, id) = install(&mut dom, parse("<style>blocked</style>"), env);
+    let (policy, drops, descriptors) = native_policy(0);
+    inline_with_policy(&mut dom, id, policy);
+    let mut input = Some(decision(&dom, id, false));
+    dom.begin_parsed_html_style(id, envelope(), &flag())
+        .unwrap()
+        .accept_inline_policy(&mut input, &flag())
+        .unwrap();
+    {
+        let mut hold = dom
+            .begin_parsed_html_style(id, envelope(), &flag())
+            .unwrap();
+        let (done, retired) = hold
+            .prepare_successor(None, &flag())
+            .unwrap()
+            .commit(&flag())
+            .unwrap()
+            .into_parts();
+        drop(retired);
+        drop(done);
+    }
+    let mut input = Some(decision(&dom, id, false));
+    dom.begin_parsed_html_style(id, envelope(), &flag())
+        .unwrap()
+        .accept_inline_policy(&mut input, &flag())
+        .unwrap();
+    let state = dom.state.clone();
+    let spent = {
+        let mut hold = dom
+            .begin_parsed_html_style(id, envelope(), &flag())
+            .unwrap();
+        while hold.limits().work() - hold.spent_work() > 3 {
+            hold.step(&flag()).unwrap();
+        }
+        assert!(matches!(
+            hold.complete_synchronous_execution(&flag()),
+            Err(DomParsedHtmlFrontierError::Style(
+                DomParsedHtmlStyleError::Admission(DomParsedHtmlAssociationAdmissionError::Dom(
+                    DomError::WorkLimit {
+                        resource: DomResource::ParsedAssociationProcessingWork,
+                        ..
+                    }
+                ))
+            ))
+        ));
+        assert_eq!(
+            hold.meter.entry().control.execution(),
+            DomParsedHtmlExecutionState::Activated
+        );
+        hold.spent_work()
+    };
+    assert!(Arc::ptr_eq(&state, &dom.state));
+    assert_eq!(drops.load(Ordering::Relaxed), 0);
+    assert_eq!(descriptors.load(Ordering::Relaxed), 1);
+    let raised = DomParsedHtmlAssociationLimits::new(
+        envelope().retained_bytes(),
+        envelope().retained_units(),
+        envelope().work() + 100_000,
+        envelope().outputs(),
+    )
+    .unwrap();
+    let mut hold = dom.begin_parsed_html_style(id, raised, &flag()).unwrap();
+    assert!(hold.spent_work() >= spent);
+    let end = hold.complete_synchronous_execution(&flag()).unwrap();
+    assert_eq!(end.contribution(), id);
+    drop(hold);
+    drop(end);
+    assert!(Arc::ptr_eq(&state, &dom.state));
+    assert_eq!(descriptors.load(Ordering::Relaxed), 1);
+}

@@ -1,9 +1,11 @@
-//! Original notification issuance and metered absence of a dispatch frontier.
+//! Original notification authority and its canonical synchronous dispatch gate.
 use super::*;
+mod cleanup;
 use crate::parsed_style::DomParsedHtmlStyleNotificationError as Error;
 use crate::{
     DomStyleCssomRoot, DomStyleNotificationOrigin, DomStyleNotificationToken, DomStyleSheet,
 };
+pub use cleanup::DomParsedHtmlStyleNotificationCompletion;
 use std::sync::{Mutex, MutexGuard};
 use surgeist_cssom::CssomStore;
 
@@ -49,6 +51,10 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
         cap: &'caps DomStyleCssomRoot,
         cancel: &AtomicBool,
     ) -> Result<DomParsedHtmlStyleNotificationPreparation<'hold, 'dom, 'caps>, Error> {
+        self.meter
+            .entry()
+            .control
+            .require_execution(self.meter.entry().id)?;
         self.meter.step(cancel)?;
         let graph = lock(self.meter.entry())?;
         let value = graph
@@ -291,7 +297,10 @@ impl<'caps> DomParsedHtmlStyleNotificationPreparation<'_, '_, 'caps> {
         })
     }
 }
-fn guard_error(error: TryLockError<impl Sized>, id: DomParsedHtmlAssociationId) -> DomError {
+pub(super) fn guard_error(
+    error: TryLockError<impl Sized>,
+    id: DomParsedHtmlAssociationId,
+) -> DomError {
     match error {
         TryLockError::WouldBlock => DomError::ParsedAssociationOperationPending { pending: id },
         TryLockError::Poisoned(_) => DomError::ParsedAssociationProcessingPoisoned { pending: id },
@@ -302,7 +311,7 @@ fn requirement(
     meter: &Meter,
     q: &DomParsedHtmlStyleInitialPolicyRequest,
     cancel: &AtomicBool,
-) -> Result<DomParsedHtmlStyleNotificationRequirement, DomError> {
+) -> Result<Option<DomParsedHtmlStyleNotificationRequirement>, DomError> {
     use DomParsedHtmlStyleNotificationRequirement as R;
     use DomParsedHtmlStyleNotificationUnavailable as U;
     let id = q.contribution();
@@ -316,163 +325,39 @@ fn requirement(
         .is_none_or(|entry| entry.id != id)
     {
         meter.retain(size_of::<R>(), 0, 1, cancel)?;
-        return Ok(R::Unavailable {
+        return Ok(Some(R::Unavailable {
             contribution: id,
             reason: U::OriginalEntryMissing,
-        });
+        }));
     }
-    let report = &meter.entry().report.value().value;
-    let ordinary = meter.entry().context_basis.is_none()
-        && report.document().is_some()
-        && report.effective_scripting_mode() == surgeist_html::HtmlParserScriptingMode::Disabled;
-    let graph = meter
-        .entry()
-        .style_prefix
-        .try_lock()
-        .map_err(|error| guard_error(error, id))?;
-    let completed = meter
-        .entry()
-        .completed_style
-        .try_lock()
-        .map_err(|e| guard_error(e, id))?;
-    let executed = matches!(graph.as_ref().map(|stored|stored.value().as_ref()),Some(Graph::Rendered{request,notification:Issuance::Issued}) if request.qualification()==q)
-        || completed.as_ref().is_some_and(|old| {
-            &old.qualification == q
-                && matches!(
-                    old.outcome,
-                    CompletedOutcome::Created {
-                        notification: Issuance::Issued,
-                        ..
-                    }
-                )
-        });
-    let phase = graph
-        .as_ref()
-        .map_or(DomParsedHtmlStylePhase::Unstarted, |g| g.value().phase());
-    // The first remaining candidate may coexist with the final unavailable
-    // result until full inventory validation ends. Admit that exact header
-    // overlap and one returned output before cloning any occurrence identity.
-    meter.retain(size_of::<Option<R>>() + size_of::<R>(), 0, 1, cancel)?;
-    let mut first = None;
-    let mut missing = None;
-    let mut seen = false;
-    let mut cursor = report.pending_associations();
-    loop {
-        meter.step(cancel)?;
-        match cursor.advance() {
-            Step::Document(row) => {
-                if let surgeist_html_parser::HtmlParseAssociationCaptureDisposition::Unavailable(
-                    kind,
-                ) = row.disposition()
-                {
-                    missing.get_or_insert(U::IncompleteCapture(kind));
+    // Only the issuer-controlled token can reach this helper. End authenticates
+    // every original row, including this exact already-issued invocation. The
+    // fixed terminal header needs no request-graph loan, even if one is leaked.
+    if meter.entry().control.execution() == crate::DomParsedHtmlExecutionState::SynchronousEnd {
+        return Ok(None);
+    }
+    Ok(Some(
+        match super::frontier::remaining(dom, meter, cancel)? {
+            Some(requirement) => requirement,
+            None => {
+                meter.retain(size_of::<R>(), 0, 1, cancel)?;
+                R::Unavailable {
+                    contribution: id,
+                    reason: U::ConsumerFrontierUnavailable,
                 }
             }
-            Step::Occurrence(row) if row.requires_processing() => {
-                let current_done = graph.as_ref().is_some_and(|g| match g.value().as_ref() {
-                    Graph::Rendered { request, .. } => {
-                        request.qualification().occurrence() == &row.id()
-                    }
-                    Graph::Inline(request) => {
-                        request.cursor.action() == Action::Complete
-                            && request.created_sheet.is_none()
-                            && request.qualification().occurrence() == &row.id()
-                    }
-                    _ => false,
-                });
-                let prior_done = completed
-                    .as_ref()
-                    .is_some_and(|old| old.qualification.occurrence() == &row.id());
-                if current_done || prior_done {
-                    if &row.id() == q.occurrence() && executed {
-                        seen = true;
-                    }
-                    continue;
-                }
-                if first.is_none() {
-                    let source = match row.document() {
-                        HtmlParseMetadataDocument::Owned(node) => {
-                            crate::DomParsedHtmlHistoricalDocument::Constructed(node.id())
-                        }
-                        HtmlParseMetadataDocument::Captured(node) => {
-                            crate::DomParsedHtmlHistoricalDocument::Captured(node.id())
-                        }
-                    };
-                    let mut document = None;
-                    for binding in &meter.entry().documents {
-                        meter.step(cancel)?;
-                        if binding.source == source {
-                            document = Some(binding.document);
-                            break;
-                        }
-                    }
-                    if let Some(document) = document {
-                        first = Some(
-                            if graph.as_ref().is_some_and(|g| {
-                                g.value().qualification().occurrence() == &row.id()
-                            }) {
-                                R::Invocation {
-                                    contribution: id,
-                                    occurrence: row.id(),
-                                    document,
-                                    phase,
-                                }
-                            } else {
-                                R::Occurrence {
-                                    contribution: id,
-                                    occurrence: row.id(),
-                                    document,
-                                    kind: row.kind(),
-                                }
-                            },
-                        );
-                    } else {
-                        missing.get_or_insert(U::UnsupportedInventory);
-                    }
-                }
-            }
-            Step::Complete => break,
-            _ => (),
-        }
-    }
-    let result = if !ordinary {
-        R::Unavailable {
-            contribution: id,
-            reason: U::UnsupportedInventory,
-        }
-    } else if let Some(reason) = missing {
-        R::Unavailable {
-            contribution: id,
-            reason,
-        }
-    } else if !executed {
-        R::Invocation {
-            contribution: id,
-            occurrence: q.occurrence().clone(),
-            document: q.document(),
-            phase,
-        }
-    } else if !seen {
-        R::Unavailable {
-            contribution: id,
-            reason: U::InvocationNotExecuted,
-        }
-    } else {
-        first.unwrap_or(R::Unavailable {
-            contribution: id,
-            reason: U::ConsumerFrontierUnavailable,
-        })
-    };
-    Ok(result)
+        },
+    ))
 }
+
 impl Dom {
-    /// Read the actual remaining synchronous requirement. This slice never
-    /// returns a positive frontier, even if the captured inventory is exhausted.
+    /// Read this authentic task's synchronous gate. None requires the canonical
+    /// producer-and-consumer end, never merely an exhausted inventory or queue.
     pub fn parsed_style_notification_requirement(
         &self,
         token: &DomStyleNotificationToken,
         cancel: &AtomicBool,
-    ) -> Result<DomParsedHtmlStyleNotificationRequirement, DomError> {
+    ) -> Result<Option<DomParsedHtmlStyleNotificationRequirement>, DomError> {
         check_cancel(cancel)?;
         if token.owner() != self.owner {
             return Err(DomError::ForeignOwner);

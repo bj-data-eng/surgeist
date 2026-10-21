@@ -259,6 +259,10 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
         q: &DomParsedHtmlStyleInitialPolicyRequest,
         cancel: &AtomicBool,
     ) -> Result<DomParsedHtmlStyleRenderingProgress, DomParsedHtmlStyleError> {
+        self.meter
+            .entry()
+            .control
+            .require_execution(self.meter.entry().id)?;
         self.meter.step(cancel)?;
         let mut graph = lock(self.meter.entry())?;
         let held = graph

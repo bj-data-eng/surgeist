@@ -154,7 +154,7 @@ fn forbidden_cleanup_keeps_canonical_membership_and_token_phase_unchanged() {
             .contains(&sheet.association().element())
     );
     assert!(
-        matches!(dom.finish_style_notification(&mut token,&flag()),Err(DomError::ParsedAssociationSynchronousPending{pending}) if pending==id)
+        matches!(dom.finish_style_notification(&mut token, 1024, &flag()),Err(DomError::ParsedAssociationSynchronousPending{pending}) if pending==id)
     );
     assert!(!token.complete);
     assert_eq!(dom.snapshot().stamp(), stamp);

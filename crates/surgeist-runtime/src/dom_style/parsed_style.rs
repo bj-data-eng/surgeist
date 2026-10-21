@@ -8,9 +8,11 @@ use surgeist_dom::{
 use surgeist_html::HtmlCspAssociation;
 mod admission;
 mod create_sheet;
+mod frontier;
 mod notification;
 mod successor;
 pub use create_sheet::{DomStyleParsedSheetError, DomStyleParsedSheetOutcome};
+pub use frontier::DomStyleParsedFrontierError;
 pub use notification::{DomStyleParsedNotificationError, DomStyleParsedNotificationProgress};
 pub use successor::DomStyleParsedSuccessorError;
 

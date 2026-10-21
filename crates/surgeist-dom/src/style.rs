@@ -529,6 +529,9 @@ impl DomStyleNotificationToken {
 /// Actual post-notification canonical cleanup, independent of sheet ownership.
 #[derive(Debug)]
 pub enum DomStyleNotificationCompletion {
+    /// Genuine native cleanup.
     Complete(crate::DomCommit),
+    /// Genuine parsed cleanup with original output and retirement custody.
+    ParsedComplete(crate::DomParsedHtmlStyleNotificationCompletion),
     TargetDestroyed,
 }

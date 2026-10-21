@@ -106,10 +106,13 @@ under the genuine root guard. A cleared owner returns `OwnerAssociationRemoved`
 without a task; another nonnull owner refuses. Later revisions alone do not
 invalidate original processing. A queued task retains its exact parsed origin,
 target and receipt through subsequent sheet changes/removal and Session moves.
-The real networking FIFO returns `OriginalSynchronousPending` before event or
-unblock work for these tasks, naming actual remaining synchronous work or the
-unavailable frontier. It cannot skip that head to deliver a later task. No positive
-frontier is supplied by this checkpoint; native task behavior is preserved.
+The real networking FIFO returns `OriginalSynchronousPending` when activated
+original execution remains unfinished, including for a native task in another
+Document. It names the actual remaining synchronous work or unavailable frontier
+and preserves the exact head. Event dispatch also rechecks this canonical gate
+between listeners and on resume; callback progress survives a retained refusal.
+Unstarted contributions permit unrelated delivery. Their affected Document
+readiness and mutation restrictions still apply.
 `advance_parsed_style_successor` selects the next original ParserPopped update
 inside the retained contribution. If the predecessor created a sheet, it jointly
 removes that sheet and clears the canonical association before reaching a fresh
@@ -125,7 +128,15 @@ this synchronous step. The new request needs its own policy decision. An allowed
 successor can then create, exclude script bookkeeping and complete its rendering
 tail through the same owners. A blocked successor creates no sheet or task;
 real imports remain `PendingImports` until genuine resource outcomes exist.
-Further influencing history and a positive networking frontier remain unavailable.
+`complete_parsed_html_synchronous_execution` validates the complete sealed
+ordinary inventory through the original cumulative controller. It admits a
+durable synchronous end only after every influencing supported invocation has
+returned, including genuine blocked decisions. Later influencing Style/Meta or
+unsupported context remains a precise requirement. The proof survives caller
+Drop; queued first and recreated events can then deliver in FIFO order and perform
+real current-Document cleanup. Import waits and unissued notifications are
+independent async obligations. Whole history remains Pending, with no resource
+completion or general acknowledgment implied.
 `exclude_parsed_style_script_bookkeeping` binds the actual Session's
 no-executable-JavaScript profile to the exact original occurrence. It advances
 that retained cursor to `ReadRenderBlockingPending`, without inventing a false

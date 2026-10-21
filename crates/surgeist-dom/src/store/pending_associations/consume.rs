@@ -632,6 +632,10 @@ impl<'caps> DomParsedHtmlMetaPreparation<'_, '_, 'caps> {
             prepared.push((row.root, value));
         }
         meter.step(cancel)?;
+        // Whole supported Meta consumption activates immediately before its
+        // actual effects and retires this Entry by the same infallible fence;
+        // no partial Meta execution/frontier capability is introduced.
+        meter.entry().control.activate_execution();
         // Infallible composed fence: all slots, actual loans and headroom exist.
         for (root, producer) in prepared.drain(..) {
             let (cssom, dead) = producer.publish();

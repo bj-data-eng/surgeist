@@ -19,10 +19,16 @@ pub use successor::{
     DomParsedHtmlStyleSuccessorCompletion, DomParsedHtmlStyleSuccessorPreparation,
     DomParsedHtmlStyleSuccessorPublished, DomParsedHtmlStyleSuccessorRetirement,
 };
+mod frontier;
+pub use frontier::{
+    DomParsedHtmlDispatchCursor, DomParsedHtmlDispatchEntry, DomParsedHtmlSynchronousEnd,
+    DomParsedHtmlSynchronousEndView,
+};
 mod notification;
 pub(crate) use notification::NotificationCustody;
 pub use notification::{
-    DomParsedHtmlStyleNotificationPreparation, DomParsedHtmlStyleNotificationPublished,
+    DomParsedHtmlStyleNotificationCompletion, DomParsedHtmlStyleNotificationPreparation,
+    DomParsedHtmlStyleNotificationPublished,
 };
 mod rendering;
 pub use rendering::DomParsedHtmlStyleRenderingCompletion;
@@ -433,9 +439,12 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
         // This is the one newly durable selected-occurrence decision. All
         // fallible work ends before its same-cursor transition and input take.
         self.meter.retain(0, 0, 1, cancel)?;
-        request
-            .cursor
-            .reply(Reply::InlineAllowed(observation.allowed))?;
+        let mut successor = request.cursor;
+        successor.reply(Reply::InlineAllowed(observation.allowed))?;
+        // The actual accepted decision admits synchronous execution. Everything
+        // that may refuse precedes this durable header and same-cursor fence.
+        self.meter.entry().control.activate_execution();
+        request.cursor = successor;
         let _accepted = input.take();
         Ok(held.value().phase())
     }
@@ -449,6 +458,10 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
         profile: HtmlStyleExecutionProfile,
         cancel: &AtomicBool,
     ) -> Result<DomParsedHtmlStylePhase, DomParsedHtmlStyleError> {
+        self.meter
+            .entry()
+            .control
+            .require_execution(self.meter.entry().id)?;
         self.meter.step(cancel)?;
         let mut stored = lock(self.meter.entry())?;
         let Some(held) = stored.as_mut() else {

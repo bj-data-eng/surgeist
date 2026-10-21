@@ -345,11 +345,13 @@ fn shared_actual_rule_classifier_distinguishes_imports_recovery_and_typed_admiss
 }
 
 #[test]
-fn native_wait_and_delivery_remain_distinct_beside_an_original_processing_row() {
+fn native_wait_and_delivery_remain_distinct_beside_original_processing_rows() {
     let (mut session, installed) = ready("<!doctype html><style>x{}</style>", envelope());
     let id = installed.pending_association().unwrap();
     bind(&mut session, installed.document(), Default::default());
-    drop(create(&mut session, id, envelope()).unwrap());
+    let created = create(&mut session, id, envelope()).unwrap();
+    let first_sheet = created.completion().sheet().clone();
+    drop(created);
     let native_document = session
         .state
         .borrow()
@@ -387,6 +389,7 @@ fn native_wait_and_delivery_remain_distinct_beside_an_original_processing_row() 
     assert_eq!(session.style_execution().waiting_resources().unwrap(), 1);
     assert_eq!(session.state.borrow().completions.len(), 3);
     let task = session.state.borrow().completions[1].task().id();
+    let waiting = session.state.borrow().completions[2].task().id();
     assert_eq!(
         session
             .style_execution()
@@ -438,11 +441,42 @@ fn native_wait_and_delivery_remain_distinct_beside_an_original_processing_row() 
     assert!(
         matches!(DomStyleRuntime::run_networking(&mut session.dom(), &mut dispatcher,
         &mut context, dispatch_limits(), &cancel()).unwrap(),
+        DomStyleNetworkingProgress::OriginalSynchronousPending { task: actual, .. } if actual == task)
+    );
+    assert!(context.events.is_empty());
+    let first = qualification(&session, id);
+    super::style_recreation::finish_rendering(&mut session, &first);
+    let next = session
+        .style_execution()
+        .advance_parsed_style_successor(&mut session.dom(), id, envelope(), &cancel())
+        .unwrap();
+    let q = next.qualification().clone();
+    drop(next);
+    super::style_recreation::decide(&mut session, &q, true);
+    let created = create(&mut session, id, envelope()).unwrap();
+    let second_sheet = created.completion().sheet().clone();
+    drop(created);
+    super::style_recreation::finish_rendering(&mut session, &q);
+    drop(
+        session
+            .style_execution()
+            .complete_parsed_html_synchronous_execution(
+                &mut session.dom(),
+                id,
+                envelope(),
+                &cancel(),
+            )
+            .unwrap(),
+    );
+    assert_eq!(session.style_execution().waiting_resources().unwrap(), 1);
+    assert!(
+        matches!(DomStyleRuntime::run_networking(&mut session.dom(), &mut dispatcher,
+        &mut context, dispatch_limits(), &cancel()).unwrap(),
         DomStyleNetworkingProgress::Complete { task: actual, .. } if actual == task)
     );
     assert_eq!(context.events, [(target, target)]);
     assert_eq!(session.style_execution().waiting_resources().unwrap(), 1);
-    assert_eq!(session.state.borrow().completions.len(), 2);
+    assert_eq!(session.state.borrow().completions.len(), 3);
     assert!(matches!(
         &session.state.borrow().completions[0],
         Completion::ParsedProcessing(_)
@@ -451,6 +485,22 @@ fn native_wait_and_delivery_remain_distinct_beside_an_original_processing_row() 
         &session.state.borrow().completions[1],
         Completion::Waiting(_)
     ));
+    assert!(matches!(
+        &session.state.borrow().completions[2],
+        Completion::ParsedProcessing(_)
+    ));
+    {
+        let state = session.state.borrow();
+        let original = state.completions[0].processing().unwrap();
+        assert_eq!(original.qualification, first);
+        assert_eq!(original.sheet.as_ref(), Some(&first_sheet));
+        assert_eq!(state.completions[1].task().id(), waiting);
+        assert_eq!(state.completions[1].task().token.target(), imported);
+        let recreated = state.completions[2].processing().unwrap();
+        assert_eq!(recreated.qualification, q);
+        assert_eq!(recreated.sheet.as_ref(), Some(&second_sheet));
+        assert_ne!(first_sheet.id(), second_sheet.id());
+    }
     assert!(matches!(
         DomStyleRuntime::run_networking(
             &mut session.dom(),

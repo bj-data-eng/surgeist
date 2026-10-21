@@ -14,11 +14,13 @@ pub use consume::{
 };
 pub(crate) use style_prefix::NotificationCustody;
 pub use style_prefix::{
-    DomParsedHtmlStyleNotificationPreparation, DomParsedHtmlStyleNotificationPublished,
-    DomParsedHtmlStylePrefixView, DomParsedHtmlStyleRenderingCompletion,
-    DomParsedHtmlStyleRuntimeHold, DomParsedHtmlStyleSheetCompletion,
-    DomParsedHtmlStyleSheetPreparation, DomParsedHtmlStyleSheetPublished,
-    DomParsedHtmlStyleSheetRetirement,
+    DomParsedHtmlDispatchCursor, DomParsedHtmlDispatchEntry,
+    DomParsedHtmlStyleNotificationCompletion, DomParsedHtmlStyleNotificationPreparation,
+    DomParsedHtmlStyleNotificationPublished, DomParsedHtmlStylePrefixView,
+    DomParsedHtmlStyleRenderingCompletion, DomParsedHtmlStyleRuntimeHold,
+    DomParsedHtmlStyleSheetCompletion, DomParsedHtmlStyleSheetPreparation,
+    DomParsedHtmlStyleSheetPublished, DomParsedHtmlStyleSheetRetirement,
+    DomParsedHtmlSynchronousEnd, DomParsedHtmlSynchronousEndView,
 };
 pub use style_prefix::{
     DomParsedHtmlStyleSuccessorCompletion, DomParsedHtmlStyleSuccessorPreparation,

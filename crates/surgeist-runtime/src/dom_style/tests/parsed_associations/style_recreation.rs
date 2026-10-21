@@ -10,6 +10,7 @@ use surgeist_html::{HtmlCspAssociation, HtmlCspProcessorProfile, HtmlStyleTrigge
 use surgeist_html_parser::{
     HtmlParseAssociationOccurrenceKind as Kind, HtmlParsePendingAssociationStep as Step,
 };
+mod frontier;
 mod text_policy;
 
 fn next_parser_pop(
@@ -39,7 +40,10 @@ fn next_parser_pop(
     }
 }
 
-fn finish_rendering(session: &mut DomSession, q: &DomParsedHtmlStyleInitialPolicyRequest) {
+pub(super) fn finish_rendering(
+    session: &mut DomSession,
+    q: &DomParsedHtmlStyleInitialPolicyRequest,
+) {
     session
         .style_execution()
         .exclude_parsed_style_script_bookkeeping(&mut session.dom(), q, envelope(), &cancel())
@@ -52,7 +56,11 @@ fn finish_rendering(session: &mut DomSession, q: &DomParsedHtmlStyleInitialPolic
         DomParsedHtmlStyleRenderingProgress::Complete(_)
     ));
 }
-fn decide(session: &mut DomSession, q: &DomParsedHtmlStyleInitialPolicyRequest, allowed: bool) {
+pub(super) fn decide(
+    session: &mut DomSession,
+    q: &DomParsedHtmlStyleInitialPolicyRequest,
+    allowed: bool,
+) {
     let mut input = observe(session, q.contribution(), &mut |request| {
         assert_eq!(request.qualification(), q);
         Some(DomParsedHtmlStyleInlinePolicyObservation::evaluated(

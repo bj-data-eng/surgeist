@@ -5,6 +5,8 @@ mod create;
 mod decision;
 #[path = "parsed_style/exclusion.rs"]
 mod exclusion;
+#[path = "parsed_style/frontier.rs"]
+mod frontier;
 #[path = "parsed_style/notification.rs"]
 mod notification;
 #[path = "parsed_style/recreation.rs"]

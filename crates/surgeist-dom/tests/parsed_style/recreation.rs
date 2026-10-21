@@ -15,7 +15,7 @@ impl HtmlCspPolicyArtifact for ExactText {
         .unwrap()
     }
 }
-fn policy() -> HtmlCspAssociation {
+pub(super) fn policy() -> HtmlCspAssociation {
     let mut allow = |_: HtmlCspLayout| Ok::<_, ()>(());
     let mut owner = HtmlCspOwner::new_with(&mut allow).unwrap();
     let mut current = owner.initial_document_with(&mut allow).unwrap();
@@ -40,7 +40,7 @@ fn policy() -> HtmlCspAssociation {
     );
     current
 }
-fn observed(
+pub(super) fn observed(
     dom: &Dom,
     id: DomParsedHtmlAssociationId,
 ) -> DomParsedHtmlStyleInlinePolicyObservation {
@@ -57,7 +57,7 @@ fn observed(
     let allowed = request.text().code_units() == "a{color:red}".encode_utf16().collect::<Vec<_>>();
     DomParsedHtmlStyleInlinePolicyObservation::evaluated(request, allowed)
 }
-fn blocked(
+pub(super) fn blocked(
     source: &str,
     limits: DomParsedHtmlAssociationLimits,
 ) -> (
@@ -93,7 +93,7 @@ fn blocked(
     );
     (dom, document, id, q, old)
 }
-fn no_sheet(
+pub(super) fn no_sheet(
     dom: &mut Dom,
     id: DomParsedHtmlAssociationId,
     limits: DomParsedHtmlAssociationLimits,

@@ -8,6 +8,8 @@ use std::cell::{Cell, RefCell};
 pub(super) struct Control {
     bound: AtomicBool,
     active: AtomicBool,
+    // Durable scheduling admission is independent of the transient command loan.
+    execution: std::sync::atomic::AtomicU8,
     bytes_limit: AtomicUsize,
     units_limit: AtomicUsize,
     work_limit: AtomicU64,
@@ -23,6 +25,32 @@ pub(super) struct Control {
     cleanup_atomic: AtomicUsize,
 }
 impl Control {
+    pub(super) fn execution(&self) -> crate::DomParsedHtmlExecutionState {
+        match self.execution.load(Ordering::Acquire) {
+            0 => crate::DomParsedHtmlExecutionState::Unstarted,
+            1 => crate::DomParsedHtmlExecutionState::Activated,
+            2 => crate::DomParsedHtmlExecutionState::SynchronousEnd,
+            _ => unreachable!("closed canonical execution state"),
+        }
+    }
+    pub(super) fn activate_execution(&self) {
+        if self.execution() == crate::DomParsedHtmlExecutionState::Unstarted {
+            self.execution.store(1, Ordering::Release);
+        }
+    }
+    pub(super) fn seal_execution(&self) {
+        self.execution.store(2, Ordering::Release);
+    }
+    pub(super) fn require_execution(
+        &self,
+        contribution: DomParsedHtmlAssociationId,
+    ) -> Result<(), crate::DomParsedHtmlStyleError> {
+        if self.execution() == crate::DomParsedHtmlExecutionState::Unstarted {
+            Err(crate::DomParsedHtmlStyleError::ExecutionNotAdmitted { contribution })
+        } else {
+            Ok(())
+        }
+    }
     pub(super) fn persistent_usage(&self) -> custody::Usage {
         custody::Usage::new(
             self.persistent_bytes.load(Ordering::Relaxed),

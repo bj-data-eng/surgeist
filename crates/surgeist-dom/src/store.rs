@@ -109,6 +109,8 @@ pub enum DomResource {
     ParsedAssociationProcessingRetainedUnits,
     ParsedAssociationProcessingOutputs,
     ParsedAssociationProcessingWork,
+    /// Caller-owned finite header traversal during notification cleanup.
+    ParsedAssociationDispatchWork,
     FullscreenExits,
     FullscreenEvents,
     Ranges,

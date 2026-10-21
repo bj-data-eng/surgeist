@@ -237,12 +237,12 @@ pub use dom_style::{
     DomShutdownOutcome, DomShutdownReason, DomStyleDisabledObservation, DomStyleEventContext,
     DomStyleMetaError, DomStyleMetaOrdinaryOutcome, DomStyleMetaPreference,
     DomStyleMetaSourceOutcome, DomStyleNetworkingProgress, DomStyleNetworkingTaskId,
-    DomStyleParsedAdmissionError, DomStyleParsedInstallError, DomStyleParsedMetaError,
-    DomStyleParsedMetaOutcome, DomStyleParsedMetaPreference, DomStyleParsedNotificationError,
-    DomStyleParsedNotificationProgress, DomStyleParsedPrefixError, DomStyleParsedSheetError,
-    DomStyleParsedSheetOutcome, DomStyleParsedSuccessorError, DomStyleProcessedSheet,
-    DomStyleRuntime, DomStyleRuntimeError, DomStyleRuntimeLimits, DomStyleSheetSetCommit,
-    DomStyleSheetSetObservation, DomStyleUnavailable,
+    DomStyleParsedAdmissionError, DomStyleParsedFrontierError, DomStyleParsedInstallError,
+    DomStyleParsedMetaError, DomStyleParsedMetaOutcome, DomStyleParsedMetaPreference,
+    DomStyleParsedNotificationError, DomStyleParsedNotificationProgress, DomStyleParsedPrefixError,
+    DomStyleParsedSheetError, DomStyleParsedSheetOutcome, DomStyleParsedSuccessorError,
+    DomStyleProcessedSheet, DomStyleRuntime, DomStyleRuntimeError, DomStyleRuntimeLimits,
+    DomStyleSheetSetCommit, DomStyleSheetSetObservation, DomStyleUnavailable,
 };
 pub use effect::{
     AppEffect, AppEffectPayload, CallServiceEffect, CancelTaskEffect, DiagnosticEffect,

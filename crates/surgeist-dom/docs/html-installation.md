@@ -475,26 +475,57 @@ of caller creation/rendering outputs; identities do not keep a live Element
 from being retired. Once a task is queued, later owner removal does not revoke
 its captured target/outcome or redirect it to another sheet.
 
-This queue capability supplies no positive dispatch frontier. The metered
-`parsed_style_notification_requirement` authenticates the ordinary sealed report,
-all Document capture dispositions and inventory end before returning the first
-remaining influencing occurrence. Producer-proved no-effect rows and the exact
-executed invocation and its compact completed predecessor can be recognized,
-including an actual completed inline-policy refusal with no sheet. Later work
-is never inferred complete from capture or an earlier operation.
-An active successor is reported with its actual qualification and reached phase. Missing/captured/lost evidence or an absent canonical entry
-is unavailable, not completion. Query outputs consume finite original admission.
+The original entry has durable execution admission separate from a temporary
+command hold. Installation, inspection, request preparation and policy binding
+remain `Unstarted`. An authenticated accepted inline-policy observation admits
+`Activated` only after all decision work/output checks succeed. Dropping,
+refusing or parking a later command does not undo this admission. A blocked
+inline decision is real synchronous execution, not missing processing.
 
-Whole history Pending includes both synchronous and asynchronous obligations;
-it is not a dispatch predicate. The supported offline no-JavaScript profile
-requires actual execution through the sealed synchronous contribution end before
-networking dispatch. Resource waits and queued delivery are separate obligations
-where the source permits that separation. Runtime gates the actual parsed queue
-head on the returned requirement, and direct `finish_style_notification` also
-refuses live parsed-target cleanup without that frontier. This slice cannot
-fabricate an end witness or dispatch a parsed task.
-Native task ordering/cleanup and the general Pending Style readiness guards
-remain governed by their existing owners.
+`complete_synchronous_execution` authenticates the completed ordinary offline
+no-executable-JavaScript report, every Document capture disposition, the entire
+sealed inventory, and the actual completed first and ParserPopped invocations.
+It recognizes producer-proved no-effect rows and genuine blocked returns. Any
+further influencing Style or Meta operation remains an exact requirement.
+Capture completeness or an exhausted cursor alone does not establish end.
+The returned opaque end retains its actual original output custody; the
+canonical `parsed_html_synchronous_end` lender permits readback after that
+output drops. An absent entry is never treated as completed. The history and
+general Style availability remain Pending.
+
+`parsed_html_dispatch_cursor` lends canonical entry headers without eager
+scanning or an additional registry. The composing dispatcher admits one of its
+own work steps before **every** `advance`, including the final `None`.
+`Unstarted` and `SynchronousEnd` headers do not borrow the request graph, even
+when a read guard was forgotten. An unfinished activated entry supplies its
+precise requirement under the original cumulative Control. It blocks the
+DOM-owner-wide Session dispatch domain, including other Documents. Unstarted
+entries do not block unrelated delivery, while their Document mutation and
+readiness guards still apply inside handlers. Native Source and hosted guards
+remain cumulative.
+
+Whole history Pending includes synchronous and asynchronous obligations and is
+not itself a dispatch predicate. Genuine end excludes import/resource waits,
+unissued notifications and queued delivery when the original algorithm returned
+without waiting. `parsed_style_notification_requirement` returns `None` only
+when that authentic task's original entry has reached its own synchronous end;
+otherwise it returns exact influencing work or unavailable evidence. An old
+queued event keeps its actual original target and qualification through sheet
+replacement; queue issuance does not complete or revoke another invocation.
+
+`finish_style_notification` takes an explicit finite `dispatch_work` allowance
+for its owner-wide header walk, spending before every advance including end.
+Zero is exhausted. This caller allowance is per-call; activated inventory reads
+retain their separate original cumulative work on retry. A blocking entry is
+identified by `ParsedAssociationSynchronousPending`; the header query provides
+its exact remaining diagnostic. Source/hosted guards and target retirement are
+checked first. A live parsed task additionally requires its own canonical end.
+After actual event delivery, cleanup unblocks the target's **current** Document
+and returns `ParsedComplete` with its genuine DOM commit and original
+output/retirement custody. Native cleanup returns `Complete`. Refusal preserves
+the token; a composing owner retains its delivered phase and must not dispatch
+again. No resource completion, whole-history acknowledgment or arbitrary later
+original execution is supplied by these operations.
 
 ## Control state and form associations
 

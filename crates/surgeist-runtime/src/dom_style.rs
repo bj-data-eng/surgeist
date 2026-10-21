@@ -16,8 +16,9 @@ pub use meta::{
     DomStyleMetaSourceOutcome,
 };
 pub use parsed_style::{
-    DomStyleParsedNotificationError, DomStyleParsedNotificationProgress, DomStyleParsedPrefixError,
-    DomStyleParsedSheetError, DomStyleParsedSheetOutcome, DomStyleParsedSuccessorError,
+    DomStyleParsedFrontierError, DomStyleParsedNotificationError,
+    DomStyleParsedNotificationProgress, DomStyleParsedPrefixError, DomStyleParsedSheetError,
+    DomStyleParsedSheetOutcome, DomStyleParsedSuccessorError,
 };
 pub use sheet_sets::{DomStyleSheetSetCommit, DomStyleSheetSetObservation};
 
@@ -404,8 +405,9 @@ pub struct DomStyleNetworkingTaskId {
 pub enum DomStyleNetworkingProgress {
     /// No queued networking task exists (critical-resource waits are separate).
     Empty,
-    /// This exact parsed FIFO head lacks an executed original synchronous
-    /// frontier. No event, running marker or post-event cleanup was started.
+    /// Original synchronous execution blocks this exact FIFO head, including
+    /// native tasks in another Document. The exact phase remains retained,
+    /// before delivery or after delivery while canonical cleanup is blocked.
     OriginalSynchronousPending {
         /// Exact retained FIFO head.
         task: DomStyleNetworkingTaskId,
@@ -2247,14 +2249,8 @@ impl DomStyleRuntime {
                 Delivery::Dispatching(event) => event.has_started(),
                 Delivery::Delivered(_) => true,
             };
-            if !started
-                && matches!(
-                    task.token.origin(),
-                    DomStyleNotificationOrigin::ParsedOccurrence { .. }
-                )
-            {
-                // Retirement is not event delivery and requires no positive
-                // frontier. Validate the captured generation before its gate.
+            if !started {
+                // Exact target retirement precedes synchronous dispatch gates.
                 match dom.snapshot().node(task.token.target()) {
                     Err(DomError::StaleNode) => {
                         let target = task.token.target();
@@ -2270,8 +2266,16 @@ impl DomStyleRuntime {
                     Err(error) => return Err(error.into()),
                     Ok(_) => (),
                 }
-                // Keep the real native dispatch guards; whole parsed Pending
-                // is neither a native Source operation nor a frontier proof.
+            }
+            // Keep existing native/hosted guard precedence for unstarted
+            // parsed tasks. Other event paths retain their existing dispatcher
+            // guard and continuation behavior.
+            if !started
+                && matches!(
+                    task.token.origin(),
+                    DomStyleNotificationOrigin::ParsedOccurrence { .. }
+                )
+            {
                 if dom.raw().source_dispatch_blocker().is_some() {
                     return Err(DomStyleRuntimeError::Dispatch(
                         crate::DomEventDispatchError::Dom(DomError::IncompleteSourceOperation),
@@ -2284,14 +2288,36 @@ impl DomStyleRuntime {
                         ),
                     ));
                 }
+            }
+            if dom.raw().source_dispatch_blocker().is_none()
+                && dom.snapshot().incomplete_hosted_operation().is_none()
+            {
                 state.admit(size_of::<DomStyleNetworkingProgress>(), cancel)?;
-                let requirement = dom
-                    .raw()
-                    .parsed_style_notification_requirement(&task.token, cancel)?;
-                return Ok(DomStyleNetworkingProgress::OriginalSynchronousPending {
-                    task: id,
-                    requirement,
-                });
+                if let Some(requirement) =
+                    crate::dom_event::parsed_dispatch_requirement(dom.raw(), cancel, || {
+                        state.step(cancel)
+                    })?
+                {
+                    return Ok(DomStyleNetworkingProgress::OriginalSynchronousPending {
+                        task: id,
+                        requirement,
+                    });
+                }
+                if matches!(
+                    task.token.origin(),
+                    DomStyleNotificationOrigin::ParsedOccurrence { .. }
+                ) {
+                    state.step(cancel)?;
+                    if let Some(requirement) = dom
+                        .raw()
+                        .parsed_style_notification_requirement(&task.token, cancel)?
+                    {
+                        return Ok(DomStyleNetworkingProgress::OriginalSynchronousPending {
+                            task: id,
+                            requirement,
+                        });
+                    }
+                }
             }
             // Reserve bounded exact-identity searches and marker cleanup before
             // callbacks. The native cursor takes at most thirteen full bank
@@ -2464,12 +2490,43 @@ impl DomStyleRuntime {
                 HtmlStyleNotificationAction::UnblockRendering => {
                     let mut state = original.borrow_mut();
                     let index = state.task_index(id)?;
-                    let task = state.completions[index].task_mut();
-                    match dom
-                        .raw_mut()
-                        .finish_style_notification(&mut task.token, cancel)?
+                    if dom.raw().source_dispatch_blocker().is_some()
+                        || dom.snapshot().incomplete_hosted_operation().is_some()
                     {
+                        let task = state.completions[index].task_mut();
+                        let error = dom.raw_mut().finish_style_notification(&mut task.token, 0, cancel)
+                            .expect_err("actual unchanged Source/hosted guard refuses before dispatch admission");
+                        return Err(error.into());
+                    }
+                    // No callback or canonical mutation intervenes between
+                    // these identical header walks. Prepay both actual visits
+                    // before each advance, including terminal None; the lower
+                    // cleanup receives only that checked finite allowance.
+                    state.admit(size_of::<DomStyleNetworkingProgress>(), cancel)?;
+                    let mut dispatch_work = 0u64;
+                    if let Some(requirement) =
+                        crate::dom_event::parsed_dispatch_requirement(dom.raw(), cancel, || {
+                            state.step(cancel)?;
+                            state.step(cancel)?;
+                            dispatch_work = dispatch_work
+                                .checked_add(1)
+                                .ok_or(DomStyleRuntimeError::Admission)?;
+                            Ok::<_, DomStyleRuntimeError>(())
+                        })?
+                    {
+                        return Ok(DomStyleNetworkingProgress::OriginalSynchronousPending {
+                            task: id,
+                            requirement,
+                        });
+                    }
+                    let task = state.completions[index].task_mut();
+                    match dom.raw_mut().finish_style_notification(
+                        &mut task.token,
+                        dispatch_work,
+                        cancel,
+                    )? {
                         DomStyleNotificationCompletion::Complete(_)
+                        | DomStyleNotificationCompletion::ParsedComplete(_)
                         | DomStyleNotificationCompletion::TargetDestroyed => {}
                     }
                     task.cursor

@@ -32,7 +32,7 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use surgeist_dom::{
     Dom, DomDispatchCustody, DomError, DomEventParentQuery, DomEventRecipient, DomHostedError,
-    DomSnapshot, HtmlShadowRootMode, NodeId,
+    DomParsedHtmlStyleNotificationRequirement, DomSnapshot, HtmlShadowRootMode, NodeId,
 };
 pub use surgeist_dom::{DomEventTarget, DomEventType};
 
@@ -248,6 +248,11 @@ pub enum DomEventDispatchError {
     Hosted(DomHostedError),
     /// Finite admission refused work; no callback ran for a new event.
     Admission(DomEventResource),
+    /// An activated original parsed contribution has unfinished synchronous work.
+    ParsedSynchronousPending {
+        /// Exact original invocation, occurrence or unavailable frontier.
+        requirement: DomParsedHtmlStyleNotificationRequirement,
+    },
     /// This same event is already executing or retained.
     AlreadyDispatching,
     /// This event already produced its one completion receipt.
@@ -269,6 +274,10 @@ impl std::fmt::Display for DomEventDispatchError {
             Self::Admission(resource) => write!(
                 f,
                 "native DOM event dispatch admission refused {resource:?}"
+            ),
+            Self::ParsedSynchronousPending { requirement } => write!(
+                f,
+                "original parsed synchronous execution is pending: {requirement:?}"
             ),
             Self::AlreadyDispatching => f.write_str("native DOM event is already dispatching"),
             Self::AlreadyCompleted => f.write_str("native DOM event already completed dispatch"),
@@ -350,6 +359,15 @@ pub enum DomEventDispatchOutcome {
     Complete(DomEventDispatchReceipt),
     /// The event retains its exact next step; resume it without replay.
     Retained(DomEventResource),
+    /// Activated original synchronous work blocks the next invocation. The
+    /// exact continuation retains all previously entered callback progress.
+    RetainedParsedSynchronous {
+        /// Actual original invocation, occurrence or unavailable frontier.
+        requirement: DomParsedHtmlStyleNotificationRequirement,
+    },
+    /// Canonical original-frontier inspection refused its actual guard, work
+    /// or cancellation admission. The next listener remains retained.
+    RetainedParsedAdmission(DomError),
     /// A callback published an unfinished canonical source hook tail. Finish
     /// that exact DOM operation before resuming; no listener is replayed.
     RetainedSourceOperation(surgeist_dom::DomSourceOperationId),
@@ -610,6 +628,11 @@ impl<C> DomEventDispatcher<C> {
                 DomHostedError::IncompleteOperation,
             ));
         }
+        if let Some(requirement) = parsed_dispatch_requirement(dom, cancel, || {
+            budget.tick().map_err(DomEventDispatchError::Admission)
+        })? {
+            return Err(DomEventDispatchError::ParsedSynchronousPending { requirement });
+        }
         let mut path = build_path(
             dom,
             &snapshot,
@@ -729,6 +752,24 @@ impl<C> DomEventDispatcher<C> {
             return Err(DomEventDispatchError::WrongContinuation);
         }
         let mut budget = Budget::new(limits, cancel);
+        if dom.source_dispatch_blocker().is_none()
+            && dom.snapshot().incomplete_hosted_operation().is_none()
+        {
+            match parsed_dispatch_requirement(dom, cancel, || budget.tick().map_err(RunStop::from))
+            {
+                Ok(None) => (),
+                Ok(Some(requirement)) => {
+                    return Ok(DomEventDispatchOutcome::RetainedParsedSynchronous { requirement });
+                }
+                Err(RunStop::ParsedAdmission(error)) => {
+                    return Ok(DomEventDispatchOutcome::RetainedParsedAdmission(error));
+                }
+                Err(RunStop::Resource(resource)) => {
+                    return Ok(DomEventDispatchOutcome::Retained(resource));
+                }
+                Err(_) => unreachable!("frontier scan only returns admission failures"),
+            }
+        }
         dispatch
             .prepare_failure_bank(&mut budget)
             .map_err(DomEventDispatchError::Admission)?;
@@ -810,6 +851,12 @@ impl<C> DomEventDispatcher<C> {
                     Ok(Err(RunStop::Resource(resource))) => {
                         DomEventDispatchOutcome::Retained(resource)
                     }
+                    Ok(Err(RunStop::ParsedSynchronous(requirement))) => {
+                        DomEventDispatchOutcome::RetainedParsedSynchronous { requirement }
+                    }
+                    Ok(Err(RunStop::ParsedAdmission(error))) => {
+                        DomEventDispatchOutcome::RetainedParsedAdmission(error)
+                    }
                     Ok(Err(RunStop::SourceOperation(operation))) => {
                         DomEventDispatchOutcome::RetainedSourceOperation(operation)
                     }
@@ -840,7 +887,7 @@ impl<C> DomEventDispatcher<C> {
     ) -> Result<(), RunStop> {
         let count = dispatch.path.len();
         while dispatch.invoke < count * 2 {
-            dispatch_ready(&self.owner, dispatch, dom, event)?;
+            dispatch_ready(&self.owner, dispatch, dom, event, budget)?;
             budget.tick()?;
             let capture = dispatch.invoke < count;
             let index = if capture {
@@ -914,7 +961,7 @@ impl<C> DomEventDispatcher<C> {
                 dispatch.snapshot = Some(snapshot);
             }
             while dispatch.listener < dispatch.snapshot.as_ref().expect("snapshot").len() {
-                dispatch_ready(&self.owner, dispatch, dom, event)?;
+                dispatch_ready(&self.owner, dispatch, dom, event, budget)?;
                 budget.tick()?;
                 let id = dispatch.snapshot.as_ref().expect("snapshot")[dispatch.listener];
                 let Some(r) = self.registration(id) else {
@@ -978,7 +1025,7 @@ impl<C> DomEventDispatcher<C> {
             }
             dispatch.next_invoke();
         }
-        dispatch_ready(&self.owner, dispatch, dom, event)?;
+        dispatch_ready(&self.owner, dispatch, dom, event, budget)?;
         Ok(())
     }
 }
@@ -1625,6 +1672,8 @@ impl Dispatch {
 enum RunStop {
     Abandoned,
     Resource(DomEventResource),
+    ParsedSynchronous(DomParsedHtmlStyleNotificationRequirement),
+    ParsedAdmission(DomError),
     SourceOperation(surgeist_dom::DomSourceOperationId),
     HostedOperation(surgeist_dom::DomHostedOperationId),
     HostedAuthority(DomHostedError),
@@ -1636,6 +1685,31 @@ impl From<DomEventResource> for RunStop {
         Self::Resource(resource)
     }
 }
+impl From<DomError> for RunStop {
+    fn from(error: DomError) -> Self {
+        Self::ParsedAdmission(error)
+    }
+}
+
+/// Inspect the actual canonical contribution headers under the caller's work
+/// budget. The lower owner meters activated-entry inspection independently.
+pub(crate) fn parsed_dispatch_requirement<E: From<DomError>>(
+    dom: &Dom,
+    cancel: &AtomicBool,
+    mut tick: impl FnMut() -> Result<(), E>,
+) -> Result<Option<DomParsedHtmlStyleNotificationRequirement>, E> {
+    let mut cursor = dom.parsed_html_dispatch_cursor();
+    loop {
+        tick()?;
+        let Some(entry) = cursor.advance(cancel)? else {
+            return Ok(None);
+        };
+        if let Some(requirement) = entry.requirement(cancel)? {
+            return Ok(Some(requirement));
+        }
+    }
+}
+
 fn listener_target_active(
     dom: &Dom,
     custody: &DomDispatchCustody,
@@ -1701,6 +1775,7 @@ fn dispatch_ready(
     dispatch: &Dispatch,
     dom: &Dom,
     event: &NativeDomEvent,
+    budget: &mut Budget<'_>,
 ) -> Result<(), RunStop> {
     if event.0.status.get() == Status::Abandoned {
         return Err(RunStop::Abandoned);
@@ -1716,6 +1791,11 @@ fn dispatch_ready(
     }
     if let Some(operation) = dom.snapshot().incomplete_hosted_operation() {
         return Err(RunStop::HostedOperation(operation));
+    }
+    if let Some(requirement) =
+        parsed_dispatch_requirement(dom, budget.cancel, || budget.tick().map_err(RunStop::from))?
+    {
+        return Err(RunStop::ParsedSynchronous(requirement));
     }
     Ok(())
 }

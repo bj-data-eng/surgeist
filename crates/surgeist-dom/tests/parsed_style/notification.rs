@@ -53,7 +53,8 @@ fn assert_next(value: &Ready, token: &DomStyleNotificationToken) {
     let requirement = value
         .dom
         .parsed_style_notification_requirement(token, &flag())
-        .unwrap();
+        .unwrap()
+        .expect("genuine ParserPopped remains");
     let DomParsedHtmlStyleNotificationRequirement::Occurrence {
         contribution,
         occurrence,
@@ -84,7 +85,7 @@ fn actual_parsed_origin_is_once_only_and_remaining_parser_pop_blocks_direct_clea
     assert_eq!(token.association(), value.association.association());
     assert_next(&value, &token);
     assert!(
-        matches!(value.dom.finish_style_notification(&mut token,&flag()),Err(DomError::ParsedAssociationSynchronousPending{pending}) if pending==value.id)
+        matches!(value.dom.finish_style_notification(&mut token, 1024, &flag()),Err(DomError::ParsedAssociationSynchronousPending{pending}) if pending==value.id)
     );
     assert_eq!(value.dom.snapshot().stamp(), before);
     assert_next(&value, &token);
@@ -213,7 +214,7 @@ fn wrong_label_foreign_owner_cancellation_and_dropped_preparation_do_not_issue()
     ));
     let mut foreign = other.dom;
     assert!(matches!(
-        foreign.finish_style_notification(&mut token, &flag()),
+        foreign.finish_style_notification(&mut token, 1024, &flag()),
         Err(DomError::ForeignOwner)
     ));
     assert_next(&value, &token);

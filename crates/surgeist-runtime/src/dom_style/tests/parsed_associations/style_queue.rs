@@ -243,7 +243,7 @@ fn owner_removed_before_queue_releases_terminal_row_without_issuing_a_task() {
     let mut events = context(&session);
     assert!(
         matches!(DomStyleRuntime::run_networking(&mut session.dom(),&mut dispatcher,&mut events,
-        dispatch_limits(),&cancel()).unwrap(),DomStyleNetworkingProgress::Complete{task,..} if task==native)
+        dispatch_limits(),&cancel()).unwrap(),DomStyleNetworkingProgress::OriginalSynchronousPending{task,..} if task==native)
     );
     pending(&session, q.contribution());
 }

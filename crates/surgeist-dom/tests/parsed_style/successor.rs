@@ -152,12 +152,13 @@ fn queued_predecessor_keeps_execution_and_direct_cleanup_remains_blocked_by_new_
     let requirement = value
         .dom
         .parsed_style_notification_requirement(&token, &flag())
-        .unwrap();
+        .unwrap()
+        .expect("genuine new invocation remains");
     assert!(
         matches!(requirement, DomParsedHtmlStyleNotificationRequirement::Invocation { occurrence, phase: DomParsedHtmlStylePhase::InlinePolicyPending, .. } if &occurrence==completion.qualification().occurrence())
     );
     assert!(
-        matches!(value.dom.finish_style_notification(&mut token,&flag()), Err(DomError::ParsedAssociationSynchronousPending{pending}) if pending==value.id)
+        matches!(value.dom.finish_style_notification(&mut token, 1024, &flag()), Err(DomError::ParsedAssociationSynchronousPending{pending}) if pending==value.id)
     );
     let mut hold = value
         .dom

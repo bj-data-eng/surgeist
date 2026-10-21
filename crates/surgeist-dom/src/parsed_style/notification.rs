@@ -1,4 +1,4 @@
-//! Original queue authority and precise absence of a synchronous dispatch frontier.
+//! Original notification authority and its canonical synchronous dispatch gate.
 use super::*;
 use crate::{DomStyleAssociationId, DomStyleNotificationToken, NodeId};
 use surgeist_html_parser::{HtmlParseAssociationMissingKind, HtmlParseAssociationOccurrenceKind};
@@ -13,7 +13,7 @@ pub enum DomParsedHtmlStyleNotificationUnavailable {
 }
 /// Actual retained synchronous work, never a positive dispatch witness. Capture
 /// completeness alone does not assert that any consumer operation executed.
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DomParsedHtmlStyleNotificationRequirement {
     Invocation {
         contribution: DomParsedHtmlAssociationId,
@@ -96,5 +96,6 @@ impl std::error::Error for DomParsedHtmlStyleNotificationError {
     }
 }
 pub use crate::store::pending_associations::{
-    DomParsedHtmlStyleNotificationPreparation, DomParsedHtmlStyleNotificationPublished,
+    DomParsedHtmlStyleNotificationCompletion, DomParsedHtmlStyleNotificationPreparation,
+    DomParsedHtmlStyleNotificationPublished,
 };
