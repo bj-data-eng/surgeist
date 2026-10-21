@@ -723,6 +723,9 @@ impl<'i, 't> PropertyParser<'i, 't> {
         self.pending = None;
         result
     }
+    /// The shared Values 4 §2.3 `#` multiplier: one or more items separated by
+    /// commas. Each item parser is bounded at its comma and must consume its
+    /// whole item; whole-list rules stay with the caller as post-conditions.
     pub(crate) fn parse_comma_separated<F, T, E>(
         &mut self,
         mut parse: F,

@@ -1,5 +1,6 @@
 //! Flexbox 1 authored factor, basis, and shorthand grammar.
 
+use super::combinators::{Combinator, Tail, fill, parse_group};
 use super::property_input::Parser;
 use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::{Token, match_ignore_ascii_case};
@@ -28,54 +29,23 @@ pub(super) fn parse_flex_direction<'i, 't>(
 pub(super) fn parse_flex_flow<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFlexFlow, ParseError<'i, Error>> {
-    let mut direction = None;
-    let mut wrap = None;
-
-    while !input.is_exhausted() {
-        let location = input.current_source_location();
-        let ident = input.expect_ident_cloned().map_err(basic)?;
-        match_ignore_ascii_case! { &ident,
-            "row" => set_flex_flow_direction(&mut direction, CssFlexDirection::Row, location)?,
-            "column" => set_flex_flow_direction(&mut direction, CssFlexDirection::Column, location)?,
-            "row-reverse" => set_flex_flow_direction(&mut direction, CssFlexDirection::RowReverse, location)?,
-            "column-reverse" => set_flex_flow_direction(&mut direction, CssFlexDirection::ColumnReverse, location)?,
-            "nowrap" => set_flex_flow_wrap(&mut wrap, CssFlexWrap::NoWrap, location)?,
-            "wrap" => set_flex_flow_wrap(&mut wrap, CssFlexWrap::Wrap, location)?,
-            "wrap-reverse" => set_flex_flow_wrap(&mut wrap, CssFlexWrap::WrapReverse, location)?,
-            _ => return Err(unexpected_at(location)),
-        }
-    }
-
-    if direction.is_none() && wrap.is_none() {
-        return Err(unexpected_at(input.current_source_location()));
-    }
-
+    // `<'flex-direction'> || <'flex-wrap'>`.
+    let (mut direction, mut wrap) = (None, None);
+    parse_group::<2>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0 => fill(&mut direction, input, parse_flex_direction),
+            1 => fill(&mut wrap, input, parse_flex_wrap),
+            _ => unreachable!("two flex-flow operands"),
+        },
+    )?;
     Ok(CssFlexFlow::new(
         direction.unwrap_or(CssFlexDirection::Row),
         wrap.unwrap_or(CssFlexWrap::NoWrap),
     ))
-}
-
-fn set_flex_flow_direction<'i>(
-    slot: &mut Option<CssFlexDirection>,
-    value: CssFlexDirection,
-    location: super::property_input::Site<'i>,
-) -> std::result::Result<(), ParseError<'i, Error>> {
-    if slot.replace(value).is_some() {
-        return Err(unexpected_at(location));
-    }
-    Ok(())
-}
-
-fn set_flex_flow_wrap<'i>(
-    slot: &mut Option<CssFlexWrap>,
-    value: CssFlexWrap,
-    location: super::property_input::Site<'i>,
-) -> std::result::Result<(), ParseError<'i, Error>> {
-    if slot.replace(value).is_some() {
-        return Err(unexpected_at(location));
-    }
-    Ok(())
 }
 
 pub(super) fn parse_flex_wrap<'i, 't>(

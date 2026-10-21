@@ -21,6 +21,7 @@ mod font_synthesis_lifecycle;
 mod font_synthesis_values;
 mod font_variant_contract;
 mod font_variant_foundation;
+mod font_variant_grouping_contract;
 mod font_weight_contract;
 mod font_weight_foundation;
 mod font_width_contract;

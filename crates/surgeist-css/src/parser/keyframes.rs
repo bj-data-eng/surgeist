@@ -247,17 +247,11 @@ pub(super) fn parse_keyframe_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssKeyframeSelectorList, ParseError<'i, Error>> {
-    let mut selectors = Vec::new();
-    loop {
-        selectors.push(parse_keyframe_selector(input, numeric)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
-
+    let selectors = super::combinators::parse_native_comma_list(
+        input,
+        |input| parse_keyframe_selector(input, numeric),
+        |_, at| unexpected_at(at),
+    )?;
     CssKeyframeSelectorList::try_new(selectors)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }

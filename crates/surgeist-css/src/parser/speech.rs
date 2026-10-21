@@ -1,5 +1,6 @@
 //! Exact authored Speech 1 keyword grammars; no speech execution.
 
+use super::combinators::{Combinator, Tail, commit, parse_group};
 use super::property_input::Parser;
 use crate::error::property::{Error, ParseError, basic};
 use crate::{
@@ -365,49 +366,65 @@ pub(super) fn parse_voice_rate<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<crate::CssVoiceRate, ParseError<'i, Error>> {
-    let mut keyword = None;
-    let mut percentage = None;
-    while !input.is_exhausted() {
-        input.skip_whitespace();
-        let location = input.current_source_location();
-        let root_site = input.position();
-        if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-            if let Some(value) = voice_rate_keyword(&ident)
-                && keyword.is_none()
-            {
-                keyword = Some(value);
-            } else {
-                return Err(location.new_unexpected_token_error(Token::Ident(ident)));
-            }
-        } else {
-            if percentage.is_some() {
-                return Err(crate::error::property::unexpected_at(location));
-            }
-            let component = input
-                .collect_component()
-                .map_err(crate::CssNumericConstructionError::component)
-                .map_err(|error| speech_numeric_error(numeric, &error, location, root_site))?;
-            let value = if matches!(component.view(), crate::CssComponentValueRef::Token(_)) {
-                crate::CssSpecifiedNonNegativePercentage::try_from_component(component.into_owned())
-            } else {
-                let values =
-                    crate::numeric::CalculationComponents::single(component).map_err(|error| {
-                        crate::error::property::invalid_component_value(location, error)
-                    })?;
-                numeric
-                    .admit(values, crate::numeric::CalculationRoot::Percentage)
-                    .and_then(|expression| {
-                        crate::CssSpecifiedNonNegativePercentage::try_from_calculation(
-                            crate::CssPercentageCalculation::from_expression(expression),
-                        )
-                    })
-            }
-            .map_err(|error| speech_numeric_error(numeric, &error, location, root_site))?;
-            percentage = Some(value);
-        }
-    }
+    // `[ normal | x-slow | slow | medium | fast | x-fast ] || <percentage [0,∞]>`:
+    // an identifier commits the keyword and anything else the percentage.
+    let (mut keyword, mut percentage) = (None, None);
+    parse_group::<2>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0 => commit(&mut keyword, input, next_is_any_ident, |input| {
+                input.skip_whitespace();
+                let location = input.current_source_location();
+                let ident = input.expect_ident_cloned().map_err(basic)?;
+                voice_rate_keyword(&ident)
+                    .ok_or_else(|| location.new_unexpected_token_error(Token::Ident(ident)))
+            }),
+            1 => commit(
+                &mut percentage,
+                input,
+                |input| !next_is_any_ident(input),
+                |input| parse_voice_rate_percentage(input, numeric),
+            ),
+            _ => unreachable!("two voice-rate operands"),
+        },
+    )?;
     crate::CssVoiceRate::from_parser(keyword, percentage)
         .map_err(|_| input.new_error(cssparser::BasicParseErrorKind::EndOfInput))
+}
+fn next_is_any_ident(input: &mut Parser<'_, '_>) -> bool {
+    let state = input.state();
+    let ident = input.expect_ident().is_ok();
+    input.reset(&state);
+    ident
+}
+fn parse_voice_rate_percentage<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Result<crate::CssSpecifiedNonNegativePercentage, ParseError<'i, Error>> {
+    input.skip_whitespace();
+    let location = input.current_source_location();
+    let root_site = input.position();
+    let component = input
+        .collect_component()
+        .map_err(crate::CssNumericConstructionError::component)
+        .map_err(|error| speech_numeric_error(numeric, &error, location, root_site))?;
+    if matches!(component.view(), crate::CssComponentValueRef::Token(_)) {
+        crate::CssSpecifiedNonNegativePercentage::try_from_component(component.into_owned())
+    } else {
+        let values = crate::numeric::CalculationComponents::single(component)
+            .map_err(|error| crate::error::property::invalid_component_value(location, error))?;
+        numeric
+            .admit(values, crate::numeric::CalculationRoot::Percentage)
+            .and_then(|expression| {
+                crate::CssSpecifiedNonNegativePercentage::try_from_calculation(
+                    crate::CssPercentageCalculation::from_expression(expression),
+                )
+            })
+    }
+    .map_err(|error| speech_numeric_error(numeric, &error, location, root_site))
 }
 fn speech_numeric_error<'i>(
     numeric: &crate::numeric::NumericInputContext<'_>,
@@ -470,33 +487,43 @@ pub(super) fn parse_voice_volume<'i, 't>(
     {
         return Ok(crate::CssVoiceVolume::Silent);
     }
-    let mut level = None;
-    let mut decibel = None;
-    while !input.is_exhausted() {
-        input.skip_whitespace();
-        let state = input.state();
-        let location = input.current_source_location();
-        let token = input.next().map_err(basic)?.clone();
-        match &token {
-            Token::Ident(ident) if level.is_none() => {
-                level = Some(cssparser::match_ignore_ascii_case! { &ident,
+    // `[ x-soft | soft | medium | loud | x-loud ] || <decibel>`: an identifier
+    // commits the level and a dB dimension the offset.
+    let (mut level, mut decibel) = (None, None);
+    parse_group::<2>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0 => commit(&mut level, input, next_is_any_ident, |input| {
+                input.skip_whitespace();
+                let location = input.current_source_location();
+                let ident = input.expect_ident_cloned().map_err(basic)?;
+                Ok(cssparser::match_ignore_ascii_case! { &ident,
                     "x-soft" => crate::CssVoiceVolumeLevel::XSoft,
                     "soft" => crate::CssVoiceVolumeLevel::Soft,
                     "medium" => crate::CssVoiceVolumeLevel::Medium,
                     "loud" => crate::CssVoiceVolumeLevel::Loud,
                     "x-loud" => crate::CssVoiceVolumeLevel::XLoud,
-                    _ => return Err(location.new_unexpected_token_error(token)),
-                });
-            }
-            Token::Dimension { unit, .. }
-                if decibel.is_none() && unit.eq_ignore_ascii_case("dB") =>
-            {
-                input.reset(&state);
-                decibel = Some(parse_decibel(input, numeric)?);
-            }
-            _ => return Err(location.new_unexpected_token_error(token)),
-        }
-    }
+                    _ => return Err(location.new_unexpected_token_error(Token::Ident(ident))),
+                })
+            }),
+            1 => commit(
+                &mut decibel,
+                input,
+                |input| {
+                    let state = input.state();
+                    let starts = matches!(input.next(), Ok(Token::Dimension { unit, .. })
+                        if unit.eq_ignore_ascii_case("dB"));
+                    input.reset(&state);
+                    starts
+                },
+                |input| parse_decibel(input, numeric),
+            ),
+            _ => unreachable!("two voice-volume operands"),
+        },
+    )?;
     match (level, decibel) {
         (Some(level), decibel) => Ok(crate::CssVoiceVolume::Level { level, decibel }),
         (None, Some(value)) => Ok(crate::CssVoiceVolume::Offset(value)),

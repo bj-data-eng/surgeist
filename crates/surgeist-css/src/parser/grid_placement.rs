@@ -1,3 +1,4 @@
+use super::combinators::{Combinator, Tail, commit, fill, group_operand, parse_group};
 use super::property_input::Parser;
 use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::Token;
@@ -9,51 +10,52 @@ use crate::syntax::{
     CssPositiveIntegerLiteral, CssPositiveIntegerValue,
 };
 
+/// `auto | <custom-ident> | [ <integer> && <custom-ident>? ] |
+/// [ span && [ <integer [1,∞]> || <custom-ident> ] ]`, ending at `/`.
+///
+/// The non-auto forms share one table: `span? && [ <integer> || <custom-ident> ]`.
+/// The bracketed `||` is a single `&&` operand, so `span` may precede or
+/// follow the integer and name but never separate them (Values 4 §2.2).
+/// Integer sign and the span requirements are post-conditions.
 pub(super) fn parse_grid_line<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssGridLine, ParseError<'i, Error>> {
-    let mut span = false;
-    let mut name = None;
-    let mut integer = None;
-    while !input.is_exhausted() && !next_is_delim(input, '/') {
-        let location = input.current_source_location();
-        let state = input.state();
-        match input.next().map_err(basic)? {
-            Token::Ident(ident) if ident.eq_ignore_ascii_case("auto") => {
-                if span || name.is_some() || integer.is_some() {
-                    return Err(unexpected_at(location));
-                }
-                if !input.is_exhausted() && !next_is_delim(input, '/') {
-                    return Err(unexpected_at(input.current_source_location()));
-                }
-                return Ok(CssGridLine::Auto);
-            }
-            Token::Ident(ident) if ident.eq_ignore_ascii_case("span") => {
-                if span {
-                    return Err(unexpected_at(location));
-                }
-                span = true;
-            }
-            Token::Ident(ident) => {
-                if name.is_some() {
-                    return Err(unexpected_at(location));
-                }
-                name = Some(
-                    CssGridLineName::try_new(CssIdent::new(ident.as_ref()))
-                        .ok_or_else(|| unexpected_at(location))?,
-                );
-            }
-            Token::Number { .. } | Token::Function(_) => {
-                input.reset(&state);
-                if integer.is_some() {
-                    return Err(unexpected_at(location));
-                }
-                integer = Some(parse_integer_value(input, numeric)?);
-            }
-            token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
+    if input
+        .try_parse(|input| input.expect_ident_matching("auto"))
+        .is_ok()
+    {
+        if !input.is_exhausted() && !next_is_delim(input, '/') {
+            return Err(unexpected_at(input.current_source_location()));
         }
+        return Ok(CssGridLine::Auto);
     }
+    let (mut integer, mut name) = (None, None);
+    let [span, _] = parse_group::<2>(
+        input,
+        Combinator::AllOf {
+            optional: [true, false],
+        },
+        Tail::Reject,
+        |input| next_is_delim(input, '/'),
+        |operand, input| match operand {
+            0 => Ok(input
+                .try_parse(|input| input.expect_ident_matching("span"))
+                .is_ok()),
+            1 => group_operand::<2>(
+                input,
+                |input| next_is_delim(input, '/'),
+                |operand, input| match operand {
+                    0 => commit(&mut integer, input, next_starts_integer, |input| {
+                        parse_integer_value(input, numeric)
+                    }),
+                    1 => fill(&mut name, input, parse_grid_line_name),
+                    _ => unreachable!("two grid-line group operands"),
+                },
+            ),
+            _ => unreachable!("two grid-line operands"),
+        },
+    )?;
     if span {
         let positive = match integer {
             Some(CssIntegerValue::Literal(value)) => Some(CssPositiveIntegerValue::Literal(
@@ -74,6 +76,22 @@ pub(super) fn parse_grid_line<'i, 't>(
         name.map(CssGridLine::Name)
             .ok_or_else(|| unexpected_at(input.current_source_location()))
     }
+}
+
+/// A number or function commits the integer operand.
+fn next_starts_integer(input: &mut Parser<'_, '_>) -> bool {
+    let state = input.state();
+    let starts = matches!(input.next(), Ok(Token::Number { .. } | Token::Function(_)));
+    input.reset(&state);
+    starts
+}
+
+fn parse_grid_line_name<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> Result<CssGridLineName, ParseError<'i, Error>> {
+    let location = input.current_source_location();
+    let ident = input.expect_ident_cloned().map_err(basic)?;
+    CssGridLineName::try_new(CssIdent::new(ident.as_ref())).ok_or_else(|| unexpected_at(location))
 }
 
 pub(super) fn parse_grid_line_range<'i, 't>(

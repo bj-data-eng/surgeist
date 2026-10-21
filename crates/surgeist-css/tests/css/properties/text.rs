@@ -2,6 +2,7 @@
 
 mod decoration_authored_contract;
 mod decoration_checked_original_closure_contract;
+mod decoration_line_grouping_contract;
 mod decoration_typed_values;
 mod glyph_boundary_foundation;
 mod glyph_ordinary_fidelity;

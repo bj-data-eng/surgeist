@@ -1,3 +1,4 @@
+use super::combinators::{Combinator, Tail, keyword, parse_group};
 use super::property_input::Parser;
 use super::values::parse_nonnegative_length;
 use crate::error::property::{Error, ParseError, basic, unexpected_at};
@@ -45,22 +46,26 @@ pub(super) fn parse_contain<'i, 't>(
     }
     input.reset(&state);
 
+    // `size || layout || style || paint`, retaining authored order.
+    const KEYWORDS: [(&str, CssContainComponent); 4] = [
+        ("size", CssContainComponent::Size),
+        ("layout", CssContainComponent::Layout),
+        ("style", CssContainComponent::Style),
+        ("paint", CssContainComponent::Paint),
+    ];
     let mut components = Vec::new();
-    while !input.is_exhausted() {
-        let location = input.current_source_location();
-        let ident = input.expect_ident_cloned().map_err(basic)?;
-        let component = match_ignore_ascii_case! { &ident,
-            "size" => CssContainComponent::Size,
-            "layout" => CssContainComponent::Layout,
-            "style" => CssContainComponent::Style,
-            "paint" => CssContainComponent::Paint,
-            _ => return Err(unexpected_at(location)),
-        };
-        if components.contains(&component) {
-            return Err(unexpected_at(location));
-        }
-        components.push(component);
-    }
+    parse_group::<4>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| {
+            let mut component = None;
+            let matched = keyword(&mut component, input, &KEYWORDS[operand..=operand])?;
+            components.extend(component);
+            Ok(matched)
+        },
+    )?;
     CssContainComponentList::try_new(components)
         .map(CssContain::Components)
         .ok_or_else(|| unexpected_at(input.current_source_location()))

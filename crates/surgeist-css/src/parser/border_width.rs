@@ -1,5 +1,6 @@
 //! Shared exact line-width and unordered width/style/color grammar for borders and column rules.
 
+use super::combinators::{Combinator, Tail, fill, parse_group};
 use super::property_input::Parser;
 use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::Token;
@@ -123,32 +124,21 @@ pub(super) fn parse_exact_line_triple<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<ParsedLineTriple, ParseError<'i, Error>> {
-    let mut width = None;
-    let mut style: Option<CssBorderStyle> = None;
-    let mut color = None;
-    while !input.is_exhausted() {
-        if let Ok(value) = input.try_parse(|input| parse_exact_line_width(input, numeric)) {
-            if width.replace(value).is_some() {
-                return Err(unexpected_at(input.current_source_location()));
-            }
-            continue;
-        }
-        if let Ok(value) = input.try_parse(parse_border_style) {
-            if style.replace(value).is_some() {
-                return Err(unexpected_at(input.current_source_location()));
-            }
-            continue;
-        }
-        if let Ok(value) = input.try_parse(|input| parse_color(input, numeric)) {
-            if color.replace(value).is_some() {
-                return Err(unexpected_at(input.current_source_location()));
-            }
-            continue;
-        }
-        return Err(unexpected_at(input.current_source_location()));
-    }
-    if width.is_none() && style.is_none() && color.is_none() {
-        return Err(unexpected_at(input.current_source_location()));
-    }
+    // `<line-width> || <line-style> || <color>`.
+    let (mut width, mut style, mut color) = (None, None, None);
+    parse_group::<3>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0 => fill(&mut width, input, |input| {
+                parse_exact_line_width(input, numeric)
+            }),
+            1 => fill(&mut style, input, parse_border_style),
+            2 => fill(&mut color, input, |input| parse_color(input, numeric)),
+            _ => unreachable!("three line operands"),
+        },
+    )?;
     Ok((width, style, color))
 }

@@ -1,8 +1,9 @@
 //! UI interaction, cursor, and outline grammar.
 use super::color::parse_color;
+use super::combinators::{Combinator, Tail, fill, keyword, parse_group};
 use super::property_input::Parser;
 use super::url::parse_url;
-use super::values::{parse_length, parse_nonnegative_length};
+use super::values::{next_is_ident, parse_length, parse_nonnegative_length};
 use crate::cursor_values::{
     CssCursor, CssCursorImage, CssCursorImageSource, CssCursorImages, CssCursorUrlSet,
     CssCursorUrlSetDescriptor, CssCursorUrlSetOption, CssCursorUrlSetReference,
@@ -47,47 +48,28 @@ pub(super) fn parse_caret<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssCaret, ParseError<'i, Error>> {
-    let mut color = None;
-    let mut animation = None;
-    let mut shape = None;
-    let mut autos = 0;
-    while !input.is_exhausted() {
-        let location = input.current_source_location();
-        if input
-            .try_parse(|input| input.expect_ident_matching("auto"))
-            .is_ok()
-        {
-            autos += 1;
-            continue;
-        }
-        if animation.is_none()
-            && let Ok(value) = input.try_parse(parse_caret_animation)
-        {
-            animation = Some(value);
-            continue;
-        }
-        if shape.is_none()
-            && let Ok(value) = input.try_parse(parse_caret_shape)
-        {
-            shape = Some(value);
-            continue;
-        }
-        if color.is_none() {
-            match input.try_parse(|input| super::color::parse_color(input, numeric)) {
-                Ok(value) => {
-                    color = Some(CssCaretColor::Color(Box::new(value)));
-                    continue;
-                }
-                Err(error) if crate::error::property::is_resource_parse_error(&error) => {
-                    return Err(error);
-                }
-                Err(_) => {}
-            }
-        }
-        return Err(unexpected_at(location));
-    }
+    // `<'caret-color'> || <'caret-animation'> || <'caret-shape'>`. Each member
+    // admits `auto`, so up to three `auto` operands are collected as ambiguous.
+    let (mut color, mut animation, mut shape) = (None, None, None);
+    let mut autos = [None; 3];
+    let matched = parse_group::<6>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0..=2 => keyword(&mut autos[operand], input, &[("auto", ())]),
+            _ if next_is_ident(input, "auto") => Ok(false),
+            3 => fill(&mut animation, input, parse_caret_animation),
+            4 => fill(&mut shape, input, parse_caret_shape),
+            5 => fill(&mut color, input, |input| {
+                parse_color(input, numeric).map(|value| CssCaretColor::Color(Box::new(value)))
+            }),
+            _ => unreachable!("six caret operands"),
+        },
+    )?;
     // Ambiguous auto fills vacant roles in canonical order after explicit roles.
-    for _ in 0..autos {
+    for _ in matched[..3].iter().filter(|matched| **matched) {
         if color.is_none() {
             color = Some(CssCaretColor::Auto);
         } else if animation.is_none() {
@@ -363,57 +345,32 @@ pub(super) fn parse_outline<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssOutline, ParseError<'i, Error>> {
-    let mut width = None;
-    let mut style = None;
-    let mut color = None;
-    let mut autos = 0;
-    while !input.is_exhausted() {
-        let location = input.current_source_location();
-        if input
-            .try_parse(|input| input.expect_ident_matching("auto"))
-            .is_ok()
-        {
-            autos += 1;
-            if autos > 2 {
-                return Err(crate::error::property::unexpected_at(location));
-            }
-            continue;
-        }
-        if width.is_none() {
-            match input.try_parse(|input| parse_outline_width(input, numeric)) {
-                Ok(parsed_width) => {
-                    width = Some(parsed_width);
-                    continue;
-                }
-                Err(error) if crate::error::property::is_resource_parse_error(&error) => {
-                    return Err(error);
-                }
-                Err(_) => {}
-            }
-        }
-        if style.is_none()
-            && let Ok(parsed_style) = input.try_parse(parse_outline_style)
-        {
-            style = Some(parsed_style);
-            continue;
-        }
-        if color.is_none() {
-            match input.try_parse(|input| parse_outline_color(input, numeric)) {
-                Ok(parsed_color) => {
-                    color = Some(parsed_color);
-                    continue;
-                }
-                Err(error) if crate::error::property::is_resource_parse_error(&error) => {
-                    return Err(error);
-                }
-                Err(_) => {}
-            }
-        }
-        return Err(unexpected_at(input.current_source_location()));
-    }
+    // `<'outline-width'> || <'outline-style'> || <'outline-color'>`. Style
+    // and color both admit `auto`, so up to two `auto` operands are collected
+    // as ambiguous and assigned after the explicit roles are known.
+    let (mut width, mut style, mut color) = (None, None, None);
+    let mut autos = [None; 2];
+    let [first_auto, second_auto, ..] = parse_group::<5>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0 | 1 => keyword(&mut autos[operand], input, &[("auto", ())]),
+            2 => fill(&mut width, input, |input| {
+                parse_outline_width(input, numeric)
+            }),
+            _ if next_is_ident(input, "auto") => Ok(false),
+            3 => fill(&mut style, input, parse_outline_style),
+            4 => fill(&mut color, input, |input| {
+                parse_outline_color(input, numeric)
+            }),
+            _ => unreachable!("five outline operands"),
+        },
+    )?;
     // Resolve auto only after the unordered explicit slots are known. One lone
     // auto (with optional width) sets both semantic slots under selected UI4 §3.1.
-    match autos {
+    match usize::from(first_auto) + usize::from(second_auto) {
         0 => {}
         1 if style.is_none() || color.is_none() => {
             if style.is_none() {

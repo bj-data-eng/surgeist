@@ -189,8 +189,8 @@ fn full_shorthand_preserves_groups_but_serializes_in_fonts_four_order() {
     let source = parsed(
         "font-variant",
         concat!(
-            "emoji super ruby tabular-nums annotation(Ann) small-caps no-contextual ",
-            "stylistic(NaMe) oldstyle-nums historical-forms"
+            "emoji super ruby tabular-nums oldstyle-nums annotation(Ann) stylistic(NaMe) ",
+            "historical-forms small-caps no-contextual"
         ),
     );
     let CssKnownPropertyValueRef::FontVariant(wrapper) =

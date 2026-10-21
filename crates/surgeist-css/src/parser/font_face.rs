@@ -802,21 +802,11 @@ pub(super) fn parse_font_display<'i, 't>(
 fn parse_unicode_range_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssUnicodeRangeList, ParseError<'i, Error>> {
-    let mut ranges = Vec::new();
-    loop {
-        ranges.push(unicode_range::parse(input)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(incomplete_descriptor_at(
-                input.current_source_location(),
-                "font-face",
-                "unicode-range",
-            ));
-        }
-    }
-
+    // List post-condition: a trailing comma is an incomplete descriptor.
+    let ranges =
+        super::combinators::parse_native_comma_list(input, unicode_range::parse, |_, at| {
+            incomplete_descriptor_at(at, "font-face", "unicode-range")
+        })?;
     CssUnicodeRangeList::try_new(ranges)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }

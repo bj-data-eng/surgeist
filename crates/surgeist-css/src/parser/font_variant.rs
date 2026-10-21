@@ -1,33 +1,176 @@
+//! Fonts 4 `font-variant` and its longhands.
+//!
+//! Each multi-value longhand is one `||` group; the shorthand is a `||` of
+//! those whole groups and its single-keyword members. Values 4 §2.2 groupings
+//! are significant, so a group's values stay contiguous in the shorthand while
+//! their internal order stays free.
+use super::combinators::{Combinator, Operand, Tail, group_operand, keyword, parse_group};
 use super::property_input::Parser;
 use crate::CssFontFeatureValueName;
 use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use crate::font_variant::*;
 use cssparser::Token;
 
+const LIGATURES: [[(&str, CssFontVariantLigatureState); 2]; 4] = [
+    [
+        ("common-ligatures", CssFontVariantLigatureState::Enabled),
+        ("no-common-ligatures", CssFontVariantLigatureState::Disabled),
+    ],
+    [
+        (
+            "discretionary-ligatures",
+            CssFontVariantLigatureState::Enabled,
+        ),
+        (
+            "no-discretionary-ligatures",
+            CssFontVariantLigatureState::Disabled,
+        ),
+    ],
+    [
+        ("historical-ligatures", CssFontVariantLigatureState::Enabled),
+        (
+            "no-historical-ligatures",
+            CssFontVariantLigatureState::Disabled,
+        ),
+    ],
+    [
+        ("contextual", CssFontVariantLigatureState::Enabled),
+        ("no-contextual", CssFontVariantLigatureState::Disabled),
+    ],
+];
+const CAPS: [(&str, CssFontVariantCaps); 6] = [
+    ("small-caps", CssFontVariantCaps::SmallCaps),
+    ("all-small-caps", CssFontVariantCaps::AllSmallCaps),
+    ("petite-caps", CssFontVariantCaps::PetiteCaps),
+    ("all-petite-caps", CssFontVariantCaps::AllPetiteCaps),
+    ("unicase", CssFontVariantCaps::Unicase),
+    ("titling-caps", CssFontVariantCaps::TitlingCaps),
+];
+const POSITIONS: [(&str, CssFontVariantPosition); 2] = [
+    ("sub", CssFontVariantPosition::Sub),
+    ("super", CssFontVariantPosition::Super),
+];
+const EMOJI: [(&str, CssFontVariantEmoji); 3] = [
+    ("text", CssFontVariantEmoji::Text),
+    ("emoji", CssFontVariantEmoji::Emoji),
+    ("unicode", CssFontVariantEmoji::Unicode),
+];
+const FIGURES: [(&str, CssFontVariantNumericFigure); 2] = [
+    ("lining-nums", CssFontVariantNumericFigure::LiningNums),
+    ("oldstyle-nums", CssFontVariantNumericFigure::OldstyleNums),
+];
+const SPACINGS: [(&str, CssFontVariantNumericSpacing); 2] = [
+    (
+        "proportional-nums",
+        CssFontVariantNumericSpacing::ProportionalNums,
+    ),
+    ("tabular-nums", CssFontVariantNumericSpacing::TabularNums),
+];
+const FRACTIONS: [(&str, CssFontVariantNumericFraction); 2] = [
+    (
+        "diagonal-fractions",
+        CssFontVariantNumericFraction::DiagonalFractions,
+    ),
+    (
+        "stacked-fractions",
+        CssFontVariantNumericFraction::StackedFractions,
+    ),
+];
+const EAST_ASIAN_VARIANTS: [(&str, CssFontVariantEastAsianVariant); 6] = [
+    ("jis78", CssFontVariantEastAsianVariant::Jis78),
+    ("jis83", CssFontVariantEastAsianVariant::Jis83),
+    ("jis90", CssFontVariantEastAsianVariant::Jis90),
+    ("jis04", CssFontVariantEastAsianVariant::Jis04),
+    ("simplified", CssFontVariantEastAsianVariant::Simplified),
+    ("traditional", CssFontVariantEastAsianVariant::Traditional),
+];
+const EAST_ASIAN_WIDTHS: [(&str, CssFontVariantEastAsianWidth); 2] = [
+    ("full-width", CssFontVariantEastAsianWidth::FullWidth),
+    (
+        "proportional-width",
+        CssFontVariantEastAsianWidth::ProportionalWidth,
+    ),
+];
+
+/// `<common-lig-values> || <discretionary-lig-values> ||
+/// <historical-lig-values> || <contextual-alt-values>`.
 #[derive(Default)]
-struct FontVariantComponents {
-    common: Option<CssFontVariantLigatureState>,
-    discretionary: Option<CssFontVariantLigatureState>,
-    historical: Option<CssFontVariantLigatureState>,
-    contextual: Option<CssFontVariantLigatureState>,
-    position: Option<CssFontVariantPosition>,
-    caps: Option<CssFontVariantCaps>,
+struct Ligatures([Option<CssFontVariantLigatureState>; 4]);
+
+impl Ligatures {
+    fn operand<'i>(&mut self, index: usize, input: &mut Parser<'i, '_>) -> Operand<'i> {
+        keyword(&mut self.0[index], input, &LIGATURES[index])
+    }
+
+    fn finish(self) -> Option<CssFontVariantLigatureValues> {
+        let [common, discretionary, historical, contextual] = self.0;
+        CssFontVariantLigatureValues::try_new(common, discretionary, historical, contextual)
+    }
+}
+
+/// `<numeric-figure-values> || <numeric-spacing-values> ||
+/// <numeric-fraction-values> || ordinal || slashed-zero`.
+#[derive(Default)]
+struct Numeric {
     figure: Option<CssFontVariantNumericFigure>,
     spacing: Option<CssFontVariantNumericSpacing>,
     fraction: Option<CssFontVariantNumericFraction>,
-    ordinal: bool,
-    slashed_zero: bool,
-    east_asian_variant: Option<CssFontVariantEastAsianVariant>,
-    east_asian_width: Option<CssFontVariantEastAsianWidth>,
-    ruby: bool,
-    alternates: AlternateComponents,
-    emoji: Option<CssFontVariantEmoji>,
+    ordinal: Option<()>,
+    slashed_zero: Option<()>,
 }
 
+impl Numeric {
+    fn operand<'i>(&mut self, index: usize, input: &mut Parser<'i, '_>) -> Operand<'i> {
+        match index {
+            0 => keyword(&mut self.figure, input, &FIGURES),
+            1 => keyword(&mut self.spacing, input, &SPACINGS),
+            2 => keyword(&mut self.fraction, input, &FRACTIONS),
+            3 => keyword(&mut self.ordinal, input, &[("ordinal", ())]),
+            4 => keyword(&mut self.slashed_zero, input, &[("slashed-zero", ())]),
+            _ => unreachable!("five numeric operands"),
+        }
+    }
+
+    fn finish(self) -> Option<CssFontVariantNumericValues> {
+        CssFontVariantNumericValues::try_new(
+            self.figure,
+            self.spacing,
+            self.fraction,
+            self.ordinal.is_some(),
+            self.slashed_zero.is_some(),
+        )
+    }
+}
+
+/// `<east-asian-variant-values> || <east-asian-width-values> || ruby`.
 #[derive(Default)]
-struct AlternateComponents {
+struct EastAsian {
+    variant: Option<CssFontVariantEastAsianVariant>,
+    width: Option<CssFontVariantEastAsianWidth>,
+    ruby: Option<()>,
+}
+
+impl EastAsian {
+    fn operand<'i>(&mut self, index: usize, input: &mut Parser<'i, '_>) -> Operand<'i> {
+        match index {
+            0 => keyword(&mut self.variant, input, &EAST_ASIAN_VARIANTS),
+            1 => keyword(&mut self.width, input, &EAST_ASIAN_WIDTHS),
+            2 => keyword(&mut self.ruby, input, &[("ruby", ())]),
+            _ => unreachable!("three east-asian operands"),
+        }
+    }
+
+    fn finish(self) -> Option<CssFontVariantEastAsianValues> {
+        CssFontVariantEastAsianValues::try_new(self.variant, self.width, self.ruby.is_some())
+    }
+}
+
+/// `stylistic() || historical-forms || styleset() || character-variant() ||
+/// swash() || ornaments() || annotation()`.
+#[derive(Default)]
+struct Alternates {
     stylistic: Option<CssFontFeatureValueName>,
-    historical_forms: bool,
+    historical_forms: Option<()>,
     styleset: Option<CssFontVariantAlternateNames>,
     character_variant: Option<CssFontVariantAlternateNames>,
     swash: Option<CssFontFeatureValueName>,
@@ -35,28 +178,49 @@ struct AlternateComponents {
     annotation: Option<CssFontFeatureValueName>,
 }
 
-impl AlternateComponents {
-    fn apply_keyword(&mut self, ident: &str) -> Option<bool> {
-        ident
-            .eq_ignore_ascii_case("historical-forms")
-            .then(|| set_flag_once(&mut self.historical_forms))
+impl Alternates {
+    fn operand<'i>(&mut self, index: usize, input: &mut Parser<'i, '_>) -> Operand<'i> {
+        match index {
+            0 => single_name(&mut self.stylistic, input, "stylistic"),
+            1 => keyword(
+                &mut self.historical_forms,
+                input,
+                &[("historical-forms", ())],
+            ),
+            2 => name_list(&mut self.styleset, input, "styleset"),
+            3 => name_list(&mut self.character_variant, input, "character-variant"),
+            4 => single_name(&mut self.swash, input, "swash"),
+            5 => single_name(&mut self.ornaments, input, "ornaments"),
+            6 => single_name(&mut self.annotation, input, "annotation"),
+            _ => unreachable!("seven alternates operands"),
+        }
     }
 
-    fn apply_function<'i, 't>(
-        &mut self,
-        name: &str,
-        input: &mut Parser<'i, 't>,
-    ) -> std::result::Result<Option<bool>, ParseError<'i, Error>> {
-        let multi =
-            name.eq_ignore_ascii_case("styleset") || name.eq_ignore_ascii_case("character-variant");
-        if !multi
-            && !["stylistic", "swash", "ornaments", "annotation"]
-                .iter()
-                .any(|known| name.eq_ignore_ascii_case(known))
-        {
-            return Ok(None);
-        }
-        let names = input.parse_nested_block(|nested| {
+    fn finish(self) -> Option<CssFontVariantAlternateValues> {
+        CssFontVariantAlternateValues::try_new(
+            self.stylistic,
+            self.historical_forms.is_some(),
+            self.styleset,
+            self.character_variant,
+            self.swash,
+            self.ornaments,
+            self.annotation,
+        )
+    }
+}
+
+/// A feature-value function commits once its name matches; malformed
+/// arguments are the value's failure.
+fn feature_names<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    function: &str,
+    multiple: bool,
+) -> std::result::Result<Option<Vec<CssFontFeatureValueName>>, ParseError<'i, Error>> {
+    if !matches!(input.next(), Ok(Token::Function(name)) if name.eq_ignore_ascii_case(function)) {
+        return Ok(None);
+    }
+    input
+        .parse_nested_block(|nested| {
             let mut names = Vec::new();
             loop {
                 let ident = nested.expect_ident_cloned().map_err(basic)?;
@@ -68,257 +232,36 @@ impl AlternateComponents {
                 }
                 nested.expect_comma().map_err(basic)?;
             }
-            if !multi && names.len() != 1 {
+            if !multiple && names.len() != 1 {
                 return Err(unexpected_at(nested.current_source_location()));
             }
             Ok(names)
-        })?;
-        let applied = if multi {
-            let values = CssFontVariantAlternateNames::try_new(names)
-                .expect("name parser collected at least one name");
-            if name.eq_ignore_ascii_case("styleset") {
-                set_once(&mut self.styleset, values)
-            } else {
-                set_once(&mut self.character_variant, values)
-            }
-        } else {
-            let value = names.into_iter().next().expect("single name required");
-            if name.eq_ignore_ascii_case("stylistic") {
-                set_once(&mut self.stylistic, value)
-            } else if name.eq_ignore_ascii_case("swash") {
-                set_once(&mut self.swash, value)
-            } else if name.eq_ignore_ascii_case("ornaments") {
-                set_once(&mut self.ornaments, value)
-            } else {
-                set_once(&mut self.annotation, value)
-            }
-        };
-        Ok(Some(applied))
-    }
-
-    fn finish(self) -> Option<CssFontVariantAlternateValues> {
-        CssFontVariantAlternateValues::try_new(
-            self.stylistic,
-            self.historical_forms,
-            self.styleset,
-            self.character_variant,
-            self.swash,
-            self.ornaments,
-            self.annotation,
-        )
-    }
+        })
+        .map(Some)
 }
 
-impl FontVariantComponents {
-    fn apply_ligature(&mut self, ident: &str) -> Option<bool> {
-        if ident.eq_ignore_ascii_case("common-ligatures") {
-            Some(set_once(
-                &mut self.common,
-                CssFontVariantLigatureState::Enabled,
-            ))
-        } else if ident.eq_ignore_ascii_case("no-common-ligatures") {
-            Some(set_once(
-                &mut self.common,
-                CssFontVariantLigatureState::Disabled,
-            ))
-        } else if ident.eq_ignore_ascii_case("discretionary-ligatures") {
-            Some(set_once(
-                &mut self.discretionary,
-                CssFontVariantLigatureState::Enabled,
-            ))
-        } else if ident.eq_ignore_ascii_case("no-discretionary-ligatures") {
-            Some(set_once(
-                &mut self.discretionary,
-                CssFontVariantLigatureState::Disabled,
-            ))
-        } else if ident.eq_ignore_ascii_case("historical-ligatures") {
-            Some(set_once(
-                &mut self.historical,
-                CssFontVariantLigatureState::Enabled,
-            ))
-        } else if ident.eq_ignore_ascii_case("no-historical-ligatures") {
-            Some(set_once(
-                &mut self.historical,
-                CssFontVariantLigatureState::Disabled,
-            ))
-        } else if ident.eq_ignore_ascii_case("contextual") {
-            Some(set_once(
-                &mut self.contextual,
-                CssFontVariantLigatureState::Enabled,
-            ))
-        } else if ident.eq_ignore_ascii_case("no-contextual") {
-            Some(set_once(
-                &mut self.contextual,
-                CssFontVariantLigatureState::Disabled,
-            ))
-        } else {
-            None
-        }
-    }
-
-    fn apply_caps(&mut self, ident: &str) -> Option<bool> {
-        let value = if ident.eq_ignore_ascii_case("small-caps") {
-            CssFontVariantCaps::SmallCaps
-        } else if ident.eq_ignore_ascii_case("all-small-caps") {
-            CssFontVariantCaps::AllSmallCaps
-        } else if ident.eq_ignore_ascii_case("petite-caps") {
-            CssFontVariantCaps::PetiteCaps
-        } else if ident.eq_ignore_ascii_case("all-petite-caps") {
-            CssFontVariantCaps::AllPetiteCaps
-        } else if ident.eq_ignore_ascii_case("unicase") {
-            CssFontVariantCaps::Unicase
-        } else if ident.eq_ignore_ascii_case("titling-caps") {
-            CssFontVariantCaps::TitlingCaps
-        } else {
-            return None;
-        };
-        Some(set_once(&mut self.caps, value))
-    }
-
-    fn apply_position(&mut self, ident: &str) -> Option<bool> {
-        let value = if ident.eq_ignore_ascii_case("sub") {
-            CssFontVariantPosition::Sub
-        } else if ident.eq_ignore_ascii_case("super") {
-            CssFontVariantPosition::Super
-        } else {
-            return None;
-        };
-        Some(set_once(&mut self.position, value))
-    }
-
-    fn apply_numeric(&mut self, ident: &str) -> Option<bool> {
-        if ident.eq_ignore_ascii_case("lining-nums") {
-            Some(set_once(
-                &mut self.figure,
-                CssFontVariantNumericFigure::LiningNums,
-            ))
-        } else if ident.eq_ignore_ascii_case("oldstyle-nums") {
-            Some(set_once(
-                &mut self.figure,
-                CssFontVariantNumericFigure::OldstyleNums,
-            ))
-        } else if ident.eq_ignore_ascii_case("proportional-nums") {
-            Some(set_once(
-                &mut self.spacing,
-                CssFontVariantNumericSpacing::ProportionalNums,
-            ))
-        } else if ident.eq_ignore_ascii_case("tabular-nums") {
-            Some(set_once(
-                &mut self.spacing,
-                CssFontVariantNumericSpacing::TabularNums,
-            ))
-        } else if ident.eq_ignore_ascii_case("diagonal-fractions") {
-            Some(set_once(
-                &mut self.fraction,
-                CssFontVariantNumericFraction::DiagonalFractions,
-            ))
-        } else if ident.eq_ignore_ascii_case("stacked-fractions") {
-            Some(set_once(
-                &mut self.fraction,
-                CssFontVariantNumericFraction::StackedFractions,
-            ))
-        } else if ident.eq_ignore_ascii_case("ordinal") {
-            Some(set_flag_once(&mut self.ordinal))
-        } else if ident.eq_ignore_ascii_case("slashed-zero") {
-            Some(set_flag_once(&mut self.slashed_zero))
-        } else {
-            None
-        }
-    }
-
-    fn apply_east_asian(&mut self, ident: &str) -> Option<bool> {
-        let variant = if ident.eq_ignore_ascii_case("jis78") {
-            Some(CssFontVariantEastAsianVariant::Jis78)
-        } else if ident.eq_ignore_ascii_case("jis83") {
-            Some(CssFontVariantEastAsianVariant::Jis83)
-        } else if ident.eq_ignore_ascii_case("jis90") {
-            Some(CssFontVariantEastAsianVariant::Jis90)
-        } else if ident.eq_ignore_ascii_case("jis04") {
-            Some(CssFontVariantEastAsianVariant::Jis04)
-        } else if ident.eq_ignore_ascii_case("simplified") {
-            Some(CssFontVariantEastAsianVariant::Simplified)
-        } else if ident.eq_ignore_ascii_case("traditional") {
-            Some(CssFontVariantEastAsianVariant::Traditional)
-        } else {
-            None
-        };
-        if let Some(variant) = variant {
-            return Some(set_once(&mut self.east_asian_variant, variant));
-        }
-
-        let width = if ident.eq_ignore_ascii_case("full-width") {
-            Some(CssFontVariantEastAsianWidth::FullWidth)
-        } else if ident.eq_ignore_ascii_case("proportional-width") {
-            Some(CssFontVariantEastAsianWidth::ProportionalWidth)
-        } else {
-            None
-        };
-        if let Some(width) = width {
-            return Some(set_once(&mut self.east_asian_width, width));
-        }
-
-        ident
-            .eq_ignore_ascii_case("ruby")
-            .then(|| set_flag_once(&mut self.ruby))
-    }
-
-    fn ligatures(&self) -> Option<CssFontVariantLigatureValues> {
-        CssFontVariantLigatureValues::try_new(
-            self.common,
-            self.discretionary,
-            self.historical,
-            self.contextual,
-        )
-    }
-
-    fn numeric(&self) -> Option<CssFontVariantNumericValues> {
-        CssFontVariantNumericValues::try_new(
-            self.figure,
-            self.spacing,
-            self.fraction,
-            self.ordinal,
-            self.slashed_zero,
-        )
-    }
-
-    fn east_asian(&self) -> Option<CssFontVariantEastAsianValues> {
-        CssFontVariantEastAsianValues::try_new(
-            self.east_asian_variant,
-            self.east_asian_width,
-            self.ruby,
-        )
-    }
-
-    fn apply_emoji(&mut self, ident: &str) -> Option<bool> {
-        let value = if ident.eq_ignore_ascii_case("text") {
-            CssFontVariantEmoji::Text
-        } else if ident.eq_ignore_ascii_case("emoji") {
-            CssFontVariantEmoji::Emoji
-        } else if ident.eq_ignore_ascii_case("unicode") {
-            CssFontVariantEmoji::Unicode
-        } else {
-            return None;
-        };
-        Some(set_once(&mut self.emoji, value))
-    }
+fn single_name<'i>(
+    slot: &mut Option<CssFontFeatureValueName>,
+    input: &mut Parser<'i, '_>,
+    function: &str,
+) -> Operand<'i> {
+    let Some(names) = feature_names(input, function, false)? else {
+        return Ok(false);
+    };
+    *slot = names.into_iter().next();
+    Ok(true)
 }
 
-fn set_once<T>(slot: &mut Option<T>, value: T) -> bool {
-    if slot.is_some() {
-        false
-    } else {
-        *slot = Some(value);
-        true
-    }
-}
-
-fn set_flag_once(slot: &mut bool) -> bool {
-    if *slot {
-        false
-    } else {
-        *slot = true;
-        true
-    }
+fn name_list<'i>(
+    slot: &mut Option<CssFontVariantAlternateNames>,
+    input: &mut Parser<'i, '_>,
+    function: &str,
+) -> Operand<'i> {
+    let Some(names) = feature_names(input, function, true)? else {
+        return Ok(false);
+    };
+    *slot = CssFontVariantAlternateNames::try_new(names);
+    Ok(true)
 }
 
 fn next_font_variant_ident<'i, 't>(
@@ -336,70 +279,65 @@ fn invalid_font_variant_keyword<'i>(
     location.new_unexpected_token_error::<Error>(Token::Ident(ident.into()))
 }
 
+fn keyword_or_normal<'i, T: Copy>(
+    input: &mut Parser<'i, '_>,
+    normal: T,
+    table: &[(&str, T)],
+) -> std::result::Result<T, ParseError<'i, Error>> {
+    let (location, ident) = next_font_variant_ident(input)?;
+    if ident.eq_ignore_ascii_case("normal") {
+        return Ok(normal);
+    }
+    table
+        .iter()
+        .find(|(name, _)| ident.eq_ignore_ascii_case(name))
+        .map(|(_, value)| *value)
+        .ok_or_else(|| invalid_font_variant_keyword(location, ident))
+}
+
 pub(super) fn parse_font_variant_caps<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontVariantCaps, ParseError<'i, Error>> {
-    let (location, ident) = next_font_variant_ident(input)?;
-    let value = if ident.eq_ignore_ascii_case("normal") {
-        CssFontVariantCaps::Normal
-    } else if ident.eq_ignore_ascii_case("small-caps") {
-        CssFontVariantCaps::SmallCaps
-    } else if ident.eq_ignore_ascii_case("all-small-caps") {
-        CssFontVariantCaps::AllSmallCaps
-    } else if ident.eq_ignore_ascii_case("petite-caps") {
-        CssFontVariantCaps::PetiteCaps
-    } else if ident.eq_ignore_ascii_case("all-petite-caps") {
-        CssFontVariantCaps::AllPetiteCaps
-    } else if ident.eq_ignore_ascii_case("unicase") {
-        CssFontVariantCaps::Unicase
-    } else if ident.eq_ignore_ascii_case("titling-caps") {
-        CssFontVariantCaps::TitlingCaps
-    } else {
-        return Err(invalid_font_variant_keyword(location, ident));
-    };
-    Ok(value)
+    keyword_or_normal(input, CssFontVariantCaps::Normal, &CAPS)
 }
 
 pub(super) fn parse_font_variant_position<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontVariantPosition, ParseError<'i, Error>> {
-    let (location, ident) = next_font_variant_ident(input)?;
-    if ident.eq_ignore_ascii_case("normal") {
-        Ok(CssFontVariantPosition::Normal)
-    } else if ident.eq_ignore_ascii_case("sub") {
-        Ok(CssFontVariantPosition::Sub)
-    } else if ident.eq_ignore_ascii_case("super") {
-        Ok(CssFontVariantPosition::Super)
-    } else {
-        Err(invalid_font_variant_keyword(location, ident))
-    }
+    keyword_or_normal(input, CssFontVariantPosition::Normal, &POSITIONS)
+}
+
+pub(super) fn parse_font_variant_emoji<'i, 't>(
+    input: &mut Parser<'i, 't>,
+) -> std::result::Result<CssFontVariantEmoji, ParseError<'i, Error>> {
+    keyword_or_normal(input, CssFontVariantEmoji::Normal, &EMOJI)
+}
+
+fn next_is_keyword<'i>(input: &mut Parser<'i, '_>, keyword: &str) -> bool {
+    input
+        .try_parse(|input| input.expect_ident_matching(keyword))
+        .is_ok()
 }
 
 pub(super) fn parse_font_variant_ligatures<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontVariantLigatures, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("normal"))
-        .is_ok()
-    {
+    if next_is_keyword(input, "normal") {
         return Ok(CssFontVariantLigatures::Normal);
     }
-    if input
-        .try_parse(|input| input.expect_ident_matching("none"))
-        .is_ok()
-    {
+    if next_is_keyword(input, "none") {
         return Ok(CssFontVariantLigatures::None);
     }
-
-    let mut components = FontVariantComponents::default();
-    while !input.is_exhausted() {
-        let (location, ident) = next_font_variant_ident(input)?;
-        if components.apply_ligature(&ident) != Some(true) {
-            return Err(invalid_font_variant_keyword(location, ident));
-        }
-    }
-    components
-        .ligatures()
+    let mut ligatures = Ligatures::default();
+    parse_group::<4>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| ligatures.operand(operand, input),
+    )?;
+    ligatures
+        .finish()
         .map(CssFontVariantLigatures::Values)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
@@ -407,22 +345,19 @@ pub(super) fn parse_font_variant_ligatures<'i, 't>(
 pub(super) fn parse_font_variant_numeric<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontVariantNumeric, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("normal"))
-        .is_ok()
-    {
+    if next_is_keyword(input, "normal") {
         return Ok(CssFontVariantNumeric::Normal);
     }
-
-    let mut components = FontVariantComponents::default();
-    while !input.is_exhausted() {
-        let (location, ident) = next_font_variant_ident(input)?;
-        if components.apply_numeric(&ident) != Some(true) {
-            return Err(invalid_font_variant_keyword(location, ident));
-        }
-    }
-    components
-        .numeric()
+    let mut numeric = Numeric::default();
+    parse_group::<5>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| numeric.operand(operand, input),
+    )?;
+    numeric
+        .finish()
         .map(CssFontVariantNumeric::Values)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
@@ -430,115 +365,99 @@ pub(super) fn parse_font_variant_numeric<'i, 't>(
 pub(super) fn parse_font_variant_east_asian<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontVariantEastAsian, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("normal"))
-        .is_ok()
-    {
+    if next_is_keyword(input, "normal") {
         return Ok(CssFontVariantEastAsian::Normal);
     }
-
-    let mut components = FontVariantComponents::default();
-    while !input.is_exhausted() {
-        let (location, ident) = next_font_variant_ident(input)?;
-        if components.apply_east_asian(&ident) != Some(true) {
-            return Err(invalid_font_variant_keyword(location, ident));
-        }
-    }
-    components
-        .east_asian()
+    let mut east_asian = EastAsian::default();
+    parse_group::<3>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| east_asian.operand(operand, input),
+    )?;
+    east_asian
+        .finish()
         .map(CssFontVariantEastAsian::Values)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
-}
-
-pub(super) fn parse_font_variant_emoji<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontVariantEmoji, ParseError<'i, Error>> {
-    let (location, ident) = next_font_variant_ident(input)?;
-    if ident.eq_ignore_ascii_case("normal") {
-        Ok(CssFontVariantEmoji::Normal)
-    } else {
-        let mut components = FontVariantComponents::default();
-        components
-            .apply_emoji(&ident)
-            .filter(|accepted| *accepted)
-            .and(components.emoji)
-            .ok_or_else(|| invalid_font_variant_keyword(location, ident))
-    }
 }
 
 pub(super) fn parse_font_variant_alternates<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontVariantAlternates, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("normal"))
-        .is_ok()
-    {
+    if next_is_keyword(input, "normal") {
         return Ok(CssFontVariantAlternates::Normal);
     }
-    let mut components = AlternateComponents::default();
-    while !input.is_exhausted() {
-        let location = input.current_source_location();
-        let token = input.next().map_err(basic)?.clone();
-        let applied = match token {
-            Token::Ident(ref ident) => components.apply_keyword(ident),
-            Token::Function(ref name) => components.apply_function(name, input)?,
-            _ => None,
-        };
-        if applied != Some(true) {
-            return Err(location.new_unexpected_token_error::<Error>(token));
-        }
-    }
-    components
+    let mut alternates = Alternates::default();
+    parse_group::<7>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| alternates.operand(operand, input),
+    )?;
+    alternates
         .finish()
         .map(CssFontVariantAlternates::Values)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
+/// `normal | none | [ <ligatures> || <caps> || <alternates> || <numeric> ||
+/// <east-asian> || <position> || <emoji> ]`, each bracketed group whole.
 pub(super) fn parse_font_variant<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontVariantValue, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("normal"))
-        .is_ok()
-    {
+    if next_is_keyword(input, "normal") {
         return Ok(CssFontVariantValue::Normal);
     }
-    if input
-        .try_parse(|input| input.expect_ident_matching("none"))
-        .is_ok()
-    {
+    if next_is_keyword(input, "none") {
         return Ok(CssFontVariantValue::None);
     }
-
-    let mut components = FontVariantComponents::default();
-    while !input.is_exhausted() {
-        let location = input.current_source_location();
-        let token = input.next().map_err(basic)?.clone();
-        let applied = match &token {
-            Token::Ident(ident) => components
-                .apply_ligature(ident)
-                .or_else(|| components.apply_position(ident))
-                .or_else(|| components.apply_caps(ident))
-                .or_else(|| components.apply_numeric(ident))
-                .or_else(|| components.apply_east_asian(ident))
-                .or_else(|| components.alternates.apply_keyword(ident))
-                .or_else(|| components.apply_emoji(ident)),
-            Token::Function(name) => components.alternates.apply_function(name, input)?,
-            _ => None,
-        };
-        if applied != Some(true) {
-            return Err(location.new_unexpected_token_error::<Error>(token));
-        }
-    }
-
+    let mut ligatures = Ligatures::default();
+    let mut numeric = Numeric::default();
+    let mut east_asian = EastAsian::default();
+    let mut alternates = Alternates::default();
+    let (mut position, mut caps, mut emoji) = (None, None, None);
+    parse_group::<7>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0 => group_operand::<4>(
+                input,
+                |_| false,
+                |index, input| ligatures.operand(index, input),
+            ),
+            1 => keyword(&mut position, input, &POSITIONS),
+            2 => keyword(&mut caps, input, &CAPS),
+            3 => group_operand::<5>(
+                input,
+                |_| false,
+                |index, input| numeric.operand(index, input),
+            ),
+            4 => group_operand::<3>(
+                input,
+                |_| false,
+                |index, input| east_asian.operand(index, input),
+            ),
+            5 => group_operand::<7>(
+                input,
+                |_| false,
+                |index, input| alternates.operand(index, input),
+            ),
+            6 => keyword(&mut emoji, input, &EMOJI),
+            _ => unreachable!("seven font-variant operands"),
+        },
+    )?;
     CssFontVariantValues::try_new(
-        components.ligatures(),
-        components.position,
-        components.caps,
-        components.numeric(),
-        components.east_asian(),
-        components.alternates.finish(),
-        components.emoji,
+        ligatures.finish(),
+        position,
+        caps,
+        numeric.finish(),
+        east_asian.finish(),
+        alternates.finish(),
+        emoji,
     )
     .map(CssFontVariantValue::Values)
     .ok_or_else(|| unexpected_at(input.current_source_location()))

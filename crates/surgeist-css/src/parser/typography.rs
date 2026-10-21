@@ -1,4 +1,5 @@
 use super::color::parse_color;
+use super::combinators::{Combinator, Tail, commit, fill, keyword, parse_group};
 use super::property_input::Parser;
 use super::values::{parse_hinted_number_calculation, parse_length_percentage};
 use crate::error::property::{CssFeatureId, Error, ParseError, basic, unexpected_at};
@@ -290,26 +291,34 @@ pub(super) fn parse_text_indent<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssTextIndent, ParseError<'i, Error>> {
-    let mut length = None;
-    let mut hanging = false;
-    let mut each_line = false;
-
-    while !input.is_exhausted() {
-        if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-            match_ignore_ascii_case! { &ident,
-                "hanging" if !hanging => hanging = true,
-                "each-line" if !each_line => each_line = true,
-                _ => return Err(unexpected_at(input.current_source_location())),
-            }
-            continue;
-        }
-        if length.is_some() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-        length = Some(parse_length_percentage(input, numeric)?);
-    }
-
-    let length = length.ok_or_else(|| unexpected_at(input.current_source_location()))?;
+    // `<length-percentage> && hanging? && each-line?`; any non-identifier
+    // commits the length.
+    let (mut hanging, mut each_line, mut length) = (None, None, None);
+    let [hanging, each_line, _] = parse_group::<3>(
+        input,
+        Combinator::AllOf {
+            optional: [true, true, false],
+        },
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0 => keyword(&mut hanging, input, &[("hanging", ())]),
+            1 => keyword(&mut each_line, input, &[("each-line", ())]),
+            2 => commit(
+                &mut length,
+                input,
+                |input| {
+                    let state = input.state();
+                    let ident = input.expect_ident().is_ok();
+                    input.reset(&state);
+                    !ident
+                },
+                |input| parse_length_percentage(input, numeric),
+            ),
+            _ => unreachable!("three text-indent operands"),
+        },
+    )?;
+    let length = length.expect("required text-indent length");
     Ok(CssTextIndent::new(length, hanging, each_line))
 }
 
@@ -337,16 +346,7 @@ pub(super) fn parse_vertical_align<'i, 't>(
 pub(super) fn parse_font_family_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontFamilyList, ParseError<'i, Error>> {
-    let mut families = Vec::new();
-    loop {
-        families.push(parse_font_family_name(input)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+    let families = input.parse_comma_separated(|input| parse_font_family_name(input))?;
 
     CssFontFamilyList::try_new(families)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
@@ -415,63 +415,42 @@ pub(super) fn parse_font<'i, 't>(
         return Ok(CssFontValue::System(system));
     }
 
-    let mut style = None;
-    let mut variant = None;
-    let mut weight = None;
-    let mut stretch = None;
-    let mut normal_count = 0;
-    let size;
-
-    loop {
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-
-        if let Ok(parsed_size) = input.try_parse(|input| parse_font_size(input, numeric)) {
-            size = parsed_size;
-            break;
-        }
-
-        if let Ok(()) = input.try_parse(|input| {
-            input.expect_ident_matching("normal").map_err(basic)?;
-            if normal_count == 4 {
-                return Err(unexpected_at(input.current_source_location()));
-            }
-            normal_count += 1;
-            Ok(())
-        }) {
-            continue;
-        }
-
-        if style.is_none()
-            && let Ok(parsed_style) = input.try_parse(|input| parse_font_style(input, numeric))
-        {
-            style = Some(parsed_style);
-            continue;
-        }
-        if variant.is_none()
-            && let Ok(parsed_variant) = input.try_parse(parse_css2_font_variant)
-        {
-            variant = Some(parsed_variant);
-            continue;
-        }
-        if weight.is_none()
-            && let Ok(parsed_weight) = input.try_parse(|input| parse_font_weight(input, numeric))
-        {
-            weight = Some(parsed_weight);
-            continue;
-        }
-        if stretch.is_none()
-            && let Ok(parsed_stretch) = input.try_parse(parse_font_stretch)
-        {
-            stretch = Some(parsed_stretch);
-            continue;
-        }
-
+    // `[ <'font-style'> || <font-variant-css2> || <'font-weight'> ||
+    // <font-width-css3> ]? <'font-size'>`. Every member admits `normal`, so up
+    // to four `normal` operands are collected as ambiguous and assigned after
+    // the explicit members; the group ends where a font size parses.
+    let (mut style, mut variant, mut weight, mut stretch) = (None, None, None, None);
+    let mut normals = [None; 4];
+    // The boundary consumes the font size it finds, so the size parses once.
+    let mut size = None;
+    let matched = parse_group::<8>(
+        input,
+        Combinator::AllOf {
+            optional: [true; 8],
+        },
+        Tail::Reject,
+        |input| {
+            size = input
+                .try_parse(|input| parse_font_size(input, numeric))
+                .ok();
+            size.is_some()
+        },
+        |operand, input| match operand {
+            0..=3 => keyword(&mut normals[operand], input, &[("normal", ())]),
+            4 => fill(&mut style, input, |input| parse_font_style(input, numeric)),
+            5 => fill(&mut variant, input, parse_css2_font_variant),
+            6 => fill(&mut weight, input, |input| {
+                parse_font_weight(input, numeric)
+            }),
+            7 => fill(&mut stretch, input, parse_font_stretch),
+            _ => unreachable!("eight font prefix operands"),
+        },
+    )?;
+    let Some(size) = size else {
         return Err(unexpected_at(input.current_source_location()));
-    }
+    };
 
-    for _ in 0..normal_count {
+    for _ in matched[..4].iter().filter(|matched| **matched) {
         if style.is_none() {
             style = Some(CssFontStyle::Keyword(CssFontStyleKeyword::Normal));
         } else if variant.is_none() {
@@ -702,31 +681,16 @@ pub(super) fn parse_font_synthesis<'i, 't>(
     }
     input.reset(&state);
 
-    let mut weight = false;
-    let mut style = false;
-    let mut small_caps = false;
-    let mut position = false;
-    while !input.is_exhausted() {
-        let location = input.current_source_location();
-        let token = input.next().map_err(basic)?;
-        match token {
-            Token::Ident(ident) if ident.eq_ignore_ascii_case("weight") && !weight => {
-                weight = true;
-            }
-            Token::Ident(ident) if ident.eq_ignore_ascii_case("style") && !style => {
-                style = true;
-            }
-            Token::Ident(ident) if ident.eq_ignore_ascii_case("small-caps") && !small_caps => {
-                small_caps = true;
-            }
-            Token::Ident(ident) if ident.eq_ignore_ascii_case("position") && !position => {
-                position = true;
-            }
-            token => {
-                return Err(location.new_unexpected_token_error::<Error>(token.clone()));
-            }
-        }
-    }
+    // `weight || style || small-caps || position`.
+    const KEYWORDS: [&str; 4] = ["weight", "style", "small-caps", "position"];
+    let mut slots = [None; 4];
+    let [weight, style, small_caps, position] = parse_group::<4>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| keyword(&mut slots[operand], input, &[(KEYWORDS[operand], ())]),
+    )?;
 
     CssFontSynthesisValues::try_new(weight, style, small_caps, position)
         .map(CssFontSynthesis::Values)
@@ -827,123 +791,80 @@ fn parse_text_spacing_adjustment<'i, 't>(
     Ok(CssTextSpacingAdjustment::LengthPercentage(value))
 }
 
+/// `<'text-decoration-line'> || <'text-decoration-thickness'> ||
+/// <'text-decoration-style'> || <'text-decoration-color'>`. The line operand
+/// is that longhand's whole grammar, so its keywords stay contiguous.
 pub(super) fn parse_text_decoration<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssTextDecoration, ParseError<'i, Error>> {
-    let mut line_components = Vec::new();
-    let mut line_none = false;
-    let mut line_error = None;
-    let mut color = None;
-    let mut style = None;
-    let mut thickness = None;
-
-    while !input.is_exhausted() {
-        if let Ok(component) = input.try_parse(parse_text_decoration_line_component) {
-            if line_none || line_error.is_some() {
-                return Err(unexpected_at(input.current_source_location()));
-            }
-            if line_components.contains(&component) {
-                return Err(unexpected_at(input.current_source_location()));
-            }
-            line_components.push(component);
-            continue;
-        }
-        if input
-            .try_parse(|input| input.expect_ident_matching("none"))
-            .is_ok()
-        {
-            if line_none || line_error.is_some() || !line_components.is_empty() {
-                return Err(unexpected_at(input.current_source_location()));
-            }
-            line_none = true;
-            continue;
-        }
-        if let Ok(error) = input.try_parse(super::text_decoration::parse_decoration_error) {
-            if line_none || line_error.is_some() || !line_components.is_empty() {
-                return Err(unexpected_at(input.current_source_location()));
-            }
-            line_error = Some(error);
-            continue;
-        }
-        if style.is_none()
-            && let Ok(parsed_style) = input.try_parse(parse_text_decoration_style)
-        {
-            style = Some(parsed_style);
-            continue;
-        }
-        if thickness.is_none()
-            && let Ok(parsed_thickness) =
-                input.try_parse(|input| parse_text_decoration_thickness(input, numeric))
-        {
-            thickness = Some(parsed_thickness);
-            continue;
-        }
-        if color.is_none()
-            && let Ok(parsed_color) = input.try_parse(|input| parse_color(input, numeric))
-        {
-            color = Some(parsed_color);
-            continue;
-        }
-
-        return Err(unexpected_at(input.current_source_location()));
-    }
-
-    let line = if let Some(error) = line_error {
-        Some(CssTextDecorationLine::error(error))
-    } else if line_none {
-        Some(CssTextDecorationLine::none())
-    } else if line_components.is_empty() {
-        None
-    } else {
-        Some(CssTextDecorationLine::new(line_components))
-    };
-
-    if line.is_none() && color.is_none() && style.is_none() && thickness.is_none() {
-        None
-    } else {
-        Some(CssTextDecoration::new(line, color, style, thickness))
-    }
-    .ok_or_else(|| unexpected_at(input.current_source_location()))
+    let (mut line, mut style, mut thickness, mut color) = (None, None, None, None);
+    parse_group::<4>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0 => fill(&mut line, input, |input| {
+                parse_text_decoration_line_value(input, Tail::Leave)
+            }),
+            1 => fill(&mut style, input, parse_text_decoration_style),
+            2 => fill(&mut thickness, input, |input| {
+                parse_text_decoration_thickness(input, numeric)
+            }),
+            3 => fill(&mut color, input, |input| parse_color(input, numeric)),
+            _ => unreachable!("four text-decoration operands"),
+        },
+    )?;
+    Ok(CssTextDecoration::new(line, color, style, thickness))
 }
 
 pub(super) fn parse_text_decoration_line<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTextDecorationLine, ParseError<'i, Error>> {
+    parse_text_decoration_line_value(input, Tail::Reject)
+}
+
+/// `none | [ underline || overline || line-through || blink ] |
+/// spelling-error | grammar-error`, retaining authored keyword order.
+fn parse_text_decoration_line_value<'i, 't>(
+    input: &mut Parser<'i, 't>,
+    tail: Tail,
+) -> std::result::Result<CssTextDecorationLine, ParseError<'i, Error>> {
+    const KEYWORDS: [(&str, CssTextDecorationLineComponent); 4] = [
+        ("underline", CssTextDecorationLineComponent::Underline),
+        ("overline", CssTextDecorationLineComponent::Overline),
+        ("line-through", CssTextDecorationLineComponent::LineThrough),
+        ("blink", CssTextDecorationLineComponent::Blink),
+    ];
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
         .is_ok()
     {
         return Ok(CssTextDecorationLine::none());
     }
-
     if let Ok(error) = input.try_parse(super::text_decoration::parse_decoration_error) {
         return Ok(CssTextDecorationLine::error(error));
     }
     let mut components = Vec::new();
-    while !input.is_exhausted() {
-        let component = parse_text_decoration_line_component(input)?;
-        if components.contains(&component) {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-        components.push(component);
-    }
-
+    parse_group::<4>(
+        input,
+        Combinator::AnyOf,
+        tail,
+        |_| false,
+        |operand, input| {
+            let (keyword, component) = KEYWORDS[operand];
+            let matched = input
+                .try_parse(|input| input.expect_ident_matching(keyword))
+                .is_ok();
+            if matched {
+                components.push(component);
+            }
+            Ok(matched)
+        },
+    )?;
     CssTextDecorationLine::try_new(components)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
-}
-
-pub(super) fn parse_text_decoration_line_component<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssTextDecorationLineComponent, ParseError<'i, Error>> {
-    let ident = input.expect_ident_cloned().map_err(basic)?;
-    match_ignore_ascii_case! { &ident,
-        "underline" => Ok(CssTextDecorationLineComponent::Underline),
-        "overline" => Ok(CssTextDecorationLineComponent::Overline),
-        "line-through" => Ok(CssTextDecorationLineComponent::LineThrough),
-        "blink" => Ok(CssTextDecorationLineComponent::Blink),
-        _ => Err(unexpected_at(input.current_source_location())),
-    }
 }
 
 pub(super) fn parse_text_decoration_style<'i, 't>(
@@ -987,21 +908,28 @@ pub(super) fn parse_text_transform<'i, 't>(
         return Ok(CssTextTransform::MathAuto);
     }
     input.reset(&first);
-    let mut case = None;
-    let mut full_width = false;
-    let mut full_size_kana = false;
-    while !input.is_exhausted() {
-        let location = input.current_source_location();
-        let ident = input.expect_ident_cloned().map_err(basic)?;
-        match_ignore_ascii_case! { &ident,
-            "capitalize" if case.is_none() => case = Some(CssTextTransformCase::Capitalize),
-            "uppercase" if case.is_none() => case = Some(CssTextTransformCase::Uppercase),
-            "lowercase" if case.is_none() => case = Some(CssTextTransformCase::Lowercase),
-            "full-width" if !full_width => full_width = true,
-            "full-size-kana" if !full_size_kana => full_size_kana = true,
-            _ => return Err(location.new_unexpected_token_error::<Error>(Token::Ident(ident))),
-        }
-    }
+    // `[ capitalize | uppercase | lowercase ] || full-width || full-size-kana`.
+    let (mut case, mut full_width, mut full_size_kana) = (None, None, None);
+    let [_, full_width, full_size_kana] = parse_group::<3>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0 => keyword(
+                &mut case,
+                input,
+                &[
+                    ("capitalize", CssTextTransformCase::Capitalize),
+                    ("uppercase", CssTextTransformCase::Uppercase),
+                    ("lowercase", CssTextTransformCase::Lowercase),
+                ],
+            ),
+            1 => keyword(&mut full_width, input, &[("full-width", ())]),
+            2 => keyword(&mut full_size_kana, input, &[("full-size-kana", ())]),
+            _ => unreachable!("three text-transform operands"),
+        },
+    )?;
     CssTextTransformSet::try_new(case, full_width, full_size_kana)
         .map(CssTextTransform::Transforms)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
@@ -1051,18 +979,25 @@ pub(super) fn parse_word_space_transform<'i, 't>(
         return Ok(CssWordSpaceTransform::None);
     }
     input.reset(&first);
-    let mut ideographic = None;
-    let mut auto_phrase = false;
-    while !input.is_exhausted() {
-        let location = input.current_source_location();
-        let ident = input.expect_ident_cloned().map_err(basic)?;
-        match_ignore_ascii_case! { &ident,
-            "space" if ideographic.is_none() => ideographic = Some(false),
-            "ideographic-space" if ideographic.is_none() => ideographic = Some(true),
-            "auto-phrase" if !auto_phrase => auto_phrase = true,
-            _ => return Err(location.new_unexpected_token_error::<Error>(Token::Ident(ident))),
-        }
-    }
+    // `[ space | ideographic-space ] && auto-phrase?`.
+    let (mut ideographic, mut auto_phrase) = (None, None);
+    let [_, auto_phrase] = parse_group::<2>(
+        input,
+        Combinator::AllOf {
+            optional: [false, true],
+        },
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0 => keyword(
+                &mut ideographic,
+                input,
+                &[("space", false), ("ideographic-space", true)],
+            ),
+            1 => keyword(&mut auto_phrase, input, &[("auto-phrase", ())]),
+            _ => unreachable!("two word-space-transform operands"),
+        },
+    )?;
     match ideographic {
         Some(false) => Ok(CssWordSpaceTransform::Space { auto_phrase }),
         Some(true) => Ok(CssWordSpaceTransform::IdeographicSpace { auto_phrase }),
@@ -1192,24 +1127,19 @@ pub(super) fn parse_line_padding<'i, 't>(
 pub(super) fn parse_text_justify<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTextJustify, ParseError<'i, Error>> {
-    let mut base = None;
-    let mut no_compress = false;
-    while !input.is_exhausted() {
-        if input
-            .try_parse(|input| input.expect_ident_matching("no-compress"))
-            .is_ok()
-        {
-            if no_compress {
-                return Err(unexpected_at(input.current_source_location()));
-            }
-            no_compress = true;
-        } else {
-            let value = parse_text_justify_base(input)?;
-            if base.replace(value).is_some() {
-                return Err(unexpected_at(input.current_source_location()));
-            }
-        }
-    }
+    // `[ auto | none | inter-word | inter-character | ruby ] || no-compress`.
+    let (mut no_compress, mut base) = (None, None);
+    let [no_compress, _] = parse_group::<2>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0 => keyword(&mut no_compress, input, &[("no-compress", ())]),
+            1 => fill(&mut base, input, parse_text_justify_base),
+            _ => unreachable!("two text-justify operands"),
+        },
+    )?;
     CssTextJustify::try_new(base, no_compress)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
@@ -1384,19 +1314,27 @@ pub(super) fn parse_hanging_punctuation<'i, 't>(
     {
         return Ok(CssHangingPunctuation::None);
     }
-    let mut first = false;
-    let mut end = None;
-    let mut last = false;
-    while !input.is_exhausted() {
-        let ident = input.expect_ident_cloned().map_err(basic)?;
-        match_ignore_ascii_case! { &ident,
-            "first" if !first => first = true,
-            "last" if !last => last = true,
-            "force-end" if end.is_none() => end = Some(CssHangingPunctuationEnd::ForceEnd),
-            "allow-end" if end.is_none() => end = Some(CssHangingPunctuationEnd::AllowEnd),
-            _ => return Err(unexpected_at(input.current_source_location())),
-        };
-    }
+    // `first || [ force-end | allow-end ] || last`.
+    let (mut first, mut end, mut last) = (None, None, None);
+    let [first, _, last] = parse_group::<3>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0 => keyword(&mut first, input, &[("first", ())]),
+            1 => keyword(
+                &mut end,
+                input,
+                &[
+                    ("force-end", CssHangingPunctuationEnd::ForceEnd),
+                    ("allow-end", CssHangingPunctuationEnd::AllowEnd),
+                ],
+            ),
+            2 => keyword(&mut last, input, &[("last", ())]),
+            _ => unreachable!("three hanging-punctuation operands"),
+        },
+    )?;
     CssHangingPunctuationValues::try_new(first, end, last)
         .map(CssHangingPunctuation::Hang)
         .ok_or_else(|| unexpected_at(input.current_source_location()))

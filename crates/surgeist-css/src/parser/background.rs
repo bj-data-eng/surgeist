@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use super::color::{parse_color, parse_color_interpolation_method};
+use super::combinators::{Combinator, Tail, attempt, commit, fill, parse_group};
 use super::property_input::Parser;
 use super::values::{
     parse_length_percentage, parse_nonnegative_length, parse_nonnegative_length_percentage,
@@ -51,17 +52,7 @@ pub(super) fn parse_image_layer_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssImageValueList, ParseError<'i, Error>> {
-    let mut images = Vec::new();
-    loop {
-        let image = parse_image_value(input, numeric)?;
-        images.push(image);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+    let images = input.parse_comma_separated(|input| parse_image_value(input, numeric))?;
     CssImageValueList::try_new(images).ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
@@ -69,22 +60,17 @@ pub(super) fn parse_background<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBackground, ParseError<'i, Error>> {
-    let mut layers = Vec::new();
-
-    loop {
-        let (layer, color_location) = parse_background_layer(input, numeric)?;
-        let has_comma = input.try_parse(Parser::expect_comma).is_ok();
-        if has_comma && let Some(location) = color_location {
+    // List post-condition: only the final layer may carry the color, so a
+    // color is rejected as soon as another layer follows it.
+    let mut previous_color = None;
+    let layers = input.parse_comma_separated(|input| {
+        if let Some(location) = previous_color {
             return Err(unexpected_at(location));
         }
-        layers.push(layer);
-        if !has_comma {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+        let (layer, color_location) = parse_background_layer(input, numeric)?;
+        previous_color = color_location;
+        Ok(layer)
+    })?;
 
     CssBackground::try_new(layers).map_err(|_| unexpected_at(input.current_source_location()))
 }
@@ -96,87 +82,75 @@ fn parse_background_layer<'i, 't>(
     (CssBackgroundLayer, Option<super::property_input::Site<'i>>),
     ParseError<'i, Error>,
 > {
-    let mut image = None;
-    let mut position = None;
-    let mut size = None;
-    let mut repeat = None;
-    let mut attachment = None;
-    let mut boxes = Vec::new();
-    let mut color = None;
-    let mut color_location = None;
-
-    while !input.is_exhausted() && !next_is_comma(input) {
-        if image.is_none() && next_starts_background_image(input) {
-            match input.try_parse(|input| parse_image_value(input, numeric)) {
-                Ok(value) => {
-                    image = Some(value);
-                    continue;
+    // `<bg-image> || <bg-position> [ / <bg-size> ]? || <repeat-style> ||
+    // <attachment> || <visual-box> || <visual-box> || <'background-color'>`
+    // (the color only in the final layer, checked by the list). The list
+    // bounds each layer at its comma.
+    let (mut image, mut position, mut size, mut repeat, mut attachment) =
+        (None, None, None, None, None);
+    let (mut origin, mut clip, mut color, mut color_location) = (None, None, None, None);
+    parse_group::<7>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0 => {
+                if !next_starts_background_image(input) {
+                    return Ok(false);
                 }
-                Err(error) if crate::error::property::is_resource_parse_error(&error) => {
-                    return Err(error);
+                // A light-dark() that is not an image may still be the color.
+                match input.try_parse(|input| parse_image_value(input, numeric)) {
+                    Ok(value) => {
+                        image = Some(value);
+                        Ok(true)
+                    }
+                    Err(error) if crate::error::property::is_resource_parse_error(&error) => {
+                        Err(error)
+                    }
+                    Err(_) if next_is_light_dark(input) => Ok(false),
+                    Err(error) => Err(error),
                 }
-                Err(_) if next_is_light_dark(input) => {}
-                Err(error) => return Err(error),
             }
-        }
-        if position.is_none() && next_starts_background_position(input) {
-            position = Some(parse_background_position_prefix(input, numeric)?);
-            if input.try_parse(|input| input.expect_delim('/')).is_ok() {
-                size = Some(parse_background_size_prefix(input, numeric)?);
+            1 => {
+                if !commit(
+                    &mut position,
+                    input,
+                    next_starts_background_position,
+                    |input| parse_background_position_prefix(input, numeric),
+                )? {
+                    return Ok(false);
+                }
+                if input.try_parse(|input| input.expect_delim('/')).is_ok() {
+                    size = Some(parse_background_size(input, numeric)?);
+                }
+                Ok(true)
             }
-            continue;
-        }
-        if repeat.is_none() && next_starts_background_repeat(input) {
-            repeat = Some(parse_background_repeat_prefix(input)?);
-            continue;
-        }
-        if attachment.is_none()
-            && let Ok(value) = input.try_parse(parse_background_attachment)
-        {
-            attachment = Some(value);
-            continue;
-        }
-        if boxes.len() < 2
-            && let Ok(value) = input.try_parse(parse_background_box)
-        {
-            boxes.push(value);
-            continue;
-        }
-        if color.is_none() {
-            let location = input.current_source_location();
-            match input.try_parse(|input| parse_color(input, numeric)) {
-                Ok(parsed) => {
-                    color = Some(parsed);
+            2 => commit(
+                &mut repeat,
+                input,
+                next_starts_background_repeat,
+                parse_background_repeat,
+            ),
+            3 => fill(&mut attachment, input, parse_background_attachment),
+            4 => fill(&mut origin, input, parse_background_box),
+            5 => fill(&mut clip, input, parse_background_box),
+            6 => {
+                let location = input.current_source_location();
+                let matched = fill(&mut color, input, |input| parse_color(input, numeric))?;
+                if matched {
                     color_location = Some(location);
-                    continue;
                 }
-                Err(error) if crate::error::property::is_resource_parse_error(&error) => {
-                    return Err(error);
-                }
-                Err(_) => {}
+                Ok(matched)
             }
-        }
-        return Err(unexpected_at(input.current_source_location()));
-    }
+            _ => unreachable!("seven background layer operands"),
+        },
+    )?;
 
-    if image.is_none()
-        && position.is_none()
-        && repeat.is_none()
-        && attachment.is_none()
-        && boxes.is_empty()
-        && color.is_none()
-    {
-        return Err(unexpected_at(input.current_source_location()));
-    }
-
-    let boxes = match boxes.as_slice() {
-        [] => None,
-        [value] => Some(CssBackgroundLayerBoxes::One(*value)),
-        [origin, clip] => Some(CssBackgroundLayerBoxes::OriginAndClip {
-            origin: *origin,
-            clip: *clip,
-        }),
-        _ => None,
+    let boxes = match (origin, clip) {
+        (None, _) => None,
+        (Some(value), None) => Some(CssBackgroundLayerBoxes::One(value)),
+        (Some(origin), Some(clip)) => Some(CssBackgroundLayerBoxes::OriginAndClip { origin, clip }),
     };
     Ok((
         CssBackgroundLayer::try_new(image, position, size, repeat, attachment, boxes, color)
@@ -224,7 +198,9 @@ fn next_starts_background_repeat<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
     starts
 }
 
-pub(super) fn parse_background_repeat_prefix<'i, 't>(
+/// One `<repeat-style>`. A following component that is not a second repeat
+/// keyword is left to the caller's boundary (list comma or shorthand group).
+pub(super) fn parse_background_repeat<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBackgroundRepeat, ParseError<'i, Error>> {
     let first = input.expect_ident_cloned().map_err(basic)?;
@@ -233,40 +209,35 @@ pub(super) fn parse_background_repeat_prefix<'i, 't>(
         "repeat-y" => Ok(CssBackgroundRepeat::RepeatY),
         _ => {
             let x = parse_background_repeat_style_from_ident(input, first.as_ref())?;
-            let y = input
-                .try_parse(|input| {
-                    let second = input.expect_ident_cloned().map_err(basic)?;
-                    parse_background_repeat_style_from_ident(input, second.as_ref())
-                })
-                .unwrap_or(x);
+            let y = attempt(input, |input| {
+                let second = input.expect_ident_cloned().map_err(basic)?;
+                parse_background_repeat_style_from_ident(input, second.as_ref())
+            })?
+            .unwrap_or(x);
             Ok(CssBackgroundRepeat::Axes { x, y })
         }
     }
 }
 
-pub(super) fn parse_background_size_prefix<'i, 't>(
+/// One `<bg-size>`. A following component that is not a second size is left
+/// to the caller's boundary (list comma or shorthand group).
+pub(super) fn parse_background_size<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBackgroundSize, ParseError<'i, Error>> {
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        return match_ignore_ascii_case! { &ident,
-            "cover" => Ok(CssBackgroundSize::Cover),
-            "contain" => Ok(CssBackgroundSize::Contain),
-            "auto" => {
-                let height = input.try_parse(|input| parse_background_size_component(input, numeric)).ok();
-                Ok(CssBackgroundSize::Explicit {
-                    width: CssBackgroundSizeComponent::Auto,
-                    height,
-                })
-            },
-            _ => Err(unexpected_at(input.current_source_location())),
-        };
-    }
-
-    let width = parse_background_size_component(input, numeric)?;
-    let height = input
-        .try_parse(|input| parse_background_size_component(input, numeric))
-        .ok();
+    let width = if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+        match_ignore_ascii_case! { &ident,
+            "cover" => return Ok(CssBackgroundSize::Cover),
+            "contain" => return Ok(CssBackgroundSize::Contain),
+            "auto" => CssBackgroundSizeComponent::Auto,
+            _ => return Err(unexpected_at(input.current_source_location())),
+        }
+    } else {
+        parse_background_size_component(input, numeric)?
+    };
+    let height = attempt(input, |input| {
+        parse_background_size_component(input, numeric)
+    })?;
     Ok(CssBackgroundSize::Explicit { width, height })
 }
 
@@ -440,16 +411,33 @@ pub(super) fn parse_border_image_slice_component<'i, 't>(
     parse_nonnegative_percentage(input, numeric).map(CssBorderImageSliceComponent::Percentage)
 }
 
+/// `[ <length-percentage [0,∞]> | <number [0,∞]> | auto ]{1,4}`, leaving a
+/// following component to the caller's boundary.
 pub(super) fn parse_border_image_width<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageWidth, ParseError<'i, Error>> {
-    let mut values = Vec::new();
-    while !input.is_exhausted() && values.len() < 4 {
-        values.push(parse_border_image_width_component(input, numeric)?);
-    }
+    let values = repeat_up_to(input, 4, |input| {
+        parse_border_image_width_component(input, numeric)
+    })?;
     CssBorderImageWidth::try_new(values)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
+}
+
+/// `<item>{1,max}` as optional repetitions under the shared failure policy;
+/// the caller's model rejects an empty result.
+fn repeat_up_to<'i, 't, T>(
+    input: &mut Parser<'i, 't>,
+    max: usize,
+    mut parse: impl FnMut(&mut Parser<'i, 't>) -> Result<T, ParseError<'i, Error>>,
+) -> Result<Vec<T>, ParseError<'i, Error>> {
+    let mut values = Vec::new();
+    while values.len() < max
+        && let Some(value) = attempt(input, &mut parse)?
+    {
+        values.push(value);
+    }
+    Ok(values)
 }
 
 fn parse_border_image_width_component<'i, 't>(
@@ -480,10 +468,11 @@ pub(super) fn parse_border_image_outset<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageOutset, ParseError<'i, Error>> {
-    let mut values = Vec::new();
-    while !input.is_exhausted() && values.len() < 4 {
-        values.push(parse_border_image_outset_component(input, numeric)?);
-    }
+    // `[ <length [0,∞]> | <number [0,∞]> ]{1,4}`, leaving a following
+    // component to the caller's boundary.
+    let values = repeat_up_to(input, 4, |input| {
+        parse_border_image_outset_component(input, numeric)
+    })?;
     CssBorderImageOutset::try_new(values)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
@@ -501,12 +490,10 @@ fn parse_border_image_outset_component<'i, 't>(
 pub(super) fn parse_border_image_repeat<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBorderImageRepeat, ParseError<'i, Error>> {
+    // `[ stretch | repeat | round | space ]{1,2}`, leaving a following
+    // component to the caller's boundary.
     let horizontal = parse_border_image_repeat_keyword(input)?;
-    let vertical = if input.is_exhausted() {
-        horizontal
-    } else {
-        parse_border_image_repeat_keyword(input)?
-    };
+    let vertical = attempt(input, parse_border_image_repeat_keyword)?.unwrap_or(horizontal);
     Ok(CssBorderImageRepeat::new(horizontal, vertical))
 }
 
@@ -553,80 +540,49 @@ pub(super) fn parse_border_image<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImage, ParseError<'i, Error>> {
-    let mut source = None;
-    let mut slice = None;
-    let mut width = None;
-    let mut outset = None;
-    let mut repeat = None;
-
-    while !input.is_exhausted() {
-        if source.is_none() && next_starts_background_image(input) {
-            source = Some(parse_image_value(input, numeric)?);
-            continue;
-        }
-        if slice.is_none() && next_starts_border_image_slice(input) {
-            slice = Some(parse_border_image_slice(input, numeric)?);
-            if input.try_parse(|input| input.expect_delim('/')).is_ok() {
+    // `<'border-image-source'> || <'border-image-slice'> [ /
+    // <'border-image-width'> | / <'border-image-width'>? /
+    // <'border-image-outset'> ]? || <'border-image-repeat'>`.
+    let (mut source, mut slice, mut width, mut outset, mut repeat) = (None, None, None, None, None);
+    parse_group::<3>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0 => commit(&mut source, input, next_starts_background_image, |input| {
+                parse_image_value(input, numeric)
+            }),
+            1 => {
+                if !commit(&mut slice, input, next_starts_border_image_slice, |input| {
+                    parse_border_image_slice(input, numeric)
+                })? {
+                    return Ok(false);
+                }
                 if input.try_parse(|input| input.expect_delim('/')).is_ok() {
-                    outset = Some(parse_border_image_outset_prefix(input, numeric)?);
-                } else {
-                    width = Some(parse_border_image_width_prefix(input, numeric)?);
                     if input.try_parse(|input| input.expect_delim('/')).is_ok() {
-                        outset = Some(parse_border_image_outset_prefix(input, numeric)?);
+                        outset = Some(parse_border_image_outset(input, numeric)?);
+                    } else {
+                        width = Some(parse_border_image_width(input, numeric)?);
+                        if input.try_parse(|input| input.expect_delim('/')).is_ok() {
+                            outset = Some(parse_border_image_outset(input, numeric)?);
+                        }
                     }
                 }
+                Ok(true)
             }
-            continue;
-        }
-        if repeat.is_none() && next_starts_border_image_repeat(input) {
-            repeat = Some(parse_border_image_repeat_prefix(input)?);
-            continue;
-        }
-        return Err(unexpected_at(input.current_source_location()));
-    }
+            2 => commit(
+                &mut repeat,
+                input,
+                next_starts_border_image_repeat,
+                parse_border_image_repeat,
+            ),
+            _ => unreachable!("three border-image operands"),
+        },
+    )?;
 
     CssBorderImage::try_new(source, slice, width, outset, repeat)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
-}
-
-pub(super) fn parse_border_image_width_prefix<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssBorderImageWidth, ParseError<'i, Error>> {
-    let mut values = Vec::new();
-    while values.len() < 4 {
-        match input.try_parse(|input| parse_border_image_width_component(input, numeric)) {
-            Ok(value) => values.push(value),
-            Err(_) => break,
-        }
-    }
-    CssBorderImageWidth::try_new(values)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
-}
-
-pub(super) fn parse_border_image_outset_prefix<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssBorderImageOutset, ParseError<'i, Error>> {
-    let mut values = Vec::new();
-    while values.len() < 4 {
-        match input.try_parse(|input| parse_border_image_outset_component(input, numeric)) {
-            Ok(value) => values.push(value),
-            Err(_) => break,
-        }
-    }
-    CssBorderImageOutset::try_new(values)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
-}
-
-pub(super) fn parse_border_image_repeat_prefix<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssBorderImageRepeat, ParseError<'i, Error>> {
-    let horizontal = parse_border_image_repeat_keyword(input)?;
-    let vertical = input
-        .try_parse(parse_border_image_repeat_keyword)
-        .unwrap_or(horizontal);
-    Ok(CssBorderImageRepeat::new(horizontal, vertical))
 }
 
 pub(super) fn parse_image_orientation<'i, 't>(
@@ -1213,50 +1169,9 @@ pub(super) fn parse_background_size_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBackgroundSizeList, ParseError<'i, Error>> {
-    let mut sizes = Vec::new();
-    loop {
-        sizes.push(parse_background_size(input, numeric)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+    let sizes = input.parse_comma_separated(|input| parse_background_size(input, numeric))?;
     CssBackgroundSizeList::try_new(sizes)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
-}
-
-pub(super) fn parse_background_size<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssBackgroundSize, ParseError<'i, Error>> {
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        return match_ignore_ascii_case! { &ident,
-            "cover" => Ok(CssBackgroundSize::Cover),
-            "contain" => Ok(CssBackgroundSize::Contain),
-            "auto" => {
-                let height = if !input.is_exhausted() && !next_is_comma(input) {
-                    Some(parse_background_size_component(input, numeric)?)
-                } else {
-                    None
-                };
-                Ok(CssBackgroundSize::Explicit {
-                    width: CssBackgroundSizeComponent::Auto,
-                    height,
-                })
-            },
-            _ => Err(unexpected_at(input.current_source_location())),
-        };
-    }
-
-    let width = parse_background_size_component(input, numeric)?;
-    let height = if !input.is_exhausted() && !next_is_comma(input) {
-        Some(parse_background_size_component(input, numeric)?)
-    } else {
-        None
-    };
-    Ok(CssBackgroundSize::Explicit { width, height })
 }
 
 pub(super) fn parse_background_size_component<'i, 't>(
@@ -1276,38 +1191,9 @@ pub(super) fn parse_background_size_component<'i, 't>(
 pub(super) fn parse_background_repeat_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBackgroundRepeatList, ParseError<'i, Error>> {
-    let mut repeats = Vec::new();
-    loop {
-        repeats.push(parse_background_repeat(input)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+    let repeats = input.parse_comma_separated(parse_background_repeat)?;
     CssBackgroundRepeatList::try_new(repeats)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
-}
-
-pub(super) fn parse_background_repeat<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssBackgroundRepeat, ParseError<'i, Error>> {
-    let first = input.expect_ident_cloned().map_err(basic)?;
-    match_ignore_ascii_case! { &first,
-        "repeat-x" => Ok(CssBackgroundRepeat::RepeatX),
-        "repeat-y" => Ok(CssBackgroundRepeat::RepeatY),
-        _ => {
-            let x = parse_background_repeat_style_from_ident(input, first.as_ref())?;
-            let y = if input.is_exhausted() || next_is_comma(input) {
-                x
-            } else {
-                let second = input.expect_ident_cloned().map_err(basic)?;
-                parse_background_repeat_style_from_ident(input, second.as_ref())?
-            };
-            Ok(CssBackgroundRepeat::Axes { x, y })
-        }
-    }
 }
 
 pub(super) fn parse_background_repeat_style_from_ident<'i, 't>(
@@ -1338,16 +1224,7 @@ pub(super) fn parse_background_box<'i, 't>(
 pub(super) fn parse_background_box_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBackgroundBoxList, ParseError<'i, Error>> {
-    let mut boxes = Vec::new();
-    loop {
-        boxes.push(parse_background_box(input)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+    let boxes = input.parse_comma_separated(|input| parse_background_box(input))?;
     CssBackgroundBoxList::try_new(boxes)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
@@ -1355,16 +1232,7 @@ pub(super) fn parse_background_box_list<'i, 't>(
 pub(super) fn parse_background_attachment_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBackgroundAttachmentList, ParseError<'i, Error>> {
-    let mut attachments = Vec::new();
-    loop {
-        attachments.push(parse_background_attachment(input)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+    let attachments = input.parse_comma_separated(|input| parse_background_attachment(input))?;
     CssBackgroundAttachmentList::try_new(attachments)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }

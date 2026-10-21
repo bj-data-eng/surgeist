@@ -27,6 +27,7 @@ mod grid_auto_flow_foundation;
 mod grid_auto_flow_typed;
 mod grid_auto_tracks_lifecycle;
 mod grid_empty_line_names;
+mod grid_line_grouping_contract;
 mod grid_math_typing_contract;
 mod grid_numeric_foundation;
 mod grid_numeric_typed;

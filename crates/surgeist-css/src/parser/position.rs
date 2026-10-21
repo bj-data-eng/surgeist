@@ -57,16 +57,7 @@ pub(super) fn parse_mask_position_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssPhysicalPositionList, ParseError<'i, Error>> {
-    let mut positions = Vec::new();
-    loop {
-        positions.push(parse_physical_position(input, numeric)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+    let positions = input.parse_comma_separated(|input| parse_physical_position(input, numeric))?;
     CssPhysicalPositionList::try_new(positions)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
@@ -75,16 +66,8 @@ pub(super) fn parse_background_position_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBackgroundPositionList, ParseError<'i, Error>> {
-    let mut positions = Vec::new();
-    loop {
-        positions.push(parse_background_position(input, numeric)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+    let positions =
+        input.parse_comma_separated(|input| parse_background_position(input, numeric))?;
     CssBackgroundPositionList::try_new(positions)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
@@ -174,19 +157,11 @@ enum GenericPositionAtom {
     Offset(CssSpecifiedLengthPercentage),
 }
 
-pub(super) fn parse_physical_position<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssPhysicalPosition, ParseError<'i, Error>> {
-    let (atoms, states) = parse_position_atoms(input, numeric, PositionGrammar::Physical)?;
-    build_physical_position(&atoms)
-        .ok_or_else(|| invalid_generic_position_atom(input, &states[invalid_atom_index(&atoms)]))
-}
-
-/// Parses physical atoms while leaving the next shorthand component unconsumed.
+/// Parses physical atoms while leaving the next component unconsumed for the
+/// caller's boundary (list comma, shorthand group or end of value).
 /// The physical builder retains its one-, two- and four-component grammar;
 /// Background's distinct three-component model is not used for Mask layers.
-pub(super) fn parse_physical_position_prefix<'i, 't>(
+pub(super) fn parse_physical_position<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssPhysicalPosition, ParseError<'i, Error>> {

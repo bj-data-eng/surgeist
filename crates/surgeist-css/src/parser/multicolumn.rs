@@ -1,10 +1,11 @@
 use super::border_style::parse_border_style;
 use super::border_width::{parse_exact_line_triple, parse_exact_line_width};
+use super::combinators::{Combinator, Tail, fill, keyword, parse_group};
 use super::property_input::Parser;
 use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::match_ignore_ascii_case;
 
-use super::values::parse_positive_integer_value;
+use super::values::{next_is_ident, parse_positive_integer_value};
 use crate::syntax::*;
 
 pub(super) fn parse_column_count<'i, 't>(
@@ -78,38 +79,33 @@ pub(super) fn parse_columns<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssColumns, ParseError<'i, Error>> {
-    let mut width: Option<CssColumnWidth> = None;
-    let mut count = None;
-    let mut autos = 0_u8;
-
-    while !input.is_exhausted() {
-        let location = input.current_source_location();
-        if input
-            .try_parse(|input| input.expect_ident_matching("auto"))
-            .is_ok()
-        {
-            autos += 1;
-        } else if width.is_none()
-            && let Ok(value) = input.try_parse(|input| parse_column_width(input, numeric))
-        {
-            width = Some(value);
-        } else if count.is_none()
-            && let Ok(value) = input.try_parse(|input| parse_positive_integer_value(input, numeric))
-        {
-            count = Some(CssColumnCount::Count(value));
-        } else {
-            return Err(unexpected_at(location));
-        }
-
-        let component_count = u8::from(width.is_some()) + u8::from(count.is_some()) + autos;
-        if component_count > 2 {
-            return Err(unexpected_at(location));
-        }
-    }
-
-    if width.is_none() && count.is_none() && autos == 0 {
-        return Err(unexpected_at(input.current_source_location()));
-    }
+    // `<'column-width'> || <'column-count'>`. Both admit `auto`, so `auto`
+    // operands are ambiguous and the group holds at most two components.
+    let (mut width, mut count): (Option<CssColumnWidth>, _) = (None, None);
+    let mut autos = [None; 2];
+    parse_group::<4>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| {
+            let components = autos.iter().flatten().count()
+                + usize::from(width.is_some())
+                + usize::from(count.is_some());
+            match operand {
+                _ if components == 2 => Ok(false),
+                0 | 1 => keyword(&mut autos[operand], input, &[("auto", ())]),
+                _ if next_is_ident(input, "auto") => Ok(false),
+                2 => fill(&mut width, input, |input| {
+                    parse_column_width(input, numeric)
+                }),
+                3 => fill(&mut count, input, |input| {
+                    parse_positive_integer_value(input, numeric).map(CssColumnCount::Count)
+                }),
+                _ => unreachable!("four columns operands"),
+            }
+        },
+    )?;
 
     Ok(CssColumns::new(
         width.unwrap_or(CssColumnWidth::Auto),
