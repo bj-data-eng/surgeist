@@ -389,19 +389,31 @@ evidence rather than a general live query. The ParserPopped continuation below
 reaches a fresh policy request; resource completion, recreation and notification
 delivery retain their separate owners.
 
-### The first ParserPopped successor
+### The ParserPopped successor and recreation
 
-After the first invocation reaches `RenderingComplete`, `successor_document`
-and the closed `prepare_successor` editor select the next influencing original
+After the first invocation reaches `RenderingComplete` or its CSP decision
+completes with `InlinePolicyBlocked`, `successor_owner_document` and the closed
+`prepare_successor` editor select the next influencing original
 row internally. The ordinary sealed inventory, every Document capture and the
 actual `prior_document`/`prior_style` dependencies must qualify. Only the genuine
 next ParserPopped operation for the same mapped Style and Document is supported;
 another influencing action returns its exact remaining requirement. No caller
 ordinal or asynchronous queue/resource completion is required.
 
-The editor prepares real CSSOM removal of the associated sheet and canonical
-`Style.sheet=None`, then the new HTML cursor's removal/connected/type steps and
-its fresh inline-policy request. The old sheet object, rules and handles survive
+For a created-sheet predecessor, the editor prepares real CSSOM removal and
+canonical `Style.sheet=None`, then the new HTML cursor's removal/connected/type
+steps and its fresh inline-policy request. For an authentic CSP-blocked
+predecessor it executes known-null removal, after validating the exact mapped
+Element generation, Document and canonical `sheet=None`. That path needs no
+creation owner, Store, batch, snapshot, Draft, history publication or commit.
+A missing supplied owner cannot turn a created-sheet predecessor into that path;
+an unneeded supplied owner is refused for known-null removal.
+
+The opaque completion owns any actual coupled commits. Its borrowed `removal()`
+view distinguishes `Removed { dom, cssom }` from `NoAssociatedSheet`; the latter
+supplies no dummy publication or revision. Both branches admit their actual
+request/output/retirement and retain cumulative original work before the Entry
+transition. The old sheet object, rules and handles survive
 with list membership and owner links cleared. An already cleared producer may
 return a genuine unchanged CSSOM commit while DOM still clears the association.
 Association serials, render-blocking membership and preference history are not
@@ -411,13 +423,24 @@ publications and until the preformed output/retirement is extracted.
 The successor reuses the actual initial-policy artifact only when the producer's
 shared input epoch and slot lineage match. Its occurrence, context epoch, text
 and nonce come from ParserPopped, including the later nonempty text rather than
-the insertion's empty input. It requires a new external inline-policy decision.
-Recreation remains explicitly unsupported for this successor; reaching the next
-request does not acknowledge the whole contribution or enable task delivery.
+the insertion's empty input. It requires a new external inline-policy decision, even when its text matches
+the predecessor. A blocked new decision completes this cursor without creating
+a sheet, processing receipt or notification task. An allowed decision enters the
+same closed `prepare_create_sheet` editor: the genuine new occurrence and
+predecessor outcome qualify its original inputs, empty registered membership
+and canonical null association. The producer creates a distinct sheet identity
+and DOM increments the same association lineage. Old readable CSSOM objects,
+processing/resource receipts and queued tasks remain independent.
+
+The recreated invocation then uses its own explicit script exclusion and
+original rendering actions. This supports the first invocation and its actual
+ParserPopped successor; further influencing history remains precise pending
+work. Neither completion acknowledges the contribution or enables task delivery.
 
 The same Entry and cumulative Control retain one compact completed predecessor:
-its actual qualification, execution profile, notification disposition and
-creation-sealed sheet/association. Old full text/nonce graphs move into admitted
+its actual qualification and execution profile, plus either a creation-sealed
+sheet/association and notification disposition or a genuine CSP-blocked outcome.
+A blocked outcome has no invented sheet or notification permission. Old full text/nonce graphs move into admitted
 retirement; the bound policy moves into the new request. Both old queued tokens
 and unqueued resource receipts retain their exact predecessor qualification.
 Notification permission resolves that stored sheet proof even after the active
@@ -456,8 +479,9 @@ This queue capability supplies no positive dispatch frontier. The metered
 `parsed_style_notification_requirement` authenticates the ordinary sealed report,
 all Document capture dispositions and inventory end before returning the first
 remaining influencing occurrence. Producer-proved no-effect rows and the exact
-executed invocation and its compact completed predecessor can be recognized;
-later work is never inferred complete from capture or an earlier operation.
+executed invocation and its compact completed predecessor can be recognized,
+including an actual completed inline-policy refusal with no sheet. Later work
+is never inferred complete from capture or an earlier operation.
 An active successor is reported with its actual qualification and reached phase. Missing/captured/lost evidence or an absent canonical entry
 is unavailable, not completion. Query outputs consume finite original admission.
 

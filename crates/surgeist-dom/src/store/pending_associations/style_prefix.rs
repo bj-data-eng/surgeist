@@ -49,9 +49,15 @@ pub(super) enum Graph {
 /// Fixed storage is part of Entry; no request text, nonce or policy graph is retained.
 pub(super) struct CompletedInvocation {
     qualification: DomParsedHtmlStyleInitialPolicyRequest,
-    sheet: crate::DomStyleSheet,
     profile: HtmlStyleExecutionProfile,
-    notification: notification::Issuance,
+    outcome: CompletedOutcome,
+}
+pub(super) enum CompletedOutcome {
+    Created {
+        sheet: crate::DomStyleSheet,
+        notification: notification::Issuance,
+    },
+    InlinePolicyBlocked,
 }
 pub(super) struct Selection {
     qualification: DomParsedHtmlStyleInitialPolicyRequest,

@@ -10,8 +10,7 @@ use surgeist_cssom::{
 /// at CheckInlineCsp; this is neither recreation nor a synchronous frontier.
 pub struct DomParsedHtmlStyleSuccessorCompletion {
     qualification: DomParsedHtmlStyleInitialPolicyRequest,
-    dom: DomCommit,
-    cssom: CssomCommit,
+    joined: Option<JoinedCommits>,
     _formation: Option<source::formation::Formation>,
     _meter: Meter,
 }
@@ -19,11 +18,14 @@ impl DomParsedHtmlStyleSuccessorCompletion {
     pub fn qualification(&self) -> &DomParsedHtmlStyleInitialPolicyRequest {
         &self.qualification
     }
-    pub fn dom(&self) -> &DomCommit {
-        &self.dom
-    }
-    pub fn cssom(&self) -> &CssomCommit {
-        &self.cssom
+    pub fn removal(&self) -> DomParsedHtmlStyleSuccessorRemoval<'_> {
+        match &self.joined {
+            Some(joined) => DomParsedHtmlStyleSuccessorRemoval::Removed {
+                dom: &joined.dom,
+                cssom: &joined.cssom,
+            },
+            None => DomParsedHtmlStyleSuccessorRemoval::NoAssociatedSheet,
+        }
     }
     pub fn phase(&self) -> DomParsedHtmlStylePhase {
         DomParsedHtmlStylePhase::InlinePolicyPending
@@ -33,7 +35,7 @@ impl std::fmt::Debug for DomParsedHtmlStyleSuccessorCompletion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DomParsedHtmlStyleSuccessorCompletion")
             .field("qualification", self.qualification())
-            .field("stamp", &self.dom.changes().to())
+            .field("removal", &self.removal())
             .finish()
     }
 }
@@ -42,16 +44,11 @@ impl std::fmt::Debug for DomParsedHtmlStyleSuccessorCompletion {
 pub struct DomParsedHtmlStyleSuccessorRetirement {
     _text: DocumentString,
     _nonce: Option<DocumentString>,
-    _state: Arc<State>,
-    _state_custody: transaction::StateCustody,
-    _history: history::Retirement,
-    _cssom: CssomCommitRetirement,
-    _snapshot: CssomSnapshot,
-    _admission: control::Admission,
+    _joined: Option<JoinedRetirement>,
     _meter: Meter,
 }
 pub struct DomParsedHtmlStyleSuccessorPublished<'caps> {
-    _guard: std::sync::MutexGuard<'caps, CssomStore>,
+    _guard: Option<std::sync::MutexGuard<'caps, CssomStore>>,
     completion: DomParsedHtmlStyleSuccessorCompletion,
     retirement: DomParsedHtmlStyleSuccessorRetirement,
 }
@@ -75,36 +72,71 @@ pub struct DomParsedHtmlStyleSuccessorPreparation<'hold, 'dom, 'caps> {
     completed: MutexGuard<'hold, Option<CompletedInvocation>>,
     dom: &'hold mut &'dom mut Dom,
     runtime: &'hold Meter,
-    store: std::sync::MutexGuard<'caps, CssomStore>,
-    snapshot: CssomSnapshot,
-    batch: CssomBatch,
+    joined: Option<JoinedPreparation<'caps>>,
     selection: Selection,
     text: DocumentString,
     nonce: Option<DocumentString>,
     element: crate::NodeId,
-    old: DomStyleSheet,
     meter: Meter,
     formed: Meter,
 }
+struct JoinedCommits {
+    dom: DomCommit,
+    cssom: CssomCommit,
+}
+struct JoinedPreparation<'caps> {
+    store: std::sync::MutexGuard<'caps, CssomStore>,
+    snapshot: CssomSnapshot,
+    batch: CssomBatch,
+    old: DomStyleSheet,
+}
+struct JoinedRetirement {
+    _state: Arc<State>,
+    _state_custody: transaction::StateCustody,
+    _history: history::Retirement,
+    _cssom: CssomCommitRetirement,
+    _snapshot: CssomSnapshot,
+    _admission: control::Admission,
+}
+fn predecessor(
+    graph: &Graph,
+) -> Result<&DomParsedHtmlStyleInlinePolicyRequest, DomParsedHtmlStyleError> {
+    match graph {
+        Graph::Rendered { request, .. } if request.created_sheet.is_some() => Ok(request),
+        Graph::Inline(request)
+            if request.cursor.action() == Action::Complete && request.created_sheet.is_none() =>
+        {
+            Ok(request)
+        }
+        _ => Err(DomParsedHtmlStyleError::WrongPhase {
+            phase: graph.phase(),
+        }),
+    }
+}
 impl DomParsedHtmlStyleRuntimeHold<'_> {
-    pub fn successor_document(
+    /// Only an actual created-sheet predecessor needs a producer owner. A
+    /// completed CSP refusal proves known-null removal without a Store loan.
+    pub fn successor_owner_document(
         &self,
         cancel: &AtomicBool,
-    ) -> Result<DocumentId, DomParsedHtmlStyleError> {
+    ) -> Result<Option<DocumentId>, DomParsedHtmlStyleError> {
         self.meter.step(cancel)?;
         let graph = lock(self.meter.entry())?;
-        match graph.as_ref().map(|held| held.value().as_ref()) {
-            Some(Graph::Rendered { request, .. }) => Ok(request.qualification.document()),
-            value => Err(DomParsedHtmlStyleError::WrongPhase {
-                phase: value.map_or(DomParsedHtmlStylePhase::Unstarted, Graph::phase),
-            }),
-        }
+        let value = graph
+            .as_ref()
+            .ok_or(DomParsedHtmlStyleError::WrongRequest)?
+            .value();
+        let request = predecessor(value)?;
+        Ok(request
+            .created_sheet
+            .as_ref()
+            .map(|_| request.qualification.document()))
     }
 }
 impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
     pub fn prepare_successor<'hold, 'caps>(
         &'hold mut self,
-        cap: &'caps DomStyleCssomRoot,
+        cap: Option<&'caps DomStyleCssomRoot>,
         cancel: &AtomicBool,
     ) -> Result<DomParsedHtmlStyleSuccessorPreparation<'hold, 'dom, 'caps>, Error> {
         self.meter.step(cancel)?;
@@ -113,12 +145,7 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
             .as_ref()
             .ok_or(DomParsedHtmlStyleError::WrongRequest)?
             .value();
-        let Graph::Rendered { request, .. } = value.as_ref() else {
-            return Err(DomParsedHtmlStyleError::WrongPhase {
-                phase: value.phase(),
-            }
-            .into());
-        };
+        let request = predecessor(value)?;
         let completed = completed_lock(self.meter.entry())?;
         if completed.is_some() {
             return Err(DomParsedHtmlStyleError::UnsupportedProfile {
@@ -126,28 +153,42 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
             }
             .into());
         }
-        let old = request
-            .created_sheet
-            .as_ref()
-            .ok_or(DomParsedHtmlStyleError::InvalidSheetInput)?;
+        let old = request.created_sheet.clone();
         let root = request.qualification.document().node();
-        if cap.root() != root
-            || self
-                .dom
-                .style_cssom_roots
-                .get(root)
-                .is_none_or(|bank| !bank.same_owner(cap))
-        {
-            return Err(Error::MismatchedOwner { root });
-        }
+        // This validates the optional capability against the authenticated
+        // outcome, never inferring no-sheet from a missing caller owner.
+        let owner = match (old.as_ref(), cap) {
+            (Some(_), Some(cap)) => {
+                if cap.root() != root
+                    || self
+                        .dom
+                        .style_cssom_roots
+                        .get(root)
+                        .is_none_or(|bank| !bank.same_owner(cap))
+                {
+                    return Err(Error::MismatchedOwner { root });
+                }
+                Some(cap)
+            }
+            (Some(_), None) => return Err(Error::MissingOwner { root }),
+            (None, None) => None,
+            (None, Some(_)) => return Err(DomParsedHtmlStyleError::WrongRequest.into()),
+        };
         let formed = self
             .meter
             .fork()
             .constrain_pending(self.dom.pending_associations.usage, self.dom.limits);
         let selection = select_next(&formed, request, cancel)?;
         let (text, nonce) = form_text_nonce(&formed, selection.qualification.occurrence(), cancel)?;
-        let old = old.clone();
-        let element = old.association().element();
+        let mut element = None;
+        for binding in self.meter.entry().bindings.iter() {
+            self.meter.step(cancel)?;
+            if binding.source == *request.qualification.subject() {
+                element = Some(binding.node);
+                break;
+            }
+        }
+        let element = element.ok_or(DomParsedHtmlStyleError::WrongRequest)?;
         let view = self.dom.snapshot();
         view.document(request.qualification.document())?;
         let node = view.node(element)?;
@@ -160,7 +201,10 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
                 .pending_associations
                 .document(selection.qualification.document())
                 != Some(self.meter.entry().id)
-            || style.state().sheet.as_ref() != Some(&old)
+            || style.state().sheet.as_ref() != old.as_ref()
+            || old
+                .as_ref()
+                .is_some_and(|sheet| sheet.association().element() != element)
             || style.state().availability
                 != crate::DomStyleSheetAvailability::PendingParsedProcessing
         {
@@ -176,30 +220,38 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
             0,
             cancel,
         )?;
-        let store = cap.lock().map_err(|error| match error {
-            crate::DomStyleCssomRootError::Busy => Error::OwnerBusy { root },
-            crate::DomStyleCssomRootError::Poisoned => Error::OwnerPoisoned { root },
-            _ => Error::MismatchedOwner { root },
-        })?;
-        let snapshot = store.snapshot();
-        let mut batch = store
-            .batch(CssomEditGuard::from_snapshot(&snapshot))
-            .map_err(Error::Cssom)?;
-        meter.step(cancel)?;
-        batch.remove_sheet(old.id()).map_err(Error::Cssom)?;
+        let joined = if let Some(cap) = owner {
+            let store = cap.lock().map_err(|error| match error {
+                crate::DomStyleCssomRootError::Busy => Error::OwnerBusy { root },
+                crate::DomStyleCssomRootError::Poisoned => Error::OwnerPoisoned { root },
+                _ => Error::MismatchedOwner { root },
+            })?;
+            let snapshot = store.snapshot();
+            let mut batch = store
+                .batch(CssomEditGuard::from_snapshot(&snapshot))
+                .map_err(Error::Cssom)?;
+            meter.step(cancel)?;
+            let old = old.expect("authenticated created predecessor");
+            batch.remove_sheet(old.id()).map_err(Error::Cssom)?;
+            Some(JoinedPreparation {
+                store,
+                snapshot,
+                batch,
+                old,
+            })
+        } else {
+            None
+        };
         Ok(DomParsedHtmlStyleSuccessorPreparation {
             graph,
             completed,
             dom: &mut self.dom,
             runtime: &self.meter,
-            store,
-            snapshot,
-            batch,
+            joined,
             selection,
             text,
             nonce,
             element,
-            old,
             meter,
             formed,
         })
@@ -384,6 +436,62 @@ fn dependency(
         }
     }
 }
+// Admission to the existing creation editor is based on the current sealed
+// occurrence and genuine predecessor outcome, never empty membership alone.
+pub(super) fn qualify_creation(
+    meter: &Meter,
+    current: &DomParsedHtmlStyleInlinePolicyRequest,
+    previous: &CompletedInvocation,
+    cancel: &AtomicBool,
+) -> Result<(), DomParsedHtmlStyleError> {
+    let q = current.qualification();
+    if q == &previous.qualification
+        || q.subject() != previous.qualification.subject()
+        || q.document() != previous.qualification.document()
+        || q.original_document() != previous.qualification.original_document()
+        || q.slot() != previous.qualification.slot()
+        || current.cursor.profile() != previous.profile
+        || current.created_sheet.is_some()
+    {
+        return Err(DomParsedHtmlStyleError::WrongRequest);
+    }
+    let mut cursor = meter.entry().report.value().value.pending_associations();
+    loop {
+        meter.step(cancel)?;
+        match cursor.advance() {
+            Step::Occurrence(row) if &row.id() == q.occurrence() => {
+                if row.kind() != Kind::StyleUpdate(surgeist_html::HtmlStyleTrigger::ParserPopped)
+                    || row.subject().id() != *q.subject()
+                    || row.context().epoch() != *q.context_epoch()
+                    || row.context().slot(Role::InitialPolicy).as_ref() != Some(q.slot())
+                    || row.context().input_epoch(Role::InitialPolicy) != *q.slot().epoch()
+                    || row
+                        .style()
+                        .is_none_or(|inputs| inputs.state() != current.state)
+                {
+                    return Err(DomParsedHtmlStyleError::WrongRequest);
+                }
+                for prior in [row.prior_document(), row.prior_style()]
+                    .into_iter()
+                    .flatten()
+                {
+                    if !dependency(
+                        meter,
+                        &prior,
+                        &row.id(),
+                        previous.qualification.occurrence(),
+                        cancel,
+                    )? {
+                        return Err(DomParsedHtmlStyleError::WrongRequest);
+                    }
+                }
+                return Ok(());
+            }
+            Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest),
+            _ => (),
+        }
+    }
+}
 impl<'caps> DomParsedHtmlStyleSuccessorPreparation<'_, '_, 'caps> {
     pub fn qualification(&self) -> &DomParsedHtmlStyleInitialPolicyRequest {
         &self.selection.qualification
@@ -404,9 +512,7 @@ impl<'caps> DomParsedHtmlStyleSuccessorPreparation<'_, '_, 'caps> {
     ) -> Result<DomParsedHtmlStyleSuccessorPublished<'caps>, Error> {
         let new_usage = text_usage(&self.text, self.nonce.as_ref())?;
         let held = self.graph.as_mut().expect("qualified predecessor");
-        let Graph::Rendered { request, .. } = held.value().as_ref() else {
-            unreachable!("exclusive predecessor")
-        };
+        let request = predecessor(held.value())?;
         let old_usage = text_usage(&request.text, request.nonce.as_ref())?;
         let next_usage = self
             .dom
@@ -422,61 +528,83 @@ impl<'caps> DomParsedHtmlStyleSuccessorPreparation<'_, '_, 'caps> {
             1,
             cancel,
         )?;
-        self.dom.custody_registry.reconcile_releases();
-        let admission = self
-            .meter
-            .admission(self.dom.custody_registry.total(), cancel)?;
-        self.meter.step(cancel)?;
-        let producer = self
-            .store
-            .prepare_commit(self.batch)
-            .map_err(Error::Cssom)?;
-        #[cfg(test)]
-        PREPARED.with(|count| count.set(count.get() + 1));
-        let mut draft = Draft::new_parsed(self.dom, Arc::new(BatchIdentity), &admission, cancel)?;
-        let mut style = draft.style_state_mut(Key::Existing(self.element), cancel)?;
-        if style.sheet.as_ref() != Some(&self.old) {
-            return Err(DomParsedHtmlStyleError::WrongRequest.into());
-        }
-        style.sheet = None;
-        style.commit(cancel)?;
-        let prepared = draft.finish(self.dom, cancel)?;
-        let mut publication = self.dom.prepare_publication(prepared, cancel)?;
-        publication.close_ordinary_sharing(cancel)?;
-        let history = self.dom.history.retain_evictions(
-            &publication.history_plan,
-            self.dom.custody_registry.ledger(),
-            |total| admission.controlled(total, cancel),
-            || admission.step(cancel),
-        )?;
-        drop(draft);
-        self.meter.retain(
-            0,
-            0,
-            publication
-                .changes
-                .len()
-                .checked_add(1)
-                .ok_or(DomError::RepresentationExhausted)?,
-            cancel,
-        )?;
-        // Precheck arithmetic for the later persistent-to-retirement transfer.
         self.meter.check_peak(custody::Usage::ZERO)?;
         let qualification = self.selection.qualification.clone();
-        let old_state = self.dom.state.clone();
-        let old_custody = self.dom.state_custody.clone();
-        let formation = publication._formation.take();
-        admission.step(cancel)?;
-        // Sole fence. All allocations/admission and language replies preceded it.
-        let (cssom, dead) = producer.publish();
-        let dom = self.dom.publish_prepared(publication);
+        let (guard, joined, retired, formation) = if let Some(mut joined) = self.joined {
+            self.dom.custody_registry.reconcile_releases();
+            let admission = self
+                .meter
+                .admission(self.dom.custody_registry.total(), cancel)?;
+            self.meter.step(cancel)?;
+            let producer = joined
+                .store
+                .prepare_commit(joined.batch)
+                .map_err(Error::Cssom)?;
+            #[cfg(test)]
+            PREPARED.with(|count| count.set(count.get() + 1));
+            let mut draft =
+                Draft::new_parsed(self.dom, Arc::new(BatchIdentity), &admission, cancel)?;
+            let mut style = draft.style_state_mut(Key::Existing(self.element), cancel)?;
+            if style.sheet.as_ref() != Some(&joined.old) {
+                return Err(DomParsedHtmlStyleError::WrongRequest.into());
+            }
+            style.sheet = None;
+            style.commit(cancel)?;
+            let prepared = draft.finish(self.dom, cancel)?;
+            let mut publication = self.dom.prepare_publication(prepared, cancel)?;
+            publication.close_ordinary_sharing(cancel)?;
+            let history = self.dom.history.retain_evictions(
+                &publication.history_plan,
+                self.dom.custody_registry.ledger(),
+                |total| admission.controlled(total, cancel),
+                || admission.step(cancel),
+            )?;
+            drop(draft);
+            self.meter.retain(
+                0,
+                0,
+                publication
+                    .changes
+                    .len()
+                    .checked_add(1)
+                    .ok_or(DomError::RepresentationExhausted)?,
+                cancel,
+            )?;
+            let state = self.dom.state.clone();
+            let custody = self.dom.state_custody.clone();
+            let formation = publication._formation.take();
+            admission.step(cancel)?;
+            // The joined branch's sole fence; common controller moves below
+            // are prequalified and infallible. No backing is disposed here.
+            let (cssom, dead) = producer.publish();
+            let dom = self.dom.publish_prepared(publication);
+            (
+                Some(joined.store),
+                Some(JoinedCommits { dom, cssom }),
+                Some(JoinedRetirement {
+                    _state: state,
+                    _state_custody: custody,
+                    _history: history,
+                    _cssom: dead,
+                    _snapshot: joined.snapshot,
+                    _admission: admission,
+                }),
+                formation,
+            )
+        } else {
+            // No CSSOM object or canonical tree changed. Only the original
+            // Entry/request transition publishes; there is no dummy commit.
+            self.meter.step(cancel)?;
+            (None, None, None, None)
+        };
         let old = std::mem::replace(held.value_mut().as_mut(), Graph::Transition);
-        let Graph::Rendered {
-            request,
-            notification,
-        } = old
-        else {
-            unreachable!("qualified predecessor")
+        let (request, issuance) = match old {
+            Graph::Rendered {
+                request,
+                notification,
+            } => (request, Some(notification)),
+            Graph::Inline(request) => (request, None),
+            _ => unreachable!("authenticated completed invocation"),
         };
         let DomParsedHtmlStyleInlinePolicyRequest {
             qualification: old_q,
@@ -487,11 +615,17 @@ impl<'caps> DomParsedHtmlStyleSuccessorPreparation<'_, '_, 'caps> {
             created_sheet,
             ..
         } = request;
+        let outcome = match created_sheet {
+            Some(sheet) => CompletedOutcome::Created {
+                sheet,
+                notification: issuance.expect("actual rendered predecessor"),
+            },
+            None => CompletedOutcome::InlinePolicyBlocked,
+        };
         *self.completed = Some(CompletedInvocation {
             qualification: old_q,
-            sheet: created_sheet.expect("real creation sealed"),
             profile: cursor.profile(),
-            notification,
+            outcome,
         });
         let retired_debit = held
             .debit_mut()
@@ -513,23 +647,17 @@ impl<'caps> DomParsedHtmlStyleSuccessorPreparation<'_, '_, 'caps> {
             created_sheet: None,
         });
         Ok(DomParsedHtmlStyleSuccessorPublished {
-            _guard: self.store,
+            _guard: guard,
             completion: DomParsedHtmlStyleSuccessorCompletion {
                 qualification,
-                dom,
-                cssom,
+                joined,
                 _formation: formation,
                 _meter: output_meter,
             },
             retirement: DomParsedHtmlStyleSuccessorRetirement {
                 _text: text,
                 _nonce: nonce,
-                _state: old_state,
-                _state_custody: old_custody,
-                _history: history,
-                _cssom: dead,
-                _snapshot: self.snapshot,
-                _admission: admission,
+                _joined: retired,
                 _meter: self.meter,
             },
         })

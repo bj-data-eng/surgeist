@@ -66,7 +66,17 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
             .is_some_and(|old| &old.qualification == qualification);
         let (notification, profile, sheet) = if historical {
             let old = completed.as_ref().expect("qualified predecessor");
-            (old.notification, old.profile, &old.sheet)
+            let CompletedOutcome::Created {
+                sheet,
+                notification,
+            } = &old.outcome
+            else {
+                return Err(DomParsedHtmlStyleError::WrongPhase {
+                    phase: DomParsedHtmlStylePhase::InlinePolicyBlocked,
+                }
+                .into());
+            };
+            (*notification, old.profile, sheet)
         } else {
             if value.qualification() != qualification {
                 return Err(DomParsedHtmlStyleError::WrongRequest.into());
@@ -247,11 +257,15 @@ impl<'caps> DomParsedHtmlStyleNotificationPreparation<'_, '_, 'caps> {
         self.meter.step(cancel)?;
         let removed = self.owner_association_removed();
         let notification = if self.historical {
-            &mut self
+            let CompletedOutcome::Created { notification, .. } = &mut self
                 .completed
                 .as_mut()
                 .expect("qualified predecessor")
-                .notification
+                .outcome
+            else {
+                unreachable!("qualified creation")
+            };
+            notification
         } else {
             let Graph::Rendered { notification, .. } = self
                 .graph
@@ -322,9 +336,16 @@ fn requirement(
         .try_lock()
         .map_err(|e| guard_error(e, id))?;
     let executed = matches!(graph.as_ref().map(|stored|stored.value().as_ref()),Some(Graph::Rendered{request,notification:Issuance::Issued}) if request.qualification()==q)
-        || completed
-            .as_ref()
-            .is_some_and(|old| &old.qualification == q && old.notification == Issuance::Issued);
+        || completed.as_ref().is_some_and(|old| {
+            &old.qualification == q
+                && matches!(
+                    old.outcome,
+                    CompletedOutcome::Created {
+                        notification: Issuance::Issued,
+                        ..
+                    }
+                )
+        });
     let phase = graph
         .as_ref()
         .map_or(DomParsedHtmlStylePhase::Unstarted, |g| g.value().phase());
@@ -348,7 +369,17 @@ fn requirement(
                 }
             }
             Step::Occurrence(row) if row.requires_processing() => {
-                let current_done = matches!(graph.as_ref().map(|g|g.value().as_ref()), Some(Graph::Rendered{request,..}) if request.qualification().occurrence()==&row.id());
+                let current_done = graph.as_ref().is_some_and(|g| match g.value().as_ref() {
+                    Graph::Rendered { request, .. } => {
+                        request.qualification().occurrence() == &row.id()
+                    }
+                    Graph::Inline(request) => {
+                        request.cursor.action() == Action::Complete
+                            && request.created_sheet.is_none()
+                            && request.qualification().occurrence() == &row.id()
+                    }
+                    _ => false,
+                });
                 let prior_done = completed
                     .as_ref()
                     .is_some_and(|old| old.qualification.occurrence() == &row.id());

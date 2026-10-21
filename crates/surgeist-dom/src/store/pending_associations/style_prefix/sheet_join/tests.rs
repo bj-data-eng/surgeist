@@ -355,3 +355,125 @@ fn original_control_refuses_the_actual_final_css_postgrammar_poll_then_raised_re
         .unwrap();
     assert!(report.syntax().rules().is_empty());
 }
+#[test]
+fn successor_creation_late_refusal_preserves_removed_predecessor_then_retries_same_invocation() {
+    let (mut dom, document, id, q, element, cap) = super::super::rendering::tests::ready("", 1024);
+    let old = dom
+        .snapshot()
+        .node(element)
+        .unwrap()
+        .as_style()
+        .unwrap()
+        .state()
+        .sheet
+        .clone()
+        .unwrap();
+    dom.begin_parsed_html_style(id, envelope(), &flag())
+        .unwrap()
+        .process_rendering(&q, &flag())
+        .unwrap();
+    {
+        let mut hold = dom
+            .begin_parsed_html_style(id, envelope(), &flag())
+            .unwrap();
+        let (_completion, retired) = hold
+            .prepare_successor(Some(&cap), &flag())
+            .unwrap()
+            .commit(&flag())
+            .unwrap()
+            .into_parts();
+        drop(retired);
+    }
+    let mut observed = {
+        let view = dom.parsed_html_style_prefix(id).unwrap();
+        Some(DomParsedHtmlStyleInlinePolicyObservation::evaluated(
+            view.inline_policy_request().unwrap(),
+            true,
+        ))
+    };
+    dom.begin_parsed_html_style(id, envelope(), &flag())
+        .unwrap()
+        .accept_inline_policy(&mut observed, &flag())
+        .unwrap();
+    let current = qualifier(&dom, id);
+    let stamp = dom.snapshot().stamp();
+    let revision = cap.snapshot().unwrap().revision().clone();
+    let serial = dom
+        .snapshot()
+        .node(element)
+        .unwrap()
+        .as_style()
+        .unwrap()
+        .state()
+        .next_association;
+    let spent = {
+        let mut hold = dom
+            .begin_parsed_html_style(id, envelope(), &flag())
+            .unwrap();
+        let mut prep = hold.prepare_create_sheet(&cap, &flag()).unwrap();
+        let mut report = input(&prep);
+        prep.stage_sheet(&mut report, &flag()).unwrap();
+        let control = &prep.meter.entry().control;
+        while control.limits().work() - control.spent_work() > 5 {
+            prep.step(&flag()).unwrap();
+        }
+        let count = PREPARED_FRONTIER.with(|value| value.get());
+        assert!(matches!(
+            prep.commit(&flag()),
+            Err(DomParsedHtmlStyleSheetError::Style(
+                DomParsedHtmlStyleError::Admission(DomParsedHtmlAssociationAdmissionError::Dom(
+                    DomError::WorkLimit {
+                        resource: DomResource::ParsedAssociationProcessingWork,
+                        ..
+                    }
+                ))
+            ))
+        ));
+        assert_eq!(
+            PREPARED_FRONTIER.with(|value| value.get()),
+            count + 1,
+            "actual producer preparation succeeded before late DOM refusal"
+        );
+        hold.spent_work()
+    };
+    assert_eq!(dom.snapshot().stamp(), stamp);
+    assert_eq!(cap.snapshot().unwrap().revision(), &revision);
+    assert_eq!(qualifier(&dom, id), current);
+    assert_eq!(
+        dom.snapshot()
+            .node(element)
+            .unwrap()
+            .as_style()
+            .unwrap()
+            .state()
+            .next_association,
+        serial
+    );
+    assert!(cap.snapshot().unwrap().sheets().is_empty());
+    assert!(
+        cap.snapshot()
+            .unwrap()
+            .sheet(old.id())
+            .unwrap()
+            .inputs()
+            .owner
+            .is_none()
+    );
+    let raised = DomParsedHtmlAssociationLimits::new(
+        envelope().retained_bytes(),
+        envelope().retained_units(),
+        envelope().work() + 100_000,
+        envelope().outputs(),
+    )
+    .unwrap();
+    let mut hold = dom.begin_parsed_html_style(id, raised, &flag()).unwrap();
+    assert!(hold.spent_work() >= spent);
+    let mut prep = hold.prepare_create_sheet(&cap, &flag()).unwrap();
+    let mut report = input(&prep);
+    prep.stage_sheet(&mut report, &flag()).unwrap();
+    let (created, retired) = prep.commit(&flag()).unwrap().into_parts();
+    drop(retired);
+    assert_ne!(created.sheet().id(), old.id());
+    assert_ne!(created.sheet().association(), old.association());
+    assert_eq!(created.sheet().root(), document.node());
+}

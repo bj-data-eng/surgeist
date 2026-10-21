@@ -5,6 +5,9 @@ use crate::NodeId;
 #[derive(Debug)]
 pub enum DomParsedHtmlStyleSuccessorError {
     Style(DomParsedHtmlStyleError),
+    MissingOwner {
+        root: NodeId,
+    },
     MismatchedOwner {
         root: NodeId,
     },
@@ -56,3 +59,26 @@ pub use crate::store::pending_associations::{
     DomParsedHtmlStyleSuccessorCompletion, DomParsedHtmlStyleSuccessorPreparation,
     DomParsedHtmlStyleSuccessorPublished, DomParsedHtmlStyleSuccessorRetirement,
 };
+
+/// Borrowed evidence of the actual removal branch. The opaque completion owns
+/// the coupled commits; a known-null removal has no producer or DOM publication.
+pub enum DomParsedHtmlStyleSuccessorRemoval<'a> {
+    Removed {
+        dom: &'a crate::DomCommit,
+        cssom: &'a surgeist_cssom::CssomCommit,
+    },
+    NoAssociatedSheet,
+}
+
+impl std::fmt::Debug for DomParsedHtmlStyleSuccessorRemoval<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoAssociatedSheet => f.write_str("NoAssociatedSheet"),
+            Self::Removed { dom, cssom } => f
+                .debug_struct("Removed")
+                .field("dom", dom)
+                .field("cssom", cssom.publication())
+                .finish(),
+        }
+    }
+}

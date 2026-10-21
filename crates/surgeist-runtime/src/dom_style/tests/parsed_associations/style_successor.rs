@@ -10,6 +10,15 @@ use surgeist_html_parser::{
     HtmlParseAssociationOccurrenceKind as Kind, HtmlParsePendingAssociationStep as Step,
 };
 
+fn removed(
+    result: &DomParsedHtmlStyleSuccessorCompletion,
+) -> (&DomCommit, &surgeist_cssom::CssomCommit) {
+    match result.removal() {
+        DomParsedHtmlStyleSuccessorRemoval::Removed { dom, cssom } => (dom, cssom),
+        DomParsedHtmlStyleSuccessorRemoval::NoAssociatedSheet => panic!("real created predecessor"),
+    }
+}
+
 fn rendered(
     limits: DomParsedHtmlAssociationLimits,
 ) -> (
@@ -150,10 +159,11 @@ fn successor_removes_real_sheet_preserves_names_and_requires_a_new_full_text_dec
     assert_ne!(q.context_epoch(), old.context_epoch());
     assert_eq!(q.slot(), old.slot());
     assert_eq!(result.phase(), DomParsedHtmlStylePhase::InlinePolicyPending);
-    assert_eq!(result.dom().changes().from(), stamp);
+    let (dom, _) = removed(&result);
+    assert_eq!(dom.changes().from(), stamp);
     assert_ne!(session.snapshot().stamp(), stamp);
     assert!(matches!(
-        result.cssom().publication(),
+        removed(&result).1.publication(),
         surgeist_cssom::CssomPublication::Changed(_)
     ));
     let current = owner.snapshot().unwrap();
@@ -168,9 +178,7 @@ fn successor_removes_real_sheet_preserves_names_and_requires_a_new_full_text_dec
         1
     );
     assert!(
-        result
-            .dom()
-            .changes()
+        dom.changes()
             .changes()
             .contains(&DomChange::ElementState(sheet.association().element()))
     );
@@ -311,7 +319,7 @@ fn terminal_old_receipt_is_not_a_prerequisite_for_successor_and_removal_can_be_c
         )
         .unwrap();
     assert!(matches!(
-        result.cssom().publication(),
+        removed(&result).1.publication(),
         surgeist_cssom::CssomPublication::Unchanged { .. }
     ));
     let q = result.qualification().clone();
@@ -322,7 +330,7 @@ fn terminal_old_receipt_is_not_a_prerequisite_for_successor_and_removal_can_be_c
 }
 
 #[test]
-fn successor_wrong_session_cancellation_and_wrong_phase_do_not_remove_or_recreate() {
+fn successor_wrong_session_cancellation_and_wrong_phase_preserve_later_recreation() {
     let (mut session, _installation, old, sheet, _) = rendered(envelope());
     let owner = owner(&session);
     let revision = owner.snapshot().unwrap().revision().clone();
@@ -401,15 +409,28 @@ fn successor_wrong_session_cancellation_and_wrong_phase_do_not_remove_or_recreat
             .unwrap(),
         DomParsedHtmlStylePhase::CreateSheetPending
     );
+    let recreated = create(&mut session, old.contribution(), envelope()).unwrap();
+    assert_ne!(recreated.completion().sheet().id(), sheet.id());
+    assert_ne!(
+        recreated.completion().sheet().association(),
+        sheet.association()
+    );
+    drop(recreated);
+    runtime
+        .exclude_parsed_style_script_bookkeeping(&mut session.dom(), &q, envelope(), &cancel())
+        .unwrap();
     assert!(matches!(
-        create(&mut session, old.contribution(), envelope()),
-        Err(DomStyleParsedSheetError::Sheet(DomParsedHtmlStyleSheetError::Style(
-            DomParsedHtmlStyleError::UnsupportedProfile { contribution }
-        ))) if contribution == old.contribution()
+        runtime
+            .process_parsed_style_rendering(&mut session.dom(), &q, envelope(), &cancel())
+            .unwrap(),
+        DomParsedHtmlStyleRenderingProgress::Complete(_)
     ));
-    assert_eq!(owner.snapshot().unwrap().revision(), &revision);
-    assert!(owner.snapshot().unwrap().sheets().is_empty());
+    assert!(
+        matches!(runtime.advance_parsed_style_successor(&mut session.dom(), old.contribution(), envelope(), &cancel()),
+        Err(DomStyleParsedSuccessorError::Successor(DomParsedHtmlStyleSuccessorError::Style(DomParsedHtmlStyleError::UnsupportedProfile { contribution }))) if contribution == old.contribution())
+    );
     assert_eq!(session.state.borrow().next_task, 1);
+    pending(&session, old.contribution());
 }
 
 #[test]

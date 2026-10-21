@@ -70,8 +70,10 @@ permission exposes `ParsedOccurrence` and retains its original admission. The
 keeps task custody separate from its still-unavailable synchronous dispatch
 frontier. An original pending history is neither a fake native Source operation
 nor a blanket prohibition on unrelated asynchronous resource waits. The
-[first ParserPopped successor](html-installation.md#the-first-parserpopped-successor)
-removes the genuine old association and reaches a fresh policy request without
+[ParserPopped successor](html-installation.md#the-parserpopped-successor-and-recreation)
+removes the genuine old association, or executes authenticated known-null
+removal after a CSP refusal, and reaches a fresh policy request. Its independently
+allowed recreation uses the same creation owner and serial lineage without
 requiring old tasks to drain or replacing their original qualification.
 
 ## Mutable CSSOM custody and disabled state

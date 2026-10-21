@@ -613,3 +613,81 @@ fn decision_work_frontier_refusal_preserves_original_input_and_same_cursor_for_r
         DomParsedHtmlStylePhase::CreateSheetPending
     );
 }
+#[test]
+fn blocked_successor_final_work_refusal_preserves_policy_and_real_null_removal_retry() {
+    let (mut dom, env) = setup();
+    let (document, id) = install(
+        &mut dom,
+        parse("<!doctype html><style nonce=n>later</style>"),
+        env,
+    );
+    let (policy, drops, descriptors) = native_policy(131072);
+    inline_with_policy(&mut dom, id, policy);
+    let mut supplied = Some(decision(&dom, id, false));
+    dom.begin_parsed_html_style(id, envelope(), &flag())
+        .unwrap()
+        .accept_inline_policy(&mut supplied, &flag())
+        .unwrap();
+    let old_q = qualifier(&dom, id);
+    let state = dom.state.clone();
+    let stamp = dom.snapshot().stamp();
+    let record = dom.pending_associations.controlled_entry(id).unwrap();
+    let spent = {
+        let mut hold = dom
+            .begin_parsed_html_style(id, envelope(), &flag())
+            .unwrap();
+        let prep = hold.prepare_successor(None, &flag()).unwrap();
+        let control = &record.value().control;
+        while control.limits().work() - control.spent_work() > 1 {
+            prep.step(&flag()).unwrap();
+        }
+        assert!(matches!(
+            prep.commit(&flag()),
+            Err(DomParsedHtmlStyleSuccessorError::Style(
+                DomParsedHtmlStyleError::Admission(DomParsedHtmlAssociationAdmissionError::Dom(
+                    DomError::WorkLimit {
+                        resource: DomResource::ParsedAssociationProcessingWork,
+                        ..
+                    }
+                ))
+            ))
+        ));
+        hold.spent_work()
+    };
+    assert!(Arc::ptr_eq(&state, &dom.state));
+    assert_eq!(dom.snapshot().stamp(), stamp);
+    assert_eq!(qualifier(&dom, id), old_q);
+    assert!(dom.style_cssom_roots.get(document.node()).is_none());
+    assert_eq!(drops.load(Ordering::Relaxed), 0);
+    assert_eq!(descriptors.load(Ordering::Relaxed), 1);
+    let raised = DomParsedHtmlAssociationLimits::new(
+        envelope().retained_bytes(),
+        envelope().retained_units(),
+        envelope().work() + 100_000,
+        envelope().outputs(),
+    )
+    .unwrap();
+    let mut hold = dom.begin_parsed_html_style(id, raised, &flag()).unwrap();
+    assert!(hold.spent_work() >= spent);
+    let (completion, retired) = hold
+        .prepare_successor(None, &flag())
+        .unwrap()
+        .commit(&flag())
+        .unwrap()
+        .into_parts();
+    assert!(matches!(
+        completion.removal(),
+        DomParsedHtmlStyleSuccessorRemoval::NoAssociatedSheet
+    ));
+    assert_ne!(completion.qualification(), &old_q);
+    drop(retired);
+    drop(hold);
+    assert!(Arc::ptr_eq(&state, &dom.state));
+    assert_eq!(dom.snapshot().stamp(), stamp);
+    assert_eq!(drops.load(Ordering::Relaxed), 0);
+    assert_eq!(
+        descriptors.load(Ordering::Relaxed),
+        1,
+        "policy was moved, not rebound/re-described"
+    );
+}

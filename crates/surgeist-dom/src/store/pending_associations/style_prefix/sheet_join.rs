@@ -149,12 +149,7 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
     ) -> Result<DomParsedHtmlStyleSheetPreparation<'hold, 'dom, 'caps>, Error> {
         self.meter.step(cancel)?;
         let graph = lock(self.meter.entry())?;
-        if completed_lock(self.meter.entry())?.is_some() {
-            return Err(DomParsedHtmlStyleError::UnsupportedProfile {
-                contribution: self.meter.entry().id,
-            }
-            .into());
-        }
+        let completed = completed_lock(self.meter.entry())?;
         let value = graph.as_ref().map(|h| h.value().as_ref());
         let Some(Graph::Inline(original)) = value else {
             return Err(wrong_phase(value).into());
@@ -162,6 +157,10 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
         if original.action() != Action::CreateSheet {
             return Err(wrong_phase(value).into());
         }
+        if let Some(previous) = completed.as_ref() {
+            super::successor::qualify_creation(&self.meter, original, previous, cancel)?;
+        }
+        drop(completed);
         let document = original.qualification.document();
         self.dom.snapshot().document(document)?;
         if self.dom.pending_associations.document(document) != Some(self.meter.entry().id) {
@@ -196,8 +195,8 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
             },
         })?;
         let snapshot = store.snapshot();
-        // No earlier influencing occurrence exists in this profile. The source
-        // order was authenticated while forming inputs; no unexplained external
+        // This initial invocation or its authenticated same-Style successor has
+        // no currently registered predecessor. No unexplained external
         // sheet may be discarded merely to force that original membership.
         if !snapshot.sheets().is_empty() {
             return Err(DomParsedHtmlStyleError::InvalidSheetInput.into());
@@ -266,8 +265,8 @@ fn form_request(
             Step::Occurrence(row) if row.id() == *original.qualification.occurrence() => {
                 let inputs = row.style().ok_or(DomParsedHtmlStyleError::WrongRequest)?;
                 // The actual original list may name earlier inert Styles. Their
-                // producer-proved no-effect prefix establishes no associations;
-                // the selected first influencing Style must occur once in this list.
+                // producer-proved no-effect prefix and actual completed predecessor
+                // establish this supported membership; the Style occurs once.
                 let mut selected = 0usize;
                 for i in 0..inputs.sheet_order_len() {
                     meter.step(cancel)?;

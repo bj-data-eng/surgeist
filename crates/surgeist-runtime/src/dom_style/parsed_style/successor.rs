@@ -43,9 +43,10 @@ impl std::error::Error for DomStyleParsedSuccessorError {
     }
 }
 impl DomStyleRuntime {
-    /// Remove the preceding original sheet and reach the next authentic
-    /// ParserPopped inline-policy request. The returned commits are genuine;
-    /// the whole history, recreation and networking dispatch remain pending.
+    /// Reach the next authentic ParserPopped inline-policy request, removing
+    /// an actually created predecessor sheet when present. The typed removal
+    /// view distinguishes genuine publications from known absence of a sheet.
+    /// This supplies no whole-history or networking dispatch permission.
     pub fn advance_parsed_style_successor(
         &self,
         dom: &mut DomEventDom<'_>,
@@ -84,21 +85,24 @@ impl DomStyleRuntime {
         custody.current = current_storage(&state, &mut hold, &custody, &steps)?;
         custody.check()?;
         steps.prefix(&hold)?;
-        let document = hold.successor_document(cancel)?;
-        let mut selected = None;
-        for root in &state.roots {
-            steps.prefix(&hold)?;
-            if root.node == document.node() {
-                selected = Some(root);
-                break;
+        let document = hold.successor_owner_document(cancel)?;
+        let mut cap = None;
+        if let Some(document) = document {
+            let mut selected = None;
+            for root in &state.roots {
+                steps.prefix(&hold)?;
+                if root.node == document.node() {
+                    selected = Some(root);
+                    break;
+                }
             }
+            let root = selected.ok_or(DomStyleRuntimeError::SheetSetRootUnavailable {
+                root: document.node(),
+            })?;
+            steps.prefix(&hold)?;
+            cap = Some(root.store.clone());
         }
-        let root = selected.ok_or(DomStyleRuntimeError::SheetSetRootUnavailable {
-            root: document.node(),
-        })?;
-        steps.prefix(&hold)?;
-        let cap = root.store.clone();
-        let mut prep = hold.prepare_successor(&cap, cancel)?;
+        let mut prep = hold.prepare_successor(cap.as_deref(), cancel)?;
         prep.step(cancel).map_err(DomStyleRuntimeError::from)?;
         steps.runtime()?;
         prep.admit_runtime(custody.usage()?, cancel)

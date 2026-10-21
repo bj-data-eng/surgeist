@@ -29,14 +29,15 @@ fn completed_predecessor_is_same_entry_and_canonical_serial_membership_are_prese
     let mut hold = dom
         .begin_parsed_html_style(id, super::super::tests::envelope(), &flag())
         .unwrap();
-    let prep = hold.prepare_successor(&cap, &flag()).unwrap();
+    let prep = hold.prepare_successor(Some(&cap), &flag()).unwrap();
     let (completion, retirement) = prep.commit(&flag()).unwrap().into_parts();
     let entry = hold.meter.entry();
     let completed_guard = entry.completed_style.try_lock().unwrap();
     let completed = completed_guard.as_ref().unwrap();
     assert_eq!(completed.qualification, q);
-    assert_eq!(completed.sheet, old_state.sheet.clone().unwrap());
-    assert_eq!(completed.notification, notification::Issuance::Unissued);
+    assert!(
+        matches!(&completed.outcome, CompletedOutcome::Created { sheet,notification:notification::Issuance::Unissued } if sheet==old_state.sheet.as_ref().unwrap())
+    );
     assert_ne!(completion.qualification(), &q);
     let retained = ledger.total().bytes();
     drop(retirement);
@@ -98,7 +99,7 @@ fn old_inline_decision_cannot_answer_new_occurrence() {
             .begin_parsed_html_style(id, super::super::tests::envelope(), &flag())
             .unwrap();
         let (_output, retirement) = hold
-            .prepare_successor(&cap, &flag())
+            .prepare_successor(Some(&cap), &flag())
             .unwrap()
             .commit(&flag())
             .unwrap()
@@ -131,7 +132,7 @@ fn real_post_producer_work_refusal_preserves_old_invocation_and_raised_retry_rem
         let mut hold = dom
             .begin_parsed_html_style(id, super::super::tests::envelope(), &flag())
             .unwrap();
-        let prep = hold.prepare_successor(&cap, &flag()).unwrap();
+        let prep = hold.prepare_successor(Some(&cap), &flag()).unwrap();
         let left =
             prep.meter.entry().control.limits().work() - prep.meter.entry().control.spent_work();
         // Exercise the real original controller, leaving a bounded tail. These
@@ -176,7 +177,7 @@ fn real_post_producer_work_refusal_preserves_old_invocation_and_raised_retry_rem
             let mut hold = dom.begin_parsed_html_style(id, raised, &flag()).unwrap();
             assert!(hold.spent_work() >= spent);
             let (completion, retirement) = hold
-                .prepare_successor(&cap, &flag())
+                .prepare_successor(Some(&cap), &flag())
                 .unwrap()
                 .commit(&flag())
                 .unwrap()
@@ -293,7 +294,7 @@ fn different_real_same_store_ownerless_sheet_cannot_substitute_for_completed_inv
             .begin_parsed_html_style(id, super::super::tests::envelope(), &flag())
             .unwrap();
         let (_completion, retirement) = hold
-            .prepare_successor(&cap, &flag())
+            .prepare_successor(Some(&cap), &flag())
             .unwrap()
             .commit(&flag())
             .unwrap()

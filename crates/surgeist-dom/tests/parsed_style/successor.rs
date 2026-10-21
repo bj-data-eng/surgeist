@@ -3,13 +3,21 @@ use super::rendering::{Ready, ready};
 use super::*;
 use surgeist_cssom::CssomSheetId;
 
+fn removed(
+    completion: &DomParsedHtmlStyleSuccessorCompletion,
+) -> (&DomCommit, &surgeist_cssom::CssomCommit) {
+    let DomParsedHtmlStyleSuccessorRemoval::Removed { dom, cssom } = completion.removal() else {
+        panic!("actual old sheet removed")
+    };
+    (dom, cssom)
+}
 fn result_revision(commit: &surgeist_cssom::CssomCommit) -> &surgeist_cssom::CssomRevision {
     match commit.publication() {
         surgeist_cssom::CssomPublication::Changed(v) => v.to(),
         surgeist_cssom::CssomPublication::Unchanged { revision } => revision,
     }
 }
-fn rendered() -> Ready {
+pub(super) fn rendered() -> Ready {
     let mut value = ready(
         "<!doctype html><head><style nonce='original'>a{color:red}</style></head><body>final",
         envelope(),
@@ -47,8 +55,11 @@ fn advance(value: &mut Ready) -> DomParsedHtmlStyleSuccessorCompletion {
         .dom
         .begin_parsed_html_style(value.id, envelope(), &flag())
         .unwrap();
-    assert_eq!(hold.successor_document(&flag()).unwrap(), value.document);
-    let prep = hold.prepare_successor(&value.root, &flag()).unwrap();
+    assert_eq!(
+        hold.successor_owner_document(&flag()).unwrap(),
+        Some(value.document)
+    );
+    let prep = hold.prepare_successor(Some(&value.root), &flag()).unwrap();
     assert_ne!(prep.qualification().occurrence(), value.q.occurrence());
     let published = prep.commit(&flag()).unwrap();
     assert!(matches!(
@@ -104,10 +115,10 @@ fn parser_pop_removes_real_sheet_and_forms_distinct_original_full_text_request()
         completion.phase(),
         DomParsedHtmlStylePhase::InlinePolicyPending
     );
-    assert_eq!(completion.dom().changes().from(), before);
-    assert!(!completion.dom().changes().changes().is_empty());
+    assert_eq!(removed(&completion).0.changes().from(), before);
+    assert!(!removed(&completion).0.changes().changes().is_empty());
     assert_eq!(
-        result_revision(completion.cssom()),
+        result_revision(removed(&completion).1),
         value.root.snapshot().unwrap().revision()
     );
     old_is_readable_and_removed(&value, &old);
@@ -190,8 +201,11 @@ fn cancelled_and_dropped_preparations_leave_both_owners_and_current_request_unch
             .dom
             .begin_parsed_html_style(value.id, envelope(), &flag())
             .unwrap();
-        assert!(hold.prepare_successor(&value.root, &cancelled).is_err());
-        drop(hold.prepare_successor(&value.root, &flag()).unwrap());
+        assert!(
+            hold.prepare_successor(Some(&value.root), &cancelled)
+                .is_err()
+        );
+        drop(hold.prepare_successor(Some(&value.root), &flag()).unwrap());
     }
     assert_eq!(value.dom.snapshot().stamp(), before);
     assert_eq!(value.root.snapshot().unwrap().revision(), &revision);
@@ -219,12 +233,12 @@ fn already_cleared_producer_still_clears_canonical_association_with_real_unchang
     value.root.commit(&mut batch).unwrap();
     let revision = value.root.snapshot().unwrap().revision().clone();
     let completion = advance(&mut value);
-    assert_eq!(result_revision(completion.cssom()), &revision);
-    assert!(!completion.dom().changes().changes().is_empty());
+    assert_eq!(result_revision(removed(&completion).1), &revision);
+    assert!(!removed(&completion).0.changes().changes().is_empty());
     old_is_readable_and_removed(&value, &value.sheet);
 }
 #[test]
-fn new_policy_decision_is_required_and_recreation_remains_explicitly_unavailable() {
+fn new_policy_decision_is_required_before_authentic_successor_creation() {
     let mut value = rendered();
     advance(&mut value);
     let mut decision = {
@@ -239,7 +253,7 @@ fn new_policy_decision_is_required_and_recreation_remains_explicitly_unavailable
         .begin_parsed_html_style(value.id, envelope(), &flag())
         .unwrap();
     assert!(matches!(
-        hold.prepare_successor(&value.root, &flag()),
+        hold.prepare_successor(Some(&value.root), &flag()),
         Err(DomParsedHtmlStyleSuccessorError::Style(
             DomParsedHtmlStyleError::WrongPhase {
                 phase: DomParsedHtmlStylePhase::InlinePolicyPending
@@ -247,12 +261,11 @@ fn new_policy_decision_is_required_and_recreation_remains_explicitly_unavailable
         ))
     ));
     hold.accept_inline_policy(&mut decision, &flag()).unwrap();
-    assert!(matches!(
-        hold.prepare_create_sheet(&value.root, &flag()),
-        Err(DomParsedHtmlStyleSheetError::Style(
-            DomParsedHtmlStyleError::UnsupportedProfile { .. }
-        ))
-    ));
+    let prepared = hold.prepare_create_sheet(&value.root, &flag()).unwrap();
+    assert_eq!(
+        prepared.request().text().code_units(),
+        "a{color:red}".encode_utf16().collect::<Vec<_>>()
+    );
 }
 #[test]
 fn finite_successor_output_refusal_retains_original_work_and_raised_retry() {
@@ -276,7 +289,7 @@ fn finite_successor_output_refusal_retains_original_work_and_raised_retry() {
             .unwrap();
         let before = hold.spent_work();
         let result = hold
-            .prepare_successor(&value.root, &flag())
+            .prepare_successor(Some(&value.root), &flag())
             .unwrap()
             .commit(&flag());
         assert!(matches!(
@@ -309,7 +322,7 @@ fn finite_successor_output_refusal_retains_original_work_and_raised_retry() {
         .unwrap();
     assert!(hold.spent_work() >= spent);
     let (completion, retirement) = hold
-        .prepare_successor(&value.root, &flag())
+        .prepare_successor(Some(&value.root), &flag())
         .unwrap()
         .commit(&flag())
         .unwrap()

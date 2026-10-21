@@ -82,13 +82,16 @@ evaluating again; original work, policy and output accounting remain cumulative.
 `create_parsed_style_sheet` executes the reached original CreateSheet action
 using the actual bound CSSOM root and the sole add-sheet/preference algorithm.
 The first insertion's text is empty: it precedes parser push and text
-consumption, and later final text is never substituted. Original title, media,
+consumption. Its authentic ParserPopped successor uses its own retained text;
+later final markup is never substituted. Original title, media,
 parser Document and mode qualify the actual nonconstructed sheet. CSSOM and DOM
 prepare all fallible work before a joint publication fence; Runtime installs
 preformed names/serial while the genuine root lock remains held. Returned
 completion exposes the actual sheet ID/revision, DOM commit, CSSOM commit and
 retained media diagnostics. Success stops at `ReadScriptBlockingPending`;
-whole history and Style readiness remain Pending. Repeated creation refuses.
+whole history and Style readiness remain Pending. Repeated creation of the same
+invocation refuses; a separately allowed ParserPopped invocation creates a new
+sheet and association with its own processing receipt.
 The same fence retains a compact original processing receipt in the Session's
 completion lifecycle bank. It records import dependencies from the actual parsed
 rules, original qualification, execution profile and genuine sheet/association
@@ -96,7 +99,7 @@ identity and creation revision. Caller output Drop and later CSSOM edits do not
 rewrite it. This pre-task record is included in Runtime storage and live-resource
 custody; it is neither an import-resource wait nor a networking task. It issues
 no notification permission or task serial. Parsed dispatch still requires the
-separate original synchronous frontier, including later parser-pop work.
+separate original synchronous frontier and remaining influencing history.
 `queue_parsed_style_notification` consumes that receipt once. It checks the
 actual original sheet's current owner against its retained creation-time label
 under the genuine root guard. A cleared owner returns `OwnerAssociationRemoved`
@@ -104,23 +107,30 @@ without a task; another nonnull owner refuses. Later revisions alone do not
 invalidate original processing. A queued task retains its exact parsed origin,
 target and receipt through subsequent sheet changes/removal and Session moves.
 The real networking FIFO returns `OriginalSynchronousPending` before event or
-unblock work for these tasks: the next authentic parser-pop occurrence remains
-unexecuted. It cannot skip that head to deliver a later task. No positive
+unblock work for these tasks, naming actual remaining synchronous work or the
+unavailable frontier. It cannot skip that head to deliver a later task. No positive
 frontier is supplied by this checkpoint; native task behavior is preserved.
 `advance_parsed_style_successor` selects the next original ParserPopped update
-inside the retained contribution. It jointly removes the old CSSOM sheet and
-clears the canonical association before reaching a fresh inline-policy request
-for the original text and nonce. The old sheet and its rules remain readable.
+inside the retained contribution. If the predecessor created a sheet, it jointly
+removes that sheet and clears the canonical association before reaching a fresh
+inline-policy request for the original text and nonce. The old sheet and rules
+remain readable. An actually blocked predecessor has no sheet or creation owner;
+advancement needs no CSSOM root and fabricates no producer publication. The
+completion's borrowed `removal()` view distinguishes actual DOM/CSSOM commits
+from `NoAssociatedSheet` while keeping the new qualification available in both.
 Preferred/last-selected history and root/task serials stay with their existing
 owners; previous processing receipts and queued tasks retain their own original
 qualification. Queue delivery and import completion are not prerequisites for
-this synchronous step. The new request needs its own policy decision. Recreation
-and a positive networking frontier remain unavailable.
+this synchronous step. The new request needs its own policy decision. An allowed
+successor can then create, exclude script bookkeeping and complete its rendering
+tail through the same owners. A blocked successor creates no sheet or task;
+real imports remain `PendingImports` until genuine resource outcomes exist.
+Further influencing history and a positive networking frontier remain unavailable.
 `exclude_parsed_style_script_bookkeeping` binds the actual Session's
 no-executable-JavaScript profile to the exact original occurrence. It advances
 that retained cursor to `ReadRenderBlockingPending`, without inventing a false
 script predicate or running deferred script-blocking sets. Render/media/context,
-resource completion and the later genuine parser-pop text update remain
+resource completion and later genuine synchronous history remain
 independent original actions. Whole history stays Pending; captured-context
 recovery remains unavailable. Native completion notifications use the same
 explicit profile exclusion after actual event delivery and before real rendering

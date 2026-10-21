@@ -7,6 +7,8 @@ mod decision;
 mod exclusion;
 #[path = "parsed_style/notification.rs"]
 mod notification;
+#[path = "parsed_style/recreation.rs"]
+mod recreation;
 #[path = "parsed_style/rendering.rs"]
 mod rendering;
 #[path = "parsed_style/successor.rs"]
