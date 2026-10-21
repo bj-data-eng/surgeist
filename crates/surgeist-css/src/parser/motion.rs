@@ -1,5 +1,6 @@
 //! Motion Path authored grammar composed over the shared numeric, position,
 //! URL and complete BasicShape owners.
+use super::combinators::{Combinator, Tail, commit, fill, keyword, parse_group};
 use super::property_input::Parser;
 use super::values::{next_is_delim, next_is_ident, parse_angle_value, parse_length_percentage};
 use crate::error::property::{Error, ParseError, basic, unexpected_at};
@@ -92,30 +93,48 @@ fn parse_ray<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssRay, ParseError<'i, Error>> {
-    let (mut angle, mut size, mut contain, mut position) = (None, None, false, None);
-    while !input.is_exhausted() {
-        if next_is_ident(input, "contain") && !contain {
-            input.next().map_err(basic)?;
-            contain = true;
-        } else if next_is_ident(input, "at") && position.is_none() {
-            input.next().map_err(basic)?;
-            position = Some(super::position::parse_full_position_before_angle(
-                input, numeric,
-            )?);
-        } else if size.is_none()
-            && let Some(value) = next_keyword(input)
-                .as_deref()
-                .and_then(CssRaySize::from_keyword)
-        {
-            input.next().map_err(basic)?;
-            size = Some(value);
-        } else if angle.is_none() {
-            angle = Some(parse_angle_value(input, numeric)?);
-        } else {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
-    let angle = angle.ok_or_else(|| unexpected_at(input.current_source_location()))?;
+    // `<angle> && <ray-size>? && contain? && [ at <position> ]?`; any other
+    // component commits the angle.
+    let (mut angle, mut size, mut contain, mut position) = (None, None, None, None);
+    let [contain, ..] = parse_group::<4>(
+        input,
+        Combinator::AllOf {
+            optional: [true, true, true, false],
+        },
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0 => keyword(&mut contain, input, &[("contain", ())]),
+            1 => commit(
+                &mut position,
+                input,
+                |input| next_is_ident(input, "at"),
+                |input| {
+                    input.next().map_err(basic)?;
+                    super::position::parse_full_position_before_angle(input, numeric)
+                },
+            ),
+            2 => {
+                let Some(value) = next_keyword(input)
+                    .as_deref()
+                    .and_then(CssRaySize::from_keyword)
+                else {
+                    return Ok(false);
+                };
+                input.next().map_err(basic)?;
+                size = Some(value);
+                Ok(true)
+            }
+            3 => commit(
+                &mut angle,
+                input,
+                |_| true,
+                |input| parse_angle_value(input, numeric),
+            ),
+            _ => unreachable!("four ray operands"),
+        },
+    )?;
+    let angle = angle.expect("required ray angle");
     Ok(CssRay::new(angle, size, contain, position))
 }
 
@@ -212,27 +231,29 @@ pub(super) fn parse_offset<'i, 't>(
     };
     let (mut distance, mut rotate) = (None, None);
     if path.is_some() {
-        while !input.is_exhausted() && !next_is_delim(input, '/') {
-            // Values 3 combinators are not associative: distance can precede
-            // or follow the whole offset-rotate, but cannot split its children.
-            if rotate.is_none() {
-                match input.try_parse(|input| parse_offset_rotate(input, numeric)) {
-                    Ok(value) => {
-                        rotate = Some(value);
-                        continue;
-                    }
-                    Err(error) if crate::error::property::is_resource_parse_error(&error) => {
-                        return Err(error);
-                    }
-                    Err(_) => {}
-                }
-            }
-            if distance.is_none() {
-                distance = Some(parse_length_percentage(input, numeric)?);
-            } else {
-                return Err(unexpected_at(input.current_source_location()));
-            }
-        }
+        // `[ <'offset-distance'> || <'offset-rotate'> ]?`: combinators are not
+        // associative, so distance can precede or follow the whole
+        // offset-rotate but cannot split its children.
+        parse_group::<2>(
+            input,
+            Combinator::AllOf {
+                optional: [true, true],
+            },
+            Tail::Reject,
+            |input| next_is_delim(input, '/'),
+            |operand, input| match operand {
+                0 => fill(&mut rotate, input, |input| {
+                    parse_offset_rotate(input, numeric)
+                }),
+                1 => commit(
+                    &mut distance,
+                    input,
+                    |_| true,
+                    |input| parse_length_percentage(input, numeric),
+                ),
+                _ => unreachable!("two offset operands"),
+            },
+        )?;
     }
     let anchor = if input.try_parse(|input| input.expect_delim('/')).is_ok() {
         Some(parse_offset_anchor(input, numeric)?)

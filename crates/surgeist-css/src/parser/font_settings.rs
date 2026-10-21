@@ -2,7 +2,7 @@ use super::property_input::Parser;
 use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::{Token, match_ignore_ascii_case};
 
-use super::values::{CalculationRoot, next_is_comma, parse_numeric_function};
+use super::values::{CalculationRoot, parse_numeric_function};
 use crate::{
     CssAuthoredFontFeature, CssAuthoredFontFeatureList, CssAuthoredFontFeatureSettings,
     CssAuthoredFontFeatureValue, CssFontFeatureIndex, CssFontVariation, CssFontVariationList,
@@ -26,16 +26,7 @@ pub(super) fn parse_font_feature_settings<'i, 't>(
         }
         input.reset(&state);
     }
-    let mut features = Vec::new();
-    loop {
-        features.push(parse_font_feature(input, numeric)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+    let features = input.parse_comma_separated(|input| parse_font_feature(input, numeric))?;
     CssAuthoredFontFeatureList::try_new(features)
         .map(CssAuthoredFontFeatureSettings::Features)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
@@ -46,7 +37,8 @@ fn parse_font_feature<'i, 't>(
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssAuthoredFontFeature, ParseError<'i, Error>> {
     let tag = tag(input)?;
-    let value = if input.is_exhausted() || next_is_comma(input) {
+    // A `#` item is bounded at its comma, so exhaustion ends the item.
+    let value = if input.is_exhausted() {
         CssAuthoredFontFeatureValue::Omitted
     } else if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
         match_ignore_ascii_case! { &ident,
@@ -101,18 +93,11 @@ pub(super) fn parse_font_variation_settings<'i, 't>(
         }
         input.reset(&state);
     }
-    let mut variations = Vec::new();
-    loop {
+    let variations = input.parse_comma_separated(|input| {
         let tag = tag(input)?;
         let value = super::values::parse_specified_number(input, numeric)?;
-        variations.push(CssFontVariation::new(tag, value));
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+        Ok(CssFontVariation::new(tag, value))
+    })?;
     CssFontVariationList::try_new(variations)
         .map(CssFontVariationSettings::Variations)
         .ok_or_else(|| unexpected_at(input.current_source_location()))

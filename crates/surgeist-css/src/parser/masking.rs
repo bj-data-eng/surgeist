@@ -1,13 +1,13 @@
 //! Masking-specific orchestration around shared image and four-side owners.
 use super::background::{
     next_starts_background_image, next_starts_border_image_repeat, next_starts_border_image_slice,
-    parse_background_repeat_prefix, parse_background_size_prefix, parse_border_image_outset_prefix,
-    parse_border_image_repeat_prefix, parse_border_image_slice_component,
-    parse_border_image_width_prefix, parse_image_value,
+    parse_background_repeat, parse_background_size, parse_border_image_outset,
+    parse_border_image_repeat, parse_border_image_slice_component, parse_border_image_width,
+    parse_image_value,
 };
-use super::position::parse_physical_position_prefix;
+use super::combinators::{Combinator, Tail, attempt, commit, fill, parse_group};
+use super::position::parse_physical_position;
 use super::property_input::Parser;
-use super::values::next_is_comma;
 use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use crate::syntax::*;
 
@@ -88,41 +88,47 @@ pub(super) fn parse_mask_border<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssMaskBorder, ParseError<'i, Error>> {
+    // `<'mask-border-source'> || <'mask-border-slice'> [ /
+    // <'mask-border-width'>? [ / <'mask-border-outset'> ]? ]? ||
+    // <'mask-border-repeat'> || <'mask-border-mode'>`.
     let (mut source, mut slice, mut width, mut outset, mut repeat, mut mode) =
         (None, None, None, None, None, None);
-    while !input.is_exhausted() {
-        if source.is_none() && next_starts_background_image(input) {
-            source = Some(parse_image_value(input, numeric)?);
-            continue;
-        }
-        if slice.is_none() && next_starts_border_image_slice(input) {
-            slice = Some(parse_mask_border_slice(input, numeric)?);
-            if input.try_parse(|input| input.expect_delim('/')).is_ok() {
-                // The first width is optional, including the source's bare 10 /.
-                if !input.is_exhausted()
-                    && let Ok(value) =
-                        input.try_parse(|input| parse_border_image_width_prefix(input, numeric))
-                {
-                    width = Some(value);
+    parse_group::<4>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0 => commit(&mut source, input, next_starts_background_image, |input| {
+                parse_image_value(input, numeric)
+            }),
+            1 => {
+                if !commit(&mut slice, input, next_starts_border_image_slice, |input| {
+                    parse_mask_border_slice(input, numeric)
+                })? {
+                    return Ok(false);
                 }
                 if input.try_parse(|input| input.expect_delim('/')).is_ok() {
-                    outset = Some(parse_border_image_outset_prefix(input, numeric)?);
+                    // The first width is optional, including the source's bare 10 /.
+                    if !input.is_exhausted() {
+                        width = attempt(input, |input| parse_border_image_width(input, numeric))?;
+                    }
+                    if input.try_parse(|input| input.expect_delim('/')).is_ok() {
+                        outset = Some(parse_border_image_outset(input, numeric)?);
+                    }
                 }
+                Ok(true)
             }
-            continue;
-        }
-        if repeat.is_none() && next_starts_border_image_repeat(input) {
-            repeat = Some(parse_border_image_repeat_prefix(input)?);
-            continue;
-        }
-        if mode.is_none()
-            && let Ok(value) = input.try_parse(parse_mask_type)
-        {
-            mode = Some(value);
-            continue;
-        }
-        return Err(unexpected_at(input.current_source_location()));
-    }
+            2 => commit(
+                &mut repeat,
+                input,
+                next_starts_border_image_repeat,
+                parse_border_image_repeat,
+            ),
+            3 => fill(&mut mode, input, parse_mask_type),
+            _ => unreachable!("four mask-border operands"),
+        },
+    )?;
     CssMaskBorder::try_new(source, slice, width, outset, repeat, mode)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
@@ -131,16 +137,7 @@ pub(super) fn parse_mask_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssMaskList, ParseError<'i, Error>> {
-    let mut layers = Vec::new();
-    loop {
-        layers.push(parse_mask_layer(input, numeric)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+    let layers = input.parse_comma_separated(|input| parse_mask_layer(input, numeric))?;
     if layers.is_empty() {
         Err(unexpected_at(input.current_source_location()))
     } else {
@@ -152,91 +149,44 @@ pub(super) fn parse_mask_layer<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssMaskLayer, ParseError<'i, Error>> {
-    let mut image = None;
-    let mut position = None;
-    let mut size = None;
-    let mut repeat = None;
-    let mut boxes = Vec::new();
-    let mut no_clip = false;
-    let mut composite = None;
-    let mut mode = None;
-
-    while !input.is_exhausted() && !next_is_comma(input) {
-        if image.is_none() {
-            match input.try_parse(|input| parse_image_value(input, numeric)) {
-                Ok(value) => {
-                    image = Some(value);
-                    continue;
+    // `<mask-reference> || <position> [ / <bg-size> ]? || <repeat-style> ||
+    // <geometry-box> || [ <geometry-box> | no-clip ] || <compositing-operator>
+    // || <masking-mode>`.
+    let (mut image, mut position, mut size, mut repeat) = (None, None, None, None);
+    let (mut origin, mut clip, mut composite, mut mode) = (None, None, None, None);
+    parse_group::<7>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0 => fill(&mut image, input, |input| parse_image_value(input, numeric)),
+            1 => fill(&mut repeat, input, parse_background_repeat),
+            2 => {
+                if !fill(&mut position, input, |input| {
+                    parse_physical_position(input, numeric)
+                })? {
+                    return Ok(false);
                 }
-                Err(error) if crate::error::property::is_resource_parse_error(&error) => {
-                    return Err(error);
+                if input.try_parse(|input| input.expect_delim('/')).is_ok() {
+                    size = Some(parse_background_size(input, numeric)?);
                 }
-                Err(_) => {}
+                Ok(true)
             }
+            3 => fill(&mut mode, input, parse_mask_mode),
+            4 => fill(&mut composite, input, parse_mask_composite),
+            5 => fill(&mut origin, input, parse_mask_box),
+            6 => fill(&mut clip, input, parse_mask_clip),
+            _ => unreachable!("seven mask layer operands"),
+        },
+    )?;
+    let boxes = match (origin, clip) {
+        (None, None) => None,
+        (None, Some(CssMaskClip::NoClip)) => Some(CssMaskLayerBoxes::NoClip),
+        (Some(value), None) | (None, Some(CssMaskClip::Box(value))) => {
+            Some(CssMaskLayerBoxes::Box(value))
         }
-        if repeat.is_none()
-            && let Ok(parsed_repeat) = input.try_parse(parse_background_repeat_prefix)
-        {
-            repeat = Some(parsed_repeat);
-            continue;
-        }
-        if position.is_none() {
-            match input.try_parse(|input| parse_physical_position_prefix(input, numeric)) {
-                Ok(parsed_position) => {
-                    position = Some(parsed_position);
-                    if input.try_parse(|input| input.expect_delim('/')).is_ok() {
-                        size = Some(parse_background_size_prefix(input, numeric)?);
-                    }
-                    continue;
-                }
-                Err(error) if crate::error::property::is_resource_parse_error(&error) => {
-                    return Err(error);
-                }
-                Err(_) => {}
-            }
-        }
-        if mode.is_none()
-            && let Ok(value) = input.try_parse(parse_mask_mode)
-        {
-            mode = Some(value);
-            continue;
-        }
-        if composite.is_none()
-            && let Ok(value) = input.try_parse(parse_mask_composite)
-        {
-            composite = Some(value);
-            continue;
-        }
-        if let Ok(value) = input.try_parse(parse_mask_clip) {
-            match value {
-                CssMaskClip::Box(value) => boxes.push(value),
-                CssMaskClip::NoClip if !no_clip => no_clip = true,
-                CssMaskClip::NoClip => {
-                    return Err(unexpected_at(input.current_source_location()));
-                }
-            }
-            if boxes.len() > 2 || no_clip && boxes.len() > 1 {
-                return Err(unexpected_at(input.current_source_location()));
-            }
-            continue;
-        }
-        return Err(unexpected_at(input.current_source_location()));
-    }
-    let boxes = match (boxes.as_slice(), no_clip) {
-        ([], false) => None,
-        ([], true) => Some(CssMaskLayerBoxes::NoClip),
-        ([value], false) => Some(CssMaskLayerBoxes::Box(*value)),
-        ([origin], true) => Some(CssMaskLayerBoxes::Pair {
-            origin: *origin,
-            clip: CssMaskClip::NoClip,
-        }),
-        ([origin, clip], false) => Some(CssMaskLayerBoxes::Pair {
-            origin: *origin,
-            clip: CssMaskClip::Box(*clip),
-        }),
-        _ => {
-            return Err(unexpected_at(input.current_source_location()));
-        }
+        (Some(origin), Some(clip)) => Some(CssMaskLayerBoxes::Pair { origin, clip }),
     };
     CssMaskLayer::try_new(image, position, size, repeat, boxes, composite, mode)
         .ok_or_else(|| unexpected_at(input.current_source_location()))

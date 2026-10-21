@@ -479,6 +479,17 @@ contains concrete semantic, recovery, namespace, coordinate, and depth examples.
 
 Each diagnostic exposes a typed error and stable root code, the first responsible source position, the complete recovery-unit span, and one `CssRecoveryAction`. Source byte offsets index the original UTF-8 input; line and column indices are zero-based, and columns count UTF-16 code units. Display text is for people, not control flow—match typed variants with a wildcard for future non-exhaustive cases.
 
+Property grammars built from [Values 4 §2.2](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#component-combinators)
+`||`/`&&` groups and [§2.3](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#component-multipliers)
+`#` lists share one combinator each. A rejected group reports the first
+component that no remaining operand admits (a repeated or unknown component),
+or the end of the value; nesting and component-resource failures from any
+operand keep their resource kind. A `#` list bounds each item at its comma.
+Under a producer work control each admitted list item charges two work steps
+(the controlled step and the control's reservation step) and accounts its live
+bytes; the only controlled property front, UTF-16 `color-scheme`, has no
+`#` list, so ordinary fronts charge no additional work.
+
 An unterminated comment produces one `UnexpectedEnd` diagnostic with
 `IgnoreUnterminatedComment`. Its position is the actual EOF and its recovery span
 runs from the comment opening to EOF. This lexical error is reported even for
@@ -4069,9 +4080,13 @@ wrappers' `value()` accessors. These are the authored [Grid 2 line placement
 values](https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#line-placement),
 which [Grid 3 §4.1](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#grid-lanes-placement)
 also uses. A line may be `auto`, a bare name, a nonzero signed integer with an
-optional name, or `span` with a positive integer and/or name. Component order is
-flexible on input; specified serialization writes the integer before the name,
-and writes `span` first. Ordinary integer tokens retain exact magnitude beyond
+optional name, or `span` with a positive integer and/or name. The integer and
+name may appear in either order, and `span` may precede or follow them, but
+`span` never separates them: the grammar's `span && [ <integer> ||
+<custom-ident> ]` keeps the bracketed group whole ([Values 4
+§2.2](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#component-combinators)),
+so `2 span name` is invalid. Specified serialization writes the integer before
+the name, and writes `span` first. Ordinary integer tokens retain exact magnitude beyond
 `i32`. Integer-root math remains symbolic, including expressions whose result
 could fall outside a range; [Values 4 range checking](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-range)
 belongs to computed or used value handling.
@@ -4520,6 +4535,13 @@ for omitted groups. `none` contributes ligatures `none` and six `normal` values.
 The shorthand and its longhand wrappers expose borrowed current values and no
 longer offer an `i01_subset()` projection. The separate CSS2 `font` prefix
 continues to accept only `normal` or `small-caps` as its variant component.
+
+In the shorthand each bracketed group is one operand of the outer `||`, so the
+values of the ligatures, alternates, numeric and East Asian groups stay
+contiguous while their internal order stays free ([Values 4
+§2.2](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#component-combinators)):
+`common-ligatures small-caps no-discretionary-ligatures` is invalid. Browsers
+also accept such split values; that is a witness divergence, not the grammar.
 
 `CssFontVariantAlternateValues` checks at most one of each alternate function
 and a nonempty combination. `CssFontVariantAlternateNames` checks nonempty name
@@ -8790,6 +8812,9 @@ keeps source origins, importance, declaration order and the supplied input.
 
 The decoration shorthand sets only Line, Thickness, Style and Color in that
 order, resetting omissions to `none`, `auto`, `solid` and `currentcolor`.
+Its Line operand is the whole `text-decoration-line` value, so the line
+keywords stay contiguous in any internal order: `underline red overline` is
+invalid ([Values 4 §2.2](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#component-combinators)).
 Those four longhands do not inherit. Underline Position, Underline Offset, the
 five Skip longhands, the four Emphasis longhands and TextShadow inherit.
 `all` includes every selected longhand. No shorthand has reset-only members.

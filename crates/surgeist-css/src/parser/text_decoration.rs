@@ -1,5 +1,6 @@
 //! Selected Decoration 4 intrinsic grammars.
 use super::color::parse_color;
+use super::combinators::{Combinator, Tail, fill, keyword, parse_group};
 use super::property_input::Parser;
 use super::values::parse_length_percentage;
 use crate::error::property::{Error, ParseError, basic, unexpected_at};
@@ -34,20 +35,19 @@ pub(super) fn parse_text_underline_position<'i, 't>(
     {
         return Ok(CssTextUnderlinePosition::Auto);
     }
-    let mut vertical = None;
-    let mut side = None;
-    while !input.is_exhausted() {
-        if let Ok(value) = input.try_parse(parse_underline_vertical) {
-            if vertical.replace(value).is_some() {
-                return Err(unexpected_at(input.current_source_location()));
-            }
-        } else {
-            let value = parse_text_side(input)?;
-            if side.replace(value).is_some() {
-                return Err(unexpected_at(input.current_source_location()));
-            }
-        }
-    }
+    // `[ from-font | under ] || [ left | right ]`.
+    let (mut vertical, mut side) = (None, None);
+    parse_group::<2>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0 => fill(&mut vertical, input, parse_underline_vertical),
+            1 => fill(&mut side, input, parse_text_side),
+            _ => unreachable!("two underline-position operands"),
+        },
+    )?;
     CssUnderlinePosition::try_new(vertical, side)
         .map(CssTextUnderlinePosition::Position)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
@@ -139,26 +139,21 @@ pub(super) fn parse_text_emphasis<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssTextEmphasis, ParseError<'i, Error>> {
-    let mut style = None;
-    let mut color = None;
-    while !input.is_exhausted() {
-        if style.is_none()
-            && let Ok(value) = input.try_parse(|input| parse_text_emphasis_style(input, numeric))
-        {
-            style = Some(value);
-            continue;
-        }
-        if color.is_none()
-            && let Ok(value) = input.try_parse(|input| parse_color(input, numeric))
-        {
-            color = Some(value);
-            continue;
-        }
-        return Err(unexpected_at(input.current_source_location()));
-    }
-    if style.is_none() && color.is_none() {
-        return Err(unexpected_at(input.current_source_location()));
-    }
+    // `<'text-emphasis-style'> || <'text-emphasis-color'>`.
+    let (mut style, mut color) = (None, None);
+    parse_group::<2>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0 => fill(&mut style, input, |input| {
+                parse_text_emphasis_style(input, numeric)
+            }),
+            1 => fill(&mut color, input, |input| parse_color(input, numeric)),
+            _ => unreachable!("two text-emphasis operands"),
+        },
+    )?;
     Ok(CssTextEmphasis::new(style, color))
 }
 pub(super) fn parse_text_emphasis_position<'i, 't>(
@@ -191,14 +186,16 @@ pub(super) fn parse_text_emphasis_position<'i, 't>(
 pub(super) fn parse_text_emphasis_skip<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTextEmphasisSkip, ParseError<'i, Error>> {
-    let mut flags = [false; 4];
-    while !input.is_exhausted() {
-        let ident = input.expect_ident_cloned().map_err(basic)?;
-        let index = match_ignore_ascii_case! { &ident, "spaces" => 0, "punctuation" => 1, "symbols" => 2, "narrow" => 3, _ => return Err(unexpected_at(input.current_source_location())) };
-        if std::mem::replace(&mut flags[index], true) {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+    // `spaces || punctuation || symbols || narrow`.
+    const KEYWORDS: [&str; 4] = ["spaces", "punctuation", "symbols", "narrow"];
+    let mut slots = [None; 4];
+    let flags = parse_group::<4>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| keyword(&mut slots[operand], input, &[(KEYWORDS[operand], ())]),
+    )?;
     CssTextEmphasisSkip::try_new(flags[0], flags[1], flags[2], flags[3])
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
@@ -212,20 +209,11 @@ pub(super) fn parse_text_shadow<'i, 't>(
     {
         return Ok(CssTextShadow::None);
     }
-    let mut shadows = Vec::new();
-    loop {
+    let shadows = input.parse_comma_separated(|input| {
         let shadow = super::box_model::parse_shadow(input, numeric)?;
-        shadows.push(
-            CssTextShadowLayer::from_parsed(shadow)
-                .ok_or_else(|| unexpected_at(input.current_source_location()))?,
-        );
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+        CssTextShadowLayer::from_parsed(shadow)
+            .ok_or_else(|| unexpected_at(input.current_source_location()))
+    })?;
     CssTextShadowList::from_parsed(shadows)
         .map(CssTextShadow::Shadows)
         .ok_or_else(|| unexpected_at(input.current_source_location()))

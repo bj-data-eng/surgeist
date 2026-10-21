@@ -1,8 +1,9 @@
+use super::combinators::{Combinator, Tail, fill, parse_group};
 use super::property_input::Parser;
 use crate::error::property::{CssFeatureId, Error, ParseError, basic, unexpected_at};
 use cssparser::{Token, match_ignore_ascii_case};
 
-use super::values::{next_is_comma, parse_custom_ident_from_str_at, parse_nonnegative_number};
+use super::values::{parse_custom_ident_from_str_at, parse_nonnegative_number};
 use crate::CssDuration;
 use crate::syntax::*;
 
@@ -18,16 +19,7 @@ pub(super) fn parse_duration_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssDurationList, ParseError<'i, Error>> {
-    let mut values = Vec::new();
-    loop {
-        values.push(parse_duration(input, numeric)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+    let values = input.parse_comma_separated(|input| parse_duration(input, numeric))?;
     Ok(CssDurationList::from_parser(values))
 }
 
@@ -35,16 +27,7 @@ pub(super) fn parse_delay_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssDelayList, ParseError<'i, Error>> {
-    let mut values = Vec::new();
-    loop {
-        values.push(parse_delay(input, numeric)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+    let values = input.parse_comma_separated(|input| parse_delay(input, numeric))?;
     Ok(CssDelayList::from_parser(values))
 }
 
@@ -91,16 +74,7 @@ pub(super) fn parse_easing_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssEasingList, ParseError<'i, Error>> {
-    let mut values = Vec::new();
-    loop {
-        values.push(parse_easing(input, numeric)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+    let values = input.parse_comma_separated(|input| parse_easing(input, numeric))?;
     CssEasingList::try_new(values).ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
@@ -154,17 +128,7 @@ fn parse_linear<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssLinearEasing, ParseError<'i, Error>> {
-    let mut stops = Vec::new();
-    loop {
-        stops.push(
-            input.parse_until_before(cssparser::Delimiter::Comma, |input| {
-                parse_linear_stop(input, numeric)
-            })?,
-        );
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-    }
+    let stops = input.parse_comma_separated(|input| parse_linear_stop(input, numeric))?;
     CssLinearEasing::from_parser(stops)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
@@ -258,22 +222,16 @@ fn parse_steps<'i, 't>(
 pub(super) fn parse_transition_property_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTransitionPropertyList, ParseError<'i, Error>> {
-    let mut properties = Vec::new();
+    // List post-condition: `none` is admitted only alone.
     let mut none_location = None;
-    loop {
+    let properties = input.parse_comma_separated(|input| {
         let location = input.current_source_location();
         let property = parse_transition_property(input)?;
         if matches!(property, CssTransitionProperty::None) {
             none_location.get_or_insert(location);
         }
-        properties.push(property);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+        Ok(property)
+    })?;
     CssTransitionPropertyList::try_new(properties).ok_or_else(|| {
         unexpected_at(none_location.unwrap_or_else(|| input.current_source_location()))
     })
@@ -301,21 +259,15 @@ pub(super) fn parse_transition_value_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssTransitionList, ParseError<'i, Error>> {
-    let mut items = Vec::new();
+    // List post-condition: a `none` transition property is admitted only alone.
     let mut none_location = None;
-    loop {
+    let items = input.parse_comma_separated(|input| {
         let (item, location) = parse_single_transition_value(input, numeric)?;
         if none_location.is_none() {
             none_location = location;
         }
-        items.push(item);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+        Ok(item)
+    })?;
     CssTransitionList::from_parser(items).ok_or_else(|| {
         unexpected_at(none_location.unwrap_or_else(|| input.current_source_location()))
     })
@@ -328,43 +280,33 @@ pub(super) fn parse_single_transition_value<'i, 't>(
     (CssTransition, Option<super::property_input::Site<'i>>),
     ParseError<'i, Error>,
 > {
-    let mut property = None;
-    let mut none_location = None;
-    let mut duration = None;
-    let mut delay = None;
-    let mut timing_function = None;
-    while !input.is_exhausted() && !next_is_comma(input) {
-        if duration.is_none()
-            && let Ok(value) = input.try_parse(|input| parse_duration(input, numeric))
-        {
-            duration = Some(value);
-            continue;
-        }
-        if duration.is_some()
-            && delay.is_none()
-            && let Ok(value) = input.try_parse(|input| parse_delay(input, numeric))
-        {
-            delay = Some(value);
-            continue;
-        }
-        if timing_function.is_none()
-            && let Ok(easing) = input.try_parse(|input| parse_easing(input, numeric))
-        {
-            timing_function = Some(easing);
-            continue;
-        }
-        let location = input.current_source_location();
-        if property.is_none()
-            && let Ok(parsed_property) = input.try_parse(parse_transition_property)
-        {
-            if matches!(parsed_property, CssTransitionProperty::None) {
-                none_location = Some(location);
+    // `[ none | <single-transition-property> ] || <time> || <easing-function>
+    // || <time>`: the first time is the duration, a second the delay.
+    let (mut property, mut none_location) = (None, None);
+    let (mut duration, mut delay, mut timing_function) = (None, None, None);
+    parse_group::<4>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0 => fill(&mut duration, input, |input| parse_duration(input, numeric)),
+            1 if duration.is_none() => Ok(false),
+            1 => fill(&mut delay, input, |input| parse_delay(input, numeric)),
+            2 => fill(&mut timing_function, input, |input| {
+                parse_easing(input, numeric)
+            }),
+            3 => {
+                let location = input.current_source_location();
+                let matched = fill(&mut property, input, parse_transition_property)?;
+                if matches!(property, Some(CssTransitionProperty::None)) {
+                    none_location = Some(location);
+                }
+                Ok(matched)
             }
-            property = Some(parsed_property);
-            continue;
-        }
-        return Err(unexpected_at(input.current_source_location()));
-    }
+            _ => unreachable!("four transition operands"),
+        },
+    )?;
     CssTransition::from_parser(property, duration, delay, timing_function)
         .map(|value| (value, none_location))
         .ok_or_else(|| unexpected_at(input.current_source_location()))
@@ -373,16 +315,7 @@ pub(super) fn parse_single_transition_value<'i, 't>(
 pub(super) fn parse_animation_name_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssAnimationNameList, ParseError<'i, Error>> {
-    let mut names = Vec::new();
-    loop {
-        names.push(parse_animation_name(input)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+    let names = input.parse_comma_separated(|input| parse_animation_name(input))?;
     CssAnimationNameList::try_new(names)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
@@ -413,16 +346,8 @@ pub(super) fn parse_animation_iteration_value_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssAnimationIterationCountList, ParseError<'i, Error>> {
-    let mut counts = Vec::new();
-    loop {
-        counts.push(parse_animation_iteration_value(input, numeric)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+    let counts =
+        input.parse_comma_separated(|input| parse_animation_iteration_value(input, numeric))?;
     CssAnimationIterationCountList::try_new(counts)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
@@ -443,16 +368,7 @@ pub(super) fn parse_animation_iteration_value<'i, 't>(
 pub(super) fn parse_animation_direction_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssAnimationDirectionList, ParseError<'i, Error>> {
-    let mut directions = Vec::new();
-    loop {
-        directions.push(parse_animation_direction(input)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+    let directions = input.parse_comma_separated(|input| parse_animation_direction(input))?;
     CssAnimationDirectionList::try_new(directions)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
@@ -473,16 +389,7 @@ pub(super) fn parse_animation_direction<'i, 't>(
 pub(super) fn parse_animation_fill_mode_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssAnimationFillModeList, ParseError<'i, Error>> {
-    let mut modes = Vec::new();
-    loop {
-        modes.push(parse_animation_fill_mode(input)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+    let modes = input.parse_comma_separated(|input| parse_animation_fill_mode(input))?;
     CssAnimationFillModeList::try_new(modes)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
@@ -503,16 +410,7 @@ pub(super) fn parse_animation_fill_mode<'i, 't>(
 pub(super) fn parse_animation_play_state_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssAnimationPlayStateList, ParseError<'i, Error>> {
-    let mut states = Vec::new();
-    loop {
-        states.push(parse_animation_play_state(input)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+    let states = input.parse_comma_separated(|input| parse_animation_play_state(input))?;
     CssAnimationPlayStateList::try_new(states)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
@@ -532,16 +430,8 @@ pub(super) fn parse_animation_value_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssAnimationList, ParseError<'i, Error>> {
-    let mut items = Vec::new();
-    loop {
-        items.push(parse_single_animation_value(input, numeric)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-        if input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
+    let items =
+        input.parse_comma_separated(|input| parse_single_animation_value(input, numeric))?;
     Ok(CssAnimationList::from_parser(items))
 }
 
@@ -549,68 +439,34 @@ pub(super) fn parse_single_animation_value<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssAnimation, ParseError<'i, Error>> {
-    let mut name = None;
-    let mut duration = None;
-    let mut delay = None;
-    let mut timing_function = None;
-    let mut iteration_count = None;
-    let mut direction = None;
-    let mut fill_mode = None;
-    let mut play_state = None;
-
-    while !input.is_exhausted() && !next_is_comma(input) {
-        if duration.is_none()
-            && let Ok(value) = input.try_parse(|input| parse_duration(input, numeric))
-        {
-            duration = Some(value);
-            continue;
-        }
-        if duration.is_some()
-            && delay.is_none()
-            && let Ok(value) = input.try_parse(|input| parse_delay(input, numeric))
-        {
-            delay = Some(value);
-            continue;
-        }
-        if timing_function.is_none()
-            && let Ok(easing) = input.try_parse(|input| parse_easing(input, numeric))
-        {
-            timing_function = Some(easing);
-            continue;
-        }
-        if iteration_count.is_none()
-            && let Ok(count) =
-                input.try_parse(|input| parse_animation_iteration_value(input, numeric))
-        {
-            iteration_count = Some(count);
-            continue;
-        }
-        if direction.is_none()
-            && let Ok(parsed_direction) = input.try_parse(parse_animation_direction)
-        {
-            direction = Some(parsed_direction);
-            continue;
-        }
-        if fill_mode.is_none()
-            && let Ok(parsed_fill_mode) = input.try_parse(parse_animation_fill_mode)
-        {
-            fill_mode = Some(parsed_fill_mode);
-            continue;
-        }
-        if play_state.is_none()
-            && let Ok(parsed_play_state) = input.try_parse(parse_animation_play_state)
-        {
-            play_state = Some(parsed_play_state);
-            continue;
-        }
-        if name.is_none()
-            && let Ok(parsed_name) = input.try_parse(parse_animation_name)
-        {
-            name = Some(parsed_name);
-            continue;
-        }
-        return Err(unexpected_at(input.current_source_location()));
-    }
+    // `<time> || <easing-function> || <time> || <iteration-count> ||
+    // <direction> || <fill-mode> || <play-state> || <keyframes-name>`: the
+    // first time is the duration, a second the delay; keywords precede names.
+    let (mut name, mut duration, mut delay, mut timing_function) = (None, None, None, None);
+    let (mut iteration_count, mut direction, mut fill_mode, mut play_state) =
+        (None, None, None, None);
+    parse_group::<8>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0 => fill(&mut duration, input, |input| parse_duration(input, numeric)),
+            1 if duration.is_none() => Ok(false),
+            1 => fill(&mut delay, input, |input| parse_delay(input, numeric)),
+            2 => fill(&mut timing_function, input, |input| {
+                parse_easing(input, numeric)
+            }),
+            3 => fill(&mut iteration_count, input, |input| {
+                parse_animation_iteration_value(input, numeric)
+            }),
+            4 => fill(&mut direction, input, parse_animation_direction),
+            5 => fill(&mut fill_mode, input, parse_animation_fill_mode),
+            6 => fill(&mut play_state, input, parse_animation_play_state),
+            7 => fill(&mut name, input, parse_animation_name),
+            _ => unreachable!("eight animation operands"),
+        },
+    )?;
 
     CssAnimation::from_parser(CssAnimationComponents {
         name,

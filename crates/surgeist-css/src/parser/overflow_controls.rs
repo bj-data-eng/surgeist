@@ -1,5 +1,6 @@
 //! CSS Overflow 3 terminal controls.
 
+use super::combinators::{Combinator, Tail, commit, parse_group};
 use super::property_input::Parser;
 use crate::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::{Token, match_ignore_ascii_case};
@@ -15,33 +16,51 @@ pub(super) fn parse_overflow_clip_margin<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssOverflowClipMargin, ParseError<'i, Error>> {
-    let mut box_edge = None;
-    let mut offset = None;
-    while !input.is_exhausted() {
-        input.skip_whitespace();
+    // `<visual-box> || <length [0,∞]>`: an identifier commits the box and a
+    // numeric token or function commits the length.
+    fn next_token_is<'i>(input: &mut Parser<'i, '_>, admit: fn(&Token<'i>) -> bool) -> bool {
         let state = input.state();
-        let location = input.current_source_location();
-        match input.next().map_err(basic)? {
-            Token::Ident(ident) => {
-                let edge = CssBoxEdgeKeyword::from_keyword(ident)
-                    .ok_or_else(|| unexpected_at(location))?;
-                if box_edge.replace(edge).is_some() {
-                    return Err(unexpected_at(location));
-                }
-            }
-            Token::Number { .. }
-            | Token::Dimension { .. }
-            | Token::Percentage { .. }
-            | Token::Function(_) => {
-                if offset.is_some() {
-                    return Err(unexpected_at(location));
-                }
-                input.reset(&state);
-                offset = Some(parse_nonnegative_length(input, numeric)?);
-            }
-            token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
-        }
+        let starts = input.next().is_ok_and(admit);
+        input.reset(&state);
+        starts
     }
+    let (mut box_edge, mut offset) = (None, None);
+    parse_group::<2>(
+        input,
+        Combinator::AnyOf,
+        Tail::Reject,
+        |_| false,
+        |operand, input| match operand {
+            0 => commit(
+                &mut box_edge,
+                input,
+                |input| next_token_is(input, |token| matches!(token, Token::Ident(_))),
+                |input| {
+                    input.skip_whitespace();
+                    let location = input.current_source_location();
+                    let ident = input.expect_ident().map_err(basic)?;
+                    CssBoxEdgeKeyword::from_keyword(ident).ok_or_else(|| unexpected_at(location))
+                },
+            ),
+            1 => commit(
+                &mut offset,
+                input,
+                |input| {
+                    next_token_is(input, |token| {
+                        matches!(
+                            token,
+                            Token::Number { .. }
+                                | Token::Dimension { .. }
+                                | Token::Percentage { .. }
+                                | Token::Function(_)
+                        )
+                    })
+                },
+                |input| parse_nonnegative_length(input, numeric),
+            ),
+            _ => unreachable!("two overflow-clip-margin operands"),
+        },
+    )?;
     CssOverflowClipMargin::try_new(box_edge, offset)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }

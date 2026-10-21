@@ -17,6 +17,7 @@ pub(crate) mod bounded_execution;
 mod box_model;
 mod box_spacing;
 pub(crate) mod color_profile;
+mod combinators;
 mod contain_intrinsic_size;
 pub(crate) mod counter_style;
 mod declaration_block;
@@ -2203,17 +2204,23 @@ fn parse_layer_prelude<'i, 't>(
         return Ok(Vec::new());
     }
 
-    let mut names = Vec::new();
-    loop {
-        names.push(parse_layer_name(input)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
-        }
-    }
-    if !input.is_exhausted() {
-        return Err(invalid_syntax(input.current_source_location()));
-    }
-    Ok(names)
+    // `<layer-name>#`. List post-condition: a remainder after a name is an
+    // at-rule syntax error, and a trailing comma reports the missing name.
+    combinators::parse_native_comma_list(
+        input,
+        |input| {
+            let name = parse_layer_name(input)?;
+            if !input.is_exhausted() {
+                return Err(invalid_syntax(input.current_source_location()));
+            }
+            Ok(name)
+        },
+        |input, _| {
+            parse_layer_name(input)
+                .err()
+                .unwrap_or_else(|| invalid_syntax(input.current_source_location()))
+        },
+    )
 }
 
 fn parse_layer_name<'i, 't>(

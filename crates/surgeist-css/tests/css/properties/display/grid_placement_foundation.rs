@@ -155,14 +155,14 @@ fn named_signed_lines_admit_both_orders_and_exact_large_literals() {
 }
 
 #[test]
-fn spans_admit_all_orders_of_keyword_count_and_name() {
+fn spans_admit_every_order_that_keeps_count_and_name_together() {
+    // `span && [ <integer> || <custom-ident> ]`: span precedes or follows the
+    // whole group (the split orders are rejected in grid_line_grouping_contract).
     for name in LONGHANDS {
         for value in [
             "span 2 main",
             "span main 2",
-            "2 span main",
             "2 main span",
-            "main span 2",
             "main 2 span",
             "2 SpAn",
             "span 2147483648 main",
