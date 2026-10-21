@@ -3,7 +3,8 @@ use super::*;
 use surgeist_dom::{
     DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits, DomParsedHtmlStyleError,
     DomParsedHtmlStyleInitialPolicyRequest, DomParsedHtmlStyleInlinePolicyObservation,
-    DomParsedHtmlStylePhase, DomParsedHtmlStylePrefixView, DomParsedHtmlStyleRenderingProgress,
+    DomParsedHtmlStylePhase, DomParsedHtmlStylePrefixView, DomParsedHtmlStyleQualification,
+    DomParsedHtmlStyleRenderingProgress,
 };
 use surgeist_html::HtmlCspAssociation;
 mod admission;
@@ -59,7 +60,7 @@ impl DomStyleRuntime {
     pub fn process_parsed_style_rendering(
         &self,
         dom: &mut DomEventDom<'_>,
-        qualification: &DomParsedHtmlStyleInitialPolicyRequest,
+        qualification: &DomParsedHtmlStyleQualification,
         limits: DomParsedHtmlAssociationLimits,
         cancel: &AtomicBool,
     ) -> Result<DomParsedHtmlStyleRenderingProgress, DomStyleParsedPrefixError> {
@@ -111,7 +112,7 @@ impl DomStyleRuntime {
     pub fn bind_parsed_style_initial_policy(
         &self,
         dom: &mut DomEventDom<'_>,
-        qualification: &DomParsedHtmlStyleInitialPolicyRequest,
+        request: &DomParsedHtmlStyleInitialPolicyRequest,
         policy: &mut Option<HtmlCspAssociation>,
         limits: DomParsedHtmlAssociationLimits,
         cancel: &AtomicBool,
@@ -124,12 +125,14 @@ impl DomStyleRuntime {
             return Err(DomStyleRuntimeError::WrongSession.into());
         }
         drop(state.require_sheet_set_idle(dom)?);
-        let mut hold =
-            dom.raw_mut()
-                .begin_parsed_html_style(qualification.contribution(), limits, cancel)?;
+        let mut hold = dom.raw_mut().begin_parsed_html_style(
+            request.qualification().contribution(),
+            limits,
+            cancel,
+        )?;
         hold.step(cancel).map_err(DomStyleRuntimeError::from)?;
         state.step(cancel)?;
-        Ok(hold.bind_initial_policy(qualification, policy, cancel)?)
+        Ok(hold.bind_initial_policy(request, policy, cancel)?)
     }
 
     /// Accept one externally evaluated decision for the exact retained original
@@ -169,7 +172,7 @@ impl DomStyleRuntime {
     pub fn exclude_parsed_style_script_bookkeeping(
         &self,
         dom: &mut DomEventDom<'_>,
-        qualification: &DomParsedHtmlStyleInitialPolicyRequest,
+        qualification: &DomParsedHtmlStyleQualification,
         limits: DomParsedHtmlAssociationLimits,
         cancel: &AtomicBool,
     ) -> Result<DomParsedHtmlStylePhase, DomStyleParsedPrefixError> {
@@ -198,8 +201,9 @@ impl DomStyleRuntime {
 }
 
 impl DomSession {
-    /// Borrow the actual canonical original slot/request after a preparation
-    /// command has released Runtime custody. This read grants no reply or
+    /// Borrow the original operation qualification, outstanding offline binding
+    /// request or actual inline-policy request after preparation releases
+    /// Runtime custody. This read grants no reply or
     /// publication authority; drop the view before binding or advancing.
     pub fn parsed_html_style_prefix(
         &self,

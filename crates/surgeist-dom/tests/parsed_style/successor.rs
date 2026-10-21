@@ -137,7 +137,29 @@ fn parser_pop_removes_real_sheet_and_forms_distinct_original_full_text_request()
         request.qualification().context_epoch(),
         value.q.context_epoch()
     );
-    assert_eq!(request.qualification().slot(), value.q.slot());
+    let source_slot = |occurrence: &surgeist_html_parser::HtmlParseAssociationOccurrenceId| {
+        let mut rows = value.report.pending_associations();
+        loop {
+            match rows.advance() {
+                surgeist_html_parser::HtmlParsePendingAssociationStep::Occurrence(row)
+                    if row.id() == *occurrence =>
+                {
+                    break row
+                        .context()
+                        .slot(surgeist_html_parser::HtmlParseAssociationContextRole::InitialPolicy)
+                        .unwrap();
+                }
+                surgeist_html_parser::HtmlParsePendingAssociationStep::Complete => {
+                    panic!("authentic operation row")
+                }
+                _ => (),
+            }
+        }
+    };
+    assert_eq!(
+        source_slot(request.qualification().occurrence()),
+        source_slot(value.q.occurrence())
+    );
     assert_eq!(request.qualification(), completion.qualification());
     assert!(
         view.script_bookkeeping_exclusion().is_none(),
@@ -215,7 +237,7 @@ fn cancelled_and_dropped_preparations_leave_both_owners_and_current_request_unch
             .dom
             .parsed_html_style_prefix(value.id)
             .unwrap()
-            .initial_policy_request(),
+            .qualification(),
         Some(&value.q)
     );
     advance(&mut value);
@@ -314,7 +336,7 @@ fn finite_successor_output_refusal_retains_original_work_and_raised_retry() {
             .dom
             .parsed_html_style_prefix(value.id)
             .unwrap()
-            .initial_policy_request(),
+            .qualification(),
         Some(&value.q)
     );
     let mut hold = value

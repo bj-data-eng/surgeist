@@ -42,6 +42,7 @@ type Stored = Option<custody::Held<Box<Graph>>>;
 pub(super) enum Graph {
     Awaiting {
         selection: Selection,
+        binding: DomParsedHtmlStyleInitialPolicyRequest,
         policy: Option<HtmlCspAssociation>,
     },
     Inline(DomParsedHtmlStyleInlinePolicyRequest),
@@ -54,8 +55,9 @@ pub(super) enum Graph {
 /// Compact proof for the one completed predecessor supported by this leaf.
 /// Fixed storage is part of Entry; no request text, nonce or policy graph is retained.
 pub(super) struct CompletedInvocation {
-    qualification: DomParsedHtmlStyleInitialPolicyRequest,
+    qualification: DomParsedHtmlStyleQualification,
     profile: HtmlStyleExecutionProfile,
+    origin: StylePolicyOrigin,
     outcome: CompletedOutcome,
 }
 pub(super) enum CompletedOutcome {
@@ -66,7 +68,8 @@ pub(super) enum CompletedOutcome {
     InlinePolicyBlocked,
 }
 pub(super) struct Selection {
-    qualification: DomParsedHtmlStyleInitialPolicyRequest,
+    qualification: DomParsedHtmlStyleQualification,
+    origin: StylePolicyOrigin,
     state: surgeist_html::HtmlStyleState,
     cursor: HtmlStyleUpdateCursor,
 }
@@ -86,7 +89,7 @@ impl Graph {
             Self::Transition => unreachable!("private infallible transition"),
         }
     }
-    fn qualification(&self) -> &DomParsedHtmlStyleInitialPolicyRequest {
+    fn qualification(&self) -> &DomParsedHtmlStyleQualification {
         match self {
             Self::Awaiting { selection, .. } => &selection.qualification,
             Self::Inline(request) | Self::Rendered { request, .. } => request.qualification(),
@@ -150,8 +153,18 @@ impl DomParsedHtmlStylePrefixView<'_> {
             .as_ref()
             .map_or(DomParsedHtmlStylePhase::Unstarted, |s| s.value().phase())
     }
-    pub fn initial_policy_request(&self) -> Option<&DomParsedHtmlStyleInitialPolicyRequest> {
+    pub fn qualification(&self) -> Option<&DomParsedHtmlStyleQualification> {
         self.state.as_ref().map(|s| s.value().qualification())
+    }
+    pub fn initial_policy_request(&self) -> Option<&DomParsedHtmlStyleInitialPolicyRequest> {
+        match self.state.as_ref().map(|s| s.value().as_ref()) {
+            Some(Graph::Awaiting {
+                binding,
+                policy: None,
+                ..
+            }) => Some(binding),
+            _ => None,
+        }
     }
     pub fn inline_policy_request(&self) -> Option<&DomParsedHtmlStyleInlinePolicyRequest> {
         match self.state.as_ref().map(|s| s.value().as_ref()) {
@@ -192,7 +205,7 @@ impl DomParsedHtmlStylePrefixView<'_> {
             _ => None,
         }
     }
-    pub fn initial_policy_bound(&self) -> bool {
+    pub fn policy_ready(&self) -> bool {
         match self.state.as_ref().map(|s| s.value().as_ref()) {
             Some(Graph::Awaiting { policy, .. }) => policy.is_some(),
             Some(Graph::Inline(_) | Graph::Rendered { .. }) => true,
@@ -357,6 +370,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
                 let Graph::Awaiting {
                     selection,
                     policy: Some(policy),
+                    ..
                 } = old
                 else {
                     unreachable!("qualified awaiting phase")
@@ -366,6 +380,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
                     text,
                     nonce,
                     state: selection.state,
+                    origin: selection.origin,
                     policy,
                     cursor: selection.cursor,
                     created_sheet: None,
@@ -381,8 +396,16 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
             .constrain_pending(self.dom.pending_associations.usage, self.dom.limits);
         let selection = select(self.dom, &formed, cancel)?;
         formed.retain(size_of::<Graph>(), 0, 0, cancel)?;
+        let StylePolicyOrigin::Offline(slot) = &selection.origin else {
+            return form_known(self.dom, &self.meter, selection, formed, &mut state, cancel);
+        };
+        let binding = DomParsedHtmlStyleInitialPolicyRequest {
+            qualification: selection.qualification.clone(),
+            slot: slot.clone(),
+        };
         let graph = Box::new(Graph::Awaiting {
             selection,
+            binding,
             policy: None,
         });
         let usage = custody::Usage::new(size_of::<Graph>(), 0);
@@ -454,7 +477,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
     /// environment/context requirements and the contribution remains Pending.
     pub fn exclude_script_bookkeeping(
         &mut self,
-        qualification: &DomParsedHtmlStyleInitialPolicyRequest,
+        qualification: &DomParsedHtmlStyleQualification,
         profile: HtmlStyleExecutionProfile,
         cancel: &AtomicBool,
     ) -> Result<DomParsedHtmlStylePhase, DomParsedHtmlStyleError> {
@@ -527,12 +550,18 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
         let Some(held) = state.as_mut() else {
             return Err(DomParsedHtmlStyleError::WrongRequest);
         };
-        if held.value().qualification() != request {
+        if held.value().qualification() != request.qualification() {
             return Err(DomParsedHtmlStyleError::WrongRequest);
         }
-        let Graph::Awaiting { policy, .. } = held.value().as_ref() else {
+        let Graph::Awaiting {
+            binding, policy, ..
+        } = held.value().as_ref()
+        else {
             return Err(DomParsedHtmlStyleError::AlreadyBound);
         };
+        if binding != request {
+            return Err(DomParsedHtmlStyleError::WrongRequest);
+        }
         if policy.is_some() {
             return Err(DomParsedHtmlStyleError::AlreadyBound);
         }
@@ -697,15 +726,13 @@ fn select(
                 }
                 let context = row.context();
                 let requirement = context.requirement(Role::InitialPolicy);
-                if context.csp_association().is_some() {
-                    return Err(DomParsedHtmlStyleError::PolicyContext {
-                        requirement: Requirement::Known,
-                    });
-                }
-                if requirement != Requirement::OfflineUnbound {
-                    return Err(DomParsedHtmlStyleError::PolicyContext { requirement });
-                }
-                let slot = context.slot(Role::InitialPolicy).ok_or_else(unsupported)?;
+                let origin = match (requirement, context.csp_association()) {
+                    (Requirement::Known, Some(policy)) => StylePolicyOrigin::known(policy),
+                    (Requirement::OfflineUnbound, None) => StylePolicyOrigin::Offline(
+                        context.slot(Role::InitialPolicy).ok_or_else(unsupported)?,
+                    ),
+                    _ => return Err(DomParsedHtmlStyleError::PolicyContext { requirement }),
+                };
                 // This ordinary admitted owner has no executable-JavaScript engine.
                 // Profile selection is independent of browsing context/media;
                 // it does not assert the excluded source predicate is false.
@@ -726,7 +753,7 @@ fn select(
                     return Err(unsupported());
                 }
                 return Ok(Selection {
-                    qualification: DomParsedHtmlStyleInitialPolicyRequest {
+                    qualification: DomParsedHtmlStyleQualification {
                         contribution: entry.id,
                         occurrence: row.id(),
                         subject: row.subject().id(),
@@ -735,9 +762,9 @@ fn select(
                         ),
                         document,
                         context_epoch: context.epoch(),
-                        slot,
                     },
                     state: inputs.state(),
+                    origin,
                     cursor: html,
                 });
             }
@@ -747,6 +774,105 @@ fn select(
     }
 }
 
+fn origin_matches(
+    origin: &StylePolicyOrigin,
+    context: &surgeist_html_parser::HtmlParseAssociationContext<'_>,
+) -> bool {
+    match origin {
+        StylePolicyOrigin::Offline(slot) => {
+            context.requirement(Role::InitialPolicy) == Requirement::OfflineUnbound
+                && context.csp_association().is_none()
+                && context.slot(Role::InitialPolicy).as_ref() == Some(slot)
+                && context.input_epoch(Role::InitialPolicy) == *slot.epoch()
+        }
+        StylePolicyOrigin::Known { .. } => {
+            context.requirement(Role::InitialPolicy) == Requirement::Known
+                && context
+                    .csp_association()
+                    .is_some_and(|value| StylePolicyOrigin::known(value) == *origin)
+        }
+    }
+}
+fn policy_usage(policy: &HtmlCspAssociation) -> Result<custody::Usage, DomParsedHtmlStyleError> {
+    let layout = policy.retained_layout()?;
+    Ok(custody::Usage::new(
+        layout
+            .storage()
+            .bytes()
+            .checked_sub(size_of::<HtmlCspAssociation>())
+            .ok_or(DomError::RepresentationExhausted)?,
+        layout.storage().utf16_units(),
+    ))
+}
+fn form_original_policy(
+    meter: &Meter,
+    selection: &Selection,
+    cancel: &AtomicBool,
+) -> Result<(HtmlCspAssociation, custody::Usage, usize), DomParsedHtmlStyleError> {
+    let mut rows = meter.entry().report.value().value.pending_associations();
+    loop {
+        meter.step(cancel)?;
+        match rows.advance() {
+            Step::Occurrence(row) if row.id() == *selection.qualification.occurrence() => {
+                let context = row.context();
+                if row.subject().id() != *selection.qualification.subject()
+                    || context.epoch() != *selection.qualification.context_epoch()
+                    || !origin_matches(&selection.origin, &context)
+                {
+                    return Err(DomParsedHtmlStyleError::WrongRequest);
+                }
+                let policy = context
+                    .csp_association()
+                    .ok_or(DomParsedHtmlStyleError::WrongRequest)?;
+                let layout = policy.retained_layout()?;
+                let usage = policy_usage(policy)?;
+                meter.check_peak(
+                    usage.checked_add(custody::Usage::new(layout.disposal().atomic_bytes(), 0))?,
+                )?;
+                meter.spend(layout.disposal().work_credits(), cancel)?;
+                meter.retain(usage.bytes(), usage.units(), 0, cancel)?;
+                meter.step(cancel)?;
+                return Ok((policy.clone(), usage, layout.disposal().atomic_bytes()));
+            }
+            Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest),
+            _ => (),
+        }
+    }
+}
+fn form_known(
+    dom: &mut Dom,
+    meter: &Meter,
+    selection: Selection,
+    formed: Meter,
+    state: &mut Stored,
+    cancel: &AtomicBool,
+) -> Result<DomParsedHtmlStylePhase, DomParsedHtmlStyleError> {
+    let (policy, policy_usage, atomic) = form_original_policy(&formed, &selection, cancel)?;
+    let (text, nonce) = form_text_nonce(&formed, selection.qualification.occurrence(), cancel)?;
+    let usage = text_usage(&text, nonce.as_ref())?
+        .checked_add(policy_usage)?
+        .checked_add(custody::Usage::new(size_of::<Graph>(), 0))?;
+    let next = dom.pending_associations.usage.checked_add(usage)?;
+    Bank::admit_usage(next, dom.limits)?;
+    meter.retain(0, 0, 1, cancel)?;
+    meter.step(cancel)?;
+    let graph = Box::new(Graph::Inline(DomParsedHtmlStyleInlinePolicyRequest {
+        qualification: selection.qualification,
+        origin: selection.origin,
+        text,
+        nonce,
+        state: selection.state,
+        policy,
+        cursor: selection.cursor,
+        created_sheet: None,
+    }));
+    let debit = formed.detach(usage);
+    meter.entry().control.reserve_cleanup(atomic);
+    meter.entry().control.add_persistent(usage);
+    dom.pending_associations.usage = next;
+    *state = Some(custody::Held::new(graph, debit));
+    Ok(DomParsedHtmlStylePhase::InlinePolicyPending)
+}
 fn text_usage(
     text: &DocumentString,
     nonce: Option<&DocumentString>,

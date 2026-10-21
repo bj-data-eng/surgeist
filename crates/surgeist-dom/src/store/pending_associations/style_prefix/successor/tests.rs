@@ -165,9 +165,7 @@ fn real_post_producer_work_refusal_preserves_old_invocation_and_raised_retry_rem
                 .is_some()
         );
         assert_eq!(
-            dom.parsed_html_style_prefix(id)
-                .unwrap()
-                .initial_policy_request(),
+            dom.parsed_html_style_prefix(id).unwrap().qualification(),
             Some(&q)
         );
         if failed && post_prepare {

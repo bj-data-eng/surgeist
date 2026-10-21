@@ -18,7 +18,7 @@ pub(in crate::store::pending_associations) enum Issuance {
 /// Actual original receipt: historical identities and fixed frame disappear
 /// before its Meter. Mutex preserves token Send/Sync without an async loan.
 pub(crate) struct NotificationCustody {
-    qualification: DomParsedHtmlStyleInitialPolicyRequest,
+    qualification: DomParsedHtmlStyleQualification,
     meter: Mutex<Meter>,
 }
 pub struct DomParsedHtmlStyleNotificationPreparation<'hold, 'dom, 'caps> {
@@ -45,7 +45,7 @@ impl DomParsedHtmlStyleNotificationPublished<'_> {
 impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
     pub fn prepare_notification<'hold, 'caps>(
         &'hold mut self,
-        qualification: &DomParsedHtmlStyleInitialPolicyRequest,
+        qualification: &DomParsedHtmlStyleQualification,
         expected: &DomStyleSheet,
         expected_owner_label: &str,
         cap: &'caps DomStyleCssomRoot,
@@ -309,7 +309,7 @@ pub(super) fn guard_error(
 fn requirement(
     dom: &Dom,
     meter: &Meter,
-    q: &DomParsedHtmlStyleInitialPolicyRequest,
+    q: &DomParsedHtmlStyleQualification,
     cancel: &AtomicBool,
 ) -> Result<Option<DomParsedHtmlStyleNotificationRequirement>, DomError> {
     use DomParsedHtmlStyleNotificationRequirement as R;

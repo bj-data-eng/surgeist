@@ -6,7 +6,7 @@ use surgeist_cssom::CssomInputVersion;
 
 /// Actual historical inputs and installation mappings, not native Source facts.
 pub struct DomParsedHtmlStyleCreateSheetRequest {
-    pub(crate) qualification: DomParsedHtmlStyleInitialPolicyRequest,
+    pub(crate) qualification: DomParsedHtmlStyleQualification,
     pub(crate) element: NodeId,
     pub(crate) text: DocumentString,
     pub(crate) media: Option<DocumentString>,
@@ -15,7 +15,7 @@ pub struct DomParsedHtmlStyleCreateSheetRequest {
     pub(crate) mode: surgeist_html::HtmlDocumentMode,
 }
 impl DomParsedHtmlStyleCreateSheetRequest {
-    pub fn qualification(&self) -> &DomParsedHtmlStyleInitialPolicyRequest {
+    pub fn qualification(&self) -> &DomParsedHtmlStyleQualification {
         &self.qualification
     }
     pub fn element(&self) -> NodeId {

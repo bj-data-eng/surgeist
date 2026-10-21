@@ -245,7 +245,7 @@ fn queued_predecessor_reaches_end_before_delivery_and_real_cleanup_unblocks_curr
             .unwrap();
         hold.advance(&flag()).unwrap();
     }
-    let q = qualifier(&value.dom, other);
+    let q = binding(&value.dom, other);
     {
         let mut policy = Some(recreation::policy());
         let mut hold = value

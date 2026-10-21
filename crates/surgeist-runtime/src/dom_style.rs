@@ -339,7 +339,7 @@ fn import_dependencies_with<E>(
 /// Only the private preformed candidate may have no sheet; installation fills
 /// it from the authentic publication before this row enters the live bank.
 struct ParsedProcessing {
-    qualification: surgeist_dom::DomParsedHtmlStyleInitialPolicyRequest,
+    qualification: surgeist_dom::DomParsedHtmlStyleQualification,
     owner: std::rc::Rc<DomStyleCssomRoot>,
     sheet: Option<surgeist_dom::DomStyleSheet>,
     profile: HtmlStyleExecutionProfile,

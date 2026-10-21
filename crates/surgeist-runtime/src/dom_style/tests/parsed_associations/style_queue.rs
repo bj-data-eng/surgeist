@@ -15,7 +15,7 @@ fn rendered(
 ) -> (
     DomSession,
     DomParsedHtmlInstallation,
-    DomParsedHtmlStyleInitialPolicyRequest,
+    DomParsedHtmlStyleQualification,
     DomStyleSheet,
 ) {
     let (mut session, installed) = ready(text, limits);
@@ -29,7 +29,7 @@ fn rendered(
     let q = session
         .parsed_html_style_prefix(id)
         .unwrap()
-        .initial_policy_request()
+        .qualification()
         .unwrap()
         .clone();
     session
@@ -47,7 +47,7 @@ fn rendered(
 }
 fn queue(
     session: &mut DomSession,
-    q: &DomParsedHtmlStyleInitialPolicyRequest,
+    q: &DomParsedHtmlStyleQualification,
 ) -> DomStyleNetworkingTaskId {
     let DomStyleParsedNotificationProgress::Queued { task } = session
         .style_execution()
@@ -325,7 +325,7 @@ fn wrong_phase_foreign_owner_and_cancellation_do_not_consume_queue_issuance() {
     let q = session
         .parsed_html_style_prefix(id)
         .unwrap()
-        .initial_policy_request()
+        .qualification()
         .unwrap()
         .clone();
     let runtime = session.style_execution();

@@ -34,7 +34,7 @@ fn prepare(session: &mut DomSession, id: DomParsedHtmlAssociationId) -> DomParse
         .prepare_parsed_style(&mut session.dom(), id, envelope(), &cancel())
         .unwrap()
 }
-fn qualification(
+fn binding_request(
     session: &DomSession,
     id: DomParsedHtmlAssociationId,
 ) -> DomParsedHtmlStyleInitialPolicyRequest {
@@ -99,19 +99,19 @@ fn exact_original_text_nonce_and_explicit_policy_reach_only_the_inline_request()
         prepare(&mut session, id),
         DomParsedHtmlStylePhase::AwaitingInitialPolicy
     );
-    let request = qualification(&session, id);
-    assert_eq!(request.contribution(), id);
-    assert_eq!(request.document(), document);
-    assert_eq!(request.occurrence(), &original.0);
-    assert_eq!(request.subject(), &original.1);
-    assert_eq!(request.context_epoch(), &original.2);
+    let request = binding_request(&session, id);
+    assert_eq!(request.qualification().contribution(), id);
+    assert_eq!(request.qualification().document(), document);
+    assert_eq!(request.qualification().occurrence(), &original.0);
+    assert_eq!(request.qualification().subject(), &original.1);
+    assert_eq!(request.qualification().context_epoch(), &original.2);
     assert_eq!(request.slot(), &original.3);
-    assert_eq!(request.original_document(), &original.4);
+    assert_eq!(request.qualification().original_document(), &original.4);
     assert_eq!(
         prepare(&mut session, id),
         DomParsedHtmlStylePhase::AwaitingInitialPolicy
     );
-    assert_eq!(qualification(&session, id), request);
+    assert_eq!(binding_request(&session, id), request);
     let policy = empty_policy();
     let policy_id = policy.policy().id().clone();
     let revision = policy.policy().revision();
@@ -154,7 +154,7 @@ fn exact_original_text_nonce_and_explicit_policy_reach_only_the_inline_request()
     {
         let view = session.parsed_html_style_prefix(id).unwrap();
         let inline = view.inline_policy_request().unwrap();
-        assert_eq!(inline.qualification(), &request);
+        assert_eq!(inline.qualification(), request.qualification());
         assert!(
             inline.text().is_empty(),
             "first insertion precedes original text consumption"
@@ -202,9 +202,12 @@ fn independent_installations_bind_distinct_explicit_policies_without_rewriting_o
     assert_ne!(a_id, b_id);
     prepare(&mut a, a_id);
     prepare(&mut b, b_id);
-    let a_request = qualification(&a, a_id);
-    let b_request = qualification(&b, b_id);
-    assert_eq!(a_request.occurrence(), b_request.occurrence());
+    let a_request = binding_request(&a, a_id);
+    let b_request = binding_request(&b, b_id);
+    assert_eq!(
+        a_request.qualification().occurrence(),
+        b_request.qualification().occurrence()
+    );
     assert_eq!(a_request.slot(), b_request.slot());
     let a_policy = empty_policy();
     let b_policy = empty_policy();
@@ -258,7 +261,7 @@ fn accepted_binding_survives_cancel_and_refuses_replacement_without_losing_input
     let (mut session, installed) = install(report("<!doctype html><style>p {color:red}</style>"));
     let id = installed.pending_association().unwrap();
     prepare(&mut session, id);
-    let request = qualification(&session, id);
+    let request = binding_request(&session, id);
     let mut missing = None;
     assert!(matches!(
         session.style_execution().bind_parsed_style_initial_policy(
@@ -366,7 +369,7 @@ fn late_request_admission_keeps_accepted_policy_and_forgetting_a_view_keeps_cano
             .unwrap(),
         DomParsedHtmlStylePhase::AwaitingInitialPolicy
     );
-    let request = qualification(&session, id);
+    let request = binding_request(&session, id);
     let policy = empty_policy();
     let policy_id = policy.policy().id().clone();
     session
@@ -468,7 +471,7 @@ fn an_earlier_real_meta_refuses_but_proved_ignored_style_does_not_hide_the_first
     ));
     let id = installed.pending_association().unwrap();
     prepare(&mut session, id);
-    let request = qualification(&session, id);
+    let request = binding_request(&session, id);
     session
         .style_execution()
         .bind_parsed_style_initial_policy(
@@ -509,7 +512,7 @@ fn real_source_custody_and_foreign_session_refuse_without_taking_policy_input() 
         .unwrap();
     let id = installed.pending_association().unwrap();
     prepare(&mut session, id);
-    let request = qualification(&session, id);
+    let request = binding_request(&session, id);
     let pending = session
         .source_execution()
         .apply(
@@ -566,7 +569,7 @@ fn real_source_custody_and_foreign_session_refuse_without_taking_policy_input() 
         session.dom().pending_source_edit().unwrap().operation(),
         event.operation()
     );
-    assert_eq!(qualification(&session, id), request);
+    assert_eq!(binding_request(&session, id), request);
 }
 
 #[test]

@@ -5,9 +5,10 @@ use surgeist_html::HtmlStyleExecutionProfile;
 
 pub(super) struct Ready {
     pub(super) dom: Dom,
+    pub(super) report: Arc<HtmlParseReport>,
     pub(super) document: DocumentId,
     pub(super) id: DomParsedHtmlAssociationId,
-    pub(super) q: DomParsedHtmlStyleInitialPolicyRequest,
+    pub(super) q: DomParsedHtmlStyleQualification,
     pub(super) element: NodeId,
     pub(super) root: DomStyleCssomRoot,
     pub(super) sheet: CssomSheetId,
@@ -16,7 +17,8 @@ pub(super) struct Ready {
 }
 pub(super) fn ready(source: &str, limits: DomParsedHtmlAssociationLimits) -> Ready {
     let (mut dom, env) = setup();
-    let (document, id) = install(&mut dom, parse(source), env);
+    let report = parse(source);
+    let (document, id) = install(&mut dom, report.clone(), env);
     decision::ready(&mut dom, id, limits);
     let q = qualifier(&dom, id);
     let mut observation = {
@@ -54,6 +56,7 @@ pub(super) fn ready(source: &str, limits: DomParsedHtmlAssociationLimits) -> Rea
         .unwrap();
     Ready {
         dom,
+        report,
         document,
         id,
         q,

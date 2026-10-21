@@ -58,7 +58,7 @@ fn ready_with_policy(
     let mut hold = dom.begin_parsed_html_style(id, limits, &flag()).unwrap();
     hold.advance(&flag()).unwrap();
     drop(hold);
-    let q = qualifier(dom, id);
+    let q = binding(dom, id);
     let mut policy = Some(policy);
     let mut hold = dom.begin_parsed_html_style(id, limits, &flag()).unwrap();
     hold.bind_initial_policy(&q, &mut policy, &flag()).unwrap();
@@ -245,11 +245,7 @@ fn output_refusal_preserves_decision_and_binding_until_raised_retry() {
         spent = hold.spent_work();
     }
     assert!(input.is_some());
-    assert!(
-        dom.parsed_html_style_prefix(id)
-            .unwrap()
-            .initial_policy_bound()
-    );
+    assert!(dom.parsed_html_style_prefix(id).unwrap().policy_ready());
     assert_eq!(
         dom.parsed_html_style_prefix(id).unwrap().phase(),
         DomParsedHtmlStylePhase::InlinePolicyPending

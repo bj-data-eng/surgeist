@@ -7,7 +7,7 @@ struct Created {
     dom: Dom,
     document: DocumentId,
     id: DomParsedHtmlAssociationId,
-    qualification: DomParsedHtmlStyleInitialPolicyRequest,
+    qualification: DomParsedHtmlStyleQualification,
     root: DomStyleCssomRoot,
     sheet: CssomSheetId,
     revision: CssomRevision,
@@ -64,7 +64,7 @@ fn unchanged(value: &Created, stamp: DomStamp) {
         DomParsedHtmlStylePhase::ReadScriptBlockingPending
     );
     assert_eq!(view.script_bookkeeping_exclusion(), None);
-    assert_eq!(view.initial_policy_request(), Some(&value.qualification));
+    assert_eq!(view.qualification(), Some(&value.qualification));
     drop(view);
     assert_eq!(
         value
@@ -110,7 +110,7 @@ fn original_no_engine_exclusion_reaches_the_real_render_wait_without_recreating_
             view.script_bookkeeping_exclusion(),
             Some(HtmlStyleExecutionProfile::NoExecutableJavaScript)
         );
-        assert_eq!(view.initial_policy_request(), Some(&value.qualification));
+        assert_eq!(view.qualification(), Some(&value.qualification));
         drop(view);
         let mut hold = value
             .dom

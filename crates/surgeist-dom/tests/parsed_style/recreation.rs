@@ -64,7 +64,7 @@ pub(super) fn blocked(
     Dom,
     DocumentId,
     DomParsedHtmlAssociationId,
-    DomParsedHtmlStyleInitialPolicyRequest,
+    DomParsedHtmlStyleQualification,
     DomParsedHtmlStyleInlinePolicyObservation,
 ) {
     let (mut dom, env) = setup();
@@ -73,11 +73,12 @@ pub(super) fn blocked(
         let mut hold = dom.begin_parsed_html_style(id, limits, &flag()).unwrap();
         hold.advance(&flag()).unwrap();
     }
-    let q = qualifier(&dom, id);
+    let request = binding(&dom, id);
+    let q = request.qualification().clone();
     {
         let mut supplied = Some(policy());
         let mut hold = dom.begin_parsed_html_style(id, limits, &flag()).unwrap();
-        hold.bind_initial_policy(&q, &mut supplied, &flag())
+        hold.bind_initial_policy(&request, &mut supplied, &flag())
             .unwrap();
         hold.advance(&flag()).unwrap();
     }
@@ -243,9 +244,7 @@ fn known_null_refuses_unneeded_owner_and_cancellation_without_changing_its_phase
         );
     }
     assert_eq!(
-        dom.parsed_html_style_prefix(id)
-            .unwrap()
-            .initial_policy_request(),
+        dom.parsed_html_style_prefix(id).unwrap().qualification(),
         Some(&q)
     );
     assert_eq!(dom.snapshot().stamp(), before);
@@ -279,9 +278,7 @@ fn known_null_output_refusal_retains_original_controller_and_raise_retries_witho
     };
     assert_eq!(dom.snapshot().stamp(), before);
     assert_eq!(
-        dom.parsed_html_style_prefix(id)
-            .unwrap()
-            .initial_policy_request(),
+        dom.parsed_html_style_prefix(id).unwrap().qualification(),
         Some(&q)
     );
     {

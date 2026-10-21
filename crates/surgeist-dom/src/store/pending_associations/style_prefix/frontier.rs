@@ -162,19 +162,18 @@ fn original_document(
     }
 }
 fn matches(
-    q: &DomParsedHtmlStyleInitialPolicyRequest,
+    q: &DomParsedHtmlStyleQualification,
     row: &surgeist_html_parser::HtmlParseAssociationOccurrence<'_>,
 ) -> bool {
     q.occurrence() == &row.id()
         && q.subject() == &row.subject().id()
         && q.original_document() == &original_document(row.document())
         && q.context_epoch() == &row.context().epoch()
-        && row.context().slot(Role::InitialPolicy).as_ref() == Some(q.slot())
 }
 fn qualify_executed(
     dom: &Dom,
     meter: &Meter,
-    q: &DomParsedHtmlStyleInitialPolicyRequest,
+    q: &DomParsedHtmlStyleQualification,
     cancel: &AtomicBool,
 ) -> Result<bool, DomError> {
     for binding in meter.entry().bindings.iter() {
@@ -269,6 +268,7 @@ pub(super) fn remaining(
                             request.cursor.profile()
                                 == HtmlStyleExecutionProfile::NoExecutableJavaScript
                                 && matches(request.qualification(), &row)
+                                && origin_matches(&request.origin, &row.context())
                         }
                         Graph::Inline(request) => {
                             request.cursor.action() == Action::Complete
@@ -276,12 +276,14 @@ pub(super) fn remaining(
                                 && request.cursor.profile()
                                     == HtmlStyleExecutionProfile::NoExecutableJavaScript
                                 && matches(request.qualification(), &row)
+                                && origin_matches(&request.origin, &row.context())
                         }
                         _ => false,
                     });
                 let prior_done = completed.as_ref().is_some_and(|old| {
                     old.profile == HtmlStyleExecutionProfile::NoExecutableJavaScript
                         && matches(&old.qualification, &row)
+                        && origin_matches(&old.origin, &row.context())
                 });
                 if current_done || prior_done {
                     let q = if current_done {

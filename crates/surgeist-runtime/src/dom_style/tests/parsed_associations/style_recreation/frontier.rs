@@ -12,7 +12,7 @@ fn end(
 fn successor(
     session: &mut DomSession,
     id: DomParsedHtmlAssociationId,
-) -> DomParsedHtmlStyleInitialPolicyRequest {
+) -> DomParsedHtmlStyleQualification {
     let output = session
         .style_execution()
         .advance_parsed_style_successor(&mut session.dom(), id, envelope(), &cancel())
@@ -21,7 +21,7 @@ fn successor(
 }
 fn queue(
     session: &mut DomSession,
-    q: &DomParsedHtmlStyleInitialPolicyRequest,
+    q: &DomParsedHtmlStyleQualification,
 ) -> DomStyleNetworkingTaskId {
     match session
         .style_execution()

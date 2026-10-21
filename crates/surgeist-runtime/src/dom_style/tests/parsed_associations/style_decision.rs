@@ -141,7 +141,7 @@ fn still_pending(session: &DomSession, id: DomParsedHtmlAssociationId, stamp: Do
             .any(|entry| entry.id() == id)
     );
     let view = session.parsed_html_style_prefix(id).unwrap();
-    let document = view.initial_policy_request().unwrap().document();
+    let document = view.qualification().unwrap().document();
     assert!(
         session
             .style_execution()
@@ -366,7 +366,7 @@ fn wrong_target_and_foreign_destination_keep_the_original_decision_for_its_actua
             request.qualification().occurrence(),
             qualification.occurrence()
         );
-        assert_eq!(request.qualification().slot(), qualification.slot());
+        assert_eq!(request.qualification().subject(), qualification.subject());
         assert_ne!(
             request.qualification().contribution(),
             qualification.contribution()

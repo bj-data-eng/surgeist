@@ -110,9 +110,7 @@ fn first_empty_sheet_preserves_original_attributes_and_pending_lifecycle() {
     assert_eq!(completion.stamp(), dom.snapshot().stamp());
     assert_eq!(completion.sheet().association().element(), element);
     assert_eq!(
-        dom.parsed_html_style_prefix(id)
-            .unwrap()
-            .initial_policy_request(),
+        dom.parsed_html_style_prefix(id).unwrap().qualification(),
         Some(&creation)
     );
     let snapshot = dom.snapshot();

@@ -8,11 +8,11 @@ use surgeist_dom::*;
 fn qualification(
     session: &DomSession,
     id: DomParsedHtmlAssociationId,
-) -> DomParsedHtmlStyleInitialPolicyRequest {
+) -> DomParsedHtmlStyleQualification {
     session
         .parsed_html_style_prefix(id)
         .unwrap()
-        .initial_policy_request()
+        .qualification()
         .unwrap()
         .clone()
 }

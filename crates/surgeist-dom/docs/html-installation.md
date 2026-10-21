@@ -108,12 +108,13 @@ artifact independently of report/output lifetime. Hosted child construction
 inherits a known artifact through the same DOM issuer with distinct `Inheritance`
 provenance; its exact formed result remains parked across refusal and retry.
 
-Original Style's current offline-policy binder accepts only a genuine
-`OfflineUnbound` slot without a known original association. A qualified original
-policy receives a precise `PolicyContext` refusal from that limited executor;
-callers cannot replace it with a different artifact, and the final canonical
-Document policy is not substituted for occurrence-time context. Header-delivered
-CSP capture remains independently unavailable without its own source proof.
+Original Style uses the exact known association retained at its source occurrence,
+including its source Document identity and generation. It does not replace that
+association with the destination's final canonical policy or invoke a processor
+again. Known intake forms an inline-policy request directly, without an offline
+binding slot. The offline-policy binder accepts only a genuine `OfflineUnbound`
+request and cannot replace known, captured or lost facts. Header-delivered CSP
+capture remains independently unavailable without its own source proof.
 
 A retained Base bank carries a canonical policy basis only when the producer
 explicitly paired it with its original initial association and that policy ID
@@ -251,21 +252,30 @@ operation and cannot replace it. Nonce is the exact retained internal nonce,
 including its original UTF16. Current attributes and descendants are never
 reconstructed into historical inputs.
 
-The durable entry moves from `Unstarted` to `AwaitingInitialPolicy` and then
-`InlinePolicyPending`. The binding command accepts only its exact original
-constructor-declared `OfflineUnbound` InitialPolicy slot and an explicitly
-supplied immutable `HtmlCspAssociation`. A genuine constructor-empty artifact
-must be supplied explicitly too. Successful binding takes the Option input;
-refusal preserves it. Known, deferred captured and lost policy facts cannot be
-replaced by current or empty defaults. Captured/fragment and earlier influencing
-histories outside the fresh profile remain pending. Reached intrinsic Meta CSP
-gaps still refuse installation.
+The common `DomParsedHtmlStyleQualification` identifies the contribution,
+occurrence, subject, original and mapped Document, and context epoch. It grants
+no policy-binding authority. An actual `DomParsedHtmlStyleInitialPolicyRequest`
+separately couples that qualification with a constructor-declared
+`OfflineUnbound` slot. Only an outstanding unbound slot appears through
+`initial_policy_request`; `qualification` observes any formed operation and
+`policy_ready` reports whether its policy is available.
 
-Binding and request formation are separate commands. A late formation refusal
-retains the accepted artifact, original qualification and spent work. Raising
-the original limits permits retry; lowering them or replacing an accepted
-binding does not. The same immutable report installed independently has distinct
-destination qualifications and can bind distinct explicit policies.
+With a known original association, preparation reaches `InlinePolicyPending`
+directly. Its additional policy-graph occurrence, text, nonce and cleanup are
+admitted before canonical retention. Refusal leaves the original work counter
+spent and the operation unstarted; retry reads the same immutable source policy.
+Preparation does not activate synchronous execution or evaluate CSP.
+
+For an unbound original slot the entry moves to `AwaitingInitialPolicy`. Binding
+accepts only the exact real request and an explicitly supplied immutable
+`HtmlCspAssociation`; even a genuine constructor-empty artifact is explicit.
+Successful binding takes the Option input, while refusal preserves it. Binding
+and request formation are separate commands, so late formation refusal retains
+the accepted artifact and spent work. Raising the original limits permits retry;
+lowering them or replacing an accepted binding does not. Independent destination
+installations have distinct operation and binding qualifications. Deferred
+captured, lost and unsupported earlier influencing histories remain pending;
+reached intrinsic Meta CSP gaps still refuse installation.
 
 `parsed_html_style_prefix` borrows the actual stored qualification or request
 through a nonblocking canonical read guard, after temporary command holds have
@@ -458,8 +468,10 @@ Association serials, render-blocking membership and preference history are not
 reset by removing the sheet. The root guard remains held across both genuine
 publications and until the preformed output/retirement is extracted.
 
-The successor reuses the actual initial-policy artifact only when the producer's
-shared input epoch and slot lineage match. Its occurrence, context epoch, text
+The offline successor moves its bound artifact only when the producer's shared
+input epoch and actual slot lineage match. A known-policy successor instead
+admits and clones the exact second occurrence's source association under live
+old/new overlap; a shared epoch alone never authorizes policy reuse. Its occurrence, context epoch, text
 and nonce come from ParserPopped, including the later nonempty text rather than
 the insertion's empty input. It requires a new external inline-policy decision, even when its text matches
 the predecessor. A blocked new decision completes this cursor without creating
@@ -478,8 +490,11 @@ work. Neither completion acknowledges the contribution or enables task delivery.
 The same Entry and cumulative Control retain one compact completed predecessor:
 its actual qualification and execution profile, plus either a creation-sealed
 sheet/association and notification disposition or a genuine CSP-blocked outcome.
-A blocked outcome has no invented sheet or notification permission. Old full text/nonce graphs move into admitted
-retirement; the bound policy moves into the new request. Both old queued tokens
+A blocked outcome has no invented sheet or notification permission. Old full
+text/nonce graphs move into admitted retirement. Offline bound policy moves into
+the new request; known old policy and its actual debit retire after publication,
+while the new request owns its separately admitted source policy. Compact
+completed evidence keeps the closed source origin without another native graph. Both old queued tokens
 and unqueued resource receipts retain their exact predecessor qualification.
 Notification permission resolves that stored sheet proof even after the active
 Graph advances, so a later sheet at the same Element cannot substitute. All

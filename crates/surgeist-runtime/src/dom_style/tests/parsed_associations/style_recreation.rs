@@ -15,7 +15,7 @@ mod text_policy;
 
 fn next_parser_pop(
     session: &DomSession,
-    old: &DomParsedHtmlStyleInitialPolicyRequest,
+    old: &DomParsedHtmlStyleQualification,
 ) -> surgeist_html_parser::HtmlParseAssociationOccurrenceId {
     let entry = session
         .pending_parsed_html_associations()
@@ -40,10 +40,7 @@ fn next_parser_pop(
     }
 }
 
-pub(super) fn finish_rendering(
-    session: &mut DomSession,
-    q: &DomParsedHtmlStyleInitialPolicyRequest,
-) {
+pub(super) fn finish_rendering(session: &mut DomSession, q: &DomParsedHtmlStyleQualification) {
     session
         .style_execution()
         .exclude_parsed_style_script_bookkeeping(&mut session.dom(), q, envelope(), &cancel())
@@ -56,11 +53,7 @@ pub(super) fn finish_rendering(
         DomParsedHtmlStyleRenderingProgress::Complete(_)
     ));
 }
-pub(super) fn decide(
-    session: &mut DomSession,
-    q: &DomParsedHtmlStyleInitialPolicyRequest,
-    allowed: bool,
-) {
+pub(super) fn decide(session: &mut DomSession, q: &DomParsedHtmlStyleQualification, allowed: bool) {
     let mut input = observe(session, q.contribution(), &mut |request| {
         assert_eq!(request.qualification(), q);
         Some(DomParsedHtmlStyleInlinePolicyObservation::evaluated(
@@ -91,7 +84,7 @@ fn created_first(
 ) -> (
     DomSession,
     DomParsedHtmlInstallation,
-    DomParsedHtmlStyleInitialPolicyRequest,
+    DomParsedHtmlStyleQualification,
     DomStyleSheet,
 ) {
     let (mut session, installation) = ready(text, envelope());
@@ -103,7 +96,7 @@ fn created_first(
     let q = session
         .parsed_html_style_prefix(id)
         .unwrap()
-        .initial_policy_request()
+        .qualification()
         .unwrap()
         .clone();
     finish_rendering(&mut session, &q);
@@ -116,7 +109,7 @@ fn blocked_first(
 ) -> (
     DomSession,
     DomParsedHtmlInstallation,
-    DomParsedHtmlStyleInitialPolicyRequest,
+    DomParsedHtmlStyleQualification,
     Option<DomParsedHtmlStyleInlinePolicyObservation>,
 ) {
     let (mut session, installation) = installed(report(text));
@@ -125,7 +118,7 @@ fn blocked_first(
     let q = session
         .parsed_html_style_prefix(id)
         .unwrap()
-        .initial_policy_request()
+        .qualification()
         .unwrap()
         .clone();
     let old_decision = observe(&session, id, &mut |request| {
@@ -172,7 +165,7 @@ fn fresh_parser_pop_allow_creates_distinct_nonempty_sheet_and_processing_receipt
     let old = session
         .parsed_html_style_prefix(id)
         .unwrap()
-        .initial_policy_request()
+        .qualification()
         .unwrap()
         .clone();
     let expected = next_parser_pop(&session, &old);
@@ -270,7 +263,7 @@ fn blocked_first_without_cssom_owner_advances_to_fresh_original_parser_pop_reque
     let old = session
         .parsed_html_style_prefix(id)
         .unwrap()
-        .initial_policy_request()
+        .qualification()
         .unwrap()
         .clone();
     let expected = next_parser_pop(&session, &old);
@@ -311,7 +304,7 @@ fn blocked_first_without_cssom_owner_advances_to_fresh_original_parser_pop_reque
     let new = successor.qualification();
     assert_eq!(new.occurrence(), &expected);
     assert_ne!(new.occurrence(), old.occurrence());
-    assert_eq!(new.slot(), old.slot());
+    assert_eq!(new.original_document(), old.original_document());
     let view = session.parsed_html_style_prefix(id).unwrap();
     assert_eq!(view.phase(), DomParsedHtmlStylePhase::InlinePolicyPending);
     let request = view.inline_policy_request().unwrap();
@@ -360,7 +353,7 @@ fn blocked_predecessor_preserves_old_decision_qualification_and_independent_allo
             stamp,
             "no live sheet or tree publication was required"
         );
-        assert_eq!(q.slot(), old.slot());
+        assert_eq!(q.original_document(), old.original_document());
         assert_ne!(q.occurrence(), old.occurrence());
         assert!(
             session

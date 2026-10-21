@@ -53,8 +53,15 @@ advances HTML's cursor using the original retained inputs; Runtime checks its
 actual Session, idle custody and finite work. This prefix needs no CSSOM root
 capability and creates no sheet or preference effect.
 
-The explicit `bind_parsed_style_initial_policy` command accepts only the exact
-constructor-declared unbound slot and genuine immutable `HtmlCspAssociation`
+Known original policy reaches `InlinePolicyPending` directly with its exact
+retained source association, even when the installed Document's final policy
+differs. It has no initial-policy binding request. The prefix's neutral
+qualification identifies the original operation; `policy_ready` reports whether
+its actual policy is available.
+
+For an original `OfflineUnbound` context, the explicit
+`bind_parsed_style_initial_policy` command accepts only the outstanding
+constructor-declared slot request and genuine immutable `HtmlCspAssociation`
 custody. A supplied constructor-empty artifact is explicit input, never an
 inference from current referrer/default policy. Accepted binding survives later
 request-admission refusal. The separate `parsed_html_style_prefix` Session query
@@ -67,7 +74,7 @@ Style histories.
 An external evaluator can inspect that immutable request and construct a
 `DomParsedHtmlStyleInlinePolicyObservation` from the same request. Drop the view
 before passing the decision envelope to `accept_parsed_style_inline_policy`.
-The fixed observation qualifies the original request and exact bound policy;
+The fixed observation qualifies the original request and exact original policy;
 it retains no text, nonce or policy graph. A missing evaluator supplies no
 observation and never implies permission. No CSP parser or evaluator is selected
 by Runtime. Explicit constructor-empty policy differs from an opaque external

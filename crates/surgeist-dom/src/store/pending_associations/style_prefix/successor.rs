@@ -9,13 +9,13 @@ use surgeist_cssom::{
 /// Genuine publications for one successor. The next invocation remains Pending
 /// at CheckInlineCsp; this is neither recreation nor a synchronous frontier.
 pub struct DomParsedHtmlStyleSuccessorCompletion {
-    qualification: DomParsedHtmlStyleInitialPolicyRequest,
+    qualification: DomParsedHtmlStyleQualification,
     joined: Option<JoinedCommits>,
     _formation: Option<source::formation::Formation>,
     _meter: Meter,
 }
 impl DomParsedHtmlStyleSuccessorCompletion {
-    pub fn qualification(&self) -> &DomParsedHtmlStyleInitialPolicyRequest {
+    pub fn qualification(&self) -> &DomParsedHtmlStyleQualification {
         &self.qualification
     }
     pub fn removal(&self) -> DomParsedHtmlStyleSuccessorRemoval<'_> {
@@ -44,6 +44,7 @@ impl std::fmt::Debug for DomParsedHtmlStyleSuccessorCompletion {
 pub struct DomParsedHtmlStyleSuccessorRetirement {
     _text: DocumentString,
     _nonce: Option<DocumentString>,
+    _policy: Option<HtmlCspAssociation>,
     _joined: Option<JoinedRetirement>,
     _meter: Meter,
 }
@@ -76,6 +77,9 @@ pub struct DomParsedHtmlStyleSuccessorPreparation<'hold, 'dom, 'caps> {
     selection: Selection,
     text: DocumentString,
     nonce: Option<DocumentString>,
+    policy: Option<HtmlCspAssociation>,
+    policy_usage: custody::Usage,
+    cleanup_atomic: usize,
     element: crate::NodeId,
     meter: Meter,
     formed: Meter,
@@ -183,6 +187,13 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
             .fork()
             .constrain_pending(self.dom.pending_associations.usage, self.dom.limits);
         let selection = select_next(&formed, request, cancel)?;
+        let (policy, policy_usage, cleanup_atomic) = match &selection.origin {
+            StylePolicyOrigin::Known { .. } => {
+                let (policy, usage, atomic) = form_original_policy(&formed, &selection, cancel)?;
+                (Some(policy), usage, atomic)
+            }
+            StylePolicyOrigin::Offline(_) => (None, custody::Usage::ZERO, 0),
+        };
         let (text, nonce) = form_text_nonce(&formed, selection.qualification.occurrence(), cancel)?;
         let mut element = None;
         for binding in self.meter.entry().bindings.iter() {
@@ -255,6 +266,9 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
             selection,
             text,
             nonce,
+            policy,
+            policy_usage,
+            cleanup_atomic,
             element,
             meter,
             formed,
@@ -341,23 +355,25 @@ fn select_next(
                 }
                 let context = row.context();
                 let requirement = context.requirement(Role::InitialPolicy);
-                if context.csp_association().is_some() {
-                    return Err(DomParsedHtmlStyleError::PolicyContext {
-                        requirement: Requirement::Known,
+                let origin = match (requirement, context.csp_association(), &old.origin) {
+                    (
+                        Requirement::Known,
+                        Some(policy),
+                        StylePolicyOrigin::Known { document, .. },
+                    ) if policy.document() == document => StylePolicyOrigin::known(policy),
+                    (Requirement::OfflineUnbound, None, StylePolicyOrigin::Offline(previous)) => {
+                        let slot = context
+                            .slot(Role::InitialPolicy)
+                            .ok_or(DomParsedHtmlStyleError::WrongRequest)?;
+                        if slot != *previous
+                            || context.input_epoch(Role::InitialPolicy) != *previous.epoch()
+                        {
+                            return Err(DomParsedHtmlStyleError::WrongRequest.into());
+                        }
+                        StylePolicyOrigin::Offline(slot)
                     }
-                    .into());
-                }
-                if requirement != Requirement::OfflineUnbound {
-                    return Err(DomParsedHtmlStyleError::PolicyContext { requirement }.into());
-                }
-                let slot = context
-                    .slot(Role::InitialPolicy)
-                    .ok_or(DomParsedHtmlStyleError::WrongRequest)?;
-                if slot != old.qualification.slot
-                    || context.input_epoch(Role::InitialPolicy) != *old.qualification.slot.epoch()
-                {
-                    return Err(DomParsedHtmlStyleError::WrongRequest.into());
-                }
+                    _ => return Err(DomParsedHtmlStyleError::PolicyContext { requirement }.into()),
+                };
                 let inputs = row.style().ok_or(DomParsedHtmlStyleError::WrongRequest)?;
                 if !inputs.connected() || !inputs.type_eligible() {
                     return Err(DomParsedHtmlStyleError::UnsupportedProfile {
@@ -378,7 +394,7 @@ fn select_next(
                     return Err(DomParsedHtmlStyleError::WrongRequest.into());
                 };
                 return Ok(Selection {
-                    qualification: DomParsedHtmlStyleInitialPolicyRequest {
+                    qualification: DomParsedHtmlStyleQualification {
                         contribution: meter.entry().id,
                         occurrence: row.id(),
                         subject: row.subject().id(),
@@ -387,9 +403,9 @@ fn select_next(
                         ),
                         document,
                         context_epoch: context.epoch(),
-                        slot,
                     },
                     state: inputs.state(),
+                    origin,
                     cursor,
                 });
             }
@@ -459,10 +475,20 @@ pub(super) fn qualify_creation(
         || q.subject() != previous.qualification.subject()
         || q.document() != previous.qualification.document()
         || q.original_document() != previous.qualification.original_document()
-        || q.slot() != previous.qualification.slot()
         || current.cursor.profile() != previous.profile
         || current.created_sheet.is_some()
     {
+        return Err(DomParsedHtmlStyleError::WrongRequest);
+    }
+    let same_lineage = match (&current.origin, &previous.origin) {
+        (StylePolicyOrigin::Offline(a), StylePolicyOrigin::Offline(b)) => a == b,
+        (
+            StylePolicyOrigin::Known { document: a, .. },
+            StylePolicyOrigin::Known { document: b, .. },
+        ) => a == b,
+        _ => false,
+    };
+    if !same_lineage {
         return Err(DomParsedHtmlStyleError::WrongRequest);
     }
     let mut cursor = meter.entry().report.value().value.pending_associations();
@@ -473,9 +499,7 @@ pub(super) fn qualify_creation(
                 if row.kind() != Kind::StyleUpdate(surgeist_html::HtmlStyleTrigger::ParserPopped)
                     || row.subject().id() != *q.subject()
                     || row.context().epoch() != *q.context_epoch()
-                    || row.context().csp_association().is_some()
-                    || row.context().slot(Role::InitialPolicy).as_ref() != Some(q.slot())
-                    || row.context().input_epoch(Role::InitialPolicy) != *q.slot().epoch()
+                    || !origin_matches(&current.origin, &row.context())
                     || row
                         .style()
                         .is_none_or(|inputs| inputs.state() != current.state)
@@ -504,7 +528,7 @@ pub(super) fn qualify_creation(
     }
 }
 impl<'caps> DomParsedHtmlStyleSuccessorPreparation<'_, '_, 'caps> {
-    pub fn qualification(&self) -> &DomParsedHtmlStyleInitialPolicyRequest {
+    pub fn qualification(&self) -> &DomParsedHtmlStyleQualification {
         &self.selection.qualification
     }
     pub fn step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
@@ -521,10 +545,14 @@ impl<'caps> DomParsedHtmlStyleSuccessorPreparation<'_, '_, 'caps> {
         mut self,
         cancel: &AtomicBool,
     ) -> Result<DomParsedHtmlStyleSuccessorPublished<'caps>, Error> {
-        let new_usage = text_usage(&self.text, self.nonce.as_ref())?;
+        let new_usage =
+            text_usage(&self.text, self.nonce.as_ref())?.checked_add(self.policy_usage)?;
         let held = self.graph.as_mut().expect("qualified predecessor");
         let request = predecessor(held.value())?;
-        let old_usage = text_usage(&request.text, request.nonce.as_ref())?;
+        let mut old_usage = text_usage(&request.text, request.nonce.as_ref())?;
+        if self.policy.is_some() {
+            old_usage = old_usage.checked_add(policy_usage(&request.policy)?)?;
+        }
         let next_usage = self
             .dom
             .pending_associations
@@ -622,6 +650,7 @@ impl<'caps> DomParsedHtmlStyleSuccessorPreparation<'_, '_, 'caps> {
             text,
             nonce,
             policy,
+            origin,
             cursor,
             created_sheet,
             ..
@@ -636,6 +665,7 @@ impl<'caps> DomParsedHtmlStyleSuccessorPreparation<'_, '_, 'caps> {
         *self.completed = Some(CompletedInvocation {
             qualification: old_q,
             profile: cursor.profile(),
+            origin,
             outcome,
         });
         let retired_debit = held
@@ -648,11 +678,20 @@ impl<'caps> DomParsedHtmlStyleSuccessorPreparation<'_, '_, 'caps> {
             .expect("same original ledger");
         self.meter.entry().control.add_persistent(new_usage);
         self.dom.pending_associations.usage = next_usage;
+        let (policy, retired_policy) = match self.policy {
+            Some(next) => (next, Some(policy)),
+            None => (policy, None),
+        };
+        self.meter
+            .entry()
+            .control
+            .reserve_cleanup(self.cleanup_atomic);
         **held.value_mut() = Graph::Inline(DomParsedHtmlStyleInlinePolicyRequest {
             qualification: self.selection.qualification,
             text: self.text,
             nonce: self.nonce,
             state: self.selection.state,
+            origin: self.selection.origin,
             policy,
             cursor: self.selection.cursor,
             created_sheet: None,
@@ -668,6 +707,7 @@ impl<'caps> DomParsedHtmlStyleSuccessorPreparation<'_, '_, 'caps> {
             retirement: DomParsedHtmlStyleSuccessorRetirement {
                 _text: text,
                 _nonce: nonce,
+                _policy: retired_policy,
                 _joined: retired,
                 _meter: self.meter,
             },

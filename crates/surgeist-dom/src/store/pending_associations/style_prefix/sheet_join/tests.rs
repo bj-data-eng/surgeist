@@ -1,5 +1,5 @@
 //! Real owning fence, original admission and forgotten-capability evidence.
-use super::super::tests::{begin_await, envelope, flag, install, parse, qualifier, setup};
+use super::super::tests::{begin_await, binding, envelope, flag, install, parse, qualifier, setup};
 use super::*;
 use crate::{DomParsedHtmlAssociationAdmissionError, DomStyleCssomRootError};
 use surgeist_css::{CssParserContext, CssUtf16InputLimits};
@@ -12,7 +12,7 @@ fn ready_with(source: &str) -> (Dom, DocumentId, DomParsedHtmlAssociationId) {
     let (mut dom, env) = setup();
     let (document, id) = install(&mut dom, parse(source), env);
     begin_await(&mut dom, id, envelope());
-    let q = qualifier(&dom, id);
+    let q = binding(&dom, id);
     let mut allow = |_: HtmlCspLayout| Ok::<_, ()>(());
     let mut owner = HtmlCspOwner::new_with(&mut allow).unwrap();
     let mut policy = Some(owner.initial_document_with(&mut allow).unwrap());

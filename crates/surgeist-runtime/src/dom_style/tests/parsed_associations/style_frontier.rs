@@ -286,7 +286,7 @@ fn forgotten_unstarted_request_guard_allows_other_document_delivery_but_not_its_
 }
 
 fn finish_allowed_history(session: &mut DomSession, parsed: DomParsedHtmlAssociationId) {
-    fn render(session: &mut DomSession, q: &DomParsedHtmlStyleInitialPolicyRequest) {
+    fn render(session: &mut DomSession, q: &DomParsedHtmlStyleQualification) {
         session
             .style_execution()
             .exclude_parsed_style_script_bookkeeping(&mut session.dom(), q, envelope(), &cancel())
@@ -302,7 +302,7 @@ fn finish_allowed_history(session: &mut DomSession, parsed: DomParsedHtmlAssocia
     let first = session
         .parsed_html_style_prefix(parsed)
         .unwrap()
-        .initial_policy_request()
+        .qualification()
         .unwrap()
         .clone();
     drop(super::style_sheet::create(session, parsed, envelope()).unwrap());

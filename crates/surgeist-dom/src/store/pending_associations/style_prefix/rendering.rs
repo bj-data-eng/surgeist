@@ -11,7 +11,7 @@ use surgeist_html_semantics::HtmlDocumentClass;
 // real output slot is filled only by the infallible publication tail.
 struct Output {
     dom: Option<DomCommit>,
-    qualification: DomParsedHtmlStyleInitialPolicyRequest,
+    qualification: DomParsedHtmlStyleQualification,
     element: NodeId,
     member: bool,
     _state: Arc<State>,
@@ -49,7 +49,7 @@ impl DomParsedHtmlStyleRenderingCompletion {
             .expect("only live outputs are observed")
     }
 
-    pub fn qualification(&self) -> &DomParsedHtmlStyleInitialPolicyRequest {
+    pub fn qualification(&self) -> &DomParsedHtmlStyleQualification {
         &self.value().qualification
     }
     pub fn element(&self) -> NodeId {
@@ -90,7 +90,7 @@ struct Facts {
 }
 fn facts(
     meter: &Meter,
-    q: &DomParsedHtmlStyleInitialPolicyRequest,
+    q: &DomParsedHtmlStyleQualification,
     cancel: &AtomicBool,
 ) -> Result<Facts, DomParsedHtmlStyleError> {
     let scratch = meter.fork();
@@ -256,7 +256,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
     /// the final installed body's presence never replaces the original fact.
     pub fn process_rendering(
         &mut self,
-        q: &DomParsedHtmlStyleInitialPolicyRequest,
+        q: &DomParsedHtmlStyleQualification,
         cancel: &AtomicBool,
     ) -> Result<DomParsedHtmlStyleRenderingProgress, DomParsedHtmlStyleError> {
         self.meter

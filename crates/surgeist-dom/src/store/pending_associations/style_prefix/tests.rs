@@ -17,7 +17,14 @@ pub(in crate::store::pending_associations) fn envelope() -> DomParsedHtmlAssocia
     DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 1_000_000, 1024).unwrap()
 }
 pub(in crate::store::pending_associations) fn parse(text: &str) -> Arc<HtmlParseReport> {
-    let limits = HtmlParseLimits::builder()
+    Arc::new(
+        HtmlDocumentParseRequest::offline(HtmlSource::utf8(text), parser_limits())
+            .parse()
+            .unwrap(),
+    )
+}
+fn parser_limits() -> HtmlParseLimits {
+    HtmlParseLimits::builder()
         .source_units(100_000)
         .buffered_utf16_units(100_000)
         .token_attributes(10_000)
@@ -38,12 +45,7 @@ pub(in crate::store::pending_associations) fn parse(text: &str) -> Arc<HtmlParse
         .atomic_layout_bytes(100_000_000)
         .work_credits(100_000_000)
         .finish()
-        .unwrap();
-    Arc::new(
-        HtmlDocumentParseRequest::offline(HtmlSource::utf8(text), limits)
-            .parse()
-            .unwrap(),
-    )
+        .unwrap()
 }
 pub(in crate::store::pending_associations) fn setup() -> (Dom, DomParsedDocumentEnvironment) {
     let policy = DomLimits::new(
@@ -108,6 +110,16 @@ pub(in crate::store::pending_associations) fn install(
     )
 }
 pub(in crate::store::pending_associations) fn qualifier(
+    dom: &Dom,
+    id: DomParsedHtmlAssociationId,
+) -> DomParsedHtmlStyleQualification {
+    dom.parsed_html_style_prefix(id)
+        .unwrap()
+        .qualification()
+        .unwrap()
+        .clone()
+}
+pub(in crate::store::pending_associations) fn binding(
     dom: &Dom,
     id: DomParsedHtmlAssociationId,
 ) -> DomParsedHtmlStyleInitialPolicyRequest {
@@ -204,7 +216,7 @@ fn native_cleanup_headroom_stays_reserved_during_real_nonce_formation_and_retry(
         let limits =
             DomParsedHtmlAssociationLimits::new(allowance, 1_000_000, 1_000_000, 1024).unwrap();
         begin_await(&mut dom, id, limits);
-        let q = qualifier(&dom, id);
+        let q = binding(&dom, id);
         let policyid = policy.policy().id().clone();
         let mut input = Some(policy);
         let spent;
@@ -243,7 +255,7 @@ fn native_cleanup_headroom_stays_reserved_during_real_nonce_formation_and_retry(
         if atomic != 1024 {
             assert_eq!(ledger.total(), before);
             let view = dom.parsed_html_style_prefix(id).unwrap();
-            assert!(view.initial_policy_bound());
+            assert!(view.policy_ready());
             assert_eq!(view.phase(), DomParsedHtmlStylePhase::AwaitingInitialPolicy);
             drop(view);
             let mut h = dom
@@ -295,7 +307,7 @@ fn persistent_bank_usage_survives_old_retirement_and_later_real_install_remove()
         dom.usage().parsed_association_bytes(),
         before + size_of::<Graph>()
     );
-    let q = qualifier(&dom, style);
+    let q = binding(&dom, style);
     let (policy, drops, _) = native_policy(1024);
     let policy_bytes =
         policy.retained_layout().unwrap().storage().bytes() - size_of::<HtmlCspAssociation>();
@@ -443,7 +455,7 @@ fn inline_with_policy_under(
     limits: DomParsedHtmlAssociationLimits,
 ) {
     begin_await(dom, id, limits);
-    let q = qualifier(dom, id);
+    let q = binding(dom, id);
     let mut input = Some(policy);
     let mut hold = dom.begin_parsed_html_style(id, limits, &flag()).unwrap();
     hold.bind_initial_policy(&q, &mut input, &flag()).unwrap();
@@ -704,7 +716,7 @@ fn failed_decision_output_admission_stays_unstarted_and_raise_admits_the_same_in
     )
     .unwrap();
     begin_await(&mut dom, id, limits);
-    let q = qualifier(&dom, id);
+    let q = binding(&dom, id);
     let mut allow = |_: HtmlCspLayout| Ok::<_, ()>(());
     let mut owner = HtmlCspOwner::new_with(&mut allow).unwrap();
     let mut policy = Some(owner.initial_document_with(&mut allow).unwrap());
@@ -818,3 +830,5 @@ fn real_blocked_pair_end_work_refusal_keeps_controller_and_raise_does_not_rebind
     assert!(Arc::ptr_eq(&state, &dom.state));
     assert_eq!(descriptors.load(Ordering::Relaxed), 1);
 }
+
+mod known_policy;

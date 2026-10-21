@@ -85,7 +85,7 @@ impl DomStyleRuntime {
     pub fn queue_parsed_style_notification(
         &self,
         dom: &mut DomEventDom<'_>,
-        qualification: &DomParsedHtmlStyleInitialPolicyRequest,
+        qualification: &DomParsedHtmlStyleQualification,
         limits: DomParsedHtmlAssociationLimits,
         cancel: &AtomicBool,
     ) -> Result<DomStyleParsedNotificationProgress, DomStyleParsedNotificationError> {

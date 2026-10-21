@@ -1,5 +1,5 @@
 //! Real canonical relation, original output admission and retirement lifetimes.
-use super::super::tests::{begin_await, envelope, flag, install, parse, qualifier, setup};
+use super::super::tests::{begin_await, binding, envelope, flag, install, parse, setup};
 use super::*;
 use crate::*;
 use surgeist_css::{CssParserContext, CssUtf16InputLimits};
@@ -12,7 +12,7 @@ pub(in crate::store::pending_associations::style_prefix) fn ready(
     Dom,
     DocumentId,
     DomParsedHtmlAssociationId,
-    DomParsedHtmlStyleInitialPolicyRequest,
+    DomParsedHtmlStyleQualification,
     NodeId,
     DomStyleCssomRoot,
 ) {
@@ -27,13 +27,15 @@ pub(in crate::store::pending_associations::style_prefix) fn ready(
         env,
     );
     begin_await(&mut dom, id, limits);
-    let q = qualifier(&dom, id);
+    let binding = binding(&dom, id);
+    let q = binding.qualification().clone();
     let mut admit = |_| Ok::<_, ()>(());
     let mut owner = HtmlCspOwner::new_with(&mut admit).unwrap();
     let mut policy = Some(owner.initial_document_with(&mut admit).unwrap());
     {
         let mut hold = dom.begin_parsed_html_style(id, limits, &flag()).unwrap();
-        hold.bind_initial_policy(&q, &mut policy, &flag()).unwrap();
+        hold.bind_initial_policy(&binding, &mut policy, &flag())
+            .unwrap();
         hold.advance(&flag()).unwrap();
     }
     let mut observed = {

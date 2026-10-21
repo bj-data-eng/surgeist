@@ -24,7 +24,7 @@ fn rendered(
 ) -> (
     DomSession,
     DomParsedHtmlInstallation,
-    DomParsedHtmlStyleInitialPolicyRequest,
+    DomParsedHtmlStyleQualification,
     DomStyleSheet,
     Option<DomParsedHtmlStyleInlinePolicyObservation>,
 ) {
@@ -56,7 +56,7 @@ fn rendered(
     let q = session
         .parsed_html_style_prefix(id)
         .unwrap()
-        .initial_policy_request()
+        .qualification()
         .unwrap()
         .clone();
     session
@@ -85,7 +85,7 @@ fn owner(session: &DomSession) -> std::rc::Rc<DomStyleCssomRoot> {
 }
 fn next(
     session: &DomSession,
-    q: &DomParsedHtmlStyleInitialPolicyRequest,
+    q: &DomParsedHtmlStyleQualification,
 ) -> surgeist_html_parser::HtmlParseAssociationOccurrenceId {
     let entry = session
         .pending_parsed_html_associations()
@@ -109,7 +109,7 @@ fn next(
         }
     }
 }
-fn assert_pending_request(session: &DomSession, q: &DomParsedHtmlStyleInitialPolicyRequest) {
+fn assert_pending_request(session: &DomSession, q: &DomParsedHtmlStyleQualification) {
     let view = session.parsed_html_style_prefix(q.contribution()).unwrap();
     assert_eq!(view.phase(), DomParsedHtmlStylePhase::InlinePolicyPending);
     let request = view.inline_policy_request().unwrap();
@@ -157,7 +157,7 @@ fn successor_removes_real_sheet_preserves_names_and_requires_a_new_full_text_dec
     assert_eq!(q.occurrence(), &expected);
     assert_ne!(q.occurrence(), old.occurrence());
     assert_ne!(q.context_epoch(), old.context_epoch());
-    assert_eq!(q.slot(), old.slot());
+    assert_eq!(q.original_document(), old.original_document());
     assert_eq!(result.phase(), DomParsedHtmlStylePhase::InlinePolicyPending);
     let (dom, _) = removed(&result);
     assert_eq!(dom.changes().from(), stamp);

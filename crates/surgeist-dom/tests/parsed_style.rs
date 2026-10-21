@@ -127,7 +127,14 @@ fn empty_policy() -> surgeist_html::HtmlCspAssociation {
     let mut owner = surgeist_html::HtmlCspOwner::new_with(&mut admit).unwrap();
     owner.initial_document_with(&mut admit).unwrap()
 }
-fn qualifier(dom: &Dom, id: DomParsedHtmlAssociationId) -> DomParsedHtmlStyleInitialPolicyRequest {
+fn qualifier(dom: &Dom, id: DomParsedHtmlAssociationId) -> DomParsedHtmlStyleQualification {
+    dom.parsed_html_style_prefix(id)
+        .unwrap()
+        .qualification()
+        .unwrap()
+        .clone()
+}
+fn binding(dom: &Dom, id: DomParsedHtmlAssociationId) -> DomParsedHtmlStyleInitialPolicyRequest {
     dom.parsed_html_style_prefix(id)
         .unwrap()
         .initial_policy_request()
@@ -160,6 +167,7 @@ fn original_prefix_keeps_spent_admission_work_then_binds_exact_policy_and_reques
         );
     }
     let q = qualifier(&dom, id);
+    let request = binding(&dom, id);
     assert_eq!(q.document(), document);
     assert_eq!(q.contribution(), id);
     let policy = empty_policy();
@@ -174,14 +182,11 @@ fn original_prefix_keeps_spent_admission_work_then_binds_exact_policy_and_reques
             hold.advance(&flag()).unwrap(),
             DomParsedHtmlStylePhase::AwaitingInitialPolicy
         );
-        hold.bind_initial_policy(&q, &mut input, &flag()).unwrap();
+        hold.bind_initial_policy(&request, &mut input, &flag())
+            .unwrap();
     }
     assert!(input.is_none());
-    assert!(
-        dom.parsed_html_style_prefix(id)
-            .unwrap()
-            .initial_policy_bound()
-    );
+    assert!(dom.parsed_html_style_prefix(id).unwrap().policy_ready());
     {
         let mut hold = dom
             .begin_parsed_html_style(id, envelope(), &flag())
@@ -246,7 +251,9 @@ fn independent_destinations_bind_distinct_explicit_policies_and_reject_foreign_r
         h.advance(&flag()).unwrap();
     }
     let qa = qualifier(&dom, a);
+    let ra = binding(&dom, a);
     let qb = qualifier(&dom, b);
+    let rb = binding(&dom, b);
     assert_eq!(qa.occurrence(), qb.occurrence());
     assert_ne!(qa.contribution(), qb.contribution());
     let mut input = Some(empty_policy());
@@ -254,17 +261,17 @@ fn independent_destinations_bind_distinct_explicit_policies_and_reject_foreign_r
     {
         let mut h = dom.begin_parsed_html_style(a, envelope(), &flag()).unwrap();
         assert!(matches!(
-            h.bind_initial_policy(&qb, &mut input, &flag()),
+            h.bind_initial_policy(&rb, &mut input, &flag()),
             Err(DomParsedHtmlStyleError::WrongRequest)
         ));
         assert_eq!(input.as_ref().unwrap().policy().id(), &original);
-        h.bind_initial_policy(&qa, &mut input, &flag()).unwrap();
+        h.bind_initial_policy(&ra, &mut input, &flag()).unwrap();
     }
     let mut other = Some(empty_policy());
     let otherid = other.as_ref().unwrap().policy().id().clone();
     {
         let mut h = dom.begin_parsed_html_style(b, envelope(), &flag()).unwrap();
-        h.bind_initial_policy(&qb, &mut other, &flag()).unwrap();
+        h.bind_initial_policy(&rb, &mut other, &flag()).unwrap();
         h.advance(&flag()).unwrap();
     }
     {
@@ -272,7 +279,7 @@ fn independent_destinations_bind_distinct_explicit_policies_and_reject_foreign_r
         h.advance(&flag()).unwrap();
         let mut replacement = Some(empty_policy());
         assert!(matches!(
-            h.bind_initial_policy(&qa, &mut replacement, &flag()),
+            h.bind_initial_policy(&ra, &mut replacement, &flag()),
             Err(DomParsedHtmlStyleError::AlreadyBound)
         ));
         assert!(replacement.is_some());
@@ -311,18 +318,19 @@ fn accepted_binding_survives_request_output_refusal_and_raised_retry() {
         let mut h = dom.begin_parsed_html_style(id, limits, &flag()).unwrap();
         h.advance(&flag()).unwrap();
     }
-    let q = qualifier(&dom, id);
+    let request = binding(&dom, id);
     let mut input = Some(empty_policy());
     let spent;
     {
         let mut h = dom.begin_parsed_html_style(id, limits, &flag()).unwrap();
-        h.bind_initial_policy(&q, &mut input, &flag()).unwrap();
+        h.bind_initial_policy(&request, &mut input, &flag())
+            .unwrap();
         assert!(h.advance(&flag()).is_err());
         spent = h.spent_work();
     }
     let view = dom.parsed_html_style_prefix(id).unwrap();
     assert_eq!(view.phase(), DomParsedHtmlStylePhase::AwaitingInitialPolicy);
-    assert!(view.initial_policy_bound());
+    assert!(view.policy_ready());
     drop(view);
     {
         let mut h = dom

@@ -8,17 +8,17 @@ use surgeist_dom::*;
 fn request(
     session: &DomSession,
     id: DomParsedHtmlAssociationId,
-) -> DomParsedHtmlStyleInitialPolicyRequest {
+) -> DomParsedHtmlStyleQualification {
     session
         .parsed_html_style_prefix(id)
         .unwrap()
-        .initial_policy_request()
+        .qualification()
         .unwrap()
         .clone()
 }
 fn exclude(
     session: &mut DomSession,
-    qualification: &DomParsedHtmlStyleInitialPolicyRequest,
+    qualification: &DomParsedHtmlStyleQualification,
     limits: DomParsedHtmlAssociationLimits,
 ) {
     assert_eq!(
@@ -36,7 +36,7 @@ fn exclude(
 }
 fn render(
     session: &mut DomSession,
-    qualification: &DomParsedHtmlStyleInitialPolicyRequest,
+    qualification: &DomParsedHtmlStyleQualification,
     limits: DomParsedHtmlAssociationLimits,
 ) -> Result<DomParsedHtmlStyleRenderingProgress, DomStyleParsedPrefixError> {
     session.style_execution().process_parsed_style_rendering(
@@ -96,7 +96,7 @@ fn original_head_media_defaults_publish_membership_once_without_recreating_sheet
                 .contains(&DomChange::DocumentRenderBlocking(document))
         );
         let view = session.parsed_html_style_prefix(id).unwrap();
-        assert_eq!(view.initial_policy_request(), Some(&qualification));
+        assert_eq!(view.qualification(), Some(&qualification));
         assert_eq!(view.phase(), DomParsedHtmlStylePhase::RenderingComplete);
         assert_eq!(
             view.script_bookkeeping_exclusion(),

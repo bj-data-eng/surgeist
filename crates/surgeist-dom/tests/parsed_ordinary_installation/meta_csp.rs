@@ -28,6 +28,7 @@ struct Processor {
     profile: HtmlCspProcessorProfile,
     calls: usize,
     unchanged: bool,
+    unchanged_on_call: Option<usize>,
     last: Option<std::sync::Weak<RecordedPolicy>>,
 }
 impl Processor {
@@ -40,6 +41,7 @@ impl Processor {
             profile,
             calls: 0,
             unchanged: false,
+            unchanged_on_call: None,
             last: None,
         }
     }
@@ -55,7 +57,7 @@ impl HtmlMetaCspProcessor for Processor {
         admit: &mut impl FnMut(HtmlCspLayout) -> Result<(), E>,
         release: &mut impl FnMut(HtmlCspStorage),
     ) -> Result<HtmlMetaCspOutcome<()>, HtmlCspError<E>> {
-        if self.unchanged {
+        if self.unchanged || self.unchanged_on_call == Some(self.calls) {
             self.calls += 1;
             return self
                 .authority
@@ -345,6 +347,206 @@ fn qualified_original_style_uses_its_policy_without_offline_binding_or_final_pol
 }
 
 #[test]
+fn unchanged_original_policy_keeps_artifact_a_at_new_generation_for_style_before_final_b() {
+    let mut processor = Processor::new();
+    // The real processor fixture selects an authenticated unchanged result for
+    // its second request; the other requests create their actual native artifacts.
+    processor.unchanged_on_call = Some(1);
+    let report = processed(
+        "<!doctype html><head><meta http-equiv=content-security-policy content='policy A'><meta http-equiv=content-security-policy content='unchanged'><style nonce=n>a{color:red}</style><meta http-equiv=content-security-policy content='policy B'>",
+        &mut processor,
+    );
+    assert_eq!(processor.calls, 3);
+    let policy_b = original(&report).clone();
+    let mut rows = report.pending_associations();
+    let policy_a = loop {
+        match rows.advance() {
+            surgeist_html_parser::HtmlParsePendingAssociationStep::Occurrence(row)
+                if row.requires_processing() && row.style().is_some() =>
+            {
+                break row.context().csp_association().unwrap().clone();
+            }
+            surgeist_html_parser::HtmlParsePendingAssociationStep::Complete => {
+                panic!("actual original Style")
+            }
+            _ => (),
+        }
+    };
+    let unchanged = policy_a.latest().unwrap();
+    assert_eq!(unchanged.content(), &DocumentString::from("unchanged"));
+    assert_eq!(policy_a.policy().id(), unchanged.prior_policy());
+    assert_eq!(policy_a.policy().revision(), unchanged.prior_revision());
+    assert_ne!(policy_a.generation(), unchanged.generation());
+    assert_eq!(policy_a.document(), unchanged.document());
+    assert_ne!(policy_a.policy().id(), policy_b.policy().id());
+    assert_eq!(
+        policy_b.latest().unwrap().content(),
+        &DocumentString::from("policy B")
+    );
+    let mut allow = |_: HtmlCspLayout| Ok::<_, ()>(());
+    let HtmlCspNativePolicy::External(native) = policy_a
+        .policy()
+        .borrow_native_with::<RecordedPolicy, _>(&processor.profile, &mut allow)
+        .unwrap()
+    else {
+        panic!("retained native artifact A")
+    };
+    assert_eq!(native.text, DocumentString::from("policy A"));
+    assert_eq!(native.padding, [37; 1024]);
+    let (mut dom, environment) = setup();
+    let cancel = AtomicBool::new(false);
+    let installed = dom
+        .install_parsed_html_document(
+            dom.snapshot().stamp(),
+            report,
+            environment,
+            limits(),
+            &cancel,
+        )
+        .unwrap();
+    let id = installed.pending_association().unwrap();
+    let document = installed.document();
+    let before = dom.snapshot().stamp();
+    let processing =
+        DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 1_000_000, 1024).unwrap();
+    assert_eq!(
+        dom.begin_parsed_html_style(id, processing, &cancel)
+            .unwrap()
+            .advance(&cancel)
+            .unwrap(),
+        DomParsedHtmlStylePhase::InlinePolicyPending
+    );
+    let view = dom.parsed_html_style_prefix(id).unwrap();
+    assert!(view.initial_policy_request().is_none());
+    assert!(view.policy_ready());
+    let request = view.inline_policy_request().unwrap();
+    assert_eq!(request.policy().document(), policy_a.document());
+    assert_eq!(request.policy().generation(), policy_a.generation());
+    assert_eq!(request.policy().policy(), policy_a.policy());
+    assert_eq!(
+        request.policy().latest().unwrap().occurrence(),
+        unchanged.occurrence()
+    );
+    assert!(request.text().is_empty());
+    assert_eq!(request.nonce(), Some(&DocumentString::from("n")));
+    assert_eq!(dom.snapshot().stamp(), before);
+    assert_eq!(
+        associated(&dom.snapshot(), document).policy(),
+        policy_b.policy()
+    );
+    assert_eq!(
+        dom.parsed_html_dispatch_cursor()
+            .advance(&cancel)
+            .unwrap()
+            .unwrap()
+            .state(),
+        DomParsedHtmlExecutionState::Unstarted
+    );
+    assert_eq!(
+        processor.calls, 3,
+        "no processing replay during original Style intake"
+    );
+}
+
+#[test]
+fn known_constructor_policy_has_no_binding_slot_and_rejects_foreign_binding_and_decision() {
+    let cancel = AtomicBool::new(false);
+    let mut processor = Processor::new();
+    let report = processed("<!doctype html><style>body{}</style>", &mut processor);
+    let original = original(&report).clone();
+    assert!(original.policy().profile().is_none());
+    assert!(original.latest().is_none());
+    let (mut dom, environment) = setup();
+    let mut ids = Vec::new();
+    for _ in 0..2 {
+        let installed = dom
+            .install_parsed_html_document(
+                dom.snapshot().stamp(),
+                report.clone(),
+                environment.clone(),
+                limits(),
+                &cancel,
+            )
+            .unwrap();
+        ids.push(installed.pending_association().unwrap());
+    }
+    let processing =
+        DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 1_000_000, 1024).unwrap();
+    for id in &ids {
+        assert_eq!(
+            dom.begin_parsed_html_style(*id, processing, &cancel)
+                .unwrap()
+                .advance(&cancel)
+                .unwrap(),
+            DomParsedHtmlStylePhase::InlinePolicyPending
+        );
+        let view = dom.parsed_html_style_prefix(*id).unwrap();
+        assert!(view.initial_policy_request().is_none());
+        assert!(view.policy_ready());
+        assert_eq!(
+            view.inline_policy_request().unwrap().policy().policy(),
+            original.policy()
+        );
+    }
+    let installed = dom
+        .install_parsed_html_document(
+            dom.snapshot().stamp(),
+            parse(HtmlSource::utf8("<!doctype html><style>offline</style>")),
+            environment,
+            limits(),
+            &cancel,
+        )
+        .unwrap();
+    let offline = installed.pending_association().unwrap();
+    dom.begin_parsed_html_style(offline, processing, &cancel)
+        .unwrap()
+        .advance(&cancel)
+        .unwrap();
+    let request = dom
+        .parsed_html_style_prefix(offline)
+        .unwrap()
+        .initial_policy_request()
+        .unwrap()
+        .clone();
+    let mut allow = |_: HtmlCspLayout| Ok::<_, ()>(());
+    let mut owner = HtmlCspOwner::new_with(&mut allow).unwrap();
+    let mut input = Some(owner.initial_document_with(&mut allow).unwrap());
+    let supplied = input.as_ref().unwrap().document().clone();
+    let before = dom.snapshot().stamp();
+    assert!(matches!(
+        dom.begin_parsed_html_style(ids[0], processing, &cancel)
+            .unwrap()
+            .bind_initial_policy(&request, &mut input, &cancel),
+        Err(DomParsedHtmlStyleError::WrongRequest)
+    ));
+    assert_eq!(input.as_ref().unwrap().document(), &supplied);
+    let mut decision = {
+        let view = dom.parsed_html_style_prefix(ids[1]).unwrap();
+        Some(DomParsedHtmlStyleInlinePolicyObservation::evaluated(
+            view.inline_policy_request().unwrap(),
+            true,
+        ))
+    };
+    assert!(matches!(
+        dom.begin_parsed_html_style(ids[0], processing, &cancel)
+            .unwrap()
+            .accept_inline_policy(&mut decision, &cancel),
+        Err(DomParsedHtmlStyleError::WrongRequest)
+    ));
+    assert!(decision.is_some());
+    assert_eq!(dom.snapshot().stamp(), before);
+    assert_eq!(
+        dom.parsed_html_dispatch_cursor()
+            .advance(&cancel)
+            .unwrap()
+            .unwrap()
+            .state(),
+        DomParsedHtmlExecutionState::Unstarted
+    );
+    assert_eq!(processor.calls, 0);
+}
+
+#[test]
 fn base_facts_keep_their_original_policy_pair_and_native_rebinding_is_explicit() {
     use surgeist_html_semantics::*;
     for mode in 0..3 {
@@ -597,12 +799,26 @@ fn occurrence_policy_history_is_not_replaced_by_final_document_policy() {
             &cancel,
         )
         .unwrap();
-    assert!(matches!(
-        hold.advance(&cancel),
-        Err(DomParsedHtmlStyleError::PolicyContext {
-            requirement: surgeist_html_parser::HtmlParseAssociationContextRequirement::Known
-        })
-    ));
+    assert_eq!(
+        hold.advance(&cancel).unwrap(),
+        DomParsedHtmlStylePhase::InlinePolicyPending
+    );
+    drop(hold);
+    assert_eq!(
+        dom.parsed_html_dispatch_cursor()
+            .advance(&cancel)
+            .unwrap()
+            .unwrap()
+            .state(),
+        DomParsedHtmlExecutionState::Unstarted
+    );
+    let view = dom.parsed_html_style_prefix(id).unwrap();
+    assert!(view.initial_policy_request().is_none());
+    let request = view.inline_policy_request().unwrap();
+    assert_eq!(request.policy().policy().id(), &policies[0]);
+    assert!(request.policy().latest().is_none());
+    assert!(request.text().is_empty());
+    assert_eq!(processor.calls, 2);
 }
 
 #[test]

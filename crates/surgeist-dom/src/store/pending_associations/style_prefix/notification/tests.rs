@@ -6,7 +6,7 @@ use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomShe
 fn rendered() -> (
     Dom,
     DomParsedHtmlAssociationId,
-    DomParsedHtmlStyleInitialPolicyRequest,
+    DomParsedHtmlStyleQualification,
     DomStyleCssomRoot,
     DomStyleSheet,
 ) {

@@ -126,19 +126,18 @@ impl std::error::Error for DomParsedHtmlStyleError {
     }
 }
 
-/// Immutable qualification of the actual original constructor-declared slot.
-/// Copying it supplies no processing, policy or publication authority.
+/// Immutable identity of one original Style operation. Copying it supplies no
+/// binding, processing, policy or publication authority.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DomParsedHtmlStyleInitialPolicyRequest {
+pub struct DomParsedHtmlStyleQualification {
     pub(crate) contribution: DomParsedHtmlAssociationId,
     pub(crate) occurrence: HtmlParseAssociationOccurrenceId,
     pub(crate) subject: HtmlNodeId,
     pub(crate) original_document: DomParsedHtmlHistoricalDocument,
     pub(crate) document: DocumentId,
     pub(crate) context_epoch: HtmlParseAssociationContextEpochId,
-    pub(crate) slot: HtmlParseAssociationContextSlotId,
 }
-impl DomParsedHtmlStyleInitialPolicyRequest {
+impl DomParsedHtmlStyleQualification {
     pub fn contribution(&self) -> DomParsedHtmlAssociationId {
         self.contribution
     }
@@ -157,23 +156,59 @@ impl DomParsedHtmlStyleInitialPolicyRequest {
     pub fn context_epoch(&self) -> &HtmlParseAssociationContextEpochId {
         &self.context_epoch
     }
+}
+/// The actual outstanding OfflineUnbound policy slot for one original operation.
+/// A known original association never produces this binding request.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DomParsedHtmlStyleInitialPolicyRequest {
+    pub(crate) qualification: DomParsedHtmlStyleQualification,
+    pub(crate) slot: HtmlParseAssociationContextSlotId,
+}
+impl DomParsedHtmlStyleInitialPolicyRequest {
+    pub fn qualification(&self) -> &DomParsedHtmlStyleQualification {
+        &self.qualification
+    }
     pub fn slot(&self) -> &HtmlParseAssociationContextSlotId {
         &self.slot
+    }
+}
+/// Closed source proof retained without an additional policy graph.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum StylePolicyOrigin {
+    Offline(HtmlParseAssociationContextSlotId),
+    Known {
+        document: surgeist_html::HtmlCspDocumentId,
+        generation: surgeist_html::HtmlCspAssociationGeneration,
+        policy: surgeist_html::HtmlCspPolicyId,
+        revision: surgeist_html::HtmlCspPolicyRevision,
+        profile: Option<surgeist_html::HtmlCspProcessorProfile>,
+    },
+}
+impl StylePolicyOrigin {
+    pub(crate) fn known(policy: &HtmlCspAssociation) -> Self {
+        Self::Known {
+            document: policy.document().clone(),
+            generation: policy.generation().clone(),
+            policy: policy.policy().id().clone(),
+            revision: policy.policy().revision(),
+            profile: policy.policy().profile().cloned(),
+        }
     }
 }
 /// One stored historical inline-policy request, not native current Style source
 /// or a Meta CSP insertion request. The canonical hold consumes observations.
 pub struct DomParsedHtmlStyleInlinePolicyRequest {
-    pub(crate) qualification: DomParsedHtmlStyleInitialPolicyRequest,
+    pub(crate) qualification: DomParsedHtmlStyleQualification,
     pub(crate) text: DocumentString,
     pub(crate) nonce: Option<DocumentString>,
     pub(crate) state: HtmlStyleState,
     pub(crate) policy: HtmlCspAssociation,
+    pub(crate) origin: StylePolicyOrigin,
     pub(crate) cursor: surgeist_html::HtmlStyleUpdateCursor,
     pub(crate) created_sheet: Option<crate::DomStyleSheet>,
 }
 impl DomParsedHtmlStyleInlinePolicyRequest {
-    pub fn qualification(&self) -> &DomParsedHtmlStyleInitialPolicyRequest {
+    pub fn qualification(&self) -> &DomParsedHtmlStyleQualification {
         &self.qualification
     }
     pub fn text(&self) -> &DocumentString {
@@ -226,7 +261,7 @@ impl DomParsedHtmlStyleInlinePolicyRequest {
 /// ```
 #[derive(Debug)]
 pub struct DomParsedHtmlStyleInlinePolicyObservation {
-    pub(crate) qualification: DomParsedHtmlStyleInitialPolicyRequest,
+    pub(crate) qualification: DomParsedHtmlStyleQualification,
     pub(crate) document: surgeist_html::HtmlCspDocumentId,
     pub(crate) generation: surgeist_html::HtmlCspAssociationGeneration,
     pub(crate) policy: surgeist_html::HtmlCspPolicyId,
@@ -246,7 +281,7 @@ impl DomParsedHtmlStyleInlinePolicyObservation {
             allowed,
         }
     }
-    pub fn qualification(&self) -> &DomParsedHtmlStyleInitialPolicyRequest {
+    pub fn qualification(&self) -> &DomParsedHtmlStyleQualification {
         &self.qualification
     }
     pub fn allowed(&self) -> bool {

@@ -8,17 +8,17 @@ use surgeist_dom::*;
 fn qualification(
     session: &DomSession,
     id: DomParsedHtmlAssociationId,
-) -> DomParsedHtmlStyleInitialPolicyRequest {
+) -> DomParsedHtmlStyleQualification {
     session
         .parsed_html_style_prefix(id)
         .unwrap()
-        .initial_policy_request()
+        .qualification()
         .unwrap()
         .clone()
 }
 fn exclude(
     session: &mut DomSession,
-    request: &DomParsedHtmlStyleInitialPolicyRequest,
+    request: &DomParsedHtmlStyleQualification,
     limits: DomParsedHtmlAssociationLimits,
 ) -> Result<DomParsedHtmlStylePhase, DomStyleParsedPrefixError> {
     session
@@ -53,7 +53,7 @@ fn no_engine_exclusion_preserves_original_sheet_and_reaches_unresolved_render_co
         DomParsedHtmlStylePhase::ReadRenderBlockingPending
     );
     let view = session.parsed_html_style_prefix(id).unwrap();
-    assert_eq!(view.initial_policy_request(), Some(&request));
+    assert_eq!(view.qualification(), Some(&request));
     assert_eq!(
         view.script_bookkeeping_exclusion(),
         Some(HtmlStyleExecutionProfile::NoExecutableJavaScript)
