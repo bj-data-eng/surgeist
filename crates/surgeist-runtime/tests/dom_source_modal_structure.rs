@@ -134,6 +134,7 @@ fn active_show_modal_publishes_modal_after_real_watcher_before_focusing_wait() {
             DomSourceEdit::show_modal_dialog(subject),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: Some(&scope),
                 style_policy: &mut |_| None,
                 url: None,
@@ -212,6 +213,7 @@ fn active_show_modal_publishes_modal_after_real_watcher_before_focusing_wait() {
             request.operation(),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: Some(&scope),
                 style_policy: &mut |_| None,
                 url: None,

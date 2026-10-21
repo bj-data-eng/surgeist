@@ -34,6 +34,12 @@ impl Charge {
             _dependencies: dependencies,
         }
     }
+    pub(in crate::store) fn same_phase(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.live, &other.live)
+            && Arc::ptr_eq(&self.live_units, &other.live_units)
+            && self.storage.ledger().same_owner(other.storage.ledger())
+            && self._dependencies.same_source(&other._dependencies)
+    }
     pub(in crate::store) fn merge(&mut self, mut other: Self) {
         assert!(
             Arc::ptr_eq(&self.live, &other.live)
@@ -230,6 +236,11 @@ enum SharingCheckpoint {
     Marked(value_sharing::Checkpoint),
 }
 impl Checkpoint {
+    pub(in crate::store) fn observation(
+        &self,
+    ) -> transaction::JournalObservation<transaction::Undo> {
+        self.mark.observation()
+    }
     pub(in crate::store) fn sharing(&self) -> Option<&value_sharing::Checkpoint> {
         match &self.sharing {
             SharingCheckpoint::Marked(mark) => Some(mark),

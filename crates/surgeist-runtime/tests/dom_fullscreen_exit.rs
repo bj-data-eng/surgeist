@@ -91,17 +91,22 @@ fn top_level(session: &mut DomSession) -> DomHostedTopLevel {
 fn apply(session: &mut DomSession, batch: DomBatch) -> DomCommit {
     session.dom().apply(batch, &AtomicBool::new(false)).unwrap()
 }
+#[expect(
+    clippy::result_large_err,
+    reason = "the helper preserves the actual root and original producer failure for exact driving refusal assertions"
+)]
 fn source_result(
     session: &mut DomSession,
     edit: DomSourceEdit,
     limits: DomSourceLimits,
     cancel: &AtomicBool,
-) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
     session.source_execution().apply(
         &mut session.dom(),
         edit,
         limits,
         &mut DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut |_| None,
             url: None,
@@ -611,7 +616,7 @@ fn a_model_only_child_with_unflagged_parent_reports_the_actual_collector_asserti
     )
     .unwrap_err();
     assert!(
-        matches!(error, DomSourceRuntimeError::Dom(DomError::FullscreenExitAssertionFailed { document }) if document == top.document())
+        matches!(error, surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::FullscreenExitAssertionFailed { document })) if document == top.document())
     );
     assert_eq!(session.snapshot().stamp(), before.stamp());
     assert!(
@@ -753,7 +758,7 @@ fn zero_optional_exit_or_event_capacity_refuses_before_disconnected_prefix_or_ru
         )
         .unwrap_err();
         assert!(
-            matches!(error, DomSourceRuntimeError::Dom(DomError::ResourceLimit { resource: actual, limit: 0 }) if actual == resource)
+            matches!(error, surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::ResourceLimit { resource: actual, limit: 0 })) if actual == resource)
         );
         let after = session.snapshot();
         assert_eq!(after.stamp(), before.stamp());
@@ -806,7 +811,9 @@ fn failed_runtime_job_reservation_preserves_prefix_and_retry_hands_off_the_origi
     .unwrap_err();
     assert!(matches!(
         error,
-        DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Admission)
+        surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Hosted(
+            DomHostedRuntimeError::Admission
+        ))
     ));
     let refused = session.snapshot();
     assert_eq!(refused.stamp(), before.stamp());
@@ -881,6 +888,7 @@ fn failed_runtime_job_reservation_preserves_prefix_and_retry_hands_off_the_origi
             original,
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -935,8 +943,11 @@ fn preprefix_cancellation_preserves_model_and_queue_and_does_not_enqueue_backgro
     .unwrap_err();
     assert!(matches!(
         error,
-        DomSourceRuntimeError::Dom(DomError::Cancelled)
-            | DomSourceRuntimeError::Style(DomStyleRuntimeError::Dom(DomError::Cancelled))
+        surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
+            DomError::Cancelled
+        )) | surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Style(
+            DomStyleRuntimeError::Dom(DomError::Cancelled)
+        ))
     ));
     assert_eq!(session.snapshot().stamp(), before.stamp());
     assert!(
@@ -1086,7 +1097,7 @@ fn parked_exit_slots_and_pending_event_rows_each_enforce_their_independent_one_s
         )
         .unwrap_err();
         assert!(
-            matches!(error, DomSourceRuntimeError::Dom(DomError::ResourceLimit { resource: actual, limit: 1 }) if actual == resource)
+            matches!(error, surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::ResourceLimit { resource: actual, limit: 1 })) if actual == resource)
         );
         let after = session.snapshot();
         assert_eq!(after.stamp(), before.stamp());
@@ -1179,6 +1190,7 @@ fn nested_exit_handoff_restores_the_enclosing_real_dispatch_source_guard() {
                         DomSourceEdit::exit_fullscreen(context.document),
                         source_limits(),
                         &mut DomSourceServices {
+                            meta: None,
                             execution_scope: None,
                             style_policy: &mut |_| None,
                             url: None,
@@ -1247,6 +1259,7 @@ fn nested_exit_handoff_restores_the_enclosing_real_dispatch_source_guard() {
             request.operation(),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,

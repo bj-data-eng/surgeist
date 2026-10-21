@@ -158,6 +158,11 @@ pub(crate) enum MetaSubjectKind {
         owner: std::sync::Arc<crate::batch::BatchIdentity>,
         index: usize,
     },
+    SourceCreated {
+        operation: crate::DomSourceOperationId,
+        scope: crate::store::source::operation::meta::SubjectScope,
+        index: usize,
+    },
 }
 impl PartialEq for DomMetaSubject {
     fn eq(&self, other: &Self) -> bool {
@@ -173,6 +178,18 @@ impl PartialEq for DomMetaSubject {
                     index: bi,
                 },
             ) => std::sync::Arc::ptr_eq(a, b) && ai == bi,
+            (
+                MetaSubjectKind::SourceCreated {
+                    operation: a,
+                    scope: ax,
+                    index: ai,
+                },
+                MetaSubjectKind::SourceCreated {
+                    operation: b,
+                    scope: bx,
+                    index: bi,
+                },
+            ) => a == b && ax == bx && ai == bi,
             _ => false,
         }
     }
@@ -182,6 +199,16 @@ impl std::fmt::Debug for DomMetaSubject {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.kind {
             MetaSubjectKind::Existing(id) => f.debug_tuple("Existing").field(id).finish(),
+            MetaSubjectKind::SourceCreated {
+                operation,
+                scope,
+                index,
+            } => f
+                .debug_struct("SourceCreated")
+                .field("operation", operation)
+                .field("scope", scope)
+                .field("allocation", index)
+                .finish(),
             MetaSubjectKind::Created { index, .. } => f
                 .debug_struct("Created")
                 .field("allocation", index)
@@ -302,4 +329,35 @@ impl DomMetaOrdinaryCommit {
 /// that all existing DOM publication backing has bounded disposal.
 pub struct DomMetaRetirement {
     pub(crate) _cssom: Vec<surgeist_cssom::CssomCommitRetirement>,
+}
+
+/// Actual Source progress and producer evidence from one joined canonical boundary.
+pub struct DomMetaSourceCommit {
+    pub(crate) source: crate::DomSourceProgress,
+    pub(crate) roots: Vec<DomMetaRootCommit>,
+    pub(crate) inline: Option<crate::DomInlineStyleSourcePublication>,
+    pub(crate) stamp: crate::DomStamp,
+}
+impl DomMetaSourceCommit {
+    pub fn source(&self) -> &crate::DomSourceProgress {
+        &self.source
+    }
+    pub fn roots(&self) -> &[DomMetaRootCommit] {
+        &self.roots
+    }
+    pub fn inline(&self) -> Option<&crate::DomInlineStyleSourcePublication> {
+        self.inline.as_ref()
+    }
+    pub const fn stamp(&self) -> crate::DomStamp {
+        self.stamp
+    }
+    pub fn into_parts(
+        self,
+    ) -> (
+        crate::DomSourceProgress,
+        Vec<DomMetaRootCommit>,
+        Option<crate::DomInlineStyleSourcePublication>,
+    ) {
+        (self.source, self.roots, self.inline)
+    }
 }

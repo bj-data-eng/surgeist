@@ -132,15 +132,20 @@ fn destroy_top(session: &mut DomSession, hosted: &mut HostedRuntime, top: DomHos
 fn apply(session: &mut DomSession, edit: DomSourceEdit) -> DomSourceDriveProgress {
     try_apply(session, edit).unwrap()
 }
+#[expect(
+    clippy::result_large_err,
+    reason = "the helper preserves the actual root and original producer failure for exact driving refusal assertions"
+)]
 fn try_apply(
     session: &mut DomSession,
     edit: DomSourceEdit,
-) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
     session.source_execution().apply(
         &mut session.dom(),
         edit,
         source_limits(),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut |_| None,
             url: None,
@@ -190,15 +195,20 @@ fn service<C>(
         other => panic!("the actual beforetoggle dispatch must finish: {other:?}"),
     }
 }
+#[expect(
+    clippy::result_large_err,
+    reason = "the helper preserves the actual root and original producer failure for exact driving refusal assertions"
+)]
 fn resume(
     session: &mut DomSession,
     operation: DomSourceOperationId,
-) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
     session.source_execution().resume(
         &mut session.dom(),
         operation,
         source_limits(),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut |_| None,
             url: None,
@@ -583,7 +593,9 @@ fn callback_adoption_into_genuinely_inactive_document_keeps_open_and_queue_then_
     drop(receipt);
     let terminal = resume(&mut session, request.operation());
     let failure = match terminal {
-        Err(DomSourceRuntimeError::Dom(DomError::SourceInvariantFailed { operation, failure })) => {
+        Err(surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
+            DomError::SourceInvariantFailed { operation, failure },
+        ))) => {
             assert_eq!(operation, request.operation());
             failure
         }
@@ -645,7 +657,9 @@ fn callback_adoption_into_genuinely_inactive_document_keeps_open_and_queue_then_
     assert!(
         matches!(
             replay,
-            Err(DomSourceRuntimeError::Dom(DomError::InvalidSourceOperation))
+            Err(surgeist_runtime::DomSourceDriveError::Source(
+                DomSourceRuntimeError::Dom(DomError::InvalidSourceOperation)
+            ))
         ),
         "failed method must not retry its assertion: {replay:?}"
     );
@@ -654,7 +668,9 @@ fn callback_adoption_into_genuinely_inactive_document_keeps_open_and_queue_then_
     assert!(
         matches!(
             next,
-            Err(DomSourceRuntimeError::Dom(DomError::DialogInvalidState))
+            Err(surgeist_runtime::DomSourceDriveError::Source(
+                DomSourceRuntimeError::Dom(DomError::DialogInvalidState)
+            ))
         ),
         "new invocation observes retained open/nonmodal state: {next:?}"
     );
@@ -787,7 +803,7 @@ fn started_beforetoggle_finishes_late_once_after_actual_receiver_retirement() {
             drop(complete(terminal.unwrap()));
         } else {
             assert!(
-                matches!(&terminal,Err(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired {operation,subject:actual,action:HtmlDialogAction::ReadOpen})) if *operation==request.operation() && *actual==subject),
+                matches!(&terminal,Err(surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired {operation,subject:actual,action:HtmlDialogAction::ReadOpen}))) if *operation==request.operation() && *actual==subject),
                 "required exact retired receiver read: {terminal:?}"
             );
         }
@@ -908,6 +924,7 @@ fn canceled_and_callback_refused_service_retain_actual_dispatch_then_retry_witho
         request.operation(),
         source_limits(),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut |_| None,
             url: None,
@@ -922,6 +939,7 @@ fn canceled_and_callback_refused_service_retain_actual_dispatch_then_retry_witho
         request.operation(),
         tight,
         &mut DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut |_| None,
             url: None,
@@ -970,7 +988,9 @@ fn initial_open_inactive_and_disconnected_guards_do_not_dispatch_or_queue() {
         assert!(
             matches!(
                 result,
-                Err(DomSourceRuntimeError::Dom(DomError::DialogInvalidState))
+                Err(surgeist_runtime::DomSourceDriveError::Source(
+                    DomSourceRuntimeError::Dom(DomError::DialogInvalidState)
+                ))
             ),
             "literal initial ShowModal guard must reject: {result:?}"
         );

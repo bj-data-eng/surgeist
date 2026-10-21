@@ -76,6 +76,37 @@ The native capability does not consume pending parsed associations or waive
 Runtime's intact-DOM Pending bootstrap refusal. Source continuation and public
 Source-driver integration remain unavailable through this ordinary front.
 
+### Source native Meta composition
+
+`DomSourceServices.meta` explicitly selects finite native composition for the
+existing Session Source driver. `None` preserves reached unavailable behavior;
+it cannot discharge a parked native Meta publication. `Some` uses the same
+Document preference owner and actual original operation, retaining its inline
+profiles, native policy, cumulative work and pending publication across retries.
+Native limits can increase without resetting original spent work or outputs.
+
+The driver flushes the preceding actual Style receipt, prepays watcher settlement,
+and borrows the operation's exclusive Meta hold before forming external root
+banks. Every Runtime scan and allocation prepays the original Source, all active
+ancestors and the native envelope. Temporary CSS source-collector scratch keeps
+its existing distinction from persistent Runtime `storage_bytes`; its real
+formation and old/replacement backing are additionally admitted by Source/native
+limits before allocation. The exact persistent Runtime bank and new name/output
+union are checked before the new banks form. Caller-owned immutable outputs have
+the same output boundary as ordinary observations.
+
+Each actual joined publication returns immediately as
+`DomSourceDriveProgress::MetaSource`, including same-name or producer-unchanged
+occurrences. It owns the authentic next request or completion, root commits,
+optional inline evidence and ordered preference observations. Watcher settlement
+finishes before any result is propagated. Complete finishes the actual Style
+guard while retaining the whole outcome; Request is returned unserviced. A later
+explicit resume processes later Style/policy/event work against the names already
+installed. An advance without a Meta occurrence continues the existing service
+flow and fabricates no native commit. `DomSourceDriveError` preserves either the
+original service error or the native composition error at this driver boundary;
+non-driving service APIs retain their existing errors.
+
 ## Stewardship
 
 [MIT license](LICENSE) · [Attribution](NOTICE.md)

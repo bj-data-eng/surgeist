@@ -130,6 +130,7 @@ fn start(
             DomSourceEdit::show_dialog(subject),
             limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: scope,
                 style_policy: &mut |_| None,
                 url: None,
@@ -177,16 +178,21 @@ fn dispatch(session: &mut DomSession, request: &DomSourceEventRequest) -> DomEve
         other => panic!("actual dispatch required: {other:?}"),
     }
 }
+#[expect(
+    clippy::result_large_err,
+    reason = "the helper preserves the actual root and original producer failure for exact driving refusal assertions"
+)]
 fn resume(
     session: &mut DomSession,
     operation: DomSourceOperationId,
     scope: Option<&DomSourceExecutionScope>,
-) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
     session.source_execution().resume(
         &mut session.dom(),
         operation,
         limits(),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: scope,
             style_policy: &mut |_| None,
             url: None,
@@ -349,9 +355,11 @@ fn unbound_and_external_host_scopes_do_not_infer_absence_or_bind_on_resume() {
     dispatch(&mut native, &event);
     assert!(matches!(
         resume(&mut native, event.operation(), Some(&scope)),
-        Err(DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(
-            DomHostedError::Dom(DomError::InvalidSourceOperation)
-        )))
+        Err(surgeist_runtime::DomSourceDriveError::Source(
+            DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(DomHostedError::Dom(
+                DomError::InvalidSourceOperation
+            )))
+        ))
     ));
     pending_action(
         resume(&mut native, event.operation(), None).unwrap(),
@@ -391,6 +399,7 @@ fn foreign_and_conflicting_host_permissions_preserve_the_original_operation() {
         DomSourceEdit::show_dialog(subject),
         limits(),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: Some(&wrong),
             style_policy: &mut |_| None,
             url: None,
@@ -399,8 +408,8 @@ fn foreign_and_conflicting_host_permissions_preserve_the_original_operation() {
     );
     assert!(matches!(
         result,
-        Err(DomSourceRuntimeError::Hosted(
-            DomHostedRuntimeError::Binding
+        Err(surgeist_runtime::DomSourceDriveError::Source(
+            DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Binding)
         ))
     ));
     assert_eq!(current.snapshot().stamp(), before.stamp());
@@ -549,6 +558,7 @@ fn disposed_scope_permission_cannot_supply_absence_to_another_live_session() {
         DomSourceEdit::show_dialog(subject),
         limits(),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: Some(&stale),
             style_policy: &mut |_| None,
             url: None,
@@ -557,8 +567,8 @@ fn disposed_scope_permission_cannot_supply_absence_to_another_live_session() {
     );
     assert!(matches!(
         result,
-        Err(DomSourceRuntimeError::Hosted(
-            DomHostedRuntimeError::OwnerDisposed
+        Err(surgeist_runtime::DomSourceDriveError::Source(
+            DomSourceRuntimeError::Hosted(DomHostedRuntimeError::OwnerDisposed)
         ))
     ));
     assert_eq!(live.snapshot().stamp(), before.stamp());
@@ -569,7 +579,7 @@ fn nested_native_show_selects_its_own_scope_instead_of_inheriting_parent_absence
     struct Context {
         source: DomSourceRuntime,
         scope: Option<DomSourceExecutionScope>,
-        child: Option<Result<DomSourceDriveProgress, DomSourceRuntimeError>>,
+        child: Option<Result<DomSourceDriveProgress, DomSourceDriveError>>,
         calls: usize,
     }
     for child_headless in [None, Some(false), Some(true)] {
@@ -625,6 +635,7 @@ fn nested_native_show_selects_its_own_scope_instead_of_inheriting_parent_absence
                         DomSourceEdit::show_dialog(child),
                         limits(),
                         &mut DomSourceServices {
+                            meta: None,
                             execution_scope: context.scope.as_ref(),
                             style_policy: &mut |_| None,
                             url: None,

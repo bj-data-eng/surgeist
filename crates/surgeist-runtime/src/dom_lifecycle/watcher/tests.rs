@@ -115,6 +115,7 @@ fn apply(session: &mut DomSession, edit: DomSourceEdit) -> DomSourceCompletion {
             edit,
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut policy,
                 url: None,
@@ -919,6 +920,7 @@ fn show_event(
             DomSourceEdit::show_dialog(subject),
             limits,
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut policy,
                 url: None,
@@ -997,6 +999,7 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
                     request.operation(),
                     bounded,
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None,
@@ -1007,16 +1010,16 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
             if phase_short {
                 assert!(matches!(
                     error,
-                    crate::DomSourceRuntimeError::ElementTasks(
+                    crate::DomSourceDriveError::Source(crate::DomSourceRuntimeError::ElementTasks(
                         crate::DomElementTaskRuntimeError::Dom(DomError::SourcePublicationLimit)
-                    )
+                    ))
                 ))
             } else {
                 assert!(matches!(
                     error,
-                    crate::DomSourceRuntimeError::ElementTasks(
+                    crate::DomSourceDriveError::Source(crate::DomSourceRuntimeError::ElementTasks(
                         crate::DomElementTaskRuntimeError::Dom(DomError::SourceOutputLimit)
-                    )
+                    ))
                 ))
             }
             assert_eq!(session.snapshot().stamp(), before.stamp());
@@ -1048,6 +1051,7 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
                 request.operation(),
                 exact,
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
@@ -1106,7 +1110,7 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
 fn real_child_complete_keeps_registered_window_payload_under_the_original_parent_observer() {
     struct Context {
         source: crate::DomSourceRuntime,
-        child: Option<Result<DomSourceDriveProgress, crate::DomSourceRuntimeError>>,
+        child: Option<Result<DomSourceDriveProgress, crate::DomSourceDriveError>>,
         parent: Option<DomSourceOperationId>,
         watcher: Option<DomCloseWatcherId>,
         calls: usize,
@@ -1146,6 +1150,7 @@ fn real_child_complete_keeps_registered_window_payload_under_the_original_parent
                     DomSourceEdit::set_attribute(child, "open", ""),
                     source_limits(),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None,
@@ -1203,6 +1208,7 @@ fn real_child_complete_keeps_registered_window_payload_under_the_original_parent
             request.operation(),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut policy,
                 url: None,
@@ -1654,6 +1660,7 @@ fn ancestor_removal_attempt(
         DomSourceEdit::show_dialog(parent),
         work_limit(cap),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut policy,
             url: None,
@@ -1665,11 +1672,9 @@ fn ancestor_removal_attempt(
             request: DomSourceRequest::Event(outer),
             ..
         }) => Some(outer),
-        Err(crate::DomSourceRuntimeError::Dom(DomError::SourceWorkLimit { limit }))
-            if limit == cap =>
-        {
-            None
-        }
+        Err(crate::DomSourceDriveError::Source(crate::DomSourceRuntimeError::Dom(
+            DomError::SourceWorkLimit { limit },
+        ))) if limit == cap => None,
         other => panic!("only original parent Source work may bound setup: {other:?}"),
     };
     if let Some(outer) = &outer {

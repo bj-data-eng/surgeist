@@ -387,13 +387,17 @@ fn fragment() -> HtmlFragment {
     builder.finish()
 }
 
+#[expect(
+    clippy::result_large_err,
+    reason = "the helper preserves the actual root and original producer failure for exact driving refusal assertions"
+)]
 fn install(
     fixture: &mut HostedFixture,
     source: &HtmlFragment,
     target: DomNativeHtmlInstallTarget,
     limits: DomNativeHtmlInstallLimits,
     cancelled: &AtomicBool,
-) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
     let mut runtime = fixture.session.source_execution();
     let mut policy = |_: &DomStyleSource| None;
     runtime.install_native_html(
@@ -402,6 +406,7 @@ fn install(
         source,
         DomSourceNativeHtmlInstallLimits::new(limits, source_limits()),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut policy,
             url: None,
@@ -559,8 +564,10 @@ fn malformed_foreign_stale_cancelled_and_late_failed_edits_leave_retired_documen
             DomNativeHtmlInstallLimits::new(32, 100_000, 1_000_000),
             &cancel()
         ),
-        Err(DomSourceRuntimeError::NativeInstallation(
-            DomNativeHtmlInstallError::StaleDestination { .. }
+        Err(surgeist_runtime::DomSourceDriveError::Source(
+            DomSourceRuntimeError::NativeInstallation(
+                DomNativeHtmlInstallError::StaleDestination { .. }
+            )
         ))
     ));
     let target = DomNativeHtmlInstallTarget::new(
@@ -576,11 +583,11 @@ fn malformed_foreign_stale_cancelled_and_late_failed_edits_leave_retired_documen
             DomNativeHtmlInstallLimits::new(0, 100_000, 1_000_000),
             &cancel()
         ),
-        Err(DomSourceRuntimeError::NativeInstallation(
-            DomNativeHtmlInstallError::ResourceLimit {
+        Err(surgeist_runtime::DomSourceDriveError::Source(
+            DomSourceRuntimeError::NativeInstallation(DomNativeHtmlInstallError::ResourceLimit {
                 resource: DomNativeHtmlInstallResource::MappedNodes,
                 limit: 0
-            }
+            })
         ))
     ));
     assert_eq!(fixture.session.snapshot().stamp(), before.stamp());

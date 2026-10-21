@@ -4,7 +4,7 @@ use crate::meta_atomic::*;
 use std::{cell::Cell, sync::MutexGuard};
 use surgeist_cssom::{CssomBatch, CssomEditGuard, CssomSheetId, CssomSnapshot, CssomStore};
 
-pub(super) struct Envelope {
+pub(in crate::store) struct Envelope {
     limits: DomMetaAtomicLimits,
     work: Cell<u64>,
     bytes: Cell<usize>,
@@ -12,7 +12,65 @@ pub(super) struct Envelope {
     outputs: Cell<usize>,
     runtime: Cell<DomMetaRuntimeUsage>,
     controlled: Cell<custody::Usage>,
+    source: Option<SourceAccounting>,
 }
+struct SourceAccounting {
+    work: Arc<source::operation::meta::NativeWork>,
+    formation: Option<source::formation::Formation>,
+    output_bound: (usize, usize),
+    own: Cell<custody::Usage>,
+}
+impl Drop for SourceAccounting {
+    fn drop(&mut self) {
+        self.work.release_private(self.own.get());
+    }
+}
+impl SourceAccounting {
+    fn retain(
+        &self,
+        payload: source::storage::Payload,
+        limits: DomMetaAtomicLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let usage = custody::Usage::new(payload.bytes, payload.units);
+        let next = self.own.get().checked_add(usage)?;
+        self.work.check_private(usage, limits)?;
+        self.formation
+            .as_ref()
+            .expect("live Source graph")
+            .retain_payload(payload, cancel)?;
+        self.work.retain_private(usage);
+        self.own.set(next);
+        Ok(())
+    }
+    fn release(&self, payload: source::storage::Payload) {
+        let usage = custody::Usage::new(payload.bytes, payload.units);
+        self.formation
+            .as_ref()
+            .expect("live Source graph")
+            .release_payload(payload);
+        self.work.release_private(usage);
+        self.own.set(
+            self.own
+                .get()
+                .checked_sub(usage)
+                .expect("owned Source graph extent"),
+        );
+    }
+}
+/// Actual graph debit plus its original native shared union receipt. The graph
+/// must be destroyed/transferred before this holder is released or shrunk.
+pub(in crate::store) struct SourceGraphCharge {
+    work: Arc<source::operation::meta::NativeWork>,
+    usage: custody::Usage,
+    _charge: source::checkpoint::Charge,
+}
+impl Drop for SourceGraphCharge {
+    fn drop(&mut self) {
+        self.work.release_private(self.usage);
+    }
+}
+
 impl Envelope {
     fn new(
         limits: DomMetaAtomicLimits,
@@ -47,13 +105,54 @@ impl Envelope {
             outputs: Cell::new(0),
             runtime: Cell::new(usage),
             controlled: Cell::new(custody::Usage::ZERO),
+            source: None,
         })
     }
-    pub(super) fn step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
+    pub(in crate::store) fn source(
+        limits: DomMetaAtomicLimits,
+        runtime: DomMetaRuntimeUsage,
+        work: Arc<source::operation::meta::NativeWork>,
+        formation: source::formation::Formation,
+        outputs: (usize, usize),
+    ) -> Result<Self, DomError> {
+        let mut envelope = Self::new(limits, runtime, 0)?;
+        envelope.source = Some(SourceAccounting {
+            work,
+            formation: Some(formation),
+            output_bound: outputs,
+            own: Cell::new(custody::Usage::ZERO),
+        });
+        Ok(envelope)
+    }
+    pub(in crate::store) fn rebind_source(
+        &mut self,
+        limits: DomMetaAtomicLimits,
+        runtime: DomMetaRuntimeUsage,
+        outputs: (usize, usize),
+    ) {
+        assert!(self.source.is_some(), "original native Source graph");
+        self.limits = limits;
+        self.runtime.set(runtime);
+        self.source
+            .as_mut()
+            .expect("original Source envelope")
+            .output_bound = outputs;
+    }
+    pub(in crate::store) fn step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
+        if let Some(source) = &self.source {
+            source
+                .formation
+                .as_ref()
+                .expect("live Source graph")
+                .step(cancel)?;
+        }
         self.local_step(cancel)
     }
-    pub(super) fn local_step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
+    pub(in crate::store) fn local_step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
         check_cancel(cancel)?;
+        if let Some(source) = &self.source {
+            return source.work.step(self.limits, cancel);
+        }
         let next = self
             .work
             .get()
@@ -67,7 +166,7 @@ impl Envelope {
         self.work.set(next);
         Ok(())
     }
-    fn retain(
+    pub(in crate::store) fn retain(
         &self,
         bytes: usize,
         units: usize,
@@ -114,12 +213,26 @@ impl Envelope {
             self.limits.outputs,
             DomResource::MetaAtomicOutputs,
         )?;
+        if let Some(source) = &self.source {
+            source
+                .work
+                .reserve_outputs(outputs, source.output_bound, self.limits)?;
+            source.retain(
+                source::storage::Payload { bytes, units },
+                self.limits,
+                cancel,
+            )?;
+        }
         self.bytes.set(next_bytes);
         self.units.set(next_units);
         self.outputs.set(next_outputs);
         Ok(())
     }
-    fn runtime(&self, usage: DomMetaRuntimeUsage, cancel: &AtomicBool) -> Result<(), DomError> {
+    pub(in crate::store) fn runtime(
+        &self,
+        usage: DomMetaRuntimeUsage,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
         self.step(cancel)?;
         let old = self.runtime.get();
         let next = DomMetaRuntimeUsage {
@@ -153,13 +266,21 @@ impl Envelope {
             self.limits.outputs,
             DomResource::MetaAtomicOutputs,
         )?;
+        if let Some(source) = &self.source {
+            source.work.usage(next, self.limits)?;
+            source.work.reserve_outputs(
+                next.outputs - old.outputs,
+                source.output_bound,
+                self.limits,
+            )?;
+        }
         self.runtime.set(next);
         Ok(())
     }
     /// The canonical registry already owns and prices each actual controlled
     /// allocation. Include only its extra simultaneous union over the captured
     /// pre-binding basis, retaining its peak beside this invocation's holders.
-    fn controlled_extra(
+    pub(in crate::store) fn controlled_extra(
         &self,
         usage: custody::Usage,
         basis: custody::Usage,
@@ -194,10 +315,65 @@ impl Envelope {
             self.limits.retained_units,
             DomResource::MetaAtomicRetainedUnits,
         )?;
+        if let Some(source) = &self.source {
+            source
+                .formation
+                .as_ref()
+                .expect("live Source graph")
+                .admit_custody_usage(usage, cancel)?;
+            let delta = next.checked_sub(previous)?;
+            let own = source.own.get().checked_add(delta)?;
+            source.work.check_private(delta, self.limits)?;
+            source.work.retain_private(delta);
+            source.own.set(own);
+        }
         self.controlled.set(next);
         Ok(())
     }
-    fn reserve<T>(
+    pub(in crate::store) fn into_source_charge(
+        self,
+        payload: source::storage::Payload,
+    ) -> SourceGraphCharge {
+        let mut source = self.source.expect("actual Source graph custody");
+        let mut charge = source
+            .formation
+            .take()
+            .expect("live Source graph")
+            .into_charge();
+        charge.shrink_to_payload(payload);
+        let usage = custody::Usage::new(payload.bytes, payload.units);
+        source.work.release_private(
+            source
+                .own
+                .get()
+                .checked_sub(usage)
+                .expect("surviving graph is an admitted subset"),
+        );
+        source.own.set(custody::Usage::ZERO);
+        SourceGraphCharge {
+            work: source.work.clone(),
+            usage,
+            _charge: charge,
+        }
+    }
+    fn release(&self, payload: source::storage::Payload) {
+        self.bytes.set(
+            self.bytes
+                .get()
+                .checked_sub(payload.bytes)
+                .expect("owned native bytes"),
+        );
+        self.units.set(
+            self.units
+                .get()
+                .checked_sub(payload.units)
+                .expect("owned native units"),
+        );
+        if let Some(source) = &self.source {
+            source.release(payload);
+        }
+    }
+    pub(in crate::store) fn reserve<T>(
         &self,
         values: &mut Vec<T>,
         additional: usize,
@@ -220,36 +396,69 @@ impl Envelope {
             0,
             cancel,
         )?;
-        values
-            .try_reserve_exact(additional)
-            .map_err(|_| DomError::AllocationFailed)?;
-        self.retain(
-            (values.capacity() - required)
-                .checked_mul(size_of::<T>())
-                .ok_or(DomError::RepresentationExhausted)?,
-            0,
-            0,
-            cancel,
-        )?;
-        // Only now has the allocator retired the old bank. Keep its actual
-        // extent admitted beside the replacement until that transition ends.
+        let requested = required
+            .checked_mul(size_of::<T>())
+            .ok_or(DomError::RepresentationExhausted)?;
+        // Keep the original bank intact until the replacement's actual capacity
+        // is admitted; excess-capacity refusal cannot strand an unpriced bank.
+        let mut replacement = Vec::new();
+        if replacement.try_reserve_exact(required).is_err() {
+            self.release(source::storage::Payload {
+                bytes: requested,
+                units: 0,
+            });
+            return Err(DomError::AllocationFailed);
+        }
+        let excess = (replacement.capacity() - required)
+            .checked_mul(size_of::<T>())
+            .ok_or(DomError::RepresentationExhausted)?;
+        if let Err(error) = self.retain(excess, 0, 0, cancel) {
+            drop(replacement);
+            self.release(source::storage::Payload {
+                bytes: requested,
+                units: 0,
+            });
+            return Err(error);
+        }
+        replacement.append(values);
+        std::mem::swap(values, &mut replacement);
+        drop(replacement);
         let old_bytes = old
             .checked_mul(size_of::<T>())
             .ok_or(DomError::RepresentationExhausted)?;
-        self.bytes.set(
-            self.bytes
-                .get()
-                .checked_sub(old_bytes)
-                .expect("this envelope retained the old bank"),
-        );
+        self.release(source::storage::Payload {
+            bytes: old_bytes,
+            units: 0,
+        });
         Ok(())
     }
 }
-pub(super) struct Recording {
-    entries: Vec<DomMetaPreferredOccurrence>,
-    pub(super) envelope: Envelope,
+pub(in crate::store) struct Recording {
+    pub(in crate::store) entries: Vec<DomMetaPreferredOccurrence>,
+    pub(in crate::store) payloads: std::cell::RefCell<Vec<PayloadOwner>>,
+    pub(in crate::store) envelope: Envelope,
+}
+pub(in crate::store) struct PayloadOwner {
+    entry: usize,
+    payload: source::storage::Payload,
 }
 impl Recording {
+    pub(in crate::store) fn rollback(&mut self, len: usize) {
+        self.entries.truncate(len);
+        while self
+            .payloads
+            .get_mut()
+            .last()
+            .is_some_and(|p| p.entry >= len)
+        {
+            let payload = self
+                .payloads
+                .get_mut()
+                .pop()
+                .expect("actual admitted payload");
+            self.envelope.release(payload.payload);
+        }
+    }
     pub(super) fn attach(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
         self.envelope.retain(size_of::<Self>(), 0, 0, cancel)
     }
@@ -274,17 +483,31 @@ impl Draft {
                 return Ok(());
             }
         }
-        recording.envelope.retain(
-            content
+        let payload = source::storage::Payload {
+            bytes: content
                 .shared_code_units()
                 .capacity()
                 .checked_mul(2)
                 .and_then(|n| n.checked_add(size_of::<Vec<u16>>()))
                 .ok_or(DomError::RepresentationExhausted)?,
-            content.shared_code_units().capacity(),
-            0,
-            cancel,
-        )
+            units: content.shared_code_units().capacity(),
+        };
+        if recording.envelope.source.is_some() {
+            let mut payloads = recording.payloads.borrow_mut();
+            recording.envelope.reserve(&mut payloads, 1, cancel)?;
+            recording
+                .envelope
+                .retain(payload.bytes, payload.units, 0, cancel)?;
+            payloads.push(PayloadOwner {
+                entry: recording.entries.len(),
+                payload,
+            });
+            Ok(())
+        } else {
+            recording
+                .envelope
+                .retain(payload.bytes, payload.units, 0, cancel)
+        }
     }
     pub(super) fn record_meta_preferred(
         &mut self,
@@ -297,12 +520,24 @@ impl Draft {
             return Err(DomError::Meta(crate::DomMetaError::DefaultStyleUnsupported));
         };
         let meta = DomMetaSubject {
-            kind: match meta {
-                Key::Existing(id) => MetaSubjectKind::Existing(id),
-                Key::Created(index) => MetaSubjectKind::Created {
+            kind: if let Some(id) = self.published_id(meta) {
+                MetaSubjectKind::Existing(id)
+            } else if let (Key::Created(index), Some((operation, scope))) =
+                (meta, self.meta_scope.as_ref())
+            {
+                MetaSubjectKind::SourceCreated {
+                    operation: *operation,
+                    scope: scope.clone(),
+                    index,
+                }
+            } else {
+                let Key::Created(index) = meta else {
+                    unreachable!("existing subjects resolve without allocation")
+                };
+                MetaSubjectKind::Created {
                     owner: self.owner.clone(),
                     index,
-                },
+                }
             },
         };
         let recording = self
@@ -320,11 +555,11 @@ impl Draft {
         Ok(())
     }
 }
-struct Root<'caps> {
-    root: NodeId,
-    store: MutexGuard<'caps, CssomStore>,
-    snapshot: CssomSnapshot,
-    batch: Option<CssomBatch>,
+pub(in crate::store) struct Root<'caps> {
+    pub(in crate::store) root: NodeId,
+    pub(in crate::store) store: MutexGuard<'caps, CssomStore>,
+    pub(in crate::store) snapshot: CssomSnapshot,
+    pub(in crate::store) batch: Option<CssomBatch>,
 }
 /// An ordinary private native publication. Drop abandons all staging and unlocks
 /// its actual owners. No resolver, tentative producer output or live ID escapes.
@@ -603,12 +838,14 @@ fn prepare_ordinary<'dom, 'caps>(
     };
     let meta = Recording {
         entries: Vec::new(),
+        payloads: Default::default(),
         envelope,
     };
     let (prepared, recording) =
         dom.prepare_with_recordings(batch, recording, Some(meta), cancel)?;
     let Recording {
         entries: occurrences,
+        payloads: _,
         envelope,
     } = recording.expect("explicit ordinary Meta recording");
     let mut publication = dom.prepare_publication(prepared, cancel)?;

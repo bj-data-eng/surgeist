@@ -214,6 +214,7 @@ impl Fixture {
                 DomSourceEdit::insert_before(self.root, self.body, None),
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
@@ -234,13 +235,17 @@ impl Fixture {
             other => panic!("Style must precede the genuine post-connection child wait: {other:?}"),
         }
     }
+    #[expect(
+        clippy::result_large_err,
+        reason = "the helper preserves the actual root and original producer failure for exact driving refusal assertions"
+    )]
     fn resume_url(
         &mut self,
         operation: DomSourceOperationId,
         inputs: &UrlInputs,
         csp: &mut Vec<DomSourceOperationId>,
         stages: &mut Vec<DomSourceUrlStage>,
-    ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+    ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
         let mut policy = |source: &DomStyleSource| {
             csp.push(source.operation());
             Some(DomStyleInlineCspObservation::complete_empty(source, 1))
@@ -259,6 +264,7 @@ impl Fixture {
             operation,
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut policy,
                 url: Some(DomSourceUrlService {
@@ -269,16 +275,21 @@ impl Fixture {
             &cancel(),
         )
     }
+    #[expect(
+        clippy::result_large_err,
+        reason = "the helper preserves the actual root and original producer failure for exact driving refusal assertions"
+    )]
     fn resume_without_url(
         &mut self,
         operation: DomSourceOperationId,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+    ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
         self.session.source_execution().resume(
             &mut self.session.dom(),
             operation,
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_: &DomStyleSource| None,
                 url: None,
@@ -286,12 +297,17 @@ impl Fixture {
             cancel,
         )
     }
-    fn detach(&mut self) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+    #[expect(
+        clippy::result_large_err,
+        reason = "the helper preserves the actual root and original producer failure for exact driving refusal assertions"
+    )]
+    fn detach(&mut self) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
         self.session.source_execution().apply(
             &mut self.session.dom(),
             DomSourceEdit::detach(self.root),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_: &DomStyleSource| None,
                 url: None,
@@ -750,9 +766,9 @@ fn mixed_insertion_keeps_published_stylesheet_through_child_url_wait_registry_re
     );
     assert!(matches!(
         fixture.resume_without_url(operation, &AtomicBool::new(true)),
-        Err(DomSourceRuntimeError::Style(DomStyleRuntimeError::Dom(
-            DomError::Cancelled
-        )))
+        Err(surgeist_runtime::DomSourceDriveError::Source(
+            DomSourceRuntimeError::Style(DomStyleRuntimeError::Dom(DomError::Cancelled))
+        ))
     ));
     assert_eq!(fixture.cssom().revision(), original.revision());
     assert_eq!(
@@ -778,12 +794,12 @@ fn mixed_insertion_keeps_published_stylesheet_through_child_url_wait_registry_re
     assert!(
         matches!(
             refused,
-            Err(DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(
-                DomHostedError::Limit {
+            Err(surgeist_runtime::DomSourceDriveError::Source(
+                DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(DomHostedError::Limit {
                     resource: DomHostedResource::Registries,
                     limit: 1,
-                }
-            )))
+                }))
+            ))
         ),
         "real later child registry admission required: {refused:?}"
     );
@@ -887,8 +903,8 @@ fn mixed_removal_reaches_iframe_destruction_admission_before_the_sibling_stylesh
     assert!(
         matches!(
             result,
-            Err(DomSourceRuntimeError::Hosted(
-                DomHostedRuntimeError::Admission
+            Err(surgeist_runtime::DomSourceDriveError::Source(
+                DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Admission)
             ))
         ),
         "actual child-removal queue must refuse before sibling Style removal: {result:?}"
@@ -941,9 +957,9 @@ fn mixed_removal_reaches_iframe_destruction_admission_before_the_sibling_stylesh
     ));
     assert!(matches!(
         fixture.resume_without_url(pending.operation(), &AtomicBool::new(true)),
-        Err(DomSourceRuntimeError::Style(DomStyleRuntimeError::Dom(
-            DomError::Cancelled
-        )))
+        Err(surgeist_runtime::DomSourceDriveError::Source(
+            DomSourceRuntimeError::Style(DomStyleRuntimeError::Dom(DomError::Cancelled))
+        ))
     ));
     assert_eq!(fixture.cssom().revision(), original.revision());
     fixture

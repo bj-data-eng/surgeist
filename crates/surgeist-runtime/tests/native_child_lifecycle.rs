@@ -129,6 +129,7 @@ fn absent_src_insertion_creates_child(local: &str) {
     let mut source = session.source_execution();
     let mut policy = |_: &DomStyleSource| None;
     let mut services = DomSourceServices {
+        meta: None,
         execution_scope: None,
         style_policy: &mut policy,
         url: None,
@@ -274,6 +275,7 @@ fn single_subtree_insertion_creates_both_sibling_children_before_source_completi
         let mut dom = session.dom();
         let mut policy = |_: &DomStyleSource| None;
         let mut services = DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut policy,
             url: None,
@@ -316,7 +318,7 @@ fn details_callback_inserts_both_siblings_without_waiting_on_its_own_window_loop
         source: DomSourceRuntime,
         root: NodeId,
         parent: NodeId,
-        returned: Vec<Result<DomSourceDriveProgress, DomSourceRuntimeError>>,
+        returned: Vec<Result<DomSourceDriveProgress, DomSourceDriveError>>,
     }
     impl DomElementTaskEventContext for Context {
         fn element_tasks(&mut self) -> &mut DomElementTaskRuntime {
@@ -356,6 +358,7 @@ fn details_callback_inserts_both_siblings_without_waiting_on_its_own_window_loop
                 DomEventCallback::new(|dom, _, context: &mut Context, _| {
                     let mut policy = |_: &DomStyleSource| None;
                     let mut services = DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut policy,
                         url: None,
@@ -504,6 +507,7 @@ fn complete_source_edit(session: &mut DomSession, edit: DomSourceEdit) {
     let mut source = session.source_execution();
     let mut policy = |_: &DomStyleSource| None;
     let mut services = DomSourceServices {
+        meta: None,
         execution_scope: None,
         style_policy: &mut policy,
         url: None,
@@ -1475,6 +1479,7 @@ fn retiring_document_refuses_fresh_child_before_single_edit_publication() {
     let mut source = session.source_execution();
     let mut policy = |_: &DomStyleSource| None;
     let mut services = DomSourceServices {
+        meta: None,
         execution_scope: None,
         style_policy: &mut policy,
         url: None,
@@ -1487,8 +1492,8 @@ fn retiring_document_refuses_fresh_child_before_single_edit_publication() {
             &mut services,
             &cancel(),
         ),
-        Err(DomSourceRuntimeError::Dom(
-            DomError::HostedSourceUnavailable
+        Err(surgeist_runtime::DomSourceDriveError::Source(
+            DomSourceRuntimeError::Dom(DomError::HostedSourceUnavailable)
         ))
     ));
     let refused = session.snapshot();

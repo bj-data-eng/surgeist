@@ -305,6 +305,70 @@ fn pending_association_source_insertion_cannot_cross_pending_document_history() 
 }
 
 #[test]
+fn pending_association_native_meta_source_hold_refuses_before_missing_owner_and_preserves_history()
+{
+    let report = parse(HtmlSource::utf8(
+        "<!doctype html><meta http-equiv=default-style content=chosen><p>X",
+    ));
+    let (mut dom, environment) = setup();
+    let installed = install(&mut dom, report, environment);
+    let document = installed.document();
+    let head = element(&installed, "head");
+    let pending = installed.pending_association().unwrap();
+    drop(installed);
+    dom.set_limits(dom.limits().with_meta_processing_work(100_000))
+        .unwrap();
+    let mut batch = DomBatch::new();
+    let other = batch.create_document();
+    let meta = batch.create_element_ns(&other, Namespace::html(), "meta");
+    batch.set_attribute(&meta, "http-equiv", "default-style");
+    batch.set_attribute(&meta, "content", "later");
+    let created = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    let other = created.document(&other).unwrap();
+    let meta = created.created(&meta).unwrap().unwrap();
+    let before = dom.snapshot().stamp();
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::insert_before(meta, head, None),
+            DomSourceLimits::new(64_000_000, 16_000_000, 10_000_000, 1024, 4096, 4096, 1),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+    let operation = lease.operation();
+    let mut hold = lease
+        .begin_meta_runtime(
+            DomMetaAtomicLimits::new(16_000_000, 1_000_000, 1_000_000, 128).unwrap(),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+    let error = match hold.prepare(&[], None, &AtomicBool::new(false)) {
+        Err(error) => error,
+        Ok(_) => panic!("native Meta cannot cross the original parsed association"),
+    };
+    assert!(
+        matches!(error, DomMetaAtomicError::Dom(DomError::ParsedAssociationPending {
+        document: actual, pending: actual_pending
+    }) if actual == document && actual_pending == pending),
+        "actual refusal: {error:?}"
+    );
+    drop(hold);
+    drop(lease);
+    assert_eq!(dom.snapshot().stamp(), before);
+    assert_eq!(dom.pending_source_edit().unwrap().operation(), operation);
+    assert_eq!(dom.snapshot().node(meta).unwrap().parent(), None);
+    assert_eq!(
+        dom.snapshot().node(meta).unwrap().owner_document().unwrap(),
+        other
+    );
+    let retained = dom.pending_parsed_html_associations().next().unwrap();
+    assert_eq!(retained.id(), pending);
+    assert_eq!(
+        preferred(retained.report()),
+        vec!["chosen".encode_utf16().collect::<Vec<_>>()]
+    );
+}
+
+#[test]
 fn pending_association_style_meta_style_order_and_template_documents_remain_original() {
     let report = parse(HtmlSource::utf8(
         "<!doctype html><style title=A>a { color: red }</style><meta http-equiv=default-style content=B><style title=C>c { color: blue }</style><template><style title=T>t { color: black }</style></template>",

@@ -1177,6 +1177,7 @@ mod url_configuration_tests {
                 DomSourceEdit::insert_before(iframe, body, None),
                 source_limits(20_000_000),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut |_| None,
                     url: None,
@@ -1321,6 +1322,7 @@ mod url_configuration_tests {
                     operation,
                     source_limits(20_000_000),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut |_| None,
                         url: None,
@@ -1371,6 +1373,7 @@ mod url_configuration_tests {
                 operation,
                 source_limits(20_000_000),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut |_| None,
                     url: Some(DomSourceUrlService {

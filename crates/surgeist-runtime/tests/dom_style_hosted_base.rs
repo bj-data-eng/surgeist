@@ -233,6 +233,7 @@ fn hosted_style_uses_current_constructor_base(child: bool) {
                 DomSourceEdit::insert_before(iframe, body(&initial, top.document()), None),
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut |_: &DomStyleSource| None,
                     url: None,
@@ -366,6 +367,7 @@ fn hosted_style_uses_current_constructor_base(child: bool) {
             DomSourceEdit::insert_before(style, body(&ready, document), None),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut policy,
                 url: None,
@@ -457,6 +459,7 @@ fn hosted_style_uses_current_constructor_base(child: bool) {
             DomSourceEdit::detach(style),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_: &DomStyleSource| None,
                 url: None,

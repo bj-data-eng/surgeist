@@ -114,6 +114,7 @@ fn accepted_toggle_reports_exact_retired_or_surviving_cleanup_after_later_once_l
                                 edit,
                                 source_limits(),
                                 &mut DomSourceServices {
+                                    meta: None,
                                     execution_scope: None,
                                     style_policy: &mut |_| None,
                                     url: None,

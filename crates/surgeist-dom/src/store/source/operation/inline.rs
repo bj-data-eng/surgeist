@@ -16,6 +16,7 @@ pub(super) enum AdvanceError {
     Dom(DomError),
     Inline(DomInlineStyleError),
     Unwind(Box<dyn std::any::Any + Send>),
+    NativePrepared,
 }
 impl From<DomError> for AdvanceError {
     fn from(error: DomError) -> Self {
@@ -31,12 +32,14 @@ impl From<DomInlineStyleError> for AdvanceError {
 pub(super) struct Execution<'a> {
     pub(super) resolver: Option<&'a mut Resolver<'a>>,
     pub(super) publication: Option<DomInlineStyleSourcePublication>,
+    pub(super) native: Option<meta::Execution>,
 }
 impl Execution<'_> {
     pub(super) fn disabled() -> Self {
         Self {
             resolver: None,
             publication: None,
+            native: None,
         }
     }
 }
@@ -107,6 +110,7 @@ impl DomSourceLease<'_> {
         let mut execution = Execution {
             resolver: Some(&mut resolver),
             publication: None,
+            native: None,
         };
         match self.advance_execution(&mut execution, cancel) {
             Ok(source) => Ok(DomInlineStyleSourceProgress {
@@ -116,6 +120,7 @@ impl DomSourceLease<'_> {
             Err(AdvanceError::Dom(error)) => Err(error.into()),
             Err(AdvanceError::Inline(error)) => Err(error),
             Err(AdvanceError::Unwind(payload)) => std::panic::resume_unwind(payload),
+            Err(AdvanceError::NativePrepared) => unreachable!("no native preparation capability"),
         }
     }
 }
@@ -188,18 +193,24 @@ impl Operation {
     pub(super) fn publication_inline(
         &mut self,
         dom: &mut Dom,
-        incomplete: bool,
         target: PublicationTarget,
+        disposition: Option<meta::Disposition>,
         checkpoint: Option<&checkpoint::Checkpoint>,
         execution: &mut Execution<'_>,
         cancel: &AtomicBool,
     ) -> Result<PublishedSegment, AdvanceError> {
+        let incomplete = !matches!(disposition, Some(meta::Disposition::Complete { .. }));
         let mut segment = self
             .prepare_segment(dom, incomplete, target, None, checkpoint, cancel)
             .map_err(|error| match error {
                 crate::DomHostedError::Dom(error) => AdvanceError::Dom(error),
                 _ => unreachable!("no hosted permit"),
             })?;
+        if execution.native.is_some() && self.meta_reached() {
+            let disposition = disposition.ok_or(DomError::InvalidSourceOperation)?;
+            self.pending_meta = Some(meta::Pending::new(segment, disposition));
+            return Err(AdvanceError::NativePrepared);
+        }
         let has_inputs = segment
             .prepared
             .inline_recording

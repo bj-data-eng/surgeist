@@ -310,6 +310,9 @@ pub use store::source::operation::DomSourceLease;
 pub use store::source::operation::fullscreen::{
     DomFullscreenExitHandoffCommit, DomFullscreenExitJob, DomSourceFullscreenExitHandoffRequest,
 };
+pub use store::source::operation::meta::{
+    DomMetaSourcePreparation, DomMetaSourcePublished, DomMetaSourceRuntimeHold, DomMetaSourceStep,
+};
 pub use style::{
     DomStyle, DomStyleAction, DomStyleAssociationId, DomStyleCssomOwnerBinding,
     DomStyleCssomPublicationRejection, DomStyleCssomRoot, DomStyleCssomRootError,

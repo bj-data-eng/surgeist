@@ -176,14 +176,15 @@ fn runtime_select_completion_preserves_a_real_handoff_retirement_skip() {
                 checkpoint,
                 DomSourceLimits::new(0, 0, 0, 0, 0, 0, 0),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut unexpected_policy,
                     url: None,
                 },
                 &cancel,
             ),
-            Err(DomSourceRuntimeError::ElementTasks(
-                DomElementTaskRuntimeError::Binding
+            Err(surgeist_runtime::DomSourceDriveError::Source(
+                DomSourceRuntimeError::ElementTasks(DomElementTaskRuntimeError::Binding)
             ))
         ));
         assert!(matches!(
@@ -193,13 +194,16 @@ fn runtime_select_completion_preserves_a_real_handoff_retirement_skip() {
                 checkpoint,
                 DomSourceLimits::new(0, 0, 0, 0, 0, 0, 0),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut unexpected_policy,
                     url: None,
                 },
                 &cancel,
             ),
-            Err(DomSourceRuntimeError::Dom(DomError::ForeignOwner))
+            Err(surgeist_runtime::DomSourceDriveError::Source(
+                DomSourceRuntimeError::Dom(DomError::ForeignOwner)
+            ))
         ));
         for (checkpoint, cancelled, expected) in [
             (checkpoint, true, DomError::Cancelled),
@@ -234,13 +238,14 @@ fn runtime_select_completion_preserves_a_real_handoff_retirement_skip() {
                     checkpoint,
                     DomSourceLimits::new(0, 0, 0, 0, 0, 0, 0),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut unexpected_policy,
                         url: None,
                     },
                     &AtomicBool::new(cancelled),
                 ),
-                Err(DomSourceRuntimeError::Dom(actual)) if actual == expected
+                Err(surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(actual))) if actual == expected
             ));
             assert_eq!(session.snapshot().stamp(), before.stamp());
             assert!(session.dom().pending_source_edit().is_none());
@@ -260,6 +265,7 @@ fn runtime_select_completion_preserves_a_real_handoff_retirement_skip() {
             checkpoint,
             DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 64, 4096, 4096, 1),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: foreign_optional_scope.then_some(&foreign_scope),
                 style_policy: &mut unexpected_policy,
                 url: None,
@@ -287,13 +293,16 @@ fn runtime_select_completion_preserves_a_real_handoff_retirement_skip() {
                 checkpoint,
                 DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 64, 4096, 4096, 1),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut unexpected_policy,
                     url: None,
                 },
                 &cancel,
             ),
-            Err(DomSourceRuntimeError::Dom(DomError::InvalidNativeTask))
+            Err(surgeist_runtime::DomSourceDriveError::Source(
+                DomSourceRuntimeError::Dom(DomError::InvalidNativeTask)
+            ))
         ));
         let after = session.snapshot();
         assert_eq!(after.stamp(), before.stamp());
@@ -358,6 +367,17 @@ fn runtime_select_completion_preserves_a_real_handoff_retirement_skip() {
 
 #[test]
 fn runtime_live_select_completion_returns_its_actual_source_progress() {
+    live_select_completion(None);
+}
+
+#[test]
+fn finite_meta_permission_preserves_real_select_completion_without_meta() {
+    live_select_completion(Some(
+        surgeist_dom::DomMetaAtomicLimits::new(16_000_000, 1_000_000, 1_000_000, 128).unwrap(),
+    ));
+}
+
+fn live_select_completion(meta: Option<surgeist_dom::DomMetaAtomicLimits>) {
     let cancel = AtomicBool::new(false);
     let mut dom = Dom::new(
         DomLimits::new(
@@ -413,6 +433,7 @@ fn runtime_live_select_completion_returns_its_actual_source_progress() {
                 checkpoint,
                 DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 64, 4096, 4096, 1),
                 &mut DomSourceServices {
+                    meta,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
@@ -440,6 +461,17 @@ fn runtime_live_select_completion_returns_its_actual_source_progress() {
 
 #[test]
 fn runtime_live_select_copy_resumes_the_same_real_style_csp_request_once() {
+    live_select_copy(None);
+}
+
+#[test]
+fn finite_meta_permission_preserves_select_style_request_and_resume() {
+    live_select_copy(Some(
+        surgeist_dom::DomMetaAtomicLimits::new(16_000_000, 1_000_000, 1_000_000, 128).unwrap(),
+    ));
+}
+
+fn live_select_copy(meta: Option<surgeist_dom::DomMetaAtomicLimits>) {
     let cancel = AtomicBool::new(false);
     let source_limits = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 64, 4096, 4096, 1);
     let checkpoint = DomNativeCheckpointLimits::new(
@@ -512,6 +544,7 @@ fn runtime_live_select_copy_resumes_the_same_real_style_csp_request_once() {
             checkpoint,
             source_limits,
             &mut DomSourceServices {
+                meta,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -550,6 +583,7 @@ fn runtime_live_select_copy_resumes_the_same_real_style_csp_request_once() {
             &task,
             source_limits,
             &mut DomSourceServices {
+                meta,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -589,6 +623,7 @@ fn runtime_live_select_copy_resumes_the_same_real_style_csp_request_once() {
                 &task,
                 source_limits,
                 &mut DomSourceServices {
+                    meta,
                     execution_scope: None,
                     style_policy: &mut block,
                     url: None,
@@ -646,13 +681,16 @@ fn runtime_live_select_copy_resumes_the_same_real_style_csp_request_once() {
             checkpoint,
             source_limits,
             &mut DomSourceServices {
+                meta,
                 execution_scope: None,
                 style_policy: &mut |_| panic!("consumed Select must not replay CSP"),
                 url: None,
             },
             &cancel,
         ),
-        Err(DomSourceRuntimeError::Dom(DomError::InvalidNativeTask))
+        Err(surgeist_runtime::DomSourceDriveError::Source(
+            DomSourceRuntimeError::Dom(DomError::InvalidNativeTask)
+        ))
     ));
     assert_eq!(session.snapshot().stamp(), complete.stamp());
     assert!(matches!(

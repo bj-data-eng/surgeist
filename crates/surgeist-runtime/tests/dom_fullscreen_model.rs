@@ -279,6 +279,7 @@ fn complete_source(session: &mut DomSession, edit: DomSourceEdit) -> DomSourceCo
             edit,
             DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 1),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,

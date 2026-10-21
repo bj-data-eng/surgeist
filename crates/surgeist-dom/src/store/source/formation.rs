@@ -297,6 +297,10 @@ pub(super) struct WorkDependencies {
     _mirrors: Option<SourceMirrors>,
 }
 impl WorkDependencies {
+    pub(super) fn same_source(&self, other: &Self) -> bool {
+        self._source.identity() == other._source.identity()
+            && Arc::ptr_eq(self._source.work(), other._source.work())
+    }
     pub(super) fn from_draft(draft: &Draft) -> Self {
         Self {
             _source: draft.source_work_custody(),

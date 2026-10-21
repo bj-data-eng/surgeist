@@ -164,6 +164,7 @@ fn parked_style_source_refuses_new_svg_recipients_without_resetting_the_original
             DomSourceEdit::insert_before(style, parent, None),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut no_policy,
                 url: None,
@@ -222,6 +223,7 @@ fn parked_style_source_refuses_new_svg_recipients_without_resetting_the_original
             request.source().operation(),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut policy,
                 url: None,
@@ -353,6 +355,7 @@ fn observed_beforetoggle_reentry_retains_svg_recipients_and_atomically_refuses_p
             DomSourceEdit::show_dialog(dialog),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut no_policy,
                 url: None,
@@ -408,6 +411,7 @@ fn observed_beforetoggle_reentry_retains_svg_recipients_and_atomically_refuses_p
             request.operation(),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut no_policy,
                 url: None,
@@ -521,6 +525,7 @@ fn real_style_load_consumes_once_ancestor_recipient_before_svg_processing_retry(
             DomSourceEdit::insert_before(style, parent, None),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut policy,
                 url: None,

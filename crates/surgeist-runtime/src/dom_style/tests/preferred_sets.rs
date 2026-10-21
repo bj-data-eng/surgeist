@@ -17,6 +17,7 @@ fn append_named_style(session: &mut DomSession, document: NodeId, title: &str) -
                 DomSourceEdit::insert_before(style, container, None),
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
@@ -154,6 +155,7 @@ fn drive(session: &mut DomSession, edit: DomSourceEdit) {
                 edit,
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None,
@@ -576,6 +578,7 @@ fn parked_actual_style_source_refuses_independent_preference_calls_until_its_tai
                 DomSourceEdit::insert_before(style, container, None),
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut |_| None,
                     url: None
@@ -604,6 +607,7 @@ fn parked_actual_style_source_refuses_independent_preference_calls_until_its_tai
                 operation,
                 source_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut policy,
                     url: None

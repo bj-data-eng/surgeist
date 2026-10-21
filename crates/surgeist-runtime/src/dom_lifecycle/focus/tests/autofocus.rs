@@ -37,6 +37,7 @@ fn parked_insertion() -> Insertion {
             DomSourceEdit::insert_before(iframe, body, None),
             source_limits(10_000_000),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -290,6 +291,7 @@ fn same_origin_autofocus_tail_output_is_preadmitted_before_actual_toggle_queue_e
                     DomSourceEdit::set_attribute(subject, name, ""),
                     source_limits(10_000_000),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut |_| None,
                         url: None,
@@ -331,6 +333,7 @@ fn same_origin_autofocus_tail_output_is_preadmitted_before_actual_toggle_queue_e
                 DomSourceEdit::show_modal_dialog(subject),
                 policy,
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut |_| None,
                     url: None,
@@ -451,6 +454,7 @@ fn same_origin_autofocus_tail_output_is_preadmitted_before_actual_toggle_queue_e
                     before.operation(),
                     bounded(EXACT_OUTPUTS),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut |_| None,
                         url: None

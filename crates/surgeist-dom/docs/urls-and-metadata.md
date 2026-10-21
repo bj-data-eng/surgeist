@@ -198,9 +198,9 @@ The native envelope admits the actual additional controlled-registry union and
 its temporary peak alongside the other native holders and Runtime storage.
 
 The ordinary capability requires idle Source, including no active authenticated
-observer callback. Source/eventful/parent continuation integration remains a
-separate required capability; the ordinary prefix does not authorize or prepay
-an original Source. `DomMetaAtomicLimits` bounds extra actual holder/output
+observer callback. An original Source uses the separate borrowed hold described
+in [Source/Style](source-and-style.md#native-meta-composition); the ordinary prefix
+does not authorize or prepay that operation. `DomMetaAtomicLimits` bounds extra actual holder/output
 storage, UTF-16 backing and orchestration work alongside existing domain limits.
 `DomMetaRuntimePrefix` declares the adapter's actual preadmitted bank storage and
 already-spent formation work; preparation rechecks it against its actual limits

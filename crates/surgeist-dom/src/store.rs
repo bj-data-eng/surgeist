@@ -2066,6 +2066,10 @@ struct Draft {
     inline_membership: Option<inline_style::Membership>,
     pending_associations: pending_associations::Bank,
     meta_recording: Option<meta_atomic::Recording>,
+    meta_scope: Option<(
+        crate::DomSourceOperationId,
+        crate::store::source::operation::meta::SubjectScope,
+    )>,
     inline_echo: Option<inline_style::feedback::Echo>,
     inline_recording: Option<inline_style::recording::Recording>,
     dom_limits: DomLimits,
@@ -2590,6 +2594,7 @@ impl Draft {
             inline_membership: dom.inline_membership(),
             pending_associations: dom.pending_associations.clone(),
             meta_recording: None,
+            meta_scope: None,
             inline_recording: dom.blocked_inline_recording(),
             inline_echo: None,
             dom_limits: dom.limits,

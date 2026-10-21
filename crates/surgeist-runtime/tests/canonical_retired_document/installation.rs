@@ -48,13 +48,17 @@ fn target(
     )
 }
 
+#[expect(
+    clippy::result_large_err,
+    reason = "the helper preserves the actual root and original producer failure for exact driving refusal assertions"
+)]
 fn install(
     fixture: &mut HostedFixture,
     source: &HtmlFragment,
     target: DomNativeHtmlInstallTarget,
     limits: DomNativeHtmlInstallLimits,
     cancelled: &AtomicBool,
-) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
     let mut runtime = fixture.session.source_execution();
     let mut policy = |_: &DomStyleSource| None;
     runtime.install_native_html(
@@ -63,6 +67,7 @@ fn install(
         source,
         DomSourceNativeHtmlInstallLimits::new(limits, source_limits()),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut policy,
             url: None,
@@ -79,7 +84,9 @@ fn refused(
     cancelled: &AtomicBool,
 ) -> DomNativeHtmlInstallError {
     match install(fixture, source, target, limits, cancelled).unwrap_err() {
-        DomSourceRuntimeError::NativeInstallation(error) => error,
+        surgeist_runtime::DomSourceDriveError::Source(
+            DomSourceRuntimeError::NativeInstallation(error),
+        ) => error,
         other => panic!("the native installer must retain its precise refusal: {other:?}"),
     }
 }

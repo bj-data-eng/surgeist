@@ -9,6 +9,7 @@ pub(in crate::store) mod empty_policy_tests;
 mod failure;
 mod focus;
 mod inline;
+pub(crate) mod meta;
 use inline::{AdvanceError, Execution};
 pub(crate) mod fullscreen;
 #[cfg(test)]
@@ -72,6 +73,9 @@ pub(in crate::store) struct Operation {
     entry_scope: EntryScope,
     limits: DomSourceLimits,
     inline_source: Option<inline::SourceInline>,
+    meta_policy: Option<meta::Policy>,
+    pending_meta: Option<meta::Pending>,
+    meta_receipt: Option<meta::SavedReceipt>,
     draft: dialog::OperationDraft,
     commands: OperationRoot,
     index: usize,
@@ -147,11 +151,12 @@ pub struct DomSourceLease<'a> {
 impl Drop for DomSourceLease<'_> {
     fn drop(&mut self) {
         if !self.complete
-            && self
-                .dom
-                .source_operation
-                .as_ref()
-                .is_some_and(|o| !o.published && !o.event_exposed && o.observation().is_none())
+            && self.dom.source_operation.as_ref().is_some_and(|o| {
+                !o.published
+                    && !o.event_exposed
+                    && o.observation().is_none()
+                    && o.meta_policy.is_none()
+            })
         {
             self.dom.source_operation = self.dom.source_parents.pop();
         }
@@ -346,6 +351,9 @@ impl Dom {
             names: draft.names.clone(),
             draft: dialog::OperationDraft::Segment(draft),
             inline_source: None,
+            meta_policy: None,
+            pending_meta: None,
+            meta_receipt: None,
             commands,
             index: 0,
             started: false,
@@ -707,14 +715,21 @@ impl Operation {
                 )
                 .ok_or(DomError::RepresentationExhausted)?;
         }
-        if let Some(binding) = &self.owner_binding {
+        if let Some(binding) = self.owner_binding.as_ref().or_else(|| {
+            self.meta_receipt
+                .as_ref()
+                .and_then(|saved| saved.binding.as_ref())
+        }) {
             bytes = bytes
                 .checked_add(binding.retained_bytes()?)
                 .ok_or(DomError::RepresentationExhausted)?;
         }
         if let Some(Receipt::Inline {
             bytes: retained, ..
-        }) = &self.receipt
+        }) = self
+            .receipt
+            .as_ref()
+            .or_else(|| self.meta_receipt.as_ref().map(|saved| &saved.receipt))
         {
             bytes = bytes
                 .checked_add(*retained)
@@ -725,7 +740,16 @@ impl Operation {
                 .checked_add(s.retained_bytes()?)
                 .ok_or(DomError::RepresentationExhausted)?;
         }
-        if let Some(order) = self.request.as_ref().and_then(|r| r.sheet_order.as_ref()) {
+        if let Some(order) = self
+            .request
+            .as_ref()
+            .or_else(|| {
+                self.meta_receipt
+                    .as_ref()
+                    .and_then(|saved| saved.request.as_ref())
+            })
+            .and_then(|r| r.sheet_order.as_ref())
+        {
             bytes = bytes
                 .checked_add(size_of::<Vec<DomStyleSheetPlacement>>())
                 .and_then(|n| {
@@ -735,6 +759,19 @@ impl Operation {
                             .checked_mul(size_of::<DomStyleSheetPlacement>())?,
                     )
                 })
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+        if let Some(request) = self
+            .meta_receipt
+            .as_ref()
+            .and_then(|saved| saved.request.as_ref())
+            && !self
+                .context
+                .as_ref()
+                .is_some_and(|(_, source)| Arc::ptr_eq(source, &request.source))
+        {
+            bytes = bytes
+                .checked_add(request.source.retained_bytes()?)
                 .ok_or(DomError::RepresentationExhausted)?;
         }
         if let Some(value) = &self.request_close_result {
@@ -1232,7 +1269,8 @@ impl Operation {
             .checked_add(prepared.changes.len())
             .ok_or(DomError::RepresentationExhausted)?;
         if outputs
-            .checked_add(usize::from(incomplete))
+            .checked_add(self.meta_policy.as_ref().map_or(0, |p| p.outputs()))
+            .and_then(|n| n.checked_add(usize::from(incomplete)))
             .is_none_or(|required| required > limits.outputs)
         {
             return Err(DomError::SourceOutputLimit.into());
@@ -1696,6 +1734,9 @@ impl SegmentPublication {
         }
         op.phases += u64::from(changed);
         op.published = true;
+        op.meta_receipt = None;
+        drop(op.draft.meta_recording.take());
+        op.draft.meta_scope = None;
         PublishedSegment {
             commit,
             committed,
@@ -1728,7 +1769,9 @@ impl DomSourceLease<'_> {
         match self.advance_execution(&mut Execution::disabled(), cancel) {
             Ok(progress) => Ok(progress),
             Err(AdvanceError::Dom(error)) => Err(error),
-            Err(AdvanceError::Inline(_) | AdvanceError::Unwind(_)) => {
+            Err(
+                AdvanceError::Inline(_) | AdvanceError::Unwind(_) | AdvanceError::NativePrepared,
+            ) => {
                 unreachable!("no resolver in context-free advance")
             }
         }
@@ -1739,6 +1782,14 @@ impl DomSourceLease<'_> {
         cancel: &AtomicBool,
     ) -> Result<DomSourceProgress, AdvanceError> {
         check_cancel(cancel)?;
+        if self
+            .dom
+            .source_operation
+            .as_ref()
+            .is_some_and(|op| op.pending_meta.is_some())
+        {
+            return Err(DomError::Meta(crate::DomMetaError::DefaultStyleUnsupported).into());
+        }
         if !self
             .dom
             .source_operation
@@ -1784,6 +1835,7 @@ impl DomSourceLease<'_> {
             .dom
             .source_operation
             .as_ref()
+            .filter(|_| execution.native.is_none())
             .and_then(|op| {
                 matches!(op.receipt, Some(Receipt::Cssom { .. })).then(|| {
                     let request = op.request.as_ref().ok_or(DomError::StyleProtocol)?;
@@ -1835,6 +1887,7 @@ impl DomSourceLease<'_> {
         execution: &mut Execution<'_>,
         cancel: &AtomicBool,
     ) -> Result<DomSourceProgress, AdvanceError> {
+        op.prepare_meta_execution(execution, cancel)?;
         // A genuine observer may create the first binding after this Source
         // began. Refresh operational membership before any resumed mutation.
         op.refresh_inline_execution(self.dom, execution.resolver.is_some())?;
@@ -1953,6 +2006,9 @@ impl DomSourceLease<'_> {
             }
             let input_bytes = op.input_bytes()?;
             let checkpoint = op.draft.source_checkpoint(input_bytes, 0, cancel)?;
+            if op.meta_policy.is_some() {
+                op.draft.meta_scope = Some((op.id, meta::SubjectScope::new(&checkpoint)));
+            }
             let started = op.started;
             let command_index = op.index;
             let external_applied = op.external_receipt_applied();
@@ -2082,14 +2138,18 @@ impl DomSourceLease<'_> {
                     op.started = true;
                     let published = match op.publication_inline(
                         self.dom,
-                        true,
                         PublicationTarget::DesignMode(pending),
+                        Some(meta::Disposition::DesignMode),
                         Some(&checkpoint),
                         execution,
                         cancel,
                     ) {
                         Ok(published) => published,
                         Err(error) => {
+                            if matches!(error, AdvanceError::NativePrepared) {
+                                op.park_meta_checkpoint(checkpoint);
+                                return Err(error);
+                            }
                             checkpoint.restore(&mut op.draft);
                             op.restore_external_receipt(external_applied);
                             op.started = started;
@@ -2119,14 +2179,18 @@ impl DomSourceLease<'_> {
                     op.started = true;
                     let published = match op.publication_inline(
                         self.dom,
-                        true,
                         PublicationTarget::AutofocusInsertion(pending),
+                        Some(meta::Disposition::Autofocus),
                         Some(&checkpoint),
                         execution,
                         cancel,
                     ) {
                         Ok(published) => published,
                         Err(error) => {
+                            if matches!(error, AdvanceError::NativePrepared) {
+                                op.park_meta_checkpoint(checkpoint);
+                                return Err(error);
+                            }
                             checkpoint.restore(&mut op.draft);
                             op.restore_external_receipt(external_applied);
                             op.started = started;
@@ -2157,14 +2221,18 @@ impl DomSourceLease<'_> {
                     op.started = true;
                     let published = match op.publication_inline(
                         self.dom,
-                        true,
                         PublicationTarget::DialogFocusing(pending),
+                        Some(meta::Disposition::Focusing),
                         Some(&checkpoint),
                         execution,
                         cancel,
                     ) {
                         Ok(published) => published,
                         Err(error) => {
+                            if matches!(error, AdvanceError::NativePrepared) {
+                                op.park_meta_checkpoint(checkpoint);
+                                return Err(error);
+                            }
                             checkpoint.restore(&mut op.draft);
                             op.restore_external_receipt(external_applied);
                             op.started = started;
@@ -2200,12 +2268,16 @@ impl DomSourceLease<'_> {
                     // boundary. Rollback is allowed only before this publication.
                     if let Err(error) = op.publication_inline(
                         self.dom,
-                        true,
                         PublicationTarget::None,
+                        None,
                         Some(&checkpoint),
                         execution,
                         cancel,
                     ) {
+                        if matches!(error, AdvanceError::NativePrepared) {
+                            op.park_meta_checkpoint(checkpoint);
+                            return Err(error);
+                        }
                         checkpoint.restore(&mut op.draft);
                         op.restore_external_receipt(external_applied);
                         op.started = started;
@@ -2274,14 +2346,18 @@ impl DomSourceLease<'_> {
                     op.started = true;
                     let published = match op.publication_inline(
                         self.dom,
-                        true,
                         PublicationTarget::Dialog(pending),
+                        Some(meta::Disposition::Dialog),
                         Some(&checkpoint),
                         execution,
                         cancel,
                     ) {
                         Ok(published) => published,
                         Err(error) => {
+                            if matches!(error, AdvanceError::NativePrepared) {
+                                op.park_meta_checkpoint(checkpoint);
+                                return Err(error);
+                            }
                             checkpoint.restore(&mut op.draft);
                             op.restore_external_receipt(external_applied);
                             op.started = started;
@@ -2310,12 +2386,16 @@ impl DomSourceLease<'_> {
                     let frame = op.frame()?;
                     if let Err(e) = op.publication_inline(
                         self.dom,
-                        true,
                         PublicationTarget::Style(frame),
+                        Some(meta::Disposition::Style),
                         Some(&checkpoint),
                         execution,
                         cancel,
                     ) {
+                        if matches!(e, AdvanceError::NativePrepared) {
+                            op.park_meta_checkpoint(checkpoint);
+                            return Err(e);
+                        }
                         checkpoint.restore(&mut op.draft);
                         op.restore_external_receipt(external_applied);
                         op.started = started;
@@ -2343,12 +2423,16 @@ impl DomSourceLease<'_> {
                     op.started = true;
                     if let Err(error) = op.publication_inline(
                         self.dom,
-                        true,
                         PublicationTarget::None,
+                        Some(meta::Disposition::Hosted),
                         Some(&checkpoint),
                         execution,
                         cancel,
                     ) {
+                        if matches!(error, AdvanceError::NativePrepared) {
+                            op.park_meta_checkpoint(checkpoint);
+                            return Err(error);
+                        }
                         checkpoint.restore(&mut op.draft);
                         op.restore_external_receipt(external_applied);
                         op.started = started;
@@ -2418,6 +2502,9 @@ impl DomSourceLease<'_> {
                         headroom.remaining_phases = headroom::FINAL_PUBLICATION;
                     }
 
+                    if execution.native.is_some() {
+                        op.save_meta_receipt();
+                    }
                     if !matches!(
                         op.receipt,
                         Some(
@@ -2470,14 +2557,21 @@ impl DomSourceLease<'_> {
                         // outlive that rollback and suppress removal on retry.
                         let commit = match op.publication_inline(
                             self.dom,
-                            false,
                             PublicationTarget::None,
+                            Some(meta::Disposition::Complete {
+                                installation: installation_output,
+                                select: select_finished,
+                            }),
                             Some(&checkpoint),
                             execution,
                             cancel,
                         ) {
                             Ok(published) => published.commit,
                             Err(error) => {
+                                if matches!(error, AdvanceError::NativePrepared) {
+                                    op.park_meta_checkpoint(checkpoint);
+                                    return Err(error);
+                                }
                                 checkpoint.restore(&mut op.draft);
                                 op.restore_external_receipt(external_applied);
                                 op.started = started;
@@ -3194,6 +3288,9 @@ impl Dom {
                 names: staged.draft.names.clone(),
                 draft: dialog::OperationDraft::Segment(staged.draft),
                 inline_source: None,
+                meta_policy: None,
+                pending_meta: None,
+                meta_receipt: None,
                 commands: OperationRoot::NativeInstallation,
                 index: 0,
                 started: false,

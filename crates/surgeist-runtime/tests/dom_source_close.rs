@@ -143,6 +143,7 @@ fn apply(session: &mut DomSession, edit: DomSourceEdit) -> DomSourceDriveProgres
             edit,
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -243,15 +244,20 @@ fn service<C>(
         other => panic!("the actual beforetoggle dispatch must finish: {other:?}"),
     }
 }
+#[expect(
+    clippy::result_large_err,
+    reason = "the helper preserves the actual root and original producer failure for exact driving refusal assertions"
+)]
 fn resume(
     session: &mut DomSession,
     operation: DomSourceOperationId,
-) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
     session.source_execution().resume(
         &mut session.dom(),
         operation,
         source_limits(),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut |_| None,
             url: None,
@@ -845,6 +851,7 @@ fn mutate_before_close(subject: NodeId) -> DomEventCallback<MutationContext> {
                         edit,
                         source_limits(),
                         &mut DomSourceServices {
+                            meta: None,
                             execution_scope: None,
                             style_policy: &mut |_| None,
                             url: None,
@@ -985,7 +992,7 @@ fn started_close_finishes_late_once_listener_then_reports_exact_retired_read_ope
     drop(context.destruction.take());
     drop(receipt);
     assert!(
-        matches!(resume(&mut session, request.operation()), Err(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired { operation, subject: actual, action: HtmlDialogAction::ReadOpen })) if operation == request.operation() && actual == subject)
+        matches!(resume(&mut session, request.operation()), Err(surgeist_runtime::DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired { operation, subject: actual, action: HtmlDialogAction::ReadOpen }))) if operation == request.operation() && actual == subject)
     );
     assert_eq!(
         session

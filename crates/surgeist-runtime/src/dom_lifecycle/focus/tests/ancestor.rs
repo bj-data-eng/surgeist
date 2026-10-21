@@ -12,7 +12,7 @@ struct Child {
     scope: DomSourceExecutionScope,
     target: NodeId,
     event: Option<DomSourceEventRequest>,
-    error: Option<DomSourceRuntimeError>,
+    error: Option<crate::DomSourceDriveError>,
     unexpected: Option<String>,
     calls: usize,
 }
@@ -73,6 +73,7 @@ fn ancestor(cap: u64) -> Result<Ancestor, Failure> {
                 DomSourceEdit::show_dialog(context.target),
                 child_limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: Some(&context.scope),
                     style_policy: &mut |_| None,
                     url: None,
@@ -98,6 +99,7 @@ fn ancestor(cap: u64) -> Result<Ancestor, Failure> {
         DomSourceEdit::show_dialog(parent),
         source_limits(cap),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: Some(&scope),
             style_policy: &mut |_| None,
             url: None,
@@ -326,6 +328,7 @@ fn observing_parent_retains_original_receipt_across_exact_child_work_cut() {
                 parent.operation(),
                 source_limits(10_000_000),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut |_| None,
                     url: None,
@@ -334,7 +337,9 @@ fn observing_parent_retains_original_receipt_across_exact_child_work_cut() {
             );
             assert!(matches!(
                 pending,
-                Err(DomSourceRuntimeError::Dom(DomError::InvalidSourceOperation))
+                Err(crate::DomSourceDriveError::Source(
+                    DomSourceRuntimeError::Dom(DomError::InvalidSourceOperation)
+                ))
             ));
             assert_eq!(
                 owner.borrow().focus.pending.as_ref().unwrap().request(),

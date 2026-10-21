@@ -43,6 +43,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
             DomSourceEdit::set_attribute(sentinel, "open", ""),
             limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -309,6 +310,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
             DomSourceEdit::remove_attribute(sentinel, "open"),
             limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -407,6 +409,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
             DomSourceEdit::insert_before(subject, body_a, None),
             limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,

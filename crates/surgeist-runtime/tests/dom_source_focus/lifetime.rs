@@ -101,8 +101,10 @@ fn retired_original_global_preserves_host_scope_but_refuses_new_toggle_queue() {
     drop(receipt);
     assert!(matches!(
         resume(&mut session, event.operation(), Some(&scope)),
-        Err(DomSourceRuntimeError::ElementTasks(
-            DomElementTaskRuntimeError::Dom(DomError::HostedSourceUnavailable)
+        Err(surgeist_runtime::DomSourceDriveError::Source(
+            DomSourceRuntimeError::ElementTasks(DomElementTaskRuntimeError::Dom(
+                DomError::HostedSourceUnavailable
+            ))
         ))
     ));
     let after = session.snapshot();
@@ -180,6 +182,7 @@ fn additional_headless_context_remembers_none(in_frame_child: bool) {
                 DomSourceEdit::insert_before(frame, parent, None),
                 limits(),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: Some(&scope),
                     style_policy: &mut |_| None,
                     url: None,
@@ -315,9 +318,11 @@ fn matching_hosted_scope_survives_conflicting_resume_without_replacement() {
     let before = session.snapshot();
     assert!(matches!(
         resume(&mut session, event.operation(), Some(&conflict)),
-        Err(DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(
-            DomHostedError::Dom(DomError::InvalidSourceOperation)
-        )))
+        Err(surgeist_runtime::DomSourceDriveError::Source(
+            DomSourceRuntimeError::Hosted(DomHostedRuntimeError::Dom(DomHostedError::Dom(
+                DomError::InvalidSourceOperation
+            )))
+        ))
     ));
     assert_eq!(session.snapshot().stamp(), before.stamp());
     assert_eq!(
@@ -386,6 +391,7 @@ fn canceled_resume_preserves_original_headless_scope_for_uncanceled_retry() {
         event.operation(),
         limits(),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: Some(&scope),
             style_policy: &mut |_| None,
             url: None,
@@ -394,7 +400,9 @@ fn canceled_resume_preserves_original_headless_scope_for_uncanceled_retry() {
     );
     assert!(matches!(
         refused,
-        Err(DomSourceRuntimeError::Dom(DomError::Cancelled))
+        Err(surgeist_runtime::DomSourceDriveError::Source(
+            DomSourceRuntimeError::Dom(DomError::Cancelled)
+        ))
     ));
     assert_eq!(session.snapshot().stamp(), before.stamp());
     assert_eq!(

@@ -4,28 +4,28 @@ use std::cell::Cell;
 use surgeist_cssom::{CssomError, CssomLimits, CssomPublication};
 use surgeist_dom::{DocumentString, DomMetaAtomicError, DomMetaAtomicLimits, DomMetaInlineBatch};
 
-fn cancel() -> AtomicBool {
+pub(super) fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
-fn envelope() -> DomMetaAtomicLimits {
+pub(super) fn envelope() -> DomMetaAtomicLimits {
     DomMetaAtomicLimits::new(16_000_000, 1_000_000, 1_000_000, 128).unwrap()
 }
-fn native_session() -> (DomSession, NodeId) {
+pub(super) fn native_session() -> (DomSession, NodeId) {
     let (mut session, document) = bound_session();
     let limits = session.dom().limits().with_meta_processing_work(1_000_000);
     session.dom().raw_mut().set_limits(limits).unwrap();
     (session, document)
 }
-fn container(session: &DomSession, document: NodeId) -> NodeId {
+pub(super) fn container(session: &DomSession, document: NodeId) -> NodeId {
     session.snapshot().node(document).unwrap().children()[0]
 }
-fn observe(session: &mut DomSession, document: NodeId) -> DomStyleSheetSetObservation {
+pub(super) fn observe(session: &mut DomSession, document: NodeId) -> DomStyleSheetSetObservation {
     session
         .style_execution()
         .sheet_sets(&session.dom(), document, &cancel())
         .unwrap()
 }
-fn assert_names_equal(
+pub(super) fn assert_names_equal(
     actual: &DomStyleSheetSetObservation,
     expected: &DomStyleSheetSetObservation,
 ) {
@@ -48,7 +48,11 @@ fn meta(
     batch.insert_before(&element, parent, None);
     element
 }
-fn named_style(session: &mut DomSession, document: NodeId, title: DocumentString) -> NodeId {
+pub(super) fn named_style(
+    session: &mut DomSession,
+    document: NodeId,
+    title: DocumentString,
+) -> NodeId {
     let mut batch = DomBatch::new();
     let style = batch.create_element_ns(document, Namespace::html(), "style");
     batch.set_attribute(&style, "title", title);
@@ -62,6 +66,7 @@ fn named_style(session: &mut DomSession, document: NodeId, title: DocumentString
             DomSourceEdit::insert_before(style, parent, None),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut policy,
                 url: None,
@@ -72,14 +77,14 @@ fn named_style(session: &mut DomSession, document: NodeId, title: DocumentString
     assert!(matches!(result, DomSourceDriveProgress::Complete(_)));
     style
 }
-fn is_disabled(session: &mut DomSession, style: NodeId) -> bool {
+pub(super) fn is_disabled(session: &mut DomSession, style: NodeId) -> bool {
     session
         .style_execution()
         .disabled(&session.dom(), style)
         .unwrap()
         .disabled()
 }
-fn bind_document(session: &mut DomSession, producer: CssomLimits) -> NodeId {
+pub(super) fn bind_document(session: &mut DomSession, producer: CssomLimits) -> NodeId {
     let mut batch = DomBatch::new();
     let document = batch.create_document();
     let parent = batch.create_element_ns(&document, Namespace::html(), "div");

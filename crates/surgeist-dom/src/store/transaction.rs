@@ -31,7 +31,7 @@ pub(in crate::store) mod staged;
 
 pub(in crate::store) use capture::{StateCustody, StateFrontiers};
 pub(in crate::store) use counts::Counts;
-pub(in crate::store) use journal::{Journal, Mark};
+pub(in crate::store) use journal::{Journal, Mark, Observation as JournalObservation};
 pub(in crate::store) use names::Names;
 #[cfg(test)]
 pub(in crate::store) use records::NamesRead;

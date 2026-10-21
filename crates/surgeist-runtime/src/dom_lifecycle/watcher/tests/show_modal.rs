@@ -16,6 +16,7 @@ fn begin(session: &mut DomSession, subject: NodeId) -> DomSourceEventRequest {
             DomSourceEdit::show_modal_dialog(subject),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -172,6 +173,7 @@ fn show_modal_watcher_refusal_and_lease_reacquisition_preserve_prefix_and_settle
             before.operation(),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -306,6 +308,7 @@ fn modal_publication_output_refusal_keeps_real_watcher_prefix_and_retries_withou
             before.operation(),
             bounded,
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -315,8 +318,8 @@ fn modal_publication_output_refusal_keeps_real_watcher_prefix_and_retries_withou
         assert!(
             matches!(
                 refused,
-                Err(crate::DomSourceRuntimeError::Dom(
-                    DomError::SourceOutputLimit
+                Err(crate::DomSourceDriveError::Source(
+                    crate::DomSourceRuntimeError::Dom(DomError::SourceOutputLimit)
                 ))
             ),
             "derived prefix cap must refuse the actual modal publication: {refused:?}"
@@ -369,6 +372,7 @@ fn modal_publication_output_refusal_keeps_real_watcher_prefix_and_retries_withou
         before.operation(),
         source_limits(),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut |_| None,
             url: None,
@@ -377,7 +381,9 @@ fn modal_publication_output_refusal_keeps_real_watcher_prefix_and_retries_withou
     );
     assert!(matches!(
         canceled,
-        Err(crate::DomSourceRuntimeError::Dom(DomError::Cancelled))
+        Err(crate::DomSourceDriveError::Source(
+            crate::DomSourceRuntimeError::Dom(DomError::Cancelled)
+        ))
     ));
     assert_eq!(session.snapshot().stamp(), refused_stamp.unwrap());
     drop(hosted);
@@ -388,6 +394,7 @@ fn modal_publication_output_refusal_keeps_real_watcher_prefix_and_retries_withou
             before.operation(),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -770,6 +777,7 @@ fn inactive_adoption_assertion_retains_real_cleanup_cause_across_admission_drop_
         before.operation(),
         work_limit(work),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut |_| None,
             url: None,
@@ -777,7 +785,7 @@ fn inactive_adoption_assertion_retains_real_cleanup_cause_across_admission_drop_
         &cancel(),
     );
     assert!(
-        matches!(terminal,Err(crate::DomSourceRuntimeError::Dom(DomError::SourceInvariantFailed{operation,failure:actual})) if operation==before.operation() && actual==failure)
+        matches!(terminal,Err(crate::DomSourceDriveError::Source(crate::DomSourceRuntimeError::Dom(DomError::SourceInvariantFailed{operation,failure:actual}))) if operation==before.operation() && actual==failure)
     );
     assert!(session.dom().pending_source_edit().is_none());
     assert_eq!(session.snapshot().incomplete_source_operation(), None);

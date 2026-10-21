@@ -99,6 +99,7 @@ fn parked(work: u64) -> (DomSession, DomHostedHostId, NodeId, DomFocusRequest) {
             DomSourceEdit::show_dialog(subject),
             source_limits(work),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: Some(&scope),
                 style_policy: &mut |_| None,
                 url: None,
@@ -753,6 +754,7 @@ fn retained_result_cannot_cross_canonical_mutation_while_original_source_is_busy
         DomSourceEdit::set_attribute(original.subject(), "data-unrelated", ""),
         source_limits(10_000_000),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut |_| None,
             url: None,
@@ -761,8 +763,8 @@ fn retained_result_cannot_cross_canonical_mutation_while_original_source_is_busy
     );
     assert!(matches!(
         result,
-        Err(crate::DomSourceRuntimeError::Dom(
-            DomError::SourceOperationPending
+        Err(crate::DomSourceDriveError::Source(
+            crate::DomSourceRuntimeError::Dom(DomError::SourceOperationPending)
         ))
     ));
     assert_eq!(session.snapshot().stamp(), basis);

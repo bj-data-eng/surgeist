@@ -154,6 +154,7 @@ fn inline_setter_returns_original_complete_with_receipt_and_releases_source_owne
             ),
             limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| panic!("no Style service"),
                 url: None,
@@ -230,6 +231,7 @@ fn inline_request_boundary_returns_before_policy_and_resume_services_same_reques
             ),
             limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut policy,
                 url: None,
@@ -265,6 +267,7 @@ fn inline_request_boundary_returns_before_policy_and_resume_services_same_reques
             operation,
             limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut policy,
                 url: None,
@@ -304,6 +307,7 @@ fn bound_retirement_returns_original_pair_and_releases_runtime_source_owner() {
             DomSourceInlineStyleEdit::new(DomSourceEdit::destroy(element), context, requests()),
             limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| panic!("no Style service"),
                 url: None,
@@ -356,6 +360,7 @@ fn bound_retirement_returns_original_pair_and_releases_runtime_source_owner() {
             DomSourceEdit::set_attribute(keeper, "id", "still-live"),
             limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| panic!("no Style service"),
                 url: None,

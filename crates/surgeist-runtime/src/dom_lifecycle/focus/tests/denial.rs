@@ -42,6 +42,7 @@ fn start(
         DomSourceEdit::show_dialog(target),
         policy,
         &mut DomSourceServices {
+            meta: None,
             execution_scope: scope,
             style_policy: &mut |_| None,
             url: None,
@@ -119,6 +120,7 @@ fn parked(
             DomSourceEdit::set_attribute(sentinel, "open", ""),
             source_limits(10_000_000),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -144,7 +146,7 @@ fn parked(
             subject: NodeId,
             work: u64,
             event: Option<DomSourceEventRequest>,
-            error: Option<DomSourceRuntimeError>,
+            error: Option<crate::DomSourceDriveError>,
             calls: usize,
             unexpected: Option<String>,
         }
@@ -171,6 +173,7 @@ fn parked(
                     DomSourceEdit::show_dialog(context.subject),
                     source_limits(context.work),
                     &mut DomSourceServices {
+                        meta: None,
                         execution_scope: None,
                         style_policy: &mut |_| None,
                         url: None,
@@ -465,6 +468,7 @@ fn denial_work_boundary_retains_exact_result_blocks_cleanup_and_releases_retired
                 DomSourceEdit::remove_attribute(case.sentinel, "open"),
                 source_limits(10_000_000),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut |_| None,
                     url: None,
@@ -473,7 +477,9 @@ fn denial_work_boundary_retains_exact_result_blocks_cleanup_and_releases_retired
             );
             assert!(matches!(
                 cleanup,
-                Err(DomSourceRuntimeError::Dom(DomError::SourceOperationPending))
+                Err(crate::DomSourceDriveError::Source(
+                    DomSourceRuntimeError::Dom(DomError::SourceOperationPending)
+                ))
             ));
             assert!(
                 old_loop.upgrade().is_some(),
@@ -566,6 +572,7 @@ fn denial_work_boundary_retains_exact_result_blocks_cleanup_and_releases_retired
                 DomSourceEdit::remove_attribute(case.sentinel, "open"),
                 source_limits(10_000_000),
                 &mut DomSourceServices {
+                    meta: None,
                     execution_scope: None,
                     style_policy: &mut |_| None,
                     url: None,

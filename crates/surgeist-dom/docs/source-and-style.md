@@ -70,6 +70,48 @@ read from the actual retained owner, independently of a historical association's
 receipt revision; a flag read does not establish resource readiness. Pending
 parsed Style processing remains explicit and cannot certify a null sheet.
 
+## Native Meta composition
+
+An association adapter calls `DomSourceLease::begin_meta_runtime` before forming
+its native Meta banks. The returned exclusive hold charges the original Source,
+every actual enclosing observer operation and the native envelope before the
+adapter performs controlled work or retains backing. `step` admits work;
+`admit_runtime` declares the whole simultaneous Runtime holder/output union.
+Repeated reports retain their high-water rather than adding the same backing
+again. Native limits may be raised componentwise on retry; spent work and output
+admission remain with the original operation. This front does not replace the
+independent Runtime, Source, Meta, inline or CSSOM limits.
+
+The hold's one `prepare` seals further prefix admission before advancing the
+original continuation. With no reached native Meta occurrence it returns the
+authentic existing Source progress and optional inline publication. Otherwise it
+lends `DomMetaSourcePreparation` over a phase already retained by the original
+operation. Its ordered occurrences preserve exact UTF16 and genuine historical
+subjects. The adapter reads held root snapshots, stages real flag edits and
+prepares its own preference history under the same admission. Actual accepted
+Style receipt authority is validated under one retained root lock, including
+when that root also receives a Meta edit.
+
+`commit` prepares every actual CSSOM owner, optional inline ingestion, original
+Source publication and output before publishing any owner. The resulting
+`DomMetaSourcePublished` retains the root locks while the adapter installs its
+prepared history. Consuming `into_parts` unlocks and returns the genuine Source
+progress, actual root commits, optional inline evidence and retirement backing.
+`DomMetaSourceCommit::stamp` identifies the actual resulting DOM publication even
+when its next progress is a request. A receipt-only root receives no synthetic
+commit. Existing event, parent, Select, hosted and other mandatory tails retain
+their original permissions and continuation.
+
+Dropping a preparation publishes nothing and leaves its original pending phase
+available for a raised-budget retry. A changed producer basis refuses that retry;
+it does not silently rebuild the invocation. A context-free advance cannot skip
+the pending native phase. Forgetting a hold prevents reacquisition; forgetting a
+preparation seals all further prefix/preparation calls and retains its actual
+graph, source debit and work dependencies together. `request_cancel` can still
+mark the original operation. Runtime backing must be disposed before its hold
+releases the corresponding admission. The capability does not make an external
+processor available, resolve pending parsed associations or implement Meta CSP.
+
 ## Standalone ownership transfer
 
 The exclusive standalone `Dom` is `Send`, including a parked published source

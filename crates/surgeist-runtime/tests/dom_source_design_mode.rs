@@ -75,6 +75,7 @@ fn apply(session: &mut DomSession, document: DocumentId) -> DomSourceDriveProgre
             DomSourceEdit::set_design_mode(document, "oN"),
             limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -84,16 +85,21 @@ fn apply(session: &mut DomSession, document: DocumentId) -> DomSourceDriveProgre
         .unwrap()
 }
 
+#[expect(
+    clippy::result_large_err,
+    reason = "the helper preserves the actual root and original producer failure for exact driving refusal assertions"
+)]
 fn resume(
     session: &mut DomSession,
     operation: DomSourceOperationId,
     cancel: &AtomicBool,
-) -> Result<DomSourceDriveProgress, DomSourceRuntimeError> {
+) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
     session.source_execution().resume(
         &mut session.dom(),
         operation,
         limits(),
         &mut DomSourceServices {
+            meta: None,
             execution_scope: None,
             style_policy: &mut |_| None,
             url: None,
@@ -306,7 +312,9 @@ fn document_element_focus_preserves_exact_pending_request_and_published_reset_ac
     );
     assert!(matches!(
         resume(&mut session, request.operation(), &AtomicBool::new(true)),
-        Err(DomSourceRuntimeError::Dom(DomError::Cancelled))
+        Err(surgeist_runtime::DomSourceDriveError::Source(
+            DomSourceRuntimeError::Dom(DomError::Cancelled)
+        ))
     ));
     assert_eq!(session.snapshot().stamp(), prefix.stamp());
 

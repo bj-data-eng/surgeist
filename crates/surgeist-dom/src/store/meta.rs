@@ -9,10 +9,10 @@ mod tests_css;
 
 impl Draft {
     pub(super) fn meta_step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
+        self.source_step(cancel)?;
         if let Some(recording) = &self.meta_recording {
             recording.envelope.local_step(cancel)?;
         }
-        self.source_step(cancel)?;
         let next = self
             .meta_work
             .get()

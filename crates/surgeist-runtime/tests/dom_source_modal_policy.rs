@@ -124,6 +124,7 @@ fn initial_iframe_focus_policy_denial_completes_modal_before_focus_target_select
             DomSourceEdit::insert_before(iframe, parent, None),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
@@ -195,6 +196,7 @@ fn initial_iframe_focus_policy_denial_completes_modal_before_focus_target_select
             DomSourceEdit::show_modal_dialog(subject),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: Some(&scope),
                 style_policy: &mut |_| None,
                 url: None,
@@ -275,6 +277,7 @@ fn initial_iframe_focus_policy_denial_completes_modal_before_focus_target_select
             request.operation(),
             source_limits(),
             &mut DomSourceServices {
+                meta: None,
                 execution_scope: Some(&scope),
                 style_policy: &mut |_| None,
                 url: None,

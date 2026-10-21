@@ -33,6 +33,7 @@ fn original_toggle_cleanup_result_survives_native_checkpoint_work_refusal_withou
     let cancel = AtomicBool::new(false);
     let mut style = |_: &surgeist_dom::DomStyleSource| None;
     let mut services = DomSourceServices {
+        meta: None,
         execution_scope: None,
         style_policy: &mut style,
         url: None,
