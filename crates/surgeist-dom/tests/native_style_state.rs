@@ -2612,3 +2612,212 @@ fn resume_after_meta_work_refusal(low: u64) {
         None
     );
 }
+
+#[test]
+fn admitted_inert_parser_style_continues_after_creation_to_genuine_render_context() {
+    use std::sync::Arc;
+    use surgeist_css::{CssParserContext, CssUtf16InputLimits};
+    use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
+    use surgeist_dom::{
+        DomNativeInputPlatform, DomParsedDocumentEnvironment, DomParsedHtmlInstallLimits,
+        DomSourceProgress, DomStyleAction, DomStyleCssomOwnerBinding, DomStyleCssomRoot,
+        DomStyleInlineCspObservation,
+    };
+    use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlParseLimits, HtmlSource};
+    use surgeist_html_semantics::{
+        HtmlBaseEncoding, HtmlBaseFactsRevision, HtmlBaseProducerId, HtmlBaseUrlRecord,
+        HtmlBaseUrlScheme,
+    };
+    let cancel = AtomicBool::new(false);
+    let mut dom = dom();
+    let mut initial = DomBatch::new();
+    let origin_document = initial.create_document();
+    let committed = dom.apply(initial, &cancel).unwrap();
+    let origin = dom
+        .snapshot()
+        .document(committed.document(&origin_document).unwrap())
+        .unwrap()
+        .metadata()
+        .origin()
+        .clone();
+    let environment = DomParsedDocumentEnvironment::headless(
+        origin,
+        HtmlBaseUrlRecord::observed(
+            HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3),
+            "about:blank".into(),
+            HtmlBaseUrlScheme::Other,
+            true,
+            None,
+        )
+        .unwrap(),
+        HtmlBaseEncoding::fresh(),
+        "UTF-8".into(),
+        DomNativeInputPlatform::headless(),
+    );
+    let limits = HtmlParseLimits::builder()
+        .source_units(100_000)
+        .buffered_utf16_units(100_000)
+        .token_attributes(10_000)
+        .auxiliary_entries(1_000_000)
+        .managed_nodes(100_000)
+        .managed_edges(100_000)
+        .managed_attributes(100_000)
+        .managed_utf16_units(100_000)
+        .source_map_entries(100_000)
+        .source_map_payload_units(100_000)
+        .diagnostics(100_000)
+        .diagnostic_payload_units(100_000)
+        .context_effects(100_000)
+        .open_elements(100)
+        .tree_depth(100_000)
+        .managed_capacity_bytes(100_000_000)
+        .peak_transient_bytes(100_000_000)
+        .atomic_layout_bytes(100_000_000)
+        .work_credits(100_000_000)
+        .finish()
+        .unwrap();
+    let report = Arc::new(
+        HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<!doctype html><style type=text/plain media=screen>a{}</style>"),
+            limits,
+        )
+        .parse()
+        .unwrap(),
+    );
+    let installed = dom
+        .install_parsed_html_document(
+            dom.snapshot().stamp(),
+            report,
+            environment,
+            DomParsedHtmlInstallLimits::new(1024, 10_000_000, 16_000_000, 100_000_000),
+            &cancel,
+        )
+        .unwrap();
+    let document = installed.document();
+    assert!(
+        installed.pending_association().is_none(),
+        "producer-proven inert Style has no processing obligation"
+    );
+    let snapshot = dom.snapshot();
+    let html = snapshot.node(document.node()).unwrap().children()[1];
+    let head = snapshot.node(html).unwrap().children()[0];
+    let style = snapshot.node(head).unwrap().children()[0];
+    let style_node = snapshot.node(style).unwrap().as_style().unwrap();
+    assert!(
+        style_node
+            .state()
+            .creation_state()
+            .created_by_document_parser()
+    );
+    assert_eq!(style_node.parser_document(), Some(document));
+    assert!(style_node.sheet().unwrap().is_none());
+    let text = snapshot.node(style).unwrap().children()[0];
+    drop(snapshot);
+    let mut eligible = DomBatch::new();
+    eligible.set_attribute(style, "type", "text/css");
+    dom.apply(eligible, &cancel).unwrap();
+    let mut lease = dom
+        .begin_source_edit(
+            DomSourceEdit::replace_data(text, 0, 3, "p{}"),
+            source_limits(),
+            &cancel,
+        )
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::Style(policy)) =
+        lease.advance(&cancel).unwrap()
+    else {
+        panic!("actual inline policy request");
+    };
+    lease
+        .accept_inline_csp(
+            &policy,
+            &DomStyleInlineCspObservation::complete_empty(policy.source(), 1),
+            &cancel,
+        )
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::Style(create)) =
+        lease.advance(&cancel).unwrap()
+    else {
+        panic!("actual sheet construction request");
+    };
+    assert_eq!(
+        create.action(),
+        DomStyleAction::Update(HtmlStyleUpdateAction::CreateSheet)
+    );
+    let root = DomStyleCssomRoot::new(create.cssom_root().unwrap(), cssom());
+    lease.bind_cssom_root(&create, &root, &cancel).unwrap();
+    let create = lease
+        .qualify_cssom(&create, root.root(), &root.snapshot().unwrap())
+        .unwrap();
+    let version = CssomInputVersion {
+        role: CssomInputRole::Owner,
+        identity: "parser-style".into(),
+        revision: 1,
+    };
+    lease
+        .bind_cssom_owner(
+            &create,
+            DomStyleCssomOwnerBinding::new(&create, version.clone(), "parser-style".into())
+                .unwrap(),
+            &cancel,
+        )
+        .unwrap();
+    let parser = CssParserContext::default();
+    let sheet = parser
+        .parse_sheet_utf16_with_limits(
+            create.source().text().clone(),
+            CssUtf16InputLimits::default(),
+            || Ok::<_, ()>(()),
+        )
+        .unwrap();
+    let media = parser
+        .parse_media_query_list_utf16_with_limits(
+            create.source().media().unwrap().shared_code_units().clone(),
+            CssUtf16InputLimits::default(),
+            || Ok::<_, ()>(()),
+        )
+        .unwrap();
+    let mut input = CssomSheetInputs::external(version, true);
+    input.owner = Some("parser-style".into());
+    let mut batch = root
+        .batch(CssomEditGuard::from_snapshot(&root.snapshot().unwrap()))
+        .unwrap();
+    let built = batch
+        .create_parsed_sheet_with_media_reports(sheet, media, input)
+        .unwrap();
+    let publication = root.commit(&mut Some(batch)).unwrap();
+    let actual_sheet = publication.sheet(built.ticket()).unwrap().clone();
+    let _notification = lease
+        .accept_cssom_publication(
+            &create,
+            publication,
+            root.snapshot().unwrap(),
+            Some(built.ticket()),
+        )
+        .unwrap();
+    let DomSourceProgress::Request(DomSourceRequest::Style(render)) =
+        lease.advance(&cancel).unwrap()
+    else {
+        panic!("unresolved screen media retains the genuine render-context request");
+    };
+    assert_eq!(
+        render.action(),
+        DomStyleAction::Update(HtmlStyleUpdateAction::ReadRenderBlocking),
+        "the no-engine owner excludes script bookkeeping, independently of unresolved media"
+    );
+    assert_eq!(render.source().element(), style);
+    assert_eq!(render.source().media(), Some(&"screen".into()));
+    assert_eq!(
+        lease
+            .snapshot()
+            .node(style)
+            .unwrap()
+            .as_style()
+            .unwrap()
+            .sheet()
+            .unwrap()
+            .unwrap()
+            .id(),
+        &actual_sheet
+    );
+}
