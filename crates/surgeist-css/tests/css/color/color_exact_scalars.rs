@@ -1,15 +1,8 @@
 //! Exact authored color scalars under the selected Color4/Color5 grammars.
+use crate::css::support::declaration_color as color;
 use surgeist_color::PredefinedColorSpace;
 use surgeist_css::*;
 
-fn color(declaration: &CssDeclaration) -> &CssColor {
-    let CssKnownPropertyValueRef::Color(value) =
-        declaration.known().unwrap().property_value().unwrap()
-    else {
-        panic!("color")
-    };
-    value.value()
-}
 fn both(text: &str) -> [CssDeclaration; 2] {
     let source = format!("color:{text}!important");
     let report = parse_style_attribute(&source);

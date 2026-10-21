@@ -1,22 +1,8 @@
 //! Independent expectations for Unit E canonical specified colors.
 
+use crate::css::support::checked_color as color;
 use surgeist_color::{Color, SerializationRequest};
 use surgeist_css::*;
-
-fn color(text: &str) -> CssColor {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        parse_component_values(text).unwrap(),
-        CssImportance::Normal,
-    )
-    .unwrap_or_else(|error| panic!("{text}: {error:?}"));
-    let CssKnownPropertyValueRef::Color(value) =
-        declaration.known().unwrap().property_value().unwrap()
-    else {
-        panic!("color")
-    };
-    value.value().clone()
-}
 
 #[test]
 fn standalone_color4_branches_have_source_derived_canonical_text() {
@@ -27,7 +13,8 @@ fn standalone_color4_branches_have_source_derived_canonical_text() {
         ("hsl(359 50% 50%)", "rgb(191.25, 63.75, 65.875)"),
         ("hsl(-1 50% 50%)", "rgb(191.25, 63.75, 65.875)"),
         ("hwb(0 0% 0%)", "rgb(255, 0, 0)"),
-        ("hwb(0 6.27451% 0%)", "rgb(255, 16.000001, 16.000001)"),
+        // Binary64 6.27451% lies just below the decimal tie 16.0000005/255.
+        ("hwb(0 6.27451% 0%)", "rgb(255, 16, 16)"),
         ("hwb(0 20% 80%)", "rgb(51, 51, 51)"),
         ("rgb(calc(100 * 4) 127 calc(20 - 35))", "rgb(255, 127, 0)"),
         ("rgb(calc(50%) 0 0)", "rgb(127.5, 0, 0)"),
@@ -42,15 +29,11 @@ fn standalone_color4_branches_have_source_derived_canonical_text() {
         ("rgb(1e400 -1e400 50%)", "rgb(255, 0, 127.5)"),
         ("hsl(0 1e400% 50%)", "rgb(255, 0, 0)"),
         ("hwb(0 1e400% 1e400%)", "rgb(127.5, 127.5, 127.5)"),
-        (
-            "hwb(0 1e400% 1e401%)",
-            "rgb(23.181818, 23.181818, 23.181818)",
-        ),
-        ("hsl(0 0% 6.27451%)", "rgb(16.000001, 16.000001, 16.000001)"),
-        (
-            "hsl(0 50% 17.51634%)",
-            "rgb(67.000001, 22.333334, 22.333334)",
-        ),
+        // Whiteness and blackness beyond binary64 are both the closest finite
+        // value (Values 4 §10.12), an equal-weight gray.
+        ("hwb(0 1e400% 1e401%)", "rgb(127.5, 127.5, 127.5)"),
+        ("hsl(0 0% 6.27451%)", "rgb(16, 16, 16)"),
+        ("hsl(0 50% 17.51634%)", "rgb(67, 22.333333, 22.333333)"),
         (
             "rgb(99.999999999999999999999999999999% 0 0)",
             "rgb(254.99999999999999999999999999999745, 0, 0)",
@@ -72,13 +55,18 @@ fn standalone_color4_branches_have_source_derived_canonical_text() {
 
 #[test]
 fn admitted_huge_finite_exponents_fail_atomically_instead_of_panicking() {
-    let value = color("hsl(0 12345678901234567891e170141183460469231731687303715884105727% 50%)");
+    // Exact RGB clipping cannot compare an exponent at the i128 limit.
+    let value = color("rgb(12345678901234567891e170141183460469231731687303715884105727 0 0)");
     let before = value.clone();
     assert_eq!(
         value.to_specified_css().unwrap_err().kind(),
         CssSpecifiedValueSerializationErrorKind::CapacityOverflow
     );
     assert_eq!(value, before);
+    // Converted HSL reads the binary64 value, which is the closest finite
+    // value (Values 4 §10.12), as used resolution reads it.
+    let value = color("hsl(0 12345678901234567891e170141183460469231731687303715884105727% 50%)");
+    assert_eq!(value.to_specified_css().unwrap(), "rgb(255, 0, 0)");
 }
 
 #[test]

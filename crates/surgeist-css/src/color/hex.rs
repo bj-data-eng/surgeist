@@ -29,3 +29,15 @@ pub(super) fn finish(bytes: [u8; 4], length: usize) -> [u8; 4] {
         ]
     }
 }
+
+/// Expands a checked 3, 4, 6 or 8 digit hex color to RGBA bytes; omitted
+/// alpha is opaque. Color 4 §5.2 doubles each digit of the short forms.
+pub(crate) fn expand(digits: &str) -> Option<[u8; 4]> {
+    let mut bytes = [0; 4];
+    for (position, unit) in digits.chars().enumerate() {
+        if !write_digit(&mut bytes, digits.len(), position, unit) {
+            return None;
+        }
+    }
+    Some(finish(bytes, digits.len()))
+}

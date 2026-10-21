@@ -167,7 +167,9 @@ separate preparation operation preserves analogous missing components and
 applies the existing powerless-hue thresholds only when converting spaces.
 Signed polar chroma and HSL saturation use the existing opposite-hue Cartesian
 adapter. Final unrepresentable results return `Unrepresentable`; arithmetic
-does not fail merely because a wider intermediate exceeds finite f64.
+does not fail merely because a wider intermediate exceeds finite f64. Forward
+HSL/HWB conversion instead returns each overflowing sRGB channel as its signed
+closest finite value, the CSS Values 4 closest supported value.
 
 `InterpolationMethod::try_new` rejects hue on a rectangular space and defaults
 polar omission to `Shorter`; its `hue()` returns the effective strategy. The

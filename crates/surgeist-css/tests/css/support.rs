@@ -6,6 +6,7 @@
 //! depends on instead of copying a constructor.
 
 pub mod authored_property;
+pub mod color_components;
 pub mod csstree;
 pub mod descriptor_phases;
 pub mod digest;
@@ -13,6 +14,7 @@ pub mod external_consumer;
 #[macro_use]
 pub mod font_face;
 pub mod isolated_stack;
+pub mod lab_direct_component_cases;
 pub mod parse_report;
 pub mod property_expectations;
 
@@ -197,6 +199,22 @@ pub fn checked_color_declaration(source: &str) -> CssDeclaration {
         CssImportance::Important,
     )
     .unwrap_or_else(|e| panic!("{source}: {e:?}"))
+}
+
+/// The typed color carried by a checked `color` declaration.
+pub fn declaration_color(declaration: &CssDeclaration) -> &CssColor {
+    let CssKnownPropertyValueRef::Color(value) =
+        declaration.known().unwrap().property_value().unwrap()
+    else {
+        panic!("typed color: {declaration:?}")
+    };
+    value.value()
+}
+
+/// The typed color of `source` checked from component values by the
+/// `color` grammar.
+pub fn checked_color(source: &str) -> CssColor {
+    declaration_color(&checked_color_declaration(source)).clone()
 }
 
 /// The grammar of a selected property name.

@@ -15,6 +15,8 @@ pub(crate) struct LiteralValue {
     pub(crate) unit: Option<CssNumericUnit>,
     pub(crate) percentage: bool,
     pub(crate) ty: CssNumericType,
+    /// The authored finite decimal, or its canonical angle, exceeded binary64.
+    pub(crate) overflowed: bool,
 }
 
 #[cfg(test)]
@@ -175,7 +177,8 @@ mod tests {
             if input.ends_with("deg") || input.ends_with("grad") {
                 assert_eq!(value.value.abs().to_bits(), f64::MAX.to_bits() - 31);
             } else {
-                assert!(value.value.is_infinite());
+                // The closest finite value, never an infinity.
+                assert_eq!(value.value.abs(), f64::MAX);
             }
             assert_eq!(value.value.is_sign_negative(), input.starts_with('-'));
         }
@@ -459,14 +462,18 @@ impl<'owner> LiteralConversion<'owner> {
             self.stage = Stage::Header;
             return Ok(());
         }
+        let angle = matches!(self.input.unit, Some(CssNumericUnit::Angle(_)));
+        let mut overflowed = matches!(outcome, DecimalOutcome::Overflow { .. });
         let value = match outcome {
             DecimalOutcome::Finite(value) => value,
+            // Values 4 §10.12: a finite value beyond the supported range is
+            // the closest supported value. An angle instead reaches its
+            // 360deg-multiple endpoint below, after unit scaling.
+            DecimalOutcome::Overflow { negative } if angle => {
+                f64::INFINITY.copysign(if negative { -1.0 } else { 1.0 })
+            }
             DecimalOutcome::Overflow { negative } => {
-                if negative {
-                    f64::NEG_INFINITY
-                } else {
-                    f64::INFINITY
-                }
+                f64::MAX.copysign(if negative { -1.0 } else { 1.0 })
             }
         };
         let (value, unit) = match self.input.unit {
@@ -474,12 +481,10 @@ impl<'owner> LiteralConversion<'owner> {
                 let scale = CssNumericUnit::Angle(unit)
                     .intrinsic_projection()
                     .expect("all canonical angle units are intrinsic");
+                let degrees = if scaled { value } else { scale.apply(value) };
+                overflowed |= degrees.is_infinite();
                 (
-                    crate::numeric::projection::closest_supported_value(
-                        if scaled { value } else { scale.apply(value) },
-                        true,
-                        true,
-                    ),
+                    crate::numeric::projection::closest_supported_value(degrees, true, true),
                     Some(CssNumericUnit::Angle(CssAngleUnit::Degrees)),
                 )
             }
@@ -491,6 +496,7 @@ impl<'owner> LiteralConversion<'owner> {
             unit,
             percentage,
             ty: crate::numeric::literal_type(unit, percentage),
+            overflowed,
         });
         Ok(())
     }

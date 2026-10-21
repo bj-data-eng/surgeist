@@ -8,6 +8,9 @@
 //! Expected preserving text uses the source's none keyword and selected ordinary
 //! family projections; no computed interpolation or calculated range phase is tested.
 
+use crate::css::support::color_components::{
+    assert_component, assert_origin, assert_recovered, component, token,
+};
 use crate::css::support::parsed_color as parsed;
 use surgeist_color::PredefinedColorSpace;
 use surgeist_css::*;
@@ -59,22 +62,6 @@ const SPACES: [(&str, PredefinedColorSpace, &str); 10] = [
     ("xyz-d65", PredefinedColorSpace::XyzD65, "xyz-d65"),
 ];
 
-fn token(text: &str) -> CssComponentValue {
-    let values = parse_component_values(text).unwrap();
-    assert_eq!(values.items().len(), 1);
-    values.items()[0].clone()
-}
-fn component(text: &str) -> CssColorComponent {
-    if text == "none" {
-        CssColorComponent::None
-    } else if text.ends_with('%') {
-        CssColorComponent::Percentage(
-            CssColorPercentageLiteral::try_from_component(token(text)).unwrap(),
-        )
-    } else {
-        CssColorComponent::Number(CssColorNumberLiteral::try_from_component(token(text)).unwrap())
-    }
-}
 fn hue(text: &str) -> CssColorHue {
     if text == "none" {
         CssColorHue::None
@@ -82,44 +69,6 @@ fn hue(text: &str) -> CssColorHue {
         CssColorHue::Angle(CssAngleLiteral::try_from_component(token(text)).unwrap())
     } else {
         CssColorHue::Number(CssColorNumberLiteral::try_from_component(token(text)).unwrap())
-    }
-}
-
-fn assert_origin(origin: &CssValueOrigin, text: &str) {
-    let CssValueOrigin::Parsed(origin) = origin else {
-        panic!("actual token provenance: {text}")
-    };
-    assert!(
-        origin.source().as_str().contains(text),
-        "{text}: {origin:?}"
-    );
-}
-
-fn assert_component(value: &CssColorComponent, expected: &str) {
-    match value {
-        CssColorComponent::None => assert!(expected.eq_ignore_ascii_case("none")),
-        CssColorComponent::Number(value) => {
-            assert_eq!(value.numeric().representation(), expected);
-            assert_origin(value.origin(), expected);
-        }
-        CssColorComponent::Percentage(value) => {
-            assert_eq!(
-                value.numeric().representation(),
-                expected.strip_suffix('%').unwrap()
-            );
-            assert_origin(value.origin(), expected);
-        }
-        CssColorComponent::NumberCalculation(value) => {
-            assert!(!expected.contains('%'));
-            assert_eq!(value.components().serialize().unwrap().as_css(), expected);
-            assert_origin(value.origin(), expected);
-        }
-        CssColorComponent::PercentageCalculation(value) => {
-            assert!(expected.contains('%'));
-            assert_eq!(value.components().serialize().unwrap().as_css(), expected);
-            assert_origin(value.origin(), expected);
-        }
-        other => panic!("unexpected scalar {other:?}"),
     }
 }
 
@@ -492,27 +441,4 @@ fn hsl_aliases_reject_mixed_separators_and_nonpercentage_legacy_channels() {
             assert_recovered(&format!("{name}({arguments})"));
         }
     }
-}
-
-fn assert_recovered(value: &str) {
-    let source = format!("color: {value}; opacity: 0.5");
-    let report = parse_style_attribute(&source);
-    assert_eq!(
-        report.syntax().len(),
-        1,
-        "{source}: {:?}",
-        report.diagnostics()
-    );
-    assert_eq!(report.diagnostics().len(), 1, "{source}");
-    assert_eq!(
-        report.diagnostics()[0].action(),
-        CssRecoveryAction::DropDeclaration,
-        "{source}"
-    );
-    assert_eq!(
-        report.syntax()[0].known().unwrap().property(),
-        CssKnownProperty::Opacity,
-        "{source}"
-    );
-    assert!(validate_style_attribute(&source).is_err(), "{source}");
 }

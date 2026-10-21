@@ -3,20 +3,12 @@
 //! nearest, ties away from zero. Expectations use exact authored decimals,
 //! destination percentage factors, and conversion before six-place rounding.
 use crate::css::support::{
-    checked_color_declaration as declaration, component_values as components,
+    checked_color as color, checked_color_declaration as declaration,
+    component_values as components, declaration_color,
 };
 use surgeist_css::*;
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-fn declaration_color(d: &CssDeclaration) -> &CssColor {
-    let CssKnownPropertyValueRef::Color(c) = d.known().unwrap().property_value().unwrap() else {
-        panic!("color")
-    };
-    c.value()
-}
-fn color(source: &str) -> CssColor {
-    declaration_color(&declaration(source)).clone()
-}
 fn assert_text(source: &str, expected: &str) {
     let d = declaration(source);
     let before = d.clone();

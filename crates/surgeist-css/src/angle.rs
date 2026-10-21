@@ -24,16 +24,13 @@ crate::dimension::dimension_literal_owner!(
 impl CssAngleLiteral {
     pub(crate) fn is_default_gradient_direction(&self) -> bool {
         let decimal = crate::exact_decimal::LexicalDecimal::new(self.numeric().representation());
-        if decimal.negative {
-            return false;
-        }
-        let (digits, exponent): (&[u8], i128) = match self.unit() {
-            CssAngleUnit::Degrees => (&[1, 8], 1),
-            CssAngleUnit::Gradians => (&[2], 2),
-            CssAngleUnit::Turns => (&[5], -1),
+        let (digits, exponent) = match self.unit() {
+            CssAngleUnit::Degrees => ("18", 1),
+            CssAngleUnit::Gradians => ("2", 2),
+            CssAngleUnit::Turns => ("5", -1),
             CssAngleUnit::Radians => return false,
         };
-        decimal.exponent == Some(exponent) && decimal.digits().eq(digits.iter().copied())
+        decimal.is_positive(digits, exponent)
     }
 }
 

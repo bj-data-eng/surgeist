@@ -7,25 +7,13 @@
 //! RGB/HSL/HWB scalar alpha finalizes. Authored graphs and resource charges stay.
 
 use crate::css::support::{
-    checked_color_declaration as declaration, component_values as components,
+    checked_color as color, checked_color_declaration as declaration,
+    component_values as components, declaration_color,
 };
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-
-fn declared_color(declaration: &CssDeclaration) -> &CssColor {
-    let CssKnownPropertyValueRef::Color(value) =
-        declaration.known().unwrap().property_value().unwrap()
-    else {
-        panic!("color property")
-    };
-    value.value()
-}
-
-fn color(source: &str) -> CssColor {
-    declared_color(&declaration(source)).clone()
-}
 
 fn assert_color_text(value: &CssColor, expected: &str) {
     let before = value.clone();
@@ -51,8 +39,8 @@ fn assert_text(source: &str, expected: &str) {
             value.value_components().serialize().unwrap().as_css(),
             source
         );
-        let result = declared_color(value).to_specified_css();
-        assert_eq!(result, declared_color(value).to_specified_css());
+        let result = declaration_color(value).to_specified_css();
+        assert_eq!(result, declaration_color(value).to_specified_css());
         assert_eq!(value, &before);
         assert_eq!(result.unwrap(), expected, "{source}");
     }
@@ -1137,7 +1125,7 @@ fn clean_validation_and_important_declarations_preserve_alpha_weight_and_sibling
         report.syntax()[1].known().unwrap().property(),
         CssKnownProperty::Opacity
     );
-    let result = declared_color(&report.syntax()[0]).to_specified_css();
+    let result = declaration_color(&report.syntax()[0]).to_specified_css();
     assert_eq!(report.syntax(), &before);
     assert_eq!(
         result.unwrap(),

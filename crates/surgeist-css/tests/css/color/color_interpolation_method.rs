@@ -6,6 +6,7 @@
 //! not a preimplementation RED. Replacement checked-method API tests establish
 //! new API behavior without executable preimplementation RED.
 
+use crate::css::support::declaration_color as color;
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 use surgeist_css::*;
 
@@ -125,15 +126,6 @@ fn rejected_hue_construction_has_a_typed_error_and_display_contract() {
         }
         _ => panic!("unexpected interpolation construction error"),
     }
-}
-
-fn color(declaration: &CssDeclaration) -> &CssColor {
-    let CssKnownPropertyValueRef::Color(value) =
-        declaration.known().unwrap().property_value().unwrap()
-    else {
-        panic!("expected typed color")
-    };
-    value.value()
 }
 
 fn admitted(source: &str) -> [CssDeclaration; 2] {

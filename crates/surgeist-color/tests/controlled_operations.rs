@@ -584,27 +584,23 @@ fn fixed_requests_use_checked_numerical_operands_without_language_context() {
 }
 
 #[test]
-fn failed_serialization_keeps_original_and_first_numerical_error() {
+fn overflowing_hsl_serializes_its_clipped_closest_finite_channels() {
+    // Formerly the numerical-failure witness. Values 4: an unsupported range
+    // converts to the closest supported value, so at hue 0 with S = L = 1e308
+    // the red channel is -MAX and green/blue +MAX, clipped to 0 and 255.
     let value =
         Color::try_new(Space::Hsl, [Some(0.0), Some(1e308), Some(1e308)], Some(1.0)).unwrap();
     let mut owner = OperationOwner::new();
     let mut operation =
         Some(Serialization::new(&mut owner, value, SerializationRequest::Css).unwrap());
-    let error = SerializationError::Numerical(ColorError::Unrepresentable);
-    assert_eq!(
-        operation.as_mut().unwrap().next_action().compute(),
-        Err(error)
-    );
-    assert_eq!(operation.as_ref().unwrap().action(), Action::Failed);
-    assert!(matches!(Serialization::take(&mut operation), Err(e) if e == error));
-    assert!(operation.is_some());
-    assert_eq!(
-        operation.as_mut().unwrap().next_action().compute(),
-        Err(SerializationError::Protocol(ProtocolError::WrongAction))
-    );
+    assert_eq!(operation.as_mut().unwrap().next_action().compute(), Ok(()));
+    assert_eq!(operation.as_ref().unwrap().failure(), None);
     operation.as_mut().unwrap().abandon();
-    assert_eq!(operation.as_ref().unwrap().failure(), Some(&error));
     let recovery = Serialization::recover(&mut operation).unwrap();
     assert!(recovery.value().identical(value));
     assert_eq!(recovery.length(), 0);
+    assert_eq!(
+        serialize(value, SerializationRequest::Css, limits()).unwrap(),
+        "rgb(0, 255, 255)"
+    );
 }

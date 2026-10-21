@@ -485,12 +485,12 @@ fn radial_position_is_center(position: &CssPosition) -> bool {
     };
     let horizontal = match position.horizontal() {
         CssHorizontalPosition::Center => true,
-        CssHorizontalPosition::Offset(offset) => literal_percentage_is(offset, 5, 1),
+        CssHorizontalPosition::Offset(offset) => literal_percentage_is(offset, "5", 1),
         _ => false,
     };
     let vertical = match position.vertical() {
         CssVerticalPosition::Center => true,
-        CssVerticalPosition::Offset(offset) => literal_percentage_is(offset, 5, 1),
+        CssVerticalPosition::Offset(offset) => literal_percentage_is(offset, "5", 1),
         _ => false,
     };
     horizontal && vertical
@@ -617,15 +617,13 @@ fn angular_endpoint_is(value: &crate::CssAngularColorStopPosition, end: bool) ->
             if !end {
                 return decimal.len == 0;
             }
-            let (digits, exponent): (&[u8], i128) = match literal.unit() {
-                U::Degrees => (&[3, 6], 1),
-                U::Gradians => (&[4], 2),
-                U::Turns => (&[1], 0),
+            let (digits, exponent) = match literal.unit() {
+                U::Degrees => ("36", 1),
+                U::Gradians => ("4", 2),
+                U::Turns => ("1", 0),
                 U::Radians => return false,
             };
-            !decimal.negative
-                && decimal.exponent == Some(exponent)
-                && decimal.digits().eq(digits.iter().copied())
+            decimal.is_positive(digits, exponent)
         }),
         P::Percentage(value) => value.literal_component().is_some_and(|component| {
             let crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Percentage(number)) =
@@ -637,10 +635,7 @@ fn angular_endpoint_is(value: &crate::CssAngularColorStopPosition, end: bool) ->
             if !end {
                 return decimal.len == 0;
             }
-            !decimal.negative
-                && decimal.len == 1
-                && decimal.exponent == Some(2)
-                && decimal.digits().next() == Some(1)
+            decimal.is_positive("1", 2)
         }),
         P::Calculation(_) => false,
     }
@@ -688,22 +683,23 @@ fn is_direct_zero(value: &CssSpecifiedLengthPercentage) -> bool {
         })
 }
 
-fn literal_percentage_is(value: &CssSpecifiedLengthPercentage, digit: u8, exponent: i128) -> bool {
+fn literal_percentage_is(
+    value: &CssSpecifiedLengthPercentage,
+    digits: &str,
+    exponent: i128,
+) -> bool {
     value.literal_component().is_some_and(|component| {
         let crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Percentage(number)) =
             component.view()
         else {
             return false;
         };
-        let decimal = crate::exact_decimal::LexicalDecimal::new(number.representation());
-        !decimal.negative
-            && decimal.len == 1
-            && decimal.exponent == Some(exponent)
-            && decimal.digits().next() == Some(digit)
+        crate::exact_decimal::LexicalDecimal::new(number.representation())
+            .is_positive(digits, exponent)
     })
 }
 fn is_direct_hundred_percent(value: &CssSpecifiedLengthPercentage) -> bool {
-    literal_percentage_is(value, 1, 2)
+    literal_percentage_is(value, "1", 2)
 }
 fn append_line_position(
     value: &CssSpecifiedLengthPercentage,

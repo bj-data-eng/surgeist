@@ -1,19 +1,5 @@
+use crate::css::support::checked_color as color;
 use surgeist_css::*;
-
-fn color(text: &str) -> CssColor {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        parse_component_values(text).unwrap(),
-        CssImportance::Normal,
-    )
-    .unwrap();
-    let CssKnownPropertyValueRef::Color(value) =
-        declaration.known().unwrap().property_value().unwrap()
-    else {
-        panic!("expected color");
-    };
-    value.value().clone()
-}
 
 #[test]
 fn positive_fractional_rgb_channels_remain_above_zero() {
@@ -74,8 +60,10 @@ fn missing_rgb_channels_round_repeating_ratios_without_resource_errors() {
 #[test]
 fn projection_budget_never_relaxes_color_rounding() {
     let value = color("hsl(0 0% 6.27451%)");
-    // 255 * 6.27451 / 100 = 16.0000005: a tie rounds toward positive infinity.
-    let expected = "rgb(16.000001, 16.000001, 16.000001)";
+    // The exact product 255 * 6.27451 / 100 = 16.0000005 is a decimal tie, but
+    // surgeist-color converts the binary64 lightness, whose product lies just
+    // below it, exactly as used-value serialization does.
+    let expected = "rgb(16, 16, 16)";
     assert_eq!(value.to_specified_css().unwrap(), expected);
     for budget in [50, 100, 150, 200, 300, 500, 1000, 10000] {
         match value.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(

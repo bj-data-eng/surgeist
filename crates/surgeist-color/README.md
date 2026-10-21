@@ -38,7 +38,9 @@ stored value using floating-point equality.
 Oklab/Oklch. `RectangularCoordinates`, `HslCoordinates`, `HwbCoordinates` and
 `PolarCoordinates` offer the corresponding checked numerical conversion APIs.
 Conversion preserves finite extended coordinates and reports an unrepresentable
-final result; it does not apply a global gamut map. The implementation uses
+final result, except that forward HSL/HWB conversion returns the signed closest
+finite channel (the CSS Values 4 closest supported value); it does not apply a
+global gamut map. The implementation uses
 binary64 significand arithmetic, not exact-real or correctly rounded arithmetic.
 Source-specific numerical policies remain documented in the conversion modules.
 

@@ -8,6 +8,7 @@
 //! https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#hue-syntax
 //! https://www.w3.org/TR/2024/WD-css-typed-om-1-20240321/#cssnumericvalue-match
 
+use crate::css::support::declaration_color as color;
 use surgeist_color::PredefinedColorSpace;
 use surgeist_css::*;
 
@@ -85,14 +86,6 @@ fn checked(text: &str) -> CssDeclaration {
     assert_eq!(result.value_components(), &original);
     assert!(result.position().is_none());
     result
-}
-
-fn color(source: &CssDeclaration) -> &CssColor {
-    let CssKnownPropertyValueRef::Color(value) = source.known().unwrap().property_value().unwrap()
-    else {
-        panic!("color property")
-    };
-    value.value()
 }
 
 fn assert_reentry(text: &str) {

@@ -4,6 +4,7 @@ pub(crate) mod authored;
 #[cfg(test)]
 mod authored_input_tests;
 mod authored_resolution;
+pub(crate) use authored_resolution::authored_hue_degrees;
 pub use authored_resolution::*;
 use surgeist_color::{Color, ColorError};
 
@@ -27,10 +28,10 @@ pub use protocol::{
     CssColorBank, CssColorOperationOwner, CssColorProtocolError, CssColorSlot, CssColorSlotKind,
 };
 pub use work::CssColorKernel;
-mod channels;
+pub(crate) mod channels;
 mod device;
 mod grammar;
-mod hex;
+pub(crate) mod hex;
 mod interpolate;
 mod palette;
 mod profile;

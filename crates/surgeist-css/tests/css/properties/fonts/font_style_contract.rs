@@ -167,6 +167,73 @@ fn exact_lexical_bounds_and_radian_precision_retain_original_components() {
 }
 
 #[test]
+fn oblique_angles_compare_their_exact_decimal_with_the_quarter_turn_bound() {
+    // Fonts 4 WD 2026-09-07 §3.3: `oblique <angle [-90deg,90deg]>?`. A quarter
+    // turn is 90deg = 100grad = 0.25turn = π/2 rad, and
+    // π/2 = 1.57079632679489661923132169163975144209858469968755291048747…
+    // The first two radian rejections round to the same binary64 value as
+    // accepted literals; the authored decimal, not binary64, decides.
+    const HALF_PI_100: &str = "1.570796326794896619231321691639751442098584699687552910487472296153908203143104499314017412671058533";
+    let accepted = [
+        "90deg".to_owned(),
+        "-90deg".to_owned(),
+        "89.9999999999999999999deg".to_owned(),
+        "100grad".to_owned(),
+        "-100grad".to_owned(),
+        "99.99999999999999999grad".to_owned(),
+        "0.25turn".to_owned(),
+        "-0.25turn".to_owned(),
+        "0.2499999999999999999turn".to_owned(),
+        "1.5707963267948966rad".to_owned(),
+        "-1.5707963267948966rad".to_owned(),
+        "1.57079632679489661923rad".to_owned(),
+        "-1.57079632679489661923rad".to_owned(),
+        "15707963267948966e-16rad".to_owned(),
+        "0.0157079632679489661923e2rad".to_owned(),
+        format!("{HALF_PI_100}rad"),
+        format!("-{HALF_PI_100}rad"),
+    ];
+    for text in &accepted {
+        assert!(angle(text).literal_component().is_some(), "{text}");
+        assert!(
+            property(&format!("oblique {text}"))
+                .serialize_specified()
+                .unwrap()
+                .starts_with("oblique "),
+            "{text}"
+        );
+    }
+    let rejected = [
+        "1.57079632679489665rad".to_owned(),
+        "-1.57079632679489665rad".to_owned(),
+        "1.57079632679489661924rad".to_owned(),
+        "-1.57079632679489661924rad".to_owned(),
+        "157079632679489662e-17rad".to_owned(),
+        // One unit above π/2 truncated to 100 significant digits.
+        format!("{}4rad", &HALF_PI_100[..HALF_PI_100.len() - 1]),
+        format!("-{}4rad", &HALF_PI_100[..HALF_PI_100.len() - 1]),
+        "90.0000000000001deg".to_owned(),
+        "-90.0000000000001deg".to_owned(),
+        "100.000000000001grad".to_owned(),
+        "-100.000000000001grad".to_owned(),
+        "0.2500000000001turn".to_owned(),
+        "-0.2500000000001turn".to_owned(),
+    ];
+    for text in &rejected {
+        let error =
+            CssFontObliqueAngle::try_from_component(CssComponentValue::try_token(text).unwrap())
+                .unwrap_err();
+        assert_eq!(
+            error.kind(),
+            &CssNumericConstructionErrorKind::OutOfRange,
+            "{text}"
+        );
+        let report = parse_style_attribute(&format!("font-style:oblique {text}"));
+        assert!(!report.is_clean(), "{text}");
+    }
+}
+
+#[test]
 fn wrong_domains_and_bare_math_roots_cannot_enter_the_angle_model() {
     for text in ["0", "10", "10%", "10px", "10frobs"] {
         let error =

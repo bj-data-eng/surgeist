@@ -1,3 +1,4 @@
+use crate::css::support::checked_color as color;
 use surgeist_color::{Color, ColorSpace, PredefinedColorSpace};
 use surgeist_css::*;
 
@@ -20,20 +21,6 @@ fn limits() -> CssAuthoredColorOrdinaryLimits {
         path_steps: 100,
         actions: 30_000_000,
     }
-}
-fn color(text: &str) -> CssColor {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        parse_component_values(text).unwrap(),
-        CssImportance::Normal,
-    )
-    .unwrap();
-    let CssKnownPropertyValueRef::Color(value) =
-        declaration.known().unwrap().property_value().unwrap()
-    else {
-        panic!("color")
-    };
-    value.value().clone()
 }
 #[test]
 fn literal_checked_values_and_exact_expressions_resolve_through_the_public_front_door() {
@@ -1796,8 +1783,11 @@ fn numerical_failure_transfers_one_root_site_and_recovers_the_distinct_original_
 }
 
 #[test]
-fn serialization_failure_transfers_one_root_site_and_keeps_the_original_cause_for_recovery() {
-    use surgeist_color::{ColorError, OperationOwner, SerializationRequest};
+fn overflowing_hsl_serialization_computes_and_recovery_keeps_the_original_cause() {
+    // HSL S = L = 1e308 formerly failed numerically. Values 4 makes each
+    // overflowing channel the closest finite value, so the computation
+    // succeeds; abandoning it recovers the original and its failure path.
+    use surgeist_color::{OperationOwner, SerializationRequest};
     let facts = facts();
     let root = color("light-dark(color-mix(in srgb,red calc(-1%),blue),blue)");
     let mut css_owner = CssColorOperationOwner::new();
@@ -1828,39 +1818,13 @@ fn serialization_failure_transfers_one_root_site_and_keeps_the_original_cause_fo
         )
         .unwrap(),
     );
-    let error = serializer
+    serializer
         .as_mut()
         .unwrap()
         .next_action()
         .compute()
-        .unwrap_err();
-    let CssColorOperationError::Numerical {
-        error,
-        site: CssColorResolutionSite::Authored { path, origin },
-    } = error
-    else {
-        panic!("root site")
-    };
-    assert_eq!(error, ColorError::Unrepresentable);
-    assert!(path.steps().is_empty());
-    assert_eq!(path.capacity(), 0);
-    assert!(origin.is_none());
-    assert_eq!(
-        serializer.as_ref().unwrap().action(),
-        CssColorActionDescription::Stopped
-    );
-    assert!(matches!(
-        CssAuthoredColorSerialization::take(&mut serializer),
-        Err(CssColorOperationError::Protocol(
-            CssColorProtocolError::Terminal
-        ))
-    ));
-    assert_eq!(
-        serializer.as_mut().unwrap().next_action().compute(),
-        Err(CssColorOperationError::Protocol(
-            CssColorProtocolError::Terminal
-        ))
-    );
+        .unwrap();
+    serializer.as_mut().unwrap().abandon();
     let recovered = CssAuthoredColorSerialization::recover(&mut serializer).unwrap();
     assert!(recovered.value().identical(original));
     assert_eq!(

@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::CssAngleUnit;
+use crate::color::{channels, keywords::ColorFunction};
 use crate::{
     CssSpecifiedValueSerializationError as Error, CssSpecifiedValueSerializationLimits as Limits,
     specified_serialization::SpecifiedSerializationContext,
@@ -490,10 +491,9 @@ impl Factor {
 
 struct ProjectedScalar {
     text: String,
-    // Original post-scale outcome, before capture text or ScaledNumber loses
-    // precision. None belongs to direct exact literals or contextual captures.
+    // Original post-scale outcome, before capture text loses precision.
+    // None belongs to direct exact literals or contextual captures.
     scalar_value: Option<f64>,
-    number: Option<ScaledNumber>,
     exact: Option<crate::exact_decimal::ExactRational>,
     contextual: bool,
     missing: bool,
@@ -502,187 +502,6 @@ struct ProjectedScalar {
     // A direct exact slot can defer its logical materialization until a
     // contextual HSL/HWB branch selects it. Emitted text is not phase state.
     direct_text_pending: bool,
-}
-
-/// The least decimal exponent whose power of ten is a normal binary64 value.
-const MIN_NORMAL_DECIMAL_EXPONENT: i32 = -307;
-
-/// A binary64 coefficient in `[1, 10)` with an unbounded decimal exponent.
-///
-/// Finite input, including subnormal input, always yields a finite
-/// coefficient; non-finite coefficients carry calculation infinities and NaN.
-#[derive(Clone, Copy, Debug)]
-struct ScaledNumber {
-    coefficient: f64,
-    exponent: i128,
-}
-
-impl ScaledNumber {
-    const ZERO: Self = Self {
-        coefficient: 0.0,
-        exponent: 0,
-    };
-
-    fn new(coefficient: f64, exponent: i128) -> Self {
-        if coefficient == 0.0 {
-            return Self::ZERO;
-        }
-        if !coefficient.is_finite() {
-            return Self {
-                coefficient,
-                exponent: 0,
-            };
-        }
-        let normalization = coefficient.abs().log10().floor() as i32;
-        Self {
-            coefficient: if normalization < MIN_NORMAL_DECIMAL_EXPONENT {
-                // 10^normalization is subnormal or zero here. Lift the
-                // subnormal coefficient into the normal range first so the
-                // divisor stays a normal binary64 power.
-                coefficient * 1e300 / 10f64.powi(normalization + 300)
-            } else {
-                coefficient / 10f64.powi(normalization)
-            },
-            exponent: exponent.saturating_add(i128::from(normalization)),
-        }
-    }
-
-    fn from_binary64(value: f64) -> Self {
-        Self::new(value, 0)
-    }
-
-    fn from_exact(value: &crate::exact_decimal::ExactRational) -> Result<Self> {
-        let (coefficient, exponent) = value.scaled_binary64()?;
-        Ok(Self::new(coefficient, exponent))
-    }
-
-    fn is_negative(self) -> bool {
-        self.coefficient.is_sign_negative()
-    }
-
-    fn compare(self, other: Self) -> std::cmp::Ordering {
-        use std::cmp::Ordering;
-        if self.coefficient.is_nan() || other.coefficient.is_nan() {
-            return Ordering::Equal;
-        }
-        if self.coefficient.is_infinite() || other.coefficient.is_infinite() {
-            return self
-                .coefficient
-                .partial_cmp(&other.coefficient)
-                .expect("non-NaN scaled color values");
-        }
-        if self.coefficient == 0.0 || other.coefficient == 0.0 {
-            return self
-                .coefficient
-                .partial_cmp(&other.coefficient)
-                .expect("finite scaled color values");
-        }
-        if self.is_negative() != other.is_negative() {
-            return if self.is_negative() {
-                Ordering::Less
-            } else {
-                Ordering::Greater
-            };
-        }
-        let magnitude = self.exponent.cmp(&other.exponent).then_with(|| {
-            self.coefficient
-                .abs()
-                .partial_cmp(&other.coefficient.abs())
-                .expect("finite scaled color values")
-        });
-        if self.is_negative() {
-            magnitude.reverse()
-        } else {
-            magnitude
-        }
-    }
-
-    fn add(self, other: Self) -> Self {
-        if self.coefficient == 0.0 {
-            return other;
-        }
-        if other.coefficient == 0.0 {
-            return self;
-        }
-        let exponent = self.exponent.max(other.exponent);
-        let left_shift = self.exponent.saturating_sub(exponent);
-        let right_shift = other.exponent.saturating_sub(exponent);
-        let left = if left_shift < -324 {
-            0.0
-        } else {
-            self.coefficient * 10f64.powi(left_shift as i32)
-        };
-        let right = if right_shift < -324 {
-            0.0
-        } else {
-            other.coefficient * 10f64.powi(right_shift as i32)
-        };
-        Self::new(left + right, exponent)
-    }
-
-    fn subtract(self, other: Self) -> Self {
-        self.add(Self {
-            coefficient: -other.coefficient,
-            exponent: other.exponent,
-        })
-    }
-
-    fn multiply(self, other: Self) -> Self {
-        Self::new(
-            self.coefficient * other.coefficient,
-            self.exponent.saturating_add(other.exponent),
-        )
-    }
-
-    fn divide(self, other: Self) -> Self {
-        if other.coefficient == 0.0 {
-            // Values 4 §10.9.1: x / 0 is an infinity and 0 / 0 is NaN. The
-            // scaled zero is always +0 (`new` collapses -0), so the infinity's
-            // sign follows the dividend; either exponent is irrelevant.
-            return Self::new(self.coefficient / other.coefficient, 0);
-        }
-        Self::new(
-            self.coefficient / other.coefficient,
-            self.exponent.saturating_sub(other.exponent),
-        )
-    }
-
-    fn scale(self, factor: f64) -> Self {
-        Self::new(self.coefficient * factor, self.exponent)
-    }
-
-    fn max_zero(self) -> Self {
-        if self.is_negative() { Self::ZERO } else { self }
-    }
-
-    fn clamp(self, lower: f64, upper: f64) -> Self {
-        let lower = Self::from_binary64(lower);
-        let upper = Self::from_binary64(upper);
-        if self.coefficient.is_nan() || self.compare(lower).is_lt() {
-            lower
-        } else if self.compare(upper).is_gt() {
-            upper
-        } else {
-            self
-        }
-    }
-
-    fn binary64(self) -> f64 {
-        if !self.coefficient.is_finite() {
-            return self.coefficient;
-        }
-        if self.coefficient == 0.0 || self.exponent < -324 {
-            return 0.0;
-        }
-        debug_assert!(self.exponent <= 308);
-        let exponent = self.exponent as i32;
-        if exponent < MIN_NORMAL_DECIMAL_EXPONENT {
-            // Keep the power of ten normal. The two products may each round, so
-            // the subnormal result can differ from exact by one binary64 step.
-            return self.coefficient * 10f64.powi(exponent + 300) * 1e-300;
-        }
-        self.coefficient * 10f64.powi(exponent)
-    }
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -734,34 +553,30 @@ fn generic_literal_text(
 /// The destination function and checked slot determine direct percentage units.
 /// This policy never reaches references or calculation trees.
 fn relative_percentage_factor(function: &CssRelativeColorFunction, index: usize) -> Factor {
-    use CssRelativeColorFunction as F;
-    match function {
-        F::Rgb => Factor {
-            numerator: 255,
-            denominator: 100,
+    use CssRelativeColorFunction as R;
+    percent_factor(
+        match function {
+            R::Rgb => ColorFunction::Rgb,
+            R::Hsl => ColorFunction::Hsl,
+            R::Hwb => ColorFunction::Hwb,
+            R::Lab => ColorFunction::Lab,
+            R::Lch => ColorFunction::Lch,
+            R::Oklab => ColorFunction::Oklab,
+            R::Oklch => ColorFunction::Oklch,
+            R::Color(_) => ColorFunction::Color,
         },
-        F::Hsl | F::Hwb => Factor::ONE,
-        F::Lab if index != 0 => Factor {
-            numerator: 5,
-            denominator: 4,
+        index,
+    )
+}
+
+/// The declared value of 1% in one channel; a hue slot has no percentage.
+fn percent_factor(function: ColorFunction, index: usize) -> Factor {
+    match channels::slot(function, index) {
+        channels::Slot::Scalar { percent, .. } => Factor {
+            numerator: percent.numerator,
+            denominator: percent.denominator,
         },
-        F::Lch if index == 1 => Factor {
-            numerator: 3,
-            denominator: 2,
-        },
-        F::Lab | F::Lch => Factor::ONE,
-        F::Oklab if index != 0 => Factor {
-            numerator: 1,
-            denominator: 250,
-        },
-        F::Oklch if index == 1 => Factor {
-            numerator: 1,
-            denominator: 250,
-        },
-        F::Oklab | F::Oklch | F::Color(_) => Factor {
-            numerator: 1,
-            denominator: 100,
-        },
+        channels::Slot::Hue => Factor::ONE,
     }
 }
 
@@ -784,7 +599,6 @@ fn declared_component_projection(
             return Ok(ProjectedScalar {
                 scalar_value: None,
                 text: generic_literal_text(source, Factor::ONE, context)?,
-                number: None,
                 exact: None,
                 contextual: false,
                 missing: false,
@@ -814,7 +628,6 @@ fn declared_component_projection(
             return Ok(ProjectedScalar {
                 scalar_value: outcome.scalar_value,
                 text,
-                number: outcome.scalar_value.map(ScaledNumber::from_binary64),
                 exact: None,
                 contextual: outcome.context_dependent,
                 missing: false,
@@ -844,19 +657,14 @@ fn component_projection(
     )
 }
 
-#[derive(Clone, Copy)]
-enum LabComponentRange {
-    LabLightness,
-    OklabLightness,
-    Chroma,
-}
-
 /// Parsed-domain bounds apply to standalone and ordinary Mix direct L/C
 /// literals. Origin roles and calculation trees retain their projection and scratch.
+/// The declared slot supplies the clamp: lightness to `[0, 100%]`, chroma to
+/// nonnegative values.
 fn lab_component_projection(
     value: &CssColorComponent,
     percentage_factor: Factor,
-    range: LabComponentRange,
+    slot: channels::Slot,
     mode: Mode,
     context: &mut SpecifiedSerializationContext,
 ) -> Result<ProjectedScalar> {
@@ -898,10 +706,19 @@ fn lab_component_projection(
     let endpoint = if lexical.len == 0 || lexical.negative {
         Some("0")
     } else {
-        let upper = match range {
-            LabComponentRange::LabLightness => Some((2, "100")),
-            LabComponentRange::OklabLightness => Some((if percentage { 2 } else { 0 }, "1")),
-            LabComponentRange::Chroma => None,
+        let upper = match slot {
+            channels::Slot::Scalar {
+                percent,
+                clamp: channels::Clamp::Reference,
+            } => {
+                // 100% denotes the reference value 10^exponent.
+                let exponent = percent
+                    .reference_power_of_ten()
+                    .expect("Lab-family lightness reference is a power of ten");
+                let text = ["1", "10", "100"][exponent as usize];
+                Some((if percentage { 2 } else { exponent }, text))
+            }
+            _ => None,
         };
         upper.and_then(|(exponent, text)| {
             // At this normalized one-digit scale, 1 equals the upper bound
@@ -917,7 +734,6 @@ fn lab_component_projection(
         return Ok(ProjectedScalar {
             text: text.finish(),
             scalar_value: None,
-            number: None,
             exact: None,
             contextual: false,
             missing: false,
@@ -943,7 +759,6 @@ fn direct_component_projection(
         exact_factor(factor),
         context,
     )?;
-    let number = ScaledNumber::from_exact(&exact)?;
     let text = if materialize_direct {
         exact
             .clone_with_budget(context)?
@@ -953,7 +768,6 @@ fn direct_component_projection(
     };
     Ok(ProjectedScalar {
         scalar_value: None,
-        number: Some(number),
         exact: Some(exact),
         text,
         contextual: false,
@@ -980,7 +794,6 @@ fn component_projection_with_text(
             Ok(ProjectedScalar {
                 scalar_value: None,
                 text: output_text("none", context),
-                number: None,
                 exact: None,
                 contextual: false,
                 missing: true,
@@ -1038,7 +851,6 @@ fn component_projection_with_text(
             Ok(ProjectedScalar {
                 scalar_value: outcome.scalar_value,
                 text,
-                number: outcome.scalar_value.map(ScaledNumber::from_binary64),
                 exact: None,
                 contextual: outcome.context_dependent,
                 missing: false,
@@ -1080,7 +892,6 @@ fn number_calculation_projection(
     Ok(ProjectedScalar {
         scalar_value: outcome.scalar_value,
         text,
-        number: outcome.scalar_value.map(ScaledNumber::from_binary64),
         exact: None,
         contextual: outcome.context_dependent,
         missing: false,
@@ -1229,20 +1040,8 @@ fn serialize_hex(
     if context.output_suppressed() {
         return Ok(String::new());
     }
-    let digits = value.digits();
-    let expanded: Vec<u8> = match digits.len() {
-        3 | 4 => digits
-            .bytes()
-            .map(|byte| (hex_digit(byte) << 4) | hex_digit(byte))
-            .collect(),
-        6 | 8 => digits
-            .as_bytes()
-            .chunks_exact(2)
-            .map(|pair| (hex_digit(pair[0]) << 4) | hex_digit(pair[1]))
-            .collect(),
-        _ => unreachable!("checked hex color"),
-    };
-    let alpha = expanded.get(3).copied().filter(|alpha| *alpha != 255);
+    let expanded = crate::color::hex::expand(value.digits()).expect("checked hex color");
+    let alpha = Some(expanded[3]).filter(|alpha| *alpha != 255);
     let mut out = LocalCss::new(context);
     let modern = mode == Mode::Origin;
     out.push(if alpha.is_some() && !modern {
@@ -1264,15 +1063,6 @@ fn serialize_hex(
     }
     out.push(")")?;
     Ok(out.finish())
-}
-
-fn hex_digit(value: u8) -> u8 {
-    match value {
-        b'0'..=b'9' => value - b'0',
-        b'a'..=b'f' => value - b'a' + 10,
-        b'A'..=b'F' => value - b'A' + 10,
-        _ => unreachable!("checked hex digit"),
-    }
 }
 
 fn serialize_rgb(
@@ -1302,21 +1092,22 @@ fn serialize_rgb(
     let alpha = serialize_alpha(value.alpha(), AlphaRole::OrdinarySrgb, context)?;
     let missing = value.channels().iter().any(CssColorComponent::is_none)
         || value.alpha().is_some_and(CssColorComponent::is_none);
+    // rgb() declares 100% = 255; color(srgb) declares 100% = 1.
+    let rgb_percent = percent_factor(ColorFunction::Rgb, 0);
+    let rgb_reference = rgb_percent.numerator * 100 / rgb_percent.denominator;
     if missing {
         let mut channels = value
             .channels()
             .iter()
-            .map(|channel| {
+            .enumerate()
+            .map(|(index, channel)| {
                 component_projection_with_text(
                     channel,
                     Factor {
                         numerator: 1,
-                        denominator: 255,
+                        denominator: rgb_reference,
                     },
-                    Factor {
-                        numerator: 1,
-                        denominator: 100,
-                    },
+                    percent_factor(ColorFunction::Color, index),
                     ComponentTarget::Number,
                     false,
                     context,
@@ -1331,14 +1122,12 @@ fn serialize_rgb(
     let mut channels = value
         .channels()
         .iter()
-        .map(|channel| {
+        .enumerate()
+        .map(|(index, channel)| {
             component_projection_with_text(
                 channel,
                 Factor::ONE,
-                Factor {
-                    numerator: 255,
-                    denominator: 100,
-                },
+                percent_factor(ColorFunction::Rgb, index),
                 ComponentTarget::Number,
                 false,
                 context,
@@ -1346,7 +1135,7 @@ fn serialize_rgb(
         })
         .collect::<Result<Vec<_>>>()?;
     for channel in &mut channels {
-        finalize_rgb_channel(channel, 255, context)?;
+        finalize_rgb_channel(channel, rgb_reference, context)?;
     }
     if channels.iter().all(|channel| !channel.contextual) {
         let text = channels
@@ -1464,21 +1253,12 @@ fn legacy_rgb(
     Ok(out.finish())
 }
 
-fn normalized_numeric_hue(value: f64) -> f64 {
-    if !value.is_finite() {
-        return 0.0;
-    }
-    let hue = value.rem_euclid(360.0);
-    // Tiny negative remainders can round to 360 in binary64.
-    if hue >= 360.0 { 0.0 } else { hue }
-}
-
 fn finalize_hue(
     value: &mut ProjectedScalar,
     context: &SpecifiedSerializationContext,
 ) -> Result<()> {
     if let Some(number) = value.scalar_value {
-        value.text = ordinary_number(normalized_numeric_hue(number), context)?;
+        value.text = ordinary_number(crate::color::channels::normalize_hue(number), context)?;
         if value.text == "360" {
             value.text = output_text("0", context);
         }
@@ -1502,7 +1282,6 @@ fn finalize_hsl_saturation(
     if let Some(exact) = &value.exact
         && exact.compare_integer(0, context)?.is_lt()
     {
-        value.number = Some(ScaledNumber::ZERO);
         value.text = output_text("0", context);
         value.direct_text_pending = false;
     }
@@ -1514,7 +1293,6 @@ fn finalize_hsl_saturation(
         }
     });
     if let Some(number) = number {
-        value.number = Some(ScaledNumber::from_binary64(number));
         finalize_hsl_hwb_number(value, number, percentage, context)?;
     }
     Ok(())
@@ -1537,14 +1315,9 @@ fn finalize_hsl_hwb_number(
     percentage: bool,
     context: &SpecifiedSerializationContext,
 ) -> Result<()> {
-    let number = if number.is_nan() {
-        // Conversion uses the normalized operand; preserve scalar_value's
-        // original projection bits for the independently owned final scalar.
-        value.number = Some(ScaledNumber::ZERO);
-        0.0
-    } else {
-        number
-    };
+    // Conversion reads scalar_value's original projection bits; only the
+    // emitted natural-form text uses the normalized operand.
+    let number = if number.is_nan() { 0.0 } else { number };
     if number.is_finite() {
         value.text = ordinary_number(number, context)?;
         value.percentage = percentage;
@@ -1564,20 +1337,174 @@ fn finalize_hsl_hwb_number(
     Ok(())
 }
 
-fn numeric_hue(value: &ProjectedScalar) -> f64 {
-    value
-        .scalar_value
-        .map(normalized_numeric_hue)
-        .unwrap_or_else(|| value.number.expect("numeric hue").binary64())
+/// Binary64 channel inputs exactly as used-value resolution reads them: a
+/// literal is its correctly rounded decimal value, and a calculation is its
+/// projected scalar. A finite literal beyond binary64 is the closest finite
+/// value (Values 4 §10.12), as in used literal conversion.
+fn used_scalar(value: &CssColorComponent, projected: &ProjectedScalar) -> channels::Component {
+    use CssColorComponent as C;
+    let (domain, number) = match value {
+        C::Number(value) => (
+            channels::Domain::Number,
+            literal_binary64(value.numeric().representation()),
+        ),
+        C::Percentage(value) => (
+            channels::Domain::Percentage,
+            literal_binary64(value.numeric().representation()),
+        ),
+        C::PercentageCalculation(_) => (
+            channels::Domain::Percentage,
+            projected.scalar_value.expect("noncontextual calculation"),
+        ),
+        C::NumberCalculation(_) | C::HintedNumberCalculation(_) => (
+            channels::Domain::Number,
+            projected.scalar_value.expect("noncontextual calculation"),
+        ),
+        C::None => unreachable!("complete HSL/HWB channel"),
+    };
+    channels::Component {
+        domain,
+        value: saturated(number),
+    }
 }
 
+fn used_hue(
+    value: &CssColorHue,
+    projected: &ProjectedScalar,
+    context: &mut SpecifiedSerializationContext,
+) -> Result<channels::Component> {
+    use CssColorHue as H;
+    Ok(match value {
+        H::Number(value) => channels::Component {
+            domain: channels::Domain::Number,
+            value: literal_hue_degrees(value.numeric(), None, context)?,
+        },
+        H::Angle(value) => channels::Component {
+            domain: channels::Domain::Degrees,
+            value: literal_hue_degrees(
+                value.numeric(),
+                Some(crate::CssNumericUnit::Angle(value.unit())),
+                context,
+            )?,
+        },
+        H::NumberCalculation(_) => channels::Component {
+            domain: channels::Domain::Number,
+            value: projected.scalar_value.expect("noncontextual calculation"),
+        },
+        H::AngleCalculation(_) => channels::Component {
+            domain: channels::Domain::Degrees,
+            value: projected.scalar_value.expect("noncontextual calculation"),
+        },
+        H::None => unreachable!("complete HSL/HWB hue"),
+    })
+}
+
+/// A literal hue in degrees exactly as used resolution reads it. Below
+/// 1e305 no canonical angle can exceed binary64 (360 is the largest unit
+/// factor), so binary64 scaling of the correctly rounded literal is exact
+/// policy; larger literals run the shared used literal conversion, charged per
+/// action, for its scaled gradians and its 360deg-multiple overflow endpoint.
+fn literal_hue_degrees(
+    numeric: crate::CssNumericTokenRef<'_>,
+    unit: Option<crate::CssNumericUnit>,
+    context: &mut SpecifiedSerializationContext,
+) -> Result<f64> {
+    let representation = numeric.representation();
+    if crate::exact_decimal::LexicalDecimal::new(representation)
+        .compare_absolute("1", 305)
+        .is_lt()
+    {
+        let value = literal_binary64(representation);
+        return Ok(unit
+            .and_then(crate::CssNumericUnit::intrinsic_projection)
+            .map_or(value, |scale| scale.apply(value)));
+    }
+    crate::color::authored_hue_degrees(numeric, unit, || context.charge_projection(1))
+}
+
+/// Whether a literal hue overflows binary64, so its degrees are the nearest
+/// supported multiple of 360deg, which normalizes to 0deg.
+fn literal_hue_overflows(
+    numeric: crate::CssNumericTokenRef<'_>,
+    unit: Option<crate::CssNumericUnit>,
+    context: &mut SpecifiedSerializationContext,
+) -> Result<bool> {
+    if crate::exact_decimal::LexicalDecimal::new(numeric.representation())
+        .compare_absolute("1", 305)
+        .is_lt()
+    {
+        return Ok(false);
+    }
+    let degrees =
+        crate::color::authored_hue_degrees(numeric, unit, || context.charge_projection(1))?;
+    Ok(degrees.abs() == crate::numeric::projection::closest_supported_value(f64::INFINITY, true, true))
+}
+
+type HueParts = (
+    String,
+    Option<f64>,
+    Option<crate::exact_decimal::ExactRational>,
+    bool,
+    bool,
+    bool,
+);
+
+/// Values 4 §10.12: a literal hue beyond binary64 is the nearest supported
+/// multiple of 360deg, which normalizes to 0deg, as used values read it.
+fn overflowed_hue(context: &mut SpecifiedSerializationContext) -> Result<HueParts> {
+    let zero = crate::exact_decimal::ExactRational::integer(0, context)?;
+    Ok((
+        output_text("0", context),
+        None,
+        Some(zero),
+        false,
+        false,
+        false,
+    ))
+}
+
+fn literal_binary64(representation: &str) -> f64 {
+    representation
+        .parse()
+        .expect("checked CSS number is a decimal literal")
+}
+
+fn saturated(value: f64) -> f64 {
+    if value.is_infinite() {
+        f64::MAX.copysign(value)
+    } else {
+        value
+    }
+}
+
+/// Color 4 §§7.1, 8.1 and 16.2.2: complete specified hsl()/hwb() serialize
+/// as the corresponding sRGB channels in legacy rgb() form. The numerical
+/// conversion is surgeist-color's, through the same channel resolution as
+/// used values, so specified and used serialization share one algorithm.
 fn converted_rgb_text(
-    channels: [ScaledNumber; 3],
+    function: ColorFunction,
+    components: [channels::Component; 3],
     context: &SpecifiedSerializationContext,
 ) -> Result<[String; 3]> {
+    let unrepresentable =
+        || Error::new(crate::CssSpecifiedValueSerializationErrorKind::UnrepresentableValue);
+    let color = channels::absolute_coordinates(
+        function,
+        None,
+        crate::CssColorSyntax::Modern,
+        components,
+        None,
+    )
+    .and_then(|color| {
+        color
+            .converted(ColorSpace::Predefined(PredefinedColorSpace::Srgb))
+            .map_err(channels::Error::Numerical)
+    })
+    .map_err(|_| unrepresentable())?;
     let mut text = [String::new(), String::new(), String::new()];
-    for (target, channel) in text.iter_mut().zip(channels) {
-        *target = ordinary_number(channel.clamp(0.0, 1.0).binary64() * 255.0, context)?;
+    for (target, channel) in text.iter_mut().zip(color.channels()) {
+        let channel = channel.ok_or_else(unrepresentable)?;
+        *target = ordinary_number(channel.clamp(0.0, 1.0) * 255.0, context)?;
     }
     Ok(text)
 }
@@ -1669,136 +1596,16 @@ fn serialize_hsl(
             context,
         );
     }
-    if let (Some(hue), Some(saturation), Some(lightness)) = (
-        hue.exact.as_ref(),
-        saturation.exact.as_ref(),
-        lightness.exact.as_ref(),
-    ) {
-        let channels = exact_hsl_text(hue, saturation, lightness, context)?;
-        return legacy_rgb(&channels, alpha.as_deref(), context);
-    }
-    let hue = numeric_hue(&hue);
-    let saturation = saturation
-        .number
-        .expect("numeric saturation")
-        .max_zero()
-        .scale(0.01);
-    let lightness = lightness.number.expect("numeric lightness").scale(0.01);
-    let rgb = hsl_to_rgb_scaled(hue, saturation, lightness);
-    let channels = converted_rgb_text(rgb, context)?;
+    let channels = converted_rgb_text(
+        ColorFunction::Hsl,
+        [
+            used_hue(value.hue(), &hue, context)?,
+            used_scalar(value.saturation(), &saturation),
+            used_scalar(value.lightness(), &lightness),
+        ],
+        context,
+    )?;
     legacy_rgb(&channels, alpha.as_deref(), context)
-}
-
-fn exact_hsl_text(
-    hue: &crate::exact_decimal::ExactRational,
-    saturation: &crate::exact_decimal::ExactRational,
-    lightness: &crate::exact_decimal::ExactRational,
-    context: &mut SpecifiedSerializationContext,
-) -> Result<[String; 3]> {
-    use crate::exact_decimal::ExactRational as Exact;
-
-    // At half lightness, hue vertices have channels (1 ± saturation) / 2.
-    // Saturation at least one therefore clips each vertex to an exact endpoint,
-    // without expanding a potentially enormous authored decimal exponent.
-    if lightness.compare_integer(50, context)?.is_eq()
-        && saturation.compare_integer(100, context)?.is_ge()
-    {
-        for (angle, channels) in [
-            (0, ["255", "0", "0"]),
-            (60, ["255", "255", "0"]),
-            (120, ["0", "255", "0"]),
-            (180, ["0", "255", "255"]),
-            (240, ["0", "0", "255"]),
-            (300, ["255", "0", "255"]),
-        ] {
-            if hue.compare_integer(angle, context)?.is_eq() {
-                return Ok(channels.map(|channel| output_text(channel, context)));
-            }
-        }
-    }
-
-    let saturation = saturation
-        .clone_with_budget(context)?
-        .scale_ratio(1, 100, context)?
-        .max_zero(context)?;
-    let lightness = lightness
-        .clone_with_budget(context)?
-        .scale_ratio(1, 100, context)?;
-    let half = Exact::integer(1, context)?.scale_ratio(1, 2, context)?;
-    let one = Exact::integer(1, context)?;
-    let m2 = if lightness.compare(&half, context)?.is_le() {
-        lightness.clone_with_budget(context)?.multiply_signed(
-            saturation
-                .clone_with_budget(context)?
-                .add_signed(one, context)?,
-            context,
-        )?
-    } else {
-        let product = lightness
-            .clone_with_budget(context)?
-            .multiply_signed(saturation.clone_with_budget(context)?, context)?;
-        lightness
-            .clone_with_budget(context)?
-            .add_signed(saturation, context)?
-            .subtract_signed(product, context)?
-    };
-    let m1 = lightness
-        .scale_ratio(2, 1, context)?
-        .subtract_signed(m2.clone_with_budget(context)?, context)?;
-    let mut channels = [
-        exact_hue_channel(&m1, &m2, hue, 120, context)?,
-        exact_hue_channel(&m1, &m2, hue, 0, context)?,
-        exact_hue_channel(&m1, &m2, hue, -120, context)?,
-    ];
-    let mut output = [String::new(), String::new(), String::new()];
-    for (target, channel) in output.iter_mut().zip(&mut channels) {
-        let value = std::mem::replace(channel, Exact::integer(0, context)?)
-            .clamp_unit(context)?
-            .scale_ratio(255, 1, context)?;
-        *target = value.format_rounded(6, context.remaining_bytes(), context)?;
-    }
-    Ok(output)
-}
-
-fn exact_hue_channel(
-    m1: &crate::exact_decimal::ExactRational,
-    m2: &crate::exact_decimal::ExactRational,
-    hue: &crate::exact_decimal::ExactRational,
-    offset: i64,
-    context: &mut SpecifiedSerializationContext,
-) -> Result<crate::exact_decimal::ExactRational> {
-    use crate::exact_decimal::ExactRational as Exact;
-
-    let offset_value = Exact::integer(offset.unsigned_abs(), context)?;
-    let adjusted = if offset.is_negative() {
-        hue.clone_with_budget(context)?
-            .subtract_signed(offset_value, context)?
-    } else {
-        hue.clone_with_budget(context)?
-            .add_signed(offset_value, context)?
-    }
-    .modulo(360, context)?;
-    if adjusted.compare_integer(60, context)?.is_lt() {
-        let ratio = adjusted.scale_ratio(1, 60, context)?;
-        let delta = m2
-            .clone_with_budget(context)?
-            .subtract_signed(m1.clone_with_budget(context)?, context)?
-            .multiply_signed(ratio, context)?;
-        m1.clone_with_budget(context)?.add_signed(delta, context)
-    } else if adjusted.compare_integer(180, context)?.is_lt() {
-        m2.clone_with_budget(context)
-    } else if adjusted.compare_integer(240, context)?.is_lt() {
-        let ratio = Exact::integer(240, context)?
-            .subtract_signed(adjusted, context)?
-            .scale_ratio(1, 60, context)?;
-        let delta = m2
-            .clone_with_budget(context)?
-            .subtract_signed(m1.clone_with_budget(context)?, context)?
-            .multiply_signed(ratio, context)?;
-        m1.clone_with_budget(context)?.add_signed(delta, context)
-    } else {
-        m1.clone_with_budget(context)
-    }
 }
 
 fn serialize_hwb(
@@ -1874,71 +1681,16 @@ fn serialize_hwb(
         materialize_direct(&mut black, context)?;
         return hsl_like("hwb", &hue, &white, &black, alpha.as_deref(), context);
     }
-    if let (Some(hue), Some(white), Some(black)) = (
-        hue.exact.as_ref(),
-        white.exact.as_ref(),
-        black.exact.as_ref(),
-    ) {
-        let channels = exact_hwb_text(hue, white, black, context)?;
-        return legacy_rgb(&channels, alpha.as_deref(), context);
-    }
-    let hue = numeric_hue(&hue);
-    let white = white.number.expect("numeric whiteness").scale(0.01);
-    let black = black.number.expect("numeric blackness").scale(0.01);
-    let rgb = hwb_to_rgb_scaled(hue, white, black);
-    let channels = converted_rgb_text(rgb, context)?;
+    let channels = converted_rgb_text(
+        ColorFunction::Hwb,
+        [
+            used_hue(value.hue(), &hue, context)?,
+            used_scalar(value.whiteness(), &white),
+            used_scalar(value.blackness(), &black),
+        ],
+        context,
+    )?;
     legacy_rgb(&channels, alpha.as_deref(), context)
-}
-
-fn exact_hwb_text(
-    hue: &crate::exact_decimal::ExactRational,
-    white: &crate::exact_decimal::ExactRational,
-    black: &crate::exact_decimal::ExactRational,
-    context: &mut SpecifiedSerializationContext,
-) -> Result<[String; 3]> {
-    use crate::exact_decimal::ExactRational as Exact;
-
-    let white = white
-        .clone_with_budget(context)?
-        .scale_ratio(1, 100, context)?;
-    let black = black
-        .clone_with_budget(context)?
-        .scale_ratio(1, 100, context)?;
-    let sum = white
-        .clone_with_budget(context)?
-        .add_signed(black, context)?;
-    let one = Exact::integer(1, context)?;
-    if sum.compare(&one, context)?.is_ge() {
-        if white.compare_integer(0, context)?.is_le() {
-            return Ok(std::array::from_fn(|_| output_text("0", context)));
-        }
-        if white.compare(&sum, context)?.is_ge() {
-            return Ok(std::array::from_fn(|_| output_text("255", context)));
-        }
-        let rounded = white.rounded_positive_ratio(&sum, 255, 6, context)?;
-        let text = Exact::integer(rounded, context)?
-            .scale_ratio(1, 1_000_000, context)?
-            .format_exact(context.remaining_bytes(), context)?;
-        return Ok([text.clone(), text.clone(), text]);
-    }
-
-    let zero = Exact::integer(0, context)?;
-    let channels = [
-        exact_hue_channel(&zero, &one, hue, 120, context)?,
-        exact_hue_channel(&zero, &one, hue, 0, context)?,
-        exact_hue_channel(&zero, &one, hue, -120, context)?,
-    ];
-    let factor = one.subtract_signed(sum, context)?;
-    let mut output = [String::new(), String::new(), String::new()];
-    for (target, channel) in output.iter_mut().zip(channels) {
-        let value = channel
-            .multiply_signed(factor.clone_with_budget(context)?, context)?
-            .add_signed(white.clone_with_budget(context)?, context)?
-            .clamp_unit(context)?
-            .scale_ratio(255, 1, context)?;
-        *target = value.format_rounded(6, context.remaining_bytes(), context)?;
-    }
-    Ok(output)
 }
 
 fn hsl_like(
@@ -1961,7 +1713,6 @@ fn clone_scalar(value: &ProjectedScalar) -> ProjectedScalar {
     ProjectedScalar {
         scalar_value: value.scalar_value,
         text: value.text.clone(),
-        number: value.number,
         exact: None,
         contextual: value.contextual,
         missing: value.missing,
@@ -1993,7 +1744,6 @@ fn hue_projection(
             return Ok(ProjectedScalar {
                 scalar_value: None,
                 text: suffix_text(text, suffix, context)?,
-                number: None,
                 exact: None,
                 contextual: false,
                 missing: false,
@@ -2004,19 +1754,25 @@ fn hue_projection(
         }
     }
 
-    let (text, scalar_value, number, exact, contextual, missing, calculation) = match value {
+    let (text, scalar_value, exact, contextual, missing, calculation) = match value {
         H::None => {
             context.charge_input(1)?;
             context.charge_projection(1)?;
-            (
-                output_text("none", context),
-                None,
-                None,
-                None,
-                false,
-                true,
-                false,
-            )
+            (output_text("none", context), None, None, false, true, false)
+        }
+        H::Number(value) if literal_hue_overflows(value.numeric(), None, context)? => {
+            context.charge_input(1)?;
+            overflowed_hue(context)?
+        }
+        H::Angle(value)
+            if literal_hue_overflows(
+                value.numeric(),
+                Some(crate::CssNumericUnit::Angle(value.unit())),
+                context,
+            )? =>
+        {
+            context.charge_input(1)?;
+            overflowed_hue(context)?
         }
         H::Number(value) => {
             context.charge_input(1)?;
@@ -2027,11 +1783,10 @@ fn hue_projection(
                 360,
                 context,
             )?;
-            let number = ScaledNumber::from_exact(&exact)?;
             let text = exact
                 .clone_with_budget(context)?
                 .format_exact(context.remaining_bytes(), context)?;
-            (text, None, Some(number), Some(exact), false, false, false)
+            (text, None, Some(exact), false, false, false)
         }
         H::Angle(value) => {
             context.charge_input(1)?;
@@ -2043,11 +1798,23 @@ fn hue_projection(
                 360,
                 context,
             )?;
-            let number = ScaledNumber::from_exact(&exact)?;
-            let text = exact
-                .clone_with_budget(context)?
-                .format_exact(context.remaining_bytes(), context)?;
-            (text, None, Some(number), Some(exact), false, false, false)
+            let degrees = exact.clone_with_budget(context)?;
+            // Color 4 §16 serializes the hue as a canonicalized <number> of
+            // degrees, which CSSOM rounds to at most six decimals. Degree and
+            // turn literals are exact decimal multiples and keep their digits.
+            let text = if matches!(value.unit(), CssAngleUnit::Radians | CssAngleUnit::Gradians) {
+                let text = degrees.format_rounded(6, context.remaining_bytes(), context)?;
+                // A normalized hue just below 360 can round up to the
+                // excluded endpoint; it denotes the same direction as 0.
+                if text == "360" {
+                    output_text("0", context)
+                } else {
+                    text
+                }
+            } else {
+                degrees.format_exact(context.remaining_bytes(), context)?
+            };
+            (text, None, Some(exact), false, false, false)
         }
         H::NumberCalculation(value) => {
             let calculation = crate::numeric::ColorCalculationRef::Number(value);
@@ -2067,7 +1834,6 @@ fn hue_projection(
             (
                 text,
                 outcome.scalar_value,
-                outcome.scalar_value.map(ScaledNumber::from_binary64),
                 None,
                 outcome.context_dependent,
                 false,
@@ -2092,7 +1858,6 @@ fn hue_projection(
             (
                 text,
                 outcome.scalar_value,
-                outcome.scalar_value.map(ScaledNumber::from_binary64),
                 None,
                 outcome.context_dependent,
                 false,
@@ -2103,7 +1868,6 @@ fn hue_projection(
     Ok(ProjectedScalar {
         scalar_value,
         text,
-        number,
         exact,
         contextual,
         missing,
@@ -2126,91 +1890,6 @@ fn angle_factor(unit: CssAngleUnit) -> Factor {
     }
 }
 
-fn hsl_to_rgb(hue: f64, saturation: f64, lightness: f64) -> [f64; 3] {
-    let hue = hue.rem_euclid(360.0) / 360.0;
-    if saturation == 0.0 {
-        return [lightness; 3];
-    }
-    let m2 = if lightness <= 0.5 {
-        lightness * (saturation + 1.0)
-    } else {
-        lightness + saturation - lightness * saturation
-    };
-    let m1 = lightness * 2.0 - m2;
-    fn hue_to_rgb(m1: f64, m2: f64, mut hue: f64) -> f64 {
-        hue = hue.rem_euclid(1.0);
-        if hue * 6.0 < 1.0 {
-            m1 + (m2 - m1) * hue * 6.0
-        } else if hue * 2.0 < 1.0 {
-            m2
-        } else if hue * 3.0 < 2.0 {
-            m1 + (m2 - m1) * (2.0 / 3.0 - hue) * 6.0
-        } else {
-            m1
-        }
-    }
-    [
-        hue_to_rgb(m1, m2, hue + 1.0 / 3.0),
-        hue_to_rgb(m1, m2, hue),
-        hue_to_rgb(m1, m2, hue - 1.0 / 3.0),
-    ]
-}
-
-fn hsl_to_rgb_scaled(
-    hue: f64,
-    saturation: ScaledNumber,
-    lightness: ScaledNumber,
-) -> [ScaledNumber; 3] {
-    let hue = hue.rem_euclid(360.0) / 360.0;
-    if saturation.coefficient == 0.0 {
-        return [lightness; 3];
-    }
-    let one = ScaledNumber::from_binary64(1.0);
-    let two = ScaledNumber::from_binary64(2.0);
-    let half = ScaledNumber::from_binary64(0.5);
-    let m2 = if lightness.compare(half).is_le() {
-        lightness.multiply(saturation.add(one))
-    } else {
-        lightness
-            .add(saturation)
-            .subtract(lightness.multiply(saturation))
-    };
-    let m1 = lightness.multiply(two).subtract(m2);
-    fn hue_to_rgb(m1: ScaledNumber, m2: ScaledNumber, mut hue: f64) -> ScaledNumber {
-        hue = hue.rem_euclid(1.0);
-        if hue * 6.0 < 1.0 {
-            m1.add(m2.subtract(m1).scale(hue * 6.0))
-        } else if hue * 2.0 < 1.0 {
-            m2
-        } else if hue * 3.0 < 2.0 {
-            m1.add(m2.subtract(m1).scale((2.0 / 3.0 - hue) * 6.0))
-        } else {
-            m1
-        }
-    }
-    [
-        hue_to_rgb(m1, m2, hue + 1.0 / 3.0),
-        hue_to_rgb(m1, m2, hue),
-        hue_to_rgb(m1, m2, hue - 1.0 / 3.0),
-    ]
-}
-
-fn hwb_to_rgb_scaled(hue: f64, white: ScaledNumber, black: ScaledNumber) -> [ScaledNumber; 3] {
-    let sum = white.add(black);
-    let one = ScaledNumber::from_binary64(1.0);
-    if sum.compare(one).is_ge() {
-        let gray = white.divide(sum);
-        return [gray; 3];
-    }
-    let rgb = hsl_to_rgb(hue, 1.0, 0.5);
-    let factor = one.subtract(sum);
-    rgb.map(|channel| {
-        ScaledNumber::from_binary64(channel)
-            .multiply(factor)
-            .add(white)
-    })
-}
-
 fn serialize_lab(
     name: &str,
     value: &CssLabColor,
@@ -2218,27 +1897,15 @@ fn serialize_lab(
     context: &mut SpecifiedSerializationContext,
 ) -> Result<String> {
     let origin = mode == Mode::Origin;
+    let function = if name == "lab" {
+        ColorFunction::Lab
+    } else {
+        ColorFunction::Oklab
+    };
     let (light_percentage, axis_percentage) = if origin {
         (Factor::ONE, Factor::ONE)
-    } else if name == "lab" {
-        (
-            Factor::ONE,
-            Factor {
-                numerator: 5,
-                denominator: 4,
-            },
-        )
     } else {
-        (
-            Factor {
-                numerator: 1,
-                denominator: 100,
-            },
-            Factor {
-                numerator: 1,
-                denominator: 250,
-            },
-        )
+        (percent_factor(function, 0), percent_factor(function, 1))
     };
     let target = if origin {
         ComponentTarget::Preserve
@@ -2248,11 +1915,7 @@ fn serialize_lab(
     let lightness = lab_component_projection(
         value.lightness(),
         light_percentage,
-        if name == "lab" {
-            LabComponentRange::LabLightness
-        } else {
-            LabComponentRange::OklabLightness
-        },
+        channels::slot(function, 0),
         mode,
         context,
     )?;
@@ -2294,36 +1957,20 @@ fn serialize_lch(
     context: &mut SpecifiedSerializationContext,
 ) -> Result<String> {
     let origin = mode == Mode::Origin;
+    let function = if name == "lch" {
+        ColorFunction::Lch
+    } else {
+        ColorFunction::Oklch
+    };
     let (light_percentage, chroma_percentage) = if origin {
         (Factor::ONE, Factor::ONE)
-    } else if name == "lch" {
-        (
-            Factor::ONE,
-            Factor {
-                numerator: 3,
-                denominator: 2,
-            },
-        )
     } else {
-        (
-            Factor {
-                numerator: 1,
-                denominator: 100,
-            },
-            Factor {
-                numerator: 1,
-                denominator: 250,
-            },
-        )
+        (percent_factor(function, 0), percent_factor(function, 1))
     };
     let lightness = lab_component_projection(
         value.lightness(),
         light_percentage,
-        if name == "lch" {
-            LabComponentRange::LabLightness
-        } else {
-            LabComponentRange::OklabLightness
-        },
+        channels::slot(function, 0),
         mode,
         context,
     )?;
@@ -2332,7 +1979,7 @@ fn serialize_lch(
         lab_component_projection(
             value.chroma(),
             chroma_percentage,
-            LabComponentRange::Chroma,
+            channels::slot(function, 1),
             mode,
             context,
         )?,
@@ -2359,17 +2006,15 @@ fn serialize_predefined(
     let channels = value
         .channels()
         .iter()
-        .map(|channel| {
+        .enumerate()
+        .map(|(index, channel)| {
             declared_component_projection(
                 channel,
                 Factor::ONE,
                 if origin {
                     Factor::ONE
                 } else {
-                    Factor {
-                        numerator: 1,
-                        denominator: 100,
-                    }
+                    percent_factor(ColorFunction::Color, index)
                 },
                 if origin {
                     ComponentTarget::Preserve
@@ -2406,17 +2051,15 @@ fn serialize_device_cmyk(
     let channels = value
         .channels()
         .iter()
-        .map(|channel| {
+        .enumerate()
+        .map(|(index, channel)| {
             declared_component_projection(
                 channel,
                 Factor::ONE,
                 if origin {
                     Factor::ONE
                 } else {
-                    Factor {
-                        numerator: 1,
-                        denominator: 100,
-                    }
+                    percent_factor(ColorFunction::DeviceCmyk, index)
                 },
                 if origin {
                     ComponentTarget::Preserve
@@ -2449,17 +2092,15 @@ fn serialize_custom(
     let channels = value
         .channels()
         .iter()
-        .map(|channel| {
+        .enumerate()
+        .map(|(index, channel)| {
             declared_component_projection(
                 channel,
                 Factor::ONE,
                 if origin {
                     Factor::ONE
                 } else {
-                    Factor {
-                        numerator: 1,
-                        denominator: 100,
-                    }
+                    percent_factor(ColorFunction::Color, index)
                 },
                 if origin {
                     ComponentTarget::Preserve
@@ -3054,16 +2695,16 @@ mod suppressed_color_semantics_tests {
     }
 
     #[test]
-    fn exact_hsl_vertices_never_materialize_discarded_channel_text() {
-        use crate::exact_decimal::ExactRational;
-
+    fn hsl_vertices_never_materialize_discarded_channel_text() {
+        // Color 4 §7.1: full saturation at half lightness reaches the sRGB
+        // cube vertices at multiples of 60 degrees.
         for (angle, expected) in [
-            ("0", ["255", "0", "0"]),
-            ("60", ["255", "255", "0"]),
-            ("120", ["0", "255", "0"]),
-            ("180", ["0", "255", "255"]),
-            ("240", ["0", "0", "255"]),
-            ("300", ["255", "0", "255"]),
+            (0.0, ["255", "0", "0"]),
+            (60.0, ["255", "255", "0"]),
+            (120.0, ["0", "255", "0"]),
+            (180.0, ["0", "255", "255"]),
+            (240.0, ["0", "0", "255"]),
+            (300.0, ["255", "0", "255"]),
         ] {
             for suppressed in [false, true] {
                 let mut context = SpecifiedSerializationContext::new(Limits::new(
@@ -3072,25 +2713,23 @@ mod suppressed_color_semantics_tests {
                     if suppressed { 0 } else { 100 },
                 ));
                 context.replace_output_suppression(suppressed);
-                let hue = ExactRational::from_lexical_factor(
-                    angle,
-                    exact_factor(Factor::ONE),
-                    &mut context,
+                let percent = |value| channels::Component {
+                    domain: channels::Domain::Percentage,
+                    value,
+                };
+                let channels = converted_rgb_text(
+                    ColorFunction::Hsl,
+                    [
+                        channels::Component {
+                            domain: channels::Domain::Degrees,
+                            value: angle,
+                        },
+                        percent(100.0),
+                        percent(50.0),
+                    ],
+                    &context,
                 )
                 .unwrap();
-                let saturation = ExactRational::from_lexical_factor(
-                    "100",
-                    exact_factor(Factor::ONE),
-                    &mut context,
-                )
-                .unwrap();
-                let lightness = ExactRational::from_lexical_factor(
-                    "50",
-                    exact_factor(Factor::ONE),
-                    &mut context,
-                )
-                .unwrap();
-                let channels = exact_hsl_text(&hue, &saturation, &lightness, &mut context).unwrap();
                 if suppressed {
                     assert_eq!(channels, [String::new(), String::new(), String::new()]);
                 } else {
@@ -3128,8 +2767,7 @@ mod suppressed_color_semantics_tests {
 
     #[test]
     fn suppression_preserves_checked_exact_arithmetic_errors() {
-        let value =
-            color("hsl(0 12345678901234567891e170141183460469231731687303715884105727% 50%)");
+        let value = color("rgb(12345678901234567891e170141183460469231731687303715884105727 0 0)");
         let mut writer = SpecifiedRuleWriter::new(Limits::new(100_000, 100_000, 0));
         let error = writer
             .without_output(|writer| append(&value, writer))
@@ -3288,79 +2926,5 @@ mod declared_literal_tests {
             );
             assert_eq!(value, original);
         }
-    }
-}
-
-#[cfg(test)]
-mod scaled_number_tests {
-    use super::ScaledNumber;
-
-    /// IEEE 754 binary64: bits 1 is the minimum positive subnormal (about
-    /// 4.94e-324, decimal exponent -324); `MIN_POSITIVE` is 2^-1022.
-    fn assert_normalized(value: f64, decimal_exponent: i128) {
-        let scaled = ScaledNumber::from_binary64(value);
-        assert!(scaled.coefficient.is_finite(), "{value:e}: {scaled:?}");
-        assert!(
-            (1.0..10.0).contains(&scaled.coefficient.abs()),
-            "{value:e}: {scaled:?}"
-        );
-        assert_eq!(scaled.exponent, decimal_exponent, "{value:e}");
-        // Decimal scaling rounds; recovery stays within one binary64 step and
-        // never collapses a nonzero value to zero or flips its sign.
-        let recovered = scaled.binary64();
-        assert_ne!(recovered, 0.0, "{value:e}: {scaled:?}");
-        assert_eq!(recovered.is_sign_negative(), value.is_sign_negative());
-        assert!(
-            recovered.abs().to_bits().abs_diff(value.abs().to_bits()) <= 1,
-            "{value:e} recovered as {recovered:e}"
-        );
-    }
-
-    #[test]
-    fn subnormal_values_normalize_to_finite_coefficients() {
-        for (value, decimal_exponent) in [
-            (f64::from_bits(1), -324),
-            (f64::from_bits(2), -324),
-            (f64::from_bits(3), -323),
-            (f64::from_bits(0xff), -321),
-            (3e-310, -310),
-            (f64::from_bits(0x000f_ffff_ffff_ffff), -308),
-        ] {
-            assert!(value.is_subnormal(), "{value:e}");
-            assert_normalized(value, decimal_exponent);
-            assert_normalized(-value, decimal_exponent);
-        }
-        assert_normalized(f64::MIN_POSITIVE, -308);
-        assert_normalized(2e-300, -300);
-    }
-
-    #[test]
-    fn subnormal_operands_keep_finite_arithmetic() {
-        let tiny = ScaledNumber::from_binary64(f64::from_bits(1));
-        let one = ScaledNumber::from_binary64(1.0);
-        assert_eq!(tiny.add(one).binary64(), 1.0);
-        assert_eq!(one.add(tiny).binary64(), 1.0);
-        assert_eq!(tiny.scale(0.01).binary64(), 0.0);
-        assert!(tiny.multiply(tiny).coefficient.is_finite());
-        assert!(tiny.compare(ScaledNumber::ZERO).is_gt());
-        assert!(tiny.compare(one).is_lt());
-    }
-
-    /// Values 4 §10.9.1: division by zero yields an infinity, and 0/0 yields NaN.
-    #[test]
-    fn division_by_zero_follows_calculation_semantics_in_every_build() {
-        let one = ScaledNumber::from_binary64(1.0);
-        assert_eq!(one.divide(ScaledNumber::ZERO).binary64(), f64::INFINITY);
-        let negative = ScaledNumber::from_binary64(-1.0);
-        assert_eq!(
-            negative.divide(ScaledNumber::ZERO).binary64(),
-            f64::NEG_INFINITY
-        );
-        assert!(
-            ScaledNumber::ZERO
-                .divide(ScaledNumber::ZERO)
-                .binary64()
-                .is_nan()
-        );
     }
 }

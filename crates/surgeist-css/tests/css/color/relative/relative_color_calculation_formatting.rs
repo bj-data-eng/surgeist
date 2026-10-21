@@ -5,24 +5,13 @@
 //! FIXED policy, not a claim that CSSOM normatively resolves halfway direction.
 
 use crate::css::support::{
-    checked_color_declaration as declaration, component_values as components,
+    checked_color as color, checked_color_declaration as declaration,
+    component_values as components, declaration_color,
 };
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-
-fn declaration_color(value: &CssDeclaration) -> &CssColor {
-    let CssKnownPropertyValueRef::Color(value) = value.known().unwrap().property_value().unwrap()
-    else {
-        panic!("color property")
-    };
-    value.value()
-}
-
-fn color(source: &str) -> CssColor {
-    declaration_color(&declaration(source)).clone()
-}
 
 fn assert_text(source: &str, expected: &str) {
     let declaration = declaration(source);
@@ -441,6 +430,8 @@ fn profile_sibling_calculations_share_cumulative_visits_and_final_bytes() {
 fn discarded_ordinary_rgb_capture_preserves_larger_scratch_requirement() {
     let value = color("rgb(calc(10000000000) 0 0)");
     let before = value.clone();
+    // Capture occurs before final RGB output. calc(10000000000) needs seventeen
+    // scratch bytes although the clamped final rgb(255, 0, 0) needs fourteen.
     assert_eq!(
         value
             .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, 17))
