@@ -1154,7 +1154,10 @@ impl SpecifiedRuleWriter {
         if format == Format::Cssom || !list.queries().is_empty() {
             self.append(" ")?;
         }
-        let captured = list.capture_cssom(&mut self.context)?;
+        let captured = match format {
+            Format::Compact => list.capture_projected(&mut self.context)?,
+            Format::Cssom => list.capture_cssom(&mut self.context)?,
+        };
         self.append(captured.as_css())?;
         Ok(())
     }

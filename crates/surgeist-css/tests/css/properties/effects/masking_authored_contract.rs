@@ -308,6 +308,36 @@ fn layer_grammar_rejects_duplicate_groups_and_intrusions_between_position_and_si
     }
 }
 
+/// #1380: the `mask` shorthand's `<geometry-box>` sets both longhands. The
+/// pinned CRD 2021-08-05 still writes them with `<geometry-box>` (which has
+/// `margin-box`) but its change log removes `margin-box` from both; the
+/// current Masking source writes `mask-origin: <coord-box>#` and
+/// `mask-clip: [ <coord-box> | no-clip ]#`, and Box 4 `<coord-box>` excludes
+/// `margin-box`. The current draft governs, so the shorthand rejects it in
+/// every box position.
+#[test]
+fn mask_shorthand_rejects_margin_box_as_one_box_two_boxes_and_with_no_clip() {
+    for input in [
+        "margin-box",
+        "url(m.svg) margin-box",
+        "margin-box padding-box",
+        "padding-box margin-box",
+        "margin-box margin-box",
+        "url(m.svg) margin-box no-clip",
+        "no-clip margin-box",
+        "none, url(m.svg) margin-box",
+    ] {
+        rejected("mask", input);
+    }
+    for input in [
+        "padding-box",
+        "padding-box content-box",
+        "url(m.svg) padding-box no-clip",
+    ] {
+        admitted("mask", input);
+    }
+}
+
 #[test]
 fn mask_layer_lists_keep_authored_arity_and_all_six_border_resets() {
     let source = admitted("mask", "none, url(a.svg) alpha padding-box");

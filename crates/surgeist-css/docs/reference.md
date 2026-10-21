@@ -2348,6 +2348,23 @@ The property grammars and accessors are deliberately distinct:
   vertical axes plus an optional `CssSpecifiedLength`; the z component is a
   checked authored length and cannot contain a percentage.
 
+`background-position` keeps the physical grammar
+([#1379](https://github.com/bj-data-eng/surgeist/issues/1379)). Its Backgrounds 4
+grammar, `<bg-position> = <position> | <position-three>`, sets the four longhands
+`background-position-x`, `-y`, `-inline` and `-block`, but how it sets them is
+still open in [csswg-drafts#9690](https://github.com/w3c/csswg-drafts/issues/9690)
+("Specify how the longhand properties are set"). Adopting the flow-relative
+Values 5 `<position>` here would invent that mapping, so the spec gap is recorded
+in [SOURCE-EDITIONS.md](../../../references/SOURCE-EDITIONS.md#importer-selected-witnesses)
+and revisited when #9690 resolves.
+
+`mask-position`, `object-position`, `perspective-origin` and the `mask`
+shorthand's layer position are decided to accept the shared Values 5
+`<position>` already used by `offset-position`, with flow-relative keywords left
+unresolved. Their current accessors expose `CssPhysicalPosition` and
+`CssPhysicalPositionList`, which cannot represent flow-relative keywords, so
+these consumers still reject them until that public accessor change lands.
+
 `background-position` expands to one noninherited longhand whose intrinsic initial
 is a single `0% 0%` layer. Ordinary contributions preserve the entire ordered
 authored list, and CSS-wide keywords remain symbolic. Substitution-dependent values
@@ -5469,8 +5486,22 @@ remain outside the adopted selector grammar.
 After a following segment, its own permissions govern the next suffix or child.
 The [element-backed syntax permission](https://www.w3.org/TR/2025/WD-css-pseudo-4-20250627/#element-backed)
 for Part, FileSelectorButton and DetailsContent does not evaluate their separate
-matching prohibitions. Logical arguments inherit their receiving position's restrictions;
-an unknown WebKit pseudo does not become a real element or bypass pseudo-element
+matching prohibitions. Normative
+[Selectors 4 §3.6.3](https://www.w3.org/TR/2026/WD-selectors-4-20260122/#pseudo-element-states)
+allows any pseudo-element to be followed by the logical combination and user
+action pseudo-classes, lets other specifications allow more, and makes
+"Combinations that are not explicitly allowed" invalid selectors; its note adds
+that logical combination pseudo-classes pass those validity restrictions to their
+arguments. So `::part(label):not(:first-child)` is valid and never matches, while
+`::part(label):not(.a)`, `:not(button)`, `:not([title])` and
+`:not(:hover > :hover)` are invalid because a class, type, attribute or
+combinator is not a pseudo-class. The WPT
+`css/css-shadow/part/pseudo-classes-after-part.html` witness, which pinned WebKit
+and Servo pass, instead rejects structural pseudo-classes and
+`:not(:first-child)` after `::part()`; it predates the Pseudo-Elements 4 text and
+is recorded as a divergence rather than followed
+([#1326](https://github.com/bj-data-eng/surgeist/issues/1326)).
+An unknown WebKit pseudo does not become a real element or bypass pseudo-element
 bans in scope boundaries, Has or complex-real lists. Existing Is/Where forgiveness
 and strict Not/list admission keep their separate recovery contracts. The exact
 selected [Shadow/Has source disposition](https://github.com/bj-data-eng/surgeist/issues/297)
@@ -7186,9 +7217,25 @@ including an empty list, while retaining the original checked target, layer,
 supports clauses and source observations. It assigns no live identity or source
 position and does not reconstruct an authored rule. `rule()` and `media()` expose
 the two immutable borrowed inputs; neither is changed by formatting or failure.
-The plain import branch emits the decoded location as a CSSOM URL. Modern clauses
-and extended URL targets retain the existing qualified output policy; this view
-does not select a new complete literal wrapper contract for them.
+
+CSSOM import text follows the CSSImportRule steps of the CSSOM editor capture
+(`references/cssom-1--editor-capture-20261009--d42e145ec395.md`) for every import
+([#1327](https://github.com/bj-data-eng/surgeist/issues/1327)): `@import`, one
+space, serialize a URL on the decoded location, then the media list and `;`.
+String targets, `url()` and `src()` therefore all emit `url("…")`:
+`@import "x" print;` becomes `@import url("x") print;`. The capture has no steps
+for `layer` or `supports()`; they follow the URL and precede the media list in
+`@import` grammar order, which is also the pinned WebKit witness order
+(`webkit-cssom-core-rules`, `CSSImportRule::cssTextInternal`):
+`@import url("theme.css") layer(theme) supports(display:grid) print;`. The
+`supports()` condition keeps its specified text, consistent with `supportsText`.
+Serialize a URL takes only the location, so `src()` and URL request modifiers are
+not part of CSSOM import text. This is a recorded spec gap: CSSOM's serialize a URL
+on the rule's location predates the Values 5 `<url-modifier>`, and the pinned
+WebKit witness also drops modifiers. Revisit if CSSOM defines modifier
+serialization. The typed target accessors and specified output keep the function
+and modifiers. The authored `serialize()` and
+specified output keep the authored target form.
 
 `CssEditedRuleView::try_import[_with_limits]` embeds the current import view in
 the existing recursive formatting graph. The original target/clause components
@@ -8004,12 +8051,31 @@ methods still reject recovered `Never` members. Neither operation mutates a
 query, removes diagnostics, evaluates media conditions or resolves custom media.
 
 Canonical output lowercases media-type identifiers, including unknown types,
-and emits the defined orientation and scan keywords in lowercase. An unprefixed
-`all` with a condition omits `all and`; lone `all`, `not all` and `only all` retain
-their type. Lists preserve order and repetition with comma-space separators;
-the empty list emits empty text. Explicit `only` remains the owning grammar's
-legacy-hiding syntax. Modern range/condition syntax uses the existing MQ5
-provider rather than a second CSSOM grammar.
+and emits the defined orientation and scan keywords in lowercase. CSSOM output
+follows "serialize a media query" in the CSSOM editor capture and the
+[WD 2021-08-26](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-media-query)
+([#1378](https://github.com/bj-data-eng/surgeist/issues/1378)): a negated query
+starts with `not`, a query without features emits its lowercased type, and
+`type and` precedes the condition only when the type is not `all` or the query is
+negated. No step emits `only`, so CSSOM output drops it: `only screen` becomes
+`screen`, `only all and (color)` becomes `(color)`, and
+`PRINT, ALL and (COLOR), ONLY SCREEN` becomes `print, (color), screen`, while
+`not all and (color)` keeps its type. Media Queries 4 defines `only` solely to
+hide queries from legacy user agents, so dropping it changes no evaluation
+result. Authored `serialize` keeps the authored `only` prefix, and so does the
+specified rule-graph projection (`to_specified_css` for `@media`, `@import` and
+`@custom-media`, top level and scoped), which otherwise shares the CSSOM `not all`
+recovery projection; both kinds of output omit
+an unprefixed `all and`, and lone `all` and `not all` retain their type. Lists
+preserve order and repetition with comma-space separators; the empty list emits
+empty text. Modern range/condition syntax uses the existing MQ5 provider rather
+than a second CSSOM grammar.
+
+Witness divergence, recorded rather than followed: pinned WebKit `73aa6c89e2cb`
+(`Source/WebCore/css/query/MediaQueryParser.cpp`,
+`serialize(StringBuilder&, const MediaQuery&)`) writes `only ` for the Only
+prefix and keeps the media type whenever a prefix is present, producing
+`only screen` and `only all and (color)`.
 
 The CSSOM projection also lowercases ordinary unknown feature names while
 retaining their value components. Valid general-enclosed syntax and case-sensitive
@@ -8022,7 +8088,7 @@ Derived authored model equality continues to include content and provenance.
 The `*_with_limits` operations consume the shared specified-value resource
 policy. Each query, condition and backing component charges one input and one
 projection node; a list charges its aggregate too. A recovered query adds two
-projected keyword nodes. Omitted default-type components still consume their
+projected keyword nodes. Omitted default-type and CSSOM-dropped `only` components still consume their
 visited nodes. Comparison shares one budget across both operands, including
 their combined serialized bytes. Errors retain the responsible source or
 explicit programmatic origin, and no partial output is returned. The crate-owned
@@ -9071,6 +9137,21 @@ and clip; `Pair` retains ordered origin/clip slots. A box and no-clip may be
 input in either order, and canonical output orders the box first. `NoClip` alone
 sets clip and leaves origin omitted for intrinsic border-box initialization.
 Two equal authored boxes remain distinct from one shared box.
+
+The `mask` shorthand rejects `margin-box` in every origin/clip position: one box,
+two boxes and a box with `no-clip` ([#1380](https://github.com/bj-data-eng/surgeist/issues/1380)).
+The pinned Masking CRD 2021-08-05
+(`references/css-masking-1--CRD-css-masking-1-20210805--79ff953b4747.md`) still
+writes the longhands as `mask-clip: [ <geometry-box> | no-clip ]#` (line 990) and
+`mask-origin: <geometry-box>#` (line 1115), and `<geometry-box>` includes
+`margin-box`; but its own change log (line 2747) records "Remove margin-box as
+possible value from mask-origin and mask-clip". The current Masking source (last
+changed 2026-04-28) writes the longhands as `mask-origin: <coord-box>#` and
+`mask-clip: [ <coord-box> | no-clip ]#`, and Box 4 `<coord-box>` excludes
+`margin-box`. Where the pin and the current draft differ the current draft governs,
+so this follows the current longhands. The shorthand's `<mask-layer>` still uses
+`<geometry-box>`, which sets both longhands; a shorthand cannot set a longhand to a
+value its grammar forbids, so that `<geometry-box>` is treated as stale.
 
 `mask` has eight settable members, in image, position, size, repeat, origin,
 clip, composite and mode order. It also resets all six mask-border longhands,

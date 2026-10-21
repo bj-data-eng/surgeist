@@ -417,7 +417,7 @@ impl CssCustomMediaRule {
         let origin = || self.media_origin();
         let value = crate::media::with_media_stack(deep, origin, || {
             let mut out = CssCanonicalBuilder::new(context.remaining_bytes());
-            self.emit_into(&mut out, crate::media::emit_query_cssom)?;
+            self.emit_into(&mut out, crate::media::emit_query_projected)?;
             Ok::<_, CssCustomMediaSerializationError>(out.finish()?)
         })?;
         context.append(output, value.as_css())?;

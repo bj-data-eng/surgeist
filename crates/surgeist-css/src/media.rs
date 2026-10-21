@@ -395,6 +395,23 @@ impl CssMediaQueryList {
         &self,
         context: &mut SpecifiedSerializationContext,
     ) -> Result<CssSerializedValue, CssMediaCssomSerializationError> {
+        self.capture_with_mode(context, MediaOutput::Cssom)
+    }
+
+    /// Generic specified rule-graph projection under the same charging policy:
+    /// recovered members become `not all` and the authored `only` prefix remains.
+    pub(crate) fn capture_projected(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+    ) -> Result<CssSerializedValue, CssMediaCssomSerializationError> {
+        self.capture_with_mode(context, MediaOutput::Projected)
+    }
+
+    fn capture_with_mode(
+        &self,
+        context: &mut SpecifiedSerializationContext,
+        mode: MediaOutput,
+    ) -> Result<CssSerializedValue, CssMediaCssomSerializationError> {
         self.charge_cssom(context)?;
         if context.output_suppressed() {
             return CssCanonicalBuilder::new(0)
@@ -404,16 +421,21 @@ impl CssMediaQueryList {
         let origin = || deep_list_origin(self);
         with_media_stack(self.queries().iter().any(query_is_deep), origin, || {
             let mut out = CssCanonicalBuilder::new(context.remaining_bytes());
-            emit_list(&mut out, self, MediaOutput::Cssom)?;
+            emit_list(&mut out, self, mode)?;
             Ok(out.finish()?)
         })
         .map_err(bounded_error)
     }
 }
 
+/// `Authored` rejects recovered members and keeps every authored prefix.
+/// `Projected` is the generic specified rule-graph projection: it shares CSSOM's
+/// `not all` recovery and canonical names but keeps the authored `only` prefix.
+/// `Cssom` follows "serialize a media query", which never emits `only`.
 #[derive(Clone, Copy)]
 enum MediaOutput {
     Authored,
+    Projected,
     Cssom,
 }
 
@@ -455,6 +477,15 @@ pub(crate) fn emit_query_cssom(
     emit_query_with_mode(out, query, MediaOutput::Cssom)
 }
 
+/// Generic specified projection: recovered members become `not all`, while the
+/// authored `only` prefix is retained.
+pub(crate) fn emit_query_projected(
+    out: &mut CssCanonicalBuilder,
+    query: &CssMediaQuery,
+) -> Result<(), CssMediaSerializationError> {
+    emit_query_with_mode(out, query, MediaOutput::Projected)
+}
+
 fn emit_query_with_mode(
     out: &mut CssCanonicalBuilder,
     query: &CssMediaQuery,
@@ -473,7 +504,12 @@ fn emit_query_with_mode(
         }
         CssMediaQuery::Condition(value) => emit_condition_with_mode(out, value, mode)?,
         CssMediaQuery::Typed(value) => {
-            if let Some(modifier) = value.modifier() {
+            // CSSOM "serialize a media query" emits `not` for a negated query and
+            // never emits `only` (#1378); authored output keeps the authored prefix.
+            let modifier = value.modifier().filter(|modifier| {
+                !matches!(mode, MediaOutput::Cssom) || *modifier == CssMediaQueryModifier::Not
+            });
+            if let Some(modifier) = modifier {
                 let origin = value
                     .syntax
                     .modifier
@@ -489,9 +525,8 @@ fn emit_query_with_mode(
                 )?;
                 space(out, origin)?;
             }
-            let emit_type = value.condition().is_none()
-                || value.modifier().is_some()
-                || value.media_type() != CssMediaType::All;
+            let emit_type =
+                typed_query_emits_type(value.condition().is_none(), modifier, value.media_type());
             if emit_type {
                 let name = match value.syntax.media_type.view() {
                     CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) => name,
@@ -518,6 +553,16 @@ fn emit_query_with_mode(
         }
     }
     Ok(())
+}
+/// Step 3/4 of CSSOM "serialize a media query": the type is emitted alone when
+/// there is no condition, and before `and` only when it is not `all` or the
+/// query keeps an emitted prefix.
+fn typed_query_emits_type(
+    no_condition: bool,
+    emitted_modifier: Option<CssMediaQueryModifier>,
+    media_type: CssMediaType,
+) -> bool {
+    no_condition || emitted_modifier.is_some() || media_type != CssMediaType::All
 }
 fn emit_condition(
     out: &mut CssCanonicalBuilder,
@@ -613,7 +658,7 @@ fn emit_name(
 ) -> Result<(), CssComponentValueError> {
     if let Some(name) = &syntax.canonical_name {
         out.push_grammar(CssCanonicalToken::Ident(name), syntax.name.origin())
-    } else if matches!(mode, MediaOutput::Cssom) {
+    } else if matches!(mode, MediaOutput::Cssom | MediaOutput::Projected) {
         out.push_grammar(
             CssCanonicalToken::Ident(&syntax.name_text.to_ascii_lowercase()),
             syntax.name.origin(),
@@ -867,10 +912,13 @@ fn charge_query(
         }
         CssMediaQuery::Condition(condition) => pending.push(Visit::Condition(condition)),
         CssMediaQuery::Typed(value) => {
-            if value.condition().is_none()
-                || value.modifier().is_some()
-                || value.media_type() != CssMediaType::All
-            {
+            // Shared by the CSSOM and projected writers; a kept `only` prefix may
+            // emit the type, so check it whenever either writer can.
+            if typed_query_emits_type(
+                value.condition().is_none(),
+                value.modifier(),
+                value.media_type(),
+            ) {
                 let CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) =
                     value.syntax.media_type.view()
                 else {

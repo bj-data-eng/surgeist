@@ -2086,7 +2086,8 @@
       "downstream_owners": [
         "style",
         "render"
-      ]
+      ],
+      "scope_note": "The mask shorthand rejects margin-box in every origin/clip position, including one box, two boxes and a box with no-clip (#1380). The pinned publication (references/css-masking-1--CRD-css-masking-1-20210805--79ff953b4747.md) still writes mask-clip: [ <geometry-box> | no-clip ]# (line 990) and mask-origin: <geometry-box># (line 1115), which include margin-box, but its change log (line 2747) records removing margin-box from mask-origin and mask-clip. The current Masking source (last changed 2026-04-28) writes the longhands with Box 4 <coord-box>, which excludes margin-box, and the current draft governs where they differ. A shorthand cannot set a longhand to a value its grammar forbids, so the shorthand's <geometry-box> is treated as stale."
     },
     {
       "id": "css-speech-1",

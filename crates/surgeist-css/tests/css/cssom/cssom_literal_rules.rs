@@ -287,7 +287,7 @@ fn media_uses_literal_lfs_empty_two_lfs_and_prefix_only_multilevel_indentation()
         ("@media{}", "@media  {\n\n}", "@media { }"),
         (
             "@media PRINT,ONLY SCREEN{.a{opacity:0}.b{}}",
-            "@media print, only screen {\n  .a { opacity: 0; }\n  .b { }\n}",
+            "@media print, screen {\n  .a { opacity: 0; }\n  .b { }\n}",
             "@media print, only screen { .a { opacity: 0; } .b { } }",
         ),
         (
@@ -307,6 +307,11 @@ fn media_uses_literal_lfs_empty_two_lfs_and_prefix_only_multilevel_indentation()
     }
 }
 
+/// CSSOM editor capture 2026-10-09 (`references/cssom-1--editor-capture-20261009--d42e145ec395.md`)
+/// CSSImportRule: `@import`, one space, serialize a URL on the location, the
+/// media list and `;`, for every import (#1327). The capture has no `layer` or
+/// `supports()` steps; they follow the URL in `@import` grammar order, which is
+/// the pinned WebKit `CSSImportRule::cssTextInternal` witness order.
 #[test]
 fn import_retains_selected_url_layer_supports_media_and_namespace_escape() {
     for (source, expected, compact) in [
@@ -317,12 +322,12 @@ fn import_retains_selected_url_layer_supports_media_and_namespace_escape() {
         ),
         (
             "@import url(theme.css) layer(theme) supports(display:grid) PRINT;",
-            "@import url(theme.css) layer(theme) supports(display:grid) print;",
+            "@import url(\"theme.css\") layer(theme) supports(display:grid) print;",
             "@import url(theme.css) layer(theme) supports(display:grid) print;",
         ),
         (
             "@import 'x' layer supports(display:grid) print;",
-            "@import 'x' layer supports(display:grid) print;",
+            "@import url(\"x\") layer supports(display:grid) print;",
             "@import 'x' layer supports(display:grid) print;",
         ),
         (
