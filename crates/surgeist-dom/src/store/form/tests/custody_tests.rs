@@ -365,7 +365,7 @@ fn fresh_mapped_form_sealing_refusal_drops_data_before_credit_and_keeps_source_d
     };
     draft.custody_registry().reconcile_releases();
     let before = draft.custody_ledger().total();
-    let work = draft.source_work.clone();
+    let work = draft.source_work.source_arc().clone();
     let spent = work.load(Ordering::Relaxed);
     for refusal in 0..2 {
         let supplied =
@@ -432,7 +432,7 @@ fn fresh_mapped_form_sealing_refusal_drops_data_before_credit_and_keeps_source_d
             .unwrap();
         assert_eq!(pending.len(), 1);
         assert_eq!(pending.iter().next().unwrap().target, Key::Existing(field));
-        assert!(Arc::ptr_eq(&draft.source_work, &work));
+        assert!(Arc::ptr_eq(draft.source_work.source_arc(), &work));
         assert!(work.load(Ordering::Relaxed) >= spent);
     }
     // Retry the original staged edit through the complete publication path.
@@ -474,7 +474,7 @@ fn fresh_form_dependency_refusal_in_finish_preserves_source_draft_for_exact_publ
     };
     draft.custody_registry().reconcile_releases();
     let before = draft.custody_ledger().total();
-    let work = draft.source_work.clone();
+    let work = draft.source_work.source_arc().clone();
     let spent = work.load(Ordering::Relaxed);
     let output = Vec::with_capacity(13);
     let capacity = output.capacity();
@@ -525,7 +525,7 @@ fn fresh_form_dependency_refusal_in_finish_preserves_source_draft_for_exact_publ
     let entry = pending.iter().next().unwrap();
     assert_eq!(entry.name, &DocumentString::from("keep"));
     assert_eq!(entry.target, Key::Existing(field));
-    assert!(Arc::ptr_eq(&draft.source_work, &work));
+    assert!(Arc::ptr_eq(draft.source_work.source_arc(), &work));
     assert!(work.load(Ordering::Relaxed) >= spent);
 
     // This retries the exact original Source Draft, without fabricating an

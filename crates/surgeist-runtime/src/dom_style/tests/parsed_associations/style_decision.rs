@@ -7,7 +7,7 @@ use surgeist_dom::*;
 use surgeist_html::*;
 use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlParseReport, HtmlSource};
 
-fn install_into(
+pub(super) fn install_into(
     session: &mut DomSession,
     value: Arc<HtmlParseReport>,
 ) -> DomParsedHtmlInstallation {
@@ -22,7 +22,7 @@ fn install_into(
         )
         .unwrap()
 }
-fn installed(value: Arc<HtmlParseReport>) -> (DomSession, DomParsedHtmlInstallation) {
+pub(super) fn installed(value: Arc<HtmlParseReport>) -> (DomSession, DomParsedHtmlInstallation) {
     let (mut session, _) = bound_dispatch_session();
     let installation = install_into(&mut session, value);
     (session, installation)
@@ -30,7 +30,7 @@ fn installed(value: Arc<HtmlParseReport>) -> (DomSession, DomParsedHtmlInstallat
 fn allow(_: HtmlCspLayout) -> Result<(), Infallible> {
     Ok(())
 }
-fn empty_policy() -> HtmlCspAssociation {
+pub(super) fn empty_policy() -> HtmlCspAssociation {
     HtmlCspOwner::new_with(&mut allow)
         .unwrap()
         .initial_document_with(&mut allow)
@@ -53,7 +53,7 @@ impl HtmlCspPolicyArtifact for NativePolicy {
         .unwrap()
     }
 }
-fn native_policy(allowed: bool) -> (HtmlCspAssociation, HtmlCspProcessorProfile) {
+pub(super) fn native_policy(allowed: bool) -> (HtmlCspAssociation, HtmlCspProcessorProfile) {
     let mut owner = HtmlCspOwner::new_with(&mut allow).unwrap();
     let mut policy = owner.initial_document_with(&mut allow).unwrap();
     let mut backend = HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
@@ -72,7 +72,7 @@ fn native_policy(allowed: bool) -> (HtmlCspAssociation, HtmlCspProcessorProfile)
     drop(completion);
     (policy, profile)
 }
-fn request_ready(
+pub(super) fn request_ready(
     session: &mut DomSession,
     id: DomParsedHtmlAssociationId,
     policy: HtmlCspAssociation,
@@ -109,7 +109,7 @@ fn request_ready(
         DomParsedHtmlStylePhase::InlinePolicyPending
     );
 }
-fn observe(
+pub(super) fn observe(
     session: &DomSession,
     id: DomParsedHtmlAssociationId,
     supplier: &mut impl FnMut(

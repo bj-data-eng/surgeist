@@ -18,7 +18,7 @@ pub(super) struct DocumentRead {
 impl DocumentRead {
     pub(super) fn begin(draft: &Draft) -> Self {
         Self {
-            work: Arc::clone(&draft.source_work),
+            work: Arc::clone(draft.source_work.source_arc()),
             start: draft.source_work.load(Ordering::Relaxed),
         }
     }

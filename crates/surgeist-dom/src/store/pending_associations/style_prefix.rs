@@ -14,6 +14,12 @@ use surgeist_html_parser::{
     HtmlParseMetadataDocument, HtmlParseOriginGroup, HtmlParsePendingAssociationStep as Step,
 };
 
+mod sheet_join;
+pub use sheet_join::{
+    DomParsedHtmlStyleSheetCompletion, DomParsedHtmlStyleSheetPreparation,
+    DomParsedHtmlStyleSheetPublished, DomParsedHtmlStyleSheetRetirement,
+};
+
 type Stored = Option<custody::Held<Box<Graph>>>;
 pub(super) enum Graph {
     Awaiting {
@@ -36,6 +42,7 @@ impl Graph {
                 Action::CheckInlineCsp => DomParsedHtmlStylePhase::InlinePolicyPending,
                 Action::CreateSheet => DomParsedHtmlStylePhase::CreateSheetPending,
                 Action::Complete => DomParsedHtmlStylePhase::InlinePolicyBlocked,
+                Action::ReadScriptBlocking => DomParsedHtmlStylePhase::ReadScriptBlockingPending,
                 _ => unreachable!("only the selected inline decision can advance this cursor"),
             },
             Self::Transition => unreachable!("private infallible transition"),
@@ -634,4 +641,4 @@ fn form_text_nonce(
 }
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;

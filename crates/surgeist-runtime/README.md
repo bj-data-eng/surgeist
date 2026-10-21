@@ -78,9 +78,34 @@ Acceptance feeds HTML's retained cursor once: allow stops at
 original occurrence. Both keep the whole contribution Pending. Cancellation or
 admission refusal keeps the caller's actual decision envelope for retry without
 evaluating again; original work, policy and output accounting remain cumulative.
-Captured-context recovery, historical sheet creation and resource completion
-remain unavailable. No unused URL/Base/media binder is introduced, and accepting
-a decision does not acknowledge its contribution.
+
+`create_parsed_style_sheet` executes the reached original CreateSheet action
+using the actual bound CSSOM root and the sole add-sheet/preference algorithm.
+The first insertion's text is empty: it precedes parser push and text
+consumption, and later final text is never substituted. Original title, media,
+parser Document and mode qualify the actual nonconstructed sheet. CSSOM and DOM
+prepare all fallible work before a joint publication fence; Runtime installs
+preformed names/serial while the genuine root lock remains held. Returned
+completion exposes the actual sheet ID/revision, DOM commit, CSSOM commit and
+retained media diagnostics. Success stops at `ReadScriptBlockingPending`;
+whole history and Style readiness remain Pending. Repeated creation refuses.
+Script-blocking disposition, resource completion and the later genuine parser-pop
+text update remain separate original actions; this command does not advance or
+substitute them. Captured-context recovery remains unavailable.
+
+Each public CSS preparation/pre-grammar/post-grammar poll charges the same
+original contribution and Runtime work before publication. CSS owns its finite
+UTF16 preparation and existing grammar limits. Private grammar work, temporary
+allocation and fine-grained interruption latency are outside the consumer
+bound; cancellation during grammar is observed at the next public poll.
+Temporary parse reports transfer directly into CSSOM's private batch and its
+logical quotas. Actual returned media diagnostic backing and source union,
+consumer labels/names/output holders, replacement overlap and DOM publication
+are admitted under their owning contracts. Source retention measures source
+backing, not complete report/AST size. A retained-result refusal after parsing
+publishes nothing and preserves spent work; retry polls and charges parsing
+again. No unused URL/Base/media binder is introduced, and accepting a decision
+does not acknowledge its contribution.
 Meta change-preferred does not read those external context slots. Read-only
 captures remain historical; standalone enable/select/change-preferred mutations
 refuse an affected Document while its original contribution is pending.

@@ -448,7 +448,7 @@ fn child_source_cancellation_and_spent_work_keep_original_counters_for_raised_re
     let inputs = f.form(&formation, &cancel()).unwrap();
     assert!(f.source_work.load(Ordering::Relaxed) > source_before);
     assert!(f.work.spent.load(Ordering::Relaxed) > hosted_before);
-    assert!(Arc::ptr_eq(&draft.source_work, &f.source_work));
+    assert!(Arc::ptr_eq(draft.source_work.source_arc(), &f.source_work));
     assert!(Arc::ptr_eq(
         &f.work,
         &f.dom

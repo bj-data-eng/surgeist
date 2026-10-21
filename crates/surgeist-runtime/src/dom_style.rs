@@ -14,7 +14,9 @@ pub use meta::{
     DomStyleMetaError, DomStyleMetaOrdinaryOutcome, DomStyleMetaPreference,
     DomStyleMetaSourceOutcome,
 };
-pub use parsed_style::DomStyleParsedPrefixError;
+pub use parsed_style::{
+    DomStyleParsedPrefixError, DomStyleParsedSheetError, DomStyleParsedSheetOutcome,
+};
 pub use sheet_sets::{DomStyleSheetSetCommit, DomStyleSheetSetObservation};
 
 use crate::dom_event::{
@@ -405,6 +407,86 @@ fn persistent_bank_growth(
         .ok_or(DomStyleRuntimeError::Admission)?;
     Ok((old, requested))
 }
+fn visit_context_clone(
+    context: &CssomContext,
+    mut step: impl FnMut() -> Result<(), DomStyleRuntimeError>,
+) -> Result<(), DomStyleRuntimeError> {
+    fn string(
+        value: &str,
+        step: &mut impl FnMut() -> Result<(), DomStyleRuntimeError>,
+    ) -> Result<(), DomStyleRuntimeError> {
+        step()?;
+        for _ in 0..value.len() {
+            step()?;
+        }
+        Ok(())
+    }
+    // These immutable public operands are precisely what Context::clone
+    // copies. Admit every row, String header/byte and nested Vec entry
+    // before cloning; linked snapshots remain Arc observations, not copies
+    // of their graphs. CSSOM retains ownership of graph/storage limits.
+    for input in &context.inputs {
+        step()?;
+        string(&input.version.identity, &mut step)?;
+        match &input.data {
+            CssomInputData::Document { identity } => string(identity, &mut step)?,
+            CssomInputData::Window { identity, document } => {
+                string(identity, &mut step)?;
+                string(document, &mut step)?;
+            }
+            CssomInputData::ParserMode(_) => {}
+            CssomInputData::Origin { origin, profile } => {
+                string(origin, &mut step)?;
+                string(profile, &mut step)?;
+            }
+            CssomInputData::Layer { path, .. } => {
+                for component in path {
+                    string(component, &mut step)?;
+                }
+            }
+            CssomInputData::Base { url, location } => {
+                for value in [url, location] {
+                    step()?;
+                    if let Some(value) = value {
+                        string(value, &mut step)?;
+                    }
+                }
+            }
+            CssomInputData::Owner {
+                identity,
+                attribute,
+            } => {
+                string(identity, &mut step)?;
+                step()?;
+                if let Some(value) = attribute {
+                    string(value, &mut step)?;
+                }
+            }
+            CssomInputData::Support(value) => {
+                for _ in value.properties() {
+                    step()?;
+                }
+                for _ in value.page_descriptors() {
+                    step()?;
+                }
+                for _ in value.font_face_descriptors() {
+                    step()?;
+                }
+            }
+            CssomInputData::Import { resolved_location } => {
+                step()?;
+                if let Some(value) = resolved_location {
+                    string(value, &mut step)?;
+                }
+            }
+        }
+    }
+    for linked in &context.linked {
+        step()?;
+        string(&linked.version.identity, &mut step)?;
+    }
+    Ok(())
+}
 impl StyleState {
     /// Construct an empty finite integration owner, without binding a fake root/list.
     pub fn new(dom: DomOwnerId, limits: DomStyleRuntimeLimits) -> Self {
@@ -676,82 +758,7 @@ impl StyleState {
         context: &CssomContext,
         cancel: &AtomicBool,
     ) -> Result<(), DomStyleRuntimeError> {
-        fn string(
-            state: &StyleState,
-            value: &str,
-            cancel: &AtomicBool,
-        ) -> Result<(), DomStyleRuntimeError> {
-            state.step(cancel)?;
-            for _ in 0..value.len() {
-                state.step(cancel)?;
-            }
-            Ok(())
-        }
-        // These immutable public operands are precisely what Context::clone
-        // copies. Admit every row, String header/byte and nested Vec entry
-        // before cloning; linked snapshots remain Arc observations, not copies
-        // of their graphs. CSSOM retains ownership of graph/storage limits.
-        for input in &context.inputs {
-            self.step(cancel)?;
-            string(self, &input.version.identity, cancel)?;
-            match &input.data {
-                CssomInputData::Document { identity } => string(self, identity, cancel)?,
-                CssomInputData::Window { identity, document } => {
-                    string(self, identity, cancel)?;
-                    string(self, document, cancel)?;
-                }
-                CssomInputData::ParserMode(_) => {}
-                CssomInputData::Origin { origin, profile } => {
-                    string(self, origin, cancel)?;
-                    string(self, profile, cancel)?;
-                }
-                CssomInputData::Layer { path, .. } => {
-                    for component in path {
-                        string(self, component, cancel)?;
-                    }
-                }
-                CssomInputData::Base { url, location } => {
-                    for value in [url, location] {
-                        self.step(cancel)?;
-                        if let Some(value) = value {
-                            string(self, value, cancel)?;
-                        }
-                    }
-                }
-                CssomInputData::Owner {
-                    identity,
-                    attribute,
-                } => {
-                    string(self, identity, cancel)?;
-                    self.step(cancel)?;
-                    if let Some(value) = attribute {
-                        string(self, value, cancel)?;
-                    }
-                }
-                CssomInputData::Support(value) => {
-                    for _ in value.properties() {
-                        self.step(cancel)?;
-                    }
-                    for _ in value.page_descriptors() {
-                        self.step(cancel)?;
-                    }
-                    for _ in value.font_face_descriptors() {
-                        self.step(cancel)?;
-                    }
-                }
-                CssomInputData::Import { resolved_location } => {
-                    self.step(cancel)?;
-                    if let Some(value) = resolved_location {
-                        string(self, value, cancel)?;
-                    }
-                }
-            }
-        }
-        for linked in &context.linked {
-            self.step(cancel)?;
-            string(self, &linked.version.identity, cancel)?;
-        }
-        Ok(())
+        visit_context_clone(context, || self.step(cancel))
     }
     fn source_parser_context(
         &self,

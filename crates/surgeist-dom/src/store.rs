@@ -2105,7 +2105,7 @@ struct Draft {
     // These ledgers are shared only by private temporaries of this exclusive
     // owner. Relaxed numerical loads/stores need no publication ordering; Arc
     // and atomics allow the complete parked owner to move between threads.
-    source_work: Arc<AtomicU64>,
+    source_work: source::formation::WorkOwner,
     source_ancestors: Option<Arc<crate::source::event::EventWork>>,
     source_formation_bytes: Arc<AtomicUsize>,
     source_temporary_units: Arc<AtomicUsize>,
@@ -2176,7 +2176,6 @@ struct Draft {
     insertion_trace: Option<tree::InsertionTrace>,
     #[cfg(test)]
     svg_processing_trace: Option<svg_script::ProcessingTrace>,
-    source_work_custody: source::formation::SourceWorkCustody,
     source_mirrors: source::formation::SourceMirrors,
     source_ancestor_custody: Option<Arc<source::formation::EventWorkCustody>>,
     names: name_registry::Operation,
@@ -2367,7 +2366,7 @@ impl Draft {
     }
 
     pub(in crate::store) fn source_work_custody(&self) -> source::formation::SourceWorkCustody {
-        self.source_work_custody.clone()
+        self.source_work.source_custody()
     }
     pub(in crate::store) fn source_ancestor_custody(
         &self,
@@ -2490,6 +2489,43 @@ impl Draft {
         initial: Option<&source::initial::Initial>,
         cancelled: &AtomicBool,
     ) -> Result<Self, DomError> {
+        Self::new_admitted(
+            dom,
+            owner,
+            initial.map_or(
+                source::initial::Admission::Ordinary,
+                source::initial::Admission::Source,
+            ),
+            cancelled,
+        )
+    }
+    fn new_parsed(
+        dom: &Dom,
+        owner: Arc<BatchIdentity>,
+        parsed: &pending_associations::control::Admission,
+        cancelled: &AtomicBool,
+    ) -> Result<Self, DomError> {
+        Self::new_admitted(
+            dom,
+            owner,
+            source::initial::Admission::Parsed(parsed),
+            cancelled,
+        )
+    }
+    fn new_admitted(
+        dom: &Dom,
+        owner: Arc<BatchIdentity>,
+        admission: source::initial::Admission<'_>,
+        cancelled: &AtomicBool,
+    ) -> Result<Self, DomError> {
+        let initial = match admission {
+            source::initial::Admission::Source(value) => Some(value),
+            _ => None,
+        };
+        let parsed = match admission {
+            source::initial::Admission::Parsed(value) => Some(value),
+            _ => None,
+        };
         #[cfg(test)]
         if scale_metrics::ENABLED {
             scale_metrics::record(scale_metrics::Event::Entered(
@@ -2499,7 +2535,10 @@ impl Draft {
         let registry = dom.custody_registry.clone();
         let ledger = registry.ledger();
         let mut admit_initial = |usage: custody::Usage| {
-            source::initial::step(initial, cancelled)?;
+            admission.step(cancelled)?;
+            if let Some(parsed) = parsed {
+                return parsed.controlled_unpolled(usage);
+            }
             if let Some(initial) = initial {
                 let total = usage.checked_add(initial.external_usage())?;
                 let limits = initial.limits();
@@ -2525,11 +2564,18 @@ impl Draft {
         journal.measure_payloads(transaction::Undo::journal_bytes);
         let source_mirrors =
             source::formation::SourceMirrors::allocate(&registry, &mut admit_initial)?;
-        let (source_work, source_work_custody) = match initial {
-            Some(initial) => initial.source_work(&registry, &mut admit_initial)?,
-            None => {
-                source::formation::SourceWorkCustody::allocate(0, &registry, &mut admit_initial)?
-            }
+        let source_work = if let Some(parsed) = parsed {
+            source::formation::WorkOwner::Parsed(parsed.clone())
+        } else {
+            let (work, custody) = match initial {
+                Some(initial) => initial.source_work(&registry, &mut admit_initial)?,
+                None => source::formation::SourceWorkCustody::allocate(
+                    0,
+                    &registry,
+                    &mut admit_initial,
+                )?,
+            };
+            source::formation::WorkOwner::Source { work, custody }
         };
         // One original operation owns these resources outside semantic Restore.
         // A resumed Source reuses its existing scope; a genuine nested entry
@@ -2546,14 +2592,14 @@ impl Draft {
                     parent,
                     &mut name_registry::Admission {
                         global: &mut admit_initial,
-                        step: &mut || source::initial::step(initial, cancelled),
+                        step: &mut || admission.step(cancelled),
                     },
                 )?
             }
         };
         let sharing = dom.value_sharing.attach(&mut value_sharing::Admission {
             global: &mut admit_initial,
-            step: &mut || source::initial::step(initial, cancelled),
+            step: &mut || admission.step(cancelled),
         })?;
         let existing = bank::Bank::default();
         let existing_custody = bank::BankCustody::default();
@@ -2640,7 +2686,6 @@ impl Draft {
             },
             source_limits: initial.map(source::initial::Initial::limits),
             source_work,
-            source_work_custody,
             source_ancestor_custody: initial.and_then(source::initial::Initial::ancestor_custody),
             source_ancestors: initial.and_then(|initial| initial.ancestors().cloned()),
             source_formation_bytes: source_mirrors.bytes(),

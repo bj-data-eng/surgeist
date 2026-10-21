@@ -223,6 +223,9 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
+        if let Some(parsed) = self.source_work.parsed() {
+            return parsed.controlled_unpolled(prospective);
+        }
         let Some(limits) = self.source_limits else {
             return Ok(());
         };
@@ -288,29 +291,81 @@ impl SourceMirrors {
     }
 }
 
+/// One actual work owner. Parsed construction reuses its original Entry atom;
+/// it never allocates or resets a Source counter to impersonate that authority.
+#[derive(Clone)]
+pub(in crate::store) enum WorkOwner {
+    Source {
+        work: Arc<AtomicU64>,
+        custody: SourceWorkCustody,
+    },
+    Parsed(crate::store::pending_associations::control::Admission),
+}
+impl WorkOwner {
+    pub(in crate::store) fn load(&self, order: Ordering) -> u64 {
+        match self {
+            Self::Source { work, .. } => work.load(order),
+            Self::Parsed(a) => a.spent_work(),
+        }
+    }
+    pub(in crate::store) fn store(&self, value: u64, order: Ordering) {
+        self.source_arc().store(value, order);
+    }
+    pub(in crate::store) fn source_arc(&self) -> &Arc<AtomicU64> {
+        match self {
+            Self::Source { work, .. } => work,
+            Self::Parsed(_) => {
+                unreachable!("parsed work is never reset or exported as Source authority")
+            }
+        }
+    }
+    pub(in crate::store) fn source_custody(&self) -> SourceWorkCustody {
+        match self {
+            Self::Source { custody, .. } => custody.clone(),
+            Self::Parsed(_) => unreachable!("actual Source custody required"),
+        }
+    }
+    pub(in crate::store) fn parsed(
+        &self,
+    ) -> Option<&crate::store::pending_associations::control::Admission> {
+        match self {
+            Self::Parsed(value) => Some(value),
+            Self::Source { .. } => None,
+        }
+    }
+}
 /// Actual owner dependencies of counters retained by a temporary guard. These
 /// aliases keep their original atom receipts alive without duplicating debit.
 #[derive(Clone)]
 pub(super) struct WorkDependencies {
-    _source: SourceWorkCustody,
+    _source: Option<SourceWorkCustody>,
+    _parsed: Option<crate::store::pending_associations::control::Admission>,
     _event: Option<Arc<EventWorkCustody>>,
     _mirrors: Option<SourceMirrors>,
 }
 impl WorkDependencies {
     pub(super) fn same_source(&self, other: &Self) -> bool {
-        self._source.identity() == other._source.identity()
-            && Arc::ptr_eq(self._source.work(), other._source.work())
+        match (&self._source, &other._source) {
+            (Some(a), Some(b)) => a.identity() == b.identity() && Arc::ptr_eq(a.work(), b.work()),
+            _ => false,
+        }
     }
     pub(super) fn from_draft(draft: &Draft) -> Self {
         Self {
-            _source: draft.source_work_custody(),
+            _source: draft
+                .source_work
+                .parsed()
+                .is_none()
+                .then(|| draft.source_work_custody()),
+            _parsed: draft.source_work.parsed().cloned(),
             _event: draft.source_ancestor_custody(),
             _mirrors: Some(draft.source_mirrors()),
         }
     }
     fn from_event(event: Arc<EventWorkCustody>) -> Self {
         Self {
-            _source: event.source(),
+            _source: Some(event.source()),
+            _parsed: None,
             _event: Some(event),
             _mirrors: None,
         }
@@ -330,7 +385,7 @@ pub(crate) struct Formation {
     own: Cell<usize>,
     live_units: Arc<AtomicUsize>,
     own_units: Cell<usize>,
-    work: Arc<AtomicU64>,
+    work: WorkOwner,
     ancestors: Option<Arc<crate::source::event::EventWork>>,
     work_limit: u64,
     dependencies: WorkDependencies,
@@ -347,8 +402,28 @@ impl Formation {
         draft: &Draft,
         cancel: &AtomicBool,
     ) -> Result<Option<Self>, DomError> {
-        let Some(limits) = draft.source_limits else {
-            return Ok(None);
+        let limits = match (draft.source_limits, draft.source_work.parsed()) {
+            (Some(limits), _) => limits,
+            (None, Some(parsed)) => {
+                parsed.step(cancel)?;
+                return Ok(Some(Self {
+                    base: 0,
+                    base_units: 0,
+                    storage: SourceStorage::new(draft.custody_ledger().clone()),
+                    debit: RefCell::new(None),
+                    limit: parsed.limits().retained_bytes(),
+                    unit_limit: parsed.limits().retained_units(),
+                    live: draft.source_formation_bytes.clone(),
+                    own: Cell::new(0),
+                    live_units: draft.source_temporary_units.clone(),
+                    own_units: Cell::new(0),
+                    work: draft.source_work.clone(),
+                    ancestors: None,
+                    work_limit: 0,
+                    dependencies: WorkDependencies::from_draft(draft),
+                }));
+            }
+            (None, None) => return Ok(None),
         };
         draft.source_admit(0, cancel)?;
         Ok(Some(Self {
@@ -385,7 +460,10 @@ impl Formation {
             live_units: work.units.clone(),
             own: Cell::new(0),
             own_units: Cell::new(0),
-            work: work.work.clone(),
+            work: WorkOwner::Source {
+                work: work.work.clone(),
+                custody: event_custody.source(),
+            },
             work_limit: limits.work,
             ancestors: work.ancestors.clone(),
             dependencies: WorkDependencies::from_event(event_custody),
@@ -475,6 +553,9 @@ impl Formation {
         self.absorb_debit(other.debit.borrow_mut().take());
     }
     pub(crate) fn step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
+        if let Some(parsed) = self.work.parsed() {
+            return parsed.step(cancel);
+        }
         check_cancel(cancel)?;
         let next = self
             .work
@@ -491,6 +572,9 @@ impl Formation {
         crate::source::event::step_ancestors(self.ancestors.as_ref(), cancel)
     }
     fn admit_total(&self, prospective: custody::Usage) -> Result<(), DomError> {
+        if let Some(parsed) = self.work.parsed() {
+            return parsed.controlled_unpolled(prospective);
+        }
         admit(
             self.base
                 .checked_add(prospective.bytes())
@@ -518,6 +602,9 @@ impl Formation {
         self.limit
     }
     pub(in crate::store) fn remaining_bytes(&self) -> Result<usize, DomError> {
+        if let Some(parsed) = self.work.parsed() {
+            return parsed.remaining_bytes();
+        }
         self.limit
             .checked_sub(self.base)
             .and_then(|bytes| bytes.checked_sub(self.storage.ledger().total().bytes()))

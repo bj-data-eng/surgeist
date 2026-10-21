@@ -434,7 +434,7 @@ impl Operation {
                 payload,
                 cancelable,
                 stage: AtomicU8::new(0),
-                work: self.draft.source_work.clone(),
+                work: self.draft.source_work.source_arc().clone(),
                 work_limit: AtomicU64::new(self.limits.work),
                 scope: Mutex::new(Weak::new()),
                 ancestors: self.draft.source_ancestors.clone(),
@@ -451,7 +451,7 @@ impl Operation {
         let autofocus = self.draft.autofocus_count(cancel)?;
         let usage = Usage {
             autofocus,
-            work: self.draft.source_work.clone(),
+            work: self.draft.source_work.source_arc().clone(),
             base: self.draft.base_work.get(),
             encoding: self.draft.encoding_url_work.get(),
             meta: self.draft.meta_work.get(),

@@ -6,13 +6,17 @@ use crate::parsed_installation::{
 };
 use surgeist_html_parser::HtmlParseReport;
 mod consume;
-mod control;
+pub(in crate::store) mod control;
 mod style_prefix;
 pub use consume::{
     DomParsedHtmlMetaPreparation, DomParsedHtmlMetaPublished, DomParsedHtmlMetaRetirement,
     DomParsedHtmlMetaRuntimeHold,
 };
-pub use style_prefix::{DomParsedHtmlStylePrefixView, DomParsedHtmlStyleRuntimeHold};
+pub use style_prefix::{
+    DomParsedHtmlStylePrefixView, DomParsedHtmlStyleRuntimeHold, DomParsedHtmlStyleSheetCompletion,
+    DomParsedHtmlStyleSheetPreparation, DomParsedHtmlStyleSheetPublished,
+    DomParsedHtmlStyleSheetRetirement,
+};
 
 struct Report {
     value: Arc<HtmlParseReport>,

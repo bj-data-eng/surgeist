@@ -527,7 +527,7 @@ fn acknowledged_close_retries_attribute_formation_after_source_storage_refusal()
     };
     assert_eq!(frame.cursor.action(), HtmlDialogAction::RemoveOpen);
     assert!(retained.headroom.as_ref().unwrap().remaining_phases > 0);
-    let original_work = retained.draft.source_work.clone();
+    let original_work = retained.draft.source_work.source_arc().clone();
     let phases = status.published_phases();
     let spent = status.spent_work();
     assert_eq!(dom.limits().names(), names);
@@ -555,13 +555,14 @@ fn acknowledged_close_retries_attribute_formation_after_source_storage_refusal()
         assert_eq!(lease.status().published_phases(), phases);
         assert!(Arc::ptr_eq(
             &original_work,
-            &lease
+            lease
                 .dom
                 .source_operation
                 .as_ref()
                 .unwrap()
                 .draft
-                .source_work,
+                .source_work
+                .source_arc(),
         ));
         let DomSourceProgress::Request(DomSourceRequest::Dialog(close)) =
             lease.advance(&cancel).unwrap()

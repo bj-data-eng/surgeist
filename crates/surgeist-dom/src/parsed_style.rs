@@ -1,8 +1,10 @@
-//! Original parsed Style prefix and external inline decision; no sheet publication.
+//! Original parsed Style processing and its bounded external-owner joins.
+mod sheet;
 use crate::{
     DocumentId, DocumentString, DomError, DomParsedHtmlAssociationAdmissionError,
     DomParsedHtmlAssociationId, DomParsedHtmlHistoricalDocument,
 };
+pub use sheet::*;
 use surgeist_html::{
     HtmlCspAssociation, HtmlCspProtocolError, HtmlNodeId, HtmlStyleProtocolError, HtmlStyleState,
     HtmlStyleUpdateAction,
@@ -19,6 +21,7 @@ pub enum DomParsedHtmlStylePhase {
     InlinePolicyPending,
     CreateSheetPending,
     InlinePolicyBlocked,
+    ReadScriptBlockingPending,
 }
 #[derive(Debug)]
 pub enum DomParsedHtmlStyleError {
@@ -36,6 +39,10 @@ pub enum DomParsedHtmlStyleError {
     AlreadyBound,
     MissingPolicy,
     MissingObservation,
+    InvalidSheetInput,
+    WrongPhase {
+        phase: DomParsedHtmlStylePhase,
+    },
     DecisionAlreadyAccepted {
         contribution: DomParsedHtmlAssociationId,
     },

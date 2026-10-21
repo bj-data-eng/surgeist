@@ -46,6 +46,14 @@ impl Draft {
         extra: usize,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        if let Some(parsed) = self.source_work.parsed() {
+            return parsed.controlled(
+                self.custody_ledger()
+                    .total()
+                    .checked_add(custody::Usage::new(0, extra))?,
+                cancel,
+            );
+        }
         let Some(limits) = self.source_limits else {
             return Ok(());
         };
@@ -70,6 +78,14 @@ impl Draft {
         additional_bytes: usize,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        if let Some(parsed) = self.source_work.parsed() {
+            return parsed.controlled(
+                self.custody_ledger()
+                    .total()
+                    .checked_add(custody::Usage::new(additional_bytes, 0))?,
+                cancel,
+            );
+        }
         let Some(limits) = self.source_limits else {
             return Ok(());
         };
@@ -85,6 +101,9 @@ impl Draft {
         )
     }
     pub(super) fn source_step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
+        if let Some(parsed) = self.source_work.parsed() {
+            return parsed.step(cancel);
+        }
         check_cancel(cancel)?;
         if let Some(limits) = self.source_limits {
             let next = self

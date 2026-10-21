@@ -42,7 +42,11 @@ fn blocking_policy() -> HtmlCspAssociation {
     current
 }
 
-fn ready(dom: &mut Dom, id: DomParsedHtmlAssociationId, limits: DomParsedHtmlAssociationLimits) {
+pub(super) fn ready(
+    dom: &mut Dom,
+    id: DomParsedHtmlAssociationId,
+    limits: DomParsedHtmlAssociationLimits,
+) {
     ready_with_policy(dom, id, limits, empty_policy());
 }
 fn ready_with_policy(

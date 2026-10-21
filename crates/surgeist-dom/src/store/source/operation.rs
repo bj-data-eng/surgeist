@@ -3545,6 +3545,7 @@ pub(in crate::store) mod accounting_tests {
             .unwrap()
             .draft
             .source_work
+            .source_arc()
             .clone();
         let op = lease.dom.source_operation.as_ref().unwrap();
         assert_eq!(op.index, 0);
@@ -3570,13 +3571,14 @@ pub(in crate::store) mod accounting_tests {
         assert!(lease.status().spent_work() >= spent);
         assert!(Arc::ptr_eq(
             &original_work,
-            &lease
+            lease
                 .dom
                 .source_operation
                 .as_ref()
                 .unwrap()
                 .draft
                 .source_work
+                .source_arc()
         ));
         let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
             panic!("actual completion after policy raise")
@@ -3641,6 +3643,7 @@ pub(in crate::store) mod accounting_tests {
             .unwrap()
             .draft
             .source_work
+            .source_arc()
             .clone();
         // Use this original owner's actual spent frontier. A separately built
         // owner can have a different private registry path and work receipt.
@@ -3668,13 +3671,14 @@ pub(in crate::store) mod accounting_tests {
         assert!(lease.status().spent_work() >= spent);
         assert!(Arc::ptr_eq(
             &work,
-            &lease
+            lease
                 .dom
                 .source_operation
                 .as_ref()
                 .unwrap()
                 .draft
                 .source_work
+                .source_arc()
         ));
 
         let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
@@ -5398,6 +5402,7 @@ pub(in crate::store) mod accounting_tests {
             .unwrap()
             .draft
             .source_work
+            .source_arc()
             .clone();
         let initial = meter.load(Ordering::Relaxed);
         let effective_work = remaining.map_or(work, |remaining| initial + remaining);

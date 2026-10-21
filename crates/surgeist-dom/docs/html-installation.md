@@ -194,7 +194,7 @@ orchestration; the lower DOM front does not create another preference owner.
 
 ### Original Style inline-policy prefix
 
-`begin_parsed_html_style` prepares only the first influencing original Style
+`begin_parsed_html_style` selects only the first influencing original Style
 operation in a fresh ordinary constructed Document. DOM checks the authentic
 current pending entry, exact installed Document generation and source-root
 mapping, all capture dispositions, the absence of a canonical CSSOM binding,
@@ -205,7 +205,7 @@ A refused earlier Meta classification may already have spent work; it does not
 constitute prior association execution or restart the original envelope.
 
 DOM adapts those retained inputs through HTML's real Style cursor, acknowledging
-its proved no-op removal and original connection/type guards. It stops at
+its proved no-op removal and original connection/type guards. The initial prefix stops at
 `CheckInlineCsp`. The original insertion runs before the parser pushes the Style
 or consumes its raw text, so this first request has empty text even when the
 completed tree contains CSS. Later parser-pop text is a different original
@@ -276,12 +276,54 @@ The graph drops before its debit. Canonical pending usage includes the persisten
 graph even when an older disposal-only retirement shares its entry; future
 installs/removals preserve that accounting.
 
-No policy evaluation, CreateSheet acknowledgement, preference update or
-whole-contribution completion occurs here. Both decision branches leave the
-contribution Pending and do not execute its next occurrence. URL, Base, media and other
-external contexts are not requested before their actual later branches. Use the
-Session structural-installation route; raw Session admission keeps its existing
-influencing-Style refusal.
+### First original sheet publication
+
+After an accepted allow decision, `create_sheet_document` identifies the actual
+mapped destination under the same original admission. `prepare_create_sheet`
+borrows that hold and the genuine CSSOM capability exclusively for the join.
+Its closed editor lends the exact original empty text, title, media, parser
+Document and mode. It checks original source order and refuses unexplained
+existing producer membership. It does not construct native Source facts or use
+the later parser-pop text. Captured and otherwise unsupported histories retain
+their existing refusal.
+
+The consumer parses these original UTF16 inputs through CSS's public bounded
+fronts. Runtime charges every actual public preparation/pre/post grammar poll
+to both original and Runtime work. CSS's private grammar work, interruption
+latency and transient allocations are outside that consumer envelope. Actual
+reports transfer into the private CSSOM batch under CSSOM's logical/source
+limits. Returned media diagnostics retain their authentic diagnostic backing
+and source union under original admission; that receipt does not measure the
+entire CSS AST or grammar scratch.
+
+Staging takes the Option reports only for an actual producer attempt. Invalid
+qualification leaves the input intact. Any attempted construction or subsequent
+admission failure closes the editor; catching that failure cannot make an
+orphan construction publishable. Dropping preparation publishes nothing. Limits,
+spent work and the selected original cursor remain available for a raised retry.
+Operational producer identities already issued during failed work may remain
+spent, while canonical revisions, membership and effects remain unchanged.
+
+The final preparation uses the actual prepared ticket's authenticated sheet ID
+and result revision. All DOM formation, original work/output/storage admission,
+association serial, canonical binding, and HTML `Applied` successor are formed
+before either owner publishes. The infallible suffix publishes the genuine
+CSSOM commit and DOM association, then moves the same original cursor to
+`ReadScriptBlockingPending`. The published capability retains the root lock
+through Runtime's sole add-sheet/preference installation. Only `into_parts`
+releases that lock and returns genuine completion plus disposal-only retirement.
+Old State and its custody, old root binding, CSSOM retirement and exact impending
+history evictions remain retained through that fence; media diagnostics remain
+with the completion. No large backing is finally disposed inside the joined
+suffix.
+
+This is an intrinsic association publication, not processing readiness. Native
+sheet access remains `PendingParsedProcessing`/unavailable while the original
+contribution is Pending. No script-blocking reply, later occurrence, parser-pop
+text update, or whole-contribution completion is performed. Those later original
+actions retain their authority and must continue through the same cursor/history.
+DOM provides no CSP evaluator. Use the Session structural-installation route;
+raw Session admission keeps its existing influencing-Style refusal.
 
 ## Control state and form associations
 

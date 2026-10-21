@@ -109,7 +109,7 @@ fn acknowledged_cssom_receipt_survives_pending_identity_refusal_and_same_source_
             op.frame().unwrap(),
             op.index,
             op.draft.source_invocation,
-            op.draft.source_work.clone(),
+            op.draft.source_work.source_arc().clone(),
         )
     };
     let spent = work.load(Ordering::Relaxed);
@@ -137,7 +137,7 @@ fn acknowledged_cssom_receipt_survives_pending_identity_refusal_and_same_source_
         assert_eq!(op.id, operation);
         assert_eq!(op.index, index);
         assert_eq!(op.draft.source_invocation, invocation);
-        assert!(Arc::ptr_eq(&op.draft.source_work, &work));
+        assert!(Arc::ptr_eq(op.draft.source_work.source_arc(), &work));
         let retained = op.frame().unwrap();
         assert_eq!(retained.key, frame.key);
         assert_eq!(retained.cursor.action(), frame.cursor.action());
@@ -164,13 +164,14 @@ fn acknowledged_cssom_receipt_survives_pending_identity_refusal_and_same_source_
         .unwrap();
     assert!(lease.status().spent_work() >= failed_spent);
     assert!(Arc::ptr_eq(
-        &lease
+        lease
             .dom
             .source_operation
             .as_ref()
             .unwrap()
             .draft
-            .source_work,
+            .source_work
+            .source_arc(),
         &work
     ));
     let DomSourceProgress::Complete(completed) = lease.advance(&cancel).unwrap() else {

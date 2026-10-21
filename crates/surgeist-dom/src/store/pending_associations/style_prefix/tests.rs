@@ -1,4 +1,4 @@
-//! Real original Style prefix; no policy evaluation or sheet completion.
+// Real original prefix and first creation.
 use super::*;
 use crate::*;
 use std::sync::{Arc, atomic::AtomicBool};
@@ -10,13 +10,13 @@ use surgeist_html_semantics::{
     HtmlBaseUrlScheme,
 };
 
-fn flag() -> AtomicBool {
+pub(in crate::store::pending_associations) fn flag() -> AtomicBool {
     AtomicBool::new(false)
 }
-fn envelope() -> DomParsedHtmlAssociationLimits {
+pub(in crate::store::pending_associations) fn envelope() -> DomParsedHtmlAssociationLimits {
     DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 1_000_000, 1024).unwrap()
 }
-fn parse(text: &str) -> Arc<HtmlParseReport> {
+pub(in crate::store::pending_associations) fn parse(text: &str) -> Arc<HtmlParseReport> {
     let limits = HtmlParseLimits::builder()
         .source_units(100_000)
         .buffered_utf16_units(100_000)
@@ -45,7 +45,7 @@ fn parse(text: &str) -> Arc<HtmlParseReport> {
             .unwrap(),
     )
 }
-fn setup() -> (Dom, DomParsedDocumentEnvironment) {
+pub(in crate::store::pending_associations) fn setup() -> (Dom, DomParsedDocumentEnvironment) {
     let policy = DomLimits::new(
         1024,
         1_000_000,
@@ -88,7 +88,7 @@ fn setup() -> (Dom, DomParsedDocumentEnvironment) {
     );
     (dom, environment)
 }
-fn install(
+pub(in crate::store::pending_associations) fn install(
     dom: &mut Dom,
     report: Arc<HtmlParseReport>,
     environment: DomParsedDocumentEnvironment,
@@ -107,7 +107,10 @@ fn install(
         installed.pending_association().unwrap(),
     )
 }
-fn qualifier(dom: &Dom, id: DomParsedHtmlAssociationId) -> DomParsedHtmlStyleInitialPolicyRequest {
+pub(in crate::store::pending_associations) fn qualifier(
+    dom: &Dom,
+    id: DomParsedHtmlAssociationId,
+) -> DomParsedHtmlStyleInitialPolicyRequest {
     dom.parsed_html_style_prefix(id)
         .unwrap()
         .initial_policy_request()
@@ -172,7 +175,7 @@ fn native_policy(atomic: usize) -> (HtmlCspAssociation, Arc<AtomicUsize>, Arc<At
     drop(completion);
     (current, drops, descriptors)
 }
-fn begin_await(
+pub(in crate::store::pending_associations) fn begin_await(
     dom: &mut Dom,
     id: DomParsedHtmlAssociationId,
     limits: DomParsedHtmlAssociationLimits,

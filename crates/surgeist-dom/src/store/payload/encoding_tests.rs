@@ -78,7 +78,7 @@ fn actual_slot_root_aggregate_preserves_projection_refusal_and_historical_readop
     );
     draft.custody_registry().reconcile_releases();
     let before = draft.custody_ledger().total();
-    let work = draft.source_work.clone();
+    let work = draft.source_work.source_arc().clone();
     let spent = work.load(Ordering::Relaxed);
     let refusal = identity_refusal::Refusal::begin();
     assert!(matches!(
@@ -100,7 +100,7 @@ fn actual_slot_root_aggregate_preserves_projection_refusal_and_historical_readop
     assert!(
         matches!(draft.node(doctype).unwrap().kind(), transaction::KindRead::DocumentType(value) if value.name() == &DocumentString::from("html"))
     );
-    assert!(Arc::ptr_eq(&work, &draft.source_work));
+    assert!(Arc::ptr_eq(&work, draft.source_work.source_arc()));
     assert!(work.load(Ordering::Relaxed) >= spent);
 
     let prepared = draft.finish(&dom, &cancel).unwrap();

@@ -170,19 +170,18 @@ impl Control {
 
 /// Retains the actual original record and its custody, never a replacement issuer.
 /// Owning graphs must be declared/destroyed before this receipt.
-pub(super) struct Meter {
+pub(in crate::store) struct Meter {
     entry: bank::ControlledRecord<Entry>,
     ledger: custody::Ledger,
     debit: RefCell<Option<custody::Debit>>,
     own: Cell<custody::Usage>,
-    controlled: Cell<custody::Usage>,
+    controlled: RefCell<Option<Admission>>,
     runtime: Cell<DomParsedHtmlAssociationRuntimeUsage>,
     pending_limit: Option<(custody::Usage, DomLimits)>,
 }
 impl Drop for Meter {
     fn drop(&mut self) {
         self.entry.value().control.release(self.own.get());
-        self.entry.value().control.release(self.controlled.get());
     }
 }
 impl Meter {
@@ -224,7 +223,7 @@ impl Meter {
             ledger,
             debit: RefCell::new(None),
             own: Cell::new(custody::Usage::ZERO),
-            controlled: Cell::new(custody::Usage::ZERO),
+            controlled: RefCell::new(None),
             pending_limit: None,
             runtime: Cell::new(DomParsedHtmlAssociationRuntimeUsage {
                 bytes: 0,
@@ -330,19 +329,40 @@ impl Meter {
         baseline: custody::Usage,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        self.step(cancel)?;
-        let old = self.controlled.get();
-        let next = custody::Usage::new(
-            old.bytes()
-                .max(total.bytes().saturating_sub(baseline.bytes())),
-            old.units()
-                .max(total.units().saturating_sub(baseline.units())),
-        );
-        let growth = next.checked_sub(old)?;
-        self.entry().control.check(growth)?;
-        self.entry().control.add(growth);
-        self.controlled.set(next);
-        Ok(())
+        let fresh = self.controlled.borrow().is_none();
+        let admission = self.admission(baseline, cancel)?;
+        // The producer supplied its prospective ledger total before the lazy
+        // receipt existed. Add that new real debit exactly once to this first
+        // report, matching the receipt's equally adjusted baseline.
+        let total = if fresh {
+            total.checked_add(custody::Usage::new(size_of::<Charged>(), 0))?
+        } else {
+            total
+        };
+        admission.controlled(total, cancel)
+    }
+    pub(in crate::store) fn admission(
+        &self,
+        baseline: custody::Usage,
+        cancel: &AtomicBool,
+    ) -> Result<Admission, DomError> {
+        if let Some(value) = self.controlled.borrow().as_ref() {
+            return Ok(value.clone());
+        }
+        let usage = custody::Usage::new(size_of::<Charged>(), 0);
+        let baseline = baseline.checked_add(usage)?;
+        self.retain(usage.bytes(), 0, 0, cancel)?;
+        let debit = self.detach(usage);
+        let result = Admission(Arc::new(Charged {
+            entry: self.entry.clone(),
+            baseline,
+            bytes: AtomicUsize::new(0),
+            units: AtomicUsize::new(0),
+            metadata: usage,
+            _debit: debit,
+        }));
+        *self.controlled.borrow_mut() = Some(result.clone());
+        Ok(result)
     }
     fn absorb(&self, other: Self) -> Result<(), DomError> {
         let usage = other.own.replace(custody::Usage::ZERO);
@@ -435,3 +455,80 @@ impl Meter {
         self.absorb(replacement_meter)
     }
 }
+
+/// One charged positive-delta receipt, shared by the actual private Draft and
+/// its Formation forks. It retains original authority, never a second counter
+/// or an Entry-owned backreference. Owners dispose graphs before this receipt.
+#[derive(Clone)]
+pub(in crate::store) struct Admission(Arc<Charged>);
+struct Charged {
+    entry: bank::ControlledRecord<Entry>,
+    baseline: custody::Usage,
+    bytes: AtomicUsize,
+    units: AtomicUsize,
+    metadata: custody::Usage,
+    _debit: custody::Debit,
+}
+impl Drop for Charged {
+    fn drop(&mut self) {
+        self.entry.value().control.release(custody::Usage::new(
+            self.bytes.load(Ordering::Relaxed),
+            self.units.load(Ordering::Relaxed),
+        ));
+        self.entry.value().control.release(self.metadata);
+    }
+}
+impl Admission {
+    pub(in crate::store) fn step(&self, cancel: &AtomicBool) -> Result<(), DomError> {
+        self.0.entry.value().control.step(cancel)
+    }
+    pub(in crate::store) fn controlled(
+        &self,
+        total: custody::Usage,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.step(cancel)?;
+        self.controlled_unpolled(total)
+    }
+    pub(in crate::store) fn controlled_unpolled(
+        &self,
+        total: custody::Usage,
+    ) -> Result<(), DomError> {
+        let old = custody::Usage::new(
+            self.0.bytes.load(Ordering::Relaxed),
+            self.0.units.load(Ordering::Relaxed),
+        );
+        let next = custody::Usage::new(
+            old.bytes()
+                .max(total.bytes().saturating_sub(self.0.baseline.bytes())),
+            old.units()
+                .max(total.units().saturating_sub(self.0.baseline.units())),
+        );
+        let growth = next.checked_sub(old)?;
+        self.0.entry.value().control.check(growth)?;
+        self.0.entry.value().control.add(growth);
+        self.0.bytes.store(next.bytes(), Ordering::Relaxed);
+        self.0.units.store(next.units(), Ordering::Relaxed);
+        Ok(())
+    }
+    pub(in crate::store) fn spent_work(&self) -> u64 {
+        self.0.entry.value().control.spent_work()
+    }
+    pub(in crate::store) fn remaining_bytes(&self) -> Result<usize, DomError> {
+        let c = &self.0.entry.value().control;
+        c.limits()
+            .retained_bytes()
+            .checked_sub(c.bytes.load(Ordering::Relaxed))
+            .and_then(|n| n.checked_sub(c.cleanup_atomic.load(Ordering::Relaxed)))
+            .ok_or(DomError::ResourceLimit {
+                resource: DomResource::ParsedAssociationProcessingRetainedBytes,
+                limit: c.limits().retained_bytes(),
+            })
+    }
+    pub(in crate::store) fn limits(&self) -> DomParsedHtmlAssociationLimits {
+        self.0.entry.value().control.limits()
+    }
+}
+
+#[cfg(test)]
+mod tests;

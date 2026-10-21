@@ -121,11 +121,11 @@ impl State {
 }
 /// The enable-set algorithm targets only named sheets; unnamed sheets keep
 /// their current flag. Both real producer adapters share this exact decision.
-pub(super) fn named_sheet_disabled(
+pub(super) fn named_sheet_disabled<E>(
     title: &[u16],
     name: &[u16],
-    mut same: impl FnMut(&[u16], &[u16]) -> Result<bool, DomStyleRuntimeError>,
-) -> Result<Option<bool>, DomStyleRuntimeError> {
+    mut same: impl FnMut(&[u16], &[u16]) -> Result<bool, E>,
+) -> Result<Option<bool>, E> {
     if title.is_empty() {
         return Ok(None);
     }
@@ -177,44 +177,121 @@ impl StyleState {
         inputs: &mut CssomSheetInputs,
         cancel: &AtomicBool,
     ) -> Result<Option<State>, DomStyleRuntimeError> {
-        let Some(current) = self.roots[index].sheet_sets.state() else {
-            return Ok(None);
-        };
-        self.step(cancel)?;
-        // The add-sheet early return preserves both preferred history and flags.
-        if inputs.disabled {
-            return Ok(None);
-        }
-        let mut candidate = None;
-        if !inputs.title.is_empty() && !inputs.alternate && current.preferred.is_empty() {
-            let mut next = current.clone();
-            next.preferred = DocumentString::from_shared_code_units(inputs.title.clone());
-            next.revision = next
-                .revision
-                .checked_add(1)
-                .ok_or(DomStyleRuntimeError::Admission)?;
-            self.admit(
-                size_of::<State>()
-                    .checked_add(next.additional_backing(Some(current))?)
-                    .ok_or(DomStyleRuntimeError::Admission)?,
-                cancel,
-            )?;
-            if next.last_selected.is_none() {
-                self.enable_named_sheets(snapshot, batch, next.preferred.code_units(), cancel)?;
-            }
-            candidate = Some(next);
-        }
-        let selected = candidate.as_ref().unwrap_or(current);
-        let enabled = inputs.title.is_empty()
-            || match &selected.last_selected {
-                None => {
-                    self.same_set_name(&inputs.title, selected.preferred.code_units(), cancel)?
+        prepare_added_sheet_sets_with(
+            self.roots[index].sheet_sets.state(),
+            snapshot,
+            AddedSheetInputs {
+                title: Some(&inputs.title),
+                alternate: inputs.alternate,
+                disabled: &mut inputs.disabled,
+            },
+            |operation| match operation {
+                AddedSheetOperation::Step => self.step(cancel),
+                AddedSheetOperation::Candidate { next, current } => self.admit(
+                    size_of::<State>()
+                        .checked_add(next.additional_backing(Some(current))?)
+                        .ok_or(DomStyleRuntimeError::Admission)?,
+                    cancel,
+                ),
+                AddedSheetOperation::SetDisabled { sheet, disabled } => {
+                    batch.set_disabled(sheet, disabled)?;
+                    Ok(())
                 }
-                Some(name) => self.same_set_name(&inputs.title, name.code_units(), cancel)?,
-            };
-        inputs.disabled = !enabled;
-        Ok(candidate)
+            },
+        )
     }
+}
+
+// One closed adapter to the actual native batch or parsed composing editor.
+// It carries no commands beyond this add-sheet algorithm and retains no work.
+pub(super) enum AddedSheetOperation<'a> {
+    Step,
+    Candidate {
+        next: &'a State,
+        current: &'a State,
+    },
+    SetDisabled {
+        sheet: &'a CssomSheetId,
+        disabled: bool,
+    },
+}
+pub(super) struct AddedSheetInputs<'a> {
+    pub title: Option<&'a Arc<Vec<u16>>>,
+    pub alternate: bool,
+    pub disabled: &'a mut bool,
+}
+pub(super) fn prepare_added_sheet_sets_with<E: From<DomStyleRuntimeError>>(
+    current: Option<&State>,
+    snapshot: &CssomSnapshot,
+    inputs: AddedSheetInputs<'_>,
+    mut access: impl FnMut(AddedSheetOperation<'_>) -> Result<(), E>,
+) -> Result<Option<State>, E> {
+    fn same<E>(
+        left: &[u16],
+        right: &[u16],
+        access: &mut impl FnMut(AddedSheetOperation<'_>) -> Result<(), E>,
+    ) -> Result<bool, E> {
+        access(AddedSheetOperation::Step)?;
+        if left.len() != right.len() {
+            return Ok(false);
+        }
+        for (a, b) in left.iter().zip(right) {
+            access(AddedSheetOperation::Step)?;
+            if a != b {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+    let Some(current) = current else {
+        return Ok(None);
+    };
+    access(AddedSheetOperation::Step)?;
+    // The add-sheet early return preserves both preferred history and flags.
+    if *inputs.disabled {
+        return Ok(None);
+    }
+    let title = inputs.title.map_or(&[][..], |value| value.as_slice());
+    let mut candidate = None;
+    if !title.is_empty() && !inputs.alternate && current.preferred.is_empty() {
+        let mut next = current.clone();
+        next.preferred =
+            DocumentString::from_shared_code_units(inputs.title.expect("nonempty title").clone());
+        next.revision = next
+            .revision
+            .checked_add(1)
+            .ok_or_else(|| E::from(DomStyleRuntimeError::Admission))?;
+        access(AddedSheetOperation::Candidate {
+            next: &next,
+            current,
+        })?;
+        if next.last_selected.is_none() {
+            for sheet in snapshot.sheets() {
+                access(AddedSheetOperation::Step)?;
+                let title = &snapshot
+                    .sheet(sheet)
+                    .map_err(DomStyleRuntimeError::from)?
+                    .inputs()
+                    .title;
+                if let Some(disabled) =
+                    named_sheet_disabled(title, next.preferred.code_units(), |left, right| {
+                        same(left, right, &mut access)
+                    })?
+                {
+                    access(AddedSheetOperation::SetDisabled { sheet, disabled })?;
+                }
+            }
+        }
+        candidate = Some(next);
+    }
+    let selected = candidate.as_ref().unwrap_or(current);
+    let enabled = title.is_empty()
+        || match &selected.last_selected {
+            None => same(title, selected.preferred.code_units(), &mut access)?,
+            Some(name) => same(title, name.code_units(), &mut access)?,
+        };
+    *inputs.disabled = !enabled;
+    Ok(candidate)
 }
 
 /// Immutable Document preference history joined to its actual stylesheet owner.

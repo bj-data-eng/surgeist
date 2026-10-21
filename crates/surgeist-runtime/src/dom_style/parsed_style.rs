@@ -6,6 +6,8 @@ use surgeist_dom::{
     DomParsedHtmlStylePhase, DomParsedHtmlStylePrefixView,
 };
 use surgeist_html::HtmlCspAssociation;
+mod create_sheet;
+pub use create_sheet::{DomStyleParsedSheetError, DomStyleParsedSheetOutcome};
 
 /// The actual Session or original parsed Style prefix refused a command.
 #[derive(Debug)]

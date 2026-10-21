@@ -99,7 +99,7 @@ fn reconstructed_segment_charge_uses_its_own_mirrors_and_releases_only_its_posit
         dialog::OperationDraft::Segment(_)
     ));
     assert!(Arc::ptr_eq(
-        &operation.draft.source_work,
+        operation.draft.source_work.source_arc(),
         &request.work.work
     ));
     let new_bytes = operation.draft.source_formation_bytes.clone();

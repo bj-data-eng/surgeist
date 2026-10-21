@@ -1,4 +1,6 @@
 //! Real original Style prefix; no policy evaluation or sheet completion.
+#[path = "parsed_style/create.rs"]
+mod create;
 #[path = "parsed_style/decision.rs"]
 mod decision;
 use std::sync::{Arc, atomic::AtomicBool};

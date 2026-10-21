@@ -32,6 +32,19 @@ pub(super) struct History {
 
 pub(super) struct Plan(Decision);
 
+// Exact impending evictions only. Retaining each authentic chunk keeps its
+// backing/debit alive; retaining its actual changes prevents last-owner freeing
+// at the joined publication fence. No history is copied or reconstructed.
+pub(super) struct Retirement {
+    _entries: Vec<RetainedEviction>,
+    _backing: custody::Debit,
+}
+struct RetainedEviction {
+    _changes: Arc<[DomChange]>,
+    _changes_custody: custody::Debit,
+    _chunk: Link,
+}
+
 enum Decision {
     Keep,
     Clear,
@@ -206,6 +219,66 @@ impl History {
         Ok((count, bytes))
     }
 
+    pub(super) fn retain_evictions(
+        &self,
+        plan: &Plan,
+        ledger: &custody::Ledger,
+        mut admit: impl FnMut(custody::Usage) -> Result<(), DomError>,
+        mut step: impl FnMut() -> Result<(), DomError>,
+    ) -> Result<Retirement, DomError> {
+        let count = match &plan.0 {
+            Decision::Keep => 0,
+            Decision::Clear => self.entries,
+            Decision::Insert { evictions, .. } => *evictions,
+        };
+        let bytes = count
+            .checked_mul(size_of::<RetainedEviction>())
+            .ok_or(DomError::RepresentationExhausted)?;
+        step()?;
+        let mut debit = ledger.retain(custody::Usage::new(bytes, 0), &mut admit)?;
+        let mut entries = Vec::new();
+        entries
+            .try_reserve_exact(count)
+            .map_err(|_| DomError::AllocationFailed)?;
+        let actual = entries
+            .capacity()
+            .checked_mul(size_of::<RetainedEviction>())
+            .ok_or(DomError::RepresentationExhausted)?;
+        if actual > bytes {
+            debit.grow(custody::Usage::new(actual - bytes, 0), &mut admit)?;
+        }
+        let mut retirement = Retirement {
+            _entries: entries,
+            _backing: debit,
+        };
+        let mut cursor = self.oldest.clone();
+        while retirement._entries.len() < count {
+            let link = cursor.take().expect("qualified impending eviction");
+            let chunk = lock(&link);
+            for entry in &chunk.values {
+                if retirement._entries.len() == count {
+                    break;
+                }
+                // Prepay the later disposal traversal as well as this visit.
+                step()?;
+                step()?;
+                let payload = entry
+                    .changes
+                    .len()
+                    .checked_mul(size_of::<DomChange>())
+                    .ok_or(DomError::RepresentationExhausted)?;
+                let custody = ledger.retain(custody::Usage::new(payload, 0), &mut admit)?;
+                retirement._entries.push(RetainedEviction {
+                    _changes: entry.changes.clone(),
+                    _changes_custody: custody,
+                    _chunk: link.clone(),
+                });
+            }
+            cursor = chunk.newer.upgrade();
+        }
+        Ok(retirement)
+    }
+
     pub(super) fn commit(&mut self, plan: Plan) {
         match plan.0 {
             Decision::Keep => {}
@@ -336,6 +409,17 @@ impl History {
             }
         }
         Ok(changes.into())
+    }
+
+    #[cfg(test)]
+    pub(super) fn oldest_changes_weak(&self) -> Weak<[DomChange]> {
+        Arc::downgrade(
+            &lock(self.oldest.as_ref().expect("genuine retained history"))
+                .values
+                .front()
+                .expect("genuine retained entry")
+                .changes,
+        )
     }
 
     #[cfg(test)]

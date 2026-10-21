@@ -134,7 +134,8 @@ fn carried_output_keeps_original_counter_and_mirrors_controlled_after_source_dro
         0,
         Some(debit),
         WorkDependencies {
-            _source: original.clone(),
+            _source: Some(original.clone()),
+            _parsed: None,
             _event: None,
             _mirrors: Some(mirrors.clone()),
         },
@@ -183,7 +184,8 @@ fn selected_payload_transfer_ends_mirrors_without_releasing_its_occurrence() {
         12,
         Some(debit),
         WorkDependencies {
-            _source: work.clone(),
+            _source: Some(work.clone()),
+            _parsed: None,
             _event: None,
             _mirrors: Some(mirrors.clone()),
         },

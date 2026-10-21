@@ -3,6 +3,23 @@ use super::super::*;
 use super::{formation, storage::Payload};
 use std::cell::Cell;
 
+/// A closed constructor capability, selected before ANY private Draft allocation.
+/// Parsed authority is the original pending entry; ordinary has no extra owner.
+#[derive(Clone, Copy)]
+pub(in crate::store) enum Admission<'a> {
+    Ordinary,
+    Source(&'a Initial),
+    Parsed(&'a crate::store::pending_associations::control::Admission),
+}
+impl Admission<'_> {
+    pub(in crate::store) fn step(self, cancel: &AtomicBool) -> Result<(), DomError> {
+        match self {
+            Self::Ordinary => check_cancel(cancel),
+            Self::Source(value) => value.step(cancel),
+            Self::Parsed(value) => value.step(cancel),
+        }
+    }
+}
 pub(in crate::store) struct Initial {
     limits: crate::DomSourceLimits,
     bytes: Cell<usize>,
@@ -188,15 +205,6 @@ impl Initial {
         Ok(())
     }
 }
-pub(in crate::store) fn step(
-    initial: Option<&Initial>,
-    cancel: &AtomicBool,
-) -> Result<(), DomError> {
-    match initial {
-        Some(initial) => initial.step(cancel),
-        None => check_cancel(cancel),
-    }
-}
 impl Draft {
     pub(in crate::store) fn new_source(
         dom: &Dom,
@@ -255,7 +263,10 @@ impl Draft {
             );
         let (mut draft, command) =
             Self::new_source_initial(dom, owner, commands, initial, 0, Some(work.clone()), cancel)?;
-        draft.source_work = work;
+        draft.source_work = formation::WorkOwner::Source {
+            work,
+            custody: draft.source_work_custody(),
+        };
         Ok((draft, command))
     }
     pub(in crate::store) fn new_hosted_source(
@@ -283,7 +294,10 @@ impl Draft {
             None,
             cancel,
         )?;
-        draft.source_work = work;
+        draft.source_work = formation::WorkOwner::Source {
+            work,
+            custody: draft.source_work_custody(),
+        };
         draft.hosted_owner = Some(operation);
         Ok(draft)
     }
@@ -338,11 +352,14 @@ impl Draft {
         if let Some(work) = shared_work {
             draft.fullscreen_work_custody =
                 dom.fullscreen_work_custody(&work, || initial.step(cancel))?;
-            draft.source_work = work;
+            draft.source_work = formation::WorkOwner::Source {
+                work,
+                custody: draft.source_work_custody(),
+            };
         }
         draft.source_other_bytes = retained.bytes;
         draft.source_other_units = retained.units;
-        initial.finish_work(&draft.source_work);
+        initial.finish_work(draft.source_work.source_arc());
         // Whole-snapshot import semantics retain the original input frontier
         // once for this Source. Called frames alias its owner-side capsule.
         for command in commands {
