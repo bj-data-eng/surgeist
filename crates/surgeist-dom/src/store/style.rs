@@ -245,7 +245,9 @@ impl Draft {
         self.push_effect(
             select::Effect::Style(Frame {
                 key,
-                cursor: Cursor::Update(HtmlStyleUpdateCursor::new()),
+                cursor: Cursor::Update(HtmlStyleUpdateCursor::new(
+                    surgeist_html::HtmlStyleExecutionProfile::NoExecutableJavaScript,
+                )),
                 invocation,
             }),
             self.effect_scoped,
@@ -302,21 +304,10 @@ impl Draft {
                 self.control_attribute(frame.key, surgeist_html::KnownHtmlAttribute::Type, cancel)?,
                 || self.effect_step(cancel),
             )?),
-            Action::ReadScriptBlocking
-                if !self
-                    .element(frame.key)?
-                    .language()
-                    .style_state()
-                    .expect("Style")
-                    .creation_state()
-                    .created_by_document_parser()
-                    || self.node(frame.key)?.style_parser_document()
-                        != Some(self.node(frame.key)?.document()) =>
-            {
-                // The first conjunct refers to THIS Document's parser, not a
-                // historical boolean after template ownership or adoption.
-                Reply::Blocking(false)
-            }
+            // This native owner has no executable-JavaScript engine. The
+            // selected operation excludes bookkeeping, without inventing a
+            // normative predicate result from parser provenance or media.
+            Action::ReadScriptBlocking => Reply::ScriptBookkeepingExcluded,
             Action::ReadRenderBlocking => {
                 match self.style_render_blocking_required(frame.key, cancel)? {
                     Some(required) => Reply::Blocking(required),

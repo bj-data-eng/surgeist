@@ -97,7 +97,7 @@ fn potential_blocking_requires_actual_parser_document_join_and_document_body_gat
 #[test]
 fn removal_precedes_disconnection_type_and_csp_guards() {
     for stop in 0..3 {
-        let mut c = HtmlStyleUpdateCursor::new();
+        let mut c = HtmlStyleUpdateCursor::new(HtmlStyleExecutionProfile::SourcePredicates);
         assert_eq!(c.action(), HtmlStyleUpdateAction::RemoveAssociatedSheet);
         c.reply(HtmlStyleUpdateReply::Applied).unwrap();
         assert_eq!(c.action(), HtmlStyleUpdateAction::ReadConnected);
@@ -118,7 +118,7 @@ fn removal_precedes_disconnection_type_and_csp_guards() {
 fn creation_script_and_render_blocking_preserve_source_acknowledgement_order() {
     use HtmlStyleUpdateAction as A;
     use HtmlStyleUpdateReply as R;
-    let mut c = HtmlStyleUpdateCursor::new();
+    let mut c = HtmlStyleUpdateCursor::new(HtmlStyleExecutionProfile::SourcePredicates);
     for (action, reply) in [
         (A::RemoveAssociatedSheet, R::Applied),
         (A::ReadConnected, R::Connected(true)),
@@ -181,7 +181,10 @@ fn networking_task_dispatch_precedes_script_removal_and_unblock() {
     use HtmlStyleNotificationReply as R;
     for success in [true, false] {
         for script_blocking in [true, false] {
-            let mut c = HtmlStyleNotificationCursor::new(success);
+            let mut c = HtmlStyleNotificationCursor::new(
+                HtmlStyleExecutionProfile::SourcePredicates,
+                success,
+            );
             assert_eq!(
                 c.action(),
                 if success {
@@ -242,4 +245,241 @@ fn actual_parser_creation_and_stack_transitions_are_distinct_from_fresh_clone_st
         !HtmlStyleState::fresh().created_by_document_parser(),
         "general cloning initializes a fresh Style rather than copying parser flags"
     );
+}
+
+#[test]
+fn no_executable_javascript_projects_only_the_reached_update_script_phase() {
+    use HtmlStyleUpdateAction as A;
+    use HtmlStyleUpdateReply as R;
+    let profile = HtmlStyleExecutionProfile::NoExecutableJavaScript;
+    for render in [false, true] {
+        let mut cursor = HtmlStyleUpdateCursor::new(profile);
+        for (action, reply) in [
+            (A::RemoveAssociatedSheet, R::Applied),
+            (A::ReadConnected, R::Connected(true)),
+            (A::ReadType, R::TypeEligible(true)),
+            (A::CheckInlineCsp, R::InlineAllowed(true)),
+            (A::CreateSheet, R::Applied),
+        ] {
+            assert_eq!(cursor.action(), action);
+            assert_eq!(cursor.profile(), profile);
+            let original = cursor;
+            assert_eq!(
+                cursor.reply(R::ScriptBookkeepingExcluded),
+                Err(HtmlStyleProtocolError)
+            );
+            assert_eq!(cursor, original);
+            cursor.reply(reply).unwrap();
+        }
+        assert_eq!(cursor.action(), A::ReadScriptBlocking);
+        for reply in [R::Blocking(false), R::Blocking(true), R::Applied] {
+            let original = cursor;
+            assert_eq!(cursor.reply(reply), Err(HtmlStyleProtocolError));
+            assert_eq!(cursor, original);
+        }
+        cursor.reply(R::ScriptBookkeepingExcluded).unwrap();
+        assert_eq!(cursor.action(), A::ReadRenderBlocking);
+        assert_eq!(cursor.profile(), profile);
+        let original = cursor;
+        assert_eq!(
+            cursor.reply(R::ScriptBookkeepingExcluded),
+            Err(HtmlStyleProtocolError)
+        );
+        assert_eq!(cursor, original);
+        // The exclusion provides no rendering answer. A real positive observation
+        // still requires the independent BlockRendering action and acknowledgment.
+        cursor.reply(R::Blocking(render)).unwrap();
+        if render {
+            assert_eq!(cursor.action(), A::BlockRendering);
+            let original = cursor;
+            assert_eq!(
+                cursor.reply(R::ScriptBookkeepingExcluded),
+                Err(HtmlStyleProtocolError)
+            );
+            assert_eq!(cursor, original);
+            cursor.reply(R::Applied).unwrap();
+        }
+        assert_eq!(cursor.action(), A::Complete);
+        let original = cursor;
+        assert_eq!(
+            cursor.reply(R::ScriptBookkeepingExcluded),
+            Err(HtmlStyleProtocolError)
+        );
+        assert_eq!(cursor, original);
+    }
+}
+
+#[test]
+fn source_predicate_update_cannot_use_projection_and_keeps_both_boolean_branches() {
+    use HtmlStyleUpdateAction as A;
+    use HtmlStyleUpdateReply as R;
+    for script in [false, true] {
+        for render in [false, true] {
+            let mut cursor =
+                HtmlStyleUpdateCursor::new(HtmlStyleExecutionProfile::SourcePredicates);
+            for reply in [
+                R::Applied,
+                R::Connected(true),
+                R::TypeEligible(true),
+                R::InlineAllowed(true),
+                R::Applied,
+            ] {
+                let original = cursor;
+                assert_eq!(
+                    cursor.reply(R::ScriptBookkeepingExcluded),
+                    Err(HtmlStyleProtocolError)
+                );
+                assert_eq!(cursor, original);
+                cursor.reply(reply).unwrap();
+            }
+            assert_eq!(cursor.action(), A::ReadScriptBlocking);
+            let original = cursor;
+            assert_eq!(
+                cursor.reply(R::ScriptBookkeepingExcluded),
+                Err(HtmlStyleProtocolError)
+            );
+            assert_eq!(cursor, original);
+            cursor.reply(R::Blocking(script)).unwrap();
+            if script {
+                assert_eq!(cursor.action(), A::RegisterScriptBlocking);
+                let original = cursor;
+                assert_eq!(
+                    cursor.reply(R::ScriptBookkeepingExcluded),
+                    Err(HtmlStyleProtocolError)
+                );
+                assert_eq!(cursor, original);
+                cursor.reply(R::Applied).unwrap();
+            }
+            assert_eq!(cursor.action(), A::ReadRenderBlocking);
+            let original = cursor;
+            assert_eq!(
+                cursor.reply(R::ScriptBookkeepingExcluded),
+                Err(HtmlStyleProtocolError)
+            );
+            assert_eq!(cursor, original);
+            cursor.reply(R::Blocking(render)).unwrap();
+            if render {
+                assert_eq!(cursor.action(), A::BlockRendering);
+                let original = cursor;
+                assert_eq!(
+                    cursor.reply(R::ScriptBookkeepingExcluded),
+                    Err(HtmlStyleProtocolError)
+                );
+                assert_eq!(cursor, original);
+                cursor.reply(R::Applied).unwrap();
+            }
+            assert_eq!(cursor.action(), A::Complete);
+            let original = cursor;
+            assert_eq!(
+                cursor.reply(R::ScriptBookkeepingExcluded),
+                Err(HtmlStyleProtocolError)
+            );
+            assert_eq!(cursor, original);
+            assert_eq!(
+                cursor.profile(),
+                HtmlStyleExecutionProfile::SourcePredicates
+            );
+        }
+    }
+}
+
+#[test]
+fn notification_projection_preserves_real_event_dispatch_and_render_unblocking() {
+    use HtmlStyleNotificationAction as A;
+    use HtmlStyleNotificationReply as R;
+    for success in [true, false] {
+        let profile = HtmlStyleExecutionProfile::NoExecutableJavaScript;
+        let mut cursor = HtmlStyleNotificationCursor::new(profile, success);
+        assert_eq!(
+            cursor.action(),
+            if success {
+                A::DispatchLoad
+            } else {
+                A::DispatchError
+            }
+        );
+        assert_eq!(cursor.profile(), profile);
+        let original = cursor;
+        assert_eq!(
+            cursor.reply(R::ScriptBookkeepingExcluded),
+            Err(HtmlStyleProtocolError)
+        );
+        assert_eq!(cursor, original);
+        cursor.reply(R::Applied).unwrap();
+        assert_eq!(cursor.action(), A::ReadScriptBlocking);
+        for reply in [
+            R::ScriptBlocking(false),
+            R::ScriptBlocking(true),
+            R::Applied,
+        ] {
+            let original = cursor;
+            assert_eq!(cursor.reply(reply), Err(HtmlStyleProtocolError));
+            assert_eq!(cursor, original);
+        }
+        cursor.reply(R::ScriptBookkeepingExcluded).unwrap();
+        assert_eq!(cursor.action(), A::UnblockRendering);
+        let original = cursor;
+        assert_eq!(
+            cursor.reply(R::ScriptBookkeepingExcluded),
+            Err(HtmlStyleProtocolError)
+        );
+        assert_eq!(cursor, original);
+        cursor.reply(R::Applied).unwrap();
+        assert_eq!(cursor.action(), A::Complete);
+        assert_eq!(cursor.profile(), profile);
+        let original = cursor;
+        assert_eq!(
+            cursor.reply(R::ScriptBookkeepingExcluded),
+            Err(HtmlStyleProtocolError)
+        );
+        assert_eq!(cursor, original);
+    }
+}
+
+#[test]
+fn source_predicate_notification_refuses_projection_at_each_actual_phase() {
+    use HtmlStyleNotificationAction as A;
+    use HtmlStyleNotificationReply as R;
+    for success in [false, true] {
+        for script in [false, true] {
+            let mut cursor = HtmlStyleNotificationCursor::new(
+                HtmlStyleExecutionProfile::SourcePredicates,
+                success,
+            );
+            for reply in [R::Applied, R::ScriptBlocking(script)] {
+                let original = cursor;
+                assert_eq!(
+                    cursor.reply(R::ScriptBookkeepingExcluded),
+                    Err(HtmlStyleProtocolError)
+                );
+                assert_eq!(cursor, original);
+                cursor.reply(reply).unwrap();
+            }
+            if script {
+                assert_eq!(cursor.action(), A::RemoveScriptBlocking);
+                let original = cursor;
+                assert_eq!(
+                    cursor.reply(R::ScriptBookkeepingExcluded),
+                    Err(HtmlStyleProtocolError)
+                );
+                assert_eq!(cursor, original);
+                cursor.reply(R::Applied).unwrap();
+            }
+            assert_eq!(cursor.action(), A::UnblockRendering);
+            let original = cursor;
+            assert_eq!(
+                cursor.reply(R::ScriptBookkeepingExcluded),
+                Err(HtmlStyleProtocolError)
+            );
+            assert_eq!(cursor, original);
+            cursor.reply(R::Applied).unwrap();
+            assert_eq!(cursor.action(), A::Complete);
+            let original = cursor;
+            assert_eq!(
+                cursor.reply(R::ScriptBookkeepingExcluded),
+                Err(HtmlStyleProtocolError)
+            );
+            assert_eq!(cursor, original);
+        }
+    }
 }

@@ -2807,17 +2807,20 @@ fn admitted_inert_parser_style_continues_after_creation_to_genuine_render_contex
     );
     assert_eq!(render.source().element(), style);
     assert_eq!(render.source().media(), Some(&"screen".into()));
-    assert_eq!(
+    let associated = render
+        .sheet()
+        .expect("actual acknowledged sheet at the render wait");
+    assert_eq!(associated.id(), &actual_sheet);
+    assert_eq!(render.association(), create.association());
+    assert_eq!(render.association(), Some(associated.association()));
+    assert!(matches!(
         lease
             .snapshot()
             .node(style)
             .unwrap()
             .as_style()
             .unwrap()
-            .sheet()
-            .unwrap()
-            .unwrap()
-            .id(),
-        &actual_sheet
-    );
+            .sheet(),
+        Err(DomError::IncompleteSourceOperation)
+    ));
 }

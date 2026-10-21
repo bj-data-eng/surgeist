@@ -319,11 +319,41 @@ suffix.
 
 This is an intrinsic association publication, not processing readiness. Native
 sheet access remains `PendingParsedProcessing`/unavailable while the original
-contribution is Pending. No script-blocking reply, later occurrence, parser-pop
-text update, or whole-contribution completion is performed. Those later original
-actions retain their authority and must continue through the same cursor/history.
-DOM provides no CSP evaluator. Use the Session structural-installation route;
-raw Session admission keeps its existing influencing-Style refusal.
+contribution is Pending.
+
+### Explicit exclusion of executable-script bookkeeping
+
+The admitted Rust execution owner has no executable-JavaScript engine. Its
+original Style cursor retains HTML's `NoExecutableJavaScript` profile from
+selection onward. At the reached `ReadScriptBlocking` action, Runtime supplies
+that actual owner profile to `exclude_script_bookkeeping` with the exact retained
+contribution/occurrence qualification. DOM checks the mapped current Document,
+original report and stored operation profile. A caller's profile declaration
+alone grants no authority. `SourcePredicates` belongs to integrations supplying
+real normative predicate/membership results and cannot take this exclusion.
+
+The specific HTML `ScriptBookkeepingExcluded` reply projects both the executable
+script predicate and its sets out of this supported profile. It does not claim a
+false predicate, register a pretend script blocker or infer anything from media,
+headlessness or a missing service. One cumulative durable output and original
+work/cancellation are admitted before installing the same cursor's successor.
+Refusal preserves the binding, request, policy, cleanup reservation and reached
+phase; raised-limit retry retains spent work. No sheet, issuer or cursor is
+recreated. Drop/resume preserves the exact original occurrence.
+
+Acceptance reaches `ReadRenderBlockingPending`. The canonical view's
+`script_bookkeeping_exclusion` returns the accepted profile only at this reached
+phase; selecting the profile earlier returns no such disposition. Repeated
+advance observes this same phase, while repeated exclusion or a wrong-phase,
+profile or qualification refuses. Both unresolved media and a universal media
+query can reach this render wait: neither is a reason to keep the excluded
+script phase pending, and exclusion supplies no rendering/media observation.
+
+Actual render context, resources, later policy/notification actions, parser-pop
+text updates and subsequent occurrences retain their separate authority. Whole
+contribution completion is not performed. DOM provides no CSP evaluator. Use the
+Session structural-installation route; raw Session admission keeps its existing
+influencing-Style refusal.
 
 ## Control state and form associations
 

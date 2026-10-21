@@ -5,8 +5,8 @@ use crate::parsed_style::*;
 use crate::{DocumentString, DomParsedHtmlAssociationLimits, DomParsedHtmlAssociationRuntimeUsage};
 use std::sync::{MutexGuard, TryLockError};
 use surgeist_html::{
-    HtmlCspAssociation, HtmlStyleUpdateAction as Action, HtmlStyleUpdateCursor,
-    HtmlStyleUpdateReply as Reply,
+    HtmlCspAssociation, HtmlStyleExecutionProfile, HtmlStyleUpdateAction as Action,
+    HtmlStyleUpdateCursor, HtmlStyleUpdateReply as Reply,
 };
 use surgeist_html_parser::{
     HtmlParseAssociationContextRequirement as Requirement, HtmlParseAssociationContextRole as Role,
@@ -43,6 +43,7 @@ impl Graph {
                 Action::CreateSheet => DomParsedHtmlStylePhase::CreateSheetPending,
                 Action::Complete => DomParsedHtmlStylePhase::InlinePolicyBlocked,
                 Action::ReadScriptBlocking => DomParsedHtmlStylePhase::ReadScriptBlockingPending,
+                Action::ReadRenderBlocking => DomParsedHtmlStylePhase::ReadRenderBlockingPending,
                 _ => unreachable!("only the selected inline decision can advance this cursor"),
             },
             Self::Transition => unreachable!("private infallible transition"),
@@ -103,6 +104,21 @@ impl DomParsedHtmlStylePrefixView<'_> {
     pub fn inline_policy_request(&self) -> Option<&DomParsedHtmlStyleInlinePolicyRequest> {
         match self.state.as_ref().map(|s| s.value().as_ref()) {
             Some(Graph::Inline(r)) if r.action() == Action::CheckInlineCsp => Some(r),
+            _ => None,
+        }
+    }
+    /// The retained, operation-qualified exclusion. The cursor's immutable
+    /// profile permits this reached phase only through the specific exclusion
+    /// reply; no script predicate or membership boolean was supplied.
+    pub fn script_bookkeeping_exclusion(&self) -> Option<HtmlStyleExecutionProfile> {
+        match self.state.as_ref().map(|held| held.value().as_ref()) {
+            Some(Graph::Inline(request))
+                if request.cursor.action() == Action::ReadRenderBlocking
+                    && request.cursor.profile()
+                        == HtmlStyleExecutionProfile::NoExecutableJavaScript =>
+            {
+                Some(request.cursor.profile())
+            }
             _ => None,
         }
     }
@@ -357,6 +373,70 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
         let _accepted = input.take();
         Ok(held.value().phase())
     }
+    /// Consume the supported execution owner's explicit script-bookkeeping
+    /// exclusion for this exact original operation. No source predicate is
+    /// evaluated and no sheet is recreated. The render phase keeps its own
+    /// environment/context requirements and the contribution remains Pending.
+    pub fn exclude_script_bookkeeping(
+        &mut self,
+        qualification: &DomParsedHtmlStyleInitialPolicyRequest,
+        profile: HtmlStyleExecutionProfile,
+        cancel: &AtomicBool,
+    ) -> Result<DomParsedHtmlStylePhase, DomParsedHtmlStyleError> {
+        self.meter.step(cancel)?;
+        let mut stored = lock(self.meter.entry())?;
+        let Some(held) = stored.as_mut() else {
+            return Err(DomParsedHtmlStyleError::WrongRequest);
+        };
+        if held.value().qualification() != qualification {
+            return Err(DomParsedHtmlStyleError::WrongRequest);
+        }
+        let Graph::Inline(request) = held.value_mut().as_mut() else {
+            return Err(DomParsedHtmlStyleError::WrongPhase {
+                phase: held.value().phase(),
+            });
+        };
+        if request.cursor.action() != Action::ReadScriptBlocking {
+            return Err(DomParsedHtmlStyleError::WrongPhase {
+                phase: held.value().phase(),
+            });
+        }
+        let document = self.dom.snapshot();
+        let current = document.document(qualification.document())?;
+        if self
+            .dom
+            .pending_associations
+            .document(qualification.document())
+            != Some(self.meter.entry().id)
+        {
+            return Err(DomParsedHtmlStyleError::WrongRequest);
+        }
+        // The public profile declaration is not authority by itself. Qualify
+        // it against this admitted original report and canonical native owner,
+        // whose no-engine contract is independent of its browsing context.
+        if profile != HtmlStyleExecutionProfile::NoExecutableJavaScript
+            || request.cursor.profile() != profile
+            || current.metadata().document_environment().scripting()
+                != surgeist_html_semantics::HtmlScriptingStatus::Disabled
+            || self
+                .meter
+                .entry()
+                .report
+                .value()
+                .value
+                .effective_scripting_mode()
+                != surgeist_html::HtmlParserScriptingMode::Disabled
+        {
+            return Err(DomParsedHtmlStyleError::WrongExecutionProfile { profile });
+        }
+        let mut successor = request.cursor;
+        successor.reply(Reply::ScriptBookkeepingExcluded)?;
+        // This is one new durable disposition. All refusal is before changing
+        // the existing cursor; graph, policy and prepaid cleanup stay in Entry.
+        self.meter.retain(0, 0, 1, cancel)?;
+        request.cursor = successor;
+        Ok(held.value().phase())
+    }
     pub fn bind_initial_policy(
         &mut self,
         request: &DomParsedHtmlStyleInitialPolicyRequest,
@@ -542,7 +622,11 @@ fn select(
                     return Err(DomParsedHtmlStyleError::PolicyContext { requirement });
                 }
                 let slot = context.slot(Role::InitialPolicy).ok_or_else(unsupported)?;
-                let mut html = HtmlStyleUpdateCursor::new();
+                // This ordinary admitted owner has no executable-JavaScript engine.
+                // Profile selection is independent of browsing context/media;
+                // it does not assert the excluded source predicate is false.
+                let mut html =
+                    HtmlStyleUpdateCursor::new(HtmlStyleExecutionProfile::NoExecutableJavaScript);
                 // Proven fresh consumer association state: no prior influencing
                 // original operation/publication and no canonical producer binding.
                 // HtmlStyleState and a native sheet=None are not this proof.

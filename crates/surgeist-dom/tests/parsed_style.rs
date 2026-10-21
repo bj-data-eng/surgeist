@@ -3,6 +3,8 @@
 mod create;
 #[path = "parsed_style/decision.rs"]
 mod decision;
+#[path = "parsed_style/exclusion.rs"]
+mod exclusion;
 use std::sync::{Arc, atomic::AtomicBool};
 use surgeist_dom::*;
 use surgeist_html_parser::{

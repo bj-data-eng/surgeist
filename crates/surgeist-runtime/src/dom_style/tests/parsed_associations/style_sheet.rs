@@ -6,7 +6,7 @@ use super::style_decision::{empty_policy, installed, observe, request_ready};
 use surgeist_css::CssUtf16InputError;
 use surgeist_dom::*;
 
-fn ready(
+pub(super) fn ready(
     value: &str,
     limits: DomParsedHtmlAssociationLimits,
 ) -> (DomSession, DomParsedHtmlInstallation) {
@@ -37,7 +37,11 @@ fn ready(
     );
     (session, installation)
 }
-fn bind(session: &mut DomSession, document: DocumentId, limits: surgeist_cssom::CssomLimits) {
+pub(super) fn bind(
+    session: &mut DomSession,
+    document: DocumentId,
+    limits: surgeist_cssom::CssomLimits,
+) {
     session
         .style_execution()
         .bind_root(
@@ -55,7 +59,7 @@ fn bind(session: &mut DomSession, document: DocumentId, limits: surgeist_cssom::
     clippy::result_large_err,
     reason = "exact refusal assertions retain the actual root and producer error without allocation"
 )]
-fn create(
+pub(super) fn create(
     session: &mut DomSession,
     id: DomParsedHtmlAssociationId,
     limits: DomParsedHtmlAssociationLimits,
@@ -64,7 +68,7 @@ fn create(
         .style_execution()
         .create_parsed_style_sheet(&mut session.dom(), id, limits, &cancel())
 }
-fn pending(session: &DomSession, id: DomParsedHtmlAssociationId) {
+pub(super) fn pending(session: &DomSession, id: DomParsedHtmlAssociationId) {
     assert!(
         session
             .pending_parsed_html_associations()

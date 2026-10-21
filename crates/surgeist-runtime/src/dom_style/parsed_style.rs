@@ -126,6 +126,41 @@ impl DomStyleRuntime {
         state.step(cancel)?;
         Ok(hold.accept_inline_policy(input, cancel)?)
     }
+
+    /// Exclude executable-JavaScript bookkeeping for this Session's actual
+    /// no-engine execution profile. DOM qualifies the exact original occurrence
+    /// and retained cursor; this is not a false script-blocking predicate.
+    /// Success reaches only the independent render-context action and leaves
+    /// the whole contribution Pending. Refused retries retain original work.
+    pub fn exclude_parsed_style_script_bookkeeping(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        qualification: &DomParsedHtmlStyleInitialPolicyRequest,
+        limits: DomParsedHtmlAssociationLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomParsedHtmlStylePhase, DomStyleParsedPrefixError> {
+        let owner = self.original()?;
+        let state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomStyleRuntimeError::Binding)?;
+        if state.dom != dom.owner() {
+            return Err(DomStyleRuntimeError::WrongSession.into());
+        }
+        drop(state.require_sheet_set_idle(dom)?);
+        let mut hold =
+            dom.raw_mut()
+                .begin_parsed_html_style(qualification.contribution(), limits, cancel)?;
+        hold.step(cancel).map_err(DomStyleRuntimeError::from)?;
+        state.step(cancel)?;
+        // DomDocumentEnvironment's admitted native owner supplies no scripting
+        // engine. Rust listener dispatch does not add executable JavaScript.
+        // DOM also checks the actual report/Document and stored profile.
+        Ok(hold.exclude_script_bookkeeping(
+            qualification,
+            surgeist_html::HtmlStyleExecutionProfile::NoExecutableJavaScript,
+            cancel,
+        )?)
+    }
 }
 
 impl DomSession {

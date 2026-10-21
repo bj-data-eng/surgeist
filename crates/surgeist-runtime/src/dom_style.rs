@@ -44,8 +44,8 @@ use surgeist_dom::{
     DomStyleSheetPlacement, DomStyleSource, NodeId,
 };
 use surgeist_html::{
-    HtmlDocumentMode, HtmlStyleNotificationAction, HtmlStyleNotificationCursor,
-    HtmlStyleNotificationReply, HtmlStyleUpdateAction,
+    HtmlDocumentMode, HtmlStyleExecutionProfile, HtmlStyleNotificationAction,
+    HtmlStyleNotificationCursor, HtmlStyleNotificationReply, HtmlStyleUpdateAction,
 };
 
 /// Independent orchestration bounds. CSS and CSSOM retain their own input,
@@ -1104,7 +1104,10 @@ impl StyleState {
                         owner,
                         sheet: sheet.clone(),
                         token,
-                        cursor: HtmlStyleNotificationCursor::new(true),
+                        cursor: HtmlStyleNotificationCursor::new(
+                            HtmlStyleExecutionProfile::NoExecutableJavaScript,
+                            true,
+                        ),
                         delivery: Delivery::NotStarted,
                         running: false,
                         dispatch_reserved: 0,
@@ -2314,7 +2317,7 @@ impl DomStyleRuntime {
                         return Err(DomStyleRuntimeError::Binding);
                     }
                     task.cursor
-                        .reply(HtmlStyleNotificationReply::ScriptBlocking(false))
+                        .reply(HtmlStyleNotificationReply::ScriptBookkeepingExcluded)
                         .map_err(|_| DomStyleRuntimeError::Protocol)?;
                 }
                 HtmlStyleNotificationAction::RemoveScriptBlocking => {

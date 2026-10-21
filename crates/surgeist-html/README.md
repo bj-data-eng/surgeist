@@ -230,8 +230,23 @@ Window, activation storage or live DOM operation.
 steps. Consumers acknowledge actual owner actions after completion; the cursor
 executes no CSSOM mutation or CSP interpretation. Exact type eligibility and
 source triggers are shared local rules. `HtmlStyleNotificationCursor` requires
-real event dispatch before reading current script-blocking predicates and
-unblocking; queue-time observations cannot replace post-handler reads.
+real event dispatch before script bookkeeping and rendering unblocking;
+queue-time observations cannot replace post-handler reads.
+
+Both cursors require an explicit immutable `HtmlStyleExecutionProfile` at
+construction. `SourcePredicates` preserves actual boolean script predicates and
+registration/removal actions. `NoExecutableJavaScript` projects out only the
+selected executable-script bookkeeping: its `ScriptBookkeepingExcluded` reply
+is accepted only at `ReadScriptBlocking`, advancing the update cursor to
+`ReadRenderBlocking` or the notification cursor to `UnblockRendering`. It never
+supplies a false predicate, waives event dispatch or answers the independent
+rendering/media, policy or resource questions. Script boolean replies refuse in
+that profile; rendering boolean replies retain their ordinary meaning.
+Consumers qualify this projection against their actual operation/execution
+owner and preserve it across resume. Missing observations, headlessness and
+empty CSS do not select a profile or establish a predicate result. Wrong-phase
+and wrong-profile replies leave the cursor unchanged. Constructors have no
+implicit/default profile.
 `HtmlStyleState` distinguishes fresh or general-clone creation from actual
 Document-parser creation. Allocation does not imply a stack push; actual parser
 push/pop operations update the stack flag while preserving creation history.

@@ -89,9 +89,15 @@ preformed names/serial while the genuine root lock remains held. Returned
 completion exposes the actual sheet ID/revision, DOM commit, CSSOM commit and
 retained media diagnostics. Success stops at `ReadScriptBlockingPending`;
 whole history and Style readiness remain Pending. Repeated creation refuses.
-Script-blocking disposition, resource completion and the later genuine parser-pop
-text update remain separate original actions; this command does not advance or
-substitute them. Captured-context recovery remains unavailable.
+`exclude_parsed_style_script_bookkeeping` binds the actual Session's
+no-executable-JavaScript profile to the exact original occurrence. It advances
+that retained cursor to `ReadRenderBlockingPending`, without inventing a false
+script predicate or running deferred script-blocking sets. Render/media/context,
+resource completion and the later genuine parser-pop text update remain
+independent original actions. Whole history stays Pending; captured-context
+recovery remains unavailable. Native completion notifications use the same
+explicit profile exclusion after actual event delivery and before real rendering
+unblocking. Rust event listeners do not provide a JavaScript execution engine.
 
 Each public CSS preparation/pre-grammar/post-grammar poll charges the same
 original contribution and Runtime work before publication. CSS owns its finite

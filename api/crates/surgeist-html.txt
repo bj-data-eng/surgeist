@@ -4047,6 +4047,9 @@ pub fn surgeist_html::HtmlStandardCommand::into_attribute(self) -> surgeist_html
 pub enum surgeist_html::HtmlStyleAttributeEffect
 pub surgeist_html::HtmlStyleAttributeEffect::None
 pub surgeist_html::HtmlStyleAttributeEffect::OwnerAttributes
+pub enum surgeist_html::HtmlStyleExecutionProfile
+pub surgeist_html::HtmlStyleExecutionProfile::NoExecutableJavaScript
+pub surgeist_html::HtmlStyleExecutionProfile::SourcePredicates
 pub enum surgeist_html::HtmlStyleNotificationAction
 pub surgeist_html::HtmlStyleNotificationAction::Complete
 pub surgeist_html::HtmlStyleNotificationAction::DispatchError
@@ -4057,6 +4060,7 @@ pub surgeist_html::HtmlStyleNotificationAction::UnblockRendering
 pub enum surgeist_html::HtmlStyleNotificationReply
 pub surgeist_html::HtmlStyleNotificationReply::Applied
 pub surgeist_html::HtmlStyleNotificationReply::ScriptBlocking(bool)
+pub surgeist_html::HtmlStyleNotificationReply::ScriptBookkeepingExcluded
 pub enum surgeist_html::HtmlStyleTrigger
 pub surgeist_html::HtmlStyleTrigger::ChildrenChanged
 pub surgeist_html::HtmlStyleTrigger::ChildrenChanged::on_parser_stack: bool
@@ -4083,6 +4087,7 @@ pub surgeist_html::HtmlStyleUpdateReply::Applied
 pub surgeist_html::HtmlStyleUpdateReply::Blocking(bool)
 pub surgeist_html::HtmlStyleUpdateReply::Connected(bool)
 pub surgeist_html::HtmlStyleUpdateReply::InlineAllowed(bool)
+pub surgeist_html::HtmlStyleUpdateReply::ScriptBookkeepingExcluded
 pub surgeist_html::HtmlStyleUpdateReply::TypeEligible(bool)
 pub enum surgeist_html::HtmlTabindexValue
 pub surgeist_html::HtmlTabindexValue::Integer(surgeist_html::HtmlInteger)
@@ -6274,7 +6279,8 @@ pub fn surgeist_html::HtmlSrcsetWidthError::fmt(&self, f: &mut core::fmt::Format
 pub struct surgeist_html::HtmlStyleNotificationCursor
 impl surgeist_html::HtmlStyleNotificationCursor
 pub const fn surgeist_html::HtmlStyleNotificationCursor::action(self) -> surgeist_html::HtmlStyleNotificationAction
-pub const fn surgeist_html::HtmlStyleNotificationCursor::new(success: bool) -> Self
+pub const fn surgeist_html::HtmlStyleNotificationCursor::new(profile: surgeist_html::HtmlStyleExecutionProfile, success: bool) -> Self
+pub const fn surgeist_html::HtmlStyleNotificationCursor::profile(self) -> surgeist_html::HtmlStyleExecutionProfile
 pub fn surgeist_html::HtmlStyleNotificationCursor::reply(&mut self, reply: surgeist_html::HtmlStyleNotificationReply) -> core::result::Result<(), surgeist_html::HtmlStyleProtocolError>
 pub struct surgeist_html::HtmlStyleParserStateError
 impl core::error::Error for surgeist_html::HtmlStyleParserStateError
@@ -6297,10 +6303,9 @@ pub fn surgeist_html::HtmlStyleState::default() -> Self
 pub struct surgeist_html::HtmlStyleUpdateCursor
 impl surgeist_html::HtmlStyleUpdateCursor
 pub const fn surgeist_html::HtmlStyleUpdateCursor::action(self) -> surgeist_html::HtmlStyleUpdateAction
-pub const fn surgeist_html::HtmlStyleUpdateCursor::new() -> Self
+pub const fn surgeist_html::HtmlStyleUpdateCursor::new(profile: surgeist_html::HtmlStyleExecutionProfile) -> Self
+pub const fn surgeist_html::HtmlStyleUpdateCursor::profile(self) -> surgeist_html::HtmlStyleExecutionProfile
 pub fn surgeist_html::HtmlStyleUpdateCursor::reply(&mut self, reply: surgeist_html::HtmlStyleUpdateReply) -> core::result::Result<(), surgeist_html::HtmlStyleProtocolError>
-impl core::default::Default for surgeist_html::HtmlStyleUpdateCursor
-pub fn surgeist_html::HtmlStyleUpdateCursor::default() -> Self
 pub struct surgeist_html::HtmlStylesheetLinkAttributeContext
 impl surgeist_html::HtmlStylesheetLinkAttributeContext
 pub fn surgeist_html::HtmlStylesheetLinkAttributeContext::contains_stylesheet(&self) -> bool

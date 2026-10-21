@@ -3,7 +3,7 @@ use super::*;
 use surgeist_css::{CssParserContext, CssUtf16InputLimits};
 use surgeist_cssom::*;
 
-fn ready(source: &str) -> (Dom, DocumentId, DomParsedHtmlAssociationId) {
+pub(super) fn ready(source: &str) -> (Dom, DocumentId, DomParsedHtmlAssociationId) {
     let (mut dom, env) = setup();
     let (document, id) = install(&mut dom, parse(source), env);
     decision::ready(&mut dom, id, envelope());
@@ -20,13 +20,13 @@ fn ready(source: &str) -> (Dom, DocumentId, DomParsedHtmlAssociationId) {
         .unwrap();
     (dom, document, id)
 }
-fn root(document: DocumentId) -> DomStyleCssomRoot {
+pub(super) fn root(document: DocumentId) -> DomStyleCssomRoot {
     DomStyleCssomRoot::new(
         document.node(),
         CssomStore::new(Default::default(), Default::default()).unwrap(),
     )
 }
-fn stage(prep: &mut DomParsedHtmlStyleSheetPreparation<'_, '_, '_>) {
+pub(super) fn stage(prep: &mut DomParsedHtmlStyleSheetPreparation<'_, '_, '_>) {
     let parser = CssParserContext::default();
     let sheet = parser
         .parse_sheet_utf16_with_limits(

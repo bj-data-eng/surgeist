@@ -22,6 +22,7 @@ pub enum DomParsedHtmlStylePhase {
     CreateSheetPending,
     InlinePolicyBlocked,
     ReadScriptBlockingPending,
+    ReadRenderBlockingPending,
 }
 #[derive(Debug)]
 pub enum DomParsedHtmlStyleError {
@@ -36,6 +37,9 @@ pub enum DomParsedHtmlStyleError {
         contribution: DomParsedHtmlAssociationId,
     },
     WrongRequest,
+    WrongExecutionProfile {
+        profile: surgeist_html::HtmlStyleExecutionProfile,
+    },
     AlreadyBound,
     MissingPolicy,
     MissingObservation,

@@ -16,6 +16,20 @@ reacquires that exact operation. An acknowledged CSSOM publication survives a
 failed later segment and is not reissued. Cancellation preserves an already
 published phase and its remaining cleanup obligations.
 
+The native Style cursor intentionally selects HTML's
+`NoExecutableJavaScript` execution profile. At its script-bookkeeping action it
+uses the specific exclusion reply for both the normative executable-script
+predicate and associated sets; parser provenance and media are not converted
+into false predicate results. The next genuine render action still uses its
+own Document/body/blocking/media facts. Native and Runtime notification cursors
+use the same profile distinction while preserving prior event dispatch and
+actual later render unblocking. This does not implement executable JavaScript.
+The [original parsed Style consumer](html-installation.md#explicit-exclusion-of-executable-script-bookkeeping)
+binds this disposition to its exact retained occurrence rather than replaying
+native hooks. A pending Source's request can expose its real acknowledged sheet
+association while the general snapshot sheet getter remains unavailable until
+the continuation completes.
+
 Style captures select the current Document base through the Base owner. Hosted
 Documents consume their actual constructor URL/about-base facts and maintained
 first frozen Base; native closed Documents retain their established about:blank

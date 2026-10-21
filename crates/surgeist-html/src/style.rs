@@ -164,6 +164,22 @@ impl fmt::Display for HtmlStyleParserStateError {
 }
 impl Error for HtmlStyleParserStateError {}
 
+/// The execution projection selected for this actual Style operation.
+///
+/// Consumers bind this choice to their real execution owner. Neither missing
+/// observations, headlessness nor empty CSS establishes a predicate result.
+/// The choice is retained immutably by the update and notification cursors.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlStyleExecutionProfile {
+    /// The integration supplies actual script-blocking predicates and performs
+    /// their registration/removal actions when required.
+    SourcePredicates,
+    /// The supported owner has no executable JavaScript. Only the selected
+    /// executable-script bookkeeping is excluded; other Style predicates,
+    /// rendering, policy, resources and event dispatch remain required.
+    NoExecutableJavaScript,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlStyleUpdateAction {
     RemoveAssociatedSheet,
@@ -184,12 +200,15 @@ pub enum HtmlStyleUpdateReply {
     TypeEligible(bool),
     InlineAllowed(bool),
     Blocking(bool),
+    /// Project only executable-script bookkeeping out of the reached script
+    /// phase of a NoExecutableJavaScript operation. This is no boolean result.
+    ScriptBookkeepingExcluded,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlStyleProtocolError;
 impl fmt::Display for HtmlStyleProtocolError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("Style reply does not match the reached source action")
+        f.write_str("Style reply does not match the operation profile and reached action")
     }
 }
 impl Error for HtmlStyleProtocolError {}
@@ -200,17 +219,19 @@ impl Error for HtmlStyleProtocolError {}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlStyleUpdateCursor {
     action: HtmlStyleUpdateAction,
-}
-impl Default for HtmlStyleUpdateCursor {
-    fn default() -> Self {
-        Self::new()
-    }
+    profile: HtmlStyleExecutionProfile,
 }
 impl HtmlStyleUpdateCursor {
-    pub const fn new() -> Self {
+    /// Start one operation with the consumer's actual execution profile.
+    pub const fn new(profile: HtmlStyleExecutionProfile) -> Self {
         Self {
             action: HtmlStyleUpdateAction::RemoveAssociatedSheet,
+            profile,
         }
+    }
+    /// Immutable execution qualification retained across every transition.
+    pub const fn profile(self) -> HtmlStyleExecutionProfile {
+        self.profile
     }
     pub const fn action(self) -> HtmlStyleUpdateAction {
         self.action
@@ -227,9 +248,22 @@ impl HtmlStyleUpdateCursor {
             (A::CheckInlineCsp, R::InlineAllowed(true)) => A::CreateSheet,
             (A::CheckInlineCsp, R::InlineAllowed(false)) => A::Complete,
             (A::CreateSheet, R::Applied) => A::ReadScriptBlocking,
-            (A::ReadScriptBlocking, R::Blocking(true)) => A::RegisterScriptBlocking,
+            (A::ReadScriptBlocking, R::Blocking(true))
+                if self.profile == HtmlStyleExecutionProfile::SourcePredicates =>
+            {
+                A::RegisterScriptBlocking
+            }
             (A::ReadScriptBlocking, R::Blocking(false))
-            | (A::RegisterScriptBlocking, R::Applied) => A::ReadRenderBlocking,
+                if self.profile == HtmlStyleExecutionProfile::SourcePredicates =>
+            {
+                A::ReadRenderBlocking
+            }
+            (A::ReadScriptBlocking, R::ScriptBookkeepingExcluded)
+                if self.profile == HtmlStyleExecutionProfile::NoExecutableJavaScript =>
+            {
+                A::ReadRenderBlocking
+            }
+            (A::RegisterScriptBlocking, R::Applied) => A::ReadRenderBlocking,
             (A::ReadRenderBlocking, R::Blocking(true)) => A::BlockRendering,
             (A::ReadRenderBlocking, R::Blocking(false)) | (A::BlockRendering, R::Applied) => {
                 A::Complete
@@ -329,6 +363,9 @@ pub enum HtmlStyleNotificationAction {
 pub enum HtmlStyleNotificationReply {
     Applied,
     ScriptBlocking(bool),
+    /// The actual NoExecutableJavaScript operation excluded script-set
+    /// bookkeeping. This neither observes nor removes membership.
+    ScriptBookkeepingExcluded,
 }
 /// The event action must complete before reading current predicates. The
 /// consumer permits event-handler reentry and then reads the live element's
@@ -336,16 +373,24 @@ pub enum HtmlStyleNotificationReply {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlStyleNotificationCursor {
     action: HtmlStyleNotificationAction,
+    profile: HtmlStyleExecutionProfile,
 }
 impl HtmlStyleNotificationCursor {
-    pub const fn new(success: bool) -> Self {
+    /// Queue-time success selects the real event; the execution profile only
+    /// qualifies later script bookkeeping and cannot waive that dispatch.
+    pub const fn new(profile: HtmlStyleExecutionProfile, success: bool) -> Self {
         Self {
+            profile,
             action: if success {
                 HtmlStyleNotificationAction::DispatchLoad
             } else {
                 HtmlStyleNotificationAction::DispatchError
             },
         }
+    }
+    /// Immutable execution qualification of this notification operation.
+    pub const fn profile(self) -> HtmlStyleExecutionProfile {
+        self.profile
     }
     pub const fn action(self) -> HtmlStyleNotificationAction {
         self.action
@@ -358,9 +403,22 @@ impl HtmlStyleNotificationCursor {
         use HtmlStyleNotificationReply as R;
         self.action = match (self.action, reply) {
             (A::DispatchLoad | A::DispatchError, R::Applied) => A::ReadScriptBlocking,
-            (A::ReadScriptBlocking, R::ScriptBlocking(true)) => A::RemoveScriptBlocking,
+            (A::ReadScriptBlocking, R::ScriptBlocking(true))
+                if self.profile == HtmlStyleExecutionProfile::SourcePredicates =>
+            {
+                A::RemoveScriptBlocking
+            }
             (A::ReadScriptBlocking, R::ScriptBlocking(false))
-            | (A::RemoveScriptBlocking, R::Applied) => A::UnblockRendering,
+                if self.profile == HtmlStyleExecutionProfile::SourcePredicates =>
+            {
+                A::UnblockRendering
+            }
+            (A::ReadScriptBlocking, R::ScriptBookkeepingExcluded)
+                if self.profile == HtmlStyleExecutionProfile::NoExecutableJavaScript =>
+            {
+                A::UnblockRendering
+            }
+            (A::RemoveScriptBlocking, R::Applied) => A::UnblockRendering,
             (A::UnblockRendering, R::Applied) => A::Complete,
             _ => return Err(HtmlStyleProtocolError),
         };
