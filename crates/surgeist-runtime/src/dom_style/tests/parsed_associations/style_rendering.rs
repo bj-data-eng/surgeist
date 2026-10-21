@@ -210,7 +210,7 @@ fn rendering_output_refusal_preserves_phase_and_membership_for_raised_retry() {
         large.retained_bytes(),
         large.retained_units(),
         large.work(),
-        6,
+        7,
     )
     .unwrap();
     let (mut session, installed) = ready("<!doctype html><style>x{}</style>", finite);
@@ -226,7 +226,7 @@ fn rendering_output_refusal_preserves_phase_and_membership_for_raised_retry() {
             DomParsedHtmlStyleError::Admission(DomParsedHtmlAssociationAdmissionError::Dom(
                 DomError::ResourceLimit {
                     resource: DomResource::ParsedAssociationProcessingOutputs,
-                    limit: 6
+                    limit: 7
                 }
             ))
         ))

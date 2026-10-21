@@ -102,5 +102,6 @@ mod consumption;
 mod style_decision;
 mod style_exclusion;
 mod style_prefix;
+mod style_processing;
 mod style_rendering;
 mod style_sheet;

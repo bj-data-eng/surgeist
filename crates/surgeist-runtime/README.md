@@ -89,6 +89,14 @@ preformed names/serial while the genuine root lock remains held. Returned
 completion exposes the actual sheet ID/revision, DOM commit, CSSOM commit and
 retained media diagnostics. Success stops at `ReadScriptBlockingPending`;
 whole history and Style readiness remain Pending. Repeated creation refuses.
+The same fence retains a compact original processing receipt in the Session's
+completion lifecycle bank. It records import dependencies from the actual parsed
+rules, original qualification, execution profile and genuine sheet/association
+identity and creation revision. Caller output Drop and later CSSOM edits do not
+rewrite it. This pre-task record is included in Runtime storage and live-resource
+custody; it is neither an import-resource wait nor a networking task. It issues
+no notification permission or task serial. Parsed dispatch still requires the
+separate original synchronous frontier, including later parser-pop work.
 `exclude_parsed_style_script_bookkeeping` binds the actual Session's
 no-executable-JavaScript profile to the exact original occurrence. It advances
 that retained cursor to `ReadRenderBlockingPending`, without inventing a false

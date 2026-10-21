@@ -82,6 +82,7 @@ fn unchanged(
     stamp: DomStamp,
     revision: &surgeist_cssom::CssomRevision,
 ) {
+    assert!(session.state.borrow().completions.is_empty());
     assert_eq!(session.snapshot().stamp(), stamp);
     assert_eq!(
         session.parsed_html_style_prefix(id).unwrap().phase(),
@@ -358,7 +359,7 @@ fn late_output_refusal_keeps_all_three_owners_for_a_raised_same_action_retry() {
         large.retained_bytes(),
         large.retained_units(),
         large.work(),
-        3,
+        4,
     )
     .unwrap();
     let (mut session, installation) =
@@ -380,7 +381,7 @@ fn late_output_refusal_keeps_all_three_owners_for_a_raised_same_action_retry() {
             DomParsedHtmlStyleSheetError::Style(DomParsedHtmlStyleError::Admission(
                 DomParsedHtmlAssociationAdmissionError::Dom(DomError::ResourceLimit {
                     resource: DomResource::ParsedAssociationProcessingOutputs,
-                    limit: 3
+                    limit: 4
                 })
             ))
         ))

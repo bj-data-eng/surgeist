@@ -123,7 +123,7 @@ impl Custody {
         Ok(DomParsedHtmlAssociationRuntimeUsage::new(
             self.bytes - self.shared,
             self.units,
-            1,
+            2, // Returned creation output and durable Runtime processing receipt.
         )?)
     }
     fn check(&self) -> Result<(), DomStyleRuntimeError> {
@@ -175,6 +175,63 @@ impl Custody {
         Ok(value)
     }
 }
+fn reserve_processing(
+    state: &mut StyleState,
+    hold: &mut DomParsedHtmlStyleRuntimeHold<'_>,
+    custody: &mut Custody,
+    cancel: &AtomicBool,
+) -> Result<(), DomStyleRuntimeError> {
+    let steps = Steps {
+        work: &state.work,
+        maximum: state.limits.work,
+        cancel,
+    };
+    steps.prefix(hold)?;
+    if state.completions.len() >= state.limits.completions {
+        return Err(DomStyleRuntimeError::Admission);
+    }
+    let (old, requested) = persistent_bank_growth(
+        state.completions.len(),
+        state.completions.capacity(),
+        size_of::<Completion>(),
+    )?;
+    if requested == 0 {
+        return Ok(());
+    }
+    // current already contains the old bank. Admit its full requested
+    // replacement before allocation, then the actual old/new capacity union.
+    custody.add(requested)?;
+    hold.admit_runtime(custody.usage()?, cancel)?;
+    state
+        .completions
+        .try_reserve_exact(1)
+        .map_err(|_| DomStyleRuntimeError::Admission)?;
+    steps.prefix(hold)?;
+    let actual = state
+        .completions
+        .capacity()
+        .checked_mul(size_of::<Completion>())
+        .ok_or(DomStyleRuntimeError::Admission)?;
+    custody.bytes = custody
+        .bytes
+        .checked_sub(requested)
+        .and_then(|bytes| bytes.checked_add(actual))
+        .ok_or(DomStyleRuntimeError::Admission)?;
+    custody.check()?;
+    hold.admit_runtime(custody.usage()?, cancel)?;
+    // The reserve has disposed the old bank. Future observations price the
+    // actual new bank, while the original meter keeps the admitted high-water.
+    custody.current = custody
+        .current
+        .checked_sub(old)
+        .and_then(|bytes| bytes.checked_add(actual))
+        .ok_or(DomStyleRuntimeError::Admission)?;
+    custody.bytes = custody
+        .bytes
+        .checked_sub(actual)
+        .ok_or(DomStyleRuntimeError::Admission)?;
+    Ok(())
+}
 fn current_storage(
     state: &StyleState,
     hold: &mut DomParsedHtmlStyleRuntimeHold<'_>,
@@ -197,7 +254,7 @@ fn current_storage(
                     .checked_add(live_bytes)
                     .ok_or(DomStyleRuntimeError::Admission)?;
                 hold.admit_runtime(
-                    DomParsedHtmlAssociationRuntimeUsage::new(bytes, custody.units, 1)?,
+                    DomParsedHtmlAssociationRuntimeUsage::new(bytes, custody.units, 2)?,
                     steps.cancel,
                 )?;
                 Ok(())
@@ -344,6 +401,7 @@ impl DomStyleRuntime {
         };
         let mut custody = Custody {
             bytes: size_of::<DomStyleParsedSheetOutcome>()
+                + size_of::<ParsedProcessing>()
                 + size_of::<Rc<DomStyleCssomRoot>>()
                 + size_of::<sheet_sets::State>() * 2
                 + size_of::<CssomSnapshot>()
@@ -359,6 +417,12 @@ impl DomStyleRuntime {
             .map_err(DomStyleRuntimeError::from)?;
         custody.current = current_storage(&state, &mut hold, &custody, &steps)?;
         custody.check()?;
+        reserve_processing(&mut state, &mut hold, &mut custody, cancel)?;
+        let steps = Steps {
+            work: &state.work,
+            maximum: state.limits.work,
+            cancel,
+        };
         steps.prefix(&hold)?;
         let document = hold.create_sheet_document(cancel)?;
         let mut index = None;
@@ -418,6 +482,17 @@ impl DomStyleRuntime {
         let report = context
             .parse_sheet_utf16_with_limits(text, state.limits.css_input, || steps.joined(&prep))
             .map_err(DomStyleParsedSheetError::Css)?;
+        let dependencies = import_dependencies_with(&report, || steps.joined(&prep))?;
+        steps.joined(&prep)?;
+        let mut processing = ParsedProcessing {
+            qualification: prep.request().qualification().clone(),
+            owner: cap.clone(),
+            sheet: None,
+            // This closed original front uses the actual Session no-engine
+            // profile; media, headlessness and CSS text do not establish it.
+            profile: HtmlStyleExecutionProfile::NoExecutableJavaScript,
+            dependencies,
+        };
         steps.joined(&prep)?;
         let media = prep
             .request()
@@ -493,12 +568,17 @@ impl DomStyleRuntime {
         custody.admit(&mut prep, &steps)?;
         // Qualify actual destinations before the only publication call. The
         // capability is externally retained, not borrowed out of mutable Root.
-        let root = &mut state.roots[index];
+        let StyleState {
+            roots, completions, ..
+        } = &mut *state;
+        let root = &mut roots[index];
         let destination = root.sheet_sets.state_mut().expect("qualified Document");
         let published = prep.commit(cancel)?;
         // Infallible whole-fence suffix, retaining old names through lock release.
         let retired = next.map(|next| std::mem::replace(destination, next));
         root.serial = serial;
+        processing.sheet = Some(published.completion().sheet().clone());
+        completions.push(Completion::ParsedProcessing(processing));
         let (completion, retirement) = published.into_parts();
         let revision = match completion.cssom().publication() {
             surgeist_cssom::CssomPublication::Changed(summary) => summary.to(),

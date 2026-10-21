@@ -114,13 +114,13 @@ fn no_engine_exclusion_preserves_original_sheet_and_reaches_unresolved_render_co
 #[test]
 fn exclusion_output_refusal_and_raised_retry_preserve_the_original_created_sheet() {
     let large = envelope();
-    // Request, decision, Runtime result and joined completion/retirement consume
-    // the five original outputs before this new disposition is admitted.
+    // Request, decision, Runtime result/processing receipt and joined completion/
+    // retirement consume six original outputs before this disposition is admitted.
     let finite = DomParsedHtmlAssociationLimits::new(
         large.retained_bytes(),
         large.retained_units(),
         large.work(),
-        5,
+        6,
     )
     .unwrap();
     let (mut session, installed) = ready("<!doctype html><style title=chosen>x{}</style>", finite);
@@ -136,7 +136,7 @@ fn exclusion_output_refusal_and_raised_retry_preserve_the_original_created_sheet
             DomParsedHtmlStyleError::Admission(DomParsedHtmlAssociationAdmissionError::Dom(
                 DomError::ResourceLimit {
                     resource: DomResource::ParsedAssociationProcessingOutputs,
-                    limit: 5
+                    limit: 6
                 }
             ))
         ))

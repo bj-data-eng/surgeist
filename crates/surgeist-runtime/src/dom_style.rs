@@ -1,8 +1,9 @@
-//! Actual native Style composition and networking-task ownership.
+//! Actual Style composition, original processing and networking-task ownership.
 //!
 //! DOM owns each synchronous source continuation; CSS/CSSOM own parsing, recovery
 //! and sheet identity. This owner binds actual root lists, services those source
-//! requests, and queues completion only after a parsed sheet has no imports.
+//! requests, and queues native completion only after a parsed sheet has no imports.
+//! Original parsed creation retains processing evidence without issuing a task.
 mod meta;
 mod parsed_style;
 mod sheet_sets;
@@ -54,7 +55,7 @@ use surgeist_html::{
 pub struct DomStyleRuntimeLimits {
     /// Actual root-to-list bindings.
     pub roots: usize,
-    /// Live waiting or queued completion records, including an executing task.
+    /// Live original processing, waiting or queued records, including an executing task.
     pub completions: usize,
     /// Retained reports whose separate media diagnostics remain inspectable.
     pub reports: usize,
@@ -308,18 +309,73 @@ impl Task {
         }
     }
 }
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ImportDependencies {
+    NoImports,
+    Imports,
+}
+/// Classify the actual processed rules before their report moves into CSSOM.
+/// Recovery diagnostics and media values do not establish critical imports.
+fn import_dependencies_with<E>(
+    report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>,
+    mut step: impl FnMut() -> Result<(), E>,
+) -> Result<ImportDependencies, E> {
+    step()?;
+    for rule in report.syntax().rules() {
+        step()?;
+        if matches!(rule, CssRule::Import(_)) {
+            return Ok(ImportDependencies::Imports);
+        }
+    }
+    Ok(ImportDependencies::NoImports)
+}
+/// A creation-time receipt, not a notification permission or current sheet view.
+/// Only the private preformed candidate may have no sheet; installation fills
+/// it from the authentic publication before this row enters the live bank.
+struct ParsedProcessing {
+    qualification: surgeist_dom::DomParsedHtmlStyleInitialPolicyRequest,
+    owner: std::rc::Rc<DomStyleCssomRoot>,
+    sheet: Option<surgeist_dom::DomStyleSheet>,
+    profile: HtmlStyleExecutionProfile,
+    dependencies: ImportDependencies,
+}
+impl std::fmt::Debug for ParsedProcessing {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ParsedProcessing")
+            .field("qualification", &self.qualification)
+            .field("sheet", &self.sheet)
+            .field("profile", &self.profile)
+            .field("dependencies", &self.dependencies)
+            .finish_non_exhaustive()
+    }
+}
 enum Completion {
+    ParsedProcessing(ParsedProcessing),
     Waiting(Task),
     Queued(Task),
 }
 impl Completion {
+    fn owner(&self) -> &std::rc::Rc<DomStyleCssomRoot> {
+        match self {
+            Self::ParsedProcessing(record) => &record.owner,
+            Self::Waiting(task) | Self::Queued(task) => &task.owner,
+        }
+    }
+    fn as_task(&self) -> Option<&Task> {
+        match self {
+            Self::ParsedProcessing(_) => None,
+            Self::Waiting(task) | Self::Queued(task) => Some(task),
+        }
+    }
     fn task(&self) -> &Task {
         match self {
+            Self::ParsedProcessing(_) => unreachable!("qualified actual networking task"),
             Self::Waiting(task) | Self::Queued(task) => task,
         }
     }
     fn task_mut(&mut self) -> &mut Task {
         match self {
+            Self::ParsedProcessing(_) => unreachable!("qualified actual networking task"),
             Self::Waiting(task) | Self::Queued(task) => task,
         }
     }
@@ -595,11 +651,11 @@ impl StyleState {
         }
         for (index, completion) in self.completions.iter().enumerate() {
             step()?;
-            let task = completion.task();
+            let owner = completion.owner();
             let mut counted = false;
             for root in &self.roots {
                 step()?;
-                if std::rc::Rc::ptr_eq(&root.store, &task.owner) {
+                if std::rc::Rc::ptr_eq(&root.store, owner) {
                     counted = true;
                     break;
                 }
@@ -607,7 +663,7 @@ impl StyleState {
             if !counted {
                 for previous in &self.completions[..index] {
                     step()?;
-                    if std::rc::Rc::ptr_eq(&previous.task().owner, &task.owner) {
+                    if std::rc::Rc::ptr_eq(previous.owner(), owner) {
                         counted = true;
                         break;
                     }
@@ -616,6 +672,9 @@ impl StyleState {
             if !counted {
                 add(&mut bytes, size_of::<DomStyleCssomRoot>())?;
             }
+            let Some(task) = completion.as_task() else {
+                continue;
+            };
             match &task.delivery {
                 Delivery::NotStarted => {}
                 Delivery::Dispatching(event) => add(
@@ -1236,11 +1295,8 @@ impl StyleState {
                         .map_err(DomStyleRuntimeError::Css)?;
                     // HTML's critical CSS subresources are imported sheets;
                     // no @import means no transitive import graph exists.
-                    let imports = report
-                        .syntax()
-                        .rules()
-                        .iter()
-                        .any(|r| matches!(r, CssRule::Import(_)));
+                    let imports = import_dependencies_with(&report, || self.step(cancel))?
+                        == ImportDependencies::Imports;
                     let media = context
                         .parse_media_query_list_utf16_with_limits(
                             request
@@ -1567,7 +1623,7 @@ pub enum DomShutdownReason {
     SourceTail(DomSourceOperationId),
     /// Original installed parser association history has not been consumed.
     ParsedAssociations(surgeist_dom::DomParsedHtmlAssociationId),
-    /// A canonical root still retains its actual mutable resource.
+    /// Actual root or pre-task processing custody still retains a resource.
     LiveResources,
     /// An actual queued/running task remains.
     NetworkingTask(DomStyleNetworkingTaskId),
@@ -1846,7 +1902,7 @@ impl DomSession {
                         Some(DomShutdownReason::Admission)
                     } else if let Some(task) =
                         state.completions.iter().find_map(|entry| match entry {
-                            Completion::Waiting(_) => None,
+                            Completion::ParsedProcessing(_) | Completion::Waiting(_) => None,
                             Completion::Queued(task) => Some(task.id()),
                         })
                     {
@@ -1876,7 +1932,11 @@ impl DomSession {
                             (!state.roots.is_empty()
                                 || state.publication.is_some()
                                 || state.staged.is_some()
-                                || self.dom.has_style_cssom_roots())
+                                || self.dom.has_style_cssom_roots()
+                                || state
+                                    .completions
+                                    .iter()
+                                    .any(|entry| matches!(entry, Completion::ParsedProcessing(_))))
                             .then_some(DomShutdownReason::LiveResources)
                         })
                     }
@@ -1983,7 +2043,7 @@ impl DomStyleRuntime {
         if limits.completions > state.limits.completions {
             for entry in &state.completions {
                 state.step_with_work(cancel, limits.work)?;
-                if entry.task().running {
+                if entry.as_task().is_some_and(|task| task.running) {
                     return Err(DomStyleRuntimeError::Admission);
                 }
             }
@@ -2070,10 +2130,12 @@ impl DomStyleRuntime {
         let state = state
             .try_borrow()
             .map_err(|_| DomStyleRuntimeError::Binding)?;
-        Ok(state.completions.get(index).map(|entry| {
-            let task = entry.task();
-            (task.root, task.sheet.clone())
-        }))
+        Ok(state
+            .completions
+            .iter()
+            .filter_map(Completion::as_task)
+            .nth(index)
+            .map(|task| (task.root, task.sheet.clone())))
     }
     fn qualified(
         &self,
@@ -2349,7 +2411,7 @@ impl DomStyleRuntime {
                     }
                     let task = match state.completions.remove(index) {
                         Completion::Queued(task) => task,
-                        Completion::Waiting(_) => unreachable!(),
+                        Completion::ParsedProcessing(_) | Completion::Waiting(_) => unreachable!(),
                     };
                     let Delivery::Delivered(receipt) = task.delivery else {
                         unreachable!()
@@ -2364,7 +2426,7 @@ impl StyleState {
     fn task_index(&self, id: DomStyleNetworkingTaskId) -> Result<usize, DomStyleRuntimeError> {
         self.completions
             .iter()
-            .position(|entry| entry.task().id() == id)
+            .position(|entry| entry.as_task().is_some_and(|task| task.id() == id))
             .ok_or(DomStyleRuntimeError::Protocol)
     }
 }
@@ -2392,7 +2454,7 @@ impl Drop for StyleTaskRunning {
         if let Some(entry) = state
             .completions
             .iter_mut()
-            .find(|entry| entry.task().id() == self.id)
+            .find(|entry| entry.as_task().is_some_and(|task| task.id() == self.id))
         {
             entry.task_mut().running = false;
             entry.task_mut().dispatch_reserved = 0;
