@@ -53,6 +53,7 @@ mod css_color;
 mod input_color;
 mod input_image;
 pub(crate) mod meta;
+pub(crate) mod pending_association;
 pub(crate) mod style;
 #[cfg(test)]
 use input_image::append_native_input_value;
@@ -375,6 +376,9 @@ struct AppendFields {
     textarea: Option<usize>,
 }
 enum RetainedPayload {
+    AssociationDocument(pending_association::DocumentCapture),
+    AssociationOccurrence(OwnedVec<pending_association::Occurrence>),
+    AssociationCapturedContext(pending_association::CapturedContext),
     AssociatedInputs {
         inputs: Arc<associated::Inputs>,
         usage: associated::AssociatedStorageUsage,
@@ -784,6 +788,9 @@ impl PayloadStorage {
                 | RetainedPayload::Image { .. }
                 | RetainedPayload::Dialog { .. }
                 | RetainedPayload::Style { .. }
+                | RetainedPayload::AssociationDocument(_)
+                | RetainedPayload::AssociationOccurrence(_)
+                | RetainedPayload::AssociationCapturedContext(_)
                 | RetainedPayload::Retired => {}
                 RetainedPayload::HistoricalString { origins } => {
                     origins.require_disposal_owner(control)?
@@ -891,6 +898,9 @@ impl PayloadStorage {
                 RetainedPayload::AssociatedInputs { usage, .. } => Some(*usage),
                 RetainedPayload::Hyperlink { state, .. } => Some(state.usage),
                 RetainedPayload::Image { state, .. } => Some(state.usage),
+                RetainedPayload::AssociationCapturedContext(value) => {
+                    Some(pending_association::captured_usage(value))
+                }
                 _ => None,
             };
             if let Some(usage) = associated_usage {
@@ -902,6 +912,10 @@ impl PayloadStorage {
                 if let Some(scheme) = meta.scheme.take() {
                     scheme.release(control);
                 }
+                continue;
+            }
+            if let RetainedPayload::AssociationOccurrence(value) = payload {
+                pending_association::release_occurrence(value, control);
                 continue;
             }
             if let RetainedPayload::PiAttributes { values, .. } = payload {
@@ -2890,6 +2904,7 @@ impl SessionStorage {
             self.initial_nonce_attributes(control, node.index)?;
             self.initial_associated_state(control, node.index)?;
             self.initial_meta_attributes(control, node.index)?;
+            self.association_initial_attributes(control, node.index)?;
             self.register_base(control, node.index, base::ResponseDomain::Unavailable)?;
             Ok(node)
         })();
@@ -3401,6 +3416,7 @@ impl SessionStorage {
         for position in start..start + count {
             self.initial_nonce_attribute(control, target, position)?;
             self.initial_meta_attribute(control, target, position)?;
+            self.association_attribute_hook(control, target, position)?;
             self.initial_dialog_attribute(control, target, position)?;
         }
         if base::is_base(
@@ -3925,6 +3941,7 @@ impl SessionStorage {
         {
             if self.textarea_slot(control, parent)?.is_some()
                 || self.html_local(control, parent, "script")?
+                || self.html_local(control, parent, "style")?
             {
                 children_changed = true;
             }
@@ -3991,6 +4008,8 @@ impl SessionStorage {
                 "img",
                 "source",
                 "meta",
+                "style",
+                "link",
             ] {
                 if self.html_local(control, node, name)? {
                     local = true;
@@ -4167,10 +4186,17 @@ impl SessionStorage {
                                 root = self.ordinary_root(control, *host, detached)?;
                                 continue 'roots;
                             }
-                            context::ShadowHostKey::Captured(_) => {
-                                control
-                                    .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
-                                return Err(SessionError::ContextUnavailable);
+                            context::ShadowHostKey::Captured(host) => {
+                                return match self.captured_shadow_including_document(control, host)
+                                {
+                                    Ok(document) => Ok(document.is_some()),
+                                    Err(error) => {
+                                        control.stop_unsupported_standalone(
+                                            StandaloneUnsupported::Provenance,
+                                        );
+                                        Err(error)
+                                    }
+                                };
                             }
                         }
                     }
@@ -4348,6 +4374,7 @@ impl SessionStorage {
                 };
                 if let Some(parent) = parent {
                     self.refresh_textarea(control, parent, removal.then_some(effects.root), false)?;
+                    self.association_children(control, parent, removal.then_some(effects.root))?;
                 }
                 if removal && effects.insert {
                     effects.stage = FormEffectStage::Adoption;
@@ -4511,6 +4538,13 @@ impl SessionStorage {
                             effects.old_parent,
                         )?;
                         self.meta_tree_hook(
+                            control,
+                            node,
+                            detached,
+                            effects.stage == FormEffectStage::Removal,
+                            effects.old_parent,
+                        )?;
+                        self.association_tree_hook(
                             control,
                             node,
                             detached,
@@ -7198,6 +7232,7 @@ impl ParserArenaSession {
         control: &mut ParseControl,
     ) -> Result<FrozenArena, SessionError> {
         let fragment_root = self.active_mut()?.prepare_freeze(control)?;
+        self.active_mut()?.prepare_association_documents(control)?;
         // Only a parser-initialized session carries this actual variable owner.
         // Prepay its active-to-frozen move before storage is taken; a stopped
         // share restores that same owner without useful recovery work.

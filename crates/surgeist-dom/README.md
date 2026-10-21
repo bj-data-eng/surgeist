@@ -63,7 +63,10 @@ batches refuse reached external-service boundaries; Source operations retain
 original continuations and mandatory tails across publication and retry.
 
 Each topic keeps its exact supported paths, limits and failure behavior beside
-the relevant API.
+the relevant API. Completed parser installation retains sealed pending stylesheet
+association history on the canonical owner, independently of output packets.
+[Pending association custody](docs/html-installation.md#pending-stylesheet-associations)
+explains discovery, finite backing admission and native crossing refusals.
 
 Inline-style identity is an explicit lazy capability. After installing
 `DomInlineStyleLimits`, `Dom::inline_style` binds a live HTML, SVG or MathML

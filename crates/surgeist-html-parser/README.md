@@ -95,11 +95,25 @@ A/Area and Meta with exact source-time base, encoding and independent full revis
 Missing URL facts leave refresh explicitly unavailable, and an unknown prior flag
 cannot be treated as false. Theme-color and authored color-scheme selection use
 the CSS owner under the original parser's finite admission and retain immutable
-per-Document results. Missing media/CSS facts and reached CSSOM preferred-set or
-CSP requirements remain explicit; structural parse success does not certify those
-obligations. Language and referrer updates
+per-Document results. Missing media/CSS facts and reached CSP requirements remain
+explicit; structural parse success does not certify those obligations. Language and referrer updates
 continue where their own inputs are qualified. `document_meta()` lends these
 actual Document-qualified values and the first missing operation without replay.
+
+`pending_associations()` separately lends sealed per-Document capture completeness,
+original Style lifecycle and nonempty default-style occurrences, exact historical
+UTF-16 inputs, original roots and causal dependencies. Pending capture never
+asserts successful sheet creation, addition or preferred-set selection. Known
+context lends its original provider or tree observation; explicit offline slots
+and captured-context observation requests remain unresolved for the later
+consumer. URL, fallback, encoding and initial-policy requests share their immutable
+initial Document input lineage across occurrences; original Base selection and
+external-environment frontiers remain separate. Lost original facts and influencing unsupported Link history remain
+precise unavailable states. Occurrence order preserves original invocations, not
+asynchronous resource-completion order. The report owns and prices this immutable
+storage; `retained_construction_bytes()` and `retained_construction_utf16_units()`
+lend its whole retained physical and UTF-16 receipts for downstream custody.
+
 A reached unavailable CSP invalidates later required policy-dependent URL/Base
 operations while preserving earlier cached observations. `base_state()` separates
 unfrozen, frozen and unavailable current state, retaining a genuine previous

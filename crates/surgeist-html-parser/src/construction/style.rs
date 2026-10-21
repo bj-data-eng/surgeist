@@ -32,9 +32,21 @@ impl SessionStorage {
                 cause,
             },
         });
+        self.record_association(
+            c,
+            node,
+            super::pending_association::OccurrenceKind::StyleCreated,
+            None,
+            None,
+            false,
+        )?;
         Ok(())
     }
-    fn style_slot(&self, c: &mut ParseControl, node: usize) -> Result<Option<usize>, SessionError> {
+    pub(super) fn style_slot(
+        &self,
+        c: &mut ParseControl,
+        node: usize,
+    ) -> Result<Option<usize>, SessionError> {
         if !self.html_local(c, node, "style")? {
             return Ok(None);
         }
@@ -66,6 +78,14 @@ impl SessionStorage {
         state.state = surgeist_html::HtmlStyleState::document_parser_created();
         state.parser_document = Some(DocumentRef::Owned(0));
         state.cause = cause;
+        self.record_association(
+            c,
+            node,
+            super::pending_association::OccurrenceKind::StyleParserCreated,
+            None,
+            None,
+            false,
+        )?;
         Ok(())
     }
     pub(super) fn style_stack_changed(
@@ -89,6 +109,14 @@ impl SessionStorage {
         }
         .map_err(|_| SessionError::WrongToken)?;
         state.cause = cause;
+        if !added {
+            self.association_style_trigger(
+                c,
+                node,
+                surgeist_html::HtmlStyleTrigger::ParserPopped,
+                None,
+            )?;
+        }
         Ok(())
     }
 }

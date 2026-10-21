@@ -242,9 +242,10 @@ pub use meta::{
 pub use node_values::{DomDocumentType, DomProcessingInstruction};
 pub use output::{DomOutput, DomOutputState};
 pub use parsed_installation::{
-    DomParsedDocumentEnvironment, DomParsedHtmlAssociationReadiness, DomParsedHtmlBinding,
-    DomParsedHtmlCapturedBinding, DomParsedHtmlInstallError, DomParsedHtmlInstallLimits,
-    DomParsedHtmlInstallResource, DomParsedHtmlInstallation,
+    DomParsedDocumentEnvironment, DomParsedHtmlAssociationDocument, DomParsedHtmlAssociationId,
+    DomParsedHtmlAssociationReadiness, DomParsedHtmlBinding, DomParsedHtmlCapturedBinding,
+    DomParsedHtmlHistoricalDocument, DomParsedHtmlInstallError, DomParsedHtmlInstallLimits,
+    DomParsedHtmlInstallResource, DomParsedHtmlInstallation, DomParsedHtmlPendingAssociations,
 };
 pub use range::{
     CreatedRange, DomActiveRangeState, DomRange, DomRangeBoundary, DomRangeId, DomRangeOperand,

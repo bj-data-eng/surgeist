@@ -165,7 +165,7 @@ impl SessionStorage {
             _ => Ok(false),
         }
     }
-    fn next_sibling(
+    pub(super) fn next_sibling(
         &self,
         c: &mut ParseControl,
         node: usize,

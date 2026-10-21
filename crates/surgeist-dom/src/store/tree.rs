@@ -315,6 +315,11 @@ impl Draft {
                 self.select_reserve(&mut pending, 1, cancelled)?;
                 pending.push((root, document));
             }
+            if matches!(self.node(node)?.kind(), KindRead::Element(element) if element.style_state().is_some())
+            {
+                self.guard_pending_associations(self.node(node)?.document(), cancelled)?;
+                self.guard_pending_associations(document, cancelled)?;
+            }
             let mut common = self.common_fields_mut(node, cancelled)?;
             common.document = document;
             common.commit(cancelled)?;

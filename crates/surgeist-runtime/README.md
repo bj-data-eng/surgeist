@@ -13,7 +13,11 @@ These native operations do not supply complete browser services, positive focus
 movement or rendering readiness.
 The actual Style association owner also retains [Document stylesheet-set
 preferences](docs/explanation.md#document-stylesheet-set-preferences), including
-empty-list history and source-defined enable/select behavior.
+empty-list history and source-defined enable/select behavior. `DomSession::new`
+returns the original DOM intact with `PendingParsedAssociations` when parsed
+association history remains pending under canonical custody. No current public
+Session mutation front installs a parsed report after bootstrap. Retaining that
+history does not establish a Style processing service or association readiness.
 
 ## Start
 

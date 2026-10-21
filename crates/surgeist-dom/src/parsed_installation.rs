@@ -70,7 +70,10 @@ impl DomParsedDocumentEnvironment {
 /// source/metadata slots (including skipped slots), identity comparisons,
 /// observed string extents, allocation copies and output formation. Scratch
 /// bytes cover the peak of actual adapter/output and newly assembled child-vector
-/// capacities, including both old and replacement banks during geometric growth;
+/// capacities, including both old and replacement banks during geometric growth,
+/// plus the two mandatory shared output Vec-header payloads reserved before
+/// collection. Their reservation covers actual future backing and is not a
+/// simultaneous-allocator-occupancy measurement;
 /// canonical Draft/publication storage retains its existing DOM admission.
 /// Historical bytes admit the report payload, parser's complete retained
 /// construction receipt plus original source backing, separately lent root/inert
@@ -157,6 +160,10 @@ pub enum DomParsedHtmlInstallError {
         document: HtmlNodeId,
         subject: HtmlNodeId,
         reason: surgeist_html_parser::HtmlParseMetaMissingKind,
+    },
+    AssociationCaptureUnavailable {
+        document: DomParsedHtmlHistoricalDocument,
+        reason: surgeist_html_parser::HtmlParseAssociationMissingKind,
     },
     HyperlinkUnavailable {
         subject: HtmlNodeId,
@@ -250,12 +257,16 @@ pub struct DomParsedHtmlInstallation {
     pub(crate) document: DocumentId,
     pub(crate) root: NodeId,
     pub(crate) context_basis: Option<DomDocumentStamp>,
-    pub(crate) captured_bindings: Vec<DomParsedHtmlCapturedBinding>,
+    pub(crate) pending_association: Option<DomParsedHtmlAssociationId>,
+    pub(crate) captured_bindings: Arc<Vec<DomParsedHtmlCapturedBinding>>,
     pub(crate) snapshot: DomSnapshot,
     pub(crate) changes: DomChanges,
-    pub(crate) bindings: Vec<DomParsedHtmlBinding>,
+    pub(crate) bindings: Arc<Vec<DomParsedHtmlBinding>>,
 }
 impl DomParsedHtmlInstallation {
+    pub fn pending_association(&self) -> Option<DomParsedHtmlAssociationId> {
+        self.pending_association
+    }
     pub fn source(&self) -> &HtmlSourceId {
         self.report.source().identity()
     }
@@ -304,5 +315,88 @@ impl DomParsedHtmlInstallation {
             .iter()
             .find(|binding| binding.source == *source)
             .map(|binding| binding.node)
+    }
+}
+
+/// One actual installation's pending association execution, distinct even when
+/// the same immutable report is installed into two destinations.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomParsedHtmlAssociationId {
+    pub(crate) stamp: DomStamp,
+    pub(crate) root: NodeId,
+}
+impl DomParsedHtmlAssociationId {
+    pub fn stamp(self) -> DomStamp {
+        self.stamp
+    }
+    pub fn root(self) -> NodeId {
+        self.root
+    }
+}
+
+/// Original Document identity; captured and newly constructed owners differ.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DomParsedHtmlHistoricalDocument {
+    Constructed(HtmlNodeId),
+    Captured(surgeist_html_semantics::HtmlCaptureSubjectId),
+}
+
+/// Immutable destination qualification for an original Document contribution.
+#[derive(Debug)]
+pub struct DomParsedHtmlAssociationDocument {
+    pub(crate) source: DomParsedHtmlHistoricalDocument,
+    pub(crate) document: DocumentId,
+}
+impl DomParsedHtmlAssociationDocument {
+    pub fn source(&self) -> &DomParsedHtmlHistoricalDocument {
+        &self.source
+    }
+    pub fn document(&self) -> DocumentId {
+        self.document
+    }
+}
+
+/// Borrowed canonical custody. Discovery neither admits nor executes #840.
+/// Original occurrences, contexts and causes are read from the sealed report.
+/// Historical subjects may have no installed binding; lookup never guesses one.
+pub struct DomParsedHtmlPendingAssociations<'a> {
+    pub(crate) context_basis: Option<DomDocumentStamp>,
+    pub(crate) id: DomParsedHtmlAssociationId,
+    pub(crate) report: &'a HtmlParseReport,
+    pub(crate) documents: &'a [DomParsedHtmlAssociationDocument],
+    pub(crate) bindings: &'a [DomParsedHtmlBinding],
+    pub(crate) captured: &'a [DomParsedHtmlCapturedBinding],
+}
+impl<'a> DomParsedHtmlPendingAssociations<'a> {
+    /// Authentic original captured-context basis, retained as history without
+    /// pinning its old canonical State. This is neither current freshness nor
+    /// execution authority. The destination contribution has its own identity;
+    /// a later association join must independently qualify the current owner.
+    pub fn context_basis(&self) -> Option<DomDocumentStamp> {
+        self.context_basis
+    }
+    pub fn id(&self) -> DomParsedHtmlAssociationId {
+        self.id
+    }
+    pub fn report(&self) -> &'a HtmlParseReport {
+        self.report
+    }
+    pub fn documents(&self) -> &'a [DomParsedHtmlAssociationDocument] {
+        self.documents
+    }
+    pub fn node_for(&self, source: &HtmlNodeId) -> Option<NodeId> {
+        self.bindings
+            .iter()
+            .find(|row| row.source() == source)
+            .map(DomParsedHtmlBinding::node)
+    }
+    pub fn captured_node_for(
+        &self,
+        source: &surgeist_html_semantics::HtmlCaptureSubjectId,
+    ) -> Option<NodeId> {
+        self.captured
+            .iter()
+            .find(|row| row.subject() == source)
+            .map(DomParsedHtmlCapturedBinding::node)
     }
 }

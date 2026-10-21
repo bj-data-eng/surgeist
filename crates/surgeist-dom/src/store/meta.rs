@@ -257,6 +257,7 @@ impl Draft {
                 }
             }
             Pragma::DefaultStyle if !content.is_empty() => {
+                self.guard_pending_associations(document, cancel)?;
                 return Err(DomError::Meta(Failure::DefaultStyleUnsupported));
             }
             Pragma::ContentSecurityPolicy if !content.is_empty() => {

@@ -36,6 +36,18 @@ impl ImmutableParseReport {
             .resource(crate::HtmlParseResource::ManagedCapacityBytes)
             .current()
     }
+    /// Actual managed UTF-16 retained by this immutable construction owner.
+    /// Original source and separately lent provider graphs retain their own receipts.
+    pub fn retained_construction_utf16_units(&self) -> u64 {
+        self.usage
+            .resource(crate::HtmlParseResource::ManagedUtf16Units)
+            .current()
+    }
+    /// Original pending operations and sealed per-Document capture qualification.
+    /// This does not execute or certify any CSSOM association.
+    pub fn pending_associations(&self) -> crate::construction::pending_association::Cursor<'_> {
+        crate::construction::pending_association::Cursor::new(self.storage.history())
+    }
     /// Refusal retains the same source-owning native seal. Generic native-only
     /// completion cannot supply the actual D1/history proof required here.
     pub(crate) fn take_document(

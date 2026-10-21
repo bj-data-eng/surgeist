@@ -60,6 +60,7 @@ mod oracle_tests;
 mod output;
 pub(crate) mod parsed_installation;
 pub(crate) mod payload;
+mod pending_associations;
 mod range;
 mod reflected;
 pub(crate) mod registry;
@@ -101,6 +102,8 @@ pub(crate) use view_transition::TransitionMembership;
 /// Configured capacity whose admission would be exceeded.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomResource {
+    ParsedAssociationBytes,
+    ParsedAssociationUnits,
     FullscreenExits,
     FullscreenEvents,
     Ranges,
@@ -170,6 +173,12 @@ pub enum DomResource {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum DomError {
+    /// Original parsed association history must be admitted before a native
+    /// association-changing operation may cross this exact Document.
+    ParsedAssociationPending {
+        document: DocumentId,
+        pending: crate::DomParsedHtmlAssociationId,
+    },
     /// The explicit ordinary inline operation lacks a reached profile.
     InlineStyleProfileMissing {
         element: NodeId,
@@ -403,6 +412,8 @@ impl std::error::Error for DomError {}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomLimits {
     names: crate::DomNameLimits,
+    parsed_association_bytes: usize,
+    parsed_association_units: usize,
     fullscreen_exits: usize,
     fullscreen_events: usize,
     ranges: usize,
@@ -439,6 +450,32 @@ pub struct DomLimits {
     )>,
 }
 impl DomLimits {
+    /// Finite canonical pending-report backing, destination maps and index
+    /// allowances. The constructor selects 64 MiB and 16 Mi UTF-16 units;
+    /// zero explicitly disables retaining association obligations. General
+    /// canonical custody/control administration retains its Source admission.
+    pub fn with_parsed_associations(
+        mut self,
+        bytes: usize,
+        utf16_units: usize,
+    ) -> Result<Self, DomError> {
+        if bytes > isize::MAX as usize {
+            return Err(DomError::InvalidLimit(DomResource::ParsedAssociationBytes));
+        }
+        if utf16_units > isize::MAX as usize / size_of::<u16>() {
+            return Err(DomError::InvalidLimit(DomResource::ParsedAssociationUnits));
+        }
+        self.parsed_association_bytes = bytes;
+        self.parsed_association_units = utf16_units;
+        Ok(self)
+    }
+    pub fn parsed_association_bytes(self) -> usize {
+        self.parsed_association_bytes
+    }
+    pub fn parsed_association_utf16_units(self) -> usize {
+        self.parsed_association_units
+    }
+
     pub fn with_fullscreen_exits(mut self, count: usize) -> Result<Self, DomError> {
         if count > isize::MAX as usize / size_of::<fullscreen::exit::Invocation>() {
             return Err(DomError::InvalidLimit(DomResource::FullscreenExits));
@@ -545,6 +582,8 @@ impl DomLimits {
         }
         Ok(Self {
             names,
+            parsed_association_bytes: 64 * 1024 * 1024,
+            parsed_association_units: 16 * 1024 * 1024,
             fullscreen_exits: 0,
             fullscreen_events: 0,
             ranges: 0,
@@ -815,6 +854,8 @@ impl DomLimits {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomUsage {
+    parsed_association_bytes: usize,
+    parsed_association_units: usize,
     ranges: usize,
     meta_color_scheme_bytes: usize,
     autofocus_candidates: usize,
@@ -828,6 +869,13 @@ pub struct DomUsage {
     pseudos: usize,
 }
 impl DomUsage {
+    pub fn parsed_association_bytes(self) -> usize {
+        self.parsed_association_bytes
+    }
+    pub fn parsed_association_utf16_units(self) -> usize {
+        self.parsed_association_units
+    }
+
     pub fn ranges(self) -> usize {
         self.ranges
     }
@@ -1187,6 +1235,7 @@ pub struct Dom {
     source_event_executor: Option<std::sync::Weak<crate::source::event::ExecutorBinding>>,
     inline_styles: Option<Box<inline_style::Owner>>,
     style_cssom_roots: style_custody::Bank,
+    pending_associations: pending_associations::Bank,
     hosted_source: Option<crate::hosted::SourceObservation>,
     next_hosted_source: u64,
     details_transferred: bool,
@@ -1259,6 +1308,7 @@ impl Dom {
         )?;
         Ok(Self {
             style_cssom_roots: style_custody::Bank::new(&registry),
+            pending_associations: pending_associations::Bank::new(&registry),
             fullscreen_exits: fullscreen::custody::Invocations::new(&registry),
             next_fullscreen_exit: 1,
             dispatch_custody: dispatch::CustodyBank::default(),
@@ -1300,6 +1350,8 @@ impl Dom {
     pub fn usage(&self) -> DomUsage {
         let (transitions, records, pseudos) = self.state.view_transitions.usage();
         DomUsage {
+            parsed_association_bytes: self.pending_associations.usage().bytes(),
+            parsed_association_units: self.pending_associations.usage().units(),
             ranges: self
                 .state
                 .ranges
@@ -1363,6 +1415,7 @@ impl Dom {
         {
             return Err(DomError::SourceOperationPending);
         }
+        self.pending_associations.admit(limits)?;
         self.names.admit_limits(limits.names())?;
         if let Some(owner) = &self.event_recipients {
             owner.admit_limits(limits.event_recipients())?;
@@ -1990,6 +2043,7 @@ struct Draft {
     base: Arc<State>,
     event_recipients: Option<Arc<event::Owner>>,
     inline_membership: Option<inline_style::Membership>,
+    pending_associations: pending_associations::Bank,
     inline_echo: Option<inline_style::feedback::Echo>,
     inline_recording: Option<inline_style::recording::Recording>,
     dom_limits: DomLimits,
@@ -2512,6 +2566,7 @@ impl Draft {
             base: dom.state.clone(),
             event_recipients: dom.event_recipients.clone(),
             inline_membership: dom.inline_membership(),
+            pending_associations: dom.pending_associations.clone(),
             inline_recording: dom.blocked_inline_recording(),
             inline_echo: None,
             dom_limits: dom.limits,

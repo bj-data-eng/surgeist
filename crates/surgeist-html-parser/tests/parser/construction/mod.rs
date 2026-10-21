@@ -11,5 +11,6 @@ mod link_history;
 mod meta_history;
 mod nonce;
 mod ordinary_creation;
+mod pending_association;
 mod script;
 mod shadow;

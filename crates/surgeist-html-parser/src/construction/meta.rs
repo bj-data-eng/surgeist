@@ -8,15 +8,13 @@ use surgeist_html::HtmlMetaPragmaState as Pragma;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MetaDomain {
     Refresh,
-    PreferredStyle,
     Csp,
     ThemeColor,
     ColorScheme,
 }
 impl MetaDomain {
-    pub(super) const ALL: [Self; 5] = [
+    pub(super) const ALL: [Self; 4] = [
         Self::Refresh,
-        Self::PreferredStyle,
         Self::Csp,
         Self::ThemeColor,
         Self::ColorScheme,
@@ -24,10 +22,9 @@ impl MetaDomain {
     pub(super) const fn index(self) -> usize {
         match self {
             Self::Refresh => 0,
-            Self::PreferredStyle => 1,
-            Self::Csp => 2,
-            Self::ThemeColor => 3,
-            Self::ColorScheme => 4,
+            Self::Csp => 1,
+            Self::ThemeColor => 2,
+            Self::ColorScheme => 3,
         }
     }
 }
@@ -35,7 +32,6 @@ impl MetaDomain {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MetaMissingKind {
     RefreshUrl(HyperlinkUnavailable),
-    PreferredStyle,
     Csp,
     ThemeColor,
     ThemeColorProcessing(crate::parser::control::HtmlColorProcessingError),
@@ -44,7 +40,6 @@ impl MetaMissingKind {
     pub(super) fn domain(&self) -> MetaDomain {
         match self {
             Self::RefreshUrl(_) => MetaDomain::Refresh,
-            Self::PreferredStyle => MetaDomain::PreferredStyle,
             Self::Csp => MetaDomain::Csp,
             Self::ThemeColor | Self::ThemeColorProcessing(_) => MetaDomain::ThemeColor,
         }
@@ -60,7 +55,7 @@ pub(super) struct MetaHistory {
     pub(super) refresh: bool,
     pub(super) theme: Option<surgeist_color::Color>,
     pub(super) scheme: Option<crate::parser::control::CssSchemeValue>,
-    pub(super) gaps: [Option<usize>; 5],
+    pub(super) gaps: [Option<usize>; 4],
     pub(super) first: Option<MetaDomain>,
 }
 impl MetaHistory {
@@ -71,7 +66,7 @@ impl MetaHistory {
             refresh: false,
             theme: None,
             scheme: None,
-            gaps: [None; 5],
+            gaps: [None; 4],
             first: None,
         }
     }
@@ -294,7 +289,14 @@ impl SessionStorage {
                 }
             }
             Pragma::DefaultStyle if !content.is_empty() => {
-                self.meta_missing(c, document, node, MetaMissingKind::PreferredStyle)?;
+                self.record_association(
+                    c,
+                    node,
+                    pending_association::OccurrenceKind::ChangePreferred,
+                    None,
+                    None,
+                    true,
+                )?;
             }
             Pragma::ContentSecurityPolicy if !content.is_empty() => {
                 self.meta_missing(c, document, node, MetaMissingKind::Csp)?;
@@ -868,7 +870,7 @@ mod tests {
             (
                 CancelPoint::Gap,
                 0,
-                "<!doctype html><meta http-equiv=default-style content=chosen>",
+                "<!doctype html><meta http-equiv=content-security-policy content=default-src-none>",
             ),
             (
                 CancelPoint::Theme,

@@ -215,6 +215,32 @@ impl SessionStorage {
         host: &crate::HtmlCaptureElementId,
     ) -> Result<(crate::HtmlNonceConnection, crate::HtmlHeaderDeliveredCsp), SessionError> {
         use crate::{HtmlHeaderDeliveredCsp as P, HtmlNonceConnection as C};
+        let node = match self.captured_shadow_including_document(c, host) {
+            Ok(Some(node)) => node,
+            Ok(None) => return Ok((C::NotBrowsingContextConnected, P::Unavailable)),
+            Err(SessionError::ContextUnavailable) => return Ok((C::Unavailable, P::Unavailable)),
+            Err(error) => return Err(error),
+        };
+        let crate::HtmlCapturedNodeKind::Document(document) = node.kind() else {
+            unreachable!("qualified shadow-including root")
+        };
+        let environment = document.nonce_environment();
+        Ok((
+            match environment.browsing_context() {
+                crate::HtmlBrowsingContextPresence::Absent => C::NotBrowsingContextConnected,
+                crate::HtmlBrowsingContextPresence::Present => C::BrowsingContextConnected,
+                crate::HtmlBrowsingContextPresence::Unavailable => C::Unavailable,
+            },
+            environment.header_delivered_csp(),
+        ))
+    }
+    /// The original immutable captured ancestry, independent of browsing-context
+    /// presence. Unknown parents/hosts never prove disconnection.
+    pub(super) fn captured_shadow_including_document<'a>(
+        &'a self,
+        c: &mut ParseControl,
+        host: &crate::HtmlCaptureElementId,
+    ) -> Result<Option<crate::HtmlCapturedNode<'a>>, SessionError> {
         let capture = self
             .fragment
             .as_ref()
@@ -227,18 +253,8 @@ impl SessionStorage {
             .map_err(|_| SessionError::ForeignNode)?;
         for _ in 0..capture.usage().subjects() {
             c.charge(WorkCategory::RecordVisit, 2)?;
-            if let crate::HtmlCapturedNodeKind::Document(document) = node.kind() {
-                let environment = document.nonce_environment();
-                return Ok((
-                    match environment.browsing_context() {
-                        crate::HtmlBrowsingContextPresence::Absent => {
-                            C::NotBrowsingContextConnected
-                        }
-                        crate::HtmlBrowsingContextPresence::Present => C::BrowsingContextConnected,
-                        crate::HtmlBrowsingContextPresence::Unavailable => C::Unavailable,
-                    },
-                    environment.header_delivered_csp(),
-                ));
+            if matches!(node.kind(), crate::HtmlCapturedNodeKind::Document(_)) {
+                return Ok(Some(node));
             }
             payload_write::<crate::HtmlCapturedParent>(c, 1)?;
             match node.parent() {
@@ -249,9 +265,16 @@ impl SessionStorage {
                         .map_err(|_| SessionError::ForeignNode)?;
                 }
                 crate::HtmlCapturedParent::Unavailable => {
-                    return Ok((C::Unavailable, P::Unavailable));
+                    return Err(SessionError::ContextUnavailable);
                 }
                 crate::HtmlCapturedParent::Root => {
+                    // A plain fragment's generic host may be its Template
+                    // owner. Only a ShadowRoot host extends shadow ancestry.
+                    if !matches!(node.kind(), crate::HtmlCapturedNodeKind::Fragment(fragment)
+                        if matches!(fragment.kind(), crate::HtmlCapturedFragmentKind::ShadowRoot(_)))
+                    {
+                        return Ok(None);
+                    }
                     payload_write::<Option<crate::HtmlCapturedHost>>(c, 1)?;
                     match node.host() {
                         Some(crate::HtmlCapturedHost::Element(host)) => {
@@ -261,9 +284,9 @@ impl SessionStorage {
                                 .map_err(|_| SessionError::ForeignNode)?;
                         }
                         Some(crate::HtmlCapturedHost::Unavailable) => {
-                            return Ok((C::Unavailable, P::Unavailable));
+                            return Err(SessionError::ContextUnavailable);
                         }
-                        _ => return Ok((C::NotBrowsingContextConnected, P::Unavailable)),
+                        _ => return Ok(None),
                     }
                 }
             }

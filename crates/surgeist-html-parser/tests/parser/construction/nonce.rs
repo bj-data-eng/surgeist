@@ -249,8 +249,7 @@ fn captured_connected_unknown_header_is_typed_failure_not_false() {
     assert!(failure.after_cleanup().is_some());
 }
 
-#[test]
-fn captured_template_contents_host_does_not_connect_nonce_to_browsing_context() {
+pub(super) fn captured_template_contents_context() -> HtmlFragmentContext {
     let mut builder = HtmlCaptureBuilder::new(
         HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
         HtmlHostFactsRevision::fresh(),
@@ -320,8 +319,12 @@ fn captured_template_contents_host_does_not_connect_nonce_to_browsing_context() 
     builder.establish_parent(&div, &contents).unwrap();
     builder.establish_no_shadow_root(&div).unwrap();
     let capture = builder.finish().unwrap();
-    let context =
-        HtmlFragmentContext::element(&capture, &capture.subject_id(&div).unwrap()).unwrap();
+    HtmlFragmentContext::element(&capture, &capture.subject_id(&div).unwrap()).unwrap()
+}
+
+#[test]
+fn captured_template_contents_host_does_not_connect_nonce_to_browsing_context() {
+    let context = captured_template_contents_context();
     let report = HtmlFragmentParseRequest::with_options(
         HtmlSource::utf8("<template shadowrootmode=open><p nonce=A></p></template>"),
         context,

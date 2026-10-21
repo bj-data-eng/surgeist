@@ -1490,7 +1490,9 @@ impl Dom {
         // Mutable CSSOM custody is reconciled by its actual owner, never by a
         // lifecycle metadata transition. Unrelated Documents remain usable.
         work.step(cancel)?;
-        if self.style_cssom_roots.has_document(document) {
+        if self.style_cssom_roots.has_document(document)
+            || self.pending_associations.document(document).is_some()
+        {
             return Err(DomHostedError::PendingDocumentObligations);
         }
         work.step(cancel)?;

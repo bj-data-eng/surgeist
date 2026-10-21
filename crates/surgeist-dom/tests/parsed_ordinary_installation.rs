@@ -5,6 +5,8 @@ mod canonical_binding_changes;
 mod contextual_controls;
 #[path = "parsed_ordinary_installation/noncontrol_state.rs"]
 mod noncontrol_state;
+#[path = "parsed_ordinary_installation/pending_associations.rs"]
+mod pending_associations;
 
 use std::sync::{Arc, atomic::AtomicBool};
 use surgeist_dom::*;
@@ -2655,6 +2657,46 @@ fn qualified_base_freezing_and_link_parser_history_transfer_without_native_respo
                 .is_empty()
         );
     }
+    // Disabled does not prove that the stylesheet Link has no association
+    // history. The same qualified Base input must refuse atomically until its
+    // original stylesheet producer closure is available.
+    let usage = dom.usage();
+    assert!(matches!(
+        dom.install_parsed_html_document(
+            before.stamp(),
+            report,
+            environment.clone(),
+            limits(),
+            &AtomicBool::new(false),
+        ),
+        Err(DomParsedHtmlInstallError::AssociationCaptureUnavailable {
+            reason: surgeist_html_parser::HtmlParseAssociationMissingKind::UnsupportedLinkStylesheetHistory,
+            ..
+        })
+    ));
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(dom.usage(), usage);
+    assert!(
+        dom.changes_since(before.stamp())
+            .unwrap()
+            .changes()
+            .is_empty()
+    );
+
+    // A real nonstylesheet Link retains the independent parser-history facts
+    // without claiming that a pending stylesheet association has completed.
+    let report = Arc::new(
+        HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8(
+                "<!doctype html><base href='sub/'><link rel=help href=help.html disabled>",
+            ),
+            parse_limits(),
+        )
+        .with_base_facts(facts.clone())
+        .unwrap()
+        .parse()
+        .unwrap(),
+    );
     let result = install(&mut dom, report, environment.clone());
     let document = result.snapshot().document(result.document()).unwrap();
     assert_eq!(document.metadata().url(), environment.url().serialization());
@@ -3697,10 +3739,6 @@ fn every_unavailable_meta_domain_refuses_after_independent_history_without_publi
             Missing::RefreshUrl(surgeist_html_parser::HtmlParseHyperlinkUnavailable::Base(
                 surgeist_html_semantics::HtmlBaseMissing::DocumentFacts,
             )),
-        ),
-        (
-            "<meta http-equiv=default-style content=chosen>",
-            Missing::PreferredStyle,
         ),
         (
             "<meta http-equiv=Content-Security-Policy content=default-src-none>",

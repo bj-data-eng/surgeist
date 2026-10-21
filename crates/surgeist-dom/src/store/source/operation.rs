@@ -187,7 +187,9 @@ impl Dom {
         }))
     }
     pub(in crate::store) fn source_owner_custody_bytes(&self) -> Result<usize, DomError> {
-        let style = crate::store::style_custody::Bank::inline_bytes();
+        let style = crate::store::style_custody::Bank::inline_bytes()
+            .checked_add(size_of::<crate::store::pending_associations::Bank>())
+            .ok_or(DomError::RepresentationExhausted)?;
         let fullscreen = self.fullscreen_custody_bytes()?;
         style
             .checked_add(crate::element_tasks::retained(&self.element_tasks)?)

@@ -56,6 +56,20 @@ pub use construction::history::{
 pub use construction::meta::{
     MetaDomain as HtmlParseMetaDomain, MetaMissingKind as HtmlParseMetaMissingKind,
 };
+pub use construction::pending_association::{
+    CaptureDisposition as HtmlParseAssociationCaptureDisposition,
+    CapturedObservation as HtmlParseAssociationCapturedObservation,
+    ContextEpochId as HtmlParseAssociationContextEpochId,
+    ContextRequirement as HtmlParseAssociationContextRequirement,
+    ContextRole as HtmlParseAssociationContextRole,
+    ContextSlotId as HtmlParseAssociationContextSlotId, ContextView as HtmlParseAssociationContext,
+    Cursor as HtmlParsePendingAssociationCursor, DocumentView as HtmlParseAssociationDocument,
+    MissingKind as HtmlParseAssociationMissingKind,
+    OccurrenceId as HtmlParseAssociationOccurrenceId,
+    OccurrenceKind as HtmlParseAssociationOccurrenceKind,
+    OccurrenceView as HtmlParseAssociationOccurrence, Step as HtmlParsePendingAssociationStep,
+    StyleInputs as HtmlParseAssociationStyleInputs,
+};
 pub use construction::provenance::reverse::{
     AssociationRelation as HtmlParseAssociationRelation, ReverseQueryError as HtmlParseReverseError,
 };

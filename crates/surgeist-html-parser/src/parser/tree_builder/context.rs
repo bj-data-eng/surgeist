@@ -1991,6 +1991,14 @@ mod tests {
         allow: bool,
         known_absent: bool,
     ) -> HtmlFragmentParseRequest {
+        shadow_request_with_ancestry(source, allow, known_absent, false)
+    }
+    fn shadow_request_with_ancestry(
+        source: &str,
+        allow: bool,
+        known_absent: bool,
+        unavailable_host: bool,
+    ) -> HtmlFragmentParseRequest {
         let mut builder = HtmlCaptureBuilder::new(
             HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
             HtmlHostFactsRevision::fresh(),
@@ -2019,7 +2027,29 @@ mod tests {
                 HtmlCaptureRegistryInput::Null,
             )
             .unwrap();
-        builder.establish_root(&context).unwrap();
+        if unavailable_host {
+            let ancestor = builder
+                .add_shadow_fragment(
+                    &document,
+                    crate::HtmlCapturedShadowProperties::new(
+                        HtmlShadowRootProperties::new(
+                            HtmlShadowRootMode::Open,
+                            HtmlSlotAssignment::Named,
+                            false,
+                            false,
+                            false,
+                        ),
+                        false,
+                        false,
+                        false,
+                    ),
+                    HtmlCaptureRegistryInput::Null,
+                )
+                .unwrap();
+            builder.establish_parent(&context, &ancestor).unwrap();
+        } else {
+            builder.establish_root(&context).unwrap();
+        }
         if known_absent {
             builder.establish_no_shadow_root(&context).unwrap();
         }
@@ -3927,54 +3957,58 @@ mod tests {
     }
     #[test]
     fn radio_captured_shadow_connection_requires_domain_only_for_actual_checked_trigger() {
-        for checked in [false, true] {
-            let source = if checked {
-                "<template shadowrootmode=open><input type=radio name=g checked></template>"
-            } else {
-                "<template shadowrootmode=open><input type=radio name=g></template>"
-            };
-            let request = shadow_request(source, true);
-            let mut driver = initialized_driver(&request);
-            if checked {
-                let error = loop {
-                    match driver.step() {
-                        Ok(HeadStep::Consumed) => {}
-                        Err(error) => break error,
-                        Ok(other) => {
-                            panic!("expected actual captured-domain refusal, got {other:?}")
-                        }
-                    }
+        for unavailable_host in [false, true] {
+            for checked in [false, true] {
+                let source = if checked {
+                    "<template shadowrootmode=open><input type=radio name=g checked></template>"
+                } else {
+                    "<template shadowrootmode=open><input type=radio name=g></template>"
                 };
-                assert!(
-                    matches!(
-                        error,
-                        FragmentExecutionError::Head(head::HeadError::Kernel(
-                            KernelError::Session(SessionError::Stop(
-                                ParseStop::UnsupportedStandaloneState(
-                                    crate::parser::control::StandaloneUnsupported::Provenance
-                                )
+                let request = shadow_request_with_ancestry(source, true, true, unavailable_host);
+                let mut driver = initialized_driver(&request);
+                if checked && unavailable_host {
+                    let error = loop {
+                        match driver.step() {
+                            Ok(HeadStep::Consumed) => {}
+                            Err(error) => break error,
+                            Ok(other) => {
+                                panic!("expected actual captured-domain refusal, got {other:?}")
+                            }
+                        }
+                    };
+                    assert!(
+                        matches!(
+                            error,
+                            FragmentExecutionError::Head(head::HeadError::Kernel(
+                                KernelError::Session(SessionError::Stop(
+                                    ParseStop::UnsupportedStandaloneState(
+                                        crate::parser::control::StandaloneUnsupported::Provenance
+                                    )
+                                ))
                             ))
-                        ))
-                    ),
-                    "{error:?}"
-                );
-                let first = driver.control.stop().unwrap();
-                assert_eq!(
-                    first,
-                    ParseStop::UnsupportedStandaloneState(
-                        crate::parser::control::StandaloneUnsupported::Provenance
-                    )
-                );
-                assert!(driver.step().is_err());
-                assert_eq!(driver.control.stop(), Some(first));
-                assert!(driver.completed_native_view().is_err());
-            } else {
-                complete(&mut driver);
+                        ),
+                        "{error:?}"
+                    );
+                    let first = driver.control.stop().unwrap();
+                    assert_eq!(
+                        first,
+                        ParseStop::UnsupportedStandaloneState(
+                            crate::parser::control::StandaloneUnsupported::Provenance
+                        )
+                    );
+                    assert!(driver.step().is_err());
+                    assert_eq!(driver.control.stop(), Some(first));
+                    assert!(driver.completed_native_view().is_err());
+                } else {
+                    complete(&mut driver);
+                    assert_eq!(driver.control.stop(), None);
+                }
+                driver.release().unwrap();
+                super::super::tests::assert_released(&driver.control);
             }
-            driver.release().unwrap();
-            super::super::tests::assert_released(&driver.control);
         }
     }
+
     #[test]
     fn radio_owned_shadow_connection_normalizes_only_its_actual_ordinary_tree() {
         use crate::construction::context::QualifiedFragmentHost;
@@ -4376,31 +4410,40 @@ mod tests {
 
     #[test]
     fn radio_unchecked_explicit_form_requires_influencing_captured_shadow_host() {
-        for kind in ["checkbox", "radio"] {
-            let source =
-                format!("<template shadowrootmode=open><input type={kind} form=f></template>");
-            let request = shadow_request(&source, true);
-            let mut driver = initialized_driver(&request);
-            let mut refused = false;
-            for _ in 0..128 {
-                if driver.step().is_err() {
-                    refused = true;
-                    break;
+        for unavailable_host in [false, true] {
+            for kind in ["checkbox", "radio"] {
+                let source =
+                    format!("<template shadowrootmode=open><input type={kind} form=f></template>");
+                let request = shadow_request_with_ancestry(&source, true, true, unavailable_host);
+                let mut driver = initialized_driver(&request);
+                if !unavailable_host {
+                    complete(&mut driver);
+                    assert_eq!(driver.control.stop(), None);
+                    driver.release().unwrap();
+                    super::super::tests::assert_released(&driver.control);
+                    continue;
                 }
+                let mut refused = false;
+                for _ in 0..128 {
+                    if driver.step().is_err() {
+                        refused = true;
+                        break;
+                    }
+                }
+                let first = driver.control.stop();
+                assert!(driver.step().is_err());
+                assert_eq!(driver.control.stop(), first);
+                assert!(driver.completed_native_view().is_err());
+                driver.release().unwrap();
+                super::super::tests::assert_released(&driver.control);
+                assert!(refused);
+                assert_eq!(
+                    first,
+                    Some(ParseStop::UnsupportedStandaloneState(
+                        crate::parser::control::StandaloneUnsupported::Provenance
+                    ))
+                );
             }
-            let first = driver.control.stop();
-            assert!(driver.step().is_err());
-            assert_eq!(driver.control.stop(), first);
-            assert!(driver.completed_native_view().is_err());
-            driver.release().unwrap();
-            super::super::tests::assert_released(&driver.control);
-            assert!(refused);
-            assert_eq!(
-                first,
-                Some(ParseStop::UnsupportedStandaloneState(
-                    crate::parser::control::StandaloneUnsupported::Provenance
-                ))
-            );
         }
     }
 

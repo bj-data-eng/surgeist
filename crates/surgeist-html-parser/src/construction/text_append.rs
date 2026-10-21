@@ -200,6 +200,12 @@ impl SessionStorage {
                                 action.storage_view().expect("actual pre-tail storage"),
                                 parent,
                                 "script",
+                            )?
+                            || Self::html_local_in(
+                                control,
+                                action.storage_view().expect("actual pre-tail storage"),
+                                parent,
+                                "style",
                             )?;
                         if children_changed {
                             payload_write::<Option<FormEffects>>(control, 1)?;

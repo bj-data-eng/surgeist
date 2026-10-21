@@ -73,6 +73,9 @@ pub enum DomStyleUnavailable {
 /// Failure retains all acknowledged external work inside the composing owners.
 #[derive(Debug)]
 pub enum DomStyleRuntimeError {
+    /// Original parsed association inputs remain under canonical DOM custody;
+    /// no live #840 admission/execution service has consumed them.
+    PendingParsedAssociations(surgeist_dom::DomParsedHtmlAssociationId),
     /// Canonical source admission or qualification failed.
     Dom(DomError),
     /// The CSSOM owner refused its actual mutation.
@@ -1582,7 +1585,13 @@ impl DomSession {
                 ),
             });
         }
-        let reject = if dom.has_style_cssom_roots() {
+        let pending_parsed = dom
+            .pending_parsed_html_associations()
+            .next()
+            .map(|entry| entry.id());
+        let reject = if let Some(id) = pending_parsed {
+            Some(DomStyleRuntimeError::PendingParsedAssociations(id))
+        } else if dom.has_style_cssom_roots() {
             Some(DomStyleRuntimeError::PreboundSession)
         } else if let Some(status) = dom.pending_source_edit() {
             Some(DomStyleRuntimeError::SourcePending(status.operation()))
@@ -2313,6 +2322,7 @@ use crate::{
 use surgeist_dom::DomStyleInlineCspObservation;
 #[cfg(test)]
 mod tests {
+    mod parsed_associations;
     mod preferred_sets;
     pub(super) fn session_limits(style: super::DomStyleRuntimeLimits) -> super::DomSessionLimits {
         super::DomSessionLimits {

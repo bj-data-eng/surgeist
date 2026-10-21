@@ -194,6 +194,23 @@ impl SessionStorage {
         detached: Option<usize>,
         href_changed: bool,
     ) -> Result<(), SessionError> {
+        self.base_change_inner(c, node, detached, href_changed)?;
+        self.record_association(
+            c,
+            node,
+            pending_association::OccurrenceKind::BaseChanged,
+            detached,
+            None,
+            false,
+        )
+    }
+    fn base_change_inner(
+        &mut self,
+        c: &mut ParseControl,
+        node: usize,
+        detached: Option<usize>,
+        href_changed: bool,
+    ) -> Result<(), SessionError> {
         c.require_identity(&self.control)?;
         if !is_base(
             self.construction
@@ -785,6 +802,102 @@ mod tests {
     }
 
     #[test]
+    fn original_base_wrapper_association_rows_exact_one_short_and_cleanup() {
+        for short in [false, true] {
+            let request = request("<base href=A>");
+            let (mut c, mut session, capability) =
+                super::super::tests::fresh_script_owner(&request);
+            let root = session.root(&mut c).unwrap();
+            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let base = node(&mut session, &mut c, &mut lexer);
+            session
+                .qualify_base_response(&mut c, &base, &capability)
+                .unwrap();
+            let storage = session.active_mut().unwrap();
+            let before = storage
+                .construction
+                .node_at(root.index)
+                .unwrap()
+                .child_at(0)
+                .map(|n| n.position());
+            storage
+                .insert_indices_with_cause(
+                    &mut c,
+                    root.index,
+                    base.index,
+                    before,
+                    InsertionCause::Parser,
+                )
+                .unwrap();
+            // Finish the existing intrinsic owner first. The wrapper must then
+            // retain exactly one Document summary, one actual occurrence receiver,
+            // and its one registry location. These are three owned logical rows;
+            // the Base input and provider already belong to this original owner.
+            storage
+                .base_change_inner(&mut c, base.index, None, false)
+                .unwrap();
+            let prior = c
+                .usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current;
+            // Earlier tokenizer bootstrap has a larger transient logical peak
+            // than this retained prefix. Keep that original prefix and cap, and
+            // use real controlled fixture storage to select the later boundary.
+            let mut pressure = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
+            let available = 3 - u64::from(short);
+            let pressure_rows = request.limits().auxiliary_entries() - prior - available;
+            for _ in 0..pressure_rows {
+                pressure.try_push(&mut c, 0u8).unwrap();
+            }
+            let result = storage.base_change(&mut c, base.index, None, false);
+            if short {
+                assert!(matches!(
+                    result,
+                    Err(SessionError::Stop(ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::AuxiliaryEntries,
+                        ..
+                    }))
+                ));
+                let stop = c.stop();
+                assert_eq!(
+                    storage.base_change(&mut c, base.index, None, false).err(),
+                    stop.map(SessionError::Stop)
+                );
+                assert_eq!(c.stop(), stop);
+                assert!(
+                    !storage
+                        .payloads
+                        .values
+                        .iter()
+                        .any(|row| matches!(row, RetainedPayload::AssociationOccurrence(_)))
+                );
+            } else {
+                result.unwrap();
+                assert_eq!(
+                    c.usage()
+                        .resource(HtmlParseResource::AuxiliaryEntries)
+                        .current,
+                    prior + pressure_rows + 3
+                );
+                assert_eq!(
+                    storage
+                        .payloads
+                        .values
+                        .iter()
+                        .filter(|row| matches!(row, RetainedPayload::AssociationOccurrence(_)))
+                        .count(),
+                    1
+                );
+            }
+            assert_value(&session, &base, "https://base.test/A");
+            pressure.release(&mut c).unwrap();
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            super::super::tests::storage_zero(&c);
+        }
+    }
+
+    #[test]
     fn actual_first_href_exact_one_short_and_pre_cancel_preserve_binding_and_cleanup() {
         for short in [false, true] {
             let request = request("<base href=A>");
@@ -882,7 +995,7 @@ mod tests {
                 remaining - total + u64::from(short),
             )
             .unwrap();
-            let result = storage.base_change(&mut c, base.index, None, false);
+            let result = storage.base_change_inner(&mut c, base.index, None, false);
             if short {
                 assert!(matches!(
                     result,
