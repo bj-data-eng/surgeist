@@ -422,6 +422,328 @@ fn destroyed_import_waiting_target_is_retired_without_dispatching_to_a_live_repl
 }
 
 #[test]
+fn canceled_destroyed_import_waiting_retirement_preserves_exact_row_for_one_retry() {
+    let (mut session, mut context, document, parent, _, _) = fixture();
+    let mut dom = session.dom();
+    let (style, _) = detached(&mut dom, document, "@import 'pending.css';p{color:red}");
+    connect(&mut dom, &mut context, style, parent);
+    let historical_dom = dom.snapshot();
+    let sheet = association(&historical_dom, style).unwrap();
+    let historical_cssom = cssom(&context, document);
+    assert!(matches!(
+        historical_cssom
+            .sheet(sheet.id())
+            .unwrap()
+            .authored()
+            .rules()[0],
+        CssRule::Import(_)
+    ));
+    let pending = (document.node(), sheet.id().clone());
+    let mut dispatcher = registry();
+    listen(&mut dom, &mut dispatcher, style);
+    drive(&mut dom, &mut context, DomSourceEdit::detach(style));
+    drive(&mut dom, &mut context, DomSourceEdit::destroy(style));
+    let retired_dom = dom.snapshot();
+    let removed_cssom = cssom(&context, document);
+    assert!(matches!(retired_dom.node(style), Err(DomError::StaleNode)));
+    assert_eq!(
+        context.styles.pending_sheet(0).unwrap(),
+        Some(pending.clone())
+    );
+    assert_eq!(context.styles.waiting_resources().unwrap(), 1);
+    let stopped = AtomicBool::new(true);
+    assert!(matches!(
+        DomStyleRuntime::run_networking(
+            &mut dom,
+            &mut dispatcher,
+            &mut context,
+            event_limits(),
+            &stopped
+        ),
+        Err(DomStyleRuntimeError::Dom(DomError::Cancelled))
+    ));
+    assert_eq!(context.styles.pending_sheet(0).unwrap(), Some(pending));
+    assert_eq!(context.styles.waiting_resources().unwrap(), 1);
+    assert_eq!(dom.snapshot().stamp(), retired_dom.stamp());
+    assert_eq!(
+        cssom(&context, document).revision(),
+        removed_cssom.revision()
+    );
+    assert!(context.events.is_empty());
+    match DomStyleRuntime::run_networking(
+        &mut dom,
+        &mut dispatcher,
+        &mut context,
+        event_limits(),
+        &cancel(),
+    )
+    .unwrap()
+    {
+        DomStyleNetworkingProgress::TargetDestroyed { target, .. } => assert_eq!(target, style),
+        other => panic!("exact canceled intention must retire on retry: {other:?}"),
+    }
+    assert_eq!(context.styles.waiting_resources().unwrap(), 0);
+    assert!(context.styles.pending_sheet(0).unwrap().is_none());
+    empty(&mut dom, &mut dispatcher, &mut context);
+    assert!(context.events.is_empty());
+    assert_eq!(dom.snapshot().stamp(), retired_dom.stamp());
+    assert_eq!(
+        cssom(&context, document).revision(),
+        removed_cssom.revision()
+    );
+    assert_eq!(association(&historical_dom, style).unwrap(), sheet);
+    assert!(
+        historical_cssom
+            .sheet(sheet.id())
+            .unwrap()
+            .inputs()
+            .owner
+            .is_some()
+    );
+    assert!(
+        removed_cssom
+            .sheet(sheet.id())
+            .unwrap()
+            .inputs()
+            .owner
+            .is_none()
+    );
+}
+
+#[test]
+fn live_import_waits_survive_exact_retirement_and_do_not_overtake_queued_fifo() {
+    let (mut session, mut context, document, parent, _, _) = fixture();
+    let mut dom = session.dom();
+    let mut dispatcher = registry();
+    let (retired, _) = detached(&mut dom, document, "@import 'retired.css';");
+    connect(&mut dom, &mut context, retired, parent);
+    let old_dom = dom.snapshot();
+    let old_sheet = association(&old_dom, retired).unwrap();
+    let old_cssom = cssom(&context, document);
+    let (live_a, _) = detached(&mut dom, document, "@import 'live-a.css';");
+    connect(&mut dom, &mut context, live_a, parent);
+    let live_a_sheet = association(&dom.snapshot(), live_a).unwrap();
+    let (queued_a, _) = detached(&mut dom, document, "a{color:red}");
+    connect(&mut dom, &mut context, queued_a, parent);
+    let (live_b, _) = detached(&mut dom, document, "@import 'live-b.css';");
+    connect(&mut dom, &mut context, live_b, parent);
+    let live_b_sheet = association(&dom.snapshot(), live_b).unwrap();
+    let (queued_b, _) = detached(&mut dom, document, "b{color:blue}");
+    connect(&mut dom, &mut context, queued_b, parent);
+    for target in [retired, live_a, queued_a, live_b, queued_b] {
+        listen(&mut dom, &mut dispatcher, target);
+    }
+    assert_eq!(context.styles.waiting_resources().unwrap(), 3);
+    drive(&mut dom, &mut context, DomSourceEdit::detach(retired));
+    drive(&mut dom, &mut context, DomSourceEdit::destroy(retired));
+    let current_cssom = cssom(&context, document);
+    let mut cancellation = None;
+    let mut deliveries = Vec::new();
+    for _ in 0..3 {
+        let before_callbacks = context.events.len();
+        match DomStyleRuntime::run_networking(
+            &mut dom,
+            &mut dispatcher,
+            &mut context,
+            event_limits(),
+            &cancel(),
+        )
+        .unwrap()
+        {
+            DomStyleNetworkingProgress::TargetDestroyed { task, target } => {
+                assert_eq!(target, retired);
+                assert!(cancellation.replace(task).is_none());
+                assert_eq!(context.events.len(), before_callbacks);
+            }
+            DomStyleNetworkingProgress::Complete { task, receipt } => {
+                assert_eq!(receipt.event_type(), DomEventType::Load);
+                assert!(receipt.failures().is_empty());
+                deliveries.push(task);
+            }
+            other => panic!("live waits must not hide retired or queued work: {other:?}"),
+        }
+    }
+    let cancellation = cancellation.expect("one exact retired intention");
+    assert_eq!(deliveries.len(), 2);
+    assert_ne!(deliveries[0], deliveries[1]);
+    assert!(deliveries.iter().all(|task| *task != cancellation));
+    assert_eq!(
+        context.events,
+        vec![
+            (DomEventType::Load, queued_a, document),
+            (DomEventType::Load, queued_b, document)
+        ]
+    );
+    assert_eq!(context.styles.waiting_resources().unwrap(), 2);
+    assert_eq!(
+        context.styles.pending_sheet(0).unwrap(),
+        Some((document.node(), live_a_sheet.id().clone()))
+    );
+    assert_eq!(
+        context.styles.pending_sheet(1).unwrap(),
+        Some((document.node(), live_b_sheet.id().clone()))
+    );
+    assert!(context.styles.pending_sheet(2).unwrap().is_none());
+    empty(&mut dom, &mut dispatcher, &mut context);
+    assert_eq!(context.events.len(), 2);
+    assert_eq!(association(&dom.snapshot(), live_a).unwrap(), live_a_sheet);
+    assert_eq!(association(&dom.snapshot(), live_b).unwrap(), live_b_sheet);
+    assert_eq!(
+        cssom(&context, document).revision(),
+        current_cssom.revision()
+    );
+    assert!(
+        cssom(&context, document)
+            .sheet(old_sheet.id())
+            .unwrap()
+            .inputs()
+            .owner
+            .is_none()
+    );
+    assert_eq!(association(&old_dom, retired).unwrap(), old_sheet);
+    assert!(
+        old_cssom
+            .sheet(old_sheet.id())
+            .unwrap()
+            .inputs()
+            .owner
+            .is_some()
+    );
+}
+
+#[test]
+fn retired_shadow_import_wait_releases_last_session_custody_only_after_reconciliation() {
+    // Only the shadow root is bound. A live unrelated Document-root binding
+    // would truthfully remain a separate graceful-shutdown obligation.
+    let mut owner = Dom::new(
+        DomLimits::new(
+            256,
+            200_000,
+            1024,
+            1024,
+            1024,
+            32,
+            2_000_000,
+            DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_event_recipients(
+            DomEventRecipientLimits::new(64, 16_000_000, 16_000_000, 4_000_000).unwrap(),
+        )
+        .with_dispatch_custody(
+            DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap(),
+        ),
+    )
+    .unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let host = batch.create_element_ns(&document, Namespace::html(), "div");
+    let shadow = batch.attach_shadow(&host, DomShadowRootInit::new(HtmlShadowRootMode::Open));
+    batch.insert_before(&host, &document, None);
+    let made = owner.apply(batch, &cancel()).unwrap();
+    let document = made.document(&document).unwrap();
+    let host = made.created(&host).unwrap().unwrap();
+    let shadow = made.created(&shadow).unwrap().unwrap();
+    let mut session = DomSession::new(owner, limits()).unwrap();
+    let mut context = Context {
+        styles: session.style_execution(),
+        source: session.source_execution(),
+        events: Vec::new(),
+        observations: Vec::new(),
+        replacement: None,
+    };
+    context
+        .styles
+        .bind_root(
+            &session.dom(),
+            "only-shadow".into(),
+            &mut Some(DomStyleCssomRoot::new(
+                shadow,
+                CssomStore::new(Default::default(), Default::default()).unwrap(),
+            )),
+            &cancel(),
+        )
+        .unwrap();
+    let mut dispatcher = registry();
+    let (target, historical_dom, historical_cssom, sheet) = {
+        let mut dom = session.dom();
+        let (target, _) = detached(&mut dom, document, "@import 'shadow.css';p{color:red}");
+        connect(&mut dom, &mut context, target, shadow);
+        listen(&mut dom, &mut dispatcher, target);
+        let historical_dom = dom.snapshot();
+        let sheet = association(&historical_dom, target).unwrap();
+        let historical_cssom = context.styles.snapshot(shadow).unwrap().unwrap();
+        assert!(matches!(
+            historical_cssom
+                .sheet(sheet.id())
+                .unwrap()
+                .authored()
+                .rules()[0],
+            CssRule::Import(_)
+        ));
+        assert_eq!(sheet.root(), shadow);
+        assert_eq!(context.styles.waiting_resources().unwrap(), 1);
+        drive(&mut dom, &mut context, DomSourceEdit::detach(host));
+        drive(&mut dom, &mut context, DomSourceEdit::destroy(host));
+        for retired in [host, shadow, target] {
+            assert!(matches!(
+                dom.snapshot().node(retired),
+                Err(DomError::StaleNode)
+            ));
+        }
+        assert!(context.styles.snapshot(shadow).unwrap().is_none());
+        assert_eq!(
+            context.styles.pending_sheet(0).unwrap(),
+            Some((shadow, sheet.id().clone()))
+        );
+        (target, historical_dom, historical_cssom, sheet)
+    };
+    let mut session = match session.try_shutdown() {
+        DomShutdownOutcome::Pending { session, reason } => {
+            assert_eq!(reason, DomShutdownReason::CriticalResources);
+            session
+        }
+        other => panic!("actual waiting custody survives root retirement: {other:?}"),
+    };
+    match DomStyleRuntime::run_networking(
+        &mut session.dom(),
+        &mut dispatcher,
+        &mut context,
+        event_limits(),
+        &cancel(),
+    )
+    .unwrap()
+    {
+        DomStyleNetworkingProgress::TargetDestroyed {
+            target: retired, ..
+        } => assert_eq!(retired, target),
+        other => panic!("retired shadow wait must be reconciled: {other:?}"),
+    }
+    assert!(context.events.is_empty());
+    assert_eq!(context.styles.waiting_resources().unwrap(), 0);
+    assert!(context.styles.pending_sheet(0).unwrap().is_none());
+    empty(&mut session.dom(), &mut dispatcher, &mut context);
+    assert!(matches!(
+        session.try_shutdown(),
+        DomShutdownOutcome::Complete
+    ));
+    assert_eq!(association(&historical_dom, target).unwrap(), sheet);
+    assert_eq!(historical_dom.shadow_root(shadow).unwrap().host(), host);
+    assert!(
+        historical_cssom
+            .sheet(sheet.id())
+            .unwrap()
+            .inputs()
+            .owner
+            .is_some()
+    );
+    assert!(matches!(
+        context.styles.snapshot(shadow),
+        Err(DomStyleRuntimeError::SessionUnavailable)
+    ));
+}
+
+#[test]
 fn already_queued_parse_recovery_load_survives_detachment_and_retains_old_objects() {
     let (mut session, mut context, document, parent, _, _) = fixture();
     let mut dom = session.dom();

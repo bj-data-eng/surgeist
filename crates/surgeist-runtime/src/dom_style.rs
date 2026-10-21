@@ -429,7 +429,8 @@ pub struct DomStyleNetworkingTaskId {
 /// Actual task delivery or a retained continuation.
 #[derive(Debug)]
 pub enum DomStyleNetworkingProgress {
-    /// No queued networking task exists (critical-resource waits are separate).
+    /// No queued task or destroyed native wait exists. Live critical-resource
+    /// waits remain pending.
     Empty,
     /// Original synchronous execution blocks this exact FIFO head, including
     /// native tasks in another Document. The exact phase remains retained,
@@ -447,7 +448,8 @@ pub enum DomStyleNetworkingProgress {
         /// Actual completed shared dispatch.
         receipt: DomEventDispatchReceipt,
     },
-    /// The exact target generation was retired before task dispatch began.
+    /// The exact target generation was retired before task dispatch began,
+    /// including a native intention still waiting for critical resources.
     TargetDestroyed {
         /// Exact canceled task identity.
         task: DomStyleNetworkingTaskId,
@@ -2245,8 +2247,11 @@ impl DomStyleRuntime {
             state: self.qualified(dom)?,
         })
     }
-    /// Execute the actual networking FIFO head. The actual task never leaves
-    /// its session bank; all owner borrows end before entering caller work.
+    /// Execute the actual networking FIFO head, or retire an earlier native
+    /// resource wait whose exact target generation was destroyed after Source
+    /// cleanup. Live waits remain pending and never become dispatchable here.
+    /// The actual task never leaves its session bank before consumption; all
+    /// owner borrows end before entering caller work.
     pub fn run_networking<C: DomStyleEventContext>(
         dom: &mut DomEventDom<'_>,
         dispatcher: &mut DomEventDispatcher<C>,
@@ -2264,6 +2269,37 @@ impl DomStyleRuntime {
                 if matches!(entry, Completion::Queued(_)) {
                     queued = Some(index);
                     break;
+                }
+                if let Completion::Waiting(task) = entry
+                    && matches!(
+                        task.token.origin(),
+                        DomStyleNotificationOrigin::NativeSource(_)
+                    )
+                {
+                    // Owner clearing, detachment and adoption do not retire an
+                    // identity. Only the actual original generation is probed;
+                    // neither a later sheet nor a replacement node is followed.
+                    state.step(cancel)?;
+                    match dom.snapshot().node(task.token.target()) {
+                        Err(DomError::StaleNode) => {
+                            let target = task.token.target();
+                            let id = task.id();
+                            for _ in &state.completions[index + 1..] {
+                                state.step(cancel)?;
+                            }
+                            // Current storage already includes actual vector
+                            // capacity and this row's independent root custody.
+                            // Admit the returned value before consuming either.
+                            state.admit(size_of::<DomStyleNetworkingProgress>(), cancel)?;
+                            state.completions.remove(index);
+                            return Ok(DomStyleNetworkingProgress::TargetDestroyed {
+                                task: id,
+                                target,
+                            });
+                        }
+                        Err(error) => return Err(error.into()),
+                        Ok(_) => {}
+                    }
                 }
             }
             let Some(index) = queued else {
@@ -2683,6 +2719,7 @@ mod tests {
     mod meta_source;
     mod parsed_associations;
     mod preferred_sets;
+    mod waiting_retirement;
     pub(super) fn session_limits(style: super::DomStyleRuntimeLimits) -> super::DomSessionLimits {
         super::DomSessionLimits {
             source_events: crate::dom_dialog::DomSourceEventRuntimeLimits {
