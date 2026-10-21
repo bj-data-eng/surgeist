@@ -232,11 +232,36 @@ fn exact_original_artifact_transfers_twice_without_processing_and_survives_repor
     assert!(weak.upgrade().is_none());
 }
 #[test]
-fn qualified_original_policy_cannot_be_replaced_by_offline_style_binding() {
+fn qualified_original_style_uses_its_policy_without_offline_binding_or_final_policy_substitution() {
     let mut service = Processor::new();
     let report = processed(
-        "<!doctype html><meta http-equiv=content-security-policy content='native'><style>body{color:red}</style>",
+        "<!doctype html><head><meta http-equiv=content-security-policy content='policy A'><style nonce='original-nonce'>body{color:red}</style><meta http-equiv=content-security-policy content='policy B'>",
         &mut service,
+    );
+    assert_eq!(service.calls, 2);
+    let policy_b = original(&report).clone();
+    let mut records = report.pending_associations();
+    let policy_a = loop {
+        match records.advance() {
+            surgeist_html_parser::HtmlParsePendingAssociationStep::Occurrence(row)
+                if row.requires_processing() && row.style().is_some() =>
+            {
+                break row.context().csp_association().unwrap().clone();
+            }
+            surgeist_html_parser::HtmlParsePendingAssociationStep::Complete => {
+                panic!("actual original Style occurrence")
+            }
+            _ => (),
+        }
+    };
+    assert_ne!(policy_a.policy().id(), policy_b.policy().id());
+    assert_eq!(
+        policy_a.latest().unwrap().content(),
+        &DocumentString::from("policy A")
+    );
+    assert_eq!(
+        policy_b.latest().unwrap().content(),
+        &DocumentString::from("policy B")
     );
     let (mut dom, env) = setup();
     let installed = dom
@@ -249,24 +274,73 @@ fn qualified_original_policy_cannot_be_replaced_by_offline_style_binding() {
         )
         .unwrap();
     let id = installed.pending_association().unwrap();
+    let document = installed.document();
     let before = dom.snapshot().stamp();
     let cancel = AtomicBool::new(false);
+    assert_eq!(
+        dom.parsed_html_dispatch_cursor()
+            .advance(&cancel)
+            .unwrap()
+            .unwrap()
+            .state(),
+        DomParsedHtmlExecutionState::Unstarted,
+    );
+    let processing =
+        DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 1_000_000, 1024).unwrap();
     let mut hold = dom
-        .begin_parsed_html_style(
-            id,
-            DomParsedHtmlAssociationLimits::new(16_000_000, 1_000_000, 1_000_000, 1024).unwrap(),
-            &cancel,
-        )
+        .begin_parsed_html_style(id, processing, &cancel)
         .unwrap();
-    assert!(matches!(
-        hold.advance(&cancel),
-        Err(DomParsedHtmlStyleError::PolicyContext {
-            requirement: surgeist_html_parser::HtmlParseAssociationContextRequirement::Known
-        })
-    ));
+    assert_eq!(
+        hold.advance(&cancel)
+            .expect("qualified original policy must reach its actual inline request"),
+        DomParsedHtmlStylePhase::InlinePolicyPending,
+    );
     drop(hold);
-    assert_eq!(dom.snapshot().stamp(), before);
-    assert_eq!(service.calls, 1);
+    {
+        let view = dom.parsed_html_style_prefix(id).unwrap();
+        assert!(
+            view.initial_policy_request().is_none(),
+            "known original policy supplies no offline binding request or slot"
+        );
+        let request = view.inline_policy_request().unwrap();
+        assert_eq!(request.action(), HtmlStyleUpdateAction::CheckInlineCsp);
+        assert!(
+            request.text().is_empty(),
+            "first insertion precedes parser text"
+        );
+        assert_eq!(
+            request.nonce(),
+            Some(&DocumentString::from("original-nonce"))
+        );
+        assert_eq!(request.policy().document(), policy_a.document());
+        assert_eq!(request.policy().generation(), policy_a.generation());
+        assert_eq!(request.policy().policy(), policy_a.policy());
+        let mut allow = |_: HtmlCspLayout| Ok::<_, ()>(());
+        let policy = request.policy().policy();
+        let HtmlCspNativePolicy::External(native) = policy
+            .borrow_native_with::<RecordedPolicy, _>(&service.profile, &mut allow)
+            .unwrap()
+        else {
+            panic!("original processor artifact A")
+        };
+        assert_eq!(native.text, DocumentString::from("policy A"));
+        assert_eq!(native.padding, [37; 1024]);
+        assert_eq!(request.qualification().contribution(), id);
+        assert_eq!(request.qualification().document(), document);
+    }
+    let snapshot = dom.snapshot();
+    assert_eq!(snapshot.stamp(), before);
+    assert_eq!(associated(&snapshot, document).policy(), policy_b.policy());
+    assert_eq!(
+        dom.parsed_html_dispatch_cursor()
+            .advance(&cancel)
+            .unwrap()
+            .unwrap()
+            .state(),
+        DomParsedHtmlExecutionState::Unstarted,
+        "request preparation does not execute the Style"
+    );
+    assert_eq!(service.calls, 2);
     assert!(dom.pending_parsed_html_associations().next().is_some());
 }
 
