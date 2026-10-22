@@ -27,6 +27,14 @@ impl FontGeneration {
     }
 }
 
+#[cfg(test)]
+impl FontGeneration {
+    #[must_use]
+    pub(crate) const fn exhausted_for_test() -> Self {
+        Self(u64::MAX)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Stats {
     layout_hits: usize,

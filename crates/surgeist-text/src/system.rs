@@ -254,3 +254,69 @@ fn push_style_properties(
         authored.strikethrough.brush().to_parley(),
     ));
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exhausted_font_refresh_preserves_cached_layout_stats_and_retained_fonts() {
+        let mut system = System::default();
+        system.font_generation = FontGeneration::exhausted_for_test();
+        let source = Source::new("retained font refresh");
+        let layout = system
+            .layout(source.clone(), Style::default(), Options::default())
+            .expect("the current catalogue builds the exhaustion fixture");
+        let key = layout.key();
+        assert_eq!(key.font_generation(), system.font_generation);
+        assert_eq!(key.font_generation().get(), u64::MAX);
+        assert_eq!(system.cache.len(), 1);
+
+        let lines = layout.lines();
+        let metrics = layout.metrics().size();
+        let retained_font = layout
+            .glyph_runs()
+            .into_iter()
+            .find_map(|run| run.font().data().cloned())
+            .expect("the real layout retains a resolved font");
+        let font_bytes = retained_font.bytes().to_vec();
+        let font_index = retained_font.index();
+        assert!(!font_bytes.is_empty());
+        let stats = system.stats();
+
+        let refresh = system.refresh_fonts();
+        assert!(
+            refresh.is_err(),
+            "an exhausted font generation must refuse refresh rather than reuse its identity: {refresh:?}"
+        );
+        assert_eq!(system.font_generation, key.font_generation());
+        assert_eq!(system.stats(), stats);
+        assert_eq!(system.cache.len(), 1);
+        let cached = system
+            .cache
+            .get(&key)
+            .expect("the refused refresh preserves the actual cached entry");
+        assert_eq!(cached.lines(), lines);
+        assert_eq!(cached.metrics().size(), metrics);
+        assert_eq!(cached.source().text(), source.text());
+
+        let reused = system
+            .layout(source, Style::default(), Options::default())
+            .expect("the unchanged catalogue still serves the same layout");
+        assert_eq!(reused.key(), key);
+        assert_eq!(reused.lines(), lines);
+        assert_eq!(system.stats().layout_hits(), stats.layout_hits() + 1);
+        assert_eq!(system.stats().layout_misses(), stats.layout_misses());
+        assert_eq!(system.stats().font_refreshes(), stats.font_refreshes());
+        assert_eq!(system.stats().invalidations(), stats.invalidations());
+
+        drop(reused);
+        drop(system);
+        assert_eq!(layout.key(), key);
+        assert_eq!(layout.lines(), lines);
+        assert_eq!(layout.metrics().size(), metrics);
+        drop(layout);
+        assert_eq!(retained_font.index(), font_index);
+        assert_eq!(retained_font.bytes(), font_bytes);
+    }
+}
