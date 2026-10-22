@@ -405,3 +405,6 @@ fn accessibility_omits_character_geometry_for_actual_styled_grapheme_pieces() {
         assert_eq!(projected.focus, end);
     }
 }
+
+#[path = "utf16_interactions/original_surrogate_analysis.rs"]
+mod original_surrogate_analysis;
