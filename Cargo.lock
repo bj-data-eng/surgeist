@@ -3894,8 +3894,11 @@ name = "surgeist-text"
 version = "0.1.0"
 dependencies = [
  "accesskit",
+ "fontique",
+ "linebender_resource_handle",
  "parley",
  "pollster",
+ "skrifa",
  "surgeist-render",
 ]
 

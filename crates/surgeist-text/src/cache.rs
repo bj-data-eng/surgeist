@@ -2,9 +2,10 @@ use std::hash::{Hash, Hasher};
 
 use super::source_model::ValidatedSpan;
 use super::{
-    Brush, Decoration, DecorationBrush, DecorationOffset, DecorationThickness, Font, Id, Indent,
-    InlineBox, LineHeight, Options, Size, Slant, Source, SourceRevision, Style, ValidatedOptions,
-    ValidatedSource, ValidatedStyle, VerticalAlign, Weight, Width,
+    Brush, Decoration, DecorationBrush, DecorationOffset, DecorationThickness, Font,
+    FontCatalogueIdentity, Id, Indent, InlineBox, LineHeight, Options, Size, Slant, Source,
+    SourceRevision, Style, ValidatedOptions, ValidatedSource, ValidatedStyle, VerticalAlign,
+    Weight, Width,
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -22,8 +23,11 @@ impl FontGeneration {
     }
 
     #[must_use]
-    pub const fn next(self) -> Self {
-        Self(self.0.saturating_add(1))
+    pub const fn checked_next(self) -> Option<Self> {
+        match self.0.checked_add(1) {
+            Some(value) => Some(Self(value)),
+            None => None,
+        }
     }
 }
 
@@ -81,12 +85,12 @@ impl Stats {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Key {
     source: SourceKey,
     styles: StyleKey,
     options: OptionsKey,
-    font_generation: FontGeneration,
+    font_catalogue: FontCatalogueIdentity,
     pub(crate) options_width: Option<OrderedF32>,
 }
 
@@ -96,7 +100,7 @@ impl Key {
         source: &ValidatedSource,
         style: &ValidatedStyle,
         options: ValidatedOptions,
-        font_generation: FontGeneration,
+        font_catalogue: &FontCatalogueIdentity,
     ) -> Self {
         let identity = source.identity();
         let authored_options = options.authored();
@@ -111,29 +115,35 @@ impl Key {
             source: source_key,
             styles: style_key,
             options: options_key,
-            font_generation,
+            font_catalogue: font_catalogue.clone(),
             options_width: authored_options.width.map(OrderedF32),
         }
     }
 
     #[must_use]
-    pub const fn source(self) -> SourceKey {
+    pub const fn source(&self) -> SourceKey {
         self.source
     }
 
     #[must_use]
-    pub const fn styles(self) -> StyleKey {
+    pub const fn styles(&self) -> StyleKey {
         self.styles
     }
 
     #[must_use]
-    pub const fn options(self) -> OptionsKey {
+    pub const fn options(&self) -> OptionsKey {
         self.options
     }
 
     #[must_use]
-    pub const fn font_generation(self) -> FontGeneration {
-        self.font_generation
+    pub const fn font_generation(&self) -> FontGeneration {
+        self.font_catalogue.generation()
+    }
+
+    /// Returns the authentic catalogue publication used by this request.
+    #[must_use]
+    pub const fn font_catalogue(&self) -> &FontCatalogueIdentity {
+        &self.font_catalogue
     }
 }
 

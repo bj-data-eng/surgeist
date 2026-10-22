@@ -53,6 +53,7 @@ impl error::Error for Error {
 pub enum ErrorCode {
     FontSystemUnavailable,
     FontLoadFailed,
+    FontGenerationExhausted,
     InvalidRange,
     InvalidStyle,
     LayoutFailed,
@@ -62,6 +63,17 @@ pub enum ErrorCode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErrorDetail {
+    InvalidFontContainer,
+    InvalidFontFace {
+        index: u32,
+    },
+    FontFacesNotAdmitted {
+        expected: usize,
+        admitted: usize,
+    },
+    FontGenerationExhausted {
+        generation: u64,
+    },
     InvalidSourceRange {
         start: usize,
         end: usize,

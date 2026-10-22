@@ -1,6 +1,8 @@
 use super::layout::decoration_top;
 use super::*;
 
+mod catalogue;
+
 #[test]
 fn rejects_invalid_utf8_span_boundary() {
     let mut system = System::default();
@@ -985,7 +987,8 @@ fn cache_key_requires_normalized_parts() {
     let style = ValidatedStyle::try_from(Style::default()).expect("style validates");
     let options = ValidatedOptions::try_from(Options::default()).expect("options validate");
 
-    let key = Key::from_validated(&source, &style, options, FontGeneration::initial());
+    let system = System::default();
+    let key = Key::from_validated(&source, &style, options, system.font_catalogue_identity());
 
     assert_eq!(key.source().id(), Some(Id::from_u64(1)));
     assert_eq!(key.source().revision().get(), 2);
@@ -1361,10 +1364,19 @@ fn inline_box_vertical_align_changes_source_cache_key() {
     let baseline_source = ValidatedSource::try_from(baseline).expect("valid source");
     let shifted_source = ValidatedSource::try_from(shifted).expect("valid source");
 
-    let baseline_key =
-        Key::from_validated(&baseline_source, &style, options, FontGeneration::initial());
-    let shifted_key =
-        Key::from_validated(&shifted_source, &style, options, FontGeneration::initial());
+    let system = System::default();
+    let baseline_key = Key::from_validated(
+        &baseline_source,
+        &style,
+        options,
+        system.font_catalogue_identity(),
+    );
+    let shifted_key = Key::from_validated(
+        &shifted_source,
+        &style,
+        options,
+        system.font_catalogue_identity(),
+    );
 
     assert_ne!(baseline_key.source(), shifted_key.source());
 }

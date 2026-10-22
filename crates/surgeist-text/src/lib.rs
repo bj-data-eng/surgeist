@@ -6,6 +6,7 @@
 //! application commands.
 
 mod cache;
+mod catalogue;
 mod composer;
 mod edit;
 mod error;
@@ -21,6 +22,7 @@ mod style_support;
 mod system;
 
 pub use cache::{FontGeneration, Key, OptionsKey, SourceKey, Stats, StyleKey};
+pub use catalogue::{FontCatalogueIdentity, FontCatalogueMode};
 pub use composer::{Composer, Mark, compose, source};
 pub use edit::{Edit, TextEdit};
 pub use error::{Error, ErrorCode, ErrorDetail, NumericRequirement, Result};

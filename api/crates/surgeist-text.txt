@@ -57,6 +57,7 @@ pub surgeist_text::Edit::Replace::text: alloc::string::String
 impl surgeist_text::Edit
 pub fn surgeist_text::Edit::normalize(self, source: &surgeist_text::Source) -> surgeist_text::Result<surgeist_text::TextEdit>
 pub enum surgeist_text::ErrorCode
+pub surgeist_text::ErrorCode::FontGenerationExhausted
 pub surgeist_text::ErrorCode::FontLoadFailed
 pub surgeist_text::ErrorCode::FontSystemUnavailable
 pub surgeist_text::ErrorCode::HitTestFailed
@@ -65,6 +66,14 @@ pub surgeist_text::ErrorCode::InvalidStyle
 pub surgeist_text::ErrorCode::LayoutFailed
 pub surgeist_text::ErrorCode::UnsupportedFeature
 pub enum surgeist_text::ErrorDetail
+pub surgeist_text::ErrorDetail::FontFacesNotAdmitted
+pub surgeist_text::ErrorDetail::FontFacesNotAdmitted::admitted: usize
+pub surgeist_text::ErrorDetail::FontFacesNotAdmitted::expected: usize
+pub surgeist_text::ErrorDetail::FontGenerationExhausted
+pub surgeist_text::ErrorDetail::FontGenerationExhausted::generation: u64
+pub surgeist_text::ErrorDetail::InvalidFontContainer
+pub surgeist_text::ErrorDetail::InvalidFontFace
+pub surgeist_text::ErrorDetail::InvalidFontFace::index: u32
 pub surgeist_text::ErrorDetail::InvalidNumericField
 pub surgeist_text::ErrorDetail::InvalidNumericField::field: &'static str
 pub surgeist_text::ErrorDetail::InvalidNumericField::requirement: surgeist_text::NumericRequirement
@@ -83,6 +92,9 @@ pub surgeist_text::ErrorDetail::UnsupportedCombination::reason: &'static str
 pub surgeist_text::ErrorDetail::UnsupportedTextStyle
 pub surgeist_text::ErrorDetail::UnsupportedTextStyle::feature: surgeist_text::TextStyleFeature
 pub surgeist_text::ErrorDetail::UnsupportedTextStyle::reason: surgeist_text::UnsupportedTextStyleReason
+pub enum surgeist_text::FontCatalogueMode
+pub surgeist_text::FontCatalogueMode::RegisteredOnly
+pub surgeist_text::FontCatalogueMode::System
 pub enum surgeist_text::FontVariant
 pub surgeist_text::FontVariant::Normal
 pub enum surgeist_text::Hit
@@ -346,15 +358,25 @@ pub const fn surgeist_text::Font::weight(self, weight: surgeist_text::Weight) ->
 pub const fn surgeist_text::Font::width(self, width: surgeist_text::Width) -> Self
 impl core::default::Default for surgeist_text::Font
 pub fn surgeist_text::Font::default() -> Self
+pub struct surgeist_text::FontCatalogueIdentity
+impl surgeist_text::FontCatalogueIdentity
+pub const fn surgeist_text::FontCatalogueIdentity::generation(&self) -> surgeist_text::FontGeneration
+impl core::cmp::Eq for surgeist_text::FontCatalogueIdentity
+impl core::cmp::PartialEq for surgeist_text::FontCatalogueIdentity
+pub fn surgeist_text::FontCatalogueIdentity::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_text::FontCatalogueIdentity
+pub fn surgeist_text::FontCatalogueIdentity::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for surgeist_text::FontCatalogueIdentity
+pub fn surgeist_text::FontCatalogueIdentity::hash<H: core::hash::Hasher>(&self, state: &mut H)
 pub struct surgeist_text::FontData
 impl surgeist_text::FontData
 pub fn surgeist_text::FontData::bytes(&self) -> &[u8]
 pub const fn surgeist_text::FontData::index(&self) -> u32
 pub struct surgeist_text::FontGeneration(_)
 impl surgeist_text::FontGeneration
+pub const fn surgeist_text::FontGeneration::checked_next(self) -> core::option::Option<Self>
 pub const fn surgeist_text::FontGeneration::get(self) -> u64
 pub const fn surgeist_text::FontGeneration::initial() -> Self
-pub const fn surgeist_text::FontGeneration::next(self) -> Self
 pub struct surgeist_text::FontRef
 impl surgeist_text::FontRef
 pub fn surgeist_text::FontRef::data(&self) -> core::option::Option<&surgeist_text::FontData>
@@ -416,11 +438,12 @@ pub fn surgeist_text::InlineMetricFacts::new(metrics: surgeist_text::Metrics, li
 pub fn surgeist_text::InlineMetricFacts::runs(&self) -> &[surgeist_text::RunMetricFact]
 pub struct surgeist_text::Key
 impl surgeist_text::Key
-pub const fn surgeist_text::Key::font_generation(self) -> surgeist_text::FontGeneration
-pub fn surgeist_text::Key::from_validated(source: &surgeist_text::ValidatedSource, style: &surgeist_text::ValidatedStyle, options: surgeist_text::ValidatedOptions, font_generation: surgeist_text::FontGeneration) -> Self
-pub const fn surgeist_text::Key::options(self) -> surgeist_text::OptionsKey
-pub const fn surgeist_text::Key::source(self) -> surgeist_text::SourceKey
-pub const fn surgeist_text::Key::styles(self) -> surgeist_text::StyleKey
+pub const fn surgeist_text::Key::font_catalogue(&self) -> &surgeist_text::FontCatalogueIdentity
+pub const fn surgeist_text::Key::font_generation(&self) -> surgeist_text::FontGeneration
+pub fn surgeist_text::Key::from_validated(source: &surgeist_text::ValidatedSource, style: &surgeist_text::ValidatedStyle, options: surgeist_text::ValidatedOptions, font_catalogue: &surgeist_text::FontCatalogueIdentity) -> Self
+pub const fn surgeist_text::Key::options(&self) -> surgeist_text::OptionsKey
+pub const fn surgeist_text::Key::source(&self) -> surgeist_text::SourceKey
+pub const fn surgeist_text::Key::styles(&self) -> surgeist_text::StyleKey
 pub struct surgeist_text::Layout
 impl surgeist_text::Layout
 pub fn surgeist_text::Layout::apply(&self, edit: surgeist_text::Edit) -> surgeist_text::Source
@@ -668,13 +691,16 @@ pub const fn surgeist_text::StyleKey::revision(self) -> u64
 pub struct surgeist_text::System
 impl surgeist_text::System
 pub fn surgeist_text::System::builder(&mut self, text: impl core::convert::Into<alloc::string::String>) -> surgeist_text::Builder<'_>
+pub const fn surgeist_text::System::font_catalogue_identity(&self) -> &surgeist_text::FontCatalogueIdentity
 pub fn surgeist_text::System::layout(&mut self, source: surgeist_text::Source, style: surgeist_text::Style, options: surgeist_text::Options) -> surgeist_text::Result<surgeist_text::Layout>
-pub fn surgeist_text::System::new(_options: surgeist_text::SystemOptions) -> surgeist_text::Result<Self>
+pub fn surgeist_text::System::new(options: surgeist_text::SystemOptions) -> surgeist_text::Result<Self>
 pub fn surgeist_text::System::refresh_fonts(&mut self) -> surgeist_text::Result<()>
+pub fn surgeist_text::System::register_fonts(&mut self, bytes: alloc::vec::Vec<u8>) -> surgeist_text::Result<()>
 pub const fn surgeist_text::System::stats(&self) -> surgeist_text::Stats
 impl core::default::Default for surgeist_text::System
 pub fn surgeist_text::System::default() -> Self
 pub struct surgeist_text::SystemOptions
+pub surgeist_text::SystemOptions::font_catalogue: surgeist_text::FontCatalogueMode
 pub struct surgeist_text::TextEdit
 impl surgeist_text::TextEdit
 pub fn surgeist_text::TextEdit::apply_to(&self, source: surgeist_text::Source) -> surgeist_text::Result<surgeist_text::Source>

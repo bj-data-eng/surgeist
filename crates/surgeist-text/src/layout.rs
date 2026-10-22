@@ -50,7 +50,7 @@ impl Layout {
 
     #[must_use]
     pub fn key(&self) -> Key {
-        self.key
+        self.key.clone()
     }
 
     #[must_use]

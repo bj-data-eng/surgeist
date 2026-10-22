@@ -21,9 +21,9 @@ boundary discrepancy; the snapshot import does not reconcile it.
 | Public front door | [src/lib.rs](src/lib.rs) and its reexports |
 | Source composition, ranges, validation, and edits | [src/source.rs](src/source.rs), [src/composer.rs](src/composer.rs), [src/range.rs](src/range.rs), [src/edit.rs](src/edit.rs) |
 | Text style inputs, supported features, options, and diagnostics | [src/style.rs](src/style.rs), [src/style_support.rs](src/style_support.rs), [src/options.rs](src/options.rs), [src/error.rs](src/error.rs) |
-| Layout construction and cache identity | [src/system.rs](src/system.rs), [src/cache.rs](src/cache.rs) |
+| Layout construction and cache identity | [src/system.rs](src/system.rs), [src/catalogue.rs](src/catalogue.rs), [src/cache.rs](src/cache.rs) |
 | Layout outputs, geometry, movement, and optional projections | [src/layout.rs](src/layout.rs), [src/geometry.rs](src/geometry.rs) |
-| Focused verification | [src/tests.rs](src/tests.rs), loaded by [src/lib.rs](src/lib.rs) |
+| Focused verification | [src/tests.rs](src/tests.rs), its [catalogue cases](src/tests/catalogue.rs), and owning module tests, loaded by [src/lib.rs](src/lib.rs) |
 
 [README.md](README.md) links usage, contract and attribution documentation.
 
@@ -31,6 +31,8 @@ boundary discrepancy; the snapshot import does not reconcile it.
 
 Select affected checks under the root process/resource policy; commands below
 run from this crate directory.
+
+The deterministic registered-font fixture is [Ahem](tests/fixtures/fonts/ahem/PROVENANCE.md).
 
 Default features are empty. Optional surfaces are `text-accessibility` and
 `text-render`. The current text-render bridge has pre-existing API mismatches

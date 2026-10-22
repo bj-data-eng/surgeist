@@ -9,6 +9,13 @@ The API has explicit limits: whitespace collapse and explicit base direction are
 unsupported, and inline-box alignment requests do not imply backend placement.
 See the [support reference](docs/reference.md) for the current contract.
 
+`System` can discover system fonts (the default) or use only explicitly
+registered font bytes. Registration and refresh publish a new issuer-qualified
+catalogue identity and invalidate current cached layouts atomically; retained
+layouts keep their selected font resources. See [font registration](docs/how-to.md#register-fonts-without-system-discovery).
+This catalogue foundation retains the current Parley engine; prepared text and
+layout-selected line finalization remain separate unfinished work.
+
 ## Start
 
 From the crate directory, run the focused layout test:

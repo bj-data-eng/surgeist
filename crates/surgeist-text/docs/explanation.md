@@ -48,7 +48,7 @@ requests. Consumers must distinguish retained intent from completed placement.
 A source identity is optional caller-supplied metadata; the crate does not define
 a document identity system. The [cache key](../src/cache.rs) includes source ID,
 revision, text and inline-box content, default and span styles, layout options,
-and a font generation. Identity alone therefore does not stand in for the
+and the authentic font catalogue publication (issuer identity and checked generation). Identity alone therefore does not stand in for the
 contents of a layout request.
 
 [TextEdit](../src/edit.rs) normalizes insertion, replacement, or deletion to a
@@ -67,6 +67,16 @@ layout request performs validation and shaping for that version.
 
 Each `System` owns its contexts and an in-memory layout cache. Repeated identical
 requests reuse cached layouts; counters expose hits, misses, font refreshes, and
-invalidations. `refresh_fonts()` changes the font generation and clears layouts.
-The current implementation does not recreate its font context or impose a cache
-size limit. See [src/system.rs](../src/system.rs) for the exact lifecycle.
+invalidations. Registration validates all faces off-side before publishing any
+of them. `refresh_fonts()` constructs a fresh configured font collection and
+source cache, then replays the actual retained registered bytes. Both operations
+check generation exhaustion first and invalidate layouts only on success.
+Failures preserve the current catalogue, cache and statistics.
+
+Registered-only mode excludes system discovery and fallback without inventing a
+generic default family. System mode keeps the provider's normal matching and
+fallback behavior. A publication identifies registrations and discovery; it is
+not an eager snapshot of every lazily loaded system font file. Each retained
+layout owns the actual selected font bytes, so refresh or System disposal does
+not invalidate historical output. No cache size limit is imposed. See
+[src/catalogue.rs](../src/catalogue.rs) and [src/system.rs](../src/system.rs).

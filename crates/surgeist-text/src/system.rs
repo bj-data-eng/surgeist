@@ -1,31 +1,31 @@
 use std::{borrow::Cow, collections::HashMap, ops::Range as StdRange};
 
 use parley::{
-    AlignmentOptions, FontContext, FontFamily, FontFeatures, FontVariations, GenericFamily,
-    LayoutContext, StyleProperty,
+    AlignmentOptions, FontFamily, FontFeatures, FontVariations, GenericFamily, LayoutContext,
+    StyleProperty,
 };
 
 use super::{
-    Brush, FontGeneration, Id, InlineBox, Key, Layout, Options, Range, Result, Source, Span, Stats,
-    Style, ValidatedOptions, ValidatedSource, ValidatedStyle,
+    Brush, FontCatalogueIdentity, FontCatalogueMode, Id, InlineBox, Key, Layout, Options, Range,
+    Result, Source, Span, Stats, Style, ValidatedOptions, ValidatedSource, ValidatedStyle,
 };
+
+use crate::catalogue::Catalogue;
 
 /// Shared font and layout system.
 pub struct System {
-    font_context: FontContext,
+    catalogue: Catalogue,
     layout_context: LayoutContext<Brush>,
     cache: HashMap<Key, Layout>,
-    font_generation: FontGeneration,
     stats: Stats,
 }
 
 impl System {
-    pub fn new(_options: SystemOptions) -> Result<Self> {
+    pub fn new(options: SystemOptions) -> Result<Self> {
         Ok(Self {
-            font_context: FontContext::new(),
+            catalogue: Catalogue::new(options.font_catalogue),
             layout_context: LayoutContext::new(),
             cache: HashMap::new(),
-            font_generation: FontGeneration::initial(),
             stats: Stats::default(),
         })
     }
@@ -49,12 +49,39 @@ impl System {
         builder.build()
     }
 
+    /// Registers every face in an owned font file, or leaves the system unchanged.
+    ///
+    /// Registrations are appended in request order. This does not replace an
+    /// existing family or promise coverage of every requested character.
+    pub fn register_fonts(&mut self, bytes: Vec<u8>) -> Result<()> {
+        let candidate = self.catalogue.with_registration(bytes)?;
+        self.install_catalogue(candidate);
+        Ok(())
+    }
+
+    /// Rediscovers configured system fonts and replays registered font bytes.
+    ///
+    /// A failure preserves the catalogue, cache, and statistics. Historical
+    /// layouts keep their actual selected font resources after a refresh.
     pub fn refresh_fonts(&mut self) -> Result<()> {
-        self.font_generation = self.font_generation.next();
-        self.stats.record_invalidations(self.cache.len());
-        self.cache.clear();
+        let candidate = self.catalogue.refreshed()?;
+        self.install_catalogue(candidate);
         self.stats.record_font_refresh();
         Ok(())
+    }
+
+    /// Returns the current registration and discovery publication identity.
+    #[must_use]
+    pub const fn font_catalogue_identity(&self) -> &FontCatalogueIdentity {
+        self.catalogue.identity()
+    }
+
+    fn install_catalogue(&mut self, candidate: Catalogue) {
+        let old_catalogue = std::mem::replace(&mut self.catalogue, candidate);
+        let old_cache = std::mem::take(&mut self.cache);
+        self.stats.record_invalidations(old_cache.len());
+        drop(old_cache);
+        drop(old_catalogue);
     }
 
     #[must_use]
@@ -65,12 +92,15 @@ impl System {
 
 impl Default for System {
     fn default() -> Self {
-        Self::new(SystemOptions).expect("default text system should initialize")
+        Self::new(SystemOptions::default()).expect("default text system should initialize")
     }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct SystemOptions;
+pub struct SystemOptions {
+    /// Selects system discovery or registered-only matching.
+    pub font_catalogue: FontCatalogueMode,
+}
 
 /// Builds one layout.
 pub struct Builder<'a> {
@@ -120,7 +150,7 @@ impl Builder<'_> {
             &validated_source,
             &default_style,
             validated_options,
-            self.system.font_generation,
+            self.system.catalogue.identity(),
         );
         if let Some(layout) = self.system.cache.get(&key) {
             self.system.stats.record_layout_hit();
@@ -129,7 +159,7 @@ impl Builder<'_> {
 
         let layout_source = validated_source.source().clone();
         let mut builder = self.system.layout_context.ranged_builder(
-            &mut self.system.font_context,
+            self.system.catalogue.context_mut(),
             &layout_source.text,
             validated_options.authored().scale,
             validated_options.authored().quantize,
@@ -165,7 +195,7 @@ impl Builder<'_> {
             inner: layout,
             source: layout_source,
             default_style: self.default_style.clone(),
-            key,
+            key: key.clone(),
         };
         self.system.cache.insert(key, layout.clone());
         Ok(layout)
@@ -260,15 +290,42 @@ mod tests {
     use super::*;
 
     #[test]
+    fn exhausted_registration_refuses_before_font_validation_or_publication() {
+        let mut system = System::new(SystemOptions {
+            font_catalogue: FontCatalogueMode::RegisteredOnly,
+        })
+        .expect("registered-only system initializes");
+        system.catalogue.exhaust_generation_for_test();
+        let identity = system.font_catalogue_identity().clone();
+        let stats = system.stats();
+        let error = system
+            .register_fonts(b"invalid font".to_vec())
+            .expect_err("issuance headroom is checked before font parsing");
+        assert_eq!(error.code, crate::ErrorCode::FontGenerationExhausted);
+        assert_eq!(
+            error.detail(),
+            Some(&crate::ErrorDetail::FontGenerationExhausted {
+                generation: u64::MAX
+            })
+        );
+        assert_eq!(system.font_catalogue_identity(), &identity);
+        assert_eq!(system.stats(), stats);
+        assert!(system.cache.is_empty());
+    }
+
+    #[test]
     fn exhausted_font_refresh_preserves_cached_layout_stats_and_retained_fonts() {
         let mut system = System::default();
-        system.font_generation = FontGeneration::exhausted_for_test();
+        system.catalogue.exhaust_generation_for_test();
         let source = Source::new("retained font refresh");
         let layout = system
             .layout(source.clone(), Style::default(), Options::default())
             .expect("the current catalogue builds the exhaustion fixture");
         let key = layout.key();
-        assert_eq!(key.font_generation(), system.font_generation);
+        assert_eq!(
+            key.font_generation(),
+            system.font_catalogue_identity().generation()
+        );
         assert_eq!(key.font_generation().get(), u64::MAX);
         assert_eq!(system.cache.len(), 1);
 
@@ -289,7 +346,10 @@ mod tests {
             refresh.is_err(),
             "an exhausted font generation must refuse refresh rather than reuse its identity: {refresh:?}"
         );
-        assert_eq!(system.font_generation, key.font_generation());
+        assert_eq!(
+            system.font_catalogue_identity().generation(),
+            key.font_generation()
+        );
         assert_eq!(system.stats(), stats);
         assert_eq!(system.cache.len(), 1);
         let cached = system

@@ -4,7 +4,9 @@
 
 [Cargo.toml](../Cargo.toml) defines package `surgeist-text` version `0.1.0`, library
 name `surgeist_text`, and Rust edition 2024. No `rust-version` minimum is declared.
-The implementation uses Parley `0.9.0` in [src/system.rs](../src/system.rs).
+The implementation uses Parley `0.9.0` in [src/system.rs](../src/system.rs), with
+Fontique `0.9.0`, Skrifa `0.42.1`, and Linebender resource handle `0.1.1` called
+directly for catalogue registration and admission.
 
 | Feature | Default | Effect and dependency |
 | --- | --- | --- |
@@ -29,10 +31,30 @@ private implementation organization.
 | Style and fonts | `Style`, `Font`, `Brush`, decorations, flow settings | [style.rs](../src/style.rs) |
 | Paragraph layout | `Options`, `Alignment`, `Indent`, `ValidatedOptions` | [options.rs](../src/options.rs) |
 | Layout construction | `System`, `Builder`, `SystemOptions` | [system.rs](../src/system.rs) |
+| Font catalogue | `FontCatalogueMode`, issued `FontCatalogueIdentity`, `System::register_fonts` and `refresh_fonts` | [catalogue.rs](../src/catalogue.rs) |
 | Output and interaction | `Layout`, glyph runs, line/box facts, cursors, selections, movement | [layout.rs](../src/layout.rs) |
 | Ranges and edits | `Range`, `SourcePosition`, `SourceRange`, `Edit`, `TextEdit` | [range.rs](../src/range.rs), [edit.rs](../src/edit.rs) |
 | Cache identity | `Key`, `SourceKey`, `StyleKey`, `OptionsKey`, `FontGeneration`, `Stats` | [cache.rs](../src/cache.rs) |
 | Errors | `Error`, `ErrorCode`, `ErrorDetail`, `Result` | [error.rs](../src/error.rs) |
+
+## Font catalogue publications
+
+`SystemOptions::default()` selects `FontCatalogueMode::System`; `RegisteredOnly`
+excludes system discovery/fallback. `register_fonts(Vec<u8>)` consumes a whole
+file and admits all its faces or leaves the current state unchanged. Refresh
+constructs a new collection and source cache and replays accepted registered
+bytes. The opaque catalogue identity retains its actual System issuer and
+checked generation; equal generations from different Systems are distinct.
+`Key::from_validated` requires this authentic identity, and `Key` is Clone rather
+than Copy. Neither a numeric generation nor a font-content hash grants catalogue
+authority. Historical layouts keep their old identities and selected resources.
+
+Generation exhaustion is `FontGenerationExhausted`; malformed containers/faces
+and valid faces the catalogue cannot admit are distinct `FontLoadFailed` details.
+No operation publishes partial registration or clears a cache on refusal.
+Registration does not define unregister, family replacement, or a new missing-
+glyph policy. These are catalogue capabilities, not prepared text or selected-
+line finalization; the current source API remains UTF-8 pending that work.
 
 ## Defaults and validation
 

@@ -15,7 +15,8 @@ glyph runs. The executable proof is `builds_plain_text_layout` in
   by `surgeist-render`. Cargo resolves these optional path manifests even when
   their features are disabled. Keep their relative workspace crate paths intact.
 - Fonts available to Parley's default font context. The test uses the default
-  sans-serif request; this crate does not include a font fixture.
+  sans-serif request. Deterministic registered-only tests instead use the bundled
+  [Ahem fixture](../tests/fixtures/fonts/ahem/PROVENANCE.md).
 
 The manifest does not declare a `rust-version` minimum. Its edition is not a
 separate compatibility promise.

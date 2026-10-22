@@ -94,7 +94,34 @@ Reuse one `System` and submit identical source, styles, and options. Compare
 `System::stats()`. The `repeated_layout_uses_cache` test in
 [src/tests.rs](../src/tests.rs) demonstrates a repeat hit.
 
-`System::refresh_fonts()` advances the font generation, clears cached layouts,
-and records invalidations. Verify the next build is a miss and has a different
-font-generation key. The current method performs cache invalidation; it does not
-recreate the backend font context. See [src/system.rs](../src/system.rs).
+`System::refresh_fonts()` rediscovers configured system fonts, replays registered
+bytes, and publishes a new catalogue identity with a checked generation. It
+clears current cached layouts only on success. The next build is a miss; old
+layouts retain their original keys and actual selected font bytes. Registration
+has the same atomic cache invalidation behavior. See [src/system.rs](../src/system.rs).
+
+## Register fonts without system discovery
+
+```rust
+use surgeist_text::{Font, FontCatalogueMode, Options, Source, Style, System, SystemOptions};
+
+let mut system = System::new(SystemOptions {
+    font_catalogue: FontCatalogueMode::RegisteredOnly,
+})?;
+let font_file_bytes = std::fs::read("tests/fixtures/fonts/ahem/Ahem.ttf")
+    .expect("read the bundled test font from the crate directory");
+system.register_fonts(font_file_bytes)?;
+let layout = system.layout(
+    Source::new("AX"),
+    Style { font: Font::new().family("Ahem"), size: 20.0, ..Style::default() },
+    Options::default(),
+)?;
+# Ok::<(), surgeist_text::Error>(())
+```
+
+Supply owned bytes and request the file's real family name. Every face must be
+admitted or the live system remains unchanged. Repeated registrations append;
+they do not promise same-family replacement or character coverage. Registered
+bytes remain available across refresh. Use `SystemOptions::default()` for normal
+system discovery in addition to registrations. The bundled [Ahem fixture](../tests/fixtures/fonts/ahem/PROVENANCE.md)
+is for deterministic tests; callers choose their own appropriately licensed fonts.
