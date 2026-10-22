@@ -714,3 +714,83 @@ fn inherited_columns_keep_minimum_and_maximum_auto_overflow_sources_distinct_f32
 fn inherited_columns_keep_minimum_and_maximum_auto_overflow_sources_distinct_f64() {
     qualify_wrapping_min_max::<f64>();
 }
+
+fn qualify_max_constrained_alignment<S: LayoutScalar>() {
+    let mut failures = Vec::new();
+    for display in [Display::Grid, Display::GridLanes] {
+        for (known_width, gutter, expected_origin, expected_content) in [
+            (false, ScrollbarGutter::Auto, 0.0, 2.0),
+            (false, ScrollbarGutter::Stable, 0.0, 0.0),
+            (false, ScrollbarGutter::StableBothEdges, 1.0, 0.0),
+            (true, ScrollbarGutter::StableBothEdges, 1.0, 0.0),
+        ] {
+            let mut tree = fixture::<S>(
+                display,
+                gutter,
+                if known_width {
+                    preferred(2.0)
+                } else {
+                    PreferredSizeOf::MAX_CONTENT
+                },
+            );
+            let mut root = tree.node_input(0).clone();
+            root.max_size.width =
+                MaxSizeOf::value(LengthPercentageOf::px(S::from_f64(2.0)).unwrap());
+            tree.inputs[0] = LayoutInputOf::box_input(root);
+            let batch = compute_layout(
+                &tree,
+                0,
+                LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap(),
+            )
+            .unwrap();
+            let output = |node| {
+                batch
+                    .unrounded_entries()
+                    .iter()
+                    .find(|entry| entry.node() == node)
+                    .unwrap()
+                    .output()
+            };
+            let root = output(0);
+            let child = output(1);
+            let content = root.scroll_geometry.unwrap().content_box();
+            // The used maximum constrains the actual outer box to2. Under
+            // canonical proportional edge saturation, symmetric5+5 gutters
+            // become1+1; the fixed first track starts at that actual content
+            // origin. A provisional intrinsic inset cannot position children
+            // outside the final content box's start (Grid1 §10.5 alignment).
+            let actual = (
+                root.size,
+                child.location,
+                child.size,
+                content.origin(),
+                content.size(),
+            );
+            let expected = (
+                Size::new(S::from_f64(2.0), S::from_f64(20.0)),
+                Point::new(S::from_f64(expected_origin), S::ZERO),
+                Size::new(S::from_f64(40.0), S::from_f64(20.0)),
+                Point::new(S::from_f64(expected_origin), S::ZERO),
+                Size::new(S::from_f64(expected_content), S::from_f64(20.0)),
+            );
+            eprintln!(
+                "{} max_constrained {display:?} known_width={known_width} {gutter:?}: actual={actual:?}, expected={expected:?}",
+                std::any::type_name::<S>()
+            );
+            if actual != expected {
+                failures.push(format!("{display:?} known_width={known_width} {gutter:?}: actual={actual:?}, expected={expected:?}"));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn max_constrained_intrinsic_grid_aligns_children_with_final_content_box_f32() {
+    qualify_max_constrained_alignment::<f32>();
+}
+
+#[test]
+fn max_constrained_intrinsic_grid_aligns_children_with_final_content_box_f64() {
+    qualify_max_constrained_alignment::<f64>();
+}
