@@ -10,13 +10,18 @@ belong to the integrating host. The current style-facing exports and intended
 crate boundary are described in the [architecture guide](docs/explanation.md).
 
 `FontData::prepare_outline` prepares an owned outline run without a GPU. It
-supports simple glyf contours and dense gvar tuples at the actual face's exact
-F2Dot14 instance. Unscaled HarfBuzz contour interpretation is followed by checked
+supports simple glyf contours, static XY-translation composites and dense simple
+gvar tuples at the actual face's exact F2Dot14 instance. Unscaled HarfBuzz contour interpretation is followed by checked
 f64 size/UPEM scaling, skew, y reflection and local glyph placement, rounded once
-into the retained canonical f32 path. Composite glyphs, sparse IUP, CFF/CFF2 and
-VARC return typed unsupported capabilities; they never use static/default or
+into the retained canonical f32 path. Composite variation, nonidentity component
+transforms, point attachment, metric overrides, sparse IUP, CFF/CFF2 and VARC
+return typed unsupported capabilities; they never use static/default or
 alternate-format outlines. Malformed present selection/variation metadata and
-unrepresentable active delta arithmetic refuse the whole preparation.
+unrepresentable active delta arithmetic refuse the whole preparation. Complete
+raw contour/flag/program extents are checked before decoding. Structurally valid
+flag encodings outside the installed decoder's faithful domain return a typed
+provider refusal. [Outline admission](docs/reference.md#outline-admission) defines
+the bounded composite domain.
 
 The result retains its font, executed `TextInstance`, original `TextGlyph` facts,
 combined run-local path and derived `Ink` or source-proved `Empty` bounds. Explicit

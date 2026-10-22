@@ -435,8 +435,44 @@ fn aggregate_limits_cover_actual_multiple_runs_and_raised_retry() {
 }
 
 #[test]
-fn actual_late_composite_refusal_exposes_no_batch_and_keeps_input_for_retry() {
-    let input = system(composite_x_ahem())
+fn actual_registered_static_composite_preserves_layout_run_and_literal_ink() {
+    let input = system(composite_x_ahem(None))
+        .layout(split_source(), style(), options())
+        .unwrap();
+    let runs: Vec<_> = input.run_views().collect();
+    assert_eq!(runs[1].glyphs().map(|g| g.id()).collect::<Vec<_>>(), [58]);
+    let prepared = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    assert!(std::ptr::eq(prepared.layout(), &input));
+    let commands = &prepared.scene().commands;
+    let (first, _) = outline(&commands[0]);
+    let (composite, _) = outline(&commands[1]);
+    assert_eq!(composite.glyphs()[0].id(), 58);
+    assert_eq!(
+        first.bounds().ink_rect(),
+        Some(Rect::new(0.0, 0.0, 20.0, 20.0))
+    );
+    assert_eq!(
+        composite.glyphs(),
+        [TextGlyph::try_new(58, 20.0, 16.0, 20.0).unwrap()]
+    );
+    assert!(
+        matches!(composite.path_elements().next(),Some(crate::PathElement::MoveTo(p)) if p.x()==20.0 && p.y()==0.0)
+    );
+    assert_eq!(
+        composite.bounds().ink_rect(),
+        Some(Rect::new(20.0, 0.0, 20.0, 20.0))
+    );
+    assert_eq!(input.source().text().code_units(), [0x41, 0x58]);
+    assert!(
+        prepare_text_layout(&input, Transform::identity(), bounded(2, 9, ROOM, 2, 0, 0)).is_err()
+    );
+    let retry = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    assert_eq!(retry.scene().commands.len(), 2);
+}
+
+#[test]
+fn actual_late_nonidentity_composite_refusal_exposes_no_batch_and_keeps_input_for_retry() {
+    let input = system(composite_x_ahem(Some(8192)))
         .layout(split_source(), style(), options())
         .unwrap();
     let runs: Vec<_> = input.run_views().collect();
@@ -807,10 +843,23 @@ fn replace_tables(replacements: Vec<([u8; 4], Vec<u8>)>) -> Vec<u8> {
     }
     result
 }
-fn composite_x_ahem() -> Vec<u8> {
+fn composite_x_ahem(scale: Option<i16>) -> Vec<u8> {
     let mut composite = Vec::new();
-    for word in [-1_i16, 0, -200, 1000, 800, 3, 35, 0, 0] {
+    for word in [
+        -1_i16,
+        0,
+        -200,
+        1000,
+        800,
+        if scale.is_some() { 11 } else { 3 },
+        35,
+        0,
+        0,
+    ] {
         composite.extend(word.to_be_bytes());
+    }
+    if let Some(scale) = scale {
+        composite.extend(scale.to_be_bytes());
     }
     let loca = table(AHEM, *b"loca");
     let glyf = table(AHEM, *b"glyf");

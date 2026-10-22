@@ -11,6 +11,8 @@ use skrifa::{
 
 use crate::{Error, FontData, PathElement, Point, Rect, Result, TextGlyph, TextRunBounds};
 
+mod glyf;
+
 /// One exact provider-normalized 2.14 coordinate, in the closed interval [-1, 1].
 /// Axis order is the actual face's fvar order, not a user-axis setting order.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -185,7 +187,7 @@ pub enum OutlineResource {
     Glyphs,
     /// Combined run-wide path elements.
     PathElements,
-    /// Temporary provider draw memory and coordinate conversion.
+    /// Live qualifier buffers, provider draw memory and coordinate conversion.
     ScratchBytes,
     /// Actual retained immutable backing.
     RetainedBytes,
@@ -220,7 +222,7 @@ pub enum VariationTable {
 /// Outline processing that is not yet numerically qualified by this entry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OutlineCapability {
-    /// TrueType component transforms and recursive assembly.
+    /// TrueType composite processing outside the qualified static XY domain.
     CompositeGlyph,
     /// PostScript font matrices and charstring arithmetic.
     PostScript,
@@ -286,7 +288,8 @@ pub enum OutlinePreparationError {
         /// Rejected value.
         value: f64,
     },
-    /// The provider refused an actual selected outline.
+    /// The provider refused the selected outline, or its decoder cannot faithfully
+    /// consume this structurally valid glyph encoding.
     Provider {
         /// Selected glyph.
         glyph: u32,
@@ -374,12 +377,13 @@ impl PreparedOutline {
 }
 
 impl FontData {
-    /// Prepares qualified simple-glyf ink at an exact effective instance without a GPU.
+    /// Prepares qualified glyf ink at an exact effective instance without a GPU.
     ///
     /// Unscaled HarfBuzz contour interpretation is followed by checked f64
     /// size/UPEM scaling, synthesis, reflection and local placement into one f32
-    /// path. Dense gvar tuples are supported; sparse IUP, composite glyphs and
-    /// CFF/CFF2/VARC return typed unsupported capabilities.
+    /// path. Dense simple-glyph gvar tuples and static XY-translation composites
+    /// are supported. Composite variation, nonidentity component transforms, point
+    /// attachment, metric overrides, sparse IUP and CFF/CFF2/VARC refuse explicitly.
     ///
     /// All glyphs succeed before an immutable result is published. Selected color,
     /// bitmap and nonzero emboldening requests refuse explicitly, never fall back.
@@ -548,16 +552,16 @@ impl FontData {
             let outlines = outlines
                 .as_ref()
                 .ok_or_else(|| Error::from(OutlinePreparationError::InvalidFont))?;
-            if matches!(
-                qualify_simple_glyf(
-                    &font,
-                    GlyphId::new(glyph.id()),
-                    &coordinates,
-                    limits,
-                    coord_bytes
-                )?,
-                QualifiedGlyph::Empty
-            ) {
+            if glyf::qualify(
+                &font,
+                GlyphId::new(glyph.id()),
+                &coordinates,
+                limits,
+                coord_bytes,
+            )?
+            .points
+                == 0
+            {
                 continue;
             }
             let outline = outlines.get(GlyphId::new(glyph.id())).ok_or_else(|| {
@@ -754,12 +758,8 @@ fn validate_variations(
 }
 
 // The unscaled HarfBuzz path avoids the provider's requested-size fixed scale.
-// Qualify the actual simple/dense inputs and decoder errors before drawing;
-// sparse IUP, components and other outline formats remain explicit capabilities.
-enum QualifiedGlyph {
-    Empty,
-    Simple,
-}
+// Qualify simple/dense inputs and decoder errors before drawing. Composite
+// closure reuses this same raw and decoder owner for each actual simple child.
 
 fn qualify_simple_glyf(
     font: &skrifa::FontRef<'_>,
@@ -767,7 +767,7 @@ fn qualify_simple_glyf(
     coordinates: &[NormalizedCoord],
     limits: OutlineLimits,
     coordinate_bytes: usize,
-) -> Result<QualifiedGlyph> {
+) -> Result<glyf::Summary> {
     use skrifa::raw::{
         tables::glyf::{Glyph, PointFlags},
         types::{Fixed, Point as RawPoint},
@@ -783,17 +783,23 @@ fn qualify_simple_glyf(
         .loca(Some(head.index_to_loc_format() == 1))
         .map_err(|_| invalid())?;
     let glyf = font.glyf().map_err(|_| invalid())?;
+    let raw = glyf::raw_glyph(font, glyph)?;
+    let (count, contours) = if raw.is_empty() {
+        (0, 0)
+    } else {
+        glyf::simple_structure(raw, glyph)?
+    };
     let selected = loca.get_glyf(glyph, &glyf).map_err(|_| invalid())?;
-    let count = match &selected {
-        None => 0,
-        Some(Glyph::Simple(simple)) => simple.num_points(),
+    match &selected {
+        None => {}
+        Some(Glyph::Simple(_)) => {}
         Some(Glyph::Composite(_)) => {
             return Err(OutlinePreparationError::UnsupportedOutline {
                 capability: OutlineCapability::CompositeGlyph,
             }
             .into());
         }
-    };
+    }
     let points = count
         .checked_add(4)
         .ok_or_else(|| Error::from(OutlinePreparationError::CapacityOverflow))?;
@@ -811,8 +817,18 @@ fn qualify_simple_glyf(
         limits.scratch_bytes,
     )?;
     let mut source = reserved(points, OutlineResource::ScratchBytes)?;
+    check_limit(
+        OutlineResource::ScratchBytes,
+        charge(source.capacity(), points, points)?,
+        limits.scratch_bytes,
+    )?;
     source.resize(points, RawPoint { x: 0i32, y: 0i32 });
     let mut flags = reserved(points, OutlineResource::ScratchBytes)?;
+    check_limit(
+        OutlineResource::ScratchBytes,
+        charge(source.capacity(), flags.capacity(), points)?,
+        limits.scratch_bytes,
+    )?;
     flags.resize(points, PointFlags::default());
     let mut deltas = reserved(points, OutlineResource::ScratchBytes)?;
     deltas.resize(points, RawPoint { x: 0f32, y: 0f32 });
@@ -824,7 +840,11 @@ fn qualify_simple_glyf(
     if let Some(Glyph::Simple(simple)) = &selected {
         simple
             .read_points_fast(&mut source[..count], &mut flags[..count])
-            .map_err(|_| invalid())?;
+            .map_err(|_| {
+                Error::from(OutlinePreparationError::Provider {
+                    glyph: glyph.to_u32(),
+                })
+            })?;
         if source[..count].iter().any(|p| {
             p.x < i32::from(simple.x_min())
                 || p.x > i32::from(simple.x_max())
@@ -844,10 +864,19 @@ fn qualify_simple_glyf(
             })
         })?;
     }
-    let qualified = if count == 0 {
-        QualifiedGlyph::Empty
+    let mut bounds: Option<glyf::Bounds> = None;
+    for p in &source[..count] {
+        let point = glyf::Bounds::point(p.x, p.y);
+        if let Some(bounds) = &mut bounds {
+            bounds.include(point);
+        } else {
+            bounds = Some(point);
+        }
+    }
+    let qualified = if raw.is_empty() {
+        glyf::Summary::default()
     } else {
-        QualifiedGlyph::Simple
+        glyf::Summary::simple(count, contours, bounds)?
     };
     let Some(_) = font.table_data(Tag::new(b"gvar")) else {
         return Ok(qualified);

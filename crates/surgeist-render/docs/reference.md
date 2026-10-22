@@ -64,6 +64,32 @@ the product integration floor; the [root manifest](../../../Cargo.toml) owns
 the authoritative facade `rust-version`. Confirm that declaration when doing
 integration work; this crate guide does not define a separate crate MSRV.
 
+## Outline admission
+
+`FontData::prepare_outline` owns one immutable path used for both measured ink and
+GPU drawing. Static glyf composites admit signed XY translations, including
+explicit identity transforms, complete opaque unhinted programs and first-record
+overlap flags. Their full original child closure is checked before provider draw;
+repeated children retain every occurrence. Provider depth32 and real expanded
+points65531 (plus four phantom points) are actual provider boundaries. Empty loca
+children contribute no real points to metadata, but their actual draw-time load
+still consumes a recursion level. Cycles, truncated fields and
+malformed simple extents refuse as invalid font data.
+
+Composite variation, point attachment, nonidentity transforms, metric overrides,
+unknown flags and nonzero composite residual bytes remain unsupported. These are
+supported-domain limits, not assertions that every refused font is malformed.
+Simple residual bytes after fully proved consumed extents remain uninterpreted.
+Valid simple encodings whose complete flag prefix exceeds their logical point
+count refuse as `Provider`: the installed decoder cannot faithfully consume them.
+A repeat count of zero is accepted when the complete prefix fits that domain.
+
+Existing storage limits include live qualifier buffers and their growth overlap,
+then the provider's actual draw-buffer capacity after qualifier disposal. They do
+not bound CPU time. All failures discard the unpublished run, while the original
+font, instance and glyph inputs remain available for retry. Other outline formats,
+sparse IUP, color/bitmap and emboldening retain their explicit capability refusals.
+
 ## Verification sources and commands
 
 The focused tests are grouped in [src/tests/mod.rs](../src/tests/mod.rs), covering

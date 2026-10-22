@@ -404,7 +404,7 @@ fn prepared_outline_harfbuzz_first_offcurve_contour_has_literal_start_and_contro
 #[test]
 fn prepared_outline_composite_and_sparse_variation_refuse_the_whole_run() {
     let mut composite = vec![];
-    for n in [-1i16, 0, -200, 1000, 800, 3, 35, 0, 0] {
+    for n in [-1i16, 0, -200, 1000, 800, 11, 35, 0, 0, 8192] {
         composite.extend(n.to_be_bytes());
     }
     let composite = replace_x_glyph(composite);

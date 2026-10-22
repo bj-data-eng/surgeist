@@ -69,3 +69,13 @@ the first control point. A wide dense delta variant uses +32768 on the right
 edge to distinguish exact full-scalar f32 application from overflowing partial
 Fixed conversion. Malformed/truncated variants deliberately test refusal; these
 fixtures do not claim general font conformance or validate unexecuted payloads.
+
+Static composite derivatives in `tests/prepared_outline/static_composite.rs`, the
+private glyf qualifier tests and the Text adapter/GPU tests retain original Ahem
+contours as actual referenced child glyphs. Authored records exercise signed XY
+translations, root LSB normalization, nested/repeated contours, complete unhinted
+programs and malformed encodings. Large-point and depth-boundary derivatives are
+constructed in memory; independent literal contour facts define their expected
+bounds. GPU overlap controls use two references to the same A contour within one
+composite and one NonZero paint operation, rather than two opacity applications.
+The original fixture bytes and license material remain unchanged.

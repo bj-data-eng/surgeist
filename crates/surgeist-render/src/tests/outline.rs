@@ -22,6 +22,81 @@ fn overlapping_outline() -> PreparedOutline {
     .unwrap()
 }
 
+// An actual static composite X repeats the original A contour twice. No source
+// point flattening: the production qualifier/provider must traverse both records.
+fn overlapping_composite_outline() -> PreparedOutline {
+    fn u16_at(bytes: &[u8], at: usize) -> u16 {
+        u16::from_be_bytes(bytes[at..at + 2].try_into().unwrap())
+    }
+    fn table(tag: &[u8; 4]) -> &[u8] {
+        for i in 0..usize::from(u16_at(AHEM_FONT_BYTES, 4)) {
+            let at = 12 + i * 16;
+            if &AHEM_FONT_BYTES[at..at + 4] == tag {
+                let start = u32::from_be_bytes(AHEM_FONT_BYTES[at + 8..at + 12].try_into().unwrap())
+                    as usize;
+                let len = u32::from_be_bytes(AHEM_FONT_BYTES[at + 12..at + 16].try_into().unwrap())
+                    as usize;
+                return &AHEM_FONT_BYTES[start..start + len];
+            }
+        }
+        panic!("missing fixture table");
+    }
+    let composite: Vec<u8> = [-1i16, 0, -200, 1000, 800, 35, 35, 0, 0, 3, 35, 0, 0]
+        .into_iter()
+        .flat_map(i16::to_be_bytes)
+        .collect();
+    let old_loca = table(b"loca");
+    let old_glyf = table(b"glyf");
+    let mut loca = Vec::new();
+    let mut glyf = Vec::new();
+    for id in 0..usize::from(u16_at(table(b"maxp"), 4)) {
+        loca.extend(u16::try_from(glyf.len() / 2).unwrap().to_be_bytes());
+        if id == AHEM_GLYPH_X as usize {
+            glyf.extend_from_slice(&composite);
+        } else {
+            glyf.extend_from_slice(
+                &old_glyf[usize::from(u16_at(old_loca, id * 2)) * 2
+                    ..usize::from(u16_at(old_loca, id * 2 + 2)) * 2],
+            );
+        }
+        if !glyf.len().is_multiple_of(2) {
+            glyf.push(0);
+        }
+    }
+    loca.extend(u16::try_from(glyf.len() / 2).unwrap().to_be_bytes());
+    let count = usize::from(u16_at(AHEM_FONT_BYTES, 4));
+    let mut bytes = AHEM_FONT_BYTES[..12 + count * 16].to_vec();
+    for i in 0..count {
+        let at = 12 + i * 16;
+        let tag: &[u8; 4] = AHEM_FONT_BYTES[at..at + 4].try_into().unwrap();
+        let data = match tag {
+            b"loca" => &loca[..],
+            b"glyf" => &glyf[..],
+            _ => table(tag),
+        };
+        while !bytes.len().is_multiple_of(4) {
+            bytes.push(0);
+        }
+        let start = u32::try_from(bytes.len()).unwrap();
+        bytes[at + 8..at + 12].copy_from_slice(&start.to_be_bytes());
+        bytes[at + 12..at + 16].copy_from_slice(&u32::try_from(data.len()).unwrap().to_be_bytes());
+        bytes.extend_from_slice(data);
+    }
+    let font = FontData::try_from_bytes(bytes, 0).unwrap();
+    let instance = TextInstance::try_new(1000.0, vec![], OutlineSynthesis::none()).unwrap();
+    let glyph = TextGlyph::try_new(AHEM_GLYPH_X, 0.0, 800.0, -10.0).unwrap();
+    let result = font
+        .prepare_outline(
+            &instance,
+            &[glyph],
+            OutlineLimits::new(1, 16, 1 << 20, 1 << 20),
+        )
+        .unwrap();
+    assert_eq!(result.glyphs(), [glyph]);
+    assert_eq!(result.path_elements().count(), 10);
+    result
+}
+
 #[test]
 fn prepared_outline_normalization_and_encoder_share_one_real_run_wide_nonzero_draw() {
     let outline = overlapping_outline();
@@ -104,12 +179,14 @@ fn prepared_outline_backend_placement_refuses_before_any_frame_output() {
 
 #[test]
 fn prepared_outline_real_gpu_direct_and_graph_keep_overlapping_translucent_glyphs_one_fill() {
-    let outline = overlapping_outline();
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let working_format = default_graph_working_format_for_test(&mut renderer);
     let mut surface =
         pollster::block_on(renderer.create_headless(Size::new(2.0, 2.0), 1.0)).unwrap();
-    for graph in [false, true] {
+    for (outline, graph) in [overlapping_outline(), overlapping_composite_outline()]
+        .into_iter()
+        .flat_map(|outline| [false, true].map(|graph| (outline.clone(), graph)))
+    {
         let mut scene = Scene::new();
         scene.fill(
             Shape::rect(Rect::new(0.0, 0.0, 2.0, 2.0)),
