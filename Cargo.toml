@@ -78,4 +78,8 @@ members = [
 exclude = [
     "api/generator",
     "crates/surgeist-layout/tools/surgeist-layout-audits",
+    "vendor/harfrust",
 ]
+
+[patch.crates-io]
+harfrust = { path = "vendor/harfrust" }

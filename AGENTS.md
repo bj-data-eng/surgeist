@@ -39,6 +39,7 @@ and current source establishes behavior.
 | --- | --- |
 | Root identity, MSRV, features, facade dependencies, workspace/default members | [Cargo.toml](Cargo.toml) |
 | Product dependency resolution | [Cargo.lock](Cargo.lock) |
+| Maintained Harfrust dependency source | [vendor/harfrust/PROVENANCE.md](vendor/harfrust/PROVENANCE.md) |
 | Crate identity, dependencies, features and compatibility | Each `crates/surgeist-*/Cargo.toml` |
 | Domain contracts and focused checks | Affected crate's `AGENTS.md`, `src/lib.rs`, README, tests and tracked scripts |
 | Facade and root package tests | [src/lib.rs](src/lib.rs), [tests/](tests/) |
