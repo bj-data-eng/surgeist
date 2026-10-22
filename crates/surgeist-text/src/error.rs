@@ -66,6 +66,8 @@ pub enum ErrorCode {
     FontCatalogueMismatch,
     /// Used font-metric metadata or numeric output is invalid.
     InvalidFontMetrics,
+    /// Font metric scratch size or allocation cannot be admitted.
+    FontMetricCapacity,
     InvalidRange,
     InvalidStyle,
     LayoutFailed,
@@ -91,12 +93,14 @@ pub enum ErrorDetail {
     },
     /// Neither hhea nor OS/2 provides a readable line-metric source.
     MissingFontLineMetrics,
-    /// Variable metric execution is outside this static operation's domain.
-    UnsupportedVariableFontMetrics {
-        /// Intrinsically qualified fvar inventory is present.
-        fvar: bool,
-        /// Accessible MVAR is present; its delta payload was not executed.
-        mvar: bool,
+    /// Font metric scratch size arithmetic overflowed.
+    FontMetricCapacityOverflow,
+    /// Fallible reservation of font metric scratch was refused.
+    FontMetricAllocationRefused,
+    /// Checked variation accumulation or rounding exceeded its proven domain.
+    FontMetricVariationArithmetic {
+        /// Actual value tag whose delta could not be represented.
+        tag: [u8; 4],
     },
     /// Required metric or arithmetic result is outside its numeric domain.
     InvalidFontMetric {
@@ -288,7 +292,7 @@ pub enum NumericRequirement {
     UnitInterval,
 }
 
-/// Tables used by glyph-free static metrics.
+/// Tables used by glyph-free same-instance metrics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FontMetricTable {
     /// `head`.
@@ -313,6 +317,92 @@ pub enum FontMetricTableError {
     Malformed,
     /// Version is outside the admitted domain.
     UnsupportedVersion,
+    /// MVAR is present without a real fvar axis inventory.
+    VariationWithoutAxes,
+    /// Value-record layout exceeds the supported eight-byte format.
+    UnsupportedRecordSize {
+        /// Actual declared stride.
+        size: u16,
+    },
+    /// Value tags are duplicated or not strictly ascending.
+    VariationRecordOrder {
+        /// Actual record ordinal.
+        record: u16,
+    },
+    /// A declared store or data offset cannot be resolved completely.
+    VariationOffset {
+        /// Actual relative offset.
+        offset: u32,
+    },
+    /// Store format is outside the admitted format1 domain.
+    VariationStoreFormat {
+        /// Actual declared format.
+        format: u16,
+    },
+    /// Region inventory differs from the actual face axes.
+    VariationAxisCount {
+        /// Actual fvar axis count.
+        expected: usize,
+        /// Declared region-list axis count.
+        actual: u16,
+    },
+    /// Region count is outside the format's domain.
+    VariationRegionCount {
+        /// Actual declared count.
+        count: u16,
+    },
+    /// A tuple coordinate is outside the canonical F2Dot14 domain.
+    VariationRegionCoordinate {
+        /// Actual region ordinal.
+        region: u16,
+        /// Actual axis ordinal.
+        axis: u16,
+        /// Rejected coordinate bits.
+        value: i16,
+    },
+    /// A record's outer or nonnull inner index is outside its declaration.
+    VariationDeltaIndex {
+        /// Actual value record ordinal.
+        record: u16,
+        /// Actual outer index.
+        outer: u16,
+        /// Actual inner index.
+        inner: u16,
+    },
+    /// A data subtable refers outside the actual region list.
+    VariationRegionIndex {
+        /// Store-relative data offset.
+        offset: u32,
+        /// Rejected region index.
+        index: u16,
+    },
+    /// A data row declares more wide deltas than region entries.
+    VariationWordCount {
+        /// Store-relative data offset.
+        offset: u32,
+        /// Declared wide-delta count, excluding the LONG_WORDS flag.
+        words: u16,
+        /// Declared region-index count.
+        regions: u16,
+    },
+    /// A referenced row does not yield every declared delta.
+    VariationRow {
+        /// Store-relative data offset.
+        offset: u32,
+        /// Referenced row index.
+        inner: u16,
+        /// Declared delta count.
+        expected: u16,
+        /// Actual accessible delta count.
+        actual: usize,
+    },
+    /// A qualified provider region scalar is outside zero through one.
+    VariationScalar {
+        /// Actual region ordinal.
+        region: u16,
+        /// Rejected 16.16 scalar bits.
+        value: i32,
+    },
     /// OpenType units-per-em is invalid.
     InvalidUnitsPerEm {
         /// Actual rejected value.
@@ -338,7 +428,7 @@ pub enum FontMetricField {
 /// Numeric validation stage.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FontMetricPhase {
-    /// Unscaled static provider-selected units.
+    /// Resolved unscaled provider-selected units.
     Unscaled,
     /// Same-instance f64 scaled values.
     Scaled,

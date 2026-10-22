@@ -1,3 +1,5 @@
+mod variation;
+
 use skrifa::{
     FontRef, Tag,
     instance::{LocationRef, Size},
@@ -12,7 +14,7 @@ use crate::{
 
 use super::EffectiveFontInstance;
 
-/// Static font metrics retaining the actual resource and coordinate loan.
+/// Same-instance font metrics retaining the actual resource and coordinate loan.
 ///
 /// Geometry is f64, independent of glyphs, line boxes, advances or ink. A result
 /// can outlive a temporary instance view, but not its actual resource/coordinate
@@ -81,11 +83,11 @@ impl StrikeoutMetrics {
 }
 
 impl<'a> EffectiveFontInstance<'a> {
-    /// Resolves glyph-free static metrics against the captured catalogue basis.
+    /// Resolves glyph-free same-instance metrics against the captured catalogue basis.
     ///
     /// Historical resources work under their retained original publication.
-    /// fvar/MVAR metrics refuse, including all-zero defaults. Broader variation
-    /// readback remains available. A usable provider strike top is normalized to
+    /// Static and qualified MVAR metrics use the exact canonical coordinates.
+    /// Unresolved faux synthesis remains unsupported. A usable strike top is normalized to
     /// center; fallback is ascent/2 and actual size/18, not raw UPEM/18.
     pub fn metrics(&self, expected_catalogue: &FontCatalogueIdentity) -> Result<FontMetrics<'a>> {
         if self.face.catalogue_identity() != expected_catalogue {
@@ -110,16 +112,6 @@ impl<'a> EffectiveFontInstance<'a> {
         let hhea = table(&font, Table::Hhea, false)?;
         let os2 = table(&font, Table::Os2, false)?;
         let mvar = table(&font, Table::Mvar, false)?;
-        if self.axes != 0 || mvar.is_some() {
-            return Err(Error::new(
-                ErrorCode::UnsupportedFeature,
-                "variable font metrics are not supported",
-            )
-            .with_detail(ErrorDetail::UnsupportedVariableFontMetrics {
-                fvar: self.axes != 0,
-                mvar: mvar.is_some(),
-            }));
-        }
         let head = font
             .head()
             .map_err(|_| table_error(Table::Head, TableError::Malformed))?;
@@ -167,9 +159,49 @@ impl<'a> EffectiveFontInstance<'a> {
             .with_detail(ErrorDetail::MissingFontLineMetrics));
         }
         let raw = skrifa::metrics::Metrics::new(&font, Size::unscaled(), LocationRef::default());
-        let raw_ascent = f64::from(raw.ascent);
-        let raw_descent = f64::from(raw.descent);
-        let raw_leading = f64::from(raw.leading);
+        let origin = line_origin(&font);
+        let (mut used, mut used_count) = match origin {
+            LineOrigin::Typo => ([*b"hasc", *b"hdsc", *b"hlgp", [0; 4], [0; 4]], 3),
+            LineOrigin::Windows => ([*b"hcla", *b"hcld", [0; 4], [0; 4], [0; 4]], 2),
+            LineOrigin::Hhea => ([[0; 4]; 5], 0),
+        };
+        if raw.strikeout.is_some() {
+            used[used_count] = *b"stro";
+            used[used_count + 1] = *b"strs";
+            used_count += 2;
+        }
+        let deltas = variation::resolve(mvar, self, &used[..used_count])?;
+        let mut raw_ascent = f64::from(raw.ascent);
+        let mut raw_descent = f64::from(raw.descent);
+        let mut raw_leading = f64::from(raw.leading);
+        // Required signs belong to the resolved requested instance, not an
+        // intermediate base which a valid variation can bring into range.
+        finite(Field::Ascent, Phase::Unscaled, raw_ascent)?;
+        finite(Field::Descent, Phase::Unscaled, raw_descent)?;
+        finite(Field::Leading, Phase::Unscaled, raw_leading)?;
+        match origin {
+            LineOrigin::Typo => {
+                raw_ascent += deltas.get(b"hasc");
+                raw_descent += deltas.get(b"hdsc");
+                raw_leading += deltas.get(b"hlgp");
+            }
+            LineOrigin::Windows => {
+                raw_ascent += deltas.get(b"hcla");
+                let stored_descent = -raw_descent + deltas.get(b"hcld");
+                finite(Field::Descent, Phase::Unscaled, stored_descent)?;
+                if stored_descent < 0.0 {
+                    return Err(numeric(
+                        Field::Descent,
+                        Phase::Unscaled,
+                        Numeric::Positive,
+                        -stored_descent,
+                    ));
+                }
+                raw_descent = -stored_descent;
+                // The provider's hhea gap (or initial zero) stays unchanged.
+            }
+            LineOrigin::Hhea => {}
+        }
         check_line(raw_ascent, raw_descent, raw_leading, Phase::Unscaled)?;
         let scale = f64::from(self.size) / f64::from(upem);
         let ascent = raw_ascent * scale;
@@ -178,8 +210,8 @@ impl<'a> EffectiveFontInstance<'a> {
         check_line(ascent, descent, leading, Phase::Scaled)?;
         let strike = raw.strikeout.map(|value| {
             (
-                f64::from(value.offset) * scale,
-                f64::from(value.thickness) * scale,
+                (f64::from(value.offset) + deltas.get(b"stro")) * scale,
+                (f64::from(value.thickness) + deltas.get(b"strs")) * scale,
             )
         });
         let strikeout = normalize_strike(f64::from(self.size), ascent, strike)?;
@@ -191,6 +223,42 @@ impl<'a> EffectiveFontInstance<'a> {
             leading,
             strikeout,
         })
+    }
+}
+
+// Associate adjustments with the actual stored fields chosen by the retained
+// Skrifa0.42.1 static selector (MIT OR Apache-2.0); see the tracked
+// docs/font-metrics-provenance.md. Only provenance predicates are adapted; base
+// numbers still come from the provider, and selection never reruns after delta.
+#[derive(Clone, Copy)]
+enum LineOrigin {
+    Typo,
+    Hhea,
+    Windows,
+}
+fn line_origin(font: &FontRef<'_>) -> LineOrigin {
+    use skrifa::raw::tables::os2::SelectionFlags;
+    let os2 = font.os2().ok(); // Present tables were validated above.
+    if os2.as_ref().is_some_and(|table| {
+        table
+            .fs_selection()
+            .contains(SelectionFlags::USE_TYPO_METRICS)
+    }) {
+        return LineOrigin::Typo;
+    }
+    if font
+        .hhea()
+        .ok()
+        .is_some_and(|table| table.ascender().to_i16() != 0 || table.descender().to_i16() != 0)
+    {
+        return LineOrigin::Hhea;
+    }
+    match os2 {
+        Some(table) if table.s_typo_ascender() != 0 || table.s_typo_descender() != 0 => {
+            LineOrigin::Typo
+        }
+        Some(_) => LineOrigin::Windows,
+        None => LineOrigin::Hhea,
     }
 }
 

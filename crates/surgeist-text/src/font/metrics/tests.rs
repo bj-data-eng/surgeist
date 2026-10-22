@@ -238,7 +238,7 @@ fn static_f64_metrics_preserve_extreme_sizes_signed_offsets_and_negative_leading
 }
 
 #[test]
-fn actual_variable_default_and_nondefault_readback_refuse_only_this_metric_domain() {
+fn actual_variable_default_and_nondefault_without_mvar_preserve_global_metrics() {
     let (system, data) = registered(variable_ahem());
     for coordinates in [&[][..], &[8192][..]] {
         let instance = data.unsynthesized_instance(20.0, coordinates).unwrap();
@@ -251,16 +251,12 @@ fn actual_variable_default_and_nondefault_readback_refuse_only_this_metric_domai
                 vec![8192]
             }
         );
-        assert_eq!(
-            instance
-                .metrics(system.font_catalogue_identity())
-                .unwrap_err()
-                .detail(),
-            Some(&ErrorDetail::UnsupportedVariableFontMetrics {
-                fvar: true,
-                mvar: false
-            })
-        );
+        let metrics = instance.metrics(system.font_catalogue_identity()).unwrap();
+        assert_eq!(metrics.ascent(), 16.0);
+        assert_eq!(metrics.descent(), -4.0);
+        assert_eq!(metrics.leading(), 0.0);
+        close(metrics.strikeout().center_offset(), 4.68);
+        assert_eq!(metrics.strikeout().thickness(), 1.0);
     }
     let (system, data) = registered(replace_tables(AHEM, vec![(*b"MVAR", vec![0])]));
     assert_eq!(
@@ -269,9 +265,9 @@ fn actual_variable_default_and_nondefault_readback_refuse_only_this_metric_domai
             .metrics(system.font_catalogue_identity())
             .unwrap_err()
             .detail(),
-        Some(&ErrorDetail::UnsupportedVariableFontMetrics {
-            fvar: false,
-            mvar: true
+        Some(&ErrorDetail::FontMetricTable {
+            table: Table::Mvar,
+            reason: TableError::VariationWithoutAxes
         })
     );
 }

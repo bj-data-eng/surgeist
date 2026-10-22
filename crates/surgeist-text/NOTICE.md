@@ -91,6 +91,10 @@ This product depends on Skrifa from Fontations:
 * Homepage: [Fontations](https://github.com/googlefonts/fontations)
 
 The catalogue uses its safe font-file interface for whole-file face admission.
+Glyph-free metrics use the same-instance metric and variation-data interfaces.
+The owned selected-field provenance predicates adapt Skrifa's static selection;
+[font metrics provenance](docs/font-metrics-provenance.md) identifies the exact
+source and the retained and changed mechanisms.
 
 ## Bundled test font
 

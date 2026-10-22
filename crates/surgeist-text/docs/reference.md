@@ -170,23 +170,44 @@ a later or foreign publication refuses. Queries neither shape glyphs nor change
 layout/cache statistics. The result borrows the actual resource and coordinate
 storage, rather than a temporary instance view.
 
-This metric domain supports static unsynthesized faces only. Actual fvar faces
-(including all-zero defaults) and present MVAR refuse; broader variable-instance
-readback for painting remains available. Used table entries must be unique and
-accessible, with valid required header/line metric fields. Malformed present
-tables refuse instead of silently becoming missing defaults. Earlier catalogue
-admission may already reject an invalid font.
+This domain supports unsynthesized static and variable instances. A variable
+face without MVAR keeps its base global metrics even when gvar changes outlines.
+MVAR version1.0 requires real fvar axes, complete canonical coordinates, strictly
+ordered eight-byte value records, a complete format1 Item Variation Store and
+canonical region-coordinate domains. Both normal and LONG_WORDS delta encodings
+are supported; this does not execute COLR. A larger record stride is precisely
+unsupported. Present malformed tables, indexes and complete referenced rows
+refuse even at default or inactive coordinates. Declared null data slots and
+exact FFFF/FFFF no-variation indexes are valid zero adjustments; an out-of-array
+outer index or inaccessible nonnull slot is an error.
+
+Region interpolation uses the full actual coordinate vector. Peak-zero,
+misordered and crossing-zero axes have the specified neutral factor; they are
+not rejected as malformed tuples. Integer deltas accumulate with checked i64
+arithmetic and one final rounding (half ties toward positive infinity), then
+widen exactly into f64. No per-region rounding, permissive failed-read zero or
+wrapping 16.16 metric conversion is used. Shared data offsets and rows are
+qualified once; immutable aliases are permitted. Scratch capacity/refusal belongs
+to the font metric operation and cannot publish partial metrics or cache changes.
+
+Line deltas follow the actual stored-field origin selected from the original
+validated tables: `hasc/hdsc/hlgp` adjust chosen OS/2 typo fields; hhea fields
+receive no inferred line tags. Windows fallback uses `hcla/hcld`, with descent
+adjusted in its positive stored domain before negation. Its retained hhea line
+gap (or initial zero) receives no line adjustment. `stro/strs` adjust only an
+actual OS/2 strike; they cannot create an absent decoration. Unknown/unreturned
+tags still require structurally valid indexes and storage, but do not execute
+another field. The [selection provenance](font-metrics-provenance.md) identifies
+the retained provider branch and the separate owned qualification.
 
 Metrics use f64 geometry at the actual f32 instance size: nonnegative ascent,
-signed nonpositive descent, and finite signed leading. A usable provider strike
-top and positive thickness become `center = top - thickness / 2`. Otherwise the
-fallback is `center = ascent / 2`, `thickness = size / 18`. At horizontal baseline
+signed nonpositive descent, and finite signed leading. Required signs are checked
+after applying actual-instance deltas. A usable resolved strike top and positive
+thickness become `center = top - thickness / 2`. Otherwise fallback uses the
+resolved `center = ascent / 2`, `thickness = size / 18`. At horizontal baseline
 `b`, strike top is `b - center - thickness / 2`. This query does not change the
 existing paragraph engine's f32 metrics or decoration policy, and adds no font
-matching, glyph coverage, variable-metric or complete text-engine guarantee.
-
-The new catalogue/metric error variants expand exhaustive public enums and are
-a breaking source API change in this pre-v1 crate.
+matching, glyph coverage, outline metrics or complete text-engine guarantee.
 
 ## Defaults and validation
 

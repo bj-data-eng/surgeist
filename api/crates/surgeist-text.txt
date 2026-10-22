@@ -69,6 +69,7 @@ pub enum surgeist_text::ErrorCode
 pub surgeist_text::ErrorCode::FontCatalogueMismatch
 pub surgeist_text::ErrorCode::FontGenerationExhausted
 pub surgeist_text::ErrorCode::FontLoadFailed
+pub surgeist_text::ErrorCode::FontMetricCapacity
 pub surgeist_text::ErrorCode::FontSystemUnavailable
 pub surgeist_text::ErrorCode::HitTestFailed
 pub surgeist_text::ErrorCode::InvalidFontInstance
@@ -99,9 +100,13 @@ pub surgeist_text::ErrorDetail::FontFacesNotAdmitted::admitted: usize
 pub surgeist_text::ErrorDetail::FontFacesNotAdmitted::expected: usize
 pub surgeist_text::ErrorDetail::FontGenerationExhausted
 pub surgeist_text::ErrorDetail::FontGenerationExhausted::generation: u64
+pub surgeist_text::ErrorDetail::FontMetricAllocationRefused
+pub surgeist_text::ErrorDetail::FontMetricCapacityOverflow
 pub surgeist_text::ErrorDetail::FontMetricTable
 pub surgeist_text::ErrorDetail::FontMetricTable::reason: surgeist_text::FontMetricTableError
 pub surgeist_text::ErrorDetail::FontMetricTable::table: surgeist_text::FontMetricTable
+pub surgeist_text::ErrorDetail::FontMetricVariationArithmetic
+pub surgeist_text::ErrorDetail::FontMetricVariationArithmetic::tag: [u8; 4]
 pub surgeist_text::ErrorDetail::InvalidDocumentSegmentBreak
 pub surgeist_text::ErrorDetail::InvalidDocumentSegmentBreak::occurrence: usize
 pub surgeist_text::ErrorDetail::InvalidDocumentSegmentBreak::range: surgeist_text::Range
@@ -167,9 +172,6 @@ pub surgeist_text::ErrorDetail::UnsupportedShapingBoundary::kind: surgeist_text:
 pub surgeist_text::ErrorDetail::UnsupportedTextStyle
 pub surgeist_text::ErrorDetail::UnsupportedTextStyle::feature: surgeist_text::TextStyleFeature
 pub surgeist_text::ErrorDetail::UnsupportedTextStyle::reason: surgeist_text::UnsupportedTextStyleReason
-pub surgeist_text::ErrorDetail::UnsupportedVariableFontMetrics
-pub surgeist_text::ErrorDetail::UnsupportedVariableFontMetrics::fvar: bool
-pub surgeist_text::ErrorDetail::UnsupportedVariableFontMetrics::mvar: bool
 pub enum surgeist_text::FontCatalogueMode
 pub surgeist_text::FontCatalogueMode::RegisteredOnly
 pub surgeist_text::FontCatalogueMode::System
@@ -201,7 +203,44 @@ pub surgeist_text::FontMetricTableError::InvalidUnitsPerEm
 pub surgeist_text::FontMetricTableError::InvalidUnitsPerEm::value: u16
 pub surgeist_text::FontMetricTableError::Malformed
 pub surgeist_text::FontMetricTableError::Missing
+pub surgeist_text::FontMetricTableError::UnsupportedRecordSize
+pub surgeist_text::FontMetricTableError::UnsupportedRecordSize::size: u16
 pub surgeist_text::FontMetricTableError::UnsupportedVersion
+pub surgeist_text::FontMetricTableError::VariationAxisCount
+pub surgeist_text::FontMetricTableError::VariationAxisCount::actual: u16
+pub surgeist_text::FontMetricTableError::VariationAxisCount::expected: usize
+pub surgeist_text::FontMetricTableError::VariationDeltaIndex
+pub surgeist_text::FontMetricTableError::VariationDeltaIndex::inner: u16
+pub surgeist_text::FontMetricTableError::VariationDeltaIndex::outer: u16
+pub surgeist_text::FontMetricTableError::VariationDeltaIndex::record: u16
+pub surgeist_text::FontMetricTableError::VariationOffset
+pub surgeist_text::FontMetricTableError::VariationOffset::offset: u32
+pub surgeist_text::FontMetricTableError::VariationRecordOrder
+pub surgeist_text::FontMetricTableError::VariationRecordOrder::record: u16
+pub surgeist_text::FontMetricTableError::VariationRegionCoordinate
+pub surgeist_text::FontMetricTableError::VariationRegionCoordinate::axis: u16
+pub surgeist_text::FontMetricTableError::VariationRegionCoordinate::region: u16
+pub surgeist_text::FontMetricTableError::VariationRegionCoordinate::value: i16
+pub surgeist_text::FontMetricTableError::VariationRegionCount
+pub surgeist_text::FontMetricTableError::VariationRegionCount::count: u16
+pub surgeist_text::FontMetricTableError::VariationRegionIndex
+pub surgeist_text::FontMetricTableError::VariationRegionIndex::index: u16
+pub surgeist_text::FontMetricTableError::VariationRegionIndex::offset: u32
+pub surgeist_text::FontMetricTableError::VariationRow
+pub surgeist_text::FontMetricTableError::VariationRow::actual: usize
+pub surgeist_text::FontMetricTableError::VariationRow::expected: u16
+pub surgeist_text::FontMetricTableError::VariationRow::inner: u16
+pub surgeist_text::FontMetricTableError::VariationRow::offset: u32
+pub surgeist_text::FontMetricTableError::VariationScalar
+pub surgeist_text::FontMetricTableError::VariationScalar::region: u16
+pub surgeist_text::FontMetricTableError::VariationScalar::value: i32
+pub surgeist_text::FontMetricTableError::VariationStoreFormat
+pub surgeist_text::FontMetricTableError::VariationStoreFormat::format: u16
+pub surgeist_text::FontMetricTableError::VariationWithoutAxes
+pub surgeist_text::FontMetricTableError::VariationWordCount
+pub surgeist_text::FontMetricTableError::VariationWordCount::offset: u32
+pub surgeist_text::FontMetricTableError::VariationWordCount::regions: u16
+pub surgeist_text::FontMetricTableError::VariationWordCount::words: u16
 pub enum surgeist_text::FontSynthesisKind
 pub surgeist_text::FontSynthesisKind::Embolden
 pub surgeist_text::FontSynthesisKind::Skew
