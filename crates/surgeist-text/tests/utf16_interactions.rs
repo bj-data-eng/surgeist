@@ -415,3 +415,6 @@ mod original_surrogate_analysis;
 
 #[path = "utf16_interactions/font_admission.rs"]
 mod font_admission;
+
+#[path = "utf16_interactions/forced_break_adjacency.rs"]
+mod forced_break_adjacency;
