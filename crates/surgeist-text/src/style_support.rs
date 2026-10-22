@@ -21,6 +21,8 @@ pub enum TextStyleFeature {
     ExplicitTextDirection,
     WhiteSpacePreserve,
     WhiteSpaceCollapse,
+    /// Discard is executable by source processing, not yet by paragraph layout.
+    WhiteSpaceDiscard,
     WordBreak,
     TextWrap,
     OverflowWrap,
@@ -64,6 +66,7 @@ impl TextStyleFeature {
         Self::ExplicitTextDirection,
         Self::WhiteSpacePreserve,
         Self::WhiteSpaceCollapse,
+        Self::WhiteSpaceDiscard,
         Self::WordBreak,
         Self::TextWrap,
         Self::OverflowWrap,
@@ -122,6 +125,9 @@ impl TextStyleFeature {
             Self::WhiteSpaceCollapse => TextStyleSupport::Unsupported(
                 UnsupportedTextStyleReason::RequiresSourceRangePreservation,
             ),
+            Self::WhiteSpaceDiscard => TextStyleSupport::Unsupported(
+                UnsupportedTextStyleReason::RequiresProcessedSourceLayout,
+            ),
             Self::FontVariant => {
                 TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresFontPolicy)
             }
@@ -151,6 +157,8 @@ pub enum TextStyleSupport {
 pub enum UnsupportedTextStyleReason {
     RequiresParleyBaseDirection,
     RequiresSourceRangePreservation,
+    /// The paragraph executor does not yet consume processed source.
+    RequiresProcessedSourceLayout,
     RequiresFontPolicy,
     RequiresTextFlowPolicy,
     RequiresDecorationSelectionPolicy,

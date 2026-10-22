@@ -1,6 +1,6 @@
 use std::{error, fmt};
 
-use super::{TextStyleFeature, UnsupportedTextStyleReason};
+use super::{TextStyleFeature, UnsupportedTextStyleReason, WhiteSpace};
 
 /// Text crate result alias.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -60,6 +60,8 @@ pub enum ErrorCode {
     SourceLengthOverflow,
     /// Actual shaping metadata cannot describe a complete font instance.
     InvalidFontInstance,
+    /// Source processing could not represent or allocate its complete result.
+    SourceProcessingCapacity,
     InvalidRange,
     InvalidStyle,
     LayoutFailed,
@@ -69,6 +71,49 @@ pub enum ErrorCode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErrorDetail {
+    /// The first nonempty effective interval outside the admitted processing mode.
+    UnsupportedProcessingMode {
+        /// Original UTF-16 interval.
+        range: super::Range,
+        /// Actual effective mode.
+        mode: WhiteSpace,
+        /// Winning original span ordinal, or the captured base style.
+        span: Option<usize>,
+    },
+    /// An actual supplied document delimiter is invalid.
+    InvalidDocumentSegmentBreak {
+        /// Original delimiter-vector ordinal.
+        occurrence: usize,
+        /// Supplied original source range.
+        range: super::Range,
+        /// Exact structural refusal.
+        reason: DocumentSegmentBreakError,
+    },
+    /// A delimiter would cross a real atomic inline occurrence.
+    SegmentBreakCrossesInlineBox {
+        /// Original delimiter-vector ordinal.
+        occurrence: usize,
+        /// Original box-vector ordinal.
+        box_ordinal: usize,
+        /// Authentic box ID.
+        id: super::Id,
+        /// Original source anchor.
+        anchor: usize,
+    },
+    /// Result-relative processed bounds are invalid.
+    InvalidProcessedRange {
+        /// Requested start or position.
+        start: usize,
+        /// Requested end or position.
+        end: usize,
+        /// Actual processed length.
+        text_len: usize,
+    },
+    /// Complete-result capacity could not be admitted.
+    ProcessingCapacity {
+        /// Distinguishes arithmetic overflow from allocation refusal.
+        reason: ProcessingCapacityError,
+    },
     /// A present variation table failed structural or axis-range validation.
     MalformedFontVariations,
     /// Stored normalized coordinates do not cover the actual axis inventory.
@@ -150,6 +195,30 @@ pub enum ErrorDetail {
         feature: &'static str,
         reason: &'static str,
     },
+}
+
+/// Structural invalidity of one supplied document delimiter occurrence.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DocumentSegmentBreakError {
+    /// The occurrence has no source units.
+    Empty,
+    /// The endpoints are reversed.
+    Reversed,
+    /// At least one endpoint exceeds captured source bounds.
+    OutOfBounds,
+    /// The occurrence precedes the previous supplied occurrence.
+    Unordered,
+    /// Ordered occurrences overlap.
+    Overlap,
+}
+
+/// Capacity failure during off-side source processing.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProcessingCapacityError {
+    /// Checked count or byte arithmetic exceeded the representable domain.
+    Overflow,
+    /// A fallible buffer reservation was refused.
+    Allocation,
 }
 
 /// A shaping suggestion for which no concrete outline operation was supplied.

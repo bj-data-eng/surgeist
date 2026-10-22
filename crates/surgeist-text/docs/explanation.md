@@ -34,7 +34,11 @@ currently refuses before font/cache work and never analyzes replacement text.
 
 This contract helps explain why whitespace collapse is explicitly rejected:
 transforming the string would need an additional mapping back to authored
-coordinates. Similarly, style resolution and symbolic colors require caller
+coordinates and its own operation semantics. The separate
+[source-processing phase](../src/processing.rs) now executes Discard and retains
+that exact correspondence without fonts. Its partial plaintext consumer borrows
+the same result; paragraph layout has not yet integrated it. Similarly, style
+resolution and symbolic colors require caller
 policy beyond the concrete values accepted here. The
 [support matrix](reference.md) makes those limits observable instead of silently
 substituting behavior.

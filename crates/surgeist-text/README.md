@@ -9,6 +9,12 @@ The API has explicit limits: whitespace collapse and explicit base direction are
 unsupported, and inline-box alignment requests do not imply backend placement.
 See the [support reference](docs/reference.md) for the current contract.
 
+`process_source_whitespace` executes source-local `WhiteSpace::Discard` before
+fonts, retaining the exact original source, document delimiter facts and UTF-16
+correspondence. Its partial plaintext iterator returns processed slices and real
+box occurrences; it does not serialize a document or analyze line opportunities.
+Paragraph layout still refuses Discard and does not yet consume this phase.
+
 `Text` retains exact UTF-16 code units, and public source positions and ranges
 count those units. Edits can split or join surrogate pairs. Layout currently
 accepts scalar-representable source through a lossless private UTF-8 projection;

@@ -26,6 +26,7 @@ private implementation organization.
 | --- | --- | --- |
 | Authored text | `Text`, `Source`, `Span`, `InlineBox`, `SourceIdentity`, `SourceRevision` | [text.rs](../src/text.rs), [source.rs](../src/source.rs) |
 | Composition | `source`, `compose`, `Composer`, `Mark` | [composer.rs](../src/composer.rs) |
+| Pre-font source processing | `process_source_whitespace`, `ProcessedSource`, `DocumentSegmentBreaks`, processed positions/ranges and partial plaintext views | [processing.rs](../src/processing.rs) |
 | Style and fonts | `Style`, `Font`, `Brush`, decorations, flow settings | [style.rs](../src/style.rs) |
 | Paragraph layout | `Options`, `Alignment`, `Indent`, `ValidatedOptions` | [options.rs](../src/options.rs) |
 | Layout construction | `System`, `Builder`, `SystemOptions` | [system.rs](../src/system.rs) |
@@ -46,6 +47,30 @@ validated all-zero default axes omitted by the provider. Malformed instance
 metadata and unresolved faux-bold/skew return typed failures. These views retain
 no independent layout or preparation identity; their lifetime comes from the
 original immutable Layout.
+
+## Source-local whitespace processing
+
+`process_source_whitespace` consumes an actual `Source`, base `Style` and explicit
+`DocumentSegmentBreaks`, returning immutable `ProcessedSource`. It currently
+executes only nonempty effective `WhiteSpace::Discard` intervals. Last applicable
+original span wins; empty spans remain records. Intrinsic span/box validation is
+shared with layout, but unrelated font and style fields are retained without
+admission by this phase. LF fallback and `Defined(Vec::new())` are distinct.
+
+The result retains original UTF-16, identity, spans, boxes and document facts.
+Processed positions/ranges use a separate numeric domain, not preparation IDs.
+Forward mapping counts retained units; inverse affinity chooses the first/last
+original endpoint in a complete preimage. A removed span remains observable at a
+zero-length projected range. Span/box views borrow original records.
+
+`plaintext_items` visits the same processed slices and actual box occurrences in
+original anchor order, with original vector order for ties. InFlow boxes remain
+atomic adjacency barriers; OutOfFlow boxes are transparent even where enumeration
+cuts a text slice. A supplied delimiter crossing an InFlow anchor refuses. No
+separator, alternative content, U+FFFC or opportunity is invented. This is partial
+source-local plaintext, not a document serializer or a line-analysis result.
+Paragraph layout still rejects Discard precisely; collapse/trim, preparation,
+opportunity analysis and layout-selected line finalization remain unfinished.
 
 ## Font catalogue publications
 
@@ -129,7 +154,7 @@ style resolver.
 | Supported | Family lists; named/numeric weights; basic/expanded stretch; normal/italic/oblique slant; feature and variation settings; font size; line height; letter/word spacing; concrete text color; locale. |
 | Supported | Preserved whitespace; word-break, wrapping, and overflow-wrap controls; paragraph alignment; supported indent shapes; inline-box alignment facts; underline/strikethrough; decoration offset, thickness, and concrete color; concrete selection color. |
 | Unsupported: backend direction control | Explicit text direction. Automatic direction still resolves to left-to-right or right-to-left in `Layout::direction()`. |
-| Unsupported: source-range policy | Whitespace collapse. |
+| Unsupported: source-range policy | Whitespace collapse. Discard executes in the separate source phase; paragraph layout does not yet consume it. |
 | Unsupported: font or text-flow policy | Non-normal font variants, text overflow behavior beyond the accepted default, last-line alignment behavior beyond the accepted default, and text transformation. |
 | Unsupported: decoration policy | Overline and decoration styles beyond the exposed solid decoration contract. |
 | Unsupported: color resolution | Symbolic text and decoration colors. |

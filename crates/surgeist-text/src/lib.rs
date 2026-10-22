@@ -16,6 +16,7 @@ mod geometry;
 mod id;
 mod layout;
 mod options;
+mod processing;
 mod projection;
 mod range;
 #[path = "source.rs"]
@@ -33,7 +34,8 @@ pub use catalogue::{FontCatalogueIdentity, FontCatalogueMode};
 pub use composer::{Composer, Mark, compose, source};
 pub use edit::{Edit, TextEdit};
 pub use error::{
-    Error, ErrorCode, ErrorDetail, FontSynthesisKind, NumericRequirement, Result, ShapingBoundary,
+    DocumentSegmentBreakError, Error, ErrorCode, ErrorDetail, FontSynthesisKind,
+    NumericRequirement, ProcessingCapacityError, Result, ShapingBoundary,
 };
 pub use geometry::{Point, Rect, Size};
 pub use id::Id;
@@ -45,6 +47,10 @@ pub use layout::{
     SelectionRect,
 };
 pub use options::{Alignment, Indent, Options, TextAlignLast, TextOverflow, ValidatedOptions};
+pub use processing::{
+    DocumentSegmentBreaks, PlaintextItem, PlaintextItems, ProcessedInlineBox, ProcessedPosition,
+    ProcessedRange, ProcessedSource, ProcessedSpan, ProcessedText, process_source_whitespace,
+};
 pub use range::{Range, SourcePosition, SourceRange};
 pub use source_model::{
     BaselineShift, InlineBox, InlineBoxKind, Source, SourceIdentity, SourceRevision, Span,

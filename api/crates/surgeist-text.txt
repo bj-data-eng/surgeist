@@ -45,6 +45,15 @@ pub enum surgeist_text::Direction
 pub surgeist_text::Direction::Auto
 pub surgeist_text::Direction::LeftToRight
 pub surgeist_text::Direction::RightToLeft
+pub enum surgeist_text::DocumentSegmentBreakError
+pub surgeist_text::DocumentSegmentBreakError::Empty
+pub surgeist_text::DocumentSegmentBreakError::OutOfBounds
+pub surgeist_text::DocumentSegmentBreakError::Overlap
+pub surgeist_text::DocumentSegmentBreakError::Reversed
+pub surgeist_text::DocumentSegmentBreakError::Unordered
+pub enum surgeist_text::DocumentSegmentBreaks
+pub surgeist_text::DocumentSegmentBreaks::Defined(alloc::vec::Vec<surgeist_text::Range>)
+pub surgeist_text::DocumentSegmentBreaks::LineFeedDefault
 pub enum surgeist_text::Edit
 pub surgeist_text::Edit::Delete
 pub surgeist_text::Edit::Delete::range: surgeist_text::Range
@@ -66,6 +75,7 @@ pub surgeist_text::ErrorCode::InvalidRange
 pub surgeist_text::ErrorCode::InvalidStyle
 pub surgeist_text::ErrorCode::LayoutFailed
 pub surgeist_text::ErrorCode::SourceLengthOverflow
+pub surgeist_text::ErrorCode::SourceProcessingCapacity
 pub surgeist_text::ErrorCode::SourceRevisionExhausted
 pub surgeist_text::ErrorCode::UnsupportedFeature
 pub enum surgeist_text::ErrorDetail
@@ -84,6 +94,10 @@ pub surgeist_text::ErrorDetail::FontFacesNotAdmitted::admitted: usize
 pub surgeist_text::ErrorDetail::FontFacesNotAdmitted::expected: usize
 pub surgeist_text::ErrorDetail::FontGenerationExhausted
 pub surgeist_text::ErrorDetail::FontGenerationExhausted::generation: u64
+pub surgeist_text::ErrorDetail::InvalidDocumentSegmentBreak
+pub surgeist_text::ErrorDetail::InvalidDocumentSegmentBreak::occurrence: usize
+pub surgeist_text::ErrorDetail::InvalidDocumentSegmentBreak::range: surgeist_text::Range
+pub surgeist_text::ErrorDetail::InvalidDocumentSegmentBreak::reason: surgeist_text::DocumentSegmentBreakError
 pub surgeist_text::ErrorDetail::InvalidFontContainer
 pub surgeist_text::ErrorDetail::InvalidFontFace
 pub surgeist_text::ErrorDetail::InvalidFontFace::index: u32
@@ -91,6 +105,10 @@ pub surgeist_text::ErrorDetail::InvalidNumericField
 pub surgeist_text::ErrorDetail::InvalidNumericField::field: &'static str
 pub surgeist_text::ErrorDetail::InvalidNumericField::requirement: surgeist_text::NumericRequirement
 pub surgeist_text::ErrorDetail::InvalidNumericField::value: f32
+pub surgeist_text::ErrorDetail::InvalidProcessedRange
+pub surgeist_text::ErrorDetail::InvalidProcessedRange::end: usize
+pub surgeist_text::ErrorDetail::InvalidProcessedRange::start: usize
+pub surgeist_text::ErrorDetail::InvalidProcessedRange::text_len: usize
 pub surgeist_text::ErrorDetail::InvalidSourceIndex
 pub surgeist_text::ErrorDetail::InvalidSourceIndex::index: usize
 pub surgeist_text::ErrorDetail::InvalidSourceIndex::name: &'static str
@@ -103,9 +121,16 @@ pub surgeist_text::ErrorDetail::IsolatedSurrogateLayout
 pub surgeist_text::ErrorDetail::IsolatedSurrogateLayout::index: usize
 pub surgeist_text::ErrorDetail::IsolatedSurrogateLayout::unit: u16
 pub surgeist_text::ErrorDetail::MalformedFontVariations
+pub surgeist_text::ErrorDetail::ProcessingCapacity
+pub surgeist_text::ErrorDetail::ProcessingCapacity::reason: surgeist_text::ProcessingCapacityError
 pub surgeist_text::ErrorDetail::ProviderSourceRange
 pub surgeist_text::ErrorDetail::ProviderSourceRange::end: usize
 pub surgeist_text::ErrorDetail::ProviderSourceRange::start: usize
+pub surgeist_text::ErrorDetail::SegmentBreakCrossesInlineBox
+pub surgeist_text::ErrorDetail::SegmentBreakCrossesInlineBox::anchor: usize
+pub surgeist_text::ErrorDetail::SegmentBreakCrossesInlineBox::box_ordinal: usize
+pub surgeist_text::ErrorDetail::SegmentBreakCrossesInlineBox::id: surgeist_text::Id
+pub surgeist_text::ErrorDetail::SegmentBreakCrossesInlineBox::occurrence: usize
 pub surgeist_text::ErrorDetail::SourceRevisionExhausted
 pub surgeist_text::ErrorDetail::SourceRevisionExhausted::revision: u64
 pub surgeist_text::ErrorDetail::UnresolvedFontSynthesis
@@ -116,6 +141,10 @@ pub surgeist_text::ErrorDetail::UnsupportedAccessibilityUnit::range: surgeist_te
 pub surgeist_text::ErrorDetail::UnsupportedCombination
 pub surgeist_text::ErrorDetail::UnsupportedCombination::feature: &'static str
 pub surgeist_text::ErrorDetail::UnsupportedCombination::reason: &'static str
+pub surgeist_text::ErrorDetail::UnsupportedProcessingMode
+pub surgeist_text::ErrorDetail::UnsupportedProcessingMode::mode: surgeist_text::WhiteSpace
+pub surgeist_text::ErrorDetail::UnsupportedProcessingMode::range: surgeist_text::Range
+pub surgeist_text::ErrorDetail::UnsupportedProcessingMode::span: core::option::Option<usize>
 pub surgeist_text::ErrorDetail::UnsupportedShapingBoundary
 pub surgeist_text::ErrorDetail::UnsupportedShapingBoundary::index: usize
 pub surgeist_text::ErrorDetail::UnsupportedShapingBoundary::kind: surgeist_text::ShapingBoundary
@@ -167,6 +196,12 @@ pub surgeist_text::OverflowWrap::BreakWord
 pub surgeist_text::OverflowWrap::Normal
 impl core::convert::From<surgeist_text::OverflowWrap> for parlance::text::OverflowWrap
 pub fn parlance::text::OverflowWrap::from(overflow_wrap: surgeist_text::OverflowWrap) -> Self
+pub enum surgeist_text::PlaintextItem<'a>
+pub surgeist_text::PlaintextItem::InlineBox(surgeist_text::ProcessedInlineBox<'a>)
+pub surgeist_text::PlaintextItem::Text(surgeist_text::ProcessedText<'a>)
+pub enum surgeist_text::ProcessingCapacityError
+pub surgeist_text::ProcessingCapacityError::Allocation
+pub surgeist_text::ProcessingCapacityError::Overflow
 pub enum surgeist_text::ShapingBoundary
 pub surgeist_text::ShapingBoundary::InlineBox
 pub surgeist_text::ShapingBoundary::SpanEnd
@@ -218,6 +253,7 @@ pub surgeist_text::TextStyleFeature::TextWrap
 pub surgeist_text::TextStyleFeature::Underline
 pub surgeist_text::TextStyleFeature::VerticalAlign
 pub surgeist_text::TextStyleFeature::WhiteSpaceCollapse
+pub surgeist_text::TextStyleFeature::WhiteSpaceDiscard
 pub surgeist_text::TextStyleFeature::WhiteSpacePreserve
 pub surgeist_text::TextStyleFeature::WordBreak
 pub surgeist_text::TextStyleFeature::WordSpacing
@@ -237,6 +273,7 @@ pub surgeist_text::UnsupportedTextStyleReason::RequiresDecorationSelectionPolicy
 pub surgeist_text::UnsupportedTextStyleReason::RequiresFontPolicy
 pub surgeist_text::UnsupportedTextStyleReason::RequiresInlineMetricContract
 pub surgeist_text::UnsupportedTextStyleReason::RequiresParleyBaseDirection
+pub surgeist_text::UnsupportedTextStyleReason::RequiresProcessedSourceLayout
 pub surgeist_text::UnsupportedTextStyleReason::RequiresSourceRangePreservation
 pub surgeist_text::UnsupportedTextStyleReason::RequiresTextFlowPolicy
 pub enum surgeist_text::VerticalAlign
@@ -265,6 +302,7 @@ impl core::convert::From<surgeist_text::Weight> for parlance::font::FontWeight
 pub fn parlance::font::FontWeight::from(weight: surgeist_text::Weight) -> Self
 pub enum surgeist_text::WhiteSpace
 pub surgeist_text::WhiteSpace::Collapse
+pub surgeist_text::WhiteSpace::Discard
 pub surgeist_text::WhiteSpace::Preserve
 pub enum surgeist_text::Width
 pub surgeist_text::Width::Condensed
@@ -574,6 +612,10 @@ pub const fn surgeist_text::PaintedSelectionRect::line(self) -> usize
 pub const fn surgeist_text::PaintedSelectionRect::new(rect: surgeist_text::Rect, line: usize, paint: surgeist_text::SelectionPaint) -> Self
 pub const fn surgeist_text::PaintedSelectionRect::paint(self) -> surgeist_text::SelectionPaint
 pub const fn surgeist_text::PaintedSelectionRect::rect(self) -> surgeist_text::Rect
+pub struct surgeist_text::PlaintextItems<'a>
+impl<'a> core::iter::traits::iterator::Iterator for surgeist_text::PlaintextItems<'a>
+pub type surgeist_text::PlaintextItems<'a>::Item = surgeist_text::PlaintextItem<'a>
+pub fn surgeist_text::PlaintextItems<'a>::next(&mut self) -> core::option::Option<Self::Item>
 pub struct surgeist_text::Point
 pub surgeist_text::Point::x: f32
 pub surgeist_text::Point::y: f32
@@ -590,6 +632,42 @@ pub const fn surgeist_text::PositionedInlineBox::line(self) -> usize
 pub const fn surgeist_text::PositionedInlineBox::new(id: surgeist_text::Id, kind: surgeist_text::InlineBoxKind, rect: surgeist_text::Rect, index: usize, vertical_align: surgeist_text::VerticalAlign, line: usize) -> Self
 pub const fn surgeist_text::PositionedInlineBox::rect(self) -> surgeist_text::Rect
 pub const fn surgeist_text::PositionedInlineBox::vertical_align(self) -> surgeist_text::VerticalAlign
+pub struct surgeist_text::ProcessedInlineBox<'a>
+impl<'a> surgeist_text::ProcessedInlineBox<'a>
+pub const fn surgeist_text::ProcessedInlineBox<'a>::ordinal(self) -> usize
+pub const fn surgeist_text::ProcessedInlineBox<'a>::original(self) -> &'a surgeist_text::InlineBox
+pub const fn surgeist_text::ProcessedInlineBox<'a>::position(self) -> surgeist_text::ProcessedPosition
+pub struct surgeist_text::ProcessedPosition(_)
+impl surgeist_text::ProcessedPosition
+pub const fn surgeist_text::ProcessedPosition::get(self) -> usize
+pub struct surgeist_text::ProcessedRange
+impl surgeist_text::ProcessedRange
+pub const fn surgeist_text::ProcessedRange::end(self) -> surgeist_text::ProcessedPosition
+pub const fn surgeist_text::ProcessedRange::is_empty(self) -> bool
+pub const fn surgeist_text::ProcessedRange::len(self) -> usize
+pub const fn surgeist_text::ProcessedRange::start(self) -> surgeist_text::ProcessedPosition
+pub struct surgeist_text::ProcessedSource
+impl surgeist_text::ProcessedSource
+pub const fn surgeist_text::ProcessedSource::base_style(&self) -> &surgeist_text::Style
+pub fn surgeist_text::ProcessedSource::inline_boxes(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::ProcessedInlineBox<'_>>
+pub fn surgeist_text::ProcessedSource::plaintext_items(&self) -> surgeist_text::PlaintextItems<'_>
+pub fn surgeist_text::ProcessedSource::position(&self, at: usize) -> surgeist_text::Result<surgeist_text::ProcessedPosition>
+pub const fn surgeist_text::ProcessedSource::processed_text(&self) -> &surgeist_text::Text
+pub fn surgeist_text::ProcessedSource::processed_to_source(&self, at: surgeist_text::ProcessedPosition, affinity: surgeist_text::Affinity) -> surgeist_text::Result<surgeist_text::SourcePosition>
+pub fn surgeist_text::ProcessedSource::range(&self, start: usize, end: usize) -> surgeist_text::Result<surgeist_text::ProcessedRange>
+pub const fn surgeist_text::ProcessedSource::segment_breaks(&self) -> &surgeist_text::DocumentSegmentBreaks
+pub const fn surgeist_text::ProcessedSource::source(&self) -> &surgeist_text::Source
+pub fn surgeist_text::ProcessedSource::source_to_processed(&self, at: surgeist_text::SourcePosition) -> surgeist_text::Result<surgeist_text::ProcessedPosition>
+pub fn surgeist_text::ProcessedSource::spans(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::ProcessedSpan<'_>>
+pub struct surgeist_text::ProcessedSpan<'a>
+impl<'a> surgeist_text::ProcessedSpan<'a>
+pub const fn surgeist_text::ProcessedSpan<'a>::ordinal(self) -> usize
+pub const fn surgeist_text::ProcessedSpan<'a>::original(self) -> &'a surgeist_text::Span
+pub const fn surgeist_text::ProcessedSpan<'a>::range(self) -> surgeist_text::ProcessedRange
+pub struct surgeist_text::ProcessedText<'a>
+impl<'a> surgeist_text::ProcessedText<'a>
+pub const fn surgeist_text::ProcessedText<'a>::code_units(self) -> &'a [u16]
+pub const fn surgeist_text::ProcessedText<'a>::range(self) -> surgeist_text::ProcessedRange
 pub struct surgeist_text::Range
 pub surgeist_text::Range::end: usize
 pub surgeist_text::Range::start: usize
@@ -815,5 +893,6 @@ impl core::convert::TryFrom<surgeist_text::Style> for surgeist_text::ValidatedSt
 pub type surgeist_text::ValidatedStyle::Error = surgeist_text::Error
 pub fn surgeist_text::ValidatedStyle::try_from(style: surgeist_text::Style) -> surgeist_text::Result<Self>
 pub fn surgeist_text::compose() -> surgeist_text::Composer
+pub fn surgeist_text::process_source_whitespace(source: surgeist_text::Source, base_style: surgeist_text::Style, segment_breaks: surgeist_text::DocumentSegmentBreaks) -> surgeist_text::Result<surgeist_text::ProcessedSource>
 pub fn surgeist_text::source(children: impl core::ops::function::FnOnce(&mut surgeist_text::Composer)) -> surgeist_text::Source
 pub type surgeist_text::Result<T> = core::result::Result<T, surgeist_text::Error>

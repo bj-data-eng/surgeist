@@ -304,6 +304,8 @@ impl From<LineHeight> for parley::LineHeight {
 pub enum WhiteSpace {
     Collapse,
     Preserve,
+    /// Source-only discard processing; full paragraph layout remains unsupported.
+    Discard,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -630,11 +632,23 @@ fn validate_style(style: &Style) -> Result<ParsedStyle> {
     if style.white_space != WhiteSpace::Preserve {
         return Err(Error::new(
             ErrorCode::UnsupportedFeature,
-            "whitespace collapse is not supported until text layout preserves authored source ranges",
+            match style.white_space {
+                WhiteSpace::Collapse => "whitespace collapse is not supported until text layout preserves authored source ranges",
+                WhiteSpace::Discard => "whitespace discard source processing is not yet consumed by paragraph layout",
+                WhiteSpace::Preserve => unreachable!("unsupported branch excludes Preserve"),
+            },
         )
         .with_detail(ErrorDetail::UnsupportedTextStyle {
-            feature: TextStyleFeature::WhiteSpaceCollapse,
-            reason: UnsupportedTextStyleReason::RequiresSourceRangePreservation,
+            feature: match style.white_space {
+                WhiteSpace::Discard => TextStyleFeature::WhiteSpaceDiscard,
+                WhiteSpace::Collapse => TextStyleFeature::WhiteSpaceCollapse,
+                WhiteSpace::Preserve => unreachable!("unsupported branch excludes Preserve"),
+            },
+            reason: match style.white_space {
+                WhiteSpace::Discard => UnsupportedTextStyleReason::RequiresProcessedSourceLayout,
+                WhiteSpace::Collapse => UnsupportedTextStyleReason::RequiresSourceRangePreservation,
+                WhiteSpace::Preserve => unreachable!("unsupported branch excludes Preserve"),
+            },
         }));
     }
     validate_positive_f32(style.size, "font size")?;

@@ -20,6 +20,7 @@ optional standalone paint adapter and consumes Text directly.
 | Public front door | [src/lib.rs](src/lib.rs) and its reexports |
 | Source composition, ranges, validation, and edits | [src/source.rs](src/source.rs), [src/composer.rs](src/composer.rs), [src/range.rs](src/range.rs), [src/edit.rs](src/edit.rs) |
 | Exact UTF-16 storage and scalar provider mapping | [src/text.rs](src/text.rs), [src/projection.rs](src/projection.rs) |
+| Pre-font Discard processing, correspondence and partial plaintext | [src/processing.rs](src/processing.rs), [owning tests](src/processing/tests.rs) |
 | Text style inputs, supported features, options, and diagnostics | [src/style.rs](src/style.rs), [src/style_support.rs](src/style_support.rs), [src/options.rs](src/options.rs), [src/error.rs](src/error.rs) |
 | Layout construction and cache identity | [src/system.rs](src/system.rs), [src/catalogue.rs](src/catalogue.rs), [src/cache.rs](src/cache.rs) |
 | Layout outputs, geometry, movement, and optional projections | [src/layout.rs](src/layout.rs), [src/geometry.rs](src/geometry.rs) |

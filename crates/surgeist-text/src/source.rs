@@ -112,6 +112,18 @@ fn validate_source(source: &Source) -> Result<Vec<ValidatedSpan>> {
             style: ValidatedStyle::try_from(span.style.clone())?,
         });
     }
+    validate_boxes(source)?;
+    Ok(span_styles)
+}
+
+pub(crate) fn validate_structure(source: &Source) -> Result<()> {
+    for span in &source.spans {
+        range::validate(source.text(), span.range)?;
+    }
+    validate_boxes(source)
+}
+
+fn validate_boxes(source: &Source) -> Result<()> {
     let mut inline_box_ids = std::collections::HashSet::new();
     for box_ in &source.boxes {
         range::validate_index(source.text(), box_.index, "inline box index")?;
@@ -128,7 +140,7 @@ fn validate_source(source: &Source) -> Result<Vec<ValidatedSpan>> {
             }));
         }
     }
-    Ok(span_styles)
+    Ok(())
 }
 
 fn validate_inline_box_size(size: Size) -> Result<()> {
