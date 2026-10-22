@@ -173,3 +173,152 @@ fn authored_tiny_definite_grid_border_box_still_clamps_gutters_f32() {
 fn authored_tiny_definite_grid_border_box_still_clamps_gutters_f64() {
     qualify::<f64>(false);
 }
+
+struct InheritedColumnGrid<S: LayoutScalar> {
+    inputs: [LayoutInputOf<S>; 3],
+}
+
+impl<S: LayoutScalar> Traverse for InheritedColumnGrid<S> {
+    type Node = usize;
+    type Scalar = S;
+    type Children<'a>
+        = std::iter::Copied<std::slice::Iter<'a, usize>>
+    where
+        Self: 'a;
+
+    fn children(&self, node: usize) -> Self::Children<'_> {
+        let children: &[usize] = match node {
+            0 => &[1],
+            1 => &[2],
+            _ => &[],
+        };
+        children.iter().copied()
+    }
+
+    fn child_count(&self, node: usize) -> usize {
+        usize::from(node < 2)
+    }
+
+    fn child(&self, node: usize, index: usize) -> usize {
+        assert!(node < 2);
+        assert_eq!(index, 0);
+        node + 1
+    }
+}
+
+impl<S: LayoutScalar> LayoutTree for InheritedColumnGrid<S> {
+    type MeasureError = std::convert::Infallible;
+
+    fn node_input(&self, node: usize) -> &NodeInputOf<S> {
+        self.inputs[node].as_box().unwrap()
+    }
+
+    fn layout_input(&self, node: usize) -> LayoutInputViewOf<'_, S> {
+        self.inputs[node].as_view()
+    }
+}
+
+fn qualify_inherited_columns<S: LayoutScalar>() {
+    let mut failures = Vec::new();
+    for display in [Display::Grid, Display::GridLanes] {
+        for (overflow, gutter, leaf_height, expected_width, reservation) in [
+            (Overflow::Auto, ScrollbarGutter::Auto, 20.0, 40.0, 0.0),
+            (Overflow::Auto, ScrollbarGutter::Auto, 30.0, 45.0, 5.0),
+            (Overflow::Hidden, ScrollbarGutter::Stable, 20.0, 45.0, 5.0),
+        ] {
+            // Grid2 §9 subgrid-item-contribution/subgrid-margins applies the
+            // child's gutter to its edge item's intrinsic contribution. The
+            // 40px leaf fills the inherited column. Its 30px block extent
+            // overflows the child's independently fixed20 row, requiring5
+            // inline gutter. No-overflow Auto and Hidden Stable are controls.
+            let tree = InheritedColumnGrid::<S> {
+                inputs: [
+                    LayoutInputOf::box_input(NodeInputOf {
+                        display: Display::Grid,
+                        size: Size::new(PreferredSizeOf::MAX_CONTENT, preferred(20.0)),
+                        grid_template_columns: vec![TrackComponentOf::MAX_CONTENT],
+                        grid_template_rows: vec![track(20.0)],
+                        justify_content: Some(AlignContent::Start),
+                        align_content: Some(AlignContent::Start),
+                        ..NodeInputOf::default()
+                    }),
+                    LayoutInputOf::box_input(NodeInputOf {
+                        display,
+                        size: Size::new(PreferredSizeOf::AUTO, preferred(20.0)),
+                        grid_template_columns: vec![TrackComponentOf::Subgrid(SubgridTrack::new(
+                            vec![],
+                        ))],
+                        grid_template_rows: vec![track(20.0)],
+                        grid_auto_flow: GridAutoFlow::Row,
+                        overflow: ComputedOverflow::try_new(overflow, overflow).unwrap(),
+                        scrollbar_gutter: gutter,
+                        scrollbar_width: ScrollbarWidthOf::try_new(S::from_f64(5.0)).unwrap(),
+                        justify_content: Some(AlignContent::Start),
+                        align_content: Some(AlignContent::Start),
+                        ..NodeInputOf::default()
+                    }),
+                    LayoutInputOf::box_input(NodeInputOf {
+                        display: Display::Block,
+                        size: Size::new(preferred(40.0), preferred(leaf_height)),
+                        ..NodeInputOf::default()
+                    }),
+                ],
+            };
+            let request =
+                LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap();
+            let batch = match compute_layout(&tree, 0, request) {
+                Ok(batch) => batch,
+                Err(error) => {
+                    failures.push(format!(
+                        "{display:?} {overflow:?} {gutter:?} leaf_height={leaf_height}: {error:?}"
+                    ));
+                    continue;
+                }
+            };
+            let output = |node| {
+                batch
+                    .unrounded_entries()
+                    .iter()
+                    .find(|entry| entry.node() == node)
+                    .unwrap()
+                    .output()
+            };
+            let parent = output(0);
+            let child = output(1);
+            let leaf = output(2);
+            let geometry = child.scroll_geometry.expect("actual child scroll geometry");
+            let actual = (
+                parent.size,
+                child.size,
+                leaf.size,
+                geometry.content_box().size(),
+                geometry.scrollbar_size(),
+            );
+            let expected = (
+                Size::new(S::from_f64(expected_width), S::from_f64(20.0)),
+                Size::new(S::from_f64(expected_width), S::from_f64(20.0)),
+                Size::new(S::from_f64(40.0), S::from_f64(leaf_height)),
+                Size::new(S::from_f64(40.0), S::from_f64(20.0)),
+                Size::new(S::from_f64(reservation), S::ZERO),
+            );
+            eprintln!(
+                "{} inherited_columns {display:?} {overflow:?} {gutter:?} leaf_height={leaf_height}: actual={actual:?}, expected={expected:?}",
+                std::any::type_name::<S>()
+            );
+            if actual != expected {
+                failures.push(format!("{display:?} {overflow:?} {gutter:?} leaf_height={leaf_height}: actual={actual:?}, expected={expected:?}"));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn inherited_columns_include_child_settled_auto_gutter_f32() {
+    qualify_inherited_columns::<f32>();
+}
+
+#[test]
+fn inherited_columns_include_child_settled_auto_gutter_f64() {
+    qualify_inherited_columns::<f64>();
+}
