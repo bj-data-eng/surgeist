@@ -80,7 +80,14 @@ fn fri06_c03_projection_soft_and_forced_unequal_atomic_lines_align_per_line_in_a
             TextAlign::LegacyLeft if decreases => free,
             TextAlign::LegacyRight if !decreases => free,
             TextAlign::LegacyCenter => free / 2.0,
-            TextAlign::Auto | TextAlign::LegacyLeft | TextAlign::LegacyRight => 0.0,
+            TextAlign::Start
+            | TextAlign::End
+            | TextAlign::Left
+            | TextAlign::Right
+            | TextAlign::Center
+            | TextAlign::Justify
+            | TextAlign::LegacyLeft
+            | TextAlign::LegacyRight => 0.0,
         }
     }
 
@@ -803,7 +810,7 @@ fn fri06_c04_line_clear_all_flows_values_and_matching_sides_both_scalars() {
                     .unwrap();
                     let batch = fri06_c04_line_batch(
                         flow_axes,
-                        TextAlign::Auto,
+                        TextAlign::Start,
                         vec![
                             (
                                 1,
@@ -927,7 +934,14 @@ fn fri06_c04_line_alignment_legacy_values_use_each_final_band_all_flows_both_sca
                         TextAlign::LegacyCenter => free / 2.0,
                         TextAlign::LegacyLeft if inline_decreases => free,
                         TextAlign::LegacyRight if !inline_decreases => free,
-                        TextAlign::LegacyLeft | TextAlign::LegacyRight | TextAlign::Auto => 0.0,
+                        TextAlign::LegacyLeft
+                        | TextAlign::LegacyRight
+                        | TextAlign::Start
+                        | TextAlign::End
+                        | TextAlign::Left
+                        | TextAlign::Right
+                        | TextAlign::Center
+                        | TextAlign::Justify => 0.0,
                     };
                     S::from_f64(30.0 + offset)
                 };
@@ -1178,7 +1192,7 @@ fn numeric_fitter_alignment_uses_each_unequal_line_and_clamps_overflow_all_flows
     fn offset(align: TextAlign, decreases: bool, used: f64) -> f64 {
         let free = (100.0 - used).max(0.0);
         match align {
-            TextAlign::Auto => 0.0,
+            TextAlign::Start => 0.0,
             TextAlign::LegacyLeft if decreases => free,
             TextAlign::LegacyRight if !decreases => free,
             TextAlign::LegacyCenter => free / 2.0,
@@ -1190,7 +1204,7 @@ fn numeric_fitter_alignment_uses_each_unequal_line_and_clamps_overflow_all_flows
             let axes = FlowAxes::new(writing_mode, direction);
             let decreases = fri06_c02_inline_decreases(writing_mode, direction);
             for align in [
-                TextAlign::Auto,
+                TextAlign::Start,
                 TextAlign::LegacyLeft,
                 TextAlign::LegacyRight,
                 TextAlign::LegacyCenter,

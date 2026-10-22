@@ -1238,7 +1238,7 @@ fn node_input_defaults_match_the_layout_contract() {
     assert_eq!(node_input.display, Display::Flex);
     assert_eq!(node_input.box_sizing, BoxSizing::BorderBox);
     assert_eq!(node_input.direction, Direction::Ltr);
-    assert_eq!(node_input.text_align, TextAlign::Auto);
+    assert_eq!(node_input.text_align, TextAlign::Start);
     assert_eq!(node_input.overflow, ComputedOverflow::VISIBLE);
     assert_eq!(node_input.scrollbar_width.get(), 0.0);
     assert_eq!(node_input.position, Position::Relative);

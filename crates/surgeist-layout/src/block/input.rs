@@ -2,7 +2,8 @@ use crate::node_projection::CommonBoxProjection;
 use crate::scroll::{ScrollBoxProjection, ScrollTargetProjection};
 use crate::{
     AtomicInlineParticipation, Clear, Compute, Display, Float, FloatExclusion, LayoutScalar,
-    NodeInputOf, ScrollbarGutter, ScrollbarWidthOf, TextAlign, Traverse, VerticalAlign,
+    NodeInputOf, ScrollbarGutter, ScrollbarWidthOf, TextAlign, TextAlignLast, TextJustification,
+    Traverse, VerticalAlign,
 };
 
 /// Block-container facts settled at the block algorithm entry.
@@ -11,6 +12,8 @@ pub(crate) struct BlockContainerProjection<'a, S: LayoutScalar> {
     pub(super) common: CommonBoxProjection<'a, S>,
     pub(super) display: Display,
     pub(super) text_align: TextAlign,
+    pub(super) text_align_last: TextAlignLast,
+    pub(super) text_justification: TextJustification,
     pub(super) scrollbar_gutter: ScrollbarGutter,
     pub(super) scrollbar_width: ScrollbarWidthOf<S>,
 }
@@ -22,6 +25,8 @@ impl<'a, S: LayoutScalar> BlockContainerProjection<'a, S> {
             common: CommonBoxProjection::from_node(input),
             display: input.display,
             text_align: input.text_align,
+            text_align_last: input.text_align_last,
+            text_justification: input.text_justification,
             scrollbar_gutter: input.scrollbar_gutter,
             scrollbar_width: input.scrollbar_width,
         }

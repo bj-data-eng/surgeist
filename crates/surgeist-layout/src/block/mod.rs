@@ -14,7 +14,7 @@ use super::{
     LayoutErrorSiteOf, LayoutInvalidInputOf, LayoutOperation, LayoutResultOf, LayoutScalar,
     LengthAutoOf, LineBreakInputOf, NodeOutputOf, Overflow, ParentFormattingContext,
     PhysicalBlockMarginCollapseOf, Point, Position, RequestedAxis, RunMode, Size, SizingAlgorithm,
-    SizingMode, TextAlign, Traverse, VerticalAlign,
+    SizingMode, TextAlign, TextAlignLast, TextJustification, Traverse, VerticalAlign,
 };
 use crate::error::{
     AtomicInlineParticipationRoleError, layout_child_geometry_error, layout_own_geometry_error,
@@ -357,6 +357,8 @@ struct Constants<S: LayoutScalar> {
     node_max_size: Size<Option<S>>,
     direction: Direction,
     text_align: TextAlign,
+    text_align_last: TextAlignLast,
+    text_justification: TextJustification,
     border: Edges<S>,
     padding: Edges<S>,
     effective_border: Edges<S>,
@@ -611,6 +613,8 @@ impl<S: LayoutScalar> Constants<S> {
             node_max_size: max_size,
             direction: flow_axes.direction(),
             text_align: style.text_align,
+            text_align_last: style.text_align_last,
+            text_justification: style.text_justification,
             border,
             padding,
             effective_border,

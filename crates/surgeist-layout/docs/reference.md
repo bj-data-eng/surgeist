@@ -62,7 +62,8 @@ Source: [node input](../src/node_input/mod.rs) and its domain modules.
 
 - Aggregate input: `NodeInputOf` and its `NodeInput` default-scalar alias.
 - Tree participation: owned `LayoutInputOf` storage and borrowed `LayoutInputViewOf`, `Display`, `Position`, and `ItemOrder`.
-- Flow and alignment: `WritingMode`, `Direction`, `AlignItems`, and `AlignContent`.
+- Flow and alignment: `WritingMode`, `Direction`, `AlignItems`, `AlignContent`,
+  `TextAlign`, `TextAlignLast`, and `TextJustification`.
 - Inline and flex input: `TextParticipation`, `TextControlParticipation`, `TextParagraphBinding`,
   `InlineBoundaryInputOf`, `FlexDirection`, `FlexWrap`, and `FlexItemCollapse`.
 - Grid input: `GridPlacement`, `GridAutoFlow`, and `GridFlowToleranceOf`.
@@ -85,10 +86,23 @@ uses real selected text, boxes, controls, and any explicitly supplied Layout
 `line_strut`. Missing metrics remain a typed refusal rather than a guessed font
 or zero-size line.
 
-The initial profile supports horizontal LTR and RTL text, zero indentation,
-font-advance tabs, and no additional spacing allocations. Vertical and sideways
-Text orientations remain explicit unsupported operations. A complete canonical
-frame, line allocation, and float-band basis governs same-invocation retries.
+The native profile supports horizontal LTR and RTL text, zero indentation,
+and font-advance tabs. `text_align` supplies normal line alignment;
+`text_align_last` supplies paragraph-ending and forced-line alignment. Logical
+Start/End follows the paragraph direction, while Left/Right remains physical.
+Only the Legacy alignment variants also align ordinary block children.
+
+`TextJustification::Spaces` expands retained U+0020 slots using Text's finalized
+ownership and edge decisions. Layout distributes the remaining raw advance to
+those slots and finalizes the same selected line with the complete allocations.
+It reconciles an over-budget result against actual finalized advances; if that
+correction still exceeds the span, `TextSpacingBudget` reports the available span
+and actual advance. Text numeric refusals remain Text errors.
+`None` adds no spacing. This explicit profile does not implement CSS-wide
+justification methods or hanging-space adjustment. Vertical and sideways Text
+orientations remain explicit unsupported operations. A complete canonical
+frame, line allocation, ordered spacing allocations, and float-band basis governs
+same-invocation retries.
 An unchanged selection reuses its exact finalized line, including rigid
 translation; a repeated conflicting basis refuses rather than looping.
 The common physical line anchor uses nearest-CSS-pixel rounding while retaining

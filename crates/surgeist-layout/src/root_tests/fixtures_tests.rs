@@ -87,6 +87,7 @@ pub(super) fn numeric_atomic_fit_with_flow<S: LayoutScalar>(
         available_inline_extent: available,
         flow_axes: axes,
         text_align,
+        text_align_last: crate::TextAlignLast::Auto,
         participants: items
             .into_iter()
             .enumerate()
@@ -525,7 +526,8 @@ pub(super) fn assert_fri06_c08_r1_mixed_unit_traversal<S: LayoutScalar>(
     let report = layout_mixed_inline_run(MixedInlineRunInputOf {
         available_inline_extent: AvailableOf::definite(S::from_f64(100.0)),
         flow_axes: axes,
-        text_align: TextAlign::Auto,
+        text_align: TextAlign::Start,
+        text_align_last: crate::TextAlignLast::Auto,
         participants: vec![
             atomic(0, 10.0, 10.0, 8.0, 1),
             boundary(1, InlineBoundaryKind::Start),

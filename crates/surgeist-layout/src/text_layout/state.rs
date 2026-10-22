@@ -18,12 +18,14 @@ pub(crate) struct PendingParagraph<Node> {
     pub lines: Vec<LinePlacement>,
     pub bands: Vec<super::fit::LineBands>,
     pub flows: Vec<super::fit::LineFlow>,
+    pub amounts: Vec<Vec<f64>>,
     pub outflows: Vec<(usize, surgeist_text::PreparedAtomic, Node)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct LineBasis {
     request: surgeist_text::LineSelectionRequest,
+    amounts: Vec<f64>,
     anchor: surgeist_text::LineAnchor,
     atomics: Vec<surgeist_text::AtomicPlacement>,
     bands: super::fit::LineBands,
@@ -45,7 +47,7 @@ pub(crate) struct TextComputation<'input, Node, S: LayoutScalar> {
     pub paragraphs: &'input [TextParagraphBinding<Node>],
     pub frames: Vec<CanonicalFrame<Node, S>>,
     pub pending: Vec<PendingParagraph<Node>>,
-    pub reusable: Vec<surgeist_text::FinalizedLine>,
+    pub reusable: Vec<super::fit::ReusableLine>,
     pub atomic_origins: Vec<(Node, Point<f64>)>,
     pub absolute_baselines: Vec<(Node, f64)>,
 }
@@ -126,8 +128,10 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                         .iter()
                         .zip(&paragraph.bands)
                         .zip(&paragraph.flows)
+                        .zip(&paragraph.amounts)
                 })
-                .map(|((placement, band), flow)| LineBasis {
+                .map(|(((placement, band), flow), amounts)| LineBasis {
+                    amounts: amounts.clone(),
                     request: placement.line.selected_line().request().clone(),
                     anchor: placement.anchor,
                     atomics: placement.atomics.clone(),

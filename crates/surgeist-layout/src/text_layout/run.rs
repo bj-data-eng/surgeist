@@ -12,10 +12,10 @@ use crate::inline::{
 use crate::inline::{InlineControlSourceOf, InlineParticipantLayoutKind};
 use crate::{
     AvailableOf, Direction, FlowAxes, InlineFragmentOutputOf, LayoutScalar, LayoutTextNumericError,
-    Point, ScrollRectOf, Size, TextAlign,
+    Point, ScrollRectOf, Size, TextAlign, TextAlignLast, TextJustification,
 };
 use surgeist_text::{
-    Alignment, AtomicAllocation, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation,
+    AtomicAllocation, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation,
     AtomicPlacement, FinalizedLine, LineAnchor, LineOrientation, LinePlacement,
     ParagraphBaseDirection, Rect,
 };
@@ -49,6 +49,8 @@ pub(crate) struct Context<S: LayoutScalar> {
     pub axes: FlowAxes,
     pub available: AvailableOf<S>,
     pub alignment: TextAlign,
+    pub last_alignment: TextAlignLast,
+    pub justification: TextJustification,
 }
 
 impl<S: LayoutScalar> Context<S> {
@@ -84,7 +86,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
     atomics: &[Atomic<Node, S>],
     controls: &[Control<Node>],
     context: Context<S>,
-    reusable: &[FinalizedLine],
+    reusable: &[fit::ReusableLine],
     band_source: impl FnMut(f64, f64) -> Result<Band, FitError>,
     clear_source: impl FnMut(f64, &surgeist_text::LineSelectionRequest) -> Result<Option<f64>, FitError>,
 ) -> Result<Output<Node, S>, FitError> {
@@ -135,18 +137,14 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
         AvailableOf::MinContent => fit::Available::Minimum,
         AvailableOf::MaxContent => fit::Available::Maximum,
     };
-    let alignment = match context.alignment {
-        TextAlign::Auto => Alignment::Start,
-        TextAlign::LegacyLeft => Alignment::Left,
-        TextAlign::LegacyRight => Alignment::Right,
-        TextAlign::LegacyCenter => Alignment::Center,
-    };
     let lines = fit::fit(
         fit::FitInput {
             prepared: &binding.prepared,
             available,
             base_direction: direction,
-            alignment,
+            alignment: context.alignment,
+            last_alignment: context.last_alignment,
+            justification: context.justification,
             orientation,
             atomics: &allocations,
             controls: &control_allocations,
@@ -491,6 +489,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     let mut placements = Vec::new();
     let mut bands = Vec::new();
     let mut flows = Vec::new();
+    let mut amounts = Vec::new();
     let mut line_bounds = Vec::new();
     let mut fragments = Vec::new();
     let mut atomic_origins = Vec::new();
@@ -692,6 +691,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         }
         bands.push(line.bands);
         flows.push(line.flow);
+        amounts.push(line.amounts);
         placements.push(LinePlacement {
             line: line.finalized,
             anchor,
@@ -712,6 +712,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             lines: placements,
             bands,
             flows,
+            amounts,
             outflows,
         },
     })

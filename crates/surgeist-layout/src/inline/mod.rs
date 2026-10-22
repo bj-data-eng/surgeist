@@ -63,6 +63,7 @@ pub(super) struct MixedInlineRunInputOf<S: LayoutScalar = DefaultScalar> {
     pub available_inline_extent: AvailableOf<S>,
     pub flow_axes: FlowAxes,
     pub text_align: TextAlign,
+    pub text_align_last: crate::TextAlignLast,
     pub participants: Vec<MixedInlineParticipantOf<S>>,
 }
 
@@ -219,6 +220,7 @@ struct SelectedInlineUnitOf<S: LayoutScalar> {
 
 #[derive(Clone)]
 struct SelectedInlineLineOf<S: LayoutScalar> {
+    alignment: TextAlign,
     units: Vec<SelectedInlineUnitOf<S>>,
     descriptor_range: Range<usize>,
     line_break: Option<ForcedLineBreakControlOf<S>>,
@@ -252,8 +254,18 @@ impl<S: LayoutScalar> InlineLineSummaryOf<S> {
     }
 }
 
+/// Actual selection outcome, independent of whether a hard ending has its own
+/// control occurrence. Mandatory following-atomic breaks have no such control.
+#[derive(Clone, Copy, PartialEq)]
+enum SelectedInlineLineEnd {
+    Soft,
+    Forced,
+    Paragraph,
+}
+
 #[derive(Clone)]
 struct SelectedInlineLineCandidateOf<S: LayoutScalar> {
+    end: SelectedInlineLineEnd,
     line: SelectedInlineLineOf<S>,
     next_cursor: InlineSourceCursor,
     pending_strut: Option<InlineMetricContributionOf<S>>,
@@ -510,6 +522,7 @@ fn select_inline_line<S: LayoutScalar>(
         .collect();
 
     SelectedInlineLineOf {
+        alignment: TextAlign::Start,
         units,
         descriptor_range: input.descriptor_start..input.descriptor_start + participants.len(),
         line_break: summary.line_break,
@@ -716,6 +729,7 @@ fn select_next_inline_line<S: LayoutScalar>(
     let source_cursor = cursor.source;
     if source_cursor == participants.len() {
         return pending_strut.map(|strut| SelectedInlineLineCandidateOf {
+            end: SelectedInlineLineEnd::Paragraph,
             line: select_inline_line(
                 run.line(source_cursor..source_cursor, cursor.descriptor),
                 None,
@@ -740,6 +754,7 @@ fn select_next_inline_line<S: LayoutScalar>(
         let participant = participants[scan];
         if let MixedInlineParticipantOf::ForcedLineBreak(control) = participant {
             return Some(SelectedInlineLineCandidateOf {
+                end: SelectedInlineLineEnd::Forced,
                 line: select_inline_line(
                     run.line(source_cursor..scan, cursor.descriptor),
                     Some(control),
@@ -765,6 +780,7 @@ fn select_next_inline_line<S: LayoutScalar>(
             && let Some(break_end) = latest_allowed
         {
             return Some(SelectedInlineLineCandidateOf {
+                end: SelectedInlineLineEnd::Soft,
                 line: select_inline_line(
                     run.line(source_cursor..break_end, cursor.descriptor),
                     None,
@@ -789,6 +805,7 @@ fn select_next_inline_line<S: LayoutScalar>(
             }
             InlineBreakOpportunity::Mandatory => {
                 return Some(SelectedInlineLineCandidateOf {
+                    end: SelectedInlineLineEnd::Forced,
                     line: select_inline_line(
                         run.line(source_cursor..scan, cursor.descriptor),
                         None,
@@ -807,6 +824,7 @@ fn select_next_inline_line<S: LayoutScalar>(
     }
 
     Some(SelectedInlineLineCandidateOf {
+        end: SelectedInlineLineEnd::Paragraph,
         line: select_inline_line(
             run.line(source_cursor..participants.len(), cursor.descriptor),
             None,
@@ -832,11 +850,14 @@ fn text_line_offset<S: LayoutScalar>(
         .logical_axis_progression(crate::LogicalAxis::Inline)
         .is_decreasing();
     match text_align {
-        TextAlign::Auto => S::ZERO,
-        TextAlign::LegacyLeft if inline_decreases => free_space,
-        TextAlign::LegacyRight if !inline_decreases => free_space,
-        TextAlign::LegacyCenter => free_space / S::from_f64(2.0),
-        TextAlign::LegacyLeft | TextAlign::LegacyRight => S::ZERO,
+        TextAlign::Start | TextAlign::Justify => S::ZERO,
+        TextAlign::End => free_space,
+        TextAlign::Left | TextAlign::LegacyLeft if inline_decreases => free_space,
+        TextAlign::Right | TextAlign::LegacyRight if !inline_decreases => free_space,
+        TextAlign::Center | TextAlign::LegacyCenter => free_space / S::from_f64(2.0),
+        TextAlign::Left | TextAlign::Right | TextAlign::LegacyLeft | TextAlign::LegacyRight => {
+            S::ZERO
+        }
     }
 }
 
@@ -1103,10 +1124,16 @@ where
             debug_assert_eq!(consumed.descriptor, selected.next_cursor.descriptor);
         }
         cursor = selected.next_cursor;
+        line.alignment = input.text_align.for_line(
+            input.text_align_last,
+            selected.end != SelectedInlineLineEnd::Soft,
+        );
+        if line.alignment == TextAlign::Justify {
+            line.alignment = input.text_align.unexpandable(input.text_align_last);
+        }
         pending_strut = selected.pending_strut;
         let line_block_end = block_cursor + line.baseline + line.after_baseline;
-        let line_inline_start =
-            selected_line_inline_start(&line, input.flow_axes, input.text_align);
+        let line_inline_start = selected_line_inline_start(&line, input.flow_axes, line.alignment);
         let line_inline_end = line_inline_start + line.used_inline_extent;
         if has_float_transition && line.split_baseline_edge_phase.is_some() {
             float_edge_phase = line.split_baseline_edge_phase;
@@ -1143,7 +1170,7 @@ where
             &line,
             &supplied[line.descriptor_range.clone()],
             input.flow_axes,
-            input.text_align,
+            line.alignment,
         );
         inline_extent = inline_extent.max(line_inline_start + line.used_inline_extent);
         post_line_clear_intents.push(line.post_line_clear_intent);
@@ -1575,7 +1602,8 @@ pub(super) fn layout_inline_run<S: LayoutScalar>(input: InlineRunInput<S>) -> In
     let report = layout_mixed_inline_run(MixedInlineRunInputOf {
         available_inline_extent: input.available_width,
         flow_axes,
-        text_align: TextAlign::Auto,
+        text_align: TextAlign::Start,
+        text_align_last: crate::TextAlignLast::Auto,
         participants,
     });
     let logical_report_size = LogicalSizeOf::new(report.inline_extent, report.block_extent);

@@ -20,10 +20,67 @@ impl LineBreakDisplay {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum TextAlign {
     #[default]
-    Auto,
+    Start,
+    End,
+    Left,
+    Right,
+    Center,
+    Justify,
     LegacyLeft,
     LegacyRight,
     LegacyCenter,
+}
+
+/// Normalized last/forced-line alignment; legacy block alignment is not a role
+/// of this input.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum TextAlignLast {
+    #[default]
+    Auto,
+    Start,
+    End,
+    Left,
+    Right,
+    Center,
+    Justify,
+}
+
+/// The implemented native expansion method, rather than CSS-wide `auto`.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum TextJustification {
+    #[default]
+    None,
+    Spaces,
+}
+
+impl TextAlignLast {
+    pub(crate) fn resolve(self, normal: TextAlign) -> TextAlign {
+        match self {
+            Self::Auto if normal == TextAlign::Justify => TextAlign::Start,
+            Self::Auto => normal,
+            Self::Start => TextAlign::Start,
+            Self::End => TextAlign::End,
+            Self::Left => TextAlign::Left,
+            Self::Right => TextAlign::Right,
+            Self::Center => TextAlign::Center,
+            Self::Justify => TextAlign::Justify,
+        }
+    }
+}
+
+impl TextAlign {
+    pub(crate) fn for_line(self, last: TextAlignLast, terminal: bool) -> Self {
+        if terminal { last.resolve(self) } else { self }
+    }
+
+    /// CSS Text3 §6.4.3: an unexpandable line uses last-line alignment,
+    /// with explicit last-line Justify falling back to Center.
+    pub(crate) fn unexpandable(self, last: TextAlignLast) -> Self {
+        match last.resolve(self) {
+            Self::Justify => Self::Center,
+            alignment => alignment,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

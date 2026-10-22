@@ -205,7 +205,7 @@ fn prepared_text_fractional_rounding_preserves_issued_owner_and_selected_alterna
             AvailableOf::definite(S::from_f64(17.0)),
             WritingMode::HorizontalTb,
             Direction::Ltr,
-            TextAlign::Auto,
+            TextAlign::Start,
             vec![ParagraphReplacement {
                 definition: ParagraphReplacementDefinition::Source {
                     origin: 0,

@@ -8,6 +8,8 @@ use surgeist_text::{ParagraphBaseDirection, ParagraphControlKind, Source, Wrap};
 mod canonical;
 #[path = "tests/float_fit.rs"]
 mod float_fit;
+#[path = "tests/line_policy.rs"]
+mod line_policy;
 
 fn assert_native_invalidation_source_order<S: LayoutScalar>() {
     let style = ahem_style(10.0, 10.0);
@@ -196,7 +198,9 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
             cursor_block: S::ZERO,
             axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             available: AvailableOf::MAX_CONTENT,
-            alignment: TextAlign::Auto,
+            alignment: TextAlign::Start,
+            last_alignment: TextAlignLast::Auto,
+            justification: TextJustification::None,
         },
         &[],
         |_, _| {

@@ -584,6 +584,8 @@ where
             axes: constants.flow_axes,
             available,
             alignment: constants.text_align,
+            last_alignment: constants.text_align_last,
+            justification: constants.text_justification,
         };
         let text_controls = binding
             .controls
@@ -715,6 +717,7 @@ where
                 available_inline_extent,
                 flow_axes: constants.flow_axes,
                 text_align: constants.text_align,
+                text_align_last: constants.text_align_last,
                 participants,
             },
             |block_start, block_end| {
@@ -1114,6 +1117,9 @@ fn text_run_error<Node: Copy, S: LayoutScalar, M>(
     let kind = match error {
         crate::text_layout::fit::FitError::Text(error) => LayoutErrorKindOf::Text(error),
         crate::text_layout::fit::FitError::FeedbackCycle => LayoutErrorKindOf::TextFeedbackCycle,
+        crate::text_layout::fit::FitError::SpacingBudget { available, advance } => {
+            LayoutErrorKindOf::TextSpacingBudget { available, advance }
+        }
         crate::text_layout::fit::FitError::NonFinite(value) => LayoutErrorKindOf::TextNumeric {
             value,
             reason: crate::LayoutTextNumericError::NonFinite,

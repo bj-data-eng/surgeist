@@ -244,6 +244,9 @@ pub surgeist_layout::LayoutErrorKindOf::TextFeedbackCycle
 pub surgeist_layout::LayoutErrorKindOf::TextNumeric
 pub surgeist_layout::LayoutErrorKindOf::TextNumeric::reason: surgeist_layout::LayoutTextNumericError
 pub surgeist_layout::LayoutErrorKindOf::TextNumeric::value: f64
+pub surgeist_layout::LayoutErrorKindOf::TextSpacingBudget
+pub surgeist_layout::LayoutErrorKindOf::TextSpacingBudget::advance: f64
+pub surgeist_layout::LayoutErrorKindOf::TextSpacingBudget::available: f64
 pub surgeist_layout::LayoutErrorKindOf::UnsupportedCapability(surgeist_layout::LayoutUnsupportedCapability)
 pub enum surgeist_layout::LayoutErrorSiteOf<Node>
 pub surgeist_layout::LayoutErrorSiteOf::ContainerSubject
@@ -689,10 +692,23 @@ pub enum surgeist_layout::SubgridLineNameRepeatCount
 pub surgeist_layout::SubgridLineNameRepeatCount::AutoFill
 pub surgeist_layout::SubgridLineNameRepeatCount::Count(usize)
 pub enum surgeist_layout::TextAlign
-pub surgeist_layout::TextAlign::Auto
+pub surgeist_layout::TextAlign::Center
+pub surgeist_layout::TextAlign::End
+pub surgeist_layout::TextAlign::Justify
+pub surgeist_layout::TextAlign::Left
 pub surgeist_layout::TextAlign::LegacyCenter
 pub surgeist_layout::TextAlign::LegacyLeft
 pub surgeist_layout::TextAlign::LegacyRight
+pub surgeist_layout::TextAlign::Right
+pub surgeist_layout::TextAlign::Start
+pub enum surgeist_layout::TextAlignLast
+pub surgeist_layout::TextAlignLast::Auto
+pub surgeist_layout::TextAlignLast::Center
+pub surgeist_layout::TextAlignLast::End
+pub surgeist_layout::TextAlignLast::Justify
+pub surgeist_layout::TextAlignLast::Left
+pub surgeist_layout::TextAlignLast::Right
+pub surgeist_layout::TextAlignLast::Start
 #[non_exhaustive] pub enum surgeist_layout::TextBindingError
 pub surgeist_layout::TextBindingError::AtomicCoverage
 pub surgeist_layout::TextBindingError::ControlCoverage
@@ -705,6 +721,9 @@ pub surgeist_layout::TextBindingError::ParticipantOrder
 pub surgeist_layout::TextBindingError::ParticipantRole
 pub surgeist_layout::TextBindingError::RootMismatch
 pub surgeist_layout::TextBindingError::RunMembership
+pub enum surgeist_layout::TextJustification
+pub surgeist_layout::TextJustification::None
+pub surgeist_layout::TextJustification::Spaces
 pub enum surgeist_layout::TrackComponentOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::TrackComponentOf::LineNames(alloc::vec::Vec<alloc::string::String>)
 pub surgeist_layout::TrackComponentOf::Repeat(surgeist_layout::TrackRepetitionOf<S>)
@@ -1278,6 +1297,8 @@ pub surgeist_layout::NodeInputOf::scrollbar_gutter: surgeist_layout::ScrollbarGu
 pub surgeist_layout::NodeInputOf::scrollbar_width: surgeist_layout::ScrollbarWidthOf<S>
 pub surgeist_layout::NodeInputOf::size: surgeist_layout::Size<surgeist_layout::PreferredSizeOf<S>>
 pub surgeist_layout::NodeInputOf::text_align: surgeist_layout::TextAlign
+pub surgeist_layout::NodeInputOf::text_align_last: surgeist_layout::TextAlignLast
+pub surgeist_layout::NodeInputOf::text_justification: surgeist_layout::TextJustification
 pub surgeist_layout::NodeInputOf::vertical_align: surgeist_layout::VerticalAlign
 pub surgeist_layout::NodeInputOf::writing_mode: surgeist_layout::WritingMode
 impl surgeist_layout::NodeInputOf<surgeist_layout::DefaultScalar>

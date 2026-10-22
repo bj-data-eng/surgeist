@@ -1511,3 +1511,168 @@ fn fri05_c04_flex_auto_root_and_nested_publish_stable_output_with_exact_pass_cac
         }
     }
 }
+
+#[test]
+fn native_line_policy_warm_width_policy_changes_and_late_sink_failure_are_atomic() {
+    fn lane<S: LayoutScalar>() {
+        let mut style = ahem_style(10.0, 10.0);
+        style.white_space = WhiteSpace::Collapse;
+        let mut tree = Fri06C02StatefulTextTree::<S>::new(Source::new("X X X"), style);
+        let set = |tree: &mut Fri06C02StatefulTextTree<S>, alignment, last| {
+            tree.inputs.insert(
+                0,
+                LayoutInputOf::box_input(NodeInputOf {
+                    display: Display::Block,
+                    text_align: alignment,
+                    text_align_last: last,
+                    text_justification: TextJustification::Spaces,
+                    ..NodeInputOf::default()
+                }),
+            );
+        };
+        let request = |width| {
+            LayoutRootRequestOf::viewport(Size::new(
+                AvailableOf::definite(S::from_f64(width)),
+                AvailableOf::MAX_CONTENT,
+            ))
+            .unwrap()
+        };
+        let advances = |batch: &CompletedLayoutBatchOf<u32, S>| {
+            let mut lines = Vec::new();
+            for entry in batch.final_inline_fragments() {
+                let line = entry.fragment().finalized_fragment().finalized_line();
+                if !lines.contains(&line) {
+                    lines.push(line);
+                }
+            }
+            lines
+                .iter()
+                .map(|line| line.feedback().advance)
+                .collect::<Vec<_>>()
+        };
+        set(&mut tree, TextAlign::Justify, TextAlignLast::Auto);
+        let cold = tree.compute(request(35.0)).unwrap();
+        assert_eq!(advances(&cold), [35.0, 10.0]);
+        let cold_entries = cold.final_entries().to_vec();
+        cold.apply_to(&mut tree).unwrap();
+        let warm = tree.compute(request(35.0)).unwrap();
+        assert_eq!(advances(&warm), [35.0, 10.0]);
+        assert_eq!(warm.final_entries(), cold_entries);
+        warm.apply_to(&mut tree).unwrap();
+        let wider = tree.compute(request(45.0)).unwrap();
+        assert_eq!(advances(&wider), [45.0, 10.0]);
+        wider.apply_to(&mut tree).unwrap();
+        set(&mut tree, TextAlign::Start, TextAlignLast::Center);
+        let changed = tree.compute_invalidated(request(35.0), &[0]).unwrap();
+        assert_eq!(advances(&changed), [30.0, 10.0]);
+        changed.apply_to(&mut tree).unwrap();
+        set(&mut tree, TextAlign::Justify, TextAlignLast::Justify);
+        let staged = tree.compute(request(35.0)).unwrap();
+        tree.reject_preparation = true;
+        let before = tree.retained.clone();
+        assert_eq!(
+            staged.apply_to(&mut tree),
+            Err("C02 retained-state preparation rejected")
+        );
+        assert_eq!(tree.retained, before);
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn native_fractional_spacing_budget_is_stable_across_real_warm_float_cache() {
+    let mut style = ahem_style(10.0, 20.0);
+    style.white_space = WhiteSpace::Collapse;
+    let mut source = Source::new("X X X XXXX");
+    for (index, size) in [4.640625_f32, 4.09375, 0.28125, 14.046875, 0.21875]
+        .into_iter()
+        .enumerate()
+    {
+        let mut span = style.clone();
+        span.size = size;
+        source.span(surgeist_text::Range::new(index, index + 1), span);
+    }
+    let mut tree = Fri06C02StatefulTextTree::<f64>::new(source, style);
+    tree.inputs.insert(
+        0,
+        LayoutInputOf::box_input(NodeInputOf {
+            display: Display::Block,
+            text_align: TextAlign::Justify,
+            text_justification: TextJustification::Spaces,
+            size: Size::new(PreferredSizeOf::px(31.0), PreferredSizeOf::AUTO),
+            ..NodeInputOf::default()
+        }),
+    );
+    tree.inputs.insert(
+        9,
+        LayoutInputOf::box_input(NodeInputOf {
+            display: Display::Block,
+            float: Float::Left,
+            float_exclusion: FloatExclusion::Shape,
+            size: Size::new(PreferredSizeOf::px(1.0), PreferredSizeOf::px(100.0)),
+            ..NodeInputOf::default()
+        }),
+    );
+    tree.children.insert(0, vec![9, 1]);
+    tree.children.insert(9, vec![]);
+    tree.shape_provider = Fri06C05ShapeProvider::Interval {
+        minimum: 0.0,
+        maximum: 0.34875,
+    };
+    let request = LayoutRootRequestOf::viewport(Size::new(
+        AvailableOf::definite(31.0),
+        AvailableOf::MAX_CONTENT,
+    ))
+    .unwrap();
+    let facts = |batch: &CompletedLayoutBatchOf<u32, f64>| {
+        assert_eq!(
+            batch.placed_text()[0].layout().lines()[0].range(),
+            surgeist_text::Range::new(0, 6)
+        );
+        let line = batch.final_inline_fragments()[0]
+            .fragment()
+            .finalized_fragment()
+            .finalized_line();
+        assert_eq!(
+            line.selected_line().request().context.available_inline,
+            Some(30.65125)
+        );
+        assert!(line.feedback().advance <= 30.65125);
+        let rows = line.spacing_slots().collect::<Vec<_>>();
+        assert_eq!(rows.len(), 3);
+        assert_eq!(
+            line.selected_line().spacing_slots().collect::<Vec<_>>(),
+            rows.iter().map(|row| row.slot.clone()).collect::<Vec<_>>()
+        );
+        assert!(rows[0].advance > 4.09375 && rows[0].advance.is_finite());
+        assert!(rows[1].advance > 14.046875 && rows[1].advance.is_finite());
+        assert_eq!(
+            rows[2].disposition,
+            surgeist_text::SpacingSlotDisposition::DiscardedAtLineEdge
+        );
+        assert_eq!(rows[2].advance, 0.0);
+        (
+            line.feedback(),
+            rows.into_iter()
+                .map(|row| (row.slot.owner(), row.disposition, row.advance))
+                .collect::<Vec<_>>(),
+        )
+    };
+    let cold = tree.compute(request).unwrap();
+    let cold_facts = facts(&cold);
+    let cold_nodes = cold.final_entries().to_vec();
+    cold.apply_to(&mut tree).unwrap();
+    tree.cache_queries.borrow_mut().clear();
+    let warm = tree.compute(request).unwrap();
+    assert_eq!(facts(&warm), cold_facts);
+    assert_eq!(warm.final_entries(), cold_nodes);
+    assert!(
+        tree.cache_queries
+            .borrow()
+            .iter()
+            .any(|(node, hit)| *node == 9 && *hit),
+        "genuine independent float cache is warm"
+    );
+    warm.apply_to(&mut tree).unwrap();
+}

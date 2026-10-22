@@ -43,7 +43,8 @@ fn mr02_input<S: LayoutScalar>(
     MixedInlineRunInputOf {
         available_inline_extent,
         flow_axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-        text_align: TextAlign::Auto,
+        text_align: TextAlign::Start,
+        text_align_last: crate::TextAlignLast::Auto,
         participants,
     }
 }
@@ -674,7 +675,8 @@ fn fri06_c03_strut_private_builder_retains_control_baselines_and_post_line_inten
         let report = layout_mixed_inline_run(MixedInlineRunInputOf {
             available_inline_extent: AvailableOf::MAX_CONTENT,
             flow_axes,
-            text_align: TextAlign::Auto,
+            text_align: TextAlign::Start,
+            text_align_last: crate::TextAlignLast::Auto,
             participants: vec![
                 mixed_boundary(0, flow_axes, boundary_metrics),
                 mixed_forced_line_break(1, flow_axes, break_metrics, Clear::Both),
@@ -723,7 +725,8 @@ fn fri06_c04_line_band_private_callback_retries_transition_and_reselects_same_cu
             MixedInlineRunInputOf {
                 available_inline_extent: AvailableOf::definite(S::from_f64(100.0)),
                 flow_axes,
-                text_align: TextAlign::Auto,
+                text_align: TextAlign::Start,
+                text_align_last: crate::TextAlignLast::Auto,
                 participants: vec![
                     participant(0, InlineBreakOpportunity::Allowed),
                     participant(1, InlineBreakOpportunity::Allowed),
@@ -1976,4 +1979,111 @@ fn mandatory_atomic_line_queries_are_bounded_in_f32() {
 #[test]
 fn mandatory_atomic_line_queries_are_bounded_in_f64() {
     assert_mandatory_atomic_queries_are_confined_to_each_actual_line::<f64>();
+}
+
+#[test]
+fn numeric_unexpandable_alignment_uses_actual_last_line_policy_both_scalars() {
+    fn lane<S: LayoutScalar>() {
+        for rtl in [false, true] {
+            for (align, expected) in [
+                (TextAlign::Start, 0.0),
+                (TextAlign::End, 30.0),
+                (TextAlign::Left, if rtl { 30.0 } else { 0.0 }),
+                (TextAlign::Right, if rtl { 0.0 } else { 30.0 }),
+                (TextAlign::Center, 15.0),
+            ] {
+                let mut input = mr02_input(
+                    AvailableOf::definite(S::from_f64(50.0)),
+                    vec![mr02_atomic(
+                        0,
+                        20.0,
+                        10.0,
+                        8.0,
+                        if rtl { 1 } else { 0 },
+                        InlineBreakOpportunity::Prohibited,
+                    )],
+                );
+                input.flow_axes = FlowAxes::new(
+                    WritingMode::HorizontalTb,
+                    if rtl { Direction::Rtl } else { Direction::Ltr },
+                );
+                input.text_align = align;
+                let report = layout_mixed_inline_run(input);
+                assert_eq!(
+                    report.atomics[0].inline_start,
+                    S::from_f64(expected),
+                    "{align:?}/{rtl}"
+                );
+            }
+        }
+
+        for (last, expected) in [
+            (TextAlignLast::Auto, 0.0),
+            (TextAlignLast::End, 30.0),
+            (TextAlignLast::Justify, 15.0),
+        ] {
+            let mut input = mr02_input(
+                AvailableOf::definite(S::from_f64(50.0)),
+                vec![mr02_atomic(
+                    0,
+                    20.0,
+                    10.0,
+                    8.0,
+                    0,
+                    InlineBreakOpportunity::Prohibited,
+                )],
+            );
+            input.text_align = TextAlign::Justify;
+            input.text_align_last = last;
+            let report = layout_mixed_inline_run(input);
+            assert_eq!(report.atomics[0].inline_start, S::from_f64(expected));
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+fn assert_numeric_mandatory_atomic_last_alignment<S: LayoutScalar>() {
+    // A mandatory break after the first actual 20px atomic is a hard line
+    // ending even though it does not contain a separate break control.
+    // A later 10px atomic makes that first hard line nonterminal.
+    for (last, first_x, second_x) in [
+        (TextAlignLast::Auto, 0.0, 0.0),
+        (TextAlignLast::End, 30.0, 40.0),
+    ] {
+        let mut input = mr02_input(
+            AvailableOf::definite(S::from_f64(50.0)),
+            vec![
+                mr02_atomic(0, 20.0, 10.0, 8.0, 0, InlineBreakOpportunity::Mandatory),
+                mr02_atomic(1, 10.0, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
+            ],
+        );
+        input.text_align = TextAlign::Start;
+        input.text_align_last = last;
+        let report = layout_mixed_inline_run(input);
+        assert_eq!(report.atomics.len(), 2);
+        assert_eq!(report.line_bands.len(), 2);
+        assert_eq!(report.atomics[0].block_start, S::ZERO);
+        assert_eq!(report.atomics[1].block_start, S::from_f64(10.0));
+        assert_eq!(
+            report.atomics[0].inline_start,
+            S::from_f64(first_x),
+            "nonterminal mandatory line/{last:?}"
+        );
+        assert_eq!(
+            report.atomics[1].inline_start,
+            S::from_f64(second_x),
+            "paragraph end/{last:?}"
+        );
+    }
+}
+
+#[test]
+fn numeric_mandatory_atomic_end_uses_last_alignment_before_more_source_f32() {
+    assert_numeric_mandatory_atomic_last_alignment::<f32>();
+}
+
+#[test]
+fn numeric_mandatory_atomic_end_uses_last_alignment_before_more_source_f64() {
+    assert_numeric_mandatory_atomic_last_alignment::<f64>();
 }

@@ -91,6 +91,13 @@ pub enum LayoutErrorKindOf<S: LayoutScalar = DefaultScalar, M = core::convert::I
     Text(surgeist_text::Error),
     /// A complete canonical Text feedback basis repeated without acceptance.
     TextFeedbackCycle,
+    /// Layout's completed justification correction still exceeds the actual
+    /// line budget. Both quantities are logical Text advances, before scalar
+    /// conversion or physical placement.
+    TextSpacingBudget {
+        available: f64,
+        advance: f64,
+    },
     TextNumeric {
         value: f64,
         reason: LayoutTextNumericError,

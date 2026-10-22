@@ -1,10 +1,11 @@
 //! Candidate fitting over the actual immutable Text operations.
 
+use crate::{TextAlign, TextAlignLast, TextJustification};
 use surgeist_text::{
     Alignment, AtomicAllocation, ControlAllocation, FinalizedLine, HangingContext, LineContext,
     LineEnd, LineOrientation, LineSelectionRequest, LineStart, ParagraphBaseDirection,
-    PreparedBreakKind, PreparedParticipant, PreparedText, SpacingAllocations, SpacingPolicy,
-    TabContext,
+    PreparedBreakKind, PreparedParticipant, PreparedText, SelectedLine, SpacingAllocation,
+    SpacingAllocations, SpacingPolicy, SpacingSlotDisposition, TabContext,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -62,6 +63,7 @@ pub(crate) enum Available {
 #[derive(Clone, Debug, PartialEq)]
 struct CandidateBasis {
     request: LineSelectionRequest,
+    amounts: Vec<f64>,
     logical_start: f64,
     placed_start: f64,
     bands: LineBands,
@@ -85,6 +87,7 @@ pub(crate) struct LineFlow {
 
 pub(crate) struct FittedLine {
     pub finalized: FinalizedLine,
+    pub amounts: Vec<f64>,
     pub inline_start: f64,
     pub placed_start: f64,
     pub available: f64,
@@ -92,9 +95,16 @@ pub(crate) struct FittedLine {
     pub flow: LineFlow,
 }
 
+#[derive(Clone)]
+pub(crate) struct ReusableLine {
+    pub finalized: FinalizedLine,
+    pub amounts: Vec<f64>,
+}
+
 pub(crate) enum FitError {
     Text(surgeist_text::Error),
     FeedbackCycle,
+    SpacingBudget { available: f64, advance: f64 },
     NonFinite(f64),
     Numeric(f64, crate::LayoutTextNumericError),
     InvalidGeometry,
@@ -111,18 +121,184 @@ pub(crate) struct FitInput<'a> {
     pub prepared: &'a PreparedText,
     pub available: Available,
     pub base_direction: ParagraphBaseDirection,
-    pub alignment: Alignment,
+    pub alignment: TextAlign,
+    pub last_alignment: TextAlignLast,
+    pub justification: TextJustification,
     pub orientation: LineOrientation,
     pub atomics: &'a [AtomicAllocation],
     pub controls: &'a [ControlAllocation],
     pub line_strut: Option<surgeist_text::LineStrut>,
-    pub reusable: &'a [FinalizedLine],
+    pub reusable: &'a [ReusableLine],
 }
 
 pub(crate) struct LineAllocations {
     pub atomics: Vec<AtomicAllocation>,
     pub controls: Vec<ControlAllocation>,
     pub line_strut: Option<surgeist_text::LineStrut>,
+}
+
+struct FinalizedCandidate {
+    request: LineSelectionRequest,
+    finalized: FinalizedLine,
+    amounts: Vec<f64>,
+}
+
+fn text_alignment(alignment: TextAlign) -> Alignment {
+    match alignment {
+        TextAlign::Start => Alignment::Start,
+        TextAlign::End => Alignment::End,
+        TextAlign::Left | TextAlign::LegacyLeft => Alignment::Left,
+        TextAlign::Right | TextAlign::LegacyRight => Alignment::Right,
+        TextAlign::Center | TextAlign::LegacyCenter => Alignment::Center,
+        TextAlign::Justify => Alignment::Justify,
+    }
+}
+
+fn natural_line(
+    prepared: &PreparedText,
+    reusable: &[ReusableLine],
+    request: &LineSelectionRequest,
+) -> Result<FinalizedLine, FitError> {
+    if let Some(line) = reusable.iter().find(|line| {
+        line.finalized.selected_line().request() == request
+            && line.amounts.iter().all(|amount| *amount == 0.0)
+    }) {
+        return Ok(line.finalized.clone());
+    }
+    Ok(prepared
+        .select(request.clone())?
+        .finalize(SpacingAllocations::None)?)
+}
+
+fn finalize_candidate(
+    prepared: &PreparedText,
+    reusable: &[ReusableLine],
+    mut request: LineSelectionRequest,
+    normal: TextAlign,
+    last: TextAlignLast,
+    justification: TextJustification,
+) -> Result<FinalizedCandidate, FitError> {
+    let effective = normal.for_line(last, request.context.end != LineEnd::Soft);
+    request.context.alignment = text_alignment(effective);
+    let natural = natural_line(prepared, reusable, &request)?;
+    let selected = natural.selected_line();
+    let mut amounts = vec![0.0; selected.spacing_slots().len()];
+    if effective == TextAlign::Justify {
+        let retained: Vec<_> = natural
+            .spacing_slots()
+            .enumerate()
+            .filter_map(|(index, row)| {
+                matches!(row.disposition, SpacingSlotDisposition::Retained { .. }).then_some(index)
+            })
+            .collect();
+        let expansion = request
+            .context
+            .available_inline
+            .map(|width| finite(width - natural.feedback().advance).map(|extra| (width, extra)))
+            .transpose()?;
+        if let Some((width, extra)) = expansion.filter(|(_, extra)| *extra >= 0.0)
+            && (extra == 0.0
+                || (justification == TextJustification::Spaces && !retained.is_empty()))
+        {
+            if extra > 0.0 {
+                // RAW logical advance owns this target, independently of the
+                // retained trailing/hanging or occupied-fit observations.
+                let share = finite(extra / retained.len() as f64)?;
+                let mut supplied = 0.0;
+                for (ordinal, index) in retained.iter().enumerate() {
+                    amounts[*index] = if ordinal + 1 == retained.len() {
+                        finite(extra - supplied)?
+                    } else {
+                        share
+                    };
+                    supplied = finite(supplied + amounts[*index])?;
+                }
+                let finalized = if let Some(line) = reusable.iter().find(|line| {
+                    line.finalized.selected_line().request() == &request && line.amounts == amounts
+                }) {
+                    line.finalized.clone()
+                } else {
+                    finalize_spacing(&selected, &amounts)?
+                };
+                let finalized =
+                    constrain_spacing_budget(&selected, &retained, width, &mut amounts, finalized)?;
+                return Ok(FinalizedCandidate {
+                    request,
+                    finalized,
+                    amounts,
+                });
+            }
+        } else {
+            // Pinned CSS Text3 §6.4.3; a new alignment is a new actual request,
+            // so no slot capabilities are transferred from the zero pass.
+            request.context.alignment = text_alignment(normal.unexpandable(last));
+            let finalized = natural_line(prepared, reusable, &request)?;
+            amounts = vec![0.0; finalized.selected_line().spacing_slots().len()];
+            return Ok(FinalizedCandidate {
+                request,
+                finalized,
+                amounts,
+            });
+        }
+    }
+    Ok(FinalizedCandidate {
+        request,
+        finalized: natural,
+        amounts,
+    })
+}
+
+/// Every probe executes the complete table on this actual selection. Never
+/// reconstruct Text's slot additions or its logical advance fold in Layout.
+fn finalize_spacing(selected: &SelectedLine, amounts: &[f64]) -> Result<FinalizedLine, FitError> {
+    Ok(selected.finalize(SpacingAllocations::Complete(
+        selected
+            .spacing_slots()
+            .zip(amounts)
+            .map(|(slot, &amount)| SpacingAllocation { slot, amount })
+            .collect(),
+    ))?)
+}
+
+fn constrain_spacing_budget(
+    selected: &SelectedLine,
+    retained: &[usize],
+    width: f64,
+    amounts: &mut [f64],
+    mut finalized: FinalizedLine,
+) -> Result<FinalizedLine, FitError> {
+    if finalized.feedback().advance <= width {
+        return Ok(finalized);
+    }
+    // The ideal sum of amounts does not capture rounding in each real slot's
+    // natural+amount addition and the following Text-owned logical fold.
+    if let Some(index) = retained
+        .iter()
+        .rev()
+        .copied()
+        .find(|&index| amounts[index] > 0.0)
+    {
+        let previous = amounts[index];
+        let overshoot = finite(finalized.feedback().advance - width)?;
+        let reduced = finite(previous - overshoot)?.max(0.0);
+        amounts[index] = if reduced < previous {
+            reduced
+        } else {
+            previous.next_down()
+        };
+        finalized = finalize_spacing(selected, amounts)?;
+        if finalized.feedback().advance <= width {
+            return Ok(finalized);
+        }
+    }
+
+    // No search over assumed numeric admission: Text may refuse a nonzero
+    // probe that vanishes in an actual slot or later logical addition. A still
+    // over-budget completed correction is Layout's own truthful refusal.
+    Err(FitError::SpacingBudget {
+        available: width,
+        advance: finalized.feedback().advance,
+    })
 }
 
 /// Fit only preparation-issued opportunities. Every measured candidate executes
@@ -139,6 +315,8 @@ pub(crate) fn fit(
         available,
         base_direction,
         alignment,
+        last_alignment,
+        justification,
         orientation,
         atomics,
         controls,
@@ -239,38 +417,49 @@ pub(crate) fn fit(
                             },
                             available_inline: selected_width,
                             indent: 0.0,
-                            alignment,
+                            alignment: text_alignment(alignment.for_line(
+                                last_alignment,
+                                matches!(
+                                    kind,
+                                    PreparedBreakKind::Forced | PreparedBreakKind::ParagraphEnd
+                                ),
+                            )),
                             tabs: TabContext::FontAdvance,
                             hanging: HangingContext::None,
-                            spacing: SpacingPolicy::None,
+                            spacing: if justification == TextJustification::Spaces {
+                                SpacingPolicy::Spaces
+                            } else {
+                                SpacingPolicy::None
+                            },
                         },
                         atomics: selected_atomics.clone(),
                         controls: selected_controls.clone(),
                         line_strut,
                     };
                     let mut allocation_bases = Vec::new();
-                    let finalized = loop {
-                        let finalized = if let Some(line) = reusable
-                            .iter()
-                            .find(|line| line.selected_line().request() == &request)
-                        {
-                            line.clone()
-                        } else {
-                            prepared
-                                .select(request.clone())?
-                                .finalize(SpacingAllocations::None)?
-                        };
+                    let (finalized, amounts) = loop {
+                        let candidate = finalize_candidate(
+                            prepared,
+                            reusable,
+                            request,
+                            alignment,
+                            last_alignment,
+                            justification,
+                        )?;
+                        request = candidate.request;
+                        let finalized = candidate.finalized;
                         let actual = allocate(&finalized, band, placed_start)?;
                         if actual.atomics == request.atomics
                             && actual.controls == request.controls
                             && actual.line_strut == request.line_strut
                         {
-                            break finalized;
+                            break (finalized, candidate.amounts);
                         }
-                        if allocation_bases.contains(&request) {
+                        let basis = (request.clone(), candidate.amounts);
+                        if allocation_bases.contains(&basis) {
                             return Err(FitError::FeedbackCycle);
                         }
-                        allocation_bases.push(request.clone());
+                        allocation_bases.push(basis);
                         request.atomics = actual.atomics;
                         request.controls = actual.controls;
                         request.line_strut = actual.line_strut;
@@ -280,7 +469,7 @@ pub(crate) fn fit(
                     let fits = selected_width
                         .is_none_or(|width| feedback.advance <= width && occupied <= width);
                     if endpoint_choice.is_none() || fits {
-                        endpoint_choice = Some((request, finalized, fits));
+                        endpoint_choice = Some((request, finalized, amounts, fits));
                     }
                     // Declaration order is native preference; subsequent alternatives
                     // are reached only when earlier actual finalized candidates fail.
@@ -288,11 +477,11 @@ pub(crate) fn fit(
                         break;
                     }
                 }
-                let Some((request, finalized, fits)) = endpoint_choice else {
+                let Some((request, finalized, amounts, fits)) = endpoint_choice else {
                     return Err(FitError::FeedbackCycle);
                 };
                 if choice.is_none() || fits || matches!(available, Available::Maximum) {
-                    choice = Some((*end, *kind, request, finalized));
+                    choice = Some((*end, *kind, request, finalized, amounts));
                 }
                 if matches!(available, Available::Minimum)
                     || !matches!(
@@ -303,7 +492,7 @@ pub(crate) fn fit(
                     break;
                 }
             }
-            let Some((end, kind, request, finalized)) = choice else {
+            let Some((end, kind, request, finalized, amounts)) = choice else {
                 // Missing/illegal complete coverage is the Text owner's error;
                 // a valid preparation always offers a paragraph terminator.
                 return Err(FitError::FeedbackCycle);
@@ -321,6 +510,7 @@ pub(crate) fn fit(
                 query_bands(&mut band_source, logical_start, actual_start, actual_height)?;
             let basis = CandidateBasis {
                 request: request.clone(),
+                amounts: amounts.clone(),
                 logical_start,
                 placed_start,
                 bands,
@@ -366,6 +556,7 @@ pub(crate) fn fit(
             }
             result.push(FittedLine {
                 finalized,
+                amounts,
                 inline_start: band.start,
                 placed_start,
                 available: selected_width.unwrap_or(feedback.advance),
@@ -412,5 +603,96 @@ fn finite(value: f64) -> Result<f64, FitError> {
         Ok(value)
     } else {
         Err(FitError::NonFinite(value))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{
+        text::{PreparedParagraph, ahem_style},
+        text_fragment::fragment_for,
+    };
+
+    fn selected(style: surgeist_text::Style, source: &str, width: f64) -> SelectedLine {
+        let paragraph = PreparedParagraph::plain(1, surgeist_text::Source::new(source), style);
+        let original = fragment_for(&paragraph.prepared).finalized_line();
+        let mut request = original.selected_line().request().clone();
+        request.context.available_inline = Some(width);
+        request.context.alignment = Alignment::Justify;
+        request.context.spacing = SpacingPolicy::Spaces;
+        paragraph.prepared.select(request).unwrap()
+    }
+
+    fn retained(line: &FinalizedLine) -> Vec<usize> {
+        line.spacing_slots()
+            .enumerate()
+            .filter_map(|(index, row)| {
+                matches!(row.disposition, SpacingSlotDisposition::Retained { .. }).then_some(index)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn native_spacing_budget_refuses_unresolved_actual_advance() {
+        let selected = selected(ahem_style(10.0, 10.0), "X X X", 60.0);
+        let natural = selected.finalize(SpacingAllocations::None).unwrap();
+        assert_eq!(natural.feedback().advance, 50.0);
+        let retained = retained(&natural);
+        assert_eq!(retained, [0, 1]);
+        // Real complete amounts produce151. The final1 cannot absorb the91
+        // overshoot; the completed correction [100,0] still produces150.
+        // Refusal preserves these actual facts instead of dropping more slots.
+        let mut amounts = vec![100.0, 1.0];
+        let proposed = finalize_spacing(&selected, &amounts)
+            .unwrap_or_else(|_| panic!("real selected spacing finalizes"));
+        assert_eq!(proposed.feedback().advance, 151.0);
+        match constrain_spacing_budget(&selected, &retained, 60.0, &mut amounts, proposed) {
+            Err(FitError::SpacingBudget { available, advance }) => {
+                assert_eq!(available, 60.0);
+                assert_eq!(advance, 150.0);
+            }
+            _ => panic!("unresolved actual advance must be a Layout spacing-budget refusal"),
+        }
+        assert_eq!(amounts, [100.0, 0.0]);
+        let actual = finalize_spacing(&selected, &amounts)
+            .unwrap_or_else(|_| panic!("actual corrected complete table finalizes"));
+        assert_eq!(actual.feedback().advance, 150.0);
+        assert_eq!(actual.selected_line(), selected);
+    }
+
+    #[test]
+    fn native_spacing_budget_correction_preserves_a_signed_slot_base() {
+        let mut style = ahem_style(10.0, 10.0);
+        style.word_spacing = -15.0;
+        let selected = selected(style, "X X", 25.0);
+        let natural = selected.finalize(SpacingAllocations::None).unwrap();
+        assert_eq!(natural.feedback().advance, 15.0);
+        assert_eq!(natural.spacing_slots().next().unwrap().advance, -5.0);
+        let mut amounts = vec![20.0];
+        let proposed = finalize_spacing(&selected, &amounts)
+            .unwrap_or_else(|_| panic!("real signed-base spacing finalizes"));
+        assert_eq!(proposed.feedback().advance, 35.0);
+        let actual =
+            constrain_spacing_budget(&selected, &retained(&natural), 25.0, &mut amounts, proposed)
+                .unwrap_or_else(|_| panic!("one actual overshoot correction fits"));
+        assert_eq!(amounts, [10.0]);
+        assert_eq!(actual.feedback().advance, 25.0);
+        assert_eq!(actual.spacing_slots().next().unwrap().advance, 5.0);
+        assert_eq!(actual.selected_line(), selected);
+    }
+
+    #[test]
+    fn native_spacing_budget_keeps_actual_text_lost_contribution_refusal() {
+        let selected = selected(ahem_style(10.0, 10.0), "X X", 40.0);
+        let amount = 1.0628135541960295e-153;
+        match finalize_spacing(&selected, &[amount]) {
+            Err(FitError::Text(error)) => assert!(matches!(error.detail(),
+                Some(surgeist_text::ErrorDetail::InvalidTextNumeric {
+                    field:"selected spacing amount",phase:surgeist_text::TextNumericPhase::Finalization,
+                    category:surgeist_text::TextNumericError::NonZeroLost,value,
+                }) if *value==amount)),
+            _ => panic!("actual Text numeric refusal must pass through unchanged"),
+        }
     }
 }

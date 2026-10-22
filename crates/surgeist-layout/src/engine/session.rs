@@ -245,7 +245,13 @@ where
                 paragraph
                     .lines
                     .iter()
-                    .map(|placement| placement.line.clone())
+                    .zip(&paragraph.amounts)
+                    .map(
+                        |(placement, amounts)| crate::text_layout::fit::ReusableLine {
+                            finalized: placement.line.clone(),
+                            amounts: amounts.clone(),
+                        },
+                    )
             })
             .collect();
         text.pending.clear();

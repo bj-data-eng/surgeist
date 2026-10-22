@@ -1228,7 +1228,7 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
 
         let mixed = fri06_c04_line_batch(
             flow_axes,
-            TextAlign::Auto,
+            TextAlign::Start,
             vec![
                 float(1, Float::Left, 30.0, 30.0),
                 (
@@ -1275,7 +1275,7 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
 
         let right = fri06_c04_line_batch(
             flow_axes,
-            TextAlign::Auto,
+            TextAlign::Start,
             vec![
                 float(1, Float::Right, 30.0, 20.0),
                 (
@@ -1313,7 +1313,7 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
 
         let opposing = fri06_c04_line_batch(
             flow_axes,
-            TextAlign::Auto,
+            TextAlign::Start,
             vec![
                 float(1, Float::Left, 30.0, 20.0),
                 float(2, Float::Right, 20.0, 20.0),
@@ -1355,7 +1355,7 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
 
         let rewrapped = fri06_c04_line_batch(
             flow_axes,
-            TextAlign::Auto,
+            TextAlign::Start,
             vec![
                 float(1, Float::Left, 60.0, 10.0),
                 atomic(2, 30.0, 10.0, InlineBreakOpportunity::Allowed),
@@ -1377,7 +1377,7 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
         );
         let forced = fri06_c04_line_batch(
             flow_axes,
-            TextAlign::Auto,
+            TextAlign::Start,
             vec![
                 float(1, Float::Left, 30.0, 15.0),
                 atomic(2, 20.0, 20.0, InlineBreakOpportunity::Prohibited),
@@ -1408,7 +1408,7 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
 
         let no_space = fri06_c04_line_batch(
             flow_axes,
-            TextAlign::Auto,
+            TextAlign::Start,
             vec![
                 float(1, Float::Left, 50.0, 20.0),
                 float(2, Float::Right, 50.0, 20.0),
@@ -2936,7 +2936,7 @@ fn numeric_rtl_visual_placement_and_internal_supplied_edge_semantics_all_flows_b
                 AvailableOf::definite(S::from_f64(100.0)),
                 writing_mode,
                 Direction::Rtl,
-                TextAlign::Auto,
+                TextAlign::Start,
             );
             assert_eq!(
                 [
@@ -3885,7 +3885,7 @@ fn fri06_c07_sideways_lr_rtl_all_atomic_odd_bidi_keeps_visual_placement_both_sca
         };
         let batch = fri06_c04_line_batch(
             flow_axes,
-            TextAlign::Auto,
+            TextAlign::Start,
             vec![atomic(1, 10.0), atomic(2, 20.0)],
         );
         let first_source = fri06_c02_final_node(&batch, 1);
@@ -3949,7 +3949,7 @@ fn supplied_line_bidi_and_actual_atomic_geometry_preserve_nested_levels_and_slot
             AvailableOf::definite(S::from_f64(100.0)),
             WritingMode::HorizontalTb,
             Direction::Ltr,
-            TextAlign::Auto,
+            TextAlign::Start,
         );
         assert_eq!(
             report
@@ -3984,7 +3984,7 @@ fn supplied_line_bidi_and_actual_atomic_geometry_preserve_nested_levels_and_slot
             AvailableOf::definite(S::from_f64(100.0)),
             WritingMode::HorizontalTb,
             Direction::Ltr,
-            TextAlign::Auto,
+            TextAlign::Start,
         );
         assert_eq!(
             wrapped
@@ -4028,7 +4028,7 @@ fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_s
             AvailableOf::definite(S::from_f64(20.0)),
             WritingMode::HorizontalTb,
             Direction::Ltr,
-            TextAlign::Auto,
+            TextAlign::Start,
             vec![replacement()],
         )
         .unwrap();
@@ -4060,7 +4060,7 @@ fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_s
             AvailableOf::definite(S::from_f64(20.0)),
             WritingMode::HorizontalTb,
             Direction::Ltr,
-            TextAlign::Auto,
+            TextAlign::Start,
             vec![replacement()],
         )
         .unwrap();
@@ -4085,7 +4085,7 @@ fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_s
             AvailableOf::definite(S::from_f64(100.0)),
             WritingMode::HorizontalTb,
             Direction::Ltr,
-            TextAlign::Auto,
+            TextAlign::Start,
             vec![replacement()],
         )
         .unwrap();
@@ -4176,7 +4176,7 @@ fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_s
             AvailableOf::definite(S::from_f64(100.0)),
             WritingMode::HorizontalTb,
             Direction::Ltr,
-            TextAlign::Auto,
+            TextAlign::Start,
             vec![],
         )
         .unwrap();
@@ -4194,7 +4194,7 @@ fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_s
             AvailableOf::definite(S::from_f64(40.0)),
             WritingMode::HorizontalTb,
             Direction::Ltr,
-            TextAlign::Auto,
+            TextAlign::Start,
             vec![],
         )
         .unwrap();
@@ -4306,7 +4306,7 @@ fn prepared_text_intrinsic_uses_actual_selected_replacement_min_and_unselected_m
                 available,
                 WritingMode::HorizontalTb,
                 Direction::Ltr,
-                TextAlign::Auto,
+                TextAlign::Start,
                 vec![ParagraphReplacement {
                     definition: ParagraphReplacementDefinition::Source {
                         origin: 0,

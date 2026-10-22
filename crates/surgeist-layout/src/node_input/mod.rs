@@ -34,7 +34,8 @@ pub use grid::{
 pub use inline::{
     AtomicInlineParticipation, InlineBoundaryInput, InlineBoundaryInputOf, InlineBoundaryKind,
     InlineBreakOpportunity, InlineMetrics, InlineMetricsError, InlineMetricsOf, LineBreakDisplay,
-    LineBreakInput, LineBreakInputOf, TextAlign, VerticalAlign, WritingMode,
+    LineBreakInput, LineBreakInputOf, TextAlign, TextAlignLast, TextJustification, VerticalAlign,
+    WritingMode,
 };
 pub use scroll::{
     ComputedOverflow, ComputedOverflowError, Overflow, OverflowClipBox, OverflowClipMargin,
@@ -76,6 +77,8 @@ pub struct NodeInputOf<S: LayoutScalar = DefaultScalar> {
     pub box_sizing: BoxSizing,
     pub direction: Direction,
     pub text_align: TextAlign,
+    pub text_align_last: TextAlignLast,
+    pub text_justification: TextJustification,
     pub vertical_align: VerticalAlign,
     pub writing_mode: WritingMode,
     /// Atomic normalized computed overflow supplied by style lowering.
@@ -170,7 +173,9 @@ impl NodeInputOf<DefaultScalar> {
         flex_item_collapse: FlexItemCollapse::Normal,
         box_sizing: BoxSizing::BorderBox,
         direction: Direction::Ltr,
-        text_align: TextAlign::Auto,
+        text_align: TextAlign::Start,
+        text_align_last: TextAlignLast::Auto,
+        text_justification: TextJustification::None,
         vertical_align: VerticalAlign::Baseline,
         writing_mode: WritingMode::HorizontalTb,
         overflow: ComputedOverflow::VISIBLE,
@@ -247,7 +252,9 @@ impl<S: LayoutScalar> Default for NodeInputOf<S> {
             flex_item_collapse: FlexItemCollapse::Normal,
             box_sizing: BoxSizing::BorderBox,
             direction: Direction::Ltr,
-            text_align: TextAlign::Auto,
+            text_align: TextAlign::Start,
+            text_align_last: TextAlignLast::Auto,
+            text_justification: TextJustification::None,
             vertical_align: VerticalAlign::Baseline,
             writing_mode: WritingMode::HorizontalTb,
             overflow: ComputedOverflow::VISIBLE,

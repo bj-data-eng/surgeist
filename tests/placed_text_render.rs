@@ -49,6 +49,16 @@ impl layout::LayoutTree for Tree {
 
 #[test]
 fn actual_layout_lines_supply_paint_and_interaction_without_rewrapping() {
+    assert_retained_layout_composition(false);
+}
+
+#[cfg(feature = "text-accessibility")]
+#[test]
+fn expanded_spaces_supply_same_paint_cursor_and_geometric_accessibility() {
+    assert_retained_layout_composition(true);
+}
+
+fn assert_retained_layout_composition(expanded: bool) {
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,
     })
@@ -58,7 +68,7 @@ fn actual_layout_lines_supply_paint_and_interaction_without_rewrapping() {
             include_bytes!("../crates/surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
         )
         .unwrap();
-    let source = text::Source::new("AX AX");
+    let source = text::Source::new(if expanded { "A X X" } else { "AX AX" });
     let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
         source: source.clone(),
         base_style: text::Style {
@@ -92,6 +102,16 @@ fn actual_layout_lines_supply_paint_and_interaction_without_rewrapping() {
         inputs: [
             layout::LayoutInput::box_input(layout::NodeInput {
                 display: layout::Display::Block,
+                text_align: if expanded {
+                    layout::TextAlign::Justify
+                } else {
+                    layout::TextAlign::Start
+                },
+                text_justification: if expanded {
+                    layout::TextJustification::Spaces
+                } else {
+                    layout::TextJustification::None
+                },
                 ..layout::NodeInput::DEFAULT
             }),
             layout::LayoutInput::InlineText(layout::TextParticipation::new(origin.clone())),
@@ -113,7 +133,7 @@ fn actual_layout_lines_supply_paint_and_interaction_without_rewrapping() {
     )
     .unwrap();
     let request = layout::LayoutRootRequest::viewport(layout::Size::new(
-        layout::Available::Definite(45.0),
+        layout::Available::Definite(if expanded { 65.0 } else { 45.0 }),
         layout::Available::MaxContent,
     ))
     .unwrap();
@@ -125,30 +145,55 @@ fn actual_layout_lines_supply_paint_and_interaction_without_rewrapping() {
     let placed = committed.layout();
     let lines = placed.lines();
     assert_eq!(lines.len(), 2);
-    assert_eq!(lines[0].range(), text::Range::new(0, 3));
-    assert_eq!(lines[1].range(), text::Range::new(3, 5));
+    assert_eq!(
+        lines[0].range(),
+        text::Range::new(0, if expanded { 4 } else { 3 })
+    );
+    assert_eq!(
+        lines[1].range(),
+        text::Range::new(if expanded { 4 } else { 3 }, 5)
+    );
     // Ahem's one-em cells, 0.8em ascent, and explicit 20px line height
     // independently determine the glyph advances and baselines. Each line
-    // retains the separate 45px allocation supplied by Layout.
+    // retains the separate container allocation supplied by Layout. The expanded
+    // first line has two 20px letters, one 20px internal space plus 5px extra,
+    // and a discarded trailing space. The final line is a single 20px X.
     assert_eq!(lines[0].baseline(), 16.0);
     assert_eq!(lines[1].baseline(), 36.0);
-    assert_eq!(lines[0].bounds().size.width, 45.0);
-    assert_eq!(lines[1].bounds().size.width, 45.0);
+    assert_eq!(
+        lines[0].bounds().size.width,
+        if expanded { 65.0 } else { 45.0 }
+    );
+    assert_eq!(
+        lines[1].bounds().size.width,
+        if expanded { 65.0 } else { 45.0 }
+    );
     assert_eq!(
         placed
             .glyph_runs()
             .iter()
             .map(|run| run.advance())
             .collect::<Vec<_>>(),
-        vec![40.0, 40.0]
+        if expanded {
+            vec![65.0, 20.0]
+        } else {
+            vec![40.0, 40.0]
+        }
     );
     assert_eq!(
         placed
-            .cursor(text::Cursor::new(4, text::Affinity::After))
+            .cursor(text::Cursor::new(
+                if expanded { 2 } else { 4 },
+                text::Affinity::After
+            ))
             .unwrap()
             .rect()
             .origin,
-        text::Point::new(20.0, 20.0)
+        if expanded {
+            text::Point::new(45.0, 0.0)
+        } else {
+            text::Point::new(20.0, 20.0)
+        }
     );
     let stats = system.stats();
     drop(system);
@@ -169,4 +214,63 @@ fn actual_layout_lines_supply_paint_and_interaction_without_rewrapping() {
     // source associations, physical origins, or already finalized glyph rows.
     assert_eq!(paint.layout().lines(), lines);
     assert_eq!(stats.layout_misses(), 0);
+
+    #[cfg(feature = "text-accessibility")]
+    {
+        let mut accessibility = text::Accessibility::new(10);
+        let parent = 1000_u64.into();
+        let update = paint
+            .layout()
+            .accessibility_update(
+                &mut accessibility,
+                parent,
+                parent,
+                text::Point::new(100.0, 200.0),
+            )
+            .unwrap();
+        let parent_node = &update.nodes.iter().find(|(id, _)| *id == parent).unwrap().1;
+        let parent_bounds = parent_node.bounds().unwrap();
+        assert_eq!(
+            (
+                parent_bounds.x0,
+                parent_bounds.y0,
+                parent_bounds.x1,
+                parent_bounds.y1
+            ),
+            (100.0, 200.0, if expanded { 165.0 } else { 145.0 }, 240.0)
+        );
+        let cursor = text::Cursor::new(if expanded { 2 } else { 4 }, text::Affinity::After);
+        let position = paint
+            .layout()
+            .access_position(&accessibility, cursor)
+            .unwrap()
+            .unwrap();
+        let node = &update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == position.node)
+            .unwrap()
+            .1;
+        let bounds = node.bounds().unwrap();
+        assert_eq!(
+            (bounds.x0, bounds.y0, bounds.x1, bounds.y1),
+            if expanded {
+                (145.0, 200.0, 165.0, 220.0)
+            } else {
+                (120.0, 220.0, 140.0, 240.0)
+            }
+        );
+        assert_eq!(position.character_index, 0);
+        assert_eq!(node.value(), Some("X"));
+        assert_eq!(node.font_size(), Some(20.0));
+        let other = layout::compute_layout_with_text(&capture, 0, request).unwrap();
+        assert_eq!(
+            other.placed_text()[0]
+                .layout()
+                .access_position(&accessibility, cursor)
+                .unwrap_err()
+                .detail(),
+            Some(&text::ErrorDetail::AccessibilityBindingMismatch)
+        );
+    }
 }

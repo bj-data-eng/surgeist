@@ -69,8 +69,11 @@
 //! source-associated fragment handles and canonical atomic allocations.
 //! Text owns shaping and source mappings; Layout owns fitting and placement,
 //! Render owns paint conversion, and Runtime owns coherent publication.
-//! The initial prepared-text profile supports horizontal LTR and RTL flow,
-//! zero indentation, font-advance tabs, and no additional spacing allocation.
+//! The prepared-text profile supports horizontal LTR and RTL flow, zero
+//! indentation, and font-advance tabs. [`TextAlign`] and [`TextAlignLast`] select
+//! line alignment. [`TextJustification::Spaces`] permits explicit expansion of
+//! actual retained U+0020 slots during justification; [`TextJustification::None`]
+//! adds no expansion. Text owns line-edge and trailing-space decisions.
 //! Other Text orientations return a precise unsupported error.
 //! [`NodeInputOf::non_box`] is the canonical tree companion for text and inline
 //! controls.
@@ -296,7 +299,8 @@ pub use node_input::{
     RawGridPlacement, ScrollMargin, ScrollMarginError, ScrollMarginErrorOf, ScrollMarginOf,
     ScrollPadding, ScrollPaddingOf, ScrollPaddingValue, ScrollPaddingValueOf, ScrollSnapAlign,
     ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness, ScrollSnapType,
-    ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf, TextAlign, VerticalAlign, WritingMode,
+    ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf, TextAlign, TextAlignLast, TextJustification,
+    VerticalAlign, WritingMode,
 };
 pub use output::{
     Baselines, BaselinesOf, CollapsibleMargin, CollapsibleMarginOf, CompletedLayoutBatch,

@@ -1031,7 +1031,12 @@ fn in_flow_child_inline_offset<S: LayoutScalar>(
     if item_outer_inline < container_inner_inline {
         let free_space = container_inner_inline - item_outer_inline;
         match constants.text_align {
-            TextAlign::Auto => {}
+            TextAlign::Start
+            | TextAlign::End
+            | TextAlign::Left
+            | TextAlign::Right
+            | TextAlign::Center
+            | TextAlign::Justify => {}
             TextAlign::LegacyCenter => inline = inline + free_space / S::from_f64(2.0),
             TextAlign::LegacyLeft
                 if constants
