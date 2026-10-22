@@ -21,6 +21,7 @@ mod layout;
 mod options;
 mod processing;
 mod projection;
+mod protocol;
 mod range;
 #[path = "source.rs"]
 mod source_model;
@@ -53,13 +54,37 @@ pub use id::Id;
 pub use layout::{
     Affinity, BaselineShiftFact, Cluster, Cursor, CursorGeometry, DecorationKind, DecorationRun,
     Glyph, Hit, InlineBoxMetricFact, InlineMetricFacts, Layout, Line, LineMetricFact, Metrics,
-    Movement, PaintedSelectionGeometry, PaintedSelectionRect, PositionedInlineBox, Run,
-    RunMetricFact, RunMetrics, Selection, SelectionGeometry, SelectionRect,
+    Movement, PaintedSelectionGeometry, PaintedSelectionRect, PlacedPosition, PositionedInlineBox,
+    Run, RunMetricFact, RunMetrics, Selection, SelectionGeometry, SelectionRect,
 };
 pub use options::{Alignment, Indent, Options, TextAlignLast, TextOverflow, ValidatedOptions};
 pub use processing::{
     DocumentSegmentBreaks, PlaintextItem, PlaintextItems, ProcessedInlineBox, ProcessedPosition,
     ProcessedRange, ProcessedSource, ProcessedSpan, ProcessedText, process_source_whitespace,
+};
+pub use protocol::paragraph::{
+    ParagraphAnchor, ParagraphAnchorItem, ParagraphBoundaryDefinition, ParagraphBoundaryPolicy,
+    ParagraphConnection, ParagraphConnectionKind, ParagraphControl, ParagraphControlKind,
+    ParagraphOrigin, ParagraphOriginKind, ParagraphReplacement, ParagraphReplacementDefinition,
+    ParagraphStrut,
+};
+pub use protocol::readback::{
+    FinalizedControlView, FinalizedFragmentOwner, FinalizedFragmentView, FinalizedGlyphView,
+    FinalizedRunView, LineOutlineInk, PreparedAlternativeDefinition, PreparedAlternativeView,
+    PreparedAtomicView, PreparedBoundaryView, PreparedControlView, PreparedOpportunityView,
+    PreparedOriginIntersectionView, PreparedOriginView, PreparedUnitView, PresentationMappingKind,
+    SelectedMappingView,
+};
+pub use protocol::{
+    AtomicAllocation, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation,
+    AtomicPlacement, AtomicSlotFeedback, ControlAllocation, ControlStrut, FinalizedFragment,
+    FinalizedLine, HangingContext, LineAnchor, LineBoxAlignment, LineContext, LineEnd,
+    LineFeedback, LineOrientation, LinePlacement, LineSelectionRequest, LineStart, LineStrut,
+    ParagraphBaseDirection, ParagraphInput, PlacementCoverage, PlacementRequest,
+    PreparationOptions, PreparedAlternative, PreparedAtomic, PreparedBoundary, PreparedBreakKind,
+    PreparedControl, PreparedOpportunity, PreparedOrigin, PreparedParticipant, PreparedText,
+    PreparedUnit, PresentationRange, ProtocolContextField, ProtocolError, ProtocolHandleKind,
+    SelectedLine, SpacingAllocation, SpacingAllocations, SpacingPolicy, SpacingSlot, TabContext,
 };
 pub use range::{Range, SourcePosition, SourceRange};
 pub use source_model::{
@@ -72,7 +97,9 @@ pub use style::{
     FontWidthRatio, LineHeight, OverflowWrap, SelectionPaint, Slant, Style, TextTransform,
     ValidatedStyle, Weight, WhiteSpace, Width, WordBreak, Wrap,
 };
-pub use style_support::{TextStyleFeature, TextStyleSupport, UnsupportedTextStyleReason};
+pub use style_support::{
+    TextStyleFeature, TextStylePhase, TextStyleSupport, UnsupportedTextStyleReason,
+};
 pub use supplied_line::{
     BidiLevel, BidiLevelError, InlineWhitespaceEdge, SuppliedInlineParticipant, SuppliedLine,
     SuppliedLineEdges, SuppliedLineError, SuppliedVisualOrder,

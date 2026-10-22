@@ -110,9 +110,9 @@ impl RunView<'_> {
     /// Logical origin added separately to canonical run-local glyph coordinates.
     #[must_use]
     pub fn origin(&self) -> Point {
-        Point::new(
-            self.placed.origin.x + self.run.x,
-            crate::layout::line_baseline(self.placed),
+        crate::layout::line_point(
+            self.placed,
+            Point::new(self.run.x, self.placed.finalized.data.metrics.baseline),
         )
     }
     /// Raw canonical glyph offsets and advances with separate logical run-local pens.

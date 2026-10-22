@@ -295,10 +295,10 @@ pub enum LineHeight {
 pub enum WhiteSpace {
     Collapse,
     Preserve,
-    /// Source-only discard processing; full paragraph layout remains unsupported.
+    /// Discard executes through explicit processed-paragraph capture.
     Discard,
     /// Preserve spaces while normalizing tabs and document delimiters to spaces.
-    /// Paragraph layout does not yet consume this processed-source mode.
+    /// The explicit processed-paragraph front consumes this mode.
     PreserveSpaces,
 }
 
@@ -474,6 +474,19 @@ pub struct ValidatedStyle {
 }
 
 impl ValidatedStyle {
+    /// Admission after the actual lexical owner executed whitespace processing.
+    /// All scalar/font/paint checks remain shared; authored modes are retained.
+    pub(crate) fn for_processed(style: Style) -> Result<Self> {
+        let parsed = validate_style(&style, StyleInputPhase::Processed)?;
+        Ok(Self::new(
+            style,
+            parsed.locale,
+            parsed.font_family,
+            parsed.font_features,
+            parsed.font_variations,
+        ))
+    }
+
     fn new(
         authored: Style,
         locale: Option<Language>,
@@ -541,7 +554,7 @@ impl TryFrom<Style> for ValidatedStyle {
     type Error = Error;
 
     fn try_from(style: Style) -> Result<Self> {
-        let parsed = validate_style(&style)?;
+        let parsed = validate_style(&style, StyleInputPhase::Standalone)?;
         Ok(Self::new(
             style,
             parsed.locale,
@@ -559,7 +572,13 @@ struct ParsedStyle {
     font_variations: Option<String>,
 }
 
-fn validate_style(style: &Style) -> Result<ParsedStyle> {
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum StyleInputPhase {
+    Standalone,
+    Processed,
+}
+
+fn validate_style(style: &Style, phase: StyleInputPhase) -> Result<ParsedStyle> {
     if style.direction != Direction::Auto {
         return Err(Error::new(
             ErrorCode::UnsupportedFeature,
@@ -570,13 +589,19 @@ fn validate_style(style: &Style) -> Result<ParsedStyle> {
             reason: UnsupportedTextStyleReason::RequiresParagraphBaseDirection,
         }));
     }
-    if style.white_space != WhiteSpace::Preserve {
+    if phase == StyleInputPhase::Standalone && style.white_space != WhiteSpace::Preserve {
         return Err(Error::new(
             ErrorCode::UnsupportedFeature,
             match style.white_space {
-                WhiteSpace::Collapse => "whitespace collapse is not supported until text layout preserves authored source ranges",
-                WhiteSpace::Discard => "whitespace discard source processing is not yet consumed by paragraph layout",
-                WhiteSpace::PreserveSpaces => "preserve-spaces source processing is not yet consumed by paragraph layout",
+                WhiteSpace::Collapse => {
+                    "standalone whitespace collapse requires explicit processed-paragraph capture"
+                }
+                WhiteSpace::Discard => {
+                    "standalone discard requires explicit processed-paragraph capture"
+                }
+                WhiteSpace::PreserveSpaces => {
+                    "standalone preserve-spaces requires explicit processed-paragraph capture"
+                }
                 WhiteSpace::Preserve => unreachable!("unsupported branch excludes Preserve"),
             },
         )
@@ -587,12 +612,7 @@ fn validate_style(style: &Style) -> Result<ParsedStyle> {
                 WhiteSpace::Collapse => TextStyleFeature::WhiteSpaceCollapse,
                 WhiteSpace::Preserve => unreachable!("unsupported branch excludes Preserve"),
             },
-            reason: match style.white_space {
-                WhiteSpace::Discard => UnsupportedTextStyleReason::RequiresProcessedSourceLayout,
-                WhiteSpace::PreserveSpaces => UnsupportedTextStyleReason::RequiresProcessedSourceLayout,
-                WhiteSpace::Collapse => UnsupportedTextStyleReason::RequiresSourceRangePreservation,
-                WhiteSpace::Preserve => unreachable!("unsupported branch excludes Preserve"),
-            },
+            reason: UnsupportedTextStyleReason::RequiresProcessedSourceLayout,
         }));
     }
     validate_positive_f32(style.size, "font size")?;

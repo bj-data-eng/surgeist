@@ -61,7 +61,7 @@ impl ProcessedRange {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum MappingKind {
+pub(crate) enum MappingKind {
     Copy,
     Delete(DeletionCause),
     Replace,
@@ -69,7 +69,7 @@ enum MappingKind {
 
 /// Executed lexical reason, retained for later semantic owners without replay.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum DeletionCause {
+pub(crate) enum DeletionCause {
     Discard,
     SpaceAroundSegmentBreak,
     DuplicateSegmentBreak,
@@ -78,14 +78,14 @@ enum DeletionCause {
 }
 
 #[derive(Debug)]
-struct MappingPiece {
-    source: Range,
-    processed: usize,
-    kind: MappingKind,
+pub(crate) struct MappingPiece {
+    pub(crate) source: Range,
+    pub(crate) processed: usize,
+    pub(crate) kind: MappingKind,
 }
 
 impl MappingPiece {
-    fn processed_end(&self) -> usize {
+    pub(crate) fn processed_end(&self) -> usize {
         self.processed
             + match self.kind {
                 MappingKind::Copy => self.source.len(),
@@ -139,6 +139,61 @@ pub fn process_source_whitespace(
     base_style: Style,
     segment_breaks: DocumentSegmentBreaks,
 ) -> Result<ProcessedSource> {
+    process_with_boundaries(source, base_style, segment_breaks, &[])
+}
+
+pub(crate) fn process_paragraph(
+    source: Source,
+    base_style: Style,
+    segment_breaks: DocumentSegmentBreaks,
+    paragraph: &crate::protocol::paragraph::ParagraphData,
+) -> Result<ProcessedSource> {
+    let mut barriers = Vec::new();
+    for (connection, row) in paragraph.connections.iter().enumerate() {
+        if row.kind != crate::protocol::paragraph::ParagraphConnectionKind::Disconnected {
+            continue;
+        }
+        let at = row.at;
+        if delimiter_crosses(&segment_breaks, at) {
+            return Err(crate::protocol::protocol_error(
+                crate::protocol::ProtocolError::InvalidConnection { connection, at },
+            ));
+        }
+        barriers.push(at);
+    }
+    for (control, row) in paragraph.controls.iter().enumerate() {
+        if row.kind != crate::protocol::paragraph::ParagraphControlKind::ForcedBreak {
+            continue;
+        }
+        let at = row.at;
+        if delimiter_crosses(&segment_breaks, at) {
+            return Err(crate::protocol::protocol_error(
+                crate::protocol::ProtocolError::InvalidControl { control, at },
+            ));
+        }
+        barriers.push(at);
+    }
+    barriers.sort_unstable();
+    barriers.dedup();
+    process_with_boundaries(source, base_style, segment_breaks, &barriers)
+}
+
+fn delimiter_crosses(breaks: &DocumentSegmentBreaks, at: usize) -> bool {
+    let DocumentSegmentBreaks::Defined(delimiters) = breaks else {
+        return false;
+    };
+    let next = delimiters.partition_point(|range| range.end <= at);
+    delimiters
+        .get(next)
+        .is_some_and(|range| range.start < at && at < range.end)
+}
+
+fn process_with_boundaries(
+    source: Source,
+    base_style: Style,
+    segment_breaks: DocumentSegmentBreaks,
+    barriers: &[usize],
+) -> Result<ProcessedSource> {
     crate::source_model::validate_structure(&source)?;
     validate_delimiters(&source, &segment_breaks)?;
     let mut box_order = Vec::new();
@@ -149,7 +204,7 @@ pub fn process_source_whitespace(
     let modes = effective_modes(&source, &base_style)?;
     validate_modes(&modes, &segment_breaks)?;
 
-    let (units, map) = lexical::execute(&source, &segment_breaks, &modes, &box_order)?;
+    let (units, map) = lexical::execute(&source, &segment_breaks, &modes, &box_order, barriers)?;
     Ok(ProcessedSource {
         source,
         base_style,
@@ -160,7 +215,36 @@ pub fn process_source_whitespace(
     })
 }
 
+/// The existing standalone front's actual untransformed correspondence.
+pub(crate) fn identity(source: Source, base_style: Style) -> Result<ProcessedSource> {
+    crate::source_model::validate_structure(&source)?;
+    let mut box_order = Vec::new();
+    reserve(&mut box_order, source.boxes().len())?;
+    box_order.extend(0..source.boxes().len());
+    box_order.sort_unstable_by_key(|&ordinal| (source.boxes()[ordinal].index(), ordinal));
+    let map = if source.text().is_empty() {
+        Vec::new()
+    } else {
+        vec![MappingPiece {
+            source: Range::new(0, source.text().len()),
+            processed: 0,
+            kind: MappingKind::Copy,
+        }]
+    };
+    Ok(ProcessedSource {
+        processed: source.text().clone(),
+        source,
+        base_style,
+        segment_breaks: DocumentSegmentBreaks::Defined(Vec::new()),
+        map,
+        box_order,
+    })
+}
+
 impl ProcessedSource {
+    pub(crate) fn operations(&self) -> &[MappingPiece] {
+        &self.map
+    }
     /// The exact original source, styles, boxes, ID and revision.
     #[must_use]
     pub const fn source(&self) -> &Source {
@@ -299,7 +383,7 @@ impl ProcessedSource {
         }
     }
 
-    fn project(&self, at: usize, affinity: Affinity) -> usize {
+    pub(crate) fn project(&self, at: usize, affinity: Affinity) -> usize {
         let next = self.map.partition_point(|piece| piece.source.end <= at);
         self.map.get(next).map_or(self.processed.len(), |piece| {
             piece.processed

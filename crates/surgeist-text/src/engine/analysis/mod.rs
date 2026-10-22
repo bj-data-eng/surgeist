@@ -22,6 +22,7 @@ use icu_segmenter::{LineSegmenter, WordSegmenter};
 use parley_data::Properties;
 
 use super::{bidi::BidiResolver, resolve::AnalyzedStyleRun};
+use crate::protocol::paragraph::{ParagraphAnchorItem, ParagraphData};
 use crate::{InlineBox, InlineBoxKind, Result, WordBreak, projection::SourceProjection};
 
 #[derive(Default)]
@@ -104,6 +105,7 @@ pub(crate) struct Analysis {
     pub(crate) infos: Vec<(CharInfo, usize)>,
     pub(crate) levels: Vec<u8>,
     pub(crate) box_levels: Vec<u8>,
+    pub(crate) control_levels: Vec<u8>,
     pub(crate) base_level: u8,
     /// Actual segmentation boundaries expressed as half-open atom intervals.
     pub(crate) graphemes: Vec<Range<usize>>,
@@ -113,8 +115,30 @@ pub(crate) fn analyze(
     projection: &SourceProjection,
     styles: &[AnalyzedStyleRun],
     boxes: &[InlineBox],
+    paragraph: &ParagraphData,
 ) -> Result<Analysis> {
     let sources = AnalysisDataSources;
+    for (policy, row) in paragraph.boundary_policies.iter().enumerate() {
+        let at = row.at(paragraph, boxes);
+        let original_end = styles.last().map_or(0, |style| style.range.end);
+        let wrap_at = |at| {
+            styles[styles
+                .partition_point(|run| run.range.end <= at)
+                .min(styles.len() - 1)]
+            .style
+            .authored()
+            .wrap
+        };
+        if at
+            .checked_sub(1)
+            .is_some_and(|at| wrap_at(at) != row.preceding_wrap)
+            || (at < original_end && wrap_at(at) != row.following_wrap)
+        {
+            return Err(crate::protocol::protocol_error(
+                crate::protocol::ProtocolError::InvalidBoundaryPolicy { policy, at },
+            ));
+        }
+    }
     let offsets: Vec<_> = projection
         .segmentation
         .char_indices()
@@ -132,7 +156,7 @@ pub(crate) fn analyze(
         .map(|unit| {
             projection
                 .atoms
-                .partition_point(|atom| atom.source.start < *unit)
+                .partition_point(|atom| atom.presentation.start < *unit)
         })
         .collect();
     let graphemes = grapheme_stops
@@ -140,53 +164,61 @@ pub(crate) fn analyze(
         .map(|pair| pair[0]..pair[1])
         .collect();
     let mut boundaries = vec![Boundary::None; projection.atoms.len() + 1];
-    for byte in WordSegmenter::new_for_non_complex_scripts(WordBreakInvariantOptions::default())
-        .segment_str(&projection.segmentation)
-    {
-        boundaries[atom_at(byte)] = Boundary::Word;
-    }
-    // Keep complete neighboring scalars at word-break style boundaries, as in
-    // the upstream analyzer. This preserves contextual line-break decisions.
-    let mut segments: Vec<(crate::Range, WordBreak)> = Vec::new();
-    for run in styles {
-        let mode = run.style.authored().word_break;
-        if let Some((range, previous)) = segments.last_mut()
-            && *previous == mode
-            && range.end == run.range.start
-        {
-            range.end = run.range.end;
-            continue;
-        }
-        segments.push((run.range, mode));
-    }
-    for (range, mode) in segments {
-        let first = projection
-            .atoms
-            .partition_point(|atom| atom.source.end <= range.start);
-        let end = projection
-            .atoms
-            .partition_point(|atom| atom.source.start < range.end);
-        if first == end {
-            continue;
-        }
-        let begin_context = first.saturating_sub(1);
-        let end_context =
-            (end + usize::from(end < projection.atoms.len())).min(projection.atoms.len());
-        let start_byte = offsets[begin_context];
-        let end_byte = offsets[end_context];
-        let mut options = LineBreakOptions::default();
-        options.word_option = Some(match mode {
-            WordBreak::Normal => LineBreakWordOption::Normal,
-            WordBreak::BreakAll => LineBreakWordOption::BreakAll,
-            WordBreak::KeepAll => LineBreakWordOption::KeepAll,
-        });
-        for byte in LineSegmenter::new_for_non_complex_scripts(options)
+    let mut component_stops: Vec<_> = projection
+        .barriers
+        .iter()
+        .map(|at| {
+            projection
+                .atoms
+                .partition_point(|atom| atom.source.end <= *at)
+        })
+        .collect();
+    component_stops.extend([0, projection.atoms.len()]);
+    component_stops.sort_unstable();
+    component_stops.dedup();
+    for component in component_stops.windows(2) {
+        let component_start = component[0];
+        let component_end = component[1];
+        let start_byte = offsets[component_start];
+        let end_byte = offsets[component_end];
+        for byte in WordSegmenter::new_for_non_complex_scripts(WordBreakInvariantOptions::default())
             .segment_str(&projection.segmentation[start_byte..end_byte])
         {
-            let atom = atom_at(byte + start_byte);
-            if atom > 0 && atom >= first && atom < end {
-                boundaries[atom] = Boundary::Line;
+            boundaries[atom_at(byte + start_byte)] = Boundary::Word;
+        }
+        // Preserve complete neighboring atoms for a change of word-break mode,
+        // but never borrow text across an actual disconnected/in-flow edge.
+        let mut first = component_start;
+        while first < component_end {
+            let style_index = style_at(projection, styles, first);
+            let mode = styles[style_index].style.authored().word_break;
+            let mut end = first + 1;
+            while end < component_end {
+                let next = style_at(projection, styles, end);
+                if styles[next].style.authored().word_break != mode {
+                    break;
+                }
+                end += 1;
             }
+            let begin_context = first.saturating_sub(1).max(component_start);
+            let end_context = end.saturating_add(1).min(component_end);
+            let start_byte = offsets[begin_context];
+            let end_byte = offsets[end_context];
+            let mut options = LineBreakOptions::default();
+            options.word_option = Some(match mode {
+                WordBreak::Normal => LineBreakWordOption::Normal,
+                WordBreak::BreakAll => LineBreakWordOption::BreakAll,
+                WordBreak::KeepAll => LineBreakWordOption::KeepAll,
+            });
+            for byte in LineSegmenter::new_for_non_complex_scripts(options)
+                .segment_str(&projection.segmentation[start_byte..end_byte])
+            {
+                let atom = atom_at(byte + start_byte);
+                if atom > 0 && atom >= first && atom < end {
+                    boundaries[atom] = Boundary::Line;
+                }
+            }
+            first = end;
         }
     }
     let mut infos = Vec::with_capacity(projection.atoms.len());
@@ -195,9 +227,7 @@ pub(crate) fn analyze(
         let props = sources.original_properties(atom.code_point);
         let script = props.script();
         let gcb = props.grapheme_cluster_break();
-        let style = styles
-            .partition_point(|run| run.range.end <= atom.source.start)
-            .min(styles.len().saturating_sub(1));
+        let style = style_at(projection, styles, index);
         let info = CharInfo {
             boundary: if mandatory {
                 Boundary::Mandatory
@@ -221,58 +251,227 @@ pub(crate) fn analyze(
         mandatory = props.is_mandatory_linebreak();
         infos.push((info, style));
     }
-    let mut box_order: Vec<_> = boxes
-        .iter()
-        .enumerate()
-        .filter(|(_, item)| item.kind() == InlineBoxKind::InFlow)
-        .collect();
-    box_order.sort_by_key(|(ordinal, item)| (item.index(), *ordinal));
-    let mut original = Vec::with_capacity(infos.len() + box_order.len());
+    let mut original = Vec::with_capacity(infos.len() + paragraph.anchor_order.len());
     let mut owners = Vec::with_capacity(original.capacity());
-    let mut next_box = box_order.into_iter().peekable();
-    for (index, atom) in projection.atoms.iter().enumerate() {
-        while next_box
-            .peek()
-            .is_some_and(|(_, item)| item.index() <= atom.source.start)
-        {
-            let (ordinal, _) = next_box.next().expect("peek established a box");
-            original.push((
-                '\u{fffc}',
-                (BidiClass::OtherNeutral, sources.brackets().get('\u{fffc}')),
+    let positions: Vec<_> = (0..paragraph.anchor_order.len())
+        .map(|anchor| anchor_atom(anchor, paragraph, boxes, projection))
+        .collect();
+    for (position, pair) in positions.windows(2).enumerate() {
+        if pair[0] > pair[1] {
+            let item = paragraph.anchor_order[position + 1].item;
+            let (kind, occurrence) = anchor_kind(item);
+            return Err(crate::protocol::protocol_error(
+                crate::protocol::ProtocolError::InvalidAnchorOrder {
+                    position: position + 1,
+                    kind,
+                    occurrence,
+                },
             ));
-            owners.push((true, ordinal));
+        }
+    }
+    let mut next_anchor = paragraph.anchor_order.iter().zip(&positions).peekable();
+    for (index, atom) in projection.atoms.iter().enumerate() {
+        while next_anchor.peek().is_some_and(|(_, at)| **at <= index) {
+            let (anchor, _) = next_anchor.next().expect("peek established an anchor");
+            push_bidi_anchor(
+                anchor.item,
+                paragraph,
+                boxes,
+                &sources,
+                &mut original,
+                &mut owners,
+            );
         }
         original.push((
             atom.glyph,
             (infos[index].0.bidi_class, infos[index].0.bracket),
         ));
-        owners.push((false, index));
+        owners.push(BidiOwner::Atom(index));
     }
-    for (ordinal, _) in next_box {
-        original.push((
-            '\u{fffc}',
-            (BidiClass::OtherNeutral, sources.brackets().get('\u{fffc}')),
-        ));
-        owners.push((true, ordinal));
+    for (anchor, _) in next_anchor {
+        push_bidi_anchor(
+            anchor.item,
+            paragraph,
+            boxes,
+            &sources,
+            &mut original,
+            &mut owners,
+        );
     }
     let mut bidi = BidiResolver::new();
-    bidi.resolve(original.into_iter(), None);
+    bidi.resolve(
+        original.into_iter(),
+        paragraph.base_direction.map(|direction| direction.level()),
+    );
     let mut levels = vec![bidi.base_level(); infos.len()];
     let mut box_levels = vec![bidi.base_level(); boxes.len()];
-    for ((is_box, index), &level) in owners.into_iter().zip(bidi.levels()) {
-        if is_box {
-            box_levels[index] = level;
-        } else {
-            levels[index] = level;
+    let mut control_levels = vec![bidi.base_level(); paragraph.controls.len()];
+    for (owner, &level) in owners.into_iter().zip(bidi.levels()) {
+        match owner {
+            BidiOwner::Atom(index) => levels[index] = level,
+            BidiOwner::Atomic(index) => box_levels[index] = level,
+            BidiOwner::Control(index) => control_levels[index] = level,
+        }
+    }
+    for (anchor, &at) in paragraph.anchor_order.iter().zip(&positions) {
+        let inherited = match anchor.affinity {
+            crate::Affinity::Before => at.checked_sub(1).and_then(|i| levels.get(i)),
+            crate::Affinity::After => levels.get(at),
+        }
+        .copied()
+        .unwrap_or(bidi.base_level());
+        match anchor.item {
+            ParagraphAnchorItem::Atomic(i) if boxes[i].kind() == InlineBoxKind::OutOfFlow => {
+                box_levels[i] = inherited
+            }
+            ParagraphAnchorItem::Control(i)
+                if paragraph.controls[i].kind.code_point().is_none()
+                    && paragraph.controls[i].kind
+                        != crate::protocol::paragraph::ParagraphControlKind::ForcedBreak =>
+            {
+                control_levels[i] = inherited
+            }
+            _ => {}
         }
     }
     Ok(Analysis {
         infos,
         levels,
         box_levels,
+        control_levels,
         base_level: bidi.base_level(),
         graphemes,
     })
+}
+
+fn style_at(projection: &SourceProjection, styles: &[AnalyzedStyleRun], atom: usize) -> usize {
+    let anchor = projection
+        .style_anchors
+        .get(atom)
+        .and_then(|value| *value)
+        .unwrap_or(projection.atoms[atom].source.start);
+    styles
+        .partition_point(|run| run.range.end <= anchor)
+        .min(styles.len() - 1)
+}
+
+enum BidiOwner {
+    Atom(usize),
+    Atomic(usize),
+    Control(usize),
+}
+
+pub(crate) fn anchor_position(
+    item: ParagraphAnchorItem,
+    paragraph: &ParagraphData,
+    boxes: &[InlineBox],
+) -> usize {
+    match item {
+        ParagraphAnchorItem::EmptyOrigin(index) => paragraph.origins[index].aggregate.start,
+        ParagraphAnchorItem::Atomic(index) => boxes[index].index(),
+        ParagraphAnchorItem::Control(index) => paragraph.controls[index].at,
+    }
+}
+
+pub(crate) fn anchor_atom(
+    occurrence: usize,
+    paragraph: &ParagraphData,
+    boxes: &[InlineBox],
+    projection: &SourceProjection,
+) -> usize {
+    if let Some(Some(atom)) = projection.anchor_atoms.get(occurrence) {
+        return *atom;
+    }
+    let anchor = paragraph.anchor_order[occurrence];
+    let source = anchor_position(anchor.item, paragraph, boxes);
+    let mut index = projection
+        .atoms
+        .partition_point(|atom| atom.source.end <= source);
+    if projection
+        .atoms
+        .get(index)
+        .is_some_and(|atom| atom.source.start < source)
+        && anchor.affinity == crate::Affinity::After
+    {
+        index += 1;
+    }
+    if matches!(anchor.item, ParagraphAnchorItem::Atomic(i) if boxes[i].kind() == InlineBoxKind::InFlow)
+    {
+        return index;
+    }
+    // The raw standalone Source front historically orders transparent boxes at
+    // its admitted scalar endpoint, even inside a CRLF/combining grapheme.
+    // Explicit native ParagraphAnchor affinity still projects typography stops.
+    if paragraph.base_direction.is_none()
+        && matches!(anchor.item,ParagraphAnchorItem::Atomic(i) if boxes[i].kind()==InlineBoxKind::OutOfFlow)
+    {
+        return index;
+    }
+    let unit = projection.atoms.get(index).map_or_else(
+        || {
+            projection
+                .atoms
+                .last()
+                .map_or(0, |atom| atom.presentation.end)
+        },
+        |atom| atom.presentation.start,
+    );
+    match projection.graphemes.binary_search(&unit) {
+        Ok(_) => index,
+        Err(next) => {
+            let stop = match anchor.affinity {
+                crate::Affinity::Before => projection.graphemes[next.saturating_sub(1)],
+                crate::Affinity::After => projection.graphemes[next],
+            };
+            projection
+                .atoms
+                .partition_point(|atom| atom.presentation.start < stop)
+        }
+    }
+}
+
+fn anchor_kind(item: ParagraphAnchorItem) -> (crate::protocol::ProtocolHandleKind, usize) {
+    match item {
+        ParagraphAnchorItem::EmptyOrigin(i) => (crate::protocol::ProtocolHandleKind::Origin, i),
+        ParagraphAnchorItem::Atomic(i) => (crate::protocol::ProtocolHandleKind::Atomic, i),
+        ParagraphAnchorItem::Control(i) => (crate::protocol::ProtocolHandleKind::Control, i),
+    }
+}
+
+fn push_bidi_anchor(
+    item: ParagraphAnchorItem,
+    paragraph: &ParagraphData,
+    boxes: &[InlineBox],
+    sources: &AnalysisDataSources,
+    original: &mut Vec<(char, (BidiClass, BidiMirroringGlyph))>,
+    owners: &mut Vec<BidiOwner>,
+) {
+    let (cp, owner) = match item {
+        ParagraphAnchorItem::Atomic(index) if boxes[index].kind() == InlineBoxKind::InFlow => {
+            (0xfffc, BidiOwner::Atomic(index))
+        }
+        ParagraphAnchorItem::Control(index) => {
+            let control = paragraph.controls[index];
+            let cp =
+                if control.kind == crate::protocol::paragraph::ParagraphControlKind::ForcedBreak {
+                    Some(0xa)
+                } else {
+                    control.kind.code_point()
+                };
+            let Some(cp) = cp else { return };
+            (cp, BidiOwner::Control(index))
+        }
+        _ => return,
+    };
+    let ch = char::from_u32(cp).expect("closed semantic controls are Unicode scalars");
+    original.push((
+        ch,
+        (
+            CodePointMapData::<BidiClass>::new().get32(cp),
+            sources.brackets().get32(cp),
+        ),
+    ));
+    owners.push(owner);
 }
 
 pub(crate) fn contributes_to_shaping(category: GeneralCategory, script: Script) -> bool {
@@ -336,7 +535,13 @@ mod tests {
             range: crate::Range::new(0, 4),
             style: crate::ValidatedStyle::try_from(crate::Style::default()).expect("default style"),
         }];
-        let analysis = analyze(&projection, &styles, &[]).expect("original analysis");
+        let analysis = analyze(
+            &projection,
+            &styles,
+            &[],
+            &ParagraphData::standalone(&source),
+        )
+        .expect("original analysis");
         assert_eq!(analysis.base_level, 0);
         assert_eq!(analysis.infos[0].0.bidi_class, BidiClass::LeftToRight);
         assert_eq!(analysis.infos[2].0.bidi_class, BidiClass::LeftToRight);

@@ -1,6 +1,7 @@
 //! Original-source interaction over the same immutable committed line rows.
 
 mod cursor;
+pub(crate) mod position;
 mod selection;
 
 use super::{PlacedLine, PreparedData};
@@ -8,11 +9,24 @@ use crate::{Affinity, Error, ErrorCode, Range, Result};
 pub(crate) use cursor::{cursor, hit, move_cursor};
 pub(crate) use selection::selection;
 
+/// Original-side ownership of a nonempty source unit. At a shared endpoint,
+/// Before borrows the upstream unit and After the downstream unit. Actual
+/// deleted-anchor geometry uses this occurrence eligibility relation.
+pub(super) fn owns_source_side(source: Range, value: crate::Cursor) -> bool {
+    match value.affinity() {
+        Affinity::Before => source.start < value.index() && value.index() <= source.end,
+        Affinity::After => source.start <= value.index() && value.index() < source.end,
+    }
+}
+
 pub(crate) struct InteractionData {
     stops: Vec<usize>,
+    pub(crate) positions: Vec<position::Position>,
 }
 
 impl InteractionData {
+    /// SourceCursor remains in the original source domain. Executed deletion
+    /// correspondence is intentionally not a lossy round trip for these stops.
     pub(crate) fn caret(&self, index: usize, affinity: Affinity) -> usize {
         caret_at(&self.stops, index, affinity)
     }
@@ -45,7 +59,11 @@ pub(crate) fn caret_at(stops: &[usize], index: usize, affinity: Affinity) -> usi
     }
 }
 
-pub(crate) fn prepare(prepared: &PreparedData, lines: &[PlacedLine]) -> Result<InteractionData> {
+pub(crate) fn prepare(
+    prepared: &PreparedData,
+    lines: &[PlacedLine],
+    coverage: &crate::protocol::placement::PlacedCoverage,
+) -> Result<InteractionData> {
     let mut intervals: Vec<_> = lines
         .iter()
         .flat_map(|line| {
@@ -58,14 +76,18 @@ pub(crate) fn prepare(prepared: &PreparedData, lines: &[PlacedLine]) -> Result<I
         .filter(|range| !range.is_empty())
         .collect();
     intervals.sort_unstable_by_key(|range| (range.start, range.end));
-    let stops = legal_stops(&prepared.analyzed.projection.graphemes, &intervals);
-    if stops.first() != Some(&0) || stops.last() != Some(&prepared.analyzed.source.text().len()) {
+    let stops: Vec<_> = legal_stops(&prepared.analyzed.host_projection.graphemes, &intervals)
+        .into_iter()
+        .filter(|&index| coverage.source.start <= index && index <= coverage.source.end)
+        .collect();
+    if stops.first() != Some(&coverage.source.start) || stops.last() != Some(&coverage.source.end) {
         return Err(Error::new(
             ErrorCode::LayoutFailed,
             "committed source caret boundary coverage is incomplete",
         ));
     }
-    Ok(InteractionData { stops })
+    let positions = position::prepare(lines, &stops);
+    Ok(InteractionData { stops, positions })
 }
 
 fn legal_stops(graphemes: &[usize], intervals: &[Range]) -> Vec<usize> {

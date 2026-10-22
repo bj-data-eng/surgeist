@@ -21,9 +21,9 @@ pub enum TextStyleFeature {
     ExplicitTextDirection,
     WhiteSpacePreserve,
     WhiteSpaceCollapse,
-    /// Discard is executable by source processing, not yet by paragraph layout.
+    /// Discard executes in the processed-paragraph phase.
     WhiteSpaceDiscard,
-    /// PreserveSpaces executes in source processing, not yet in paragraph layout.
+    /// PreserveSpaces executes in the processed-paragraph phase.
     WhiteSpacePreserveSpaces,
     WordBreak,
     TextWrap,
@@ -44,6 +44,15 @@ pub enum TextStyleFeature {
     SymbolicDecorationColor,
     TextTransform,
     SelectionColor,
+}
+
+/// The actual executor whose support is being queried.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum TextStylePhase {
+    /// Existing raw-source convenience layout.
+    Standalone,
+    /// Explicit paragraph capture with executed source processing.
+    ProcessedParagraph,
 }
 
 impl TextStyleFeature {
@@ -92,7 +101,15 @@ impl TextStyleFeature {
     ];
 
     #[must_use]
-    pub const fn support(self) -> TextStyleSupport {
+    pub const fn support(self, phase: TextStylePhase) -> TextStyleSupport {
+        if matches!(phase, TextStylePhase::ProcessedParagraph)
+            && matches!(
+                self,
+                Self::WhiteSpaceCollapse | Self::WhiteSpaceDiscard | Self::WhiteSpacePreserveSpaces
+            )
+        {
+            return TextStyleSupport::Supported;
+        }
         match self {
             Self::FontFamilyList
             | Self::NamedFontWeight
@@ -126,7 +143,7 @@ impl TextStyleFeature {
                 UnsupportedTextStyleReason::RequiresParagraphBaseDirection,
             ),
             Self::WhiteSpaceCollapse => TextStyleSupport::Unsupported(
-                UnsupportedTextStyleReason::RequiresSourceRangePreservation,
+                UnsupportedTextStyleReason::RequiresProcessedSourceLayout,
             ),
             Self::WhiteSpaceDiscard | Self::WhiteSpacePreserveSpaces => {
                 TextStyleSupport::Unsupported(
@@ -161,8 +178,7 @@ pub enum TextStyleSupport {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum UnsupportedTextStyleReason {
     RequiresParagraphBaseDirection,
-    RequiresSourceRangePreservation,
-    /// The paragraph executor does not yet consume processed source.
+    /// This standalone input requires the explicit processed-paragraph executor.
     RequiresProcessedSourceLayout,
     RequiresFontPolicy,
     RequiresTextFlowPolicy,

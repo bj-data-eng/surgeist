@@ -1,0 +1,660 @@
+//! Resource-retaining public preparation, selection, finalization and placement.
+
+use std::{
+    fmt,
+    hash::{Hash, Hasher},
+    sync::Arc,
+};
+
+use crate::engine::PreparedData;
+use crate::{Alignment, FontCatalogueIdentity, Point, Range, Rect, Result};
+use selection::SelectedData;
+
+pub(crate) mod finalized;
+pub(crate) mod paragraph;
+pub(crate) mod placement;
+pub(crate) mod prepared;
+pub(crate) mod readback;
+pub(crate) mod selection;
+
+pub use paragraph::{ParagraphBaseDirection, ParagraphInput};
+pub use prepared::PreparedBreakKind;
+
+/// Provider-dependent preparation inputs, independent of line choice/placement.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PreparationOptions {
+    scale: f32,
+}
+
+impl PreparationOptions {
+    pub fn try_new(scale: f32) -> Result<Self> {
+        if !scale.is_finite() || scale <= 0.0 {
+            return Err(crate::error::text_numeric_error(
+                "preparation scale",
+                crate::TextNumericPhase::Preparation,
+                if scale.is_finite() {
+                    crate::TextNumericError::OutOfRange
+                } else {
+                    crate::TextNumericError::NonFinite
+                },
+                f64::from(scale),
+            ));
+        }
+        Ok(Self { scale })
+    }
+    #[must_use]
+    pub const fn scale(self) -> f32 {
+        self.scale
+    }
+}
+impl Default for PreparationOptions {
+    fn default() -> Self {
+        Self { scale: 1.0 }
+    }
+}
+
+/// Actual immutable preparation; clones retain the same allocation and fonts.
+#[derive(Clone)]
+pub struct PreparedText {
+    pub(crate) inner: Arc<PreparedData>,
+}
+impl fmt::Debug for PreparedText {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PreparedText").finish_non_exhaustive()
+    }
+}
+impl PartialEq for PreparedText {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.inner, &other.inner)
+    }
+}
+impl Eq for PreparedText {}
+impl Hash for PreparedText {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        Arc::as_ptr(&self.inner).hash(state);
+    }
+}
+impl PreparedText {
+    #[must_use]
+    pub fn analyzed_source(&self) -> crate::AnalyzedSource {
+        crate::AnalyzedSource::from_inner(Arc::clone(&self.inner.analyzed))
+    }
+    #[must_use]
+    pub fn font_catalogue_identity(&self) -> &FontCatalogueIdentity {
+        &self.inner.font_catalogue
+    }
+}
+
+// Private constructors are used only after the owning preparation issued and
+// validated an actual table index. Public integers cannot create capabilities.
+macro_rules! prepared_handle {
+    ($($name:ident),+ $(,)?) => {$ (
+        #[derive(Clone)]
+        pub struct $name {
+            pub(crate) prepared: Arc<PreparedData>,
+            pub(crate) index: usize,
+        }
+        impl $name {
+            /// Retains the actual preparation that issued this capability.
+            #[must_use]
+            pub fn prepared_text(&self) -> PreparedText {
+                PreparedText { inner: Arc::clone(&self.prepared) }
+            }
+        }
+        impl PartialEq for $name {
+            fn eq(&self, other: &Self) -> bool {
+                self.index == other.index && Arc::ptr_eq(&self.prepared, &other.prepared)
+            }
+        }
+        impl Eq for $name {}
+        impl Hash for $name {
+            fn hash<H: Hasher>(&self, state: &mut H) {
+                Arc::as_ptr(&self.prepared).hash(state);
+                self.index.hash(state);
+            }
+        }
+        impl fmt::Debug for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.debug_struct(stringify!($name)).field("ordinal", &self.index).finish_non_exhaustive()
+            }
+        }
+    )+};
+}
+prepared_handle!(
+    PreparedOrigin,
+    PreparedUnit,
+    PreparedAtomic,
+    PreparedControl,
+    PreparedBoundary,
+    PreparedOpportunity,
+    PreparedAlternative
+);
+
+/// The complete logical mixed sequence, using distinct issued occurrence roles.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum PreparedParticipant {
+    Text(PreparedUnit),
+    Atomic(PreparedAtomic),
+    Control(PreparedControl),
+}
+
+/// Supported physical shaping basis. Other requested bases refuse explicitly.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum LineOrientation {
+    Horizontal,
+    Vertical,
+    Sideways,
+}
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum LineStart {
+    Paragraph,
+    Continuation,
+}
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum LineEnd {
+    Soft,
+    Forced,
+    Paragraph,
+}
+
+/// Actual tab context; `NoTabs` is validated against the selected sequence.
+#[derive(Clone, Debug, PartialEq)]
+pub enum TabContext {
+    NoTabs,
+    /// Actual retained-font shaping advance, without a tab-stop algorithm.
+    FontAdvance,
+    Stops {
+        origin: f64,
+        positions: Vec<f64>,
+    },
+}
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum HangingContext {
+    None,
+    Requested { start: f64, end: f64 },
+}
+/// The selected profile exposes only actual supported inter-space allocation.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SpacingPolicy {
+    None,
+    Spaces,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LineContext {
+    pub base_direction: ParagraphBaseDirection,
+    pub orientation: LineOrientation,
+    pub start: LineStart,
+    pub end: LineEnd,
+    pub available_inline: Option<f64>,
+    pub indent: f64,
+    pub alignment: Alignment,
+    pub tabs: TabContext,
+    pub hanging: HangingContext,
+    pub spacing: SpacingPolicy,
+}
+
+/// Signed flow contributions, distinct from nonnegative border/content sizes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct AtomicFlowAllocation {
+    pub advance: f64,
+    pub before_baseline: f64,
+    pub after_baseline: f64,
+    pub occupied_start: f64,
+    pub occupied_end: f64,
+}
+/// Box geometry relative to the actual final flow slot, including its resolved
+/// baseline/top/bottom baseline coordinate.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct AtomicBoxAllocation {
+    pub border: Rect,
+    pub content: Rect,
+    pub baseline: f64,
+}
+/// Line-time geometry exists only for actual in-flow participation.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum AtomicLineAllocation {
+    InFlow {
+        flow: AtomicFlowAllocation,
+        box_geometry: AtomicBoxAllocation,
+        alignment: LineBoxAlignment,
+    },
+    OutOfFlow,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct AtomicAllocation {
+    pub occurrence: PreparedAtomic,
+    pub allocation: AtomicLineAllocation,
+}
+
+/// Alignment of an actual Layout-allocated atomic box or control strut.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum LineBoxAlignment {
+    Baseline,
+    Top,
+    Bottom,
+}
+
+/// Coupled allocated control geometry; these are Layout facts, not font metrics.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ControlStrut {
+    pub baseline: f64,
+    pub line_extent: f64,
+    pub alignment: LineBoxAlignment,
+}
+
+/// One exact selected control, including explicit absence of a strut.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ControlAllocation {
+    pub occurrence: PreparedControl,
+    pub strut: Option<ControlStrut>,
+}
+
+/// Actual per-line allocated geometry, combined with body and paragraph struts.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LineStrut {
+    pub baseline: f64,
+    pub line_extent: f64,
+}
+
+/// Complete request; all capabilities and numerical/context facts are checked
+/// together by `PreparedText::select` before a selected result is issued.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LineSelectionRequest {
+    pub start: PreparedBoundary,
+    pub end: PreparedBoundary,
+    pub participants: Vec<PreparedParticipant>,
+    pub termination: PreparedOpportunity,
+    pub alternative: Option<PreparedAlternative>,
+    pub context: LineContext,
+    pub atomics: Vec<AtomicAllocation>,
+    pub controls: Vec<ControlAllocation>,
+    pub line_strut: Option<LineStrut>,
+}
+
+#[derive(Clone)]
+pub struct SelectedLine {
+    pub(crate) inner: Arc<SelectedData>,
+}
+impl fmt::Debug for SelectedLine {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SelectedLine").finish_non_exhaustive()
+    }
+}
+impl PartialEq for SelectedLine {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.inner, &other.inner)
+    }
+}
+impl Eq for SelectedLine {}
+
+/// Slot issued by an exact selected request, never by a glyph-array ordinal.
+#[derive(Clone)]
+pub struct SpacingSlot {
+    pub(crate) selected: Arc<SelectedData>,
+    pub(crate) index: usize,
+}
+impl fmt::Debug for SpacingSlot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SpacingSlot")
+            .field("ordinal", &self.index)
+            .finish_non_exhaustive()
+    }
+}
+impl PartialEq for SpacingSlot {
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index && Arc::ptr_eq(&self.selected, &other.selected)
+    }
+}
+impl Eq for SpacingSlot {}
+#[derive(Clone, Debug, PartialEq)]
+pub struct SpacingAllocation {
+    pub slot: SpacingSlot,
+    pub amount: f64,
+}
+#[derive(Clone, Debug, PartialEq)]
+pub enum SpacingAllocations {
+    /// The actual zero-extra first pass; no implicit automatic justification.
+    None,
+    /// Exactly one actual amount, including zeros, for every issued slot.
+    Complete(Vec<SpacingAllocation>),
+}
+
+/// One immutable selected-line result, retaining its exact request/preparation.
+#[derive(Clone)]
+pub struct FinalizedLine {
+    pub(crate) inner: Arc<crate::engine::FinalizedLine>,
+}
+impl fmt::Debug for FinalizedLine {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FinalizedLine").finish_non_exhaustive()
+    }
+}
+impl PartialEq for FinalizedLine {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.inner, &other.inner)
+    }
+}
+impl Eq for FinalizedLine {}
+#[derive(Clone)]
+pub struct FinalizedFragment {
+    pub(crate) finalized: Arc<crate::engine::FinalizedLine>,
+    pub(crate) index: usize,
+}
+impl fmt::Debug for FinalizedFragment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FinalizedFragment")
+            .field("ordinal", &self.index)
+            .finish_non_exhaustive()
+    }
+}
+impl PartialEq for FinalizedFragment {
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index && Arc::ptr_eq(&self.finalized, &other.finalized)
+    }
+}
+impl Eq for FinalizedFragment {}
+
+/// Physical location of local x=0 on the line baseline, not its top-left.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LineAnchor {
+    pub inline_origin: f64,
+    pub baseline: f64,
+}
+#[derive(Clone, Debug, PartialEq)]
+pub struct AtomicPlacement {
+    pub occurrence: PreparedAtomic,
+    pub border: Rect,
+    pub content: Rect,
+    pub baseline: f64,
+}
+#[derive(Clone, Debug, PartialEq)]
+pub struct LinePlacement {
+    pub line: FinalizedLine,
+    pub anchor: LineAnchor,
+    pub orientation: LineOrientation,
+    pub atomics: Vec<AtomicPlacement>,
+}
+#[derive(Clone, Debug, PartialEq)]
+pub enum PlacementCoverage {
+    WholeParagraph,
+    Range {
+        start: PreparedBoundary,
+        end: PreparedBoundary,
+    },
+}
+#[derive(Clone, Debug, PartialEq)]
+pub struct PlacementRequest {
+    pub prepared: PreparedText,
+    pub coverage: PlacementCoverage,
+    pub lines: Vec<LinePlacement>,
+}
+
+/// Feedback is line-local, and never declares that a consumer's candidate fits.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LineFeedback {
+    pub advance: f64,
+    pub occupied_start: f64,
+    pub occupied_end: f64,
+    pub trailing_whitespace: f64,
+    pub hanging_start: f64,
+    pub hanging_end: f64,
+    pub ascent: f64,
+    pub descent: f64,
+    pub line_height: f64,
+    pub baseline: f64,
+}
+#[derive(Clone, Debug, PartialEq)]
+pub struct AtomicSlotFeedback {
+    pub occurrence: PreparedAtomic,
+    /// Actual line-local flow baseline, before physical line-anchor mapping.
+    pub origin: Point,
+    pub allocation: AtomicLineAllocation,
+}
+
+/// Semantic capability kind used by an exact protocol admission diagnostic.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProtocolHandleKind {
+    Origin,
+    Unit,
+    Atomic,
+    Control,
+    Boundary,
+    Opportunity,
+    Alternative,
+    Fragment,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProtocolContextField {
+    BaseDirection,
+    Orientation,
+    LineStart,
+    LineEnd,
+    TabStops,
+    Hanging,
+    Spacing,
+}
+/// Actual invalid association or incomplete input; no caller ordinal issues a capability.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ProtocolError {
+    ForeignPreparation {
+        kind: ProtocolHandleKind,
+        occurrence: usize,
+    },
+    ForeignSelectedLine,
+    ForeignFinalizedLine {
+        line: usize,
+    },
+    InvalidOriginRange {
+        origin: usize,
+        local: Range,
+        aggregate: Range,
+    },
+    OriginTextMismatch {
+        origin: usize,
+        local: usize,
+        aggregate: usize,
+    },
+    IncompleteOriginCoverage {
+        expected: usize,
+        actual: usize,
+    },
+    MissingConnection {
+        before: usize,
+        after: usize,
+    },
+    InvalidConnection {
+        connection: usize,
+        at: usize,
+    },
+    InvalidControl {
+        control: usize,
+        at: usize,
+    },
+    InvalidBoundaryPolicy {
+        policy: usize,
+        at: usize,
+    },
+    InvalidReplacement {
+        alternative: usize,
+        source: Range,
+    },
+    InvalidBoundaryRange {
+        start: usize,
+        end: usize,
+        participants: usize,
+    },
+    ParticipantMismatch {
+        position: usize,
+    },
+    MissingAtomic {
+        occurrence: usize,
+    },
+    DuplicateAtomic {
+        occurrence: usize,
+    },
+    IllegalOpportunity {
+        opportunity: usize,
+    },
+    ForeignAlternative {
+        alternative: usize,
+        opportunity: usize,
+    },
+    UnsupportedContext {
+        field: ProtocolContextField,
+    },
+    MismatchedContext {
+        field: ProtocolContextField,
+    },
+    InvalidAtomicGeometry {
+        occurrence: usize,
+    },
+    DuplicateSpacingSlot {
+        slot: usize,
+    },
+    MissingSpacingSlot {
+        slot: usize,
+    },
+    IneligibleSpacingSlot {
+        slot: usize,
+    },
+    UnexpectedAtomic {
+        occurrence: usize,
+    },
+    MissingAlternative {
+        opportunity: usize,
+    },
+    InvalidAnchorOrder {
+        position: usize,
+        kind: ProtocolHandleKind,
+        occurrence: usize,
+    },
+    MissingControl {
+        occurrence: usize,
+    },
+    DuplicateControl {
+        occurrence: usize,
+    },
+    UnexpectedControl {
+        occurrence: usize,
+    },
+    InvalidControlGeometry {
+        occurrence: usize,
+    },
+    MissingLineMetrics,
+    InvalidLineStrut,
+    UnsupportedStandaloneAnalysis,
+    ForeignPlacement,
+    OutsidePlacement {
+        index: usize,
+        coverage: Range,
+    },
+    AmbiguousSourcePosition {
+        index: usize,
+        affinity: crate::Affinity,
+    },
+    InvalidPlacedPosition {
+        position: usize,
+    },
+    EmptyPlacement,
+    IncompleteLineCoverage {
+        line: usize,
+    },
+    DuplicateLine {
+        line: usize,
+    },
+    InvalidFragment {
+        line: usize,
+        fragment: usize,
+    },
+    AtomicPlacementMismatch {
+        line: usize,
+        occurrence: usize,
+    },
+}
+
+pub(crate) fn protocol_error(reason: ProtocolError) -> crate::Error {
+    crate::Error::new(
+        crate::ErrorCode::InvalidTextProtocol,
+        "invalid text phase association or context",
+    )
+    .with_detail(crate::ErrorDetail::InvalidTextProtocol { reason })
+}
+
+/// Selected-presentation code-unit extent, distinct from authored/processed ranges.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PresentationRange {
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+}
+impl PresentationRange {
+    #[must_use]
+    pub const fn start(self) -> usize {
+        self.start
+    }
+    #[must_use]
+    pub const fn end(self) -> usize {
+        self.end
+    }
+    #[must_use]
+    pub const fn len(self) -> usize {
+        self.end - self.start
+    }
+    #[must_use]
+    pub const fn is_empty(self) -> bool {
+        self.start == self.end
+    }
+}
+
+#[cfg(test)]
+mod option_tests {
+    use super::*;
+    #[test]
+    fn preparation_options_classifies_actual_input_domain_without_conversion_loss() {
+        for value in [0.0_f32, -0.0, -1.0] {
+            let error = PreparationOptions::try_new(value).unwrap_err();
+            assert!(
+                matches!(error.detail(), Some(crate::ErrorDetail::InvalidTextNumeric {
+                category: crate::TextNumericError::OutOfRange, value: actual, ..
+            }) if *actual == f64::from(value))
+            );
+        }
+        for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let error = PreparationOptions::try_new(value).unwrap_err();
+            assert!(matches!(
+                error.detail(),
+                Some(crate::ErrorDetail::InvalidTextNumeric {
+                    category: crate::TextNumericError::NonFinite,
+                    ..
+                })
+            ));
+        }
+        assert_eq!(PreparationOptions::try_new(0.5).unwrap().scale(), 0.5);
+    }
+}
+
+impl SelectedLine {
+    #[must_use]
+    pub fn prepared_text(&self) -> PreparedText {
+        PreparedText {
+            inner: Arc::clone(&self.inner.prepared),
+        }
+    }
+}
+impl FinalizedLine {
+    #[must_use]
+    pub fn prepared_text(&self) -> PreparedText {
+        PreparedText {
+            inner: Arc::clone(&self.inner.selected.prepared),
+        }
+    }
+}
+impl Hash for FinalizedLine {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        Arc::as_ptr(&self.inner).hash(state);
+    }
+}
+
+#[cfg(test)]
+mod tests;

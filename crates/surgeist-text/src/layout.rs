@@ -15,8 +15,16 @@ pub struct Layout {
     pub(crate) inner: Arc<PlacedLayout>,
     #[cfg(feature = "text-accessibility")]
     pub(crate) identity: Arc<()>,
-    pub(crate) options: Options,
+    pub(crate) basis: LayoutBasis,
     pub(crate) key: Key,
+}
+
+/// The actual operation which produced this placement; explicit composition
+/// does not acquire manufactured standalone options.
+#[derive(Clone, Copy)]
+pub(crate) enum LayoutBasis {
+    Standalone(Options),
+    Explicit,
 }
 
 impl fmt::Debug for Layout {
@@ -29,11 +37,11 @@ impl fmt::Debug for Layout {
 }
 
 impl Layout {
-    pub(crate) fn from_placed(inner: PlacedLayout, key: Key, options: Options) -> Self {
+    pub(crate) fn from_placed(inner: PlacedLayout, key: Key, basis: LayoutBasis) -> Self {
         Self {
             inner: Arc::new(inner),
             key,
-            options,
+            basis,
             #[cfg(feature = "text-accessibility")]
             identity: Arc::new(()),
         }
@@ -48,13 +56,13 @@ impl Layout {
     ) -> bool {
         self.source() == source
             && self.default_style() == style
-            && self.options == options
+            && matches!(self.basis, LayoutBasis::Standalone(actual) if actual == options)
             && &self.inner.prepared.font_catalogue == catalogue
     }
 
     #[must_use]
     pub fn source(&self) -> &Source {
-        &self.inner.prepared.analyzed.source
+        self.inner.prepared.analyzed.processed.source()
     }
 
     /// Retains the exact original analysis shared by this placement and its preparation.
@@ -64,7 +72,15 @@ impl Layout {
     }
 
     pub(crate) fn default_style(&self) -> &Style {
-        &self.inner.prepared.analyzed.default_style
+        self.inner.prepared.analyzed.processed.base_style()
+    }
+
+    /// Actual admitted physical bounds, including the explicit line origins.
+    ///
+    /// These are placed metric bounds, not representation-selected paint ink.
+    #[must_use]
+    pub fn bounds(&self) -> Rect {
+        self.inner.bounds
     }
 
     #[must_use]
@@ -75,9 +91,22 @@ impl Layout {
             self.inner.lines.len(),
             self.inner.lines.first().map(line_baseline),
             self.inner.lines.last().map(line_baseline),
-            self.options
-                .width
-                .is_some_and(|width| self.inner.full_width > width),
+            match self.basis {
+                LayoutBasis::Standalone(options) => options
+                    .width
+                    .is_some_and(|width| self.inner.full_width > width),
+                LayoutBasis::Explicit => self.inner.lines.iter().any(|line| {
+                    let metrics = line.finalized.data.metrics;
+                    line.finalized
+                        .selected
+                        .request
+                        .context
+                        .available_inline
+                        .is_some_and(|available| {
+                            metrics.occupied_start < 0.0 || metrics.occupied_end > available
+                        })
+                }),
+            },
         )
     }
 
@@ -104,13 +133,16 @@ impl Layout {
                 let metrics = &line.finalized.data.metrics;
                 Line::new(
                     index,
-                    line.finalized.selection.source,
+                    line.finalized.selected.presentation.source,
                     line_baseline(line),
-                    Rect::new(
-                        line.origin.x + metrics.inline_min,
-                        line.origin.y + metrics.block_min,
-                        metrics.inline_max - metrics.inline_min,
-                        metrics.block_max - metrics.block_min,
+                    line_rect(
+                        line,
+                        Rect::new(
+                            metrics.inline_min,
+                            metrics.block_min,
+                            metrics.inline_max - metrics.inline_min,
+                            metrics.block_max - metrics.block_min,
+                        ),
                     ),
                 )
             })
@@ -149,19 +181,27 @@ impl Layout {
                         )
                     })
                     .collect();
+                let authored_style = if self.inner.prepared.default_style_index == Some(run.style) {
+                    self.inner.prepared.analyzed.processed.base_style()
+                } else {
+                    self.inner.prepared.analyzed.styles[run.style]
+                        .style
+                        .authored()
+                };
                 Run::new(
                     index,
                     run.source,
                     shaped.font.clone(),
-                    self.inner.prepared.analyzed.styles[run.style]
-                        .style
-                        .authored()
-                        .clone(),
+                    authored_style.clone(),
                     self.inner.prepared.styles[run.style].style.brush,
                     RunMetrics::new(
                         shaped.font_size,
                         line_baseline(line),
-                        line.origin.x + run.x,
+                        line_point(
+                            line,
+                            Point::new(run.x, line.finalized.data.metrics.baseline),
+                        )
+                        .x,
                         run.advance,
                     ),
                     glyphs,
@@ -181,7 +221,11 @@ impl Layout {
                     run.source,
                     shaped.font_size,
                     line_baseline(line),
-                    line.origin.x + run.x,
+                    line_point(
+                        line,
+                        Point::new(run.x, line.finalized.data.metrics.baseline),
+                    )
+                    .x,
                     run.advance,
                 )
             })
@@ -213,17 +257,13 @@ impl Layout {
             .iter()
             .enumerate()
             .flat_map(|(index, line)| {
-                line.finalized.data.boxes.iter().map(move |box_| {
-                    let source = &self.source().boxes()[box_.occurrence];
+                line.atomics.iter().map(move |box_| {
+                    let occurrence = box_.occurrence.view();
+                    let source = occurrence.original_box();
                     PositionedInlineBox::new(
                         source.id(),
                         source.kind(),
-                        Rect::new(
-                            line.origin.x + box_.rect.origin.x,
-                            line.origin.y + box_.rect.origin.y,
-                            box_.rect.size.width,
-                            box_.rect.size.height,
-                        ),
+                        box_.border,
                         source.index(),
                         source.vertical_align(),
                         index,
@@ -242,11 +282,14 @@ impl Layout {
                 line.finalized.data.clusters.iter().map(move |cluster| {
                     Cluster::new(
                         cluster.source,
-                        Rect::new(
-                            line.origin.x + cluster.x,
-                            line.origin.y + metrics.block_min,
-                            cluster.advance,
-                            metrics.block_max - metrics.block_min,
+                        line_rect(
+                            line,
+                            Rect::new(
+                                cluster.x,
+                                metrics.block_min,
+                                cluster.advance,
+                                metrics.block_max - metrics.block_min,
+                            ),
                         ),
                     )
                 })
@@ -261,6 +304,61 @@ impl Layout {
     #[must_use]
     pub fn hit(&self, point: Point) -> Hit {
         editing::hit(&self.inner, point)
+    }
+
+    /// Ordered positions in this exact immutable placement. Source projection
+    /// does not collapse distinct native-control or source-less line occurrences.
+    pub fn positions(&self) -> impl ExactSizeIterator<Item = PlacedPosition> + '_ {
+        (0..self.inner.interaction.positions.len()).map(|index| PlacedPosition {
+            placement: Arc::clone(&self.inner),
+            index,
+        })
+    }
+
+    fn admit_position(&self, position: &PlacedPosition) -> Result<usize> {
+        if !Arc::ptr_eq(&self.inner, &position.placement) {
+            return Err(crate::protocol::protocol_error(
+                crate::ProtocolError::ForeignPlacement,
+            ));
+        }
+        if position.index >= self.inner.interaction.positions.len() {
+            return Err(crate::protocol::protocol_error(
+                crate::ProtocolError::InvalidPlacedPosition {
+                    position: position.index,
+                },
+            ));
+        }
+        Ok(position.index)
+    }
+
+    /// Geometry of an actual occurrence in this placement.
+    pub fn position_geometry(&self, position: &PlacedPosition) -> Result<CursorGeometry> {
+        editing::position::geometry(&self.inner, self.admit_position(position)?)
+    }
+
+    pub fn move_position(
+        &self,
+        position: &PlacedPosition,
+        movement: Movement,
+    ) -> Result<PlacedPosition> {
+        let index =
+            editing::position::movement(&self.inner, self.admit_position(position)?, movement)?;
+        Ok(PlacedPosition {
+            placement: Arc::clone(&self.inner),
+            index,
+        })
+    }
+
+    pub fn position_selection(
+        &self,
+        anchor: &PlacedPosition,
+        focus: &PlacedPosition,
+    ) -> Result<SelectionGeometry> {
+        editing::position::selection(
+            &self.inner,
+            self.admit_position(anchor)?,
+            self.admit_position(focus)?,
+        )
     }
 
     pub fn cursor(&self, cursor: Cursor) -> Result<CursorGeometry> {
@@ -296,6 +394,8 @@ impl Layout {
         extend: bool,
     ) -> Result<Selection> {
         super::range::validate(self.source().text(), selection.range())?;
+        editing::position::validate_source(&self.inner, selection.anchor())?;
+        editing::position::validate_source(&self.inner, selection.focus())?;
         let moved = self.move_cursor(selection.focus(), movement)?;
         Ok(if extend {
             Selection::new(selection.anchor(), moved)
@@ -311,7 +411,20 @@ impl Layout {
 }
 
 pub(crate) fn line_baseline(line: &PlacedLine) -> f64 {
-    line.origin.y + line.finalized.data.metrics.baseline
+    line.anchor.y
+}
+
+/// The one physical translation of this line's immutable local geometry.
+pub(crate) fn line_point(line: &PlacedLine, local: Point) -> Point {
+    Point::new(
+        line.anchor.x + local.x,
+        line.anchor.y + (local.y - line.finalized.data.metrics.baseline),
+    )
+}
+
+pub(crate) fn line_rect(line: &PlacedLine, local: Rect) -> Rect {
+    let origin = line_point(line, local.origin);
+    Rect::new(origin.x, origin.y, local.size.width, local.size.height)
 }
 
 pub(crate) fn decoration_top(baseline: f64, offset_from_baseline: f64) -> f64 {
@@ -888,9 +1001,36 @@ impl PositionedInlineBox {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// A checked interaction occurrence of one actual immutable placement.
+/// Its source cursor is an explicit projection and cannot identify its geometry.
+#[derive(Clone)]
+pub struct PlacedPosition {
+    pub(crate) placement: Arc<PlacedLayout>,
+    pub(crate) index: usize,
+}
+impl PlacedPosition {
+    #[must_use]
+    pub fn source_cursor(&self) -> Cursor {
+        self.placement.interaction.positions[self.index].source
+    }
+}
+impl fmt::Debug for PlacedPosition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PlacedPosition")
+            .field("source_cursor", &self.source_cursor())
+            .finish_non_exhaustive()
+    }
+}
+impl PartialEq for PlacedPosition {
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index && Arc::ptr_eq(&self.placement, &other.placement)
+    }
+}
+impl Eq for PlacedPosition {}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Hit {
-    Text(Cursor),
+    Text(PlacedPosition),
     InlineBox(Id),
     None,
 }

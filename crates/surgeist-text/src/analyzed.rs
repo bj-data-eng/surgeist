@@ -45,13 +45,25 @@ impl AnalyzedSource {
     /// Exact retained original source, including isolated UTF-16 units.
     #[must_use]
     pub fn source(&self) -> &Source {
-        &self.inner.source
+        self.inner.processed.source()
+    }
+
+    /// The same retained executed source correspondence used by preparation.
+    #[must_use]
+    pub fn processed_source(&self) -> &crate::ProcessedSource {
+        &self.inner.processed
+    }
+
+    /// The captured paragraph contribution to every native line's metrics.
+    #[must_use]
+    pub fn paragraph_strut(&self) -> crate::protocol::paragraph::ParagraphStrut {
+        self.inner.paragraph.paragraph_strut
     }
 
     /// Captured default authored style; actual span winners are retained too.
     #[must_use]
     pub fn style(&self) -> &Style {
-        &self.inner.default_style
+        self.inner.processed.base_style()
     }
 
     /// Opaque identity of this analysis allocation, independent of content equality.
@@ -65,7 +77,7 @@ impl AnalyzedSource {
     /// Original-source grapheme extents from the actual retained analysis.
     pub fn graphemes(&self) -> impl ExactSizeIterator<Item = Range> + '_ {
         self.inner
-            .projection
+            .host_projection
             .graphemes
             .windows(2)
             .map(|pair| Range::new(pair[0], pair[1]))

@@ -91,6 +91,28 @@ impl ValidatedSource {
     }
 }
 
+impl ValidatedSource {
+    /// Validates original span facts after actual source processing, without
+    /// changing their authored whitespace modes or original coordinate ranges.
+    pub(crate) fn for_processed(source: Source) -> Result<Self> {
+        validate_structure(&source)?;
+        let span_styles = source
+            .spans
+            .iter()
+            .map(|span| {
+                Ok(ValidatedSpan {
+                    range: span.range,
+                    style: ValidatedStyle::for_processed(span.style.clone())?,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Self {
+            source,
+            span_styles,
+        })
+    }
+}
+
 impl TryFrom<Source> for ValidatedSource {
     type Error = super::Error;
 

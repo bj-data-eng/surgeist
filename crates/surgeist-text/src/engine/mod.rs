@@ -6,7 +6,13 @@
 use std::{ops::Range as IndexRange, sync::Arc};
 
 use crate::projection::SourceProjection;
-use crate::{Alignment, FontCatalogueIdentity, InlineBox, Point, Range, Source, Style};
+use crate::protocol::{
+    PreparationOptions,
+    paragraph::ParagraphData,
+    prepared::{PreparedAlternativeShape, PreparedTables, SelectedMapping},
+    selection::SelectedData,
+};
+use crate::{Alignment, FontCatalogueIdentity, InlineBox, Point, Range};
 
 pub(crate) mod analysis;
 mod bidi;
@@ -26,6 +32,8 @@ pub(crate) use crate::error::{shaping_refused, text_numeric_error};
 #[derive(Clone, Debug)]
 pub(crate) struct OriginalAtom {
     pub(crate) source: Range,
+    pub(crate) processed: Range,
+    pub(crate) presentation: Range,
     pub(crate) glyph_bytes: IndexRange<usize>,
     pub(crate) code_point: u32,
     pub(crate) glyph: char,
@@ -33,8 +41,9 @@ pub(crate) struct OriginalAtom {
 
 /// Font-independent original-source analysis, retained by every later phase.
 pub(crate) struct AnalyzedData {
-    pub(crate) source: Source,
-    pub(crate) default_style: Style,
+    pub(crate) processed: Arc<crate::ProcessedSource>,
+    pub(crate) paragraph: ParagraphData,
+    pub(crate) host_projection: SourceProjection,
     pub(crate) projection: SourceProjection,
     pub(crate) styles: Vec<resolve::AnalyzedStyleRun>,
     pub(crate) analysis: analysis::Analysis,
@@ -48,8 +57,11 @@ pub(crate) struct PreparedData {
     pub(crate) analyzed: Arc<AnalyzedData>,
     pub(crate) font_catalogue: FontCatalogueIdentity,
     pub(crate) styles: Vec<resolve::ResolvedStyleRun>,
+    /// Actual resolved base-style row retained for the native font-strut policy.
+    pub(crate) default_style_index: Option<usize>,
     pub(crate) shaped: layout::data::ShapedData,
-    pub(crate) quantize: bool,
+    pub(crate) tables: PreparedTables,
+    pub(crate) alternative_shapes: Vec<PreparedAlternativeShape>,
 }
 
 /// Inputs coupled to one shaping operation, without a mutable System escape.
@@ -59,6 +71,7 @@ pub(crate) struct ShapingInput<'a> {
     pub(crate) styles: &'a [resolve::ResolvedStyleRun],
     pub(crate) boxes: &'a [InlineBox],
     pub(crate) font_catalogue: &'a FontCatalogueIdentity,
+    pub(crate) paragraph: &'a ParagraphData,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -82,61 +95,136 @@ pub(crate) struct LineSelection {
 /// A finalized line keeps the exact preparation and its independently produced
 /// line-local rows. These rows never mutate preliminary preparation tables.
 pub(crate) struct FinalizedLine {
-    pub(crate) prepared: Arc<PreparedData>,
-    pub(crate) selection: LineSelection,
+    pub(crate) selected: Arc<SelectedData>,
+    pub(crate) mapping: Arc<SelectedMapping>,
     pub(crate) data: layout::data::FinalizedLineData,
 }
 
 /// One retained outer placement, kept separate from canonical glyph geometry.
 pub(crate) struct PlacedLine {
-    pub(crate) finalized: FinalizedLine,
-    pub(crate) origin: Point,
+    pub(crate) finalized: Arc<FinalizedLine>,
+    pub(crate) anchor: Point,
+    pub(crate) atomics: Vec<crate::AtomicPlacement>,
 }
 
 pub(crate) fn analyze(
     source: crate::ValidatedSource,
     default_style: crate::ValidatedStyle,
 ) -> crate::Result<Arc<AnalyzedData>> {
-    let projection = SourceProjection::new(source.source())?;
+    let paragraph = ParagraphData::standalone(source.source());
+    let processed =
+        crate::processing::identity(source.source().clone(), default_style.authored().clone())?;
+    analyze_paragraph(Arc::new(processed), paragraph)
+}
+
+pub(crate) fn analyze_paragraph(
+    processed: Arc<crate::ProcessedSource>,
+    paragraph: ParagraphData,
+) -> crate::Result<Arc<AnalyzedData>> {
+    let (source, default_style) = if paragraph.base_direction.is_some() {
+        (
+            crate::ValidatedSource::for_processed(processed.source().clone())?,
+            crate::ValidatedStyle::for_processed(processed.base_style().clone())?,
+        )
+    } else {
+        (
+            crate::ValidatedSource::try_from(processed.source().clone())?,
+            crate::ValidatedStyle::try_from(processed.base_style().clone())?,
+        )
+    };
+    let host_projection = SourceProjection::host(processed.source(), &paragraph)?;
+    let projection = SourceProjection::from_processed(&processed, &paragraph)?;
     let styles = resolve::analyze_styles(&source, &default_style);
-    let analysis = analysis::analyze(&projection, &styles, source.source().boxes())?;
+    let analysis = analysis::analyze(&projection, &styles, processed.source().boxes(), &paragraph)?;
     Ok(Arc::new(AnalyzedData {
-        source: source.source().clone(),
-        default_style: default_style.authored().clone(),
+        processed,
+        paragraph,
+        host_projection,
         projection,
         styles,
         analysis,
     }))
 }
 
+/// Actual producer front; composed preparation retains its requested paragraph
+/// strut, while the standalone convenience preserves its existing adjacent style.
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(crate) enum PreparationProfile {
+    Native,
+    Standalone,
+}
+
 pub(crate) fn prepare(
     catalogue: &mut crate::catalogue::Catalogue,
     analyzed: Arc<AnalyzedData>,
-    options: crate::ValidatedOptions,
+    options: PreparationOptions,
+    profile: PreparationProfile,
     scratch: &mut shape::ShapeContext,
 ) -> crate::Result<Arc<PreparedData>> {
-    let styles = resolve::resolve(
+    let mut styles = resolve::resolve(
         catalogue.collection_mut(),
         &analyzed.styles,
-        options.authored().scale,
+        options.scale(),
     )?;
+    let default_style_index = if profile == PreparationProfile::Native
+        && analyzed.paragraph.paragraph_strut == crate::ParagraphStrut::DefaultFont
+    {
+        let base = crate::ValidatedStyle::for_processed(analyzed.processed.base_style().clone())?;
+        let index = styles.len();
+        styles.push(resolve::resolve_default(
+            catalogue.collection_mut(),
+            &base,
+            options.scale(),
+        )?);
+        Some(index)
+    } else {
+        None
+    };
     let font_catalogue = catalogue.identity().clone();
-    let shaped = shape::shape(
+    let mut shaped = shape::shape(
         catalogue.query(),
         ShapingInput {
             projection: &analyzed.projection,
             analysis: &analyzed.analysis,
             styles: &styles,
-            boxes: analyzed.source.boxes(),
+            boxes: analyzed.processed.source().boxes(),
             font_catalogue: &font_catalogue,
+            paragraph: &analyzed.paragraph,
         },
         scratch,
+    )?;
+    let metrics_index = default_style_index.or_else(|| {
+        (profile == PreparationProfile::Standalone
+            && analyzed.projection.atoms.is_empty()
+            && analyzed.processed.source().boxes().is_empty())
+        .then_some(0)
+    });
+    if let Some(index) = metrics_index {
+        shaped.empty_run = Some(shape::default_metrics(
+            catalogue.query(),
+            &ShapingInput {
+                projection: &analyzed.projection,
+                analysis: &analyzed.analysis,
+                styles: &styles,
+                boxes: analyzed.processed.source().boxes(),
+                font_catalogue: &font_catalogue,
+                paragraph: &analyzed.paragraph,
+            },
+            index,
+            scratch,
+        )?);
+    }
+    let tables = crate::protocol::prepared::prepare_tables(&analyzed, &shaped)?;
+    let alternative_shapes = crate::protocol::prepared::prepare_alternatives(
+        catalogue, &analyzed, &styles, &tables, scratch,
     )?;
     Ok(Arc::new(PreparedData {
         analyzed,
         font_catalogue,
         styles,
+        default_style_index,
         shaped,
-        quantize: options.authored().quantize,
+        tables,
+        alternative_shapes,
     }))
 }

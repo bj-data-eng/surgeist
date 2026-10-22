@@ -1,0 +1,90 @@
+# Compose selected lines
+
+The composed front shares the existing source, analysis, font and finalized-row
+owners. It does not construct another independently wrapped paragraph. The
+standalone `System::layout` convenience retains its raw Preserve behavior and
+uses the same selected-line and placement machinery.
+
+1. Construct `ParagraphInput` from the actual aggregate `Source`, base `Style`,
+   document delimiter policy, explicit base direction and original occurrences.
+   `paragraph_strut: ParagraphStrut::DefaultFont` requests an actual base-style
+   font strut on every native line, even when body spans select other styles.
+   `AllocatedContributions` omits that base strut; actual body and supplied
+   allocations determine metrics. A selected empty line still needs a genuine
+   contribution, including a terminal empty line. Explicit zero differs from absence.
+   Supply connections, ordered anchor occurrences with original endpoint affinity,
+   controls, wrapping facts and any actual computed discretionary replacements.
+   `AnalyzedSource::from_paragraph` validates this complete capture and retains the
+   executed `ProcessedSource`; original plaintext and accessibility remain original.
+2. Call `System::prepare(&analysis, PreparationOptions)` with the actual scale.
+   Preparation resolves resources and preliminary measurements without choosing
+   breaks. Public preparation of `AnalyzedSource::new` also requests the genuine
+   native base-font strut. For an allocated-only fontless box/control paragraph,
+   use explicit `ParagraphInput` with `ParagraphStrut::AllocatedContributions`.
+   The old `System::layout` convenience retains its actual standalone metric policy;
+   there is no additional public preparation switch.
+   Borrowed views expose actual rows; their `handle()` methods retain the
+   issued capability. Equal text prepared independently has different authority.
+   Native atomic opportunities use the captured ancestor wrapping permission and
+   actual mixed neighbors, including atomic items after the authored text ends.
+   NBSP keeps its atomic exception; other GL, WJ and ZWJ characters suppress the
+   adjacent atomic opportunity. A collapsing space that disappears at the break
+   retains its separate character-owned opportunity under its containing style.
+   Transparent occurrences add no permission: existing internal cuts borrow the
+   same relation, while semantic beginning and end do not acquire soft breaks.
+3. Supply a `LineSelectionRequest` with issued start/end boundaries, every selected
+   mixed participant in order, an actual terminating opportunity, complete context
+   and occurrence-qualified atomic/control allocations. Signed atomic flow and
+   canonical border/content geometry remain distinct. `LineBoxAlignment` captures
+   actual baseline/top/bottom metric participation for in-flow atomics and controls;
+   their final slot and baseline relation are returned by the finalizer. Out-of-flow
+   occurrences contribute only their captured anchor before placement; their actual
+   canonical rectangle is supplied by the consumer's absolute-placement owner.
+   A control strut or per-line `LineStrut` is allocated
+   Layout geometry, not an invented font metric. Neutral formatting controls carry
+   explicit absence. `line_strut` can allocate a genuine line contribution without
+   inventing a control or a font. A taken discretionary break requires its own issued alternative;
+   an empty replacement is valid, and a natural end does not imply a hyphen.
+4. `PreparedText::select` returns `SelectedLine`. Its slots identify actual selected
+   presentation contributions, including replacement spaces. Finalize first with
+   `SpacingAllocations::None`, or provide a complete slot table including zeros.
+   Foreign, missing and duplicate slots refuse. Actual feedback carries advances,
+   occupied/hanging extents, metrics and atomic slots; the consumer decides fit.
+   Raw provider glyph advances remain `f32`, separate from logical `f64` pens.
+5. Supply `PlacementRequest` to `Layout::from_finalized_lines`. Coverage is the
+   actual whole paragraph or issued boundary range. Lines must cover it contiguously
+   under the same preparation. Each `LineAnchor` identifies physical local x=0 on
+   the baseline. Text maps `(x,y)` as `(anchor.x+x, anchor.y+(y-local_baseline))`
+   once; it does not independently snap origins or boxes. Physical atomic rows must
+   match their exact finalized flow/box relation. All consumed geometry is qualified
+   before the immutable layout is exposed.
+
+Finalized run/glyph views borrow actual arrays and retained resources. Fragment
+views distinguish original, native-control and alternative ownership. Replacement
+presentation never becomes authored characters. Same-instance outline readback is
+optional and can refuse independently of valid shaping; its conservative Text metric
+bounds are not Render's positioned canonical paint bounds.
+
+`Layout::bounds` reports admitted physical placement bounds. `positions()` issues
+placement-bound `PlacedPosition` values from actual interaction occurrences.
+`position_geometry`, `move_position` and `position_selection` validate that same
+placement. A physical `Hit::Text` retains its exact position. `source_cursor()` is an
+explicit original-source projection; it cannot distinguish every source-less line.
+Several exact positions can share that projection. A raw source query applies its
+source-affinity eligibility rules and need not recover the same physical edge;
+retain the exact handle when continuing physical interaction.
+Raw source geometric queries refuse outside coverage or where their source endpoint
+is genuinely ambiguous. Original extraction and edits retain their separate source
+coordinate domain. Original cursor and selection endpoints use the original legal
+source stops; executed whitespace deletions do not turn returned endpoints into
+processed offsets. Word movement follows actual neighboring source-associated
+rows across deleted intervals. Source-only accessibility remains bound to analysis; placed
+accessibility enriches the same original semantics with exact placed geometry.
+
+The initial composed profile is horizontal. `TabContext::FontAdvance` executes the
+retained-font U+0009 glyph advance, which can be the actual `.notdef` advance; it is
+not CSS tab stops. `NoTabs` requires absence, and requested stop/hanging profiles
+without implementations refuse precisely. This contribution does not claim all
+Text, CSS whitespace, line-opportunity, writing-mode or Layout integration criteria.
+See the [owning contract](../../../docs/text-layout-contract.md) for phase ownership
+and coherent placement policy, and [reference](reference.md) for supported styles.

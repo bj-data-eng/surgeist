@@ -20,6 +20,43 @@ pub(crate) fn layout(
     standalone::layout(prepared, options, scratch)
 }
 
+/// One selected operation; scratch is private and cannot select another font basis.
+pub(crate) fn finalize_selected(
+    selected: Arc<crate::protocol::selection::SelectedData>,
+    amounts: Vec<f64>,
+) -> Result<super::FinalizedLine> {
+    finalize::finalize(selected, &amounts, &mut ShapeContext::default())
+}
+
+fn finalize_standalone(
+    prepared: Arc<PreparedData>,
+    selection: super::LineSelection,
+    quantize: bool,
+    scratch: &mut ShapeContext,
+) -> Result<super::FinalizedLine> {
+    use crate::protocol::selection::{LineMetricPolicy, lower_standalone};
+    let selected = lower_standalone(
+        prepared,
+        selection,
+        if quantize {
+            LineMetricPolicy::StandaloneQuantized
+        } else {
+            LineMetricPolicy::Exact
+        },
+    )?;
+    let first = finalize::finalize(
+        Arc::clone(&selected),
+        &vec![0.0; selected.spacing_slots.len()],
+        scratch,
+    )?;
+    let amounts = finalize::standalone_amounts(&selected, &first.data.metrics)?;
+    if amounts.iter().any(|amount| *amount != 0.0) {
+        finalize::finalize(selected, &amounts, scratch)
+    } else {
+        Ok(first)
+    }
+}
+
 pub(super) fn finite(field: &'static str, phase: TextNumericPhase, value: f64) -> Result<f64> {
     if value.is_finite() {
         Ok(value)

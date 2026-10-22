@@ -4,17 +4,18 @@
 //! Selection rectangles adapted from Parley 0.9 `editing/selection.rs`
 //! (e96ab53b7c5c2f0dfeeec4f1f1c0ee568a66163825bf73460a67d0eab3a75faa).
 
-use super::super::{
-    BreakKind,
-    layout::data::{FinalizedVisualItem, PlacedLayout},
-};
+use super::super::layout::data::{FinalizedVisualItem, PlacedLayout};
 use super::cursor::{admit, geometry};
-use crate::{
-    Affinity, Cursor, InlineBoxKind, Rect, Result, Selection, SelectionGeometry, SelectionRect,
-};
+use crate::protocol::LineEnd;
+use crate::{Affinity, Cursor, Rect, Result, Selection, SelectionGeometry, SelectionRect};
 
 pub(crate) fn selection(layout: &PlacedLayout, value: Selection) -> Result<SelectionGeometry> {
-    crate::range::validate(layout.prepared.analyzed.source.text(), value.range())?;
+    crate::range::validate(
+        layout.prepared.analyzed.processed.source().text(),
+        value.range(),
+    )?;
+    super::position::validate_source(layout, value.anchor())?;
+    super::position::validate_source(layout, value.focus())?;
     if value.is_collapsed() {
         return Ok(SelectionGeometry::default());
     }
@@ -29,92 +30,138 @@ pub(crate) fn selection(layout: &PlacedLayout, value: Selection) -> Result<Selec
         admit(layout, Cursor::new(range.end, Affinity::Before))?,
     )
     .0;
+    between(layout, range, start_line, end_line)
+}
+
+pub(super) fn between(
+    layout: &PlacedLayout,
+    range: crate::Range,
+    start_line: usize,
+    end_line: usize,
+) -> Result<SelectionGeometry> {
     let mut output = Vec::new();
-    for line_index in start_line..=end_line {
+    for line_index in start_line.min(end_line)..=start_line.max(end_line) {
         let line = &layout.lines[line_index];
         let data = &line.finalized.data;
         let metrics = data.metrics;
-        let y = line.origin.y + metrics.block_min;
         let height = metrics.block_max - metrics.block_min;
-        let newline = if line.finalized.selection.break_kind == BreakKind::Explicit {
+        let source_break_selected = line
+            .finalized
+            .selected
+            .presentation
+            .projection
+            .atoms
+            .iter()
+            .any(|atom| matches!(atom.code_point, 0x0a | 0x0d) && overlaps(atom.source, range));
+        let newline = if line.finalized.selected.request.context.end == LineEnd::Forced
+            && source_break_selected
+        {
             (metrics.ascent + metrics.descent) * 0.25
         } else {
             0.0
         };
-        if line_index != start_line && line_index != end_line {
-            push(
-                &mut output,
-                line_index,
-                line.origin.x + metrics.offset,
-                y,
-                metrics.advance + newline,
-                height,
-            );
-            continue;
-        }
-        let mut start = metrics.offset;
-        let mut current = start;
-        let mut cluster_count = 0;
-        let mut box_advance = 0.0;
-        let mut seen_text = false;
+        let mut group: Option<(f64, f64)> = None;
+        let mut selected_clusters = 0;
         for item in &data.visual_order {
-            match *item {
-                FinalizedVisualItem::Cluster(index) => {
-                    seen_text = true;
-                    let cluster = &data.clusters[index];
-                    let advance = cluster.advance + box_advance;
-                    box_advance = 0.0;
-                    if range.contains(cluster.source.start) {
-                        cluster_count += 1;
-                        current += advance;
-                    } else {
-                        push(
-                            &mut output,
-                            line_index,
-                            line.origin.x + start,
-                            y,
-                            current - start,
-                            height,
-                        );
-                        current += advance;
-                        start = current;
-                    }
-                }
-                FinalizedVisualItem::InlineBox(index) => {
-                    let item = &data.boxes[index];
-                    if layout.prepared.analyzed.source.boxes()[item.occurrence].kind()
-                        == InlineBoxKind::InFlow
-                    {
-                        box_advance += item.rect.size.width;
-                    }
-                    // Leading atomic occurrences are not text selection geometry.
-                    if !seen_text {
-                        current += box_advance;
-                        box_advance = 0.0;
-                        start = current;
-                    }
-                }
+            let FinalizedVisualItem::Cluster(index) = *item else {
+                continue;
+            };
+            let cluster = &data.clusters[index];
+            let selected = overlaps(cluster.source, range)
+                || (cluster.source.is_empty()
+                    && line.finalized.mapping.pieces.iter().any(|piece| {
+                        let crate::protocol::prepared::SelectedMappingKind::Replacement {
+                            alternative,
+                            anchor,
+                        } = piece.kind
+                        else {
+                            return false;
+                        };
+                        let defining = match line.finalized.selected.prepared.tables.alternatives[alternative].definition {
+                            crate::protocol::paragraph::ParagraphReplacementDefinition::Source { source, .. } => source,
+                            crate::protocol::paragraph::ParagraphReplacementDefinition::Control { .. } => crate::Range::new(anchor, anchor),
+                        };
+                        overlaps(cluster.presentation, piece.presentation)
+                            && (overlaps(defining, range) || range.contains(anchor))
+                    }));
+            if selected {
+                selected_clusters += 1;
+                let end = cluster.x + cluster.advance;
+                let left = cluster.x.min(end);
+                let right = cluster.x.max(end);
+                group = Some(group.map_or((left, right), |(start, finish)| {
+                    (start.min(left), finish.max(right))
+                }));
+            } else if let Some((start, end)) = group.take() {
+                push_local(&mut output, line_index, line, start, end, height)?;
             }
         }
-        let extra = if line_index != end_line || (cluster_count != 0 && metrics.advance == 0.0) {
+        let extra = if line_index != end_line || (selected_clusters != 0 && metrics.advance == 0.0)
+        {
             newline
         } else {
             0.0
         };
-        push(
-            &mut output,
-            line_index,
-            line.origin.x + start,
-            y,
-            current + extra - start,
-            height,
-        );
+        if let Some((start, end)) = group {
+            push_local(&mut output, line_index, line, start, end + extra, height)?;
+        } else if extra != 0.0 {
+            push_local(
+                &mut output,
+                line_index,
+                line,
+                metrics.offset,
+                metrics.offset + extra,
+                height,
+            )?;
+        }
     }
     Ok(SelectionGeometry::new(output))
 }
 
-fn push(output: &mut Vec<SelectionRect>, line: usize, x: f64, y: f64, width: f64, height: f64) {
-    if width != 0.0 {
-        output.push(SelectionRect::new(Rect::new(x, y, width, height), line));
+fn overlaps(a: crate::Range, b: crate::Range) -> bool {
+    a.start < b.end && b.start < a.end
+}
+
+fn push_local(
+    output: &mut Vec<SelectionRect>,
+    line_index: usize,
+    line: &crate::engine::PlacedLine,
+    start: f64,
+    end: f64,
+    height: f64,
+) -> Result<()> {
+    if !start.is_finite() || !end.is_finite() {
+        return Err(crate::error::text_numeric_error(
+            "selected source rectangle",
+            crate::TextNumericPhase::Placement,
+            crate::TextNumericError::NonFinite,
+            end,
+        ));
     }
+    if end > start {
+        let metrics = line.finalized.data.metrics;
+        let rect = crate::layout::line_rect(
+            line,
+            Rect::new(start, metrics.block_min, end - start, height),
+        );
+        for (field, value) in [
+            ("selection x", rect.origin.x),
+            ("selection y", rect.origin.y),
+            ("selection width", rect.size.width),
+            ("selection height", rect.size.height),
+            ("selection right", rect.origin.x + rect.size.width),
+            ("selection bottom", rect.origin.y + rect.size.height),
+        ] {
+            if !value.is_finite() {
+                return Err(crate::error::text_numeric_error(
+                    field,
+                    crate::TextNumericPhase::Placement,
+                    crate::TextNumericError::NonFinite,
+                    value,
+                ));
+            }
+        }
+        output.push(SelectionRect::new(rect, line_index));
+    }
+    Ok(())
 }

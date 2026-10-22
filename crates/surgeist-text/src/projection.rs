@@ -16,6 +16,13 @@ pub(crate) struct SourceProjection {
     pub(crate) segmentation: String,
     pub(crate) atoms: Vec<OriginalAtom>,
     pub(crate) graphemes: Vec<usize>,
+    /// Actual original-domain barriers; no rendering character represents them.
+    pub(crate) barriers: Vec<usize>,
+    /// Real variant-specific positions of captured anchor occurrences, when a
+    /// selected replacement occupies a zero-authored insertion anchor.
+    pub(crate) anchor_atoms: Vec<Option<usize>>,
+    /// Captured replacement style locations; absence uses original source start.
+    pub(crate) style_anchors: Vec<Option<usize>>,
     segmentation_offsets: Vec<(usize, usize)>,
 }
 
@@ -83,6 +90,8 @@ impl SourceProjection {
             let source_end = unit.checked_add(length).ok_or_else(length_overflow)?;
             atoms.push(OriginalAtom {
                 source: Range::new(unit, source_end),
+                processed: Range::new(unit, source_end),
+                presentation: Range::new(unit, source_end),
                 glyph_bytes: text.len()..end,
                 code_point,
                 glyph,
@@ -98,11 +107,139 @@ impl SourceProjection {
             atoms,
             segmentation_offsets,
             graphemes: Vec::new(),
+            barriers: Vec::new(),
+            anchor_atoms: Vec::new(),
+            style_anchors: Vec::new(),
         };
         projection.graphemes = GraphemeClusterSegmenter::new()
             .segment_str(&projection.segmentation)
             .map(|byte| projection.segmentation_unit(byte))
             .collect::<Result<_>>()?;
+        Ok(projection)
+    }
+
+    /// Original host/source projection, independent of lexical deletion or
+    /// replacement. Only explicitly disconnected or in-flow edges sever atoms.
+    pub(crate) fn host(
+        source: &Source,
+        paragraph: &crate::protocol::paragraph::ParagraphData,
+    ) -> Result<Self> {
+        if paragraph.base_direction.is_none() {
+            return Self::new(source);
+        }
+        let barriers = paragraph_barriers(source, paragraph);
+        admit_connected(source, &barriers)?;
+        let mut atoms = Vec::new();
+        decode_copy(source.text().code_units(), 0, 0, &barriers, &mut atoms)?;
+        Self::from_atoms(atoms, source.text().len(), barriers)
+    }
+
+    /// Builds semantic input from actual executed correspondence, decoding Copy
+    /// pieces before any removed original units can falsely join surrogate halves.
+    pub(crate) fn from_processed(
+        processed: &crate::ProcessedSource,
+        paragraph: &crate::protocol::paragraph::ParagraphData,
+    ) -> Result<Self> {
+        use crate::processing::MappingKind;
+        let source = processed.source();
+        let barriers = paragraph_barriers(source, paragraph);
+        admit_connected(source, &barriers)?;
+        let mut atoms = Vec::new();
+        for piece in processed.operations() {
+            match piece.kind {
+                MappingKind::Copy => decode_copy(
+                    &source.text().code_units()[piece.source.start..piece.source.end],
+                    piece.source.start,
+                    piece.processed,
+                    &barriers,
+                    &mut atoms,
+                )?,
+                MappingKind::Delete(_) => {}
+                MappingKind::Replace => {
+                    let cp = u32::from(processed.processed_text().code_units()[piece.processed]);
+                    let glyph = char::from_u32(cp).ok_or_else(length_overflow)?;
+                    let range = Range::new(piece.processed, piece.processed_end());
+                    atoms.push(OriginalAtom {
+                        source: piece.source,
+                        processed: range,
+                        presentation: range,
+                        code_point: cp,
+                        glyph,
+                        glyph_bytes: 0..0,
+                    });
+                }
+            }
+        }
+        Self::from_atoms(atoms, processed.processed_text().len(), barriers)
+    }
+
+    /// Reuses exact admitted atom provenance for a selected substituted sequence.
+    pub(crate) fn from_atoms(
+        mut atoms: Vec<OriginalAtom>,
+        semantic_len: usize,
+        barriers: Vec<usize>,
+    ) -> Result<Self> {
+        let mut text = String::new();
+        let mut segmentation = String::new();
+        let mut segmentation_offsets = Vec::with_capacity(atoms.len() + 1);
+        for atom in &mut atoms {
+            segmentation_offsets.push((atom.presentation.start, segmentation.len()));
+            let start = text.len();
+            start
+                .checked_add(atom.glyph.len_utf8())
+                .ok_or_else(length_overflow)?;
+            text.push(atom.glyph);
+            atom.glyph_bytes = start..text.len();
+            let representative = if (0xd800..=0xdfff).contains(&atom.code_point) {
+                '\u{a6}'
+            } else {
+                atom.glyph
+            };
+            segmentation
+                .len()
+                .checked_add(representative.len_utf8())
+                .ok_or_else(length_overflow)?;
+            segmentation.push(representative);
+        }
+        segmentation_offsets.push((semantic_len, segmentation.len()));
+        let mut projection = Self {
+            text,
+            segmentation,
+            atoms,
+            graphemes: Vec::new(),
+            barriers,
+            anchor_atoms: Vec::new(),
+            style_anchors: Vec::new(),
+            segmentation_offsets,
+        };
+        let mut stops: Vec<_> = projection
+            .barriers
+            .iter()
+            .map(|&at| {
+                let atom = projection
+                    .atoms
+                    .partition_point(|atom| atom.source.end <= at);
+                projection.segmentation_offsets[atom].1
+            })
+            .collect();
+        stops.extend([0, projection.segmentation.len()]);
+        stops.sort_unstable();
+        stops.dedup();
+        let mut graphemes = Vec::new();
+        for pair in stops.windows(2) {
+            for byte in GraphemeClusterSegmenter::new()
+                .segment_str(&projection.segmentation[pair[0]..pair[1]])
+            {
+                let at = projection.segmentation_unit(pair[0] + byte)?;
+                if graphemes.last() != Some(&at) {
+                    graphemes.push(at);
+                }
+            }
+        }
+        if graphemes.is_empty() {
+            graphemes.push(0);
+        }
+        projection.graphemes = graphemes;
         Ok(projection)
     }
 
@@ -144,6 +281,98 @@ impl SourceProjection {
             .expect("validated segmentation boundary");
         self.segmentation_offsets[index].1
     }
+}
+
+fn paragraph_barriers(
+    source: &Source,
+    paragraph: &crate::protocol::paragraph::ParagraphData,
+) -> Vec<usize> {
+    let mut barriers: Vec<_> = paragraph.disconnections().collect();
+    barriers.extend(
+        source
+            .boxes()
+            .iter()
+            .filter(|item| item.kind() == crate::InlineBoxKind::InFlow)
+            .map(|item| item.index()),
+    );
+    barriers.extend(
+        paragraph
+            .controls
+            .iter()
+            .filter(|control| {
+                control.kind == crate::protocol::paragraph::ParagraphControlKind::ForcedBreak
+            })
+            .map(|control| control.at),
+    );
+    barriers.sort_unstable();
+    barriers.dedup();
+    barriers
+}
+
+fn admit_connected(source: &Source, barriers: &[usize]) -> Result<()> {
+    for span in source.spans() {
+        for (at, kind) in [
+            (span.range().start, super::ShapingBoundary::SpanStart),
+            (span.range().end, super::ShapingBoundary::SpanEnd),
+        ] {
+            if barriers.binary_search(&at).is_err() {
+                SourceProjection::admit_boundary(source.text(), at, kind)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn decode_copy(
+    units: &[u16],
+    original_start: usize,
+    processed_start: usize,
+    barriers: &[usize],
+    atoms: &mut Vec<OriginalAtom>,
+) -> Result<()> {
+    if units.is_empty() {
+        return Ok(());
+    }
+    let original_end = original_start
+        .checked_add(units.len())
+        .ok_or_else(length_overflow)?;
+    let first = barriers.partition_point(|&at| at <= original_start);
+    let end = barriers.partition_point(|&at| at < original_end);
+    let mut starts = std::iter::once(original_start)
+        .chain(barriers[first..end].iter().copied())
+        .chain(std::iter::once(original_end));
+    let Some(mut start) = starts.next() else {
+        return Ok(());
+    };
+    for end in starts {
+        let mut at = start;
+        for decoded in char::decode_utf16(
+            units[start - original_start..end - original_start]
+                .iter()
+                .copied(),
+        ) {
+            let (cp, glyph, len) = match decoded {
+                Ok(ch) => (u32::from(ch), ch, ch.len_utf16()),
+                Err(error) => (u32::from(error.unpaired_surrogate()), '\u{fffd}', 1),
+            };
+            let next = at.checked_add(len).ok_or_else(length_overflow)?;
+            let p = processed_start
+                .checked_add(at - original_start)
+                .ok_or_else(length_overflow)?;
+            let q = p.checked_add(len).ok_or_else(length_overflow)?;
+            atoms.push(OriginalAtom {
+                source: Range::new(at, next),
+                processed: Range::new(p, q),
+                presentation: Range::new(p, q),
+                glyph_bytes: 0..0,
+                code_point: cp,
+                glyph,
+            });
+            at = next;
+        }
+        start = end;
+    }
+    Ok(())
 }
 
 fn boundary_error(byte: usize) -> Error {

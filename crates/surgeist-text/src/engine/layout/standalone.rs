@@ -11,7 +11,7 @@ use std::sync::Arc;
 use super::super::{
     BreakKind, FinalizedLine, LineSelection, PreparedData, analysis::Boundary, shape::ShapeContext,
 };
-use super::{data::*, finalize, finite, placement};
+use super::{data::*, finalize_standalone, finite, placement};
 use crate::{InlineBoxKind, OverflowWrap, Range, Result, TextNumericPhase, ValidatedOptions, Wrap};
 
 pub(super) fn layout(
@@ -55,7 +55,7 @@ pub(super) fn layout(
         let width = lines
             .iter()
             .map(|line| {
-                let metrics = line.data.metrics;
+                let metrics = line.finalized.data.metrics;
                 (metrics.advance + line.selection.indent.max(0.0) - metrics.trailing_whitespace)
                     .max(0.0)
             })
@@ -64,15 +64,24 @@ pub(super) fn layout(
         for line in lines {
             let mut selection = line.selection;
             selection.available = Some(width);
-            resolved.push(finalize::finalize(
-                Arc::clone(&prepared),
+            resolved.push(ChosenLine {
+                finalized: finalize_standalone(
+                    Arc::clone(&prepared),
+                    selection.clone(),
+                    authored.quantize,
+                    scratch,
+                )?,
                 selection,
-                scratch,
-            )?);
+            });
         }
         lines = resolved;
     }
-    placement::place(lines)
+    placement::place(
+        lines
+            .into_iter()
+            .map(|line| Arc::new(line.finalized))
+            .collect(),
+    )
 }
 
 /// Only actual break candidates are ever sent to the shaping finalizer.
@@ -85,23 +94,25 @@ fn choose(
     indent: f64,
     options: ValidatedOptions,
     scratch: &mut ShapeContext,
-) -> Result<FinalizedLine> {
+) -> Result<ChosenLine> {
     let mut nomination = nominate(prepared, start, indent, options)?;
     if nomination.end == prepared.shaped.items.len() && nomination.kind != BreakKind::Explicit {
         nomination.kind = BreakKind::End;
     }
     loop {
-        let line = finalize::finalize(
+        let selection = select(
+            prepared,
+            start,
+            nomination.end,
+            source_start,
+            indent,
+            nomination.kind,
+            options,
+        );
+        let line = finalize_standalone(
             Arc::clone(prepared),
-            select(
-                prepared,
-                start,
-                nomination.end,
-                source_start,
-                indent,
-                nomination.kind,
-                options,
-            ),
+            selection.clone(),
+            options.authored().quantize,
             scratch,
         )?;
         let fits = options.authored().width.is_none_or(|width| {
@@ -111,7 +122,10 @@ fn choose(
             || nomination.unwrapped
             || initial_atomic_overflow(prepared, &line, nomination.initial_box)
         {
-            return Ok(line);
+            return Ok(ChosenLine {
+                finalized: line,
+                selection,
+            });
         }
         // These are source-eligible endpoints, not receipts for previously
         // shaped prefixes. Each retry strictly decreases the actual endpoint,
@@ -129,9 +143,18 @@ fn choose(
         } else {
             // No earlier permitted boundary exists in this first fragment.
             // Existing standalone policy deliberately accepts its overflow.
-            return Ok(line);
+            return Ok(ChosenLine {
+                finalized: line,
+                selection,
+            });
         }
     }
+}
+
+/// Transient private chooser state; only the finalized selected owner is published.
+struct ChosenLine {
+    finalized: FinalizedLine,
+    selection: LineSelection,
 }
 
 struct Nomination {
@@ -179,8 +202,9 @@ fn nominate(
     while cursor < items.len() {
         let mut end = cursor + 1;
         match items[cursor] {
+            ShapedItem::Anchor { .. } => {}
             ShapedItem::InlineBox { occurrence, .. } => {
-                let item = prepared.analyzed.source.boxes()[occurrence];
+                let item = prepared.analyzed.processed.source().boxes()[occurrence];
                 let delta = if item.kind() == InlineBoxKind::InFlow {
                     item.size().width
                 } else {
@@ -299,9 +323,10 @@ fn initial_atomic_overflow(
         .iter()
         .filter(|item| item.occurrence != occurrence)
         .filter(|item| {
-            prepared.analyzed.source.boxes()[item.occurrence].kind() == InlineBoxKind::InFlow
+            prepared.analyzed.processed.source().boxes()[item.occurrence].kind()
+                == InlineBoxKind::InFlow
         })
-        .map(|item| item.rect.size.width)
+        .map(|item| item.flow_advance())
         .sum();
     text + other_boxes == 0.0
 }
@@ -318,16 +343,18 @@ fn select(
     let mut source_end = source_start;
     for item in &prepared.shaped.items[start..end] {
         match *item {
+            ShapedItem::Anchor { .. } => {}
             ShapedItem::TextCluster(index) => {
                 source_end = source_end.max(prepared.shaped.clusters[index].source.end);
             }
             ShapedItem::InlineBox { occurrence, .. } => {
-                source_end = source_end.max(prepared.analyzed.source.boxes()[occurrence].index());
+                source_end = source_end
+                    .max(prepared.analyzed.processed.source().boxes()[occurrence].index());
             }
         }
     }
     if kind == BreakKind::End {
-        source_end = prepared.analyzed.source.text().len();
+        source_end = prepared.analyzed.processed.source().text().len();
     }
     LineSelection {
         items: start..end,
@@ -387,7 +414,7 @@ mod tests {
         for line in &output.inner.lines {
             assert!(Arc::ptr_eq(
                 &output.inner.prepared,
-                &line.finalized.prepared
+                &line.finalized.selected.prepared
             ));
             assert_eq!(
                 line.finalized.data.metrics.advance,

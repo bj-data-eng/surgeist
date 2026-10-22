@@ -65,7 +65,6 @@ pub(crate) struct PreparedRun {
     pub(crate) style: usize,
     pub(crate) script: icu_properties::props::Script,
     pub(crate) level: u8,
-    pub(crate) source: Range,
     pub(crate) atoms: IndexRange<usize>,
     pub(crate) metrics: RunMetrics,
 }
@@ -91,7 +90,15 @@ pub(crate) struct PreparedCluster {
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum ShapedItem {
     TextCluster(usize),
-    InlineBox { occurrence: usize, level: u8 },
+    InlineBox {
+        occurrence: usize,
+        level: u8,
+    },
+    /// Actual zero-presentation selected unit; it owns no synthetic glyph/metrics.
+    Anchor {
+        unit: usize,
+        level: u8,
+    },
 }
 
 #[derive(Clone, Debug, Default)]
@@ -118,6 +125,10 @@ pub(crate) struct LineMetrics {
     pub(crate) block_max: f64,
     pub(crate) inline_min: f64,
     pub(crate) inline_max: f64,
+    pub(crate) occupied_start: f64,
+    pub(crate) occupied_end: f64,
+    pub(crate) hanging_start: f64,
+    pub(crate) hanging_end: f64,
 }
 
 /// One paint-order run in a finalized line. Glyph offsets and advances remain
@@ -144,6 +155,7 @@ pub(crate) struct FinalizedGlyph {
 #[derive(Clone, Debug)]
 pub(crate) struct FinalizedCluster {
     pub(crate) source: Range,
+    pub(crate) presentation: Range,
     pub(crate) run: usize,
     pub(crate) x: f64,
     pub(crate) advance: f64,
@@ -152,10 +164,32 @@ pub(crate) struct FinalizedCluster {
     pub(crate) whitespace: Whitespace,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct FinalizedBox {
     pub(crate) occurrence: usize,
-    pub(crate) rect: Rect,
+    pub(crate) atomic: crate::protocol::PreparedAtomic,
+    pub(crate) slot: crate::Point,
+    pub(crate) geometry: FinalizedBoxGeometry,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum FinalizedBoxGeometry {
+    InFlow {
+        flow: crate::protocol::AtomicFlowAllocation,
+        box_geometry: crate::protocol::AtomicBoxAllocation,
+        alignment: crate::protocol::LineBoxAlignment,
+        rect: Rect,
+    },
+    OutOfFlow,
+}
+
+impl FinalizedBox {
+    pub(crate) fn flow_advance(&self) -> f64 {
+        match self.geometry {
+            FinalizedBoxGeometry::InFlow { flow, .. } => flow.advance,
+            FinalizedBoxGeometry::OutOfFlow => 0.0,
+        }
+    }
 }
 
 /// Actual committed mixed L2 order, including zero-advance text and atomic gaps.
@@ -163,6 +197,14 @@ pub(crate) struct FinalizedBox {
 pub(crate) enum FinalizedVisualItem {
     Cluster(usize),
     InlineBox(usize),
+    Anchor(usize),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct FinalizedAnchor {
+    pub(crate) unit: usize,
+    pub(crate) slot: crate::Point,
+    pub(crate) level: u8,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -175,13 +217,24 @@ pub(crate) struct FinalizedLineData {
     pub(crate) glyphs: Vec<FinalizedGlyph>,
     pub(crate) boxes: Vec<FinalizedBox>,
     pub(crate) visual_order: Vec<FinalizedVisualItem>,
+    pub(crate) anchors: Vec<FinalizedAnchor>,
     pub(crate) metrics: LineMetrics,
+    pub(crate) fragments: Vec<FinalizedFragmentData>,
+}
+
+/// One authentic selected origin intersection and its actual local association geometry.
+#[derive(Clone, Debug)]
+pub(crate) struct FinalizedFragmentData {
+    pub(crate) association: crate::protocol::paragraph::FragmentAssociation,
+    pub(crate) bounds: Option<Rect>,
 }
 
 /// The committed standalone result; every line retains this same preparation allocation.
 pub(crate) struct PlacedLayout {
     pub(crate) prepared: Arc<PreparedData>,
     pub(crate) lines: Vec<PlacedLine>,
+    pub(crate) bounds: Rect,
+    pub(crate) coverage: crate::protocol::placement::PlacedCoverage,
     pub(crate) width: f64,
     pub(crate) full_width: f64,
     pub(crate) height: f64,

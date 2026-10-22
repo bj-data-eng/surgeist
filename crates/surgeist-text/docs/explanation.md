@@ -10,6 +10,13 @@ these inputs, derives a cache key, and either returns an exact matching cached l
 font preparation, selected-line finalization and placement. The private standalone
 chooser calls the same finalizer; source and fonts stay retained by immutable phases.
 
+The composed front exposes these same backing allocations. It captures actual
+origin/connection/control facts, processes source once and issues preparation-bound
+capabilities. Selection validates the full mixed request; finalization retains its
+actual request and mapping. Explicit placement adds a physical baseline anchor to
+each finalized line. The standalone chooser and stacker lower to that same core,
+with their existing metric rounding policy. See [composed lines](composed-lines.md).
+
 The resulting [Layout](../src/layout.rs) is an immutable snapshot containing
 authored source and the shaped layout. It exposes line metrics, resolved font
 data, glyphs, clusters, decorations, inline boxes, hit tests, selection geometry,

@@ -5,8 +5,9 @@ abstractions, and text layout in Surgeist surfaces. It turns text, resolved styl
 and layout options into glyph runs, lines, inline boxes, and interaction geometry
 through its owned analysis, shaping and line-finalization pipeline. The current package is version `0.1.0`, using Rust edition 2024.
 
-Paragraph layout has explicit limits: whitespace collapse and explicit base direction are
-unsupported, and inline-box alignment requests do not imply CSS vertical-alignment execution.
+Standalone layout retains raw Preserve and automatic direction. Explicit composed
+paragraphs execute source processing and capture their actual base direction;
+inline-box alignment requests do not imply CSS vertical-alignment execution.
 See the [support reference](docs/reference.md) for the current contract.
 
 `process_source_whitespace` executes source-local Collapse, Discard, Preserve and
@@ -15,9 +16,8 @@ facts and UTF-16 correspondence. Explicit affinity projects contraction interior
 and transparent box anchors. Its partial plaintext iterator returns same-result
 slices and real box occurrences, without document serialization or opportunity
 analysis. Collapse retains executed deletion causes and uses a selected Unicode
-context policy for segment breaks, without selected-line trimming. Paragraph
-layout does not yet consume this phase: Collapse, Discard and
-PreserveSpaces still refuse there; standalone Preserve layout remains unchanged.
+context policy for segment breaks, without selected-line trimming. `AnalyzedSource::from_paragraph` retains this executed phase and its exact
+occurrence capture for composed preparation; standalone Preserve remains unchanged.
 
 `Text` retains exact UTF-16 code units, and public source positions and ranges
 count those units. Edits can split or join surrogate pairs. `AnalyzedSource`
@@ -33,8 +33,11 @@ and invalidate cached layouts atomically; retained analyses and layouts keep the
 actual source and selected resources. `System::layout_analyzed` enriches the same
 immutable analysis, while `System::layout` performs the same phases as a convenience.
 See [font registration](docs/how-to.md#register-fonts-without-system-discovery).
-The public composed preparation/selection protocol and Layout float feedback
-remain separate work.
+`System::prepare` retains the same analysis and actual resources. Its issued
+handles admit a complete `LineSelectionRequest`; selected spacing allocation and
+finalization produce immutable line-local output. `Layout::from_finalized_lines`
+validates one explicitly anchored line set without wrapping again. See the
+[composed protocol guide](docs/composed-lines.md).
 
 `System::registered_font_faces` lends actual registered resources without shaping
 a sample character or resolving a Style. Retained `FontData` can select an explicit

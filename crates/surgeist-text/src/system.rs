@@ -43,13 +43,19 @@ impl System {
         builder.build()
     }
 
-    /// Shapes and places the exact retained font-independent source analysis.
+    /// Shapes and places an identity-processing standalone source analysis.
+    /// Explicit paragraph captures use `prepare` and the composed line protocol.
     /// A cache result from an independently issued equal analysis cannot substitute.
     pub fn layout_analyzed(
         &mut self,
         analyzed: &crate::AnalyzedSource,
         options: Options,
     ) -> Result<Layout> {
+        if analyzed.inner.paragraph.base_direction.is_some() {
+            return Err(crate::protocol::protocol_error(
+                crate::ProtocolError::UnsupportedStandaloneAnalysis,
+            ));
+        }
         let options = ValidatedOptions::try_from(options)?;
         let key = Key::from_analyzed(&analyzed.inner, options, self.catalogue.identity());
         if let Some(layout) = self.cache.get(&key)
@@ -67,6 +73,23 @@ impl System {
         self.place_analyzed(Arc::clone(&analyzed.inner), key, options)
     }
 
+    /// Prepares the exact immutable analysis, retaining its actual source and
+    /// selected resources without choosing, finalizing, or placing a line.
+    pub fn prepare(
+        &mut self,
+        analyzed: &crate::AnalyzedSource,
+        options: crate::PreparationOptions,
+    ) -> Result<crate::PreparedText> {
+        let inner = engine::prepare(
+            &mut self.catalogue,
+            Arc::clone(&analyzed.inner),
+            options,
+            engine::PreparationProfile::Native,
+            &mut self.shape_context,
+        )?;
+        Ok(crate::PreparedText { inner })
+    }
+
     fn place_analyzed(
         &mut self,
         analyzed: Arc<engine::AnalyzedData>,
@@ -76,11 +99,16 @@ impl System {
         let prepared = engine::prepare(
             &mut self.catalogue,
             analyzed,
-            options,
+            crate::PreparationOptions::try_new(options.authored().scale)?,
+            engine::PreparationProfile::Standalone,
             &mut self.shape_context,
         )?;
         let placed = engine::layout::layout(prepared, options, &mut self.shape_context)?;
-        let layout = Layout::from_placed(placed, key.clone(), options.authored());
+        let layout = Layout::from_placed(
+            placed,
+            key.clone(),
+            crate::layout::LayoutBasis::Standalone(options.authored()),
+        );
         layout.qualify_decorations()?;
         self.cache.insert(key, layout.clone());
         self.stats.record_layout_miss();

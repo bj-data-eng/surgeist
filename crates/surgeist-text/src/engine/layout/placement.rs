@@ -1,11 +1,18 @@
-//! Checked outer placement of already finalized immutable lines.
+//! Standalone policy produces ordinary requests for the one placement validator.
 
-use super::super::{FinalizedLine, PlacedLine, editing};
-use super::{add, data::PlacedLayout, finite};
-use crate::{Point, Result, TextNumericPhase};
 use std::sync::Arc;
 
-pub(super) fn place(finalized: Vec<FinalizedLine>) -> Result<PlacedLayout> {
+use super::super::FinalizedLine;
+use super::{add, data::PlacedLayout};
+use crate::protocol::{
+    AtomicPlacement, FinalizedLine as PublicFinalizedLine, LineAnchor, LineOrientation,
+    LinePlacement, PlacementCoverage, PlacementRequest, PreparedText,
+    placement::{PlacementMetricPolicy, place_request},
+    selection::LineMetricPolicy,
+};
+use crate::{Point, Result, TextNumericPhase};
+
+pub(super) fn place(finalized: Vec<Arc<FinalizedLine>>) -> Result<PlacedLayout> {
     let prepared = Arc::clone(
         &finalized
             .first()
@@ -15,69 +22,94 @@ pub(super) fn place(finalized: Vec<FinalizedLine>) -> Result<PlacedLayout> {
                     "standalone layout has no finalized line",
                 )
             })?
+            .selected
             .prepared,
     );
-    if finalized
-        .iter()
-        .any(|line| !Arc::ptr_eq(&prepared, &line.prepared))
-    {
-        return Err(crate::Error::new(
-            crate::ErrorCode::LayoutFailed,
-            "lines belong to different preparations",
-        ));
-    }
     let mut lines = Vec::with_capacity(finalized.len());
-    let mut y: f64 = 0.0;
-    let mut width: f64 = 0.0;
-    let mut full_width: f64 = 0.0;
+    let mut y = 0.0_f64;
     for line in finalized {
         let metrics = line.data.metrics;
-        let indent = line.selection.indent.max(0.0);
-        width = width.max((metrics.advance + indent - metrics.trailing_whitespace).max(0.0));
-        full_width = full_width.max((metrics.advance + indent).max(0.0));
-        let origin = Point::new(0.0, if prepared.quantize { y.round() } else { y });
-        add(
-            "placed baseline",
-            TextNumericPhase::Placement,
-            origin.y,
-            metrics.baseline,
-        )?;
-        add(
-            "placed block start",
-            TextNumericPhase::Placement,
-            origin.y,
-            metrics.block_min,
-        )?;
-        add(
-            "placed block end",
-            TextNumericPhase::Placement,
-            origin.y,
-            metrics.block_max,
-        )?;
+        let top = if line.selected.metric_policy == LineMetricPolicy::StandaloneQuantized {
+            y.round()
+        } else {
+            y
+        };
+        let anchor = Point::new(
+            0.0,
+            add(
+                "placed baseline",
+                TextNumericPhase::Placement,
+                top,
+                metrics.baseline,
+            )?,
+        );
+        let placed = crate::engine::PlacedLine {
+            finalized: Arc::clone(&line),
+            anchor,
+            atomics: Vec::new(),
+        };
+        let atomics = line
+            .data
+            .boxes
+            .iter()
+            .map(|item| {
+                let (border, content, baseline) = match item.geometry {
+                    super::data::FinalizedBoxGeometry::InFlow {
+                        box_geometry, rect, ..
+                    } => (
+                        rect,
+                        crate::Rect::new(
+                            item.slot.x + box_geometry.content.origin.x,
+                            item.slot.y + box_geometry.content.origin.y,
+                            box_geometry.content.size.width,
+                            box_geometry.content.size.height,
+                        ),
+                        item.slot.y + box_geometry.baseline,
+                    ),
+                    super::data::FinalizedBoxGeometry::OutOfFlow => {
+                        // Only standalone placement owns these authored physical dimensions.
+                        let size =
+                            prepared.analyzed.processed.source().boxes()[item.occurrence].size();
+                        let rect = crate::Rect::new(
+                            item.slot.x,
+                            item.slot.y - size.height,
+                            size.width,
+                            size.height,
+                        );
+                        (rect, rect, item.slot.y)
+                    }
+                };
+                AtomicPlacement {
+                    occurrence: item.atomic.clone(),
+                    border: crate::layout::line_rect(&placed, border),
+                    content: crate::layout::line_rect(&placed, content),
+                    baseline: crate::layout::line_point(&placed, Point::new(item.slot.x, baseline))
+                        .y,
+                }
+            })
+            .collect();
+        lines.push(LinePlacement {
+            line: PublicFinalizedLine { inner: line },
+            anchor: LineAnchor {
+                inline_origin: anchor.x,
+                baseline: anchor.y,
+            },
+            orientation: LineOrientation::Horizontal,
+            atomics,
+        });
         y = add(
             "paragraph height",
             TextNumericPhase::Placement,
             y,
             metrics.line_height,
         )?;
-        lines.push(PlacedLine {
-            finalized: line,
-            origin,
-        });
     }
-    finite("paragraph width", TextNumericPhase::Placement, width)?;
-    finite(
-        "paragraph full width",
-        TextNumericPhase::Placement,
-        full_width,
-    )?;
-    let interaction = editing::prepare(&prepared, &lines)?;
-    Ok(PlacedLayout {
-        prepared,
-        lines,
-        width,
-        full_width,
-        height: y,
-        interaction,
-    })
+    place_request(
+        PlacementRequest {
+            prepared: PreparedText { inner: prepared },
+            coverage: PlacementCoverage::WholeParagraph,
+            lines,
+        },
+        PlacementMetricPolicy::StandaloneStacked,
+    )
 }

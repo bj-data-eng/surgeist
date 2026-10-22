@@ -14,7 +14,7 @@ use skrifa::{
 
 use crate::{
     Affinity, Alignment, Cursor, Error, ErrorCode, ErrorDetail, Layout, Point, Range, Rect, Result,
-    Selection, Text,
+    Selection,
 };
 
 /// Accessibility bindings for one exact analyzed-source or placed projection.
@@ -264,12 +264,12 @@ pub(crate) fn analyzed_access_position(
 ) -> Result<Option<TextPosition>> {
     validate_binding(state, analyzed, None)?;
     crate::range::validate_index(
-        analyzed.source.text(),
+        analyzed.processed.source().text(),
         cursor.index(),
         "accessibility cursor",
     )?;
     let unit = crate::engine::editing::caret_at(
-        &analyzed.projection.graphemes,
+        &analyzed.host_projection.graphemes,
         cursor.index(),
         cursor.affinity(),
     );
@@ -282,19 +282,19 @@ pub(crate) fn analyzed_access_selection(
     selection: Selection,
 ) -> Result<Option<TextSelection>> {
     validate_binding(state, analyzed, None)?;
-    crate::range::validate(analyzed.source.text(), selection.range())?;
+    crate::range::validate(analyzed.processed.source().text(), selection.range())?;
     let (anchor, focus) = if selection.is_collapsed() {
         let point = analyzed_access_position(analyzed, state, selection.focus())?;
         (point, point)
     } else {
         let range = selection.range();
         let start = crate::engine::editing::caret_at(
-            &analyzed.projection.graphemes,
+            &analyzed.host_projection.graphemes,
             range.start,
             Affinity::Before,
         );
         let end = crate::engine::editing::caret_at(
-            &analyzed.projection.graphemes,
+            &analyzed.host_projection.graphemes,
             range.end,
             Affinity::After,
         );
@@ -360,7 +360,7 @@ fn update(
     focus: NodeId,
 ) -> Result<TreeUpdate> {
     let analyzed = projection.analyzed();
-    let host_text = original_host_text(analyzed.source.text())?;
+    let host_text = original_host_text(analyzed)?;
     let locales = LocaleIndex::new(&analyzed.styles);
     let lines = match projection {
         Projection::Analyzed(_) => Vec::new(),
@@ -375,11 +375,14 @@ fn update(
                 let run = &data.font_runs[cluster.run];
                 fragments.push(Fragment {
                     range: cluster.source,
-                    bounds: Rect::new(
-                        line.origin.x + cluster.x,
-                        line.origin.y + metrics.block_min,
-                        cluster.advance,
-                        metrics.block_max - metrics.block_min,
+                    bounds: crate::layout::line_rect(
+                        line,
+                        Rect::new(
+                            cluster.x,
+                            metrics.block_min,
+                            cluster.advance,
+                            metrics.block_max - metrics.block_min,
+                        ),
                     ),
                     line: line_index,
                     rtl: cluster.level & 1 != 0,
@@ -392,7 +395,7 @@ fn update(
     }
     let mut descriptors: Vec<_> = match projection {
         Projection::Analyzed(_) => analyzed
-            .projection
+            .host_projection
             .graphemes
             .windows(2)
             .map(|pair| NodeDescriptor {
@@ -410,7 +413,9 @@ fn update(
             })
             .collect(),
     };
-    if matches!(projection, Projection::Analyzed(_)) && analyzed.source.text().is_empty() {
+    if matches!(projection, Projection::Analyzed(_))
+        && analyzed.processed.source().text().is_empty()
+    {
         descriptors.push(NodeDescriptor {
             range: Range::new(0, 0),
             empty_line: None,
@@ -462,8 +467,8 @@ fn update(
     let memberships = fragment_memberships(&ranges, &fragments);
     for (range_index, descriptor) in descriptors.into_iter().enumerate() {
         let range = descriptor.range;
-        let start = analyzed.projection.byte(range.start).0;
-        let end = analyzed.projection.byte(range.end).0;
+        let start = analyzed.host_projection.byte(range.start).0;
+        let end = analyzed.host_projection.byte(range.end).0;
         let text = &host_text[start..end];
         let length = u8::try_from(text.len()).map_err(|_| {
             ax_error(ErrorDetail::UnsupportedAccessibilityUnit {
@@ -547,26 +552,60 @@ fn update(
             line_nodes.push((line.index(), nodes.len()));
         }
         if let Projection::Placed(layout, _) = projection {
-            node.set_text_align(match layout.options.alignment {
-                Alignment::Start => {
-                    if layout.direction() == crate::Direction::RightToLeft {
-                        accesskit::TextAlign::Right
-                    } else {
-                        accesskit::TextAlign::Left
+            let alignment = pieces
+                .first()
+                .and_then(|first| {
+                    let alignment = layout.inner.lines[first.line]
+                        .finalized
+                        .selected
+                        .request
+                        .context
+                        .alignment;
+                    pieces
+                        .iter()
+                        .all(|piece| {
+                            layout.inner.lines[piece.line]
+                                .finalized
+                                .selected
+                                .request
+                                .context
+                                .alignment
+                                == alignment
+                        })
+                        .then_some(alignment)
+                })
+                .or_else(|| {
+                    descriptor.empty_line.map(|index| {
+                        layout.inner.lines[index]
+                            .finalized
+                            .selected
+                            .request
+                            .context
+                            .alignment
+                    })
+                });
+            if let Some(alignment) = alignment {
+                node.set_text_align(match alignment {
+                    Alignment::Start => {
+                        if layout.direction() == crate::Direction::RightToLeft {
+                            accesskit::TextAlign::Right
+                        } else {
+                            accesskit::TextAlign::Left
+                        }
                     }
-                }
-                Alignment::End => {
-                    if layout.direction() == crate::Direction::RightToLeft {
-                        accesskit::TextAlign::Left
-                    } else {
-                        accesskit::TextAlign::Right
+                    Alignment::End => {
+                        if layout.direction() == crate::Direction::RightToLeft {
+                            accesskit::TextAlign::Left
+                        } else {
+                            accesskit::TextAlign::Right
+                        }
                     }
-                }
-                Alignment::Left => accesskit::TextAlign::Left,
-                Alignment::Right => accesskit::TextAlign::Right,
-                Alignment::Center => accesskit::TextAlign::Center,
-                Alignment::Justify => accesskit::TextAlign::Justify,
-            });
+                    Alignment::Left => accesskit::TextAlign::Left,
+                    Alignment::Right => accesskit::TextAlign::Right,
+                    Alignment::Center => accesskit::TextAlign::Center,
+                    Alignment::Justify => accesskit::TextAlign::Justify,
+                });
+            }
         }
         spans.push(AccessSpan {
             range,
@@ -589,15 +628,7 @@ fn update(
     }
     let mut parent_node = Node::new(Role::Paragraph);
     if let Projection::Placed(layout, origin) = projection {
-        parent_node.set_bounds(host_rect(
-            Rect::new(
-                0.0,
-                0.0,
-                layout.metrics().size().width,
-                layout.metrics().size().height,
-            ),
-            origin,
-        )?);
+        parent_node.set_bounds(host_rect(layout.bounds(), origin)?);
     }
     parent_node.set_children(spans.iter().map(|span| span.id).collect::<Vec<_>>());
     nodes.push((parent, parent_node));
@@ -633,6 +664,7 @@ impl Layout {
     ) -> Result<Option<TextPosition>> {
         self.validate_accessibility(state)?;
         super::range::validate_index(self.source().text(), cursor.index(), "accessibility cursor")?;
+        crate::engine::editing::position::validate_source(&self.inner, cursor)?;
         Ok(access_stop(
             state,
             self.inner
@@ -649,6 +681,8 @@ impl Layout {
     ) -> Result<Option<TextSelection>> {
         self.validate_accessibility(state)?;
         super::range::validate(self.source().text(), selection.range())?;
+        crate::engine::editing::position::validate_source(&self.inner, selection.anchor())?;
+        crate::engine::editing::position::validate_source(&self.inner, selection.focus())?;
         let (anchor, focus) = if selection.is_collapsed() {
             let cursor = selection.focus();
             let point = self.access_position(state, cursor)?;
@@ -697,18 +731,19 @@ fn union(a: Rect, b: Rect) -> Rect {
     )
 }
 
-fn original_host_text(text: &Text) -> Result<String> {
+fn original_host_text(analyzed: &crate::engine::AnalyzedData) -> Result<String> {
     let mut result = String::new();
-    let mut index = 0;
-    for decoded in char::decode_utf16(text.code_units().iter().copied()) {
-        let ch = decoded.map_err(|error| {
+    for atom in &analyzed.host_projection.atoms {
+        // Host text and its byte boundaries must use the same original semantic
+        // atoms. Re-decoding the aggregate units could join halves across a real
+        // disconnected, in-flow, or forced-break boundary.
+        let ch = char::from_u32(atom.code_point).ok_or_else(|| {
             ax_error(ErrorDetail::AccessibilityIllFormedSource {
-                index,
-                unit: error.unpaired_surrogate(),
+                index: atom.source.start,
+                unit: analyzed.processed.source().text().code_units()[atom.source.start],
             })
         })?;
         result.push(ch);
-        index += ch.len_utf16();
     }
     Ok(result)
 }
@@ -768,22 +803,160 @@ mod tests {
     use super::*;
     use crate::{
         FontCatalogueMode, Id, InlineBox, InlineBoxKind, Options, Size, Source, Style, System,
-        SystemOptions,
+        SystemOptions, Text,
     };
     use std::collections::BTreeSet;
+
+    fn captured_surrogate_halves(
+        connection: crate::ParagraphConnectionKind,
+    ) -> crate::AnalyzedSource {
+        crate::AnalyzedSource::from_paragraph(crate::ParagraphInput {
+            source: Source::new(Text::from_code_units(vec![0xd800, 0xdc00])),
+            base_style: Style::default(),
+            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: crate::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: crate::ParagraphStrut::AllocatedContributions,
+            origins: vec![
+                crate::ParagraphOrigin {
+                    source: Source::new(Text::from_code_units(vec![0xd800])),
+                    local: Range::new(0, 1),
+                    aggregate: Range::new(0, 1),
+                    kind: crate::ParagraphOriginKind::Authored,
+                },
+                crate::ParagraphOrigin {
+                    source: Source::new(Text::from_code_units(vec![0xdc00])),
+                    local: Range::new(0, 1),
+                    aggregate: Range::new(1, 2),
+                    kind: crate::ParagraphOriginKind::Authored,
+                },
+            ],
+            connections: vec![crate::ParagraphConnection {
+                at: 1,
+                kind: connection,
+            }],
+            controls: vec![],
+            boundary_policies: if connection == crate::ParagraphConnectionKind::Continuous {
+                vec![crate::ParagraphBoundaryPolicy {
+                    definition: crate::ParagraphBoundaryDefinition::Connection(0),
+                    preceding_wrap: crate::Wrap::Word,
+                    following_wrap: crate::Wrap::Word,
+                    ancestor_wrap: crate::Wrap::Word,
+                }]
+            } else {
+                vec![]
+            },
+            replacements: vec![],
+            anchor_order: vec![],
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn disconnected_original_surrogate_halves_refuse_ax_atomically_without_fusing_host_text() {
+        let connected = captured_surrogate_halves(crate::ParagraphConnectionKind::Continuous);
+        let disconnected = captured_surrogate_halves(crate::ParagraphConnectionKind::Disconnected);
+        assert_eq!(connected.source().text().code_units(), [0xd800, 0xdc00]);
+        assert_eq!(disconnected.source().text().code_units(), [0xd800, 0xdc00]);
+        assert_eq!(
+            connected.graphemes().collect::<Vec<_>>(),
+            [Range::new(0, 2)]
+        );
+        assert_eq!(
+            disconnected.graphemes().collect::<Vec<_>>(),
+            [Range::new(0, 1), Range::new(1, 2)]
+        );
+        let mut state = Accessibility::new(10);
+        let parent = NodeId(1000);
+        let update = connected
+            .accessibility_update(&mut state, parent, parent)
+            .unwrap();
+        let text = &update
+            .nodes
+            .iter()
+            .find(|(_, node)| node.role() == Role::TextRun)
+            .unwrap()
+            .1;
+        assert_eq!(text.value(), Some("\u{10000}"));
+        assert_eq!(text.character_lengths(), [4]);
+        assert!(update.nodes.iter().all(|(_, node)| node.bounds().is_none()
+            && node.font_family().is_none()
+            && node.font_size().is_none()));
+        let position = connected
+            .access_position(&state, Cursor::new(0, Affinity::After))
+            .unwrap();
+        let next_id = state.next_id;
+        let error = disconnected
+            .accessibility_update(&mut state, parent, parent)
+            .expect_err("the isolated high original atom is unrepresentable by host UTF-8");
+        assert_eq!(
+            error.detail(),
+            Some(&ErrorDetail::AccessibilityIllFormedSource {
+                index: 0,
+                unit: 0xd800
+            })
+        );
+        assert_eq!(state.next_id, next_id);
+        assert_eq!(
+            connected
+                .access_position(&state, Cursor::new(0, Affinity::After))
+                .unwrap(),
+            position
+        );
+        assert_eq!(
+            disconnected
+                .access_position(&state, Cursor::new(0, Affinity::After))
+                .unwrap_err()
+                .detail(),
+            Some(&ErrorDetail::AccessibilityBindingMismatch)
+        );
+        let repeat = connected
+            .accessibility_update(&mut state, parent, parent)
+            .unwrap();
+        assert_eq!(
+            repeat.nodes.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+            update.nodes.iter().map(|(id, _)| *id).collect::<Vec<_>>()
+        );
+        let raw = crate::AnalyzedSource::new(
+            Source::new(Text::from_code_units(vec![0xd800, 0xdc00])),
+            Style::default(),
+        )
+        .unwrap();
+        let raw_update = raw
+            .accessibility_update(&mut Accessibility::new(10), parent, parent)
+            .unwrap();
+        assert_eq!(
+            raw_update
+                .nodes
+                .iter()
+                .filter_map(|(_, node)| node.value())
+                .collect::<Vec<_>>(),
+            ["\u{10000}"]
+        );
+    }
 
     #[test]
     fn host_text_uses_exact_original_scalars_and_refuses_isolated_units() {
         let text = Text::from_code_units(vec![0xd83d, 0xde00, 0xfffd, 0x00a6]);
-        assert_eq!(original_host_text(&text).unwrap(), "😀\u{fffd}\u{a6}");
+        let analyzed = crate::AnalyzedSource::new(Source::new(text), Style::default()).unwrap();
+        assert_eq!(
+            original_host_text(&analyzed.inner).unwrap(),
+            "😀\u{fffd}\u{a6}"
+        );
         for (units, index, unit) in [
             (vec![0xd83d, 0xde00, 0xd800], 2, 0xd800),
             (vec![0x41, 0xdc00], 1, 0xdc00),
         ] {
             assert_eq!(
-                original_host_text(&Text::from_code_units(units))
-                    .unwrap_err()
-                    .detail(),
+                original_host_text(
+                    &crate::AnalyzedSource::new(
+                        Source::new(Text::from_code_units(units)),
+                        Style::default()
+                    )
+                    .unwrap()
+                    .inner
+                )
+                .unwrap_err()
+                .detail(),
                 Some(&ErrorDetail::AccessibilityIllFormedSource { index, unit })
             );
         }

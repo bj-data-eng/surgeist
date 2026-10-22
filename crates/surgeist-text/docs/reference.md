@@ -113,10 +113,10 @@ Text slices partition the sole processed backing exactly once under either query
 No
 separator, alternative content, U+FFFC or opportunity is invented. This is partial
 source-local plaintext, not a document serializer or a line-analysis result.
-Paragraph layout still rejects Collapse, Discard and PreserveSpaces precisely; standalone
-Preserve layout is unchanged and does not secretly consume normalized source.
-Trim, preparation,
-opportunity analysis and layout-selected line finalization remain unfinished.
+The explicit composed paragraph constructor consumes this same correspondence.
+Standalone Preserve retains its identity correspondence and does not silently
+normalize delimiters. General trim, opportunity rules and writing-mode profiles
+remain bounded by their actual admitted capabilities; see [composed lines](composed-lines.md).
 
 ### Lexical Collapse
 
@@ -171,7 +171,7 @@ No operation publishes partial registration or clears a cache on refusal.
 Registration does not define unregister, family replacement, or a new missing-
 glyph policy. These are catalogue capabilities. The private owned engine retains the selected
 resources through actual preparation, selected-line finalization and placement;
-these phases do not yet expose a public mixed-line preparation protocol.
+the public mixed-line protocol lends those actual phases without copying glyph packets.
 
 ## Glyph-free associated-font metrics
 
@@ -312,7 +312,7 @@ ill-formed UTF-16 cannot form a host string and refuses before state publication
 
 ## Style support
 
-[TextStyleFeature::ALL and support()](../src/style_support.rs) enumerate the
+[TextStyleFeature::ALL and support(phase)](../src/style_support.rs) enumerate the
 current style-facing contract. This is a capability report, not a CSS parser or
 style resolver.
 
@@ -321,7 +321,7 @@ style resolver.
 | Supported | Family lists; named/numeric weights; basic/expanded stretch; normal/italic/oblique slant; feature and variation settings; font size; line height; letter/word spacing; concrete text color; locale. |
 | Supported | Preserved whitespace; word-break, wrapping, and overflow-wrap controls; paragraph alignment; supported indent shapes; inline-box alignment facts; underline/strikethrough; decoration offset, thickness, and concrete color; concrete selection color. |
 | Unsupported: paragraph direction control | Explicit text direction. Automatic direction still resolves to left-to-right or right-to-left in `Layout::direction()`. |
-| Unsupported: source-range policy | Whitespace collapse. Discard/PreserveSpaces execute in the separate source phase; paragraph layout does not yet consume it. |
+| Phase-specific | Collapse, Discard and PreserveSpaces execute through explicit processed-paragraph capture; raw standalone layout requires Preserve. |
 | Unsupported: font or text-flow policy | Non-normal font variants, text overflow behavior beyond the accepted default, last-line alignment behavior beyond the accepted default, and text transformation. |
 | Unsupported: decoration policy | Overline and decoration styles beyond the exposed solid decoration contract. |
 | Unsupported: color resolution | Symbolic text and decoration colors. |
@@ -330,8 +330,9 @@ style resolver.
 `FontVariant::Normal`, `TextOverflow::Clip`, `TextAlignLast::Auto`, and
 `TextTransform::None` are the exposed default values. Their acceptance does not
 mean the broader feature is implemented; `Clip` does not add a clipping stage to
-the layout pipeline. Explicit direction and collapsed whitespace produce typed
-`UnsupportedFeature` errors during validation.
+the layout pipeline. Explicit `Style.direction` and non-Preserve raw standalone
+whitespace still refuse. Composed base direction is a separate captured paragraph
+fact, and `TextStylePhase::ProcessedParagraph` reports its executed whitespace modes.
 
 Inline-box `VerticalAlign` values are validated, cached, and preserved in output
 facts. The [standalone engine](../src/engine/layout/mod.rs) retains box kind, source
@@ -347,3 +348,9 @@ render and accessibility cases. [AGENTS.md](../AGENTS.md) owns the repository
 command inventory. [Getting started](getting-started.md) gives the focused default
 layout proof; enabling an optional feature requires its declared dependencies to
 be available locally as well.
+
+## Composed lines
+
+[The composed-line guide](composed-lines.md) describes actual preparation-issued
+handles, selected spacing, feedback, authentic original/control/replacement
+fragments, explicit baseline placement and placement-bound positions.

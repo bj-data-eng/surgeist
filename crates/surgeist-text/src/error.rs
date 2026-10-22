@@ -58,6 +58,8 @@ pub enum ErrorCode {
     ShapingRefused,
     /// A logical or canonical geometry conversion lost its numeric category.
     InvalidTextNumeric,
+    /// Invalid phase capability, captured occurrence, or complete line context.
+    InvalidTextProtocol,
     FontLoadFailed,
     FontGenerationExhausted,
     /// An edit cannot publish another revision of the source.
@@ -85,6 +87,10 @@ pub enum ErrorCode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErrorDetail {
+    /// Actual phase association or request admission failure.
+    InvalidTextProtocol {
+        reason: super::ProtocolError,
+    },
     /// Actual glyph outline admission failed without publishing geometry.
     FontOutline {
         /// Requested glyph in the retained face.
@@ -486,6 +492,7 @@ pub enum ShapingRefusalReason {
 /// Operation at which geometry was rejected.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TextNumericPhase {
+    Selection,
     Preparation,
     Shaping,
     Finalization,

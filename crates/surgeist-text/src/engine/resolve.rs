@@ -92,6 +92,18 @@ pub(crate) fn resolve(
         .collect()
 }
 
+/// Resolves the actual captured base style even when no body span wins it.
+/// The returned row joins the canonical preparation style table.
+pub(crate) fn resolve_default(
+    collection: &mut Collection,
+    style: &ValidatedStyle,
+    scale: f32,
+) -> Result<ResolvedStyleRun> {
+    Ok(ResolvedStyleRun {
+        style: resolve_style(collection, style, scale)?,
+    })
+}
+
 fn resolve_style(
     collection: &mut Collection,
     validated: &ValidatedStyle,

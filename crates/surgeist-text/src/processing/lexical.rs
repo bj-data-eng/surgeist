@@ -46,8 +46,9 @@ pub(super) fn execute(
     breaks: &DocumentSegmentBreaks,
     modes: &[EffectiveInterval],
     box_order: &[usize],
+    extra_barriers: &[usize],
 ) -> Result<(Vec<u16>, Vec<MappingPiece>)> {
-    let mut tokens = tokenize(source, breaks, modes, box_order)?;
+    let mut tokens = tokenize(source, breaks, modes, box_order, extra_barriers)?;
     // Remove eligible runs after and before every surviving original delimiter,
     // including preserved delimiters before their eventual LF/SPACE emission.
     around_breaks(tokens.iter_mut());
@@ -142,6 +143,7 @@ fn tokenize(
     breaks: &DocumentSegmentBreaks,
     modes: &[EffectiveInterval],
     box_order: &[usize],
+    extra_barriers: &[usize],
 ) -> Result<Vec<Token>> {
     let mut barriers = Vec::new();
     for &ordinal in box_order {
@@ -151,6 +153,10 @@ fn tokenize(
             barriers.push(box_.index());
         }
     }
+    reserve(&mut barriers, extra_barriers.len())?;
+    barriers.extend_from_slice(extra_barriers);
+    barriers.sort_unstable();
+    barriers.dedup();
     let bidi = CodePointSetData::new::<props::BidiControl>();
     let units = source.text().code_units();
     let mut tokens = Vec::new();

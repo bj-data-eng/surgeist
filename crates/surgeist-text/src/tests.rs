@@ -264,20 +264,20 @@ fn preserve_whitespace_flow_keeps_source_ranges_stable() {
 #[test]
 fn flow_policy_support_matrix_keeps_behavior_gaps_unsupported() {
     assert_eq!(
-        TextStyleFeature::TextOverflow.support(),
+        TextStyleFeature::TextOverflow.support(crate::TextStylePhase::Standalone),
         TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresTextFlowPolicy)
     );
     assert_eq!(
-        TextStyleFeature::TextAlignLast.support(),
+        TextStyleFeature::TextAlignLast.support(crate::TextStylePhase::Standalone),
         TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresTextFlowPolicy)
     );
     assert_eq!(
-        TextStyleFeature::TextTransform.support(),
+        TextStyleFeature::TextTransform.support(crate::TextStylePhase::Standalone),
         TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresTextFlowPolicy)
     );
     assert_eq!(
-        TextStyleFeature::WhiteSpaceCollapse.support(),
-        TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresSourceRangePreservation)
+        TextStyleFeature::WhiteSpaceCollapse.support(crate::TextStylePhase::Standalone),
+        TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresProcessedSourceLayout)
     );
 }
 
@@ -369,7 +369,7 @@ fn font_weight_value_rejects_invalid_values() {
 #[test]
 fn text_style_support_reports_numeric_font_weight_supported() {
     assert_eq!(
-        TextStyleFeature::NumericFontWeight.support(),
+        TextStyleFeature::NumericFontWeight.support(crate::TextStylePhase::Standalone),
         TextStyleSupport::Supported
     );
 }
@@ -411,7 +411,7 @@ fn font_width_ratio_rejects_invalid_values() {
 #[test]
 fn text_style_support_reports_expanded_font_stretch_supported() {
     assert_eq!(
-        TextStyleFeature::ExpandedFontStretch.support(),
+        TextStyleFeature::ExpandedFontStretch.support(crate::TextStylePhase::Standalone),
         TextStyleSupport::Supported
     );
 }
@@ -429,7 +429,7 @@ fn font_variant_normal_is_default_noop() {
 
     assert_eq!(validated.authored().font.variant, FontVariant::Normal);
     assert_eq!(
-        TextStyleFeature::FontVariant.support(),
+        TextStyleFeature::FontVariant.support(crate::TextStylePhase::Standalone),
         TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresFontPolicy)
     );
 }
@@ -437,7 +437,7 @@ fn font_variant_normal_is_default_noop() {
 #[test]
 fn root_must_reject_non_normal_font_variants_before_text() {
     assert_eq!(
-        TextStyleFeature::FontVariant.support(),
+        TextStyleFeature::FontVariant.support(crate::TextStylePhase::Standalone),
         TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresFontPolicy)
     );
 }
@@ -536,23 +536,23 @@ fn default_style_preserves_authored_whitespace() {
 #[test]
 fn text_style_support_matrix_reports_current_support() {
     assert_eq!(
-        TextStyleFeature::FontFamilyList.support(),
+        TextStyleFeature::FontFamilyList.support(crate::TextStylePhase::Standalone),
         TextStyleSupport::Supported
     );
     assert_eq!(
-        TextStyleFeature::FontSize.support(),
+        TextStyleFeature::FontSize.support(crate::TextStylePhase::Standalone),
         TextStyleSupport::Supported
     );
     assert_eq!(
-        TextStyleFeature::WhiteSpacePreserve.support(),
+        TextStyleFeature::WhiteSpacePreserve.support(crate::TextStylePhase::Standalone),
         TextStyleSupport::Supported
     );
     assert_eq!(
-        TextStyleFeature::WhiteSpaceCollapse.support(),
-        TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresSourceRangePreservation)
+        TextStyleFeature::WhiteSpaceCollapse.support(crate::TextStylePhase::Standalone),
+        TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresProcessedSourceLayout)
     );
     assert_eq!(
-        TextStyleFeature::TextOverflow.support(),
+        TextStyleFeature::TextOverflow.support(crate::TextStylePhase::Standalone),
         TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresTextFlowPolicy)
     );
     assert!(
@@ -654,7 +654,7 @@ fn whitespace_collapse_reports_explicit_error() {
         error.detail(),
         Some(&ErrorDetail::UnsupportedTextStyle {
             feature: TextStyleFeature::WhiteSpaceCollapse,
-            reason: UnsupportedTextStyleReason::RequiresSourceRangePreservation,
+            reason: UnsupportedTextStyleReason::RequiresProcessedSourceLayout,
         })
     );
 }
@@ -790,7 +790,12 @@ fn public_text_style_contract_is_enumerable() {
     let unsupported: Vec<_> = TextStyleFeature::ALL
         .iter()
         .copied()
-        .filter(|feature| matches!(feature.support(), TextStyleSupport::Unsupported(_)))
+        .filter(|feature| {
+            matches!(
+                feature.support(crate::TextStylePhase::Standalone),
+                TextStyleSupport::Unsupported(_)
+            )
+        })
         .collect();
 
     assert!(TextStyleFeature::ALL.contains(&TextStyleFeature::ExplicitTextDirection));
@@ -804,17 +809,17 @@ fn public_text_style_contract_is_enumerable() {
     assert!(!unsupported.contains(&TextStyleFeature::InlineBoxVerticalAlign));
     assert!(!unsupported.contains(&TextStyleFeature::SelectionColor));
     assert_eq!(
-        TextStyleFeature::InlineBoxVerticalAlign.support(),
+        TextStyleFeature::InlineBoxVerticalAlign.support(crate::TextStylePhase::Standalone),
         TextStyleSupport::Supported,
         "text exposes vertical-align as requested inline-box alignment facts"
     );
     assert_eq!(
-        TextStyleFeature::SelectionColor.support(),
+        TextStyleFeature::SelectionColor.support(crate::TextStylePhase::Standalone),
         TextStyleSupport::Supported,
         "concrete selection color is projected through SelectionPaint"
     );
     assert_eq!(
-        TextStyleFeature::TextIndent.support(),
+        TextStyleFeature::TextIndent.support(crate::TextStylePhase::Standalone),
         TextStyleSupport::Supported,
         "text indent is generally supported; only one value shape is rejected"
     );
@@ -1220,23 +1225,23 @@ fn selection_paint_rejects_invalid_brush() {
 #[test]
 fn support_matrix_reports_concrete_selection_color_supported() {
     assert_eq!(
-        TextStyleFeature::SelectionColor.support(),
+        TextStyleFeature::SelectionColor.support(crate::TextStylePhase::Standalone),
         TextStyleSupport::Supported
     );
     assert_eq!(
-        TextStyleFeature::Overline.support(),
+        TextStyleFeature::Overline.support(crate::TextStylePhase::Standalone),
         TextStyleSupport::Unsupported(
             UnsupportedTextStyleReason::RequiresDecorationSelectionPolicy
         )
     );
     assert_eq!(
-        TextStyleFeature::DecorationStyle.support(),
+        TextStyleFeature::DecorationStyle.support(crate::TextStylePhase::Standalone),
         TextStyleSupport::Unsupported(
             UnsupportedTextStyleReason::RequiresDecorationSelectionPolicy
         )
     );
     assert_eq!(
-        TextStyleFeature::SymbolicDecorationColor.support(),
+        TextStyleFeature::SymbolicDecorationColor.support(crate::TextStylePhase::Standalone),
         TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresColorResolution)
     );
 }
@@ -1489,11 +1494,11 @@ fn inline_metric_facts_report_requested_baseline_shift() {
 #[test]
 fn support_matrix_reports_inline_box_vertical_align_supported() {
     assert_eq!(
-        TextStyleFeature::InlineBoxVerticalAlign.support(),
+        TextStyleFeature::InlineBoxVerticalAlign.support(crate::TextStylePhase::Standalone),
         TextStyleSupport::Supported
     );
     assert_eq!(
-        TextStyleFeature::VerticalAlign.support(),
+        TextStyleFeature::VerticalAlign.support(crate::TextStylePhase::Standalone),
         TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresBroadVerticalAlignPolicy)
     );
 }

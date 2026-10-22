@@ -17,7 +17,7 @@ use icu_properties::props::Script;
 use skrifa::raw::TableProvider;
 
 use super::{
-    LineSelection, PreparedData, ShapingInput,
+    ShapingInput,
     analysis::{
         AnalysisDataSources,
         cluster::{Char, CharCluster, Status},
@@ -30,8 +30,8 @@ use super::{
     resolve::ResolvedStyle,
 };
 use crate::{
-    Error, ErrorCode, ErrorDetail, FontData, FontSynthesis, InlineBoxKind, LineHeight, Range,
-    Result, TextNumericError, TextNumericPhase,
+    Error, ErrorCode, ErrorDetail, FontData, FontSynthesis, LineHeight, Range, Result,
+    TextNumericError, TextNumericPhase,
 };
 
 pub(crate) struct ShapeContext {
@@ -79,40 +79,20 @@ pub(crate) fn shape(
     let mut output = ShapedData::default();
     let sources = AnalysisDataSources;
     let barriers: BTreeSet<_> = input
-        .boxes
+        .projection
+        .barriers
         .iter()
-        .filter(|item| item.kind() == InlineBoxKind::InFlow)
-        .map(|item| item.index())
+        .map(|at| {
+            input
+                .projection
+                .atoms
+                .partition_point(|atom| atom.source.end <= *at)
+        })
         .collect();
     let count = input.projection.atoms.len();
-    // Actual box-only occurrences provide their own size; they do not require
-    // synthetic text or an invented font-metric row.
-    if count == 0 && input.boxes.is_empty() {
-        let style = &input.styles[0].style;
-        configure_query(&mut query, style, Script::Latin, false, &sources);
-        let mut selected = None;
-        query.matches_with(|font| {
-            selected = Some(SelectedFont {
-                font: font.clone(),
-                attrs: attributes(style),
-            });
-            QueryStatus::Stop
-        });
-        let selected = selected.ok_or_else(no_font)?;
-        append_selected(
-            &input,
-            SelectedSegment {
-                atoms: 0..0,
-                style: 0,
-                script: Script::Latin,
-                level: input.analysis.base_level,
-                font: selected,
-                context: 0..0,
-            },
-            scratch,
-            &mut output,
-        )?;
-    } else if count != 0 {
+    // Empty/default-font metrics are an explicit preparation-profile operation.
+    // Body shaping never infers that policy from source content or body style.
+    if count != 0 {
         let mut item_start = 0;
         let mut script = input
             .analysis
@@ -136,11 +116,10 @@ pub(crate) fn shape(
                 } else {
                     script
                 };
-                let anchor = input.projection.atoms[item_end].source.start;
                 if input.analysis.levels[item_end] != level
                     || next_script != script
                     || !same_shaping_style(style, &input.styles[next_style].style)
-                    || barriers.contains(&anchor)
+                    || barriers.contains(&item_end)
                 {
                     break;
                 }
@@ -156,7 +135,7 @@ pub(crate) fn shape(
                 .analysis
                 .graphemes
                 .partition_point(|range| range.start < item_end);
-            let context = bounded_context(&input, item_start..item_end, 0..count, &barriers);
+            let context = bounded_context(item_start..item_end, 0..count, &barriers);
             for grapheme in &input.analysis.graphemes[grapheme_start..grapheme_end] {
                 let range = grapheme.start.max(item_start)..grapheme.end.min(item_end);
                 fill_cluster(&input, range.clone(), &mut scratch.cluster);
@@ -199,77 +178,154 @@ pub(crate) fn shape(
             item_start = item_end;
         }
     }
-    install_mixed_order(&mut output, input.boxes, &input.analysis.box_levels);
+    install_mixed_order(&mut output, &input);
     Ok(output)
+}
+
+/// Queries and retains one actual zero-atom font strut under the original
+/// preparation. The chosen style is an actual canonical style-table row.
+pub(crate) fn default_metrics(
+    mut query: Query<'_>,
+    input: &ShapingInput<'_>,
+    style_index: usize,
+    scratch: &mut ShapeContext,
+) -> Result<PreparedRun> {
+    let style = &input.styles[style_index].style;
+    configure_query(
+        &mut query,
+        style,
+        Script::Latin,
+        false,
+        &AnalysisDataSources,
+    );
+    let mut selected = None;
+    query.matches_with(|font| {
+        selected = Some(SelectedFont {
+            font: font.clone(),
+            attrs: attributes(style),
+        });
+        QueryStatus::Stop
+    });
+    let mut output = ShapedData::default();
+    append_selected(
+        input,
+        SelectedSegment {
+            atoms: 0..0,
+            style: style_index,
+            script: Script::Latin,
+            level: input.analysis.base_level,
+            font: selected.ok_or_else(no_font)?,
+            context: 0..0,
+        },
+        scratch,
+        &mut output,
+    )?;
+    Ok(output
+        .empty_run
+        .expect("the actual zero-atom operation produces its metrics row"))
 }
 
 /// A selected line reshapes with its retained original faces and actual selected
 /// boundary context. It never queries the current catalogue or redoes fallback.
 pub(crate) fn finalize(
-    prepared: &PreparedData,
-    selection: &LineSelection,
+    selected: &crate::protocol::selection::SelectedData,
     scratch: &mut ShapeContext,
-) -> Result<ShapedData> {
+) -> Result<(
+    ShapedData,
+    std::sync::Arc<crate::protocol::prepared::SelectedMapping>,
+)> {
+    use crate::protocol::prepared::PresentationUnitKind;
+    let prepared = &selected.prepared;
+    let presentation = &selected.presentation;
     let input = ShapingInput {
-        projection: &prepared.analyzed.projection,
-        analysis: &prepared.analyzed.analysis,
+        projection: &presentation.projection,
+        analysis: &presentation.analysis,
         styles: &prepared.styles,
-        boxes: prepared.analyzed.source.boxes(),
+        boxes: prepared.analyzed.processed.source().boxes(),
         font_catalogue: &prepared.font_catalogue,
+        paragraph: &prepared.analyzed.paragraph,
     };
-    let atoms = &prepared.analyzed.projection.atoms;
-    let first = atoms.partition_point(|atom| atom.source.end <= selection.source.start);
-    let end = atoms.partition_point(|atom| atom.source.start < selection.source.end);
     let mut output = ShapedData::default();
-    if first == end {
-        output.empty_run = prepared.shaped.empty_run.clone().or_else(|| {
-            prepared
-                .shaped
-                .runs
-                .iter()
-                .find(|run| {
-                    run.source.start <= selection.source.start
-                        && run.source.end >= selection.source.end
-                })
-                .cloned()
-        });
+    let native = selected.metric_policy == crate::protocol::selection::LineMetricPolicy::Native;
+    if native {
+        // This is the actual base-style strut retained by Native+DefaultFont.
+        // AllocatedContributions has no such row and never borrows body metrics.
+        output.empty_run = prepared.shaped.empty_run.clone();
+    }
+    if input.projection.atoms.is_empty() {
+        if !native {
+            let boundary = &prepared.tables.boundaries[selected.request.start.index];
+            output.empty_run = prepared.shaped.empty_run.clone().or_else(|| {
+                prepared
+                    .shaped
+                    .runs
+                    .iter()
+                    .find(|run| run.atoms.contains(&boundary.atom))
+                    .or_else(|| prepared.shaped.runs.last())
+                    .cloned()
+            });
+        }
     } else {
         let barriers: BTreeSet<_> = input
-            .boxes
+            .projection
+            .barriers
             .iter()
-            .filter(|item| item.kind() == InlineBoxKind::InFlow)
-            .map(|item| item.index())
+            .map(|at| {
+                input
+                    .projection
+                    .atoms
+                    .partition_point(|atom| atom.source.end <= *at)
+            })
             .collect();
-        let run_start = prepared
-            .shaped
-            .runs
-            .partition_point(|run| run.atoms.end <= first);
-        let run_end = prepared
-            .shaped
-            .runs
-            .partition_point(|run| run.atoms.start < end);
-        for run in &prepared.shaped.runs[run_start..run_end] {
-            let range = run.atoms.start.max(first)..run.atoms.end.min(end);
-            if range.is_empty() {
-                continue;
-            }
-            let script = run.script;
-            let context = bounded_context(&input, range.clone(), first..end, &barriers);
-            append_retained_run(&input, range, run, script, context, scratch, &mut output)?;
+        let allowed = 0..input.projection.atoms.len();
+        for assignment in &presentation.assignments {
+            let captured = assignment.alternative.map_or(&prepared.shaped, |index| {
+                &prepared.alternative_shapes[index].shaped
+            });
+            let run = &captured.runs[assignment.run];
+            let context = bounded_context(assignment.atoms.clone(), allowed.clone(), &barriers);
+            append_retained_run(
+                &input,
+                assignment.atoms.clone(),
+                run,
+                run.script,
+                context,
+                scratch,
+                &mut output,
+            )?;
         }
     }
-    let mut items = Vec::new();
-    for item in &prepared.shaped.items[selection.items.clone()] {
-        match *item {
-            ShapedItem::InlineBox { occurrence, level } => {
-                items.push(ShapedItem::InlineBox { occurrence, level })
+    // Each real atom receives one extracted cluster; ligature components lend
+    // their actual shared glyph association rather than duplicating glyphs.
+    let mut clusters = output.clusters.iter().enumerate().peekable();
+    for (unit, value) in presentation.units.iter().enumerate() {
+        match value.kind {
+            PresentationUnitKind::Atomic { occurrence } => {
+                if input.boxes[occurrence].kind() == crate::InlineBoxKind::InFlow {
+                    output.items.push(ShapedItem::InlineBox {
+                        occurrence,
+                        level: value.level,
+                    });
+                }
             }
-            ShapedItem::TextCluster(_) => {}
+            _ if value.atoms.is_empty() => output.items.push(ShapedItem::Anchor {
+                unit,
+                level: value.level,
+            }),
+            _ => {
+                while let Some(&(index, cluster)) = clusters.peek() {
+                    if cluster.atoms.start >= value.atoms.end {
+                        break;
+                    }
+                    if cluster.atoms.start >= value.atoms.start {
+                        output.items.push(ShapedItem::TextCluster(index));
+                    }
+                    clusters.next();
+                }
+            }
         }
     }
-    output.items.extend(items);
-    install_text_order(&mut output, input.boxes);
-    Ok(output)
+    Ok((output, std::sync::Arc::clone(&presentation.mapping)))
 }
 
 fn attributes(style: &ResolvedStyle) -> Attributes {
@@ -447,21 +503,28 @@ fn logical_multiply(field: &'static str, left: f64, right: f64) -> Result<f64> {
     Ok(product)
 }
 
-fn install_mixed_order(data: &mut ShapedData, boxes: &[crate::InlineBox], levels: &[u8]) {
-    data.items
-        .extend((0..boxes.len()).map(|occurrence| ShapedItem::InlineBox {
-            occurrence,
-            level: levels[occurrence],
-        }));
-    install_text_order(data, boxes);
-}
-
-fn install_text_order(data: &mut ShapedData, boxes: &[crate::InlineBox]) {
+fn install_mixed_order(data: &mut ShapedData, input: &ShapingInput<'_>) {
     data.items
         .extend((0..data.clusters.len()).map(ShapedItem::TextCluster));
+    let mut positions = vec![(0, 0); input.boxes.len()];
+    for (order, anchor) in input.paragraph.anchor_order.iter().enumerate() {
+        if let crate::protocol::paragraph::ParagraphAnchorItem::Atomic(occurrence) = anchor.item {
+            positions[occurrence] = (
+                super::analysis::anchor_atom(order, input.paragraph, input.boxes, input.projection),
+                order,
+            );
+            data.items.push(ShapedItem::InlineBox {
+                occurrence,
+                level: input.analysis.box_levels[occurrence],
+            });
+        }
+    }
     data.items.sort_by_key(|item| match *item {
-        ShapedItem::TextCluster(cluster) => (data.clusters[cluster].source.start, 1, cluster),
-        ShapedItem::InlineBox { occurrence, .. } => (boxes[occurrence].index(), 0, occurrence),
+        ShapedItem::TextCluster(cluster) => (data.clusters[cluster].atoms.start, 1, cluster),
+        ShapedItem::InlineBox { occurrence, .. } => {
+            (positions[occurrence].0, 0, positions[occurrence].1)
+        }
+        ShapedItem::Anchor { unit, .. } => (0, 0, unit),
     });
 }
 
@@ -725,7 +788,6 @@ fn atom_bytes(input: &ShapingInput<'_>, atoms: IndexRange<usize>) -> IndexRange<
 }
 
 fn bounded_context(
-    input: &ShapingInput<'_>,
     run: IndexRange<usize>,
     mut allowed: IndexRange<usize>,
     barriers: &BTreeSet<usize>,
@@ -733,23 +795,11 @@ fn bounded_context(
     if run.is_empty() {
         return 0..0;
     }
-    let start = input.projection.atoms[run.start].source.start;
-    let end = input.projection.atoms[run.end - 1].source.end;
-    if let Some(anchor) = barriers.range(..=start).next_back() {
-        allowed.start = allowed.start.max(
-            input
-                .projection
-                .atoms
-                .partition_point(|atom| atom.source.start < *anchor),
-        );
+    if let Some(&anchor) = barriers.range(..=run.start).next_back() {
+        allowed.start = allowed.start.max(anchor);
     }
-    if let Some(anchor) = barriers.range(end..).next() {
-        allowed.end = allowed.end.min(
-            input
-                .projection
-                .atoms
-                .partition_point(|atom| atom.source.start < *anchor),
-        );
+    if let Some(&anchor) = barriers.range(run.end..).next() {
+        allowed.end = allowed.end.min(anchor);
     }
     allowed
 }
@@ -834,14 +884,6 @@ fn extract_run(
             ));
         }
     }
-    let source = if request.atoms.is_empty() {
-        Range::new(0, 0)
-    } else {
-        Range::new(
-            input.projection.atoms[request.atoms.start].source.start,
-            input.projection.atoms[request.atoms.end - 1].source.end,
-        )
-    };
     let scale = f64::from(style.font_size) / f64::from(metrics.units_per_em());
     let run = PreparedRun {
         font: request.font.clone(),
@@ -852,7 +894,6 @@ fn extract_run(
         style: request.style,
         level: request.level,
         script: request.script,
-        source,
         atoms: request.atoms.clone(),
         metrics: run_metrics,
     };
@@ -906,10 +947,7 @@ fn extract_run(
         let end = pair[1];
         let atom_start = request.atoms.start + start;
         let atom_end = request.atoms.start + end;
-        let cluster_source = Range::new(
-            input.projection.atoms[atom_start].source.start,
-            input.projection.atoms[atom_end - 1].source.end,
-        );
+        let cluster_source = original_extent(&input.projection.atoms[atom_start..atom_end]);
         let first_glyph = output.glyphs.len();
         let mut advance = 0.0_f64;
         let provider_glyphs = groups.get(&start).cloned().unwrap_or(0..0);
@@ -982,6 +1020,18 @@ fn extract_run(
     }
     output.runs.push(run);
     Ok(())
+}
+
+fn original_extent(atoms: &[super::OriginalAtom]) -> Range {
+    let Some(first) = atoms.first() else {
+        return Range::new(0, 0);
+    };
+    atoms.iter().skip(1).fold(first.source, |extent, atom| {
+        Range::new(
+            extent.start.min(atom.source.start),
+            extent.end.max(atom.source.end),
+        )
+    })
 }
 
 fn whitespace(code_point: u32) -> Whitespace {

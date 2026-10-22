@@ -88,9 +88,8 @@ impl Stats {
 pub struct Key {
     source: SourceKey,
     styles: StyleKey,
-    options: OptionsKey,
+    basis: RequestBasisKey,
     font_catalogue: FontCatalogueIdentity,
-    pub(crate) options_width: Option<OrderedF64>,
 }
 
 impl Key {
@@ -110,8 +109,8 @@ impl Key {
         font_catalogue: &FontCatalogueIdentity,
     ) -> Self {
         Self::from_parts(
-            &analyzed.source,
-            &analyzed.default_style,
+            analyzed.processed.source(),
+            analyzed.processed.base_style(),
             options,
             font_catalogue,
         )
@@ -127,9 +126,11 @@ impl Key {
         Self {
             source: SourceKey::new(source.id(), source.revision(), stable_hash_source(source)),
             styles: StyleKey::new(0, stable_hash_style(style, source)),
-            options: OptionsKey::new(stable_hash_options(authored_options)),
+            basis: RequestBasisKey::Standalone {
+                options: OptionsKey::new(stable_hash_options(authored_options)),
+                width: authored_options.width.map(OrderedF64),
+            },
             font_catalogue: font_catalogue.clone(),
-            options_width: authored_options.width.map(OrderedF64),
         }
     }
 
@@ -144,8 +145,54 @@ impl Key {
     }
 
     #[must_use]
-    pub const fn options(&self) -> OptionsKey {
-        self.options
+    pub const fn options(&self) -> Option<OptionsKey> {
+        match &self.basis {
+            RequestBasisKey::Standalone { options, .. } => Some(*options),
+            RequestBasisKey::ExplicitPlacement { .. } => None,
+        }
+    }
+
+    pub(crate) fn from_placement(request: &crate::PlacementRequest) -> Self {
+        let analyzed = &request.prepared.inner.analyzed;
+        let source = analyzed.processed.source();
+        let style = analyzed.processed.base_style();
+        Self {
+            source: SourceKey::new(source.id(), source.revision(), stable_hash_source(source)),
+            styles: StyleKey::new(0, stable_hash_style(style, source)),
+            font_catalogue: request.prepared.inner.font_catalogue.clone(),
+            basis: RequestBasisKey::ExplicitPlacement {
+                prepared: request.prepared.clone(),
+                coverage: match &request.coverage {
+                    crate::PlacementCoverage::WholeParagraph => ExplicitCoverageKey::Whole,
+                    crate::PlacementCoverage::Range { start, end } => ExplicitCoverageKey::Range {
+                        start: start.clone(),
+                        end: end.clone(),
+                    },
+                },
+                lines: request
+                    .lines
+                    .iter()
+                    .map(|placement| ExplicitLineKey {
+                        line: placement.line.clone(),
+                        anchor: [
+                            OrderedF64(placement.anchor.inline_origin),
+                            OrderedF64(placement.anchor.baseline),
+                        ],
+                        orientation: placement.orientation,
+                        atomics: placement
+                            .atomics
+                            .iter()
+                            .map(|atomic| ExplicitAtomicKey {
+                                occurrence: atomic.occurrence.clone(),
+                                border: rect_key(atomic.border),
+                                content: rect_key(atomic.content),
+                                baseline: OrderedF64(atomic.baseline),
+                            })
+                            .collect(),
+                    })
+                    .collect(),
+            },
+        }
     }
 
     #[must_use]
@@ -158,6 +205,51 @@ impl Key {
     pub const fn font_catalogue(&self) -> &FontCatalogueIdentity {
         &self.font_catalogue
     }
+}
+
+/// Standalone options and explicit placement are different actual requests.
+/// No default Options or content hash manufactures explicit phase authority.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+enum RequestBasisKey {
+    Standalone {
+        options: OptionsKey,
+        width: Option<OrderedF64>,
+    },
+    ExplicitPlacement {
+        prepared: crate::PreparedText,
+        coverage: ExplicitCoverageKey,
+        lines: Vec<ExplicitLineKey>,
+    },
+}
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+enum ExplicitCoverageKey {
+    Whole,
+    Range {
+        start: crate::PreparedBoundary,
+        end: crate::PreparedBoundary,
+    },
+}
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct ExplicitLineKey {
+    line: crate::FinalizedLine,
+    anchor: [OrderedF64; 2],
+    orientation: crate::LineOrientation,
+    atomics: Vec<ExplicitAtomicKey>,
+}
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct ExplicitAtomicKey {
+    occurrence: crate::PreparedAtomic,
+    border: [OrderedF64; 4],
+    content: [OrderedF64; 4],
+    baseline: OrderedF64,
+}
+fn rect_key(rect: crate::Rect) -> [OrderedF64; 4] {
+    [
+        OrderedF64(rect.origin.x),
+        OrderedF64(rect.origin.y),
+        OrderedF64(rect.size.width),
+        OrderedF64(rect.size.height),
+    ]
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

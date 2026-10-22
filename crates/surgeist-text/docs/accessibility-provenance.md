@@ -14,7 +14,11 @@ own immutable layout identity and exact UTF-16 source. Selectable units respect
 source graphemes and actual provider clusters, rather than upstream style-index
 splits. Host strings remain UTF-8 as required by AccessKit. Checked unit lengths
 and node identities, off-side publication, mixed-style metadata summaries, and
-source-unit affinity/selection mappings are owned adaptations. The owned engine now supplies original-atom analysis, actual shaping and finalized
-clusters. Source-only and placed projection share that same analysis identity;
-the public composed preparation/selected-line protocol remains separate work.
+source-unit affinity/selection mappings are owned adaptations. The owned engine
+supplies original-atom analysis, actual shaping and finalized clusters. Host
+strings use the same original semantic atoms as the host byte projection, so a
+real source barrier cannot fuse surrogate halves during accessibility conversion.
+Source-only and placed projection share that same analysis identity. Composed
+lines retain their exact prepared, selected and placed associations; they do not
+create another accessibility source owner.
 See the [complete mechanism derivation](owned-engine-provenance.md).
