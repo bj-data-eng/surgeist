@@ -418,3 +418,6 @@ mod font_admission;
 
 #[path = "utf16_interactions/forced_break_adjacency.rs"]
 mod forced_break_adjacency;
+
+#[path = "utf16_interactions/unicode_hard_separators.rs"]
+mod unicode_hard_separators;
