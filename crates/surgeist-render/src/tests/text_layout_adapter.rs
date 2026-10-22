@@ -1,6 +1,8 @@
 //! Functional qualification of the real standalone Text consumer.
 //! Literal geometry comes from retained Ahem tables (UPEM1000, ascent800,
 //! descent-200, A/X advance1000), not another adapter invocation.
+mod composed;
+
 use surgeist_text as text;
 
 use crate::{
