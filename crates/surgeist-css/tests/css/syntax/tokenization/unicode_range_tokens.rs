@@ -38,7 +38,8 @@ fn unicode_ranges_preserve_token_text_between_surrounding_comments() {
 }
 
 // Diagnostic origins follow Surgeist's responsible-token contract: spelling
-// failures identify their original token; genuine missing input identifies EOF.
+// failures identify their original token; missing input names the last
+// authored token.
 #[test]
 fn invalid_unicode_ranges_point_to_the_responsible_original_token() {
     for (value, responsible, spelling) in [

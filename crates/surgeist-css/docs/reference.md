@@ -489,7 +489,10 @@ functions, descriptors, at-rule preludes and selector lists.
   function, a value cut short at its end, a prelude ended by its block), the
   last authored token is responsible: `rgb(1 2` names `2` and
   `transition-property: opacity,` names the `,`. Only an input without any
-  authored token reports no token.
+  authored token reports no token. The rule governs grammar rejections;
+  structural end-of-input diagnostics, such as a declaration or qualified
+  rule cut off by the end of the input (`broken`), keep the input-end
+  position with no token.
 - A math function whose contents parse but whose type does not check is
   responsible as a whole ([Values 4 §10.9](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking)),
   except that a sum names its incompatible operand: `calc(1px * 1px)` in a
@@ -5011,8 +5014,9 @@ matching under the pinned Fonts 4 §4.1, rather than causing a grammar error.
 the original text, following [Syntax 3 §§4.3.14 and 5.5.11](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-unicode-range-value):
 the token starts with a literal `U` or `u`, and whitespace or a comment ends it.
 So `u+1/**/2`, `u/**/+1` and the escaped `\75+0` are invalid, while
-`/**/u+0/**/` and `u+0 /**/, u+1` are valid. The first whitespace or comment
-inside a range is the responsible token. Checked components, which have no
+`/**/u+0/**/` and `u+0 /**/, u+1` are valid. Following the location rule, the
+first authored token after the whitespace or comment that ends a range is
+responsible: `u+1/**/2` names `2`. Checked components, which have no
 source text, read their own adjacent spellings; an empty comment that their
 serialization inserts is not authored and does not end the token. Numeric spellings are
 interpreted as hexadecimal text, so `u+12e-130` denotes U+012E through U+0130.
@@ -5024,9 +5028,10 @@ with its exact spelling, including escapes and whitespace. A malformed
 representation points to the token containing its first invalid character;
 endpoint order or domain errors identify the token containing the invalid end
 endpoint. Wildcard domain errors identify the first token contributing to that
-endpoint. A genuinely missing token or endpoint retains the bounded input-end
-position with no encountered token. Recovery spans still cover the entire
-dropped descriptor.
+endpoint. A missing token or endpoint names the last authored token (`u+`
+names `+`, `u+0,` names `,`), and the raw fragment, sheet and checked fronts
+name the same token. Recovery spans still cover the entire dropped
+descriptor.
 
 Under the selected Fonts 4 source-list processing rules, each comma-separated
 `src` member is validated independently. Invalid members receive
@@ -6465,8 +6470,8 @@ properties in the selected grammar. The CSSWG
 dropped both names, and neither selected Alignment 3 nor Grid 3 defines them.
 Parsing reports `UnknownProperty` and drops those declarations, including
 CSS-wide and pending values; strict validation rejects the same reports.
-Frozen I01 capture inputs remain unchanged, with explicit current rejection
-witnesses beside their historical observations. Current content alignment
+Spec-cited rows in the public-report characterization record their current
+rejection witnesses. Current content alignment
 properties and custom names such as `--align-tracks` retain their own grammar.
 
 The nine selected Box Alignment 3 properties have checked authored values and
@@ -6520,7 +6525,7 @@ explicitly authored width, style, and color in the shared exact border domains.
 Its intrinsic expansion contributes all three rule longhands in width, style,
 color order, resetting omitted members to `medium`, `none`, and `currentcolor`.
 The shorthand's specified serializer omits initial components and emits
-`medium` when all components are initial; it shares one resource budget across
+`none` when all components are initial, matching `border` and `outline`; it shares one resource budget across
 the complete rule. `column-fill` and `column-span` have noninherited `balance`
 and `none` initials. This authored model does not perform column balancing,
 spanner layout, rule painting, or style-dependent width computation. The
@@ -6637,9 +6642,8 @@ cardinality comes from
 [`feature_catalog()`](../src/conformance.rs). That
 catalog cardinality is distinct from the immutable official inventory of
 exactly 162 property units (161 canonical properties plus the custom-property
-family), one normative legacy shorthand, and 167 non-property units. Historical
-I01 baseline observations remain in the frozen fixtures; the current catalog
-excludes properties removed by the selected standards. The exclusion registry
+family), one normative legacy shorthand, and 167 non-property units. The
+current catalog excludes properties removed by the selected standards. The exclusion registry
 contains exactly 130 rows.
 
 The crate owns authored syntax and canonical serialization. Cascade, substitution,
@@ -8406,8 +8410,10 @@ The catalog adds two feature records and two pinned specification sources;
 checked selector grammar without resolving its symbolic ancestry. The provider
 retains authored qualified prefixes, universal selectors, ID/class identity,
 logical-list order, relative combinators in `:has()`, and ordered pseudo-element
-attachment. Nesting and scope anchors remain `&`; explicit `:scope` remains a
-pseudo-class. Identifier and string escaping use the same bounded CSS escaping
+attachment. A compound keeps its simple selectors, including `&`, in authored
+order, so `.class&` emits `.class&`; compound equality includes that order,
+so `.a#b` and `#b.a` are distinct values with the same specificity. Nesting
+and scope anchors remain `&`; explicit `:scope` remains a pseudo-class. Identifier and string escaping use the same bounded CSS escaping
 owner as the existing namespace writer. An unchecked empty or NUL-containing
 scalar name returns `UnrepresentableValue` rather than changing its identity.
 
