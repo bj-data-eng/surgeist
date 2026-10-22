@@ -1653,6 +1653,49 @@ fn edits_validate_ranges() {
 }
 
 #[test]
+fn source_revision_exhaustion_refuses_edit_without_publishing_changed_source() {
+    let source = Source::identified("hello", Id::from_u64(41), u64::MAX);
+    let mut system = System::default();
+    let layout = system
+        .layout(source.clone(), Style::default(), Options::default())
+        .expect("the original maximum-revision source is valid for layout");
+    let key = layout.key();
+    let lines = layout.lines();
+    let stats = system.stats();
+    assert_eq!(key.source().id(), source.id());
+    assert_eq!(key.source().revision().get(), u64::MAX);
+
+    let edit = TextEdit::replace(&source, Range::new(1, 4), "ipp")
+        .expect("the nonnoop replacement has valid source boundaries");
+    assert_eq!(edit.range(), Range::new(1, 4));
+    assert_eq!(edit.inserted_text(), "ipp");
+    let edited = edit.apply_to(source.clone());
+    assert!(
+        edited.is_err(),
+        "an exhausted source revision must refuse the edit instead of publishing changed text under the same revision: {edited:?}"
+    );
+
+    assert_eq!(source.text(), "hello");
+    assert_eq!(source.id(), Some(Id::from_u64(41)));
+    assert_eq!(source.revision(), u64::MAX);
+    assert_eq!(layout.source(), &source);
+    assert_eq!(layout.key(), key);
+    assert_eq!(layout.lines(), lines);
+    assert_eq!(system.stats(), stats);
+
+    let cached = system
+        .layout(source.clone(), Style::default(), Options::default())
+        .expect("the unchanged original source remains a cached request");
+    assert_eq!(cached.source(), &source);
+    assert_eq!(cached.key(), key);
+    assert_eq!(cached.lines(), lines);
+    assert_eq!(system.stats().layout_hits(), stats.layout_hits() + 1);
+    assert_eq!(system.stats().layout_misses(), stats.layout_misses());
+    assert_eq!(system.stats().font_refreshes(), stats.font_refreshes());
+    assert_eq!(system.stats().invalidations(), stats.invalidations());
+}
+
+#[test]
 fn text_edit_normalizes_insert_replace_and_delete() {
     let source = Source::identified("hello", Id::from_u64(4), 10);
 
