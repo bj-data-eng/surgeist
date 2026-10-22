@@ -63,6 +63,7 @@ pub surgeist_text::ErrorCode::FontCatalogueMismatch
 pub surgeist_text::ErrorCode::FontGenerationExhausted
 pub surgeist_text::ErrorCode::FontLoadFailed
 pub surgeist_text::ErrorCode::FontMetricCapacity
+pub surgeist_text::ErrorCode::FontOutlineRefused
 pub surgeist_text::ErrorCode::FontSystemUnavailable
 pub surgeist_text::ErrorCode::HitTestFailed
 pub surgeist_text::ErrorCode::InvalidFontInstance
@@ -106,6 +107,9 @@ pub surgeist_text::ErrorDetail::FontMetricTable::reason: surgeist_text::FontMetr
 pub surgeist_text::ErrorDetail::FontMetricTable::table: surgeist_text::FontMetricTable
 pub surgeist_text::ErrorDetail::FontMetricVariationArithmetic
 pub surgeist_text::ErrorDetail::FontMetricVariationArithmetic::tag: [u8; 4]
+pub surgeist_text::ErrorDetail::FontOutline
+pub surgeist_text::ErrorDetail::FontOutline::glyph: u32
+pub surgeist_text::ErrorDetail::FontOutline::reason: surgeist_text::FontOutlineError
 pub surgeist_text::ErrorDetail::InvalidDocumentSegmentBreak
 pub surgeist_text::ErrorDetail::InvalidDocumentSegmentBreak::occurrence: usize
 pub surgeist_text::ErrorDetail::InvalidDocumentSegmentBreak::range: surgeist_text::Range
@@ -248,6 +252,23 @@ pub surgeist_text::FontMetricTableError::VariationWordCount
 pub surgeist_text::FontMetricTableError::VariationWordCount::offset: u32
 pub surgeist_text::FontMetricTableError::VariationWordCount::regions: u16
 pub surgeist_text::FontMetricTableError::VariationWordCount::words: u16
+pub enum surgeist_text::FontOutlineCapability
+pub surgeist_text::FontOutlineCapability::CompositeGlyph
+pub surgeist_text::FontOutlineCapability::PostScript
+pub surgeist_text::FontOutlineCapability::PostScriptVariation
+pub surgeist_text::FontOutlineCapability::SparseVariation
+pub surgeist_text::FontOutlineCapability::VariableComposite
+pub enum surgeist_text::FontOutlineError
+pub surgeist_text::FontOutlineError::AllocationRefused
+pub surgeist_text::FontOutlineError::CapacityOverflow
+pub surgeist_text::FontOutlineError::GlyphRange
+pub surgeist_text::FontOutlineError::GlyphRange::count: u32
+pub surgeist_text::FontOutlineError::InvalidFont
+pub surgeist_text::FontOutlineError::ProviderRefused
+pub surgeist_text::FontOutlineError::ProviderRefused::glyph: u32
+pub surgeist_text::FontOutlineError::UnavailableOutline
+pub surgeist_text::FontOutlineError::Unsupported
+pub surgeist_text::FontOutlineError::Unsupported::capability: surgeist_text::FontOutlineCapability
 pub enum surgeist_text::FontVariant
 pub surgeist_text::FontVariant::Normal
 pub enum surgeist_text::Hit
@@ -333,6 +354,7 @@ pub enum surgeist_text::TextNumericPhase
 pub surgeist_text::TextNumericPhase::Accessibility
 pub surgeist_text::TextNumericPhase::Finalization
 pub surgeist_text::TextNumericPhase::FontSynthesis
+pub surgeist_text::TextNumericPhase::GlyphOutline
 pub surgeist_text::TextNumericPhase::Placement
 pub surgeist_text::TextNumericPhase::Preparation
 pub surgeist_text::TextNumericPhase::Shaping
@@ -555,6 +577,8 @@ pub fn surgeist_text::EffectiveFontInstance<'a>::normalized_coords(&self) -> imp
 pub const fn surgeist_text::EffectiveFontInstance<'a>::synthesis(&self) -> surgeist_text::FontSynthesis
 pub const fn surgeist_text::EffectiveFontInstance<'a>::x_shear(&self) -> f32
 impl<'a> surgeist_text::EffectiveFontInstance<'a>
+pub fn surgeist_text::EffectiveFontInstance<'a>::glyph_outline(&self, glyph_id: u32, expected_catalogue: &surgeist_text::FontCatalogueIdentity) -> surgeist_text::Result<surgeist_text::GlyphOutlineGeometry<'a>>
+impl<'a> surgeist_text::EffectiveFontInstance<'a>
 pub fn surgeist_text::EffectiveFontInstance<'a>::metrics(&self, expected_catalogue: &surgeist_text::FontCatalogueIdentity) -> surgeist_text::Result<surgeist_text::FontMetrics<'a>>
 pub struct surgeist_text::Error
 pub surgeist_text::Error::code: surgeist_text::ErrorCode
@@ -649,6 +673,11 @@ pub const fn surgeist_text::Glyph::pen(self) -> f64
 pub const fn surgeist_text::Glyph::range(self) -> surgeist_text::Range
 pub const fn surgeist_text::Glyph::x(self) -> f32
 pub const fn surgeist_text::Glyph::y(self) -> f32
+pub struct surgeist_text::GlyphOutlineGeometry<'a>
+impl<'a> surgeist_text::GlyphOutlineGeometry<'a>
+pub const fn surgeist_text::GlyphOutlineGeometry<'a>::bounds(&self) -> core::option::Option<surgeist_text::Rect>
+pub const fn surgeist_text::GlyphOutlineGeometry<'a>::glyph_id(&self) -> u32
+pub const fn surgeist_text::GlyphOutlineGeometry<'a>::instance(&self) -> &surgeist_text::EffectiveFontInstance<'a>
 pub struct surgeist_text::GlyphPlacement
 impl surgeist_text::GlyphPlacement
 pub const fn surgeist_text::GlyphPlacement::advance(self) -> f32

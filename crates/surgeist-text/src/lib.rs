@@ -45,7 +45,8 @@ pub use error::{
     TextNumericError, TextNumericPhase,
 };
 pub use font::{
-    EffectiveFontInstance, FontData, FontFace, FontMetrics, FontSynthesis, StrikeoutMetrics,
+    EffectiveFontInstance, FontData, FontFace, FontMetrics, FontOutlineCapability,
+    FontOutlineError, FontSynthesis, GlyphOutlineGeometry, StrikeoutMetrics,
 };
 pub use geometry::{Point, Rect, Size};
 pub use id::Id;

@@ -400,7 +400,9 @@ fn malformed() -> Error {
 }
 
 mod metrics;
+mod outline;
 pub use metrics::{FontMetrics, StrikeoutMetrics};
+pub use outline::{FontOutlineCapability, FontOutlineError, GlyphOutlineGeometry};
 
 #[cfg(test)]
 mod synthesis_tests {

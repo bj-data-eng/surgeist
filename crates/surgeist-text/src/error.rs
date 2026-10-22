@@ -74,6 +74,8 @@ pub enum ErrorCode {
     InvalidFontMetrics,
     /// Font metric scratch size or allocation cannot be admitted.
     FontMetricCapacity,
+    /// Same-instance glyph outline geometry could not be admitted.
+    FontOutlineRefused,
     InvalidRange,
     InvalidStyle,
     LayoutFailed,
@@ -83,6 +85,13 @@ pub enum ErrorCode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErrorDetail {
+    /// Actual glyph outline admission failed without publishing geometry.
+    FontOutline {
+        /// Requested glyph in the retained face.
+        glyph: u32,
+        /// Structural, capability, provider or storage refusal.
+        reason: super::FontOutlineError,
+    },
     /// The actual shaping invocation returned incomplete output.
     ShapingRefused {
         reason: ShapingRefusalReason,
@@ -483,6 +492,7 @@ pub enum TextNumericPhase {
     Placement,
     Accessibility,
     FontSynthesis,
+    GlyphOutline,
 }
 
 /// Category which a geometry value failed to preserve.

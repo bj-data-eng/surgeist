@@ -45,6 +45,11 @@ variation data refuses even at default/inactive coordinates. Actual run instance
 retain canonical coordinates, executable x-shear and the selected translated-outline
 bold displacement; line metrics and advances receive no bold-spacing adjustment.
 
+`EffectiveFontInstance::glyph_outline` reads conservative same-instance outline
+bounds, including synthesis, or proven empty geometry. It qualifies simple and
+dense-variable TrueType outlines and static translation-only composites; other
+outline formats refuse explicitly. These bounds do not select color or bitmap paint.
+
 Borrowed run, face and effective-instance views expose actual positioned output
 without copying glyph arrays. Logical origins and pens are `f64`; raw canonical
 glyph offsets/advances and font sizes remain `f32`. The optional standalone paint adapter belongs to
