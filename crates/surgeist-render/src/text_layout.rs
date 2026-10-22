@@ -5,22 +5,22 @@ use std::mem::size_of;
 use surgeist_text::{Brush, Layout, RunView};
 
 use crate::{
-    Color, Error, Layer, NormalizedCoordinate, OutlineLimits, OutlineSynthesis, Paint, Result,
+    Color, Error, GlyphRunLimits, GlyphSynthesis, Layer, NormalizedCoordinate, Paint, Result,
     Scene, Shape, TextGlyph, TextInstance, TextPaint, Transform,
     scene::Command,
-    text::{AdmittedOutlineFont, qualify_bounds_placement, qualify_outline_placement},
+    text::{AdmittedGlyphFont, qualify_bounds_placement, qualify_glyph_placement},
 };
 
 /// Whole-invocation bounds for a placed Text-layout scene.
 ///
-/// Outline glyph/path/temporary/retained limits apply across all runs, rather
+/// Glyph/path/paint/image/temporary/retained limits apply across all runs, rather
 /// than resetting for each run. Input-loaned Text storage is excluded. Retained
 /// bytes include the output command tree, font copies and prepared geometry;
 /// temporary bytes include mapping and face-table capacities and copy overlap.
 /// Ordinary failure-diagnostic String/Box allocations are outside these bounds.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TextLayoutLimits {
-    outlines: OutlineLimits,
+    glyph_limits: GlyphRunLimits,
     runs: usize,
     coordinate_values: usize,
     decorations: usize,
@@ -30,13 +30,13 @@ impl TextLayoutLimits {
     /// Sets explicit limits, including meaningful zero-capacity limits.
     #[must_use]
     pub const fn new(
-        outlines: OutlineLimits,
+        glyph_limits: GlyphRunLimits,
         runs: usize,
         coordinate_values: usize,
         decorations: usize,
     ) -> Self {
         Self {
-            outlines,
+            glyph_limits,
             runs,
             coordinate_values,
             decorations,
@@ -163,7 +163,8 @@ impl TextLayoutError {
 ///
 /// Admission is atomic across the whole invocation, including simultaneous
 /// temporary/output custody. Actual normalized bits and executable synthesis come
-/// from Text. The published outline domain is unchanged; unsupported runs refuse
+/// from Text. Qualified outlines, default-instance COLRv0/COLRv1 solid-glyph paints
+/// and sbix RGBA PNG images retain their executed geometry and resources. Unsupported runs refuse
 /// the complete operation. Supplied placement is qualified for glyph ink and
 /// decoration geometry before returning. Future parent/surface composition is
 /// still checked by the actual renderer. Both standalone Text layout and explicit
@@ -176,7 +177,7 @@ pub fn prepare_text_layout(
     limits: TextLayoutLimits,
 ) -> Result<PreparedTextScene<'_>> {
     let counts = preflight(layout, placement, limits)?;
-    let mut budget = Budget::new(limits.outlines);
+    let mut budget = Budget::new(limits.glyph_limits);
     budget.retain(size_of::<PreparedTextScene<'_>>())?;
     let layered = placement != Transform::identity() && counts.decorations != 0;
     let command_count = add(counts.runs, if layered { 1 } else { counts.decorations })?;
@@ -209,7 +210,7 @@ pub fn prepare_text_layout(
             .iter()
             .position(|copy| face.is_same_face(&copy.source.face()));
         let new_copy = if face_index.is_none() {
-            let copy = AdmittedOutlineFont::copy_from(
+            let copy = AdmittedGlyphFont::copy_from(
                 face.bytes(),
                 face.index(),
                 budget.remaining_scratch(),
@@ -233,11 +234,11 @@ pub fn prepare_text_layout(
                     .map_err(|e| TextLayoutError::render(location, e))?,
             );
         }
-        let synthesis = OutlineSynthesis::try_new(instance.x_shear(), instance.embolden())
+        let synthesis = GlyphSynthesis::try_new(instance.x_shear(), instance.embolden())
             .map_err(|e| TextLayoutError::render(location, e))?;
         let instance = TextInstance::try_new(instance.font_size(), coordinates, synthesis)
             .map_err(|e| TextLayoutError::render(location, e))?;
-        let remaining = budget.outline_limits();
+        let remaining = budget.glyph_run_limits();
         let admitted = match face_index {
             Some(index) => &faces[index].admitted,
             None => new_copy.as_ref().expect("new face has an admitted copy"),
@@ -248,14 +249,14 @@ pub fn prepare_text_layout(
         budget.retain(retained)?;
         budget.glyphs = add(budget.glyphs, glyphs.len())?;
         budget.path_elements = add(budget.path_elements, outline.path().elements().len())?;
-        qualify_outline_placement(kurbo::Affine::new(run_transform.as_array()), &outline)
+        qualify_glyph_placement(kurbo::Affine::new(run_transform.as_array()), &outline)
             .map_err(|e| TextLayoutError::render(location, e))?;
         let paint = TextPaint::try_fill(Paint::from(
             color(run.brush()).map_err(|e| TextLayoutError::render(location, e))?,
         ))
         .map_err(|e| TextLayoutError::render(location, e))?;
-        commands.push(Command::PreparedOutline {
-            outline,
+        commands.push(Command::PreparedGlyphRun {
+            run: outline,
             transform: run_transform,
             paint,
         });
@@ -304,7 +305,7 @@ pub fn prepare_text_layout(
 
 struct FaceCopy<'a> {
     source: RunView<'a>,
-    admitted: AdmittedOutlineFont,
+    admitted: AdmittedGlyphFont,
 }
 
 struct Counts {
@@ -318,7 +319,7 @@ fn preflight(layout: &Layout, placement: Transform, limits: TextLayoutLimits) ->
     let mut glyphs = 0;
     let mut coordinates = 0;
     let mut max_glyphs = 0;
-    let [glyph_limit, _, _, _] = limits.outlines.capacities();
+    let [glyph_limit, _, _, _] = limits.glyph_limits.capacities();
     for (index, run) in layout.run_views().enumerate() {
         if run.glyphs().next().is_none() {
             continue;
@@ -427,7 +428,7 @@ struct Budget {
     path_elements: usize,
 }
 impl Budget {
-    fn new(limits: OutlineLimits) -> Self {
+    fn new(limits: GlyphRunLimits) -> Self {
         Self {
             capacities: limits.capacities(),
             retained: 0,
@@ -486,8 +487,8 @@ impl Budget {
     fn remaining_retained(&self) -> usize {
         self.capacities[3] - self.retained
     }
-    fn outline_limits(&self) -> OutlineLimits {
-        OutlineLimits::new(
+    fn glyph_run_limits(&self) -> GlyphRunLimits {
+        GlyphRunLimits::new(
             self.capacities[0] - self.glyphs,
             self.capacities[1] - self.path_elements,
             self.remaining_scratch(),

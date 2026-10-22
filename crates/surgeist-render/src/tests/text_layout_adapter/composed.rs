@@ -131,9 +131,9 @@ fn placed_line_refuses_a_backend_transform_that_collapses_positive_ink() {
     let error = refuse(&input, Transform::identity(), limits());
     let cause = item_render(&error, TextLayoutLocation::Run { line: 0, run: 0 });
     assert!(matches!(
-        cause.outline_preparation_diagnostic(),
-        Some(OutlinePreparationError::Numeric {
-            phase: OutlineNumericPhase::Placement,
+        cause.glyph_preparation_diagnostic(),
+        Some(GlyphPreparationError::Numeric {
+            phase: GlyphNumericPhase::Placement,
             value: 0.0,
         })
     ));
@@ -279,7 +279,7 @@ fn actual_gpos_mark_placement_reaches_admitted_outline_ink_without_advance_subst
     assert_eq!(paint.font().index(), instance.face().index());
     assert_eq!(paint.instance().size(), 12.5);
     assert!(paint.instance().coordinates().is_empty());
-    assert_eq!(paint.instance().synthesis(), OutlineSynthesis::none());
+    assert_eq!(paint.instance().synthesis(), GlyphSynthesis::none());
     assert_eq!(
         paint.glyphs(),
         [

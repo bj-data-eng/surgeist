@@ -234,7 +234,7 @@ fn require_graph_text_bounds(commands: &[RenderCommand], path: &mut Vec<usize>) 
             | RenderCommand::Shadow { .. }
             | RenderCommand::Image { .. }
             | RenderCommand::TextRun { .. }
-            | RenderCommand::PreparedOutline { .. } => {}
+            | RenderCommand::PreparedGlyphRun { .. } => {}
         }
         path.pop();
     }

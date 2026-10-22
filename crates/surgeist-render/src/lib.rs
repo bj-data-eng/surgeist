@@ -125,10 +125,10 @@ pub use text_layout::{
 };
 
 pub use text::{
-    FontData, FontId, FontRef, NormalizedCoordinate, OutlineCapability, OutlineLimits,
-    OutlineNumericPhase, OutlinePreparationError, OutlineResource, OutlineSynthesis,
-    PreparedOutline, TextDecorationLine, TextDecorationLineStyle, TextGlyph, TextInstance,
-    TextPaint, TextRun, TextRunBounds, TextRunBoundsKind, TextShadowRun, VariationTable,
+    FontData, FontId, FontRef, GlyphCapability, GlyphNumericPhase, GlyphPreparationError,
+    GlyphResource, GlyphRunLimits, GlyphSynthesis, NormalizedCoordinate, PreparedGlyphRun,
+    TextDecorationLine, TextDecorationLineStyle, TextGlyph, TextInstance, TextPaint, TextRun,
+    TextRunBounds, TextRunBoundsKind, TextShadowRun, VariationTable,
 };
 
 #[cfg(test)]

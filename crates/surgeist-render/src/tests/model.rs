@@ -4452,35 +4452,39 @@ fn runtime_pair_is_listed(
 }
 
 #[test]
-fn prepared_outline_selected_color_bitmap_refuse_without_outline_substitution() {
-    let instance =
-        crate::TextInstance::try_new(16.0, vec![], crate::OutlineSynthesis::none()).unwrap();
+fn selected_color_bitmap_unsupported_instances_refuse_without_outline_substitution() {
+    let instance = crate::TextInstance::try_new(
+        16.0,
+        vec![],
+        crate::GlyphSynthesis::try_new(0.25, 0.0).unwrap(),
+    )
+    .unwrap();
     let glyphs = [TextGlyph::try_new(AHEM_GLYPH_X, 0.0, 0.0, 16.0).unwrap()];
-    let limits = crate::OutlineLimits::new(1, 100, 1 << 20, 1 << 20);
+    let limits = crate::GlyphRunLimits::new(1, 100, 1 << 20, 1 << 20);
     for (bytes, expected) in [
         (
             ahem_color_font(valid_cpal()),
-            crate::OutlinePreparationError::UnsupportedColor,
+            crate::GlyphPreparationError::UnsupportedImageInstance,
         ),
         (
             ahem_sbix_font(rgba_png()),
-            crate::OutlinePreparationError::UnsupportedBitmap,
+            crate::GlyphPreparationError::UnsupportedImageInstance,
         ),
     ] {
         let error = FontData::try_from_bytes(bytes, 0)
             .unwrap()
-            .prepare_outline(
-                &instance,
-                &glyphs,
-                crate::OutlineLimits::new(1, 0, 0, 1 << 20),
-            )
+            .prepare_glyph_run(&instance, &glyphs, limits)
             .unwrap_err();
-        assert_eq!(error.outline_preparation_diagnostic(), Some(&expected));
+        assert_eq!(error.glyph_preparation_diagnostic(), Some(&expected));
     }
     let malformed = FontData::try_from_bytes(ahem_color_font(invalid_cpal()), 0).unwrap();
+    let ordinary =
+        crate::TextInstance::try_new(16.0, vec![], crate::GlyphSynthesis::none()).unwrap();
     let error = malformed
-        .prepare_outline(&instance, &glyphs, limits)
+        .prepare_glyph_run(&ordinary, &glyphs, limits)
         .unwrap_err();
-    assert_eq!(error.code(), ErrorCode::InvalidInput);
-    assert!(error.invalid_value_diagnostic().is_some());
+    assert_eq!(
+        error.glyph_preparation_diagnostic(),
+        Some(&crate::GlyphPreparationError::InvalidFont)
+    );
 }

@@ -269,9 +269,9 @@ impl SemanticSourceContribution {
         local_to_surface: Transform,
     ) -> Result<SemanticCommandContribution> {
         match command {
-            command @ RenderCommand::PreparedOutline { .. } => {
-                let RenderCommand::PreparedOutline {
-                    ref outline,
+            command @ RenderCommand::PreparedGlyphRun { .. } => {
+                let RenderCommand::PreparedGlyphRun {
+                    run: ref outline,
                     transform,
                     ..
                 } = command

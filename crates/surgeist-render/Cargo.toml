@@ -20,6 +20,7 @@ required-features = ["render-window"]
 bytemuck = { version = "=1.25.0", default-features = false }
 kurbo = "=0.13.1"
 log = "=0.4.33"
+miniz_oxide = { version = "=0.8.9", default-features = false }
 peniko = "=0.6.1"
 png = "=0.18.1"
 skrifa = { version = "=0.42.1", default-features = false, features = ["autohint_shaping", "std"] }

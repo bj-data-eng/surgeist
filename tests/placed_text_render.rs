@@ -156,7 +156,7 @@ fn actual_layout_lines_supply_paint_and_interaction_without_rewrapping() {
         placed,
         render::Transform::identity(),
         render::TextLayoutLimits::new(
-            render::OutlineLimits::new(32, 1024, 8 << 20, 8 << 20),
+            render::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
             8,
             32,
             8,

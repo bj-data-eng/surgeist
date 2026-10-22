@@ -1,5 +1,5 @@
 use super::*;
-use crate::{OutlineSynthesis, TextInstance};
+use crate::{GlyphSynthesis, TextInstance};
 
 const FONT: &[u8] = include_bytes!("../../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 const X: u16 = 58;
@@ -99,27 +99,24 @@ fn simple(points: u16) -> Vec<u8> {
     }
     data
 }
-fn limits() -> OutlineLimits {
-    OutlineLimits::new(4, 140000, 16 << 20, 32 << 20)
+fn limits() -> GlyphRunLimits {
+    GlyphRunLimits::new(4, 140000, 16 << 20, 32 << 20)
 }
 fn instance() -> TextInstance {
-    TextInstance::try_new(1000.0, vec![], OutlineSynthesis::none()).unwrap()
+    TextInstance::try_new(1000.0, vec![], GlyphSynthesis::none()).unwrap()
 }
 fn glyph(id: u16) -> TextGlyph {
     TextGlyph::try_new(u32::from(id), 0.0, 0.0, 0.0).unwrap()
 }
-fn prepare(font: &FontData) -> Result<PreparedOutline> {
-    font.prepare_outline(&instance(), &[glyph(X)], limits())
+fn prepare(font: &FontData) -> Result<PreparedGlyphRun> {
+    font.prepare_glyph_run(&instance(), &[glyph(X)], limits())
 }
-fn cause(result: Result<PreparedOutline>) -> OutlinePreparationError {
-    *result
-        .unwrap_err()
-        .outline_preparation_diagnostic()
-        .unwrap()
+fn cause(result: Result<PreparedGlyphRun>) -> GlyphPreparationError {
+    *result.unwrap_err().glyph_preparation_diagnostic().unwrap()
 }
-fn unsupported_composite() -> OutlinePreparationError {
-    OutlinePreparationError::UnsupportedOutline {
-        capability: OutlineCapability::CompositeGlyph,
+fn unsupported_composite() -> GlyphPreparationError {
+    GlyphPreparationError::UnsupportedOutline {
+        capability: GlyphCapability::CompositeGlyph,
     }
 }
 
@@ -183,14 +180,14 @@ fn cycles_and_truncated_or_uninterpreted_component_tails_never_publish_empty() {
     ] {
         assert_eq!(
             cause(prepare(&replace(&changes))),
-            OutlinePreparationError::InvalidFont
+            GlyphPreparationError::InvalidFont
         );
     }
     let complete = compound(-1, &[A], Some(&[0x40]));
     for end in [10, 11, 13, 15, 17, 18, 19, 20] {
         assert_eq!(
             cause(prepare(&replace(&[(X, complete[..end].to_vec())]))),
-            OutlinePreparationError::InvalidFont
+            GlyphPreparationError::InvalidFont
         );
     }
     let mut residual = compound(-1, &[A], None);
@@ -252,19 +249,25 @@ fn closure_storage_and_path_refusal_preserve_actual_inputs_for_same_owner_retry(
     let original = font.clone();
     let instance = instance();
     let glyphs = [glyph(A), glyph(X)];
-    let ready = font.prepare_outline(&instance, &glyphs, limits()).unwrap();
+    let ready = font
+        .prepare_glyph_run(&instance, &glyphs, limits())
+        .unwrap();
     for tight in [
-        OutlineLimits::new(4, 140000, 128, 32 << 20),
-        OutlineLimits::new(4, 9, 16 << 20, 32 << 20),
-        OutlineLimits::new(4, 140000, 16 << 20, 0),
+        GlyphRunLimits::new(4, 140000, 128, 32 << 20),
+        GlyphRunLimits::new(4, 9, 16 << 20, 32 << 20),
+        GlyphRunLimits::new(4, 140000, 16 << 20, 0),
     ] {
-        let error = font.prepare_outline(&instance, &glyphs, tight).unwrap_err();
+        let error = font
+            .prepare_glyph_run(&instance, &glyphs, tight)
+            .unwrap_err();
         assert!(matches!(
-            error.outline_preparation_diagnostic(),
-            Some(OutlinePreparationError::Limit { .. })
+            error.glyph_preparation_diagnostic(),
+            Some(GlyphPreparationError::Limit { .. })
         ));
         assert_eq!(font, original);
-        let retried = font.prepare_outline(&instance, &glyphs, limits()).unwrap();
+        let retried = font
+            .prepare_glyph_run(&instance, &glyphs, limits())
+            .unwrap();
         assert_eq!(retried.bounds(), ready.bounds());
         assert_eq!(
             retried.path_elements().collect::<Vec<_>>(),
@@ -295,8 +298,8 @@ fn explicit_identity_encodings_and_first_overlap_keep_ink_while_ambiguous_record
         );
     }
     for (flags, expected) in [
-        (3 | 8 | 64, OutlinePreparationError::InvalidFont),
-        (3 | 2048 | 4096, OutlinePreparationError::InvalidFont),
+        (3 | 8 | 64, GlyphPreparationError::InvalidFont),
+        (3 | 2048 | 4096, GlyphPreparationError::InvalidFont),
         (3 | 0x8000, unsupported_composite()),
         (3 | 0x10, unsupported_composite()),
     ] {
@@ -324,7 +327,7 @@ fn explicit_identity_encodings_and_first_overlap_keep_ink_while_ambiguous_record
 fn malformed_child_reference_and_root_metric_extent_refuse_before_provider_fallback() {
     assert_eq!(
         cause(prepare(&replace(&[(X, compound(-1, &[u16::MAX], None))]))),
-        OutlinePreparationError::InvalidFont
+        GlyphPreparationError::InvalidFont
     );
     let good = replace(&[(X, compound(-1, &[A], None))]);
     let mut bytes = good.bytes().to_vec();
@@ -335,7 +338,7 @@ fn malformed_child_reference_and_root_metric_extent_refuse_before_provider_fallb
         }
     }
     let font = FontData::try_from_bytes(bytes, 0).unwrap();
-    assert_eq!(cause(prepare(&font)), OutlinePreparationError::InvalidFont);
+    assert_eq!(cause(prepare(&font)), GlyphPreparationError::InvalidFont);
 }
 
 #[test]
@@ -350,9 +353,9 @@ fn simultaneous_old_new_scratch_capacity_is_admitted_before_growth() {
     let final_only = other + coordinates + (old_capacity + 1) * size_of::<u64>();
     let error = grow(&mut values, other, coordinates, final_only).unwrap_err();
     assert!(matches!(
-        error.outline_preparation_diagnostic(),
-        Some(OutlinePreparationError::Limit {
-            resource: OutlineResource::ScratchBytes,
+        error.glyph_preparation_diagnostic(),
+        Some(GlyphPreparationError::Limit {
+            resource: GlyphResource::ScratchBytes,
             ..
         })
     ));
@@ -439,11 +442,11 @@ fn actual_draw_depth_counts_empty_loca_loads_even_after_shallow_memoization() {
             } else {
                 match result {
                     Err(error)
-                        if error.outline_preparation_diagnostic()
+                        if error.glyph_preparation_diagnostic()
                             == Some(&unsupported_composite()) => {}
                     Err(error) => failures.push(format!(
                         "{label} depth{depth}: {:?}",
-                        error.outline_preparation_diagnostic()
+                        error.glyph_preparation_diagnostic()
                     )),
                     Ok(output) => failures.push(format!(
                         "{label} depth{depth}: unexpected {:?}",

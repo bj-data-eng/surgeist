@@ -40,8 +40,8 @@ impl RenderCommands {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum RenderCommand {
-    PreparedOutline {
-        outline: PreparedOutline,
+    PreparedGlyphRun {
+        run: PreparedGlyphRun,
         transform: Transform,
         paint: TextPaint,
     },
@@ -507,15 +507,15 @@ fn normalize_commands_in_context(
                     fit: *fit,
                 }
             }
-            Command::PreparedOutline {
-                outline,
+            Command::PreparedGlyphRun {
+                run: outline,
                 transform,
                 paint,
             } => {
                 validate_transform(*transform, "prepared outline transform")?;
                 validate_paint(paint.fill())?;
-                RenderCommand::PreparedOutline {
-                    outline: outline.clone(),
+                RenderCommand::PreparedGlyphRun {
+                    run: outline.clone(),
                     transform: *transform,
                     paint: paint.clone(),
                 }
@@ -597,7 +597,7 @@ fn command_contains_backdrop_capture(command: &RenderCommand) -> bool {
         | RenderCommand::Shadow { .. }
         | RenderCommand::Image { .. }
         | RenderCommand::TextRun { .. }
-        | RenderCommand::PreparedOutline { .. } => false,
+        | RenderCommand::PreparedGlyphRun { .. } => false,
     }
 }
 
@@ -983,8 +983,10 @@ fn command_bounds(command: &RenderCommand) -> Result<Option<OffscreenBounds>> {
         RenderCommand::Stroke { shape, stroke, .. } => stroke_shape_bounds(shape, stroke).map(Some),
         RenderCommand::Shadow { shape, shadow } => shadow_bounds(shape, shadow).map(Some),
         RenderCommand::Image { rect, .. } => OffscreenBounds::try_new(*rect).map(Some),
-        RenderCommand::PreparedOutline {
-            outline, transform, ..
+        RenderCommand::PreparedGlyphRun {
+            run: outline,
+            transform,
+            ..
         } => outline
             .bounds()
             .ink_rect()
@@ -1115,7 +1117,7 @@ pub(crate) fn outer_box_shadow_bounds_for_test(command: &RenderCommand) -> Resul
         | RenderCommand::Stroke { .. }
         | RenderCommand::Image { .. }
         | RenderCommand::TextRun { .. }
-        | RenderCommand::PreparedOutline { .. }
+        | RenderCommand::PreparedGlyphRun { .. }
         | RenderCommand::Layer { .. } => Ok(None),
     }
 }

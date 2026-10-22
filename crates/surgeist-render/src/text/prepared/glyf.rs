@@ -3,14 +3,14 @@
 use super::*;
 
 fn invalid() -> Error {
-    OutlinePreparationError::InvalidFont.into()
+    GlyphPreparationError::InvalidFont.into()
 }
 fn overflow() -> Error {
-    OutlinePreparationError::CapacityOverflow.into()
+    GlyphPreparationError::CapacityOverflow.into()
 }
 fn unsupported() -> Error {
-    OutlinePreparationError::UnsupportedOutline {
-        capability: OutlineCapability::CompositeGlyph,
+    GlyphPreparationError::UnsupportedOutline {
+        capability: GlyphCapability::CompositeGlyph,
     }
     .into()
 }
@@ -201,7 +201,7 @@ pub(super) fn simple_structure(data: &[u8], glyph: GlyphId) -> Result<(usize, us
     // proves every encoded flag was prefetched, its clamp is inactive, and
     // coordinate decoding begins exactly after the complete flag prefix.
     if at - flags_start > count {
-        return Err(OutlinePreparationError::Provider {
+        return Err(GlyphPreparationError::Provider {
             glyph: glyph.to_u32(),
         }
         .into());
@@ -371,7 +371,7 @@ fn grow<T>(values: &mut Vec<T>, other: usize, base: usize, limit: usize) -> Resu
     let requested = add(values.len(), 1)?;
     let old = vector_bytes(values)?;
     check_limit(
-        OutlineResource::ScratchBytes,
+        GlyphResource::ScratchBytes,
         add(
             add(base, other)?,
             add(old, mul(requested, size_of::<T>())?)?,
@@ -379,12 +379,12 @@ fn grow<T>(values: &mut Vec<T>, other: usize, base: usize, limit: usize) -> Resu
         limit,
     )?;
     values.try_reserve_exact(1).map_err(|_| {
-        Error::from(OutlinePreparationError::Allocation {
-            resource: OutlineResource::ScratchBytes,
+        Error::from(GlyphPreparationError::Allocation {
+            resource: GlyphResource::ScratchBytes,
         })
     })?;
     check_limit(
-        OutlineResource::ScratchBytes,
+        GlyphResource::ScratchBytes,
         add(add(base, other)?, add(old, vector_bytes(values)?)?)?,
         limit,
     )
@@ -416,7 +416,7 @@ pub(super) fn qualify(
     font: &skrifa::FontRef<'_>,
     glyph: GlyphId,
     coordinates: &[NormalizedCoord],
-    limits: OutlineLimits,
+    limits: GlyphRunLimits,
     coordinate_bytes: usize,
 ) -> Result<Summary> {
     let raw = raw_glyph(font, glyph)?;

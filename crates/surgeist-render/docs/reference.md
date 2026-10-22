@@ -64,10 +64,52 @@ the product integration floor; the [root manifest](../../../Cargo.toml) owns
 the authoritative facade `rust-version`. Confirm that declaration when doing
 integration work; this crate guide does not define a separate crate MSRV.
 
+## Glyph admission
+
+`FontData::prepare_glyph_run` retains the selected representation and its font,
+executed `TextInstance` and original `TextGlyph` facts. Its `PreparedGlyphRun`
+provides representation-derived `Ink` or source-proved `Empty` bounds.
+`Scene::prepared_glyph_run` shares those immutable resources with direct and graph
+execution; glyph advances never substitute for ink.
+
+Consecutive foreground outline operations share one NonZero fill, preserving
+combined winding and opacity. An intrinsic COLR or bitmap selection separates
+those spans even when its output is Empty. Intrinsic paints retain layer order,
+clip and currentColor behavior. Caller paint applies to foreground operations.
+
+The supported intrinsic profile is COLRv0, a COLRv1 solid/glyph/translation/static
+clip subset, and sbix noninterlaced RGBA8 PNG containing only IHDR, contiguous IDAT
+and IEND chunks. Other paint operations, formats and PNG chunks refuse explicitly.
+Color and bitmap admission requires a default effective instance without
+synthesis; supported outline variation and synthesis follow the policy below.
+Malformed selected COLRv1 data cannot fall back to a COLRv0 representation.
+
+Bitmap placement follows the pinned Skrifa 0.42.1 Skia/CoreText convention:
+font-unit outer bearings and strike-pixel offsets establish the selected quad.
+Drawing fills the retained canonical endpoint rectangle with its retained image
+sampling mapping. PNG admission validates chunk order and CRC, exact zlib input
+and output extent, Adler checksum and all five scanline filters before retaining
+pixels. The inflater uses fixed-state miniz_oxide with caller-owned buffers.
+
+`GlyphRunLimits` bounds glyphs, retained outline path elements, scratch storage
+and retained logical custody. Charges include font bytes and conservative owner
+headers, actual buffer capacities, fixed provider workspace and growth overlap.
+These limits do not measure the allocator or bound CPU time. A failure discards
+the entire unpublished result; the caller's inputs remain available for retry.
+The authored `TextRun` route retains its existing provider behavior and supports
+`Unspecified` bounds only on its direct route.
+
+The optional `prepare_text_layout` adapter consumes the actual placed Text
+snapshot without reshaping or choosing lines. Its complete `TextLayoutLimits`
+budget also covers font copies, mapping buffers and decoration commands. Font
+copies are shared within one invocation; the original Text storage remains an
+input loan. Glyph placement already includes Text's offsets and baselines;
+decorations in paragraph coordinates receive caller placement once.
+
 ## Outline admission
 
-`FontData::prepare_outline` owns one immutable path used for both measured ink and
-GPU drawing. Static glyf composites admit signed XY translations, including
+The outline branch of `FontData::prepare_glyph_run` retains one canonical path
+for measured ink and GPU drawing. Static glyf composites admit signed XY translations, including
 explicit identity transforms, complete opaque unhinted programs and first-record
 overlap flags. Their full original child closure is checked before provider draw;
 repeated children retain every occurrence. Provider depth32 and real expanded
@@ -87,8 +129,8 @@ A repeat count of zero is accepted when the complete prefix fits that domain.
 Existing storage limits include live qualifier buffers and their growth overlap,
 then the provider's actual draw-buffer capacity after qualifier disposal. They do
 not bound CPU time. All failures discard the unpublished run, while the original
-font, instance and glyph inputs remain available for retry. Other outline formats,
-sparse IUP and color/bitmap retain their explicit capability refusals. Concrete
+font, instance and glyph inputs remain available for retry. Other outline formats and
+sparse IUP retain their explicit capability refusals. Concrete
 positive bold appends a local-x copy before canonical point conversion under the
 [selected policy](../../../docs/text-layout-contract.md#concrete-outline-synthesis);
 a displacement absorbed by conversion refuses with a synthesis numeric error.
