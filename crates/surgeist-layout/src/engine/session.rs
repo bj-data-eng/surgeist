@@ -514,6 +514,42 @@ where
         }
 
         let style = self.tree.node_input(node);
+        if style.block_generation == crate::BlockGeneration::Anonymous {
+            if style.display != crate::Display::Block
+                || style.position == crate::Position::Absolute
+                || !style.float.is_none()
+                || matches!(
+                    input.parent_formatting_context(),
+                    crate::ParentFormattingContext::Flex | crate::ParentFormattingContext::Grid
+                )
+            {
+                return Err(LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ChildLayout,
+                    LayoutErrorKindOf::InvalidInput(
+                        crate::LayoutInvalidInputOf::AnonymousBlockRole,
+                    ),
+                ));
+            }
+            let context = input.block_indent_context().ok_or_else(|| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ChildLayout,
+                    LayoutErrorKindOf::MissingContext(
+                        crate::LayoutMissingContext::AnonymousGeneratingBlock,
+                    ),
+                )
+            })?;
+            if context.inherited != style.text_indent {
+                return Err(LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ChildLayout,
+                    LayoutErrorKindOf::InvalidInput(
+                        crate::LayoutInvalidInputOf::AnonymousIndentMismatch,
+                    ),
+                ));
+            }
+        }
         if input.run_mode() == RunMode::PerformHiddenLayout || style.display == crate::Display::None
         {
             #[cfg(test)]

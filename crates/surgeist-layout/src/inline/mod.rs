@@ -64,6 +64,8 @@ pub(super) struct MixedInlineRunInputOf<S: LayoutScalar = DefaultScalar> {
     pub flow_axes: FlowAxes,
     pub text_align: TextAlign,
     pub text_align_last: crate::TextAlignLast,
+    pub indent: crate::text_indent::ResolvedTextIndent<S>,
+    pub indent_state: crate::text_indent::IndentLineState,
     pub participants: Vec<MixedInlineParticipantOf<S>>,
 }
 
@@ -112,6 +114,7 @@ pub(super) struct InlineControlSourceOf<S: LayoutScalar = DefaultScalar> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct MixedInlineRunReportOf<S: LayoutScalar = DefaultScalar> {
+    pub indent_state: crate::text_indent::IndentLineState,
     pub inline_extent: S,
     pub block_extent: S,
     pub float_edge_phase: Option<S>,
@@ -221,6 +224,7 @@ struct SelectedInlineUnitOf<S: LayoutScalar> {
 #[derive(Clone)]
 struct SelectedInlineLineOf<S: LayoutScalar> {
     alignment: TextAlign,
+    indent: S,
     units: Vec<SelectedInlineUnitOf<S>>,
     descriptor_range: Range<usize>,
     line_break: Option<ForcedLineBreakControlOf<S>>,
@@ -523,6 +527,7 @@ fn select_inline_line<S: LayoutScalar>(
 
     SelectedInlineLineOf {
         alignment: TextAlign::Start,
+        indent: S::ZERO,
         units,
         descriptor_range: input.descriptor_start..input.descriptor_start + participants.len(),
         line_break: summary.line_break,
@@ -868,9 +873,10 @@ fn selected_line_inline_start<S: LayoutScalar>(
 ) -> S {
     line.inline_start_override.unwrap_or_else(|| {
         line.band.inline_start
+            + line.indent
             + text_line_offset(
                 line.used_inline_extent,
-                line.band.inline_end - line.band.inline_start,
+                line.band.inline_end - line.band.inline_start - line.indent,
                 flow_axes,
                 text_align,
             )
@@ -1013,6 +1019,7 @@ where
             })
         })
         .peekable();
+    let mut indent_state = input.indent_state;
     let mut pending_strut = None;
     let mut block_cursor = S::ZERO;
     let mut float_strut = None;
@@ -1022,6 +1029,7 @@ where
     let mut float_edge_phase = None;
 
     loop {
+        let line_indent = input.indent.at(indent_state);
         let next_boundary_descriptor = line_boundaries
             .peek()
             .map_or(supplied.len(), |boundary| boundary.descriptor);
@@ -1029,7 +1037,7 @@ where
             run,
             cursor,
             next_boundary_descriptor,
-            available,
+            available - line_indent,
             wraps,
             pending_strut,
             input.flow_axes,
@@ -1066,7 +1074,7 @@ where
                 run,
                 cursor,
                 next_boundary_descriptor,
-                band_available,
+                band_available - line_indent,
                 wraps,
                 pending_strut,
                 input.flow_axes,
@@ -1105,8 +1113,9 @@ where
         }
 
         let mut line = selected.line;
+        line.indent = line_indent;
         if advanced_phase_transition && continuation_inline_cursor.is_some() {
-            line.inline_start_override = Some(band_inline_start);
+            line.inline_start_override = Some(band_inline_start + line_indent);
         }
         line.band = LogicalLineBandOf {
             inline_start: band_inline_start,
@@ -1131,6 +1140,7 @@ where
         if line.alignment == TextAlign::Justify {
             line.alignment = input.text_align.unexpandable(input.text_align_last);
         }
+        indent_state.commit(selected.end == SelectedInlineLineEnd::Forced);
         pending_strut = selected.pending_strut;
         let line_block_end = block_cursor + line.baseline + line.after_baseline;
         let line_inline_start = selected_line_inline_start(&line, input.flow_axes, line.alignment);
@@ -1253,6 +1263,7 @@ where
     }
 
     MixedInlineRunReportOf {
+        indent_state,
         inline_extent,
         block_extent: block_cursor.max(resolved_terminal_block_extent),
         float_edge_phase,
@@ -1604,6 +1615,8 @@ pub(super) fn layout_inline_run<S: LayoutScalar>(input: InlineRunInput<S>) -> In
         flow_axes,
         text_align: TextAlign::Start,
         text_align_last: crate::TextAlignLast::Auto,
+        indent: crate::text_indent::ResolvedTextIndent::ZERO,
+        indent_state: crate::text_indent::IndentLineState::default(),
         participants,
     });
     let logical_report_size = LogicalSizeOf::new(report.inline_extent, report.block_extent);

@@ -20,6 +20,9 @@ pub(crate) struct PendingParagraph<Node> {
     pub flows: Vec<super::fit::LineFlow>,
     pub amounts: Vec<Vec<f64>>,
     pub outflows: Vec<(usize, surgeist_text::PreparedAtomic, Node)>,
+    pub indent: crate::text_indent::ResolvedTextIndent<f64>,
+    pub indent_start: crate::text_indent::IndentLineState,
+    pub indent_end: crate::text_indent::IndentLineState,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -37,6 +40,12 @@ pub(crate) struct PassBasis<Node, S: LayoutScalar> {
     pub frames: Vec<CanonicalFrame<Node, S>>,
     pub lines: Vec<LineBasis>,
     pub absolute_baselines: Vec<(Node, f64)>,
+    pub indentation: Vec<(
+        Node,
+        crate::text_indent::ResolvedTextIndent<f64>,
+        crate::text_indent::IndentLineState,
+        crate::text_indent::IndentLineState,
+    )>,
 }
 
 /// This invocation-local state is part of the ordinary unpublished session.
@@ -140,6 +149,18 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                 })
                 .collect(),
             absolute_baselines: self.absolute_baselines.clone(),
+            indentation: self
+                .pending
+                .iter()
+                .map(|paragraph| {
+                    (
+                        paragraph.container,
+                        paragraph.indent,
+                        paragraph.indent_start,
+                        paragraph.indent_end,
+                    )
+                })
+                .collect(),
         }
     }
 

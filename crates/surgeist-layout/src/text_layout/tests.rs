@@ -8,6 +8,8 @@ use surgeist_text::{ParagraphBaseDirection, ParagraphControlKind, Source, Wrap};
 mod canonical;
 #[path = "tests/float_fit.rs"]
 mod float_fit;
+#[path = "tests/indent.rs"]
+mod indent;
 #[path = "tests/line_policy.rs"]
 mod line_policy;
 
@@ -201,6 +203,8 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
             alignment: TextAlign::Start,
             last_alignment: TextAlignLast::Auto,
             justification: TextJustification::None,
+            indent: crate::text_indent::ResolvedTextIndent::ZERO,
+            indent_state: crate::text_indent::IndentLineState::default(),
         },
         &[],
         |_, _| {

@@ -22,6 +22,8 @@ pub(crate) fn fragment_for(
             alignment: crate::TextAlign::Start,
             last_alignment: crate::TextAlignLast::Auto,
             justification: crate::TextJustification::None,
+            indent: crate::text_indent::ResolvedTextIndent::ZERO,
+            indent_state: crate::text_indent::IndentLineState::default(),
             orientation: surgeist_text::LineOrientation::Horizontal,
             atomics: &[],
             controls: &[],

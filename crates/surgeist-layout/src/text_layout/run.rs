@@ -51,6 +51,8 @@ pub(crate) struct Context<S: LayoutScalar> {
     pub alignment: TextAlign,
     pub last_alignment: TextAlignLast,
     pub justification: TextJustification,
+    pub indent: crate::text_indent::ResolvedTextIndent<S>,
+    pub indent_state: crate::text_indent::IndentLineState,
 }
 
 impl<S: LayoutScalar> Context<S> {
@@ -145,6 +147,8 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
             alignment: context.alignment,
             last_alignment: context.last_alignment,
             justification: context.justification,
+            indent: context.indent.widened(),
+            indent_state: context.indent_state,
             orientation,
             atomics: &allocations,
             controls: &control_allocations,
@@ -476,6 +480,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     lines: Vec<FittedLine>,
 ) -> Result<Output<Node, S>, FitError> {
     let mut report = MixedInlineRunReportOf {
+        indent_state: context.indent_state,
         inline_extent: S::ZERO,
         block_extent: S::ZERO,
         float_edge_phase: None,
@@ -497,6 +502,9 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     let mut outflows = Vec::new();
     for (line_index, line) in lines.into_iter().enumerate() {
         let feedback = line.finalized.feedback();
+        report.indent_state.commit(
+            line.finalized.selected_line().request().context.end == surgeist_text::LineEnd::Forced,
+        );
         let anchor = line_anchor(
             context,
             origin,
@@ -508,7 +516,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         let local_baseline = anchor.baseline - origin.y.to_f64() - context.cursor_block.to_f64();
         // Normal-flow allocations and placed metric bounds both contribute to
         // overflow, including lines without a source fragment or ink. Native
-        // requests have zero indent; intrinsic width excludes the observed
+        // intrinsic width includes the signed start margin and excludes observed
         // trailing whitespace rather than using glyph advance.
         let width = match line
             .finalized
@@ -518,7 +526,11 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             .available_inline
         {
             Some(width) => width,
-            None => finite(feedback.advance - feedback.trailing_whitespace)?.max(0.0),
+            None => finite(
+                feedback.advance - feedback.trailing_whitespace
+                    + line.finalized.selected_line().request().context.indent,
+            )?
+            .max(0.0),
         };
         let allocation = ScrollRectOf::try_new(
             Point::new(
@@ -543,9 +555,11 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         report.first_baseline.get_or_insert(number(local_baseline)?);
         report.last_baseline = Some(number(local_baseline)?);
         report.block_extent = report.block_extent.max(number(line.flow.next)?);
-        report.inline_extent = report
-            .inline_extent
-            .max(number(line.inline_start + feedback.advance)?);
+        report.inline_extent = report.inline_extent.max(number(
+            line.inline_start
+                + feedback.advance
+                + line.finalized.selected_line().request().context.indent,
+        )?);
         report.line_bands.push(LogicalLineBandOf {
             inline_start: number(line.inline_start)?,
             inline_end: number(line.inline_start + line.available)?,
@@ -699,6 +713,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             atomics: atomic_placements,
         });
     }
+    let indent_end = report.indent_state;
     Ok(Output {
         report,
         line_bounds,
@@ -714,6 +729,9 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             flows,
             amounts,
             outflows,
+            indent: context.indent.widened(),
+            indent_start: context.indent_state,
+            indent_end,
         },
     })
 }

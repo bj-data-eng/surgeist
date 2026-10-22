@@ -88,6 +88,8 @@ pub(super) fn numeric_atomic_fit_with_flow<S: LayoutScalar>(
         flow_axes: axes,
         text_align,
         text_align_last: crate::TextAlignLast::Auto,
+        indent: crate::text_indent::ResolvedTextIndent::ZERO,
+        indent_state: crate::text_indent::IndentLineState::default(),
         participants: items
             .into_iter()
             .enumerate()
@@ -528,6 +530,8 @@ pub(super) fn assert_fri06_c08_r1_mixed_unit_traversal<S: LayoutScalar>(
         flow_axes: axes,
         text_align: TextAlign::Start,
         text_align_last: crate::TextAlignLast::Auto,
+        indent: crate::text_indent::ResolvedTextIndent::ZERO,
+        indent_state: crate::text_indent::IndentLineState::default(),
         participants: vec![
             atomic(0, 10.0, 10.0, 8.0, 1),
             boundary(1, InlineBoundaryKind::Start),

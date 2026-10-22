@@ -11,6 +11,8 @@ use crate::{
 pub(crate) struct BlockContainerProjection<'a, S: LayoutScalar> {
     pub(super) common: CommonBoxProjection<'a, S>,
     pub(super) display: Display,
+    pub(super) block_generation: crate::BlockGeneration,
+    pub(super) text_indent: crate::TextIndentOf<S>,
     pub(super) text_align: TextAlign,
     pub(super) text_align_last: TextAlignLast,
     pub(super) text_justification: TextJustification,
@@ -24,6 +26,8 @@ impl<'a, S: LayoutScalar> BlockContainerProjection<'a, S> {
         Self {
             common: CommonBoxProjection::from_node(input),
             display: input.display,
+            block_generation: input.block_generation,
+            text_indent: input.text_indent,
             text_align: input.text_align,
             text_align_last: input.text_align_last,
             text_justification: input.text_justification,

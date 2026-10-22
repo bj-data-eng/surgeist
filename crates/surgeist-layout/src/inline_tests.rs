@@ -45,6 +45,8 @@ fn mr02_input<S: LayoutScalar>(
         flow_axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         text_align: TextAlign::Start,
         text_align_last: crate::TextAlignLast::Auto,
+        indent: crate::text_indent::ResolvedTextIndent::ZERO,
+        indent_state: crate::text_indent::IndentLineState::default(),
         participants,
     }
 }
@@ -677,6 +679,8 @@ fn fri06_c03_strut_private_builder_retains_control_baselines_and_post_line_inten
             flow_axes,
             text_align: TextAlign::Start,
             text_align_last: crate::TextAlignLast::Auto,
+            indent: crate::text_indent::ResolvedTextIndent::ZERO,
+            indent_state: crate::text_indent::IndentLineState::default(),
             participants: vec![
                 mixed_boundary(0, flow_axes, boundary_metrics),
                 mixed_forced_line_break(1, flow_axes, break_metrics, Clear::Both),
@@ -727,6 +731,8 @@ fn fri06_c04_line_band_private_callback_retries_transition_and_reselects_same_cu
                 flow_axes,
                 text_align: TextAlign::Start,
                 text_align_last: crate::TextAlignLast::Auto,
+                indent: crate::text_indent::ResolvedTextIndent::ZERO,
+                indent_state: crate::text_indent::IndentLineState::default(),
                 participants: vec![
                     participant(0, InlineBreakOpportunity::Allowed),
                     participant(1, InlineBreakOpportunity::Allowed),

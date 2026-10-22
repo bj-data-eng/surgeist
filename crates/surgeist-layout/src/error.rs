@@ -143,6 +143,8 @@ pub enum LayoutInvalidInputOf<S: LayoutScalar = DefaultScalar> {
     FloatExclusionProviderOutput {
         error: FloatExclusionIntervalErrorOf<S>,
     },
+    AnonymousBlockRole,
+    AnonymousIndentMismatch,
     InvalidationNodeNotReachable,
     TreeTopologyCycle,
     TextBinding(crate::text_layout::TextBindingError),
@@ -178,6 +180,7 @@ pub enum LayoutMissingContext {
     FloatExclusionProvider,
     TextCapture,
     TextOutOfFlowGeometry,
+    AnonymousGeneratingBlock,
 }
 
 impl core::hash::Hash for PhysicalAxis {

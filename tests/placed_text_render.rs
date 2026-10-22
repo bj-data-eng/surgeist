@@ -49,16 +49,21 @@ impl layout::LayoutTree for Tree {
 
 #[test]
 fn actual_layout_lines_supply_paint_and_interaction_without_rewrapping() {
-    assert_retained_layout_composition(false);
+    assert_retained_layout_composition(false, 0.0);
 }
 
 #[cfg(feature = "text-accessibility")]
 #[test]
 fn expanded_spaces_supply_same_paint_cursor_and_geometric_accessibility() {
-    assert_retained_layout_composition(true);
+    assert_retained_layout_composition(true, 0.0);
 }
 
-fn assert_retained_layout_composition(expanded: bool) {
+#[test]
+fn indented_lines_supply_retained_paint_and_interaction() {
+    assert_retained_layout_composition(false, 5.0);
+}
+
+fn assert_retained_layout_composition(expanded: bool, indent: f32) {
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,
     })
@@ -111,6 +116,10 @@ fn assert_retained_layout_composition(expanded: bool) {
                     layout::TextJustification::Spaces
                 } else {
                     layout::TextJustification::None
+                },
+                text_indent: layout::TextIndent {
+                    amount: layout::LengthPercentageOf::px(indent).unwrap(),
+                    ..layout::TextIndent::ZERO
                 },
                 ..layout::NodeInput::DEFAULT
             }),
@@ -196,6 +205,16 @@ fn assert_retained_layout_composition(expanded: bool) {
         }
     );
     let stats = system.stats();
+    // The indented AX AX case fits its first 40px word beside 5px in 45px.
+    // Its first caret moves by that indent; the second line stays unindented.
+    assert_eq!(
+        placed
+            .cursor(text::Cursor::new(0, text::Affinity::After))
+            .unwrap()
+            .rect()
+            .origin,
+        text::Point::new(f64::from(indent), 0.0)
+    );
     drop(system);
     let paint = render::prepare_text_layout(
         placed,
@@ -263,6 +282,33 @@ fn assert_retained_layout_composition(expanded: bool) {
         assert_eq!(position.character_index, 0);
         assert_eq!(node.value(), Some("X"));
         assert_eq!(node.font_size(), Some(20.0));
+        let first = paint
+            .layout()
+            .access_position(&accessibility, text::Cursor::new(0, text::Affinity::After))
+            .unwrap()
+            .unwrap();
+        let first_node = &update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == first.node)
+            .unwrap()
+            .1;
+        let first_bounds = first_node.bounds().unwrap();
+        assert_eq!(
+            (
+                first_bounds.x0,
+                first_bounds.y0,
+                first_bounds.x1,
+                first_bounds.y1
+            ),
+            (
+                100.0 + f64::from(indent),
+                200.0,
+                120.0 + f64::from(indent),
+                220.0
+            )
+        );
+        assert_eq!(first_node.value(), Some("A"));
         let other = layout::compute_layout_with_text(&capture, 0, request).unwrap();
         assert_eq!(
             other.placed_text()[0]

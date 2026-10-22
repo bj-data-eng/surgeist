@@ -48,6 +48,9 @@ pub const surgeist_layout::AvailableOf<S>::MIN_CONTENT: Self
 pub const fn surgeist_layout::AvailableOf<S>::definite(value: S) -> Self
 pub const fn surgeist_layout::AvailableOf<S>::into_option(self) -> core::option::Option<S>
 pub fn surgeist_layout::AvailableOf<S>::roughly_eq(self, other: Self) -> bool
+pub enum surgeist_layout::BlockGeneration
+pub surgeist_layout::BlockGeneration::Anonymous
+pub surgeist_layout::BlockGeneration::Principal
 pub enum surgeist_layout::BoxSizing
 pub surgeist_layout::BoxSizing::BorderBox
 pub surgeist_layout::BoxSizing::ContentBox
@@ -294,6 +297,8 @@ pub surgeist_layout::LayoutInternalInvariant::MissingStagedUnroundedOutput
 pub surgeist_layout::LayoutInternalInvariant::SubgridBaselineInheritance
 pub surgeist_layout::LayoutInternalInvariant::SubgridTrackInheritance
 #[non_exhaustive] pub enum surgeist_layout::LayoutInvalidInputOf<S: surgeist_layout::LayoutScalar>
+pub surgeist_layout::LayoutInvalidInputOf::AnonymousBlockRole
+pub surgeist_layout::LayoutInvalidInputOf::AnonymousIndentMismatch
 pub surgeist_layout::LayoutInvalidInputOf::AtomicInlineParticipation
 pub surgeist_layout::LayoutInvalidInputOf::AtomicInlineParticipation::reason: surgeist_layout::AtomicInlineParticipationRoleError
 pub surgeist_layout::LayoutInvalidInputOf::FloatExclusionProviderOutput
@@ -315,6 +320,7 @@ pub surgeist_layout::LayoutInvalidInputOf::RootAvailability::error: surgeist_lay
 pub surgeist_layout::LayoutInvalidInputOf::TextBinding(surgeist_layout::TextBindingError)
 pub surgeist_layout::LayoutInvalidInputOf::TreeTopologyCycle
 #[non_exhaustive] pub enum surgeist_layout::LayoutMissingContext
+pub surgeist_layout::LayoutMissingContext::AnonymousGeneratingBlock
 pub surgeist_layout::LayoutMissingContext::FloatExclusionProvider
 pub surgeist_layout::LayoutMissingContext::RequiredBasis
 pub surgeist_layout::LayoutMissingContext::TextCapture
@@ -1249,6 +1255,7 @@ pub surgeist_layout::NodeInputOf::align_items: core::option::Option<surgeist_lay
 pub surgeist_layout::NodeInputOf::align_self: core::option::Option<surgeist_layout::AlignItems>
 pub surgeist_layout::NodeInputOf::aspect_ratio: core::option::Option<surgeist_layout::AspectRatioOf<S>>
 pub surgeist_layout::NodeInputOf::atomic_inline_participation: core::option::Option<surgeist_layout::AtomicInlineParticipation>
+pub surgeist_layout::NodeInputOf::block_generation: surgeist_layout::BlockGeneration
 pub surgeist_layout::NodeInputOf::border: surgeist_layout::Edges<surgeist_layout::LengthOf<S>>
 pub surgeist_layout::NodeInputOf::box_sizing: surgeist_layout::BoxSizing
 pub surgeist_layout::NodeInputOf::clear: surgeist_layout::Clear
@@ -1298,6 +1305,7 @@ pub surgeist_layout::NodeInputOf::scrollbar_width: surgeist_layout::ScrollbarWid
 pub surgeist_layout::NodeInputOf::size: surgeist_layout::Size<surgeist_layout::PreferredSizeOf<S>>
 pub surgeist_layout::NodeInputOf::text_align: surgeist_layout::TextAlign
 pub surgeist_layout::NodeInputOf::text_align_last: surgeist_layout::TextAlignLast
+pub surgeist_layout::NodeInputOf::text_indent: surgeist_layout::TextIndentOf<S>
 pub surgeist_layout::NodeInputOf::text_justification: surgeist_layout::TextJustification
 pub surgeist_layout::NodeInputOf::vertical_align: surgeist_layout::VerticalAlign
 pub surgeist_layout::NodeInputOf::writing_mode: surgeist_layout::WritingMode
@@ -1538,6 +1546,14 @@ pub struct surgeist_layout::TextControlParticipation
 impl surgeist_layout::TextControlParticipation
 pub const fn surgeist_layout::TextControlParticipation::new(occurrence: surgeist_text::protocol::PreparedControl) -> Self
 pub const fn surgeist_layout::TextControlParticipation::occurrence(&self) -> &surgeist_text::protocol::PreparedControl
+pub struct surgeist_layout::TextIndentOf<S: surgeist_layout::LayoutScalar>
+pub surgeist_layout::TextIndentOf::amount: surgeist_layout::LengthPercentageOf<S>
+pub surgeist_layout::TextIndentOf::each_line: bool
+pub surgeist_layout::TextIndentOf::hanging: bool
+impl<S: surgeist_layout::LayoutScalar> surgeist_layout::TextIndentOf<S>
+pub const surgeist_layout::TextIndentOf<S>::ZERO: Self
+impl<S: surgeist_layout::LayoutScalar> core::default::Default for surgeist_layout::TextIndentOf<S>
+pub fn surgeist_layout::TextIndentOf<S>::default() -> Self
 pub struct surgeist_layout::TextLayoutInput<'tree, Tree: surgeist_layout::LayoutTree>
 impl<'tree, Tree: surgeist_layout::LayoutTree> surgeist_layout::TextLayoutInput<'tree, Tree>
 pub fn surgeist_layout::TextLayoutInput<'tree, Tree>::paragraphs(&self) -> &[surgeist_layout::TextParagraphBinding<<Tree as surgeist_layout::Traverse>::Node>]
@@ -1785,6 +1801,7 @@ pub type surgeist_layout::ScrollTargetGeometry = surgeist_layout::ScrollTargetGe
 pub type surgeist_layout::ScrollbarGutterRects = surgeist_layout::ScrollbarGutterRectsOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::ScrollbarWidth = surgeist_layout::ScrollbarWidthOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::SizingCalculation = surgeist_layout::SizingCalculationOf<surgeist_layout::DefaultScalar>
+pub type surgeist_layout::TextIndent = surgeist_layout::TextIndentOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::TrackComponent = surgeist_layout::TrackComponentOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::TrackComponentList = surgeist_layout::TrackComponentListOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::TrackFlexFactor = surgeist_layout::TrackFlexFactorOf<surgeist_layout::DefaultScalar>

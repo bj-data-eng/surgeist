@@ -356,6 +356,8 @@ struct Constants<S: LayoutScalar> {
     node_min_size: Size<Option<S>>,
     node_max_size: Size<Option<S>>,
     direction: Direction,
+    text_indent: crate::TextIndentOf<S>,
+    first_formatted: bool,
     text_align: TextAlign,
     text_align_last: TextAlignLast,
     text_justification: TextJustification,
@@ -603,7 +605,33 @@ impl<S: LayoutScalar> Constants<S> {
         let logical_style_size = flow_axes.logical_size(style_size);
         let logical_margin = flow_axes.logical_edges(margin);
 
+        let first_formatted = match style.block_generation {
+            crate::BlockGeneration::Principal => true,
+            crate::BlockGeneration::Anonymous => {
+                let context = input.block_indent_context().ok_or_else(|| {
+                    crate::LayoutErrorOf::new(
+                        crate::LayoutErrorSiteOf::Node(node),
+                        crate::LayoutOperation::ChildLayout,
+                        crate::LayoutErrorKindOf::MissingContext(
+                            crate::LayoutMissingContext::AnonymousGeneratingBlock,
+                        ),
+                    )
+                })?;
+                if context.inherited != style.text_indent {
+                    return Err(crate::LayoutErrorOf::new(
+                        crate::LayoutErrorSiteOf::Node(node),
+                        crate::LayoutOperation::ChildLayout,
+                        crate::LayoutErrorKindOf::InvalidInput(
+                            crate::LayoutInvalidInputOf::AnonymousIndentMismatch,
+                        ),
+                    ));
+                }
+                context.first_formatted
+            }
+        };
         Ok(Self {
+            text_indent: style.text_indent,
+            first_formatted,
             flow_axes,
             node_outer_size,
             node_inner_size,

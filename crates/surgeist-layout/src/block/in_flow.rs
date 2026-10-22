@@ -176,6 +176,8 @@ where
     let mut contributions = ScrollContributionAccumulatorOf::new(contribution_seed);
 
     let mut index = 0;
+    let mut first_in_flow = true;
+    let mut inline_indent_state = None;
     while index < children.len() {
         let source_index = index;
         let child = children[index];
@@ -278,8 +280,14 @@ where
                         input,
                         node_inner_size,
                         set_layout,
+                        indent_state: inline_indent_state.unwrap_or_else(|| {
+                            crate::text_indent::IndentLineState::new(
+                                first_in_flow && constants.first_formatted,
+                            )
+                        }),
                     },
                     InlineRunTransitionState {
+                        indent_state: &mut inline_indent_state,
                         cursor_block: &mut cursor_block,
                         content_size: &mut content_size,
                         scroll_content_size: &mut scroll_content_size,
@@ -296,10 +304,20 @@ where
                         contributions: &mut contributions,
                     },
                 )?;
+                first_in_flow &= inline_indent_state.is_none();
                 continue;
             }
             InFlowChildStart::FlowBox(style) => style,
         };
+
+        let child_indent_context = crate::text_indent::BlockIndentContext {
+            inherited: constants.text_indent,
+            first_formatted: first_in_flow && constants.first_formatted,
+        };
+        if child_style.float.is_none() {
+            first_in_flow = false;
+            inline_indent_state = None;
+        }
 
         let unresolved_margin = constants.flow_axes.zip_physical_edges_with_inline_extent(
             *child_style.common.margin,
@@ -363,7 +381,8 @@ where
                 AvailableOf::<S>::MAX_CONTENT,
             )),
         )
-        .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars());
+        .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
+        .with_block_indent_context(child_indent_context);
         let avoids_float_exclusions = block_child_avoids_float_exclusions(&child_style);
         let inherits_float_exclusions = set_layout
             && child_style.float.is_none()
@@ -533,7 +552,8 @@ where
                     ),
                     band_available,
                 )
-                .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars());
+                .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
+                .with_block_indent_context(child_indent_context);
             }
 
             output = tree.compute_child(child, child_input)?;

@@ -171,6 +171,26 @@ where
         let accepts_inline_text = match layout_input {
             LayoutInputViewOf::Box(_) => {
                 let input = tree.node_input(node);
+                if input.block_generation == crate::BlockGeneration::Anonymous {
+                    if input.display != Display::Block
+                        || input.position == Position::Absolute
+                        || input.float != crate::Float::None
+                    {
+                        return Err(root_input_error(
+                            node,
+                            LayoutInvalidInputOf::AnonymousBlockRole,
+                        ));
+                    }
+                    if is_root {
+                        return Err(LayoutErrorOf::new(
+                            LayoutErrorSiteOf::Node(node),
+                            LayoutOperation::RootLayout,
+                            LayoutErrorKindOf::MissingContext(
+                                crate::LayoutMissingContext::AnonymousGeneratingBlock,
+                            ),
+                        ));
+                    }
+                }
                 let text_bound = paragraphs
                     .iter()
                     .any(|paragraph| paragraph.atomics.iter().any(|binding| binding.node == node));

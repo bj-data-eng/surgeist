@@ -220,6 +220,7 @@ mod output;
 #[cfg(test)]
 #[path = "../tests/layout/browser_parity/pinned_font.rs"]
 mod pinned_font;
+mod text_indent;
 mod text_layout;
 pub use text_layout::{
     TextAtomicBinding, TextBindingError, TextControlBinding, TextControlParticipation,
@@ -286,9 +287,9 @@ pub use measurement::{
     MeasurementAvailable, MeasurementAvailableOf, compute_leaf,
 };
 pub use node_input::{
-    AlignContent, AlignItems, AtomicInlineParticipation, BoxSizing, Clear, ComputedOverflow,
-    ComputedOverflowError, Direction, Display, FlexDirection, FlexGrow, FlexGrowOf,
-    FlexItemCollapse, FlexShrink, FlexShrinkOf, FlexWrap, Float, FloatExclusion,
+    AlignContent, AlignItems, AtomicInlineParticipation, BlockGeneration, BoxSizing, Clear,
+    ComputedOverflow, ComputedOverflowError, Direction, Display, FlexDirection, FlexGrow,
+    FlexGrowOf, FlexItemCollapse, FlexShrink, FlexShrinkOf, FlexWrap, Float, FloatExclusion,
     FloatExclusionInterval, FloatExclusionIntervalError, FloatExclusionIntervalErrorOf,
     FloatExclusionIntervalOf, FloatExclusionQuery, FloatExclusionQueryOf, GridAutoFlow,
     GridFlowTolerance, GridFlowToleranceOf, GridPlacement, InlineBoundaryInput,
@@ -299,8 +300,8 @@ pub use node_input::{
     RawGridPlacement, ScrollMargin, ScrollMarginError, ScrollMarginErrorOf, ScrollMarginOf,
     ScrollPadding, ScrollPaddingOf, ScrollPaddingValue, ScrollPaddingValueOf, ScrollSnapAlign,
     ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness, ScrollSnapType,
-    ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf, TextAlign, TextAlignLast, TextJustification,
-    VerticalAlign, WritingMode,
+    ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf, TextAlign, TextAlignLast, TextIndent,
+    TextIndentOf, TextJustification, VerticalAlign, WritingMode,
 };
 pub use output::{
     Baselines, BaselinesOf, CollapsibleMargin, CollapsibleMarginOf, CompletedLayoutBatch,

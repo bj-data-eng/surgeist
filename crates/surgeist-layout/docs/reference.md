@@ -86,11 +86,36 @@ uses real selected text, boxes, controls, and any explicitly supplied Layout
 `line_strut`. Missing metrics remain a typed refusal rather than a guessed font
 or zero-size line.
 
-The native profile supports horizontal LTR and RTL text, zero indentation,
+The native profile supports horizontal LTR and RTL text, signed indentation,
 and font-advance tabs. `text_align` supplies normal line alignment;
 `text_align_last` supplies paragraph-ending and forced-line alignment. Logical
 Start/End follows the paragraph direction, while Left/Right remains physical.
 Only the Legacy alignment variants also align ordinary block children.
+
+`text_indent: TextIndentOf<S>` retains a signed length/percentage and the
+`each_line` and `hanging` flags. Percentages resolve against the block's own inner
+inline size, before float reduction; intrinsic sizing uses only the absolute
+component. A 25% indent in an 80px block is 20px even when floats leave a 50px
+span. Negative and oversized indents retain their actual overflow.
+
+Default indentation follows the first formatted line. `each_line` instead affects
+the first line of an actual block container and lines after genuine forced
+breaks; `hanging` inverts that predicate. Only accepted lines advance this state,
+including empty lines. Candidate retries and clearance do not consume it.
+Text-bearing and box/control-only inline runs use the same policy.
+
+`block_generation` distinguishes principal boxes from actual anonymous blocks.
+For anonymous blocks, Layout derives first-line eligibility through the first
+in-flow-child chain; an earlier empty in-flow block consumes that position.
+Hidden, absolute and floated predecessors do not. The admitted anonymous profile
+is in-flow BlockFlow, with the generating owner captured and matching inherited
+computed indent values. Missing context and incompatible roles refuse explicitly;
+these inputs do not authenticate live computed Style.
+
+One prepared paragraph spanning an interleaved float is not yet admitted.
+Separate native paragraph bindings retain their own terminal lines; a float
+does not authorize changing Text's issued line ends. Already placed floats
+continue to constrain available spans and metric feedback.
 
 `TextJustification::Spaces` expands retained U+0020 slots using Text's finalized
 ownership and edge decisions. Layout distributes the remaining raw advance to

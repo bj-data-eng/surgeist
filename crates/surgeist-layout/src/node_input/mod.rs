@@ -32,10 +32,10 @@ pub use grid::{
     RawGridPlacement,
 };
 pub use inline::{
-    AtomicInlineParticipation, InlineBoundaryInput, InlineBoundaryInputOf, InlineBoundaryKind,
-    InlineBreakOpportunity, InlineMetrics, InlineMetricsError, InlineMetricsOf, LineBreakDisplay,
-    LineBreakInput, LineBreakInputOf, TextAlign, TextAlignLast, TextJustification, VerticalAlign,
-    WritingMode,
+    AtomicInlineParticipation, BlockGeneration, InlineBoundaryInput, InlineBoundaryInputOf,
+    InlineBoundaryKind, InlineBreakOpportunity, InlineMetrics, InlineMetricsError, InlineMetricsOf,
+    LineBreakDisplay, LineBreakInput, LineBreakInputOf, TextAlign, TextAlignLast, TextIndent,
+    TextIndentOf, TextJustification, VerticalAlign, WritingMode,
 };
 pub use scroll::{
     ComputedOverflow, ComputedOverflowError, Overflow, OverflowClipBox, OverflowClipMargin,
@@ -76,6 +76,8 @@ pub struct NodeInputOf<S: LayoutScalar = DefaultScalar> {
     pub flex_item_collapse: FlexItemCollapse,
     pub box_sizing: BoxSizing,
     pub direction: Direction,
+    pub block_generation: BlockGeneration,
+    pub text_indent: TextIndentOf<S>,
     pub text_align: TextAlign,
     pub text_align_last: TextAlignLast,
     pub text_justification: TextJustification,
@@ -173,6 +175,8 @@ impl NodeInputOf<DefaultScalar> {
         flex_item_collapse: FlexItemCollapse::Normal,
         box_sizing: BoxSizing::BorderBox,
         direction: Direction::Ltr,
+        block_generation: BlockGeneration::Principal,
+        text_indent: TextIndentOf::ZERO,
         text_align: TextAlign::Start,
         text_align_last: TextAlignLast::Auto,
         text_justification: TextJustification::None,
@@ -252,6 +256,8 @@ impl<S: LayoutScalar> Default for NodeInputOf<S> {
             flex_item_collapse: FlexItemCollapse::Normal,
             box_sizing: BoxSizing::BorderBox,
             direction: Direction::Ltr,
+            block_generation: BlockGeneration::Principal,
+            text_indent: TextIndentOf::ZERO,
             text_align: TextAlign::Start,
             text_align_last: TextAlignLast::Auto,
             text_justification: TextJustification::None,

@@ -124,6 +124,8 @@ pub(crate) struct FitInput<'a> {
     pub alignment: TextAlign,
     pub last_alignment: TextAlignLast,
     pub justification: TextJustification,
+    pub indent: crate::text_indent::ResolvedTextIndent<f64>,
+    pub indent_state: crate::text_indent::IndentLineState,
     pub orientation: LineOrientation,
     pub atomics: &'a [AtomicAllocation],
     pub controls: &'a [ControlAllocation],
@@ -194,7 +196,11 @@ fn finalize_candidate(
         let expansion = request
             .context
             .available_inline
-            .map(|width| finite(width - natural.feedback().advance).map(|extra| (width, extra)))
+            .map(|width| {
+                finite(width - request.context.indent).and_then(|capacity| {
+                    finite(capacity - natural.feedback().advance).map(|extra| (capacity, extra))
+                })
+            })
             .transpose()?;
         if let Some((width, extra)) = expansion.filter(|(_, extra)| *extra >= 0.0)
             && (extra == 0.0
@@ -317,6 +323,8 @@ pub(crate) fn fit(
         alignment,
         last_alignment,
         justification,
+        indent,
+        mut indent_state,
         orientation,
         atomics,
         controls,
@@ -416,7 +424,7 @@ pub(crate) fn fit(
                                 PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
                             },
                             available_inline: selected_width,
-                            indent: 0.0,
+                            indent: indent.at(indent_state),
                             alignment: text_alignment(alignment.for_line(
                                 last_alignment,
                                 matches!(
@@ -466,8 +474,10 @@ pub(crate) fn fit(
                     };
                     let feedback = finalized.feedback();
                     let occupied = finite(feedback.occupied_end - feedback.occupied_start)?;
-                    let fits = selected_width
-                        .is_none_or(|width| feedback.advance <= width && occupied <= width);
+                    let fits = selected_width.is_none_or(|width| {
+                        feedback.advance <= width - request.context.indent
+                            && occupied <= width - request.context.indent
+                    });
                     if endpoint_choice.is_none() || fits {
                         endpoint_choice = Some((request, finalized, amounts, fits));
                     }
@@ -531,8 +541,10 @@ pub(crate) fn fit(
                 Available::Minimum => Some(width),
                 Available::Definite(_) | Available::Maximum => selected_width,
             };
-            let fits =
-                float_fit_width.is_none_or(|width| feedback.advance <= width && occupied <= width);
+            let fits = float_fit_width.is_none_or(|width| {
+                feedback.advance <= width - request.context.indent
+                    && occupied <= width - request.context.indent
+            });
             // A nonzero shortened band can still admit no content from this
             // indivisible candidate. Consume actual float transitions before
             // allowing unavoidable overflow in a float-free band. Minimum uses
@@ -554,6 +566,7 @@ pub(crate) fn fit(
             if cleared > logical_end {
                 minimum_block = Some(minimum_block.map_or(cleared, |minimum| minimum.max(cleared)));
             }
+            indent_state.commit(kind == PreparedBreakKind::Forced);
             result.push(FittedLine {
                 finalized,
                 amounts,

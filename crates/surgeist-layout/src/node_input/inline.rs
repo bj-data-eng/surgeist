@@ -17,6 +17,40 @@ impl LineBreakDisplay {
     }
 }
 
+/// The actual generation role of a normalized block box.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum BlockGeneration {
+    #[default]
+    Principal,
+    Anonymous,
+}
+
+/// Computed signed indentation. Percentages remain unresolved until Layout
+/// has the block container own inner inline size; intrinsic contributions use
+/// only the absolute component.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TextIndentOf<S: LayoutScalar = DefaultScalar> {
+    pub amount: crate::LengthPercentageOf<S>,
+    pub each_line: bool,
+    pub hanging: bool,
+}
+
+pub type TextIndent = TextIndentOf<DefaultScalar>;
+
+impl<S: LayoutScalar> TextIndentOf<S> {
+    pub const ZERO: Self = Self {
+        amount: crate::LengthPercentageOf::ZERO,
+        each_line: false,
+        hanging: false,
+    };
+}
+
+impl<S: LayoutScalar> Default for TextIndentOf<S> {
+    fn default() -> Self {
+        Self::ZERO
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum TextAlign {
     #[default]

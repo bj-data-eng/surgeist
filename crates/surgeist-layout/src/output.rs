@@ -113,6 +113,7 @@ pub struct ComputeInputOf<S: LayoutScalar = DefaultScalar> {
     parent: Size<Option<S>>,
     containing_layout_context: ContainingLayoutContext,
     available: Size<AvailableOf<S>>,
+    block_indent_context: Option<crate::text_indent::BlockIndentContext<S>>,
     // Settlement owned by the node being computed.
     settled_auto_scrollbars: SettledAutoScrollbarState,
     // Settlement of the immediate containing formatting pass that produced this request.
@@ -140,6 +141,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             parent: validate_optional_size(parent)?,
             containing_layout_context,
             available: validate_root_available_size(available)?,
+            block_indent_context: None,
             settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
             containing_auto_scrollbar_pass: SettledAutoScrollbarState::INITIAL,
         })
@@ -163,6 +165,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             parent: validate_optional_size(parent)?,
             containing_layout_context,
             available: validate_root_available_size(available)?,
+            block_indent_context: None,
             settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
             containing_auto_scrollbar_pass: SettledAutoScrollbarState::INITIAL,
         })
@@ -232,6 +235,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             parent,
             containing_layout_context,
             available,
+            block_indent_context: None,
             settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
             containing_auto_scrollbar_pass: SettledAutoScrollbarState::INITIAL,
         }
@@ -257,6 +261,20 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
     ) -> Self {
         Self::hidden(containing_layout_context)
             .with_containing_auto_scrollbar_pass(containing_auto_scrollbar_pass)
+    }
+
+    pub(crate) const fn block_indent_context(
+        &self,
+    ) -> Option<crate::text_indent::BlockIndentContext<S>> {
+        self.block_indent_context
+    }
+
+    pub(crate) const fn with_block_indent_context(
+        mut self,
+        context: crate::text_indent::BlockIndentContext<S>,
+    ) -> Self {
+        self.block_indent_context = Some(context);
+        self
     }
 
     #[must_use]

@@ -143,6 +143,7 @@ impl VisibleInlineRunTransition {
         S: LayoutScalar,
     {
         let InlineRunTransitionState {
+            indent_state,
             cursor_block,
             content_size,
             scroll_content_size,
@@ -169,6 +170,9 @@ impl VisibleInlineRunTransition {
             contributions,
         )?;
 
+        if let Some(committed) = placement.indent_state {
+            *indent_state = Some(committed);
+        }
         let placement_content_size = constants.flow_axes.logical_size(placement.content_size);
         content_size.inline = content_size.inline.max(placement_content_size.inline);
         content_size.block = content_size.block.max(placement_content_size.block);
@@ -193,6 +197,7 @@ impl VisibleInlineRunTransition {
 }
 
 pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
+    pub(super) indent_state: &'a mut Option<crate::text_indent::IndentLineState>,
     pub(super) cursor_block: &'a mut S,
     pub(super) content_size: &'a mut LogicalSizeOf<S>,
     pub(super) scroll_content_size: &'a mut LogicalSizeOf<S>,
@@ -208,6 +213,7 @@ pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
 }
 
 struct InlineRunPlacement<Node, S: LayoutScalar> {
+    indent_state: Option<crate::text_indent::IndentLineState>,
     size: Size<S>,
     content_size: Size<S>,
     scroll_content_size: Size<S>,
@@ -225,6 +231,7 @@ impl<Node, S: LayoutScalar> InlineRunPlacement<Node, S> {
 }
 
 pub(super) struct InlineRunContext<'a, S: LayoutScalar> {
+    pub(super) indent_state: crate::text_indent::IndentLineState,
     pub(super) source_index_start: usize,
     pub(super) cursor_block: S,
     pub(super) owned_float_block_end: S,
@@ -298,6 +305,7 @@ where
     S: LayoutScalar,
 {
     let InlineRunContext {
+        indent_state,
         source_index_start,
         cursor_block,
         owned_float_block_end,
@@ -586,6 +594,8 @@ where
             alignment: constants.text_align,
             last_alignment: constants.text_align_last,
             justification: constants.text_justification,
+            indent: resolve_text_indent(container, constants.text_indent, available)?,
+            indent_state,
         };
         let text_controls = binding
             .controls
@@ -718,6 +728,12 @@ where
                 flow_axes: constants.flow_axes,
                 text_align: constants.text_align,
                 text_align_last: constants.text_align_last,
+                indent: resolve_text_indent(
+                    container,
+                    constants.text_indent,
+                    available_inline_extent,
+                )?,
+                indent_state,
                 participants,
             },
             |block_start, block_end| {
@@ -1011,6 +1027,7 @@ where
     );
 
     Ok(InlineRunPlacement {
+        indent_state: (!report.line_bands.is_empty()).then_some(report.indent_state),
         size: report_size,
         content_size,
         scroll_content_size,
@@ -1139,4 +1156,63 @@ fn text_run_error<Node: Copy, S: LayoutScalar, M>(
         LayoutOperation::TextSelection,
         kind,
     )
+}
+
+fn resolve_text_indent<Node: Copy, S: LayoutScalar, M>(
+    node: Node,
+    policy: crate::TextIndentOf<S>,
+    own_available: AvailableOf<S>,
+) -> LayoutResultOf<Node, crate::text_indent::ResolvedTextIndent<S>, S, M> {
+    let amount =
+        match own_available {
+            AvailableOf::MinContent | AvailableOf::MaxContent => policy.amount.absolute_px(),
+            AvailableOf::Definite(width) => match policy.amount.resolve_against(
+                crate::PercentageBasisOf::definite(width).map_err(|_| {
+                    LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(node),
+                        LayoutOperation::ValueResolution,
+                        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric {
+                            value: width,
+                        }),
+                    )
+                })?,
+            ) {
+                crate::NumericResolutionOf::Resolved(value) => value,
+                crate::NumericResolutionOf::MissingBasis { .. } => {
+                    return Err(LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(node),
+                        LayoutOperation::ValueResolution,
+                        LayoutErrorKindOf::MissingContext(
+                            crate::LayoutMissingContext::RequiredBasis,
+                        ),
+                    ));
+                }
+                crate::NumericResolutionOf::InvalidNumeric { resolved, .. } => {
+                    return Err(LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(node),
+                        LayoutOperation::ValueResolution,
+                        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric {
+                            value: resolved,
+                        }),
+                    ));
+                }
+            },
+        };
+    if let AvailableOf::Definite(width) = own_available {
+        let capacity = width - amount;
+        if !capacity.is_finite() {
+            return Err(LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(node),
+                LayoutOperation::ValueResolution,
+                LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric {
+                    value: capacity,
+                }),
+            ));
+        }
+    }
+    Ok(crate::text_indent::ResolvedTextIndent {
+        amount,
+        each_line: policy.each_line,
+        hanging: policy.hanging,
+    })
 }
