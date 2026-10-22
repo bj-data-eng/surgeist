@@ -6,23 +6,13 @@ use crate::{CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationL
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
 
-fn charge(writer: &mut SpecifiedRuleWriter) -> Result<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)
-}
-
-fn keyword(writer: &mut SpecifiedRuleWriter, value: &str) -> Result<()> {
-    charge(writer)?;
-    writer.append(value)
-}
-
 fn ident(writer: &mut SpecifiedRuleWriter, value: &str) -> Result<()> {
-    charge(writer)?;
+    writer.node()?;
     writer.append_identifier(value)
 }
 
 fn string(writer: &mut SpecifiedRuleWriter, value: &str) -> Result<()> {
-    charge(writer)?;
+    writer.node()?;
     writer.append_string(value)
 }
 
@@ -65,22 +55,19 @@ pub(crate) fn style(writer: &mut SpecifiedRuleWriter, value: &CssCounterStyleVal
     match value {
         CssCounterStyleValue::Named(name) => ident(writer, name.as_str()),
         CssCounterStyleValue::Symbols(symbols) => {
-            charge(writer)?;
+            writer.node()?;
             writer.append("symbols(")?;
             if let Some(system) = symbols.system() {
                 if system == CssSymbolsSystem::Symbolic {
-                    charge(writer)?;
+                    writer.node()?;
                 } else {
-                    keyword(
-                        writer,
-                        match system {
-                            CssSymbolsSystem::Cyclic => "cyclic",
-                            CssSymbolsSystem::Numeric => "numeric",
-                            CssSymbolsSystem::Alphabetic => "alphabetic",
-                            CssSymbolsSystem::Symbolic => unreachable!(),
-                            CssSymbolsSystem::Fixed => "fixed",
-                        },
-                    )?;
+                    writer.keyword(match system {
+                        CssSymbolsSystem::Cyclic => "cyclic",
+                        CssSymbolsSystem::Numeric => "numeric",
+                        CssSymbolsSystem::Alphabetic => "alphabetic",
+                        CssSymbolsSystem::Symbolic => unreachable!(),
+                        CssSymbolsSystem::Fixed => "fixed",
+                    })?;
                     writer.append(" ")?;
                 }
             }
@@ -122,36 +109,56 @@ impl CssCounterStyleValue {
     }
 }
 
+/// Writes an optional trailing argument, omitting one equal to its default.
+///
+/// CSSOM "serialize a CSS value" step 2 omits components whose omission does
+/// not change the meaning. The explicit default is still traversed and
+/// charged as one node, so omission never refunds work.
+fn optional_argument<T>(
+    writer: &mut SpecifiedRuleWriter,
+    value: Option<T>,
+    is_default: impl FnOnce(&T) -> bool,
+    write: impl FnOnce(&mut SpecifiedRuleWriter, T) -> Result<()>,
+) -> Result<()> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    if is_default(&value) {
+        return writer.node();
+    }
+    writer.append(", ")?;
+    write(writer, value)
+}
+
+/// The counter style argument of the Generated Content 3 counter functions
+/// defaults to `decimal`.
+fn optional_counter_style(
+    writer: &mut SpecifiedRuleWriter,
+    value: Option<&CssCounterStyleValue>,
+) -> Result<()> {
+    optional_argument(
+        writer,
+        value,
+        |value| matches!(value.named(), Some(name) if name.as_str() == "decimal"),
+        style,
+    )
+}
+
 fn counter(writer: &mut SpecifiedRuleWriter, value: &CssContentCounter) -> Result<()> {
-    charge(writer)?;
+    writer.node()?;
     writer.append("counter(")?;
     ident(writer, value.name().as_str())?;
-    if let Some(style_value) = value.style() {
-        if matches!(style_value.named(), Some(name) if name.as_str() == "decimal") {
-            // The explicit default is traversed even though CSSOM omits it.
-            charge(writer)?;
-        } else {
-            writer.append(", ")?;
-            style(writer, style_value)?;
-        }
-    }
+    optional_counter_style(writer, value.style())?;
     writer.append(")")
 }
 
 fn counters(writer: &mut SpecifiedRuleWriter, value: &CssContentCounters) -> Result<()> {
-    charge(writer)?;
+    writer.node()?;
     writer.append("counters(")?;
     ident(writer, value.name().as_str())?;
     writer.append(", ")?;
     string(writer, value.separator().as_str())?;
-    if let Some(style_value) = value.style() {
-        if matches!(style_value.named(), Some(name) if name.as_str() == "decimal") {
-            charge(writer)?;
-        } else {
-            writer.append(", ")?;
-            style(writer, style_value)?;
-        }
-    }
+    optional_counter_style(writer, value.style())?;
     writer.append(")")
 }
 
@@ -159,15 +166,15 @@ fn item(writer: &mut SpecifiedRuleWriter, value: &CssContentValueItem) -> Result
     match value {
         CssContentValueItem::String(value) => string(writer, value.as_str()),
         CssContentValueItem::Image(value) => value.append_specified(writer),
-        CssContentValueItem::Contents => keyword(writer, "contents"),
-        CssContentValueItem::OpenQuote => keyword(writer, "open-quote"),
-        CssContentValueItem::CloseQuote => keyword(writer, "close-quote"),
-        CssContentValueItem::NoOpenQuote => keyword(writer, "no-open-quote"),
-        CssContentValueItem::NoCloseQuote => keyword(writer, "no-close-quote"),
+        CssContentValueItem::Contents => writer.keyword("contents"),
+        CssContentValueItem::OpenQuote => writer.keyword("open-quote"),
+        CssContentValueItem::CloseQuote => writer.keyword("close-quote"),
+        CssContentValueItem::NoOpenQuote => writer.keyword("no-open-quote"),
+        CssContentValueItem::NoCloseQuote => writer.keyword("no-close-quote"),
         CssContentValueItem::Counter(value) => counter(writer, value),
         CssContentValueItem::Counters(value) => counters(writer, value),
         CssContentValueItem::Leader(value) => {
-            charge(writer)?;
+            writer.node()?;
             writer.append("leader(")?;
             match value {
                 CssLeaderValue::Dotted => string(writer, ".")?,
@@ -178,63 +185,59 @@ fn item(writer: &mut SpecifiedRuleWriter, value: &CssContentValueItem) -> Result
             writer.append(")")
         }
         CssContentValueItem::TargetCounter(value) => {
-            charge(writer)?;
+            writer.node()?;
             writer.append("target-counter(")?;
             target(writer, value.target())?;
             writer.append(", ")?;
             ident(writer, value.name().as_str())?;
-            if let Some(style_value) = value.style() {
-                writer.append(", ")?;
-                style(writer, style_value)?;
-            }
+            optional_counter_style(writer, value.style())?;
             writer.append(")")
         }
         CssContentValueItem::TargetCounters(value) => {
-            charge(writer)?;
+            writer.node()?;
             writer.append("target-counters(")?;
             target(writer, value.target())?;
             writer.append(", ")?;
             ident(writer, value.name().as_str())?;
             writer.append(", ")?;
             string(writer, value.separator().as_str())?;
-            if let Some(style_value) = value.style() {
-                writer.append(", ")?;
-                style(writer, style_value)?;
-            }
+            optional_counter_style(writer, value.style())?;
             writer.append(")")
         }
         CssContentValueItem::TargetText(value) => {
-            charge(writer)?;
+            writer.node()?;
             writer.append("target-text(")?;
             target(writer, value.target())?;
-            if let Some(mode) = value.mode() {
-                writer.append(", ")?;
-                keyword(writer, mode_text(mode))?;
-            }
+            // Generated Content 3: the `target-text()` mode defaults to `content`.
+            optional_argument(
+                writer,
+                value.mode(),
+                |mode| *mode == CssTargetTextMode::Content,
+                |writer, mode| writer.keyword(mode_text(mode)),
+            )?;
             writer.append(")")
         }
         CssContentValueItem::NamedString(value) => {
-            charge(writer)?;
+            writer.node()?;
             writer.append("string(")?;
             ident(writer, value.name().as_str())?;
-            if let Some(mode) = value.mode() {
-                if mode == CssNamedStringMode::First {
-                    charge(writer)?;
-                } else {
-                    writer.append(", ")?;
-                    keyword(writer, name_mode_text(mode))?;
-                }
-            }
+            optional_argument(
+                writer,
+                value.mode(),
+                |mode| *mode == CssNamedStringMode::First,
+                |writer, mode| writer.keyword(name_mode_text(mode)),
+            )?;
             writer.append(")")
         }
         CssContentValueItem::Content(mode) => {
-            charge(writer)?;
+            writer.node()?;
             writer.append("content(")?;
+            // The only argument has no preceding comma.
             if let Some(mode) = mode {
                 if *mode == CssContentReferenceMode::Text {
-                    charge(writer)?;
+                    writer.node()?;
                 } else {
-                    keyword(writer, content_mode_text(*mode))?;
+                    writer.keyword(content_mode_text(*mode))?;
                 }
             }
             writer.append(")")
@@ -243,7 +246,7 @@ fn item(writer: &mut SpecifiedRuleWriter, value: &CssContentValueItem) -> Result
 }
 
 fn alternative(writer: &mut SpecifiedRuleWriter, value: &CssContentAlternative) -> Result<()> {
-    charge(writer)?;
+    writer.node()?;
     for (index, item_value) in value.items().iter().enumerate() {
         if index != 0 {
             writer.append(" ")?;
@@ -280,8 +283,8 @@ impl CssContentValue {
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         match self {
-            CssContentValue::Normal => keyword(writer, "normal")?,
-            CssContentValue::None => keyword(writer, "none")?,
+            CssContentValue::Normal => writer.keyword("normal")?,
+            CssContentValue::None => writer.keyword("none")?,
             CssContentValue::Generated(value) => {
                 value.list().append_to_rule_writer(writer)?;
                 if let Some(value) = value.alternative() {
@@ -309,13 +312,8 @@ impl CssContentList {
         Ok(writer.css)
     }
     pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge(writer)?;
-        for (index, value) in self.items().iter().enumerate() {
-            if index != 0 {
-                writer.append(" ")?;
-            }
-            item(writer, value)?;
-        }
+        writer.node()?;
+        writer.space_separated(self.items(), item)?;
         Ok(())
     }
 }
@@ -336,14 +334,14 @@ impl CssStringSet {
     }
     pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         let Some(entries) = self.entries() else {
-            return keyword(writer, "none");
+            return writer.keyword("none");
         };
-        charge(writer)?;
+        writer.node()?;
         for (index, entry) in entries.iter().enumerate() {
             if index != 0 {
                 writer.append(", ")?;
             }
-            charge(writer)?;
+            writer.node()?;
             ident(writer, entry.name().as_str())?;
             for value in entry.strings() {
                 writer.append(" ")?;
@@ -370,7 +368,7 @@ impl CssBookmarkLevel {
     }
     pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self.level() {
-            None => keyword(writer, "none"),
+            None => writer.keyword("none"),
             Some(level) => level.append_to_rule_writer(writer),
         }
     }
@@ -391,12 +389,9 @@ impl CssBookmarkState {
         Ok(writer.css)
     }
     pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        keyword(
-            writer,
-            match self {
-                Self::Open => "open",
-                Self::Closed => "closed",
-            },
-        )
+        writer.keyword(match self {
+            Self::Open => "open",
+            Self::Closed => "closed",
+        })
     }
 }

@@ -253,17 +253,28 @@ fn bookmark_labels_reuse_full_nonempty_content_list_without_property_only_branch
                 "string(Chapter,first) string(Chapter,start) string(Chapter,last) string(Chapter,first-except)",
                 "string(Chapter) string(Chapter, start) string(Chapter, last) string(Chapter, first-except)",
             ),
+            // CSSOM "serialize a CSS value" step 2 omits an argument equal to
+            // its default: `decimal` for the target counter functions
+            // (Generated Content 3) and `content` for `target-text()`.
             (
-                "target-counter('#x',chapter,decimal)",
-                "target-counter(\"#x\", chapter, decimal)",
+                "target-counter('#x',chapter,decimal) target-counter('#x',chapter,DECIMAL)",
+                "target-counter(\"#x\", chapter) target-counter(\"#x\", chapter)",
             ),
             (
-                "target-counters('#x',chapter,'.')",
-                "target-counters(\"#x\", chapter, \".\")",
+                "target-counter('#x',chapter) target-counter('#x',chapter,upper-roman)",
+                "target-counter(\"#x\", chapter) target-counter(\"#x\", chapter, upper-roman)",
             ),
             (
-                "target-text('#x',content) target-text('#x')",
-                "target-text(\"#x\", content) target-text(\"#x\")",
+                "target-counters('#x',chapter,'.') target-counters('#x',chapter,'.',decimal)",
+                "target-counters(\"#x\", chapter, \".\") target-counters(\"#x\", chapter, \".\")",
+            ),
+            (
+                "target-counters('#x',chapter,'.',lower-alpha)",
+                "target-counters(\"#x\", chapter, \".\", lower-alpha)",
+            ),
+            (
+                "target-text('#x',content) target-text('#x') target-text('#x',before)",
+                "target-text(\"#x\") target-text(\"#x\") target-text(\"#x\", before)",
             ),
             ("url('#icon')", "url(\"#icon\")"),
             ("src('#icon') 'caption'", "src(\"#icon\") \"caption\""),
@@ -870,7 +881,7 @@ fn accepted_content_provider_control_preserves_order_defaults_and_symbolic_targe
             ),
             (
                 "leader(dotted) target-text('#x',content)",
-                "leader(\".\") target-text(\"#x\", content)",
+                "leader(\".\") target-text(\"#x\")",
             ),
             (
                 "'caption' / counters(chapter,'.',decimal)",

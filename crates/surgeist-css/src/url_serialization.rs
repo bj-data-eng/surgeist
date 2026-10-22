@@ -1,10 +1,9 @@
 //! Bounded specified text for authored Values 4 URL functions.
 
-use crate::component_values::CssCanonicalBuilder;
+use crate::component_values::{CssCanonicalBuilder, specified_component_error};
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
-    CssComponentValueError, CssComponentValueErrorKind, CssSpecifiedValueSerializationError,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssUrl,
+    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationLimits, CssUrl,
     CssUrlFunction, CssUrlModifier,
 };
 
@@ -86,8 +85,8 @@ impl CssUrl {
                     let mut builder = CssCanonicalBuilder::new(writer.context.remaining_bytes());
                     builder
                         .push_components(components.items())
-                        .map_err(component_error)?;
-                    let serialized = builder.finish().map_err(component_error)?;
+                        .map_err(specified_component_error)?;
+                    let serialized = builder.finish().map_err(specified_component_error)?;
                     writer.append(serialized.as_css())?;
                     writer.append(")")?;
                 }
@@ -103,20 +102,4 @@ impl CssUrl {
 fn charge_nodes(writer: &mut SpecifiedRuleWriter, count: usize) -> Result<()> {
     writer.context.charge_input(count)?;
     writer.context.charge_projection(count)
-}
-
-fn component_error(error: CssComponentValueError) -> CssSpecifiedValueSerializationError {
-    use CssComponentValueErrorKind as Component;
-    use CssSpecifiedValueSerializationErrorKind as Specified;
-
-    let kind = match error.kind() {
-        Component::ByteLimit => Specified::ByteLimit,
-        Component::CapacityOverflow => Specified::CapacityOverflow,
-        Component::UnserializableBoundary => Specified::UnserializableBoundary,
-        // Argument components are checked at construction and retain their
-        // lexical form. Any later non-resource failure is an unrepresentable
-        // boundary, not a resource exhaustion.
-        _ => Specified::UnserializableBoundary,
-    };
-    CssSpecifiedValueSerializationError::new(kind)
 }

@@ -57,6 +57,13 @@ impl CssTimeValue {
     pub(crate) fn ensure_closed(&self) -> Result<(), CssNumericConstructionError> {
         self.value.ensure_closed()
     }
+    /// Whether this is an ordinary literal whose exact value is zero; math,
+    /// even math that evaluates to zero, is not.
+    pub(crate) fn is_exact_ordinary_zero(&self) -> bool {
+        self.literal().is_some_and(|literal| {
+            crate::exact_decimal::LexicalDecimal::new(literal.numeric().representation()).is_zero()
+        })
+    }
     pub(crate) fn specified_value_eq(&self, other: &Self) -> bool {
         match (self.literal(), other.literal()) {
             (Some(left), Some(right)) => left.equivalent(right),
@@ -137,9 +144,7 @@ impl CssDuration {
         }
     }
     pub(crate) fn is_exact_ordinary_zero(&self) -> bool {
-        self.time.literal().is_some_and(|literal| {
-            crate::exact_decimal::LexicalDecimal::new(literal.numeric().representation()).len == 0
-        })
+        self.time.is_exact_ordinary_zero()
     }
 }
 impl PartialEq for CssDuration {

@@ -46,12 +46,8 @@ pub(crate) fn equal_literals(
     )
 }
 
-fn node(writer: &mut SpecifiedRuleWriter) -> Result<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)
-}
 fn display(writer: &mut SpecifiedRuleWriter, value: CssFontDisplay) -> Result<()> {
-    node(writer)?;
+    writer.node()?;
     writer.append(match value {
         CssFontDisplay::Auto => "auto",
         CssFontDisplay::Block => "block",
@@ -88,9 +84,9 @@ impl CssFontFaceDescriptorValue {
             Self::FontWidth(value) => value.append_specified(&mut writer.context, &mut writer.css),
             Self::FontDisplay(value) => display(writer, *value),
             Self::UnicodeRange(value) => {
-                node(writer)?;
+                writer.node()?;
                 for (index, range) in value.ranges().iter().enumerate() {
-                    node(writer)?;
+                    writer.node()?;
                     if index != 0 {
                         writer.append(", ")?;
                     }
@@ -178,7 +174,7 @@ impl SpecifiedRuleWriter {
     }
 
     pub(crate) fn font_face(&mut self, rule: &CssFontFaceRule) -> Result<()> {
-        node(self)?;
+        self.node()?;
         // CSSOM's older listed kinds retain relative order. Additional Fonts4
         // descriptors append in kind declaration order (selected project policy).
         const ORDER: [Kind; 14] = [
@@ -199,7 +195,7 @@ impl SpecifiedRuleWriter {
         ];
         let effective = ORDER.map(|kind| rule.descriptors().effective(kind));
         for record in rule.descriptors().occurrences() {
-            node(self)?;
+            self.node()?;
             if !effective
                 .iter()
                 .flatten()
@@ -222,7 +218,7 @@ impl SpecifiedRuleWriter {
     }
 
     pub(crate) fn font_features(&mut self, rule: &CssFontFeatureValuesRule) -> Result<()> {
-        node(self)?;
+        self.node()?;
         self.append("@font-feature-values ")?;
         for (index, family) in rule.families().iter().enumerate() {
             if index != 0 {
@@ -239,7 +235,7 @@ impl SpecifiedRuleWriter {
         // source-example order, while block kinds use first-occurrence order.
         let mut kinds = Vec::new();
         for (index, item) in rule.items().iter().enumerate() {
-            node(self)?;
+            self.node()?;
             match item {
                 CssFontFeatureValuesItem::FontDisplay(value) => {
                     if Some(index) != last_display {
@@ -272,8 +268,8 @@ impl SpecifiedRuleWriter {
                     && block.kind() == kind
                 {
                     for definition in block.definitions() {
-                        node(self)?;
-                        node(self)?;
+                        self.node()?;
+                        self.node()?;
                         definitions
                             .try_reserve(1)
                             .map_err(|_| Error::new(ErrorKind::CapacityOverflow))?;
@@ -354,12 +350,9 @@ impl CssFontFeatureValue {
             CssFontFeatureValueRef::Indexes(values) => {
                 writer.context.charge_input(values.len())?;
                 writer.context.charge_projection(values.len())?;
-                for (index, value) in values.iter().enumerate() {
-                    if index != 0 {
-                        writer.append(" ")?;
-                    }
-                    writer.append(value.as_decimal_str())?;
-                }
+                writer.space_separated(values, |writer, value| {
+                    writer.append(value.as_decimal_str())
+                })?;
                 Ok(())
             }
             CssFontFeatureValueRef::Pending(_) => {

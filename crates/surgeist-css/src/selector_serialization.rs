@@ -390,14 +390,6 @@ fn invalid_context() -> CssSpecifiedValueSerializationError {
 }
 
 impl SpecifiedRuleWriter {
-    pub(crate) fn node(&mut self) -> Result<()> {
-        self.context.charge_input(1)?;
-        self.context.charge_projection(1)
-    }
-    pub(crate) fn keyword(&mut self, text: &str) -> Result<()> {
-        self.node()?;
-        self.append(text)
-    }
     pub(crate) fn combinator(&mut self, value: CssSelectorCombinator, leading: bool) -> Result<()> {
         self.append(match (value, leading) {
             (CssSelectorCombinator::Descendant, true) => "",

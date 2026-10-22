@@ -142,12 +142,9 @@ impl CssPhysicalPositionList {
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         writer.context.charge_input(1)?;
         writer.context.charge_projection(1)?;
-        for (index, position) in self.positions().iter().enumerate() {
-            if index != 0 {
-                writer.append(", ")?;
-            }
-            position.append_specified(writer)?;
-        }
+        writer.comma_separated(self.positions(), |writer, position| {
+            position.append_specified(writer)
+        })?;
         Ok(())
     }
 }
@@ -175,12 +172,9 @@ impl CssBackgroundPositionList {
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         writer.context.charge_input(1)?;
         writer.context.charge_projection(1)?;
-        for (index, position) in self.positions().iter().enumerate() {
-            if index != 0 {
-                writer.append(", ")?;
-            }
-            position.append_specified(writer)?;
-        }
+        writer.comma_separated(self.positions(), |writer, position| {
+            position.append_specified(writer)
+        })?;
         Ok(())
     }
 }

@@ -86,12 +86,9 @@ impl CssContain {
 impl CssBlendModeList {
     pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
-        for (index, mode) in self.modes().iter().enumerate() {
-            if index != 0 {
-                writer.append(", ")?;
-            }
-            mode.append_to_rule_writer(writer)?;
-        }
+        writer.comma_separated(self.modes(), |writer, mode| {
+            mode.append_to_rule_writer(writer)
+        })?;
         Ok(())
     }
 }

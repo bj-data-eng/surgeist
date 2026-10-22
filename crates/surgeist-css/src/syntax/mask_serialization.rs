@@ -41,33 +41,25 @@ impl CssMaskList {
     }
 }
 
-fn before_field(writer: &mut SpecifiedRuleWriter, emitted: &mut bool) -> Result<()> {
-    if *emitted {
-        writer.append(" ")?;
-    }
-    *emitted = true;
-    Ok(())
-}
-
 fn append_layer(layer: &CssMaskLayer, writer: &mut SpecifiedRuleWriter) -> Result<()> {
     writer.source_property(crate::CssKnownProperty::MaskImage, |writer| writer.node())?;
     let mut emitted = false;
     if let Some(image) = &layer.image {
         writer.source_member(0, |writer| {
-            before_field(writer, &mut emitted)?;
+            writer.space_before_item(&mut emitted)?;
             image.append_to_rule_writer(writer)
         })?;
     }
     if let Some(position) = &layer.position {
         writer.source_member(1, |writer| {
-            before_field(writer, &mut emitted)?;
+            writer.space_before_item(&mut emitted)?;
             position.append_to_rule_writer(writer)
         })?;
     }
     if let Some(size) = &layer.size {
         if layer.position.is_none() {
             writer.source_property(crate::CssKnownProperty::MaskPosition, |writer| {
-                before_field(writer, &mut emitted)?;
+                writer.space_before_item(&mut emitted)?;
                 writer.context.charge_projection(2)?;
                 writer.append("0% 0%")
             })?;
@@ -79,7 +71,7 @@ fn append_layer(layer: &CssMaskLayer, writer: &mut SpecifiedRuleWriter) -> Resul
     }
     if let Some(repeat) = &layer.repeat {
         writer.source_member(3, |writer| {
-            before_field(writer, &mut emitted)?;
+            writer.space_before_item(&mut emitted)?;
             repeat.append_to_rule_writer(writer)
         })?;
     }
@@ -89,20 +81,20 @@ fn append_layer(layer: &CssMaskLayer, writer: &mut SpecifiedRuleWriter) -> Resul
         } else {
             crate::CssKnownProperty::MaskOrigin
         };
-        writer.source_property(first, |writer| before_field(writer, &mut emitted))?;
+        writer.source_property(first, |writer| writer.space_before_item(&mut emitted))?;
         // Pair boxes retain two distinct sources; a collapsed box retains one
         // actual provider. The box owner selects those real branch transitions.
         boxes.append_to_rule_writer(writer)?;
     }
     if let Some(composite) = layer.composite {
         writer.source_member(6, |writer| {
-            before_field(writer, &mut emitted)?;
+            writer.space_before_item(&mut emitted)?;
             composite.append_to_rule_writer(writer)
         })?;
     }
     if let Some(mode) = layer.mode {
         writer.source_member(7, |writer| {
-            before_field(writer, &mut emitted)?;
+            writer.space_before_item(&mut emitted)?;
             mode.append_to_rule_writer(writer)
         })?;
     }

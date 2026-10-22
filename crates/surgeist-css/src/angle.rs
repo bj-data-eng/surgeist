@@ -70,7 +70,7 @@ impl CssZeroLiteral {
         component: CssComponentValue,
     ) -> Result<Self, CssComponentValueError> {
         if let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) = component.view()
-            && crate::exact_decimal::LexicalDecimal::new(number.representation()).len == 0
+            && crate::exact_decimal::LexicalDecimal::new(number.representation()).is_zero()
         {
             return Ok(Self {
                 component: Box::new(component),

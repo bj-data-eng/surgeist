@@ -1262,7 +1262,7 @@ fn inverse_numeric_graph_equality_ignores_original_coordinates_and_preserves_pha
     let quirky = CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax()).unwrap();
     assert_eq!(
         read(&quirky, CssKnownProperty::Margin).as_deref(),
-        Some("1px 1px")
+        Some("1px")
     );
 }
 
@@ -1717,8 +1717,8 @@ fn reconstructed_owner_orders_attach_byte_exhaustion_to_the_field_being_written(
         (
             CssKnownProperty::Font,
             "font:italic small-caps 700 condensed 16px/2 Alpha;font-family:Beta",
-            "italic small-caps 700 condensed 16px/2 Beta",
-            43,
+            "italic small-caps 700 condensed 16px / 2 Beta",
+            45,
         ),
         (
             CssKnownProperty::Transition,

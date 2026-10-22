@@ -590,24 +590,28 @@ fn column_rule_canonical_output_omits_initials_and_charges_one_cumulative_budget
         Some(current.clone()),
     )
     .unwrap();
-    assert_eq!(all_initial.serialize_specified().unwrap(), "medium");
+    // The `<line-width> || <line-style> || <color>` family keeps `none`, its
+    // shortest all-initial representation (CSSOM "serialize a CSS value"
+    // step 2), as `border` and `outline` do. Each retained member still costs
+    // one input and one projection node.
+    assert_eq!(all_initial.serialize_specified().unwrap(), "none");
     assert_eq!(
         all_initial
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(4, 4, 6))
+            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(4, 4, 4))
             .unwrap(),
-        "medium"
+        "none"
     );
     for (limits, expected) in [
         (
-            CssSpecifiedValueSerializationLimits::new(3, 4, 6),
+            CssSpecifiedValueSerializationLimits::new(3, 4, 4),
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 3, 6),
+            CssSpecifiedValueSerializationLimits::new(4, 3, 4),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 4, 5),
+            CssSpecifiedValueSerializationLimits::new(4, 4, 3),
             CssSpecifiedValueSerializationErrorKind::ByteLimit,
         ),
     ] {
@@ -619,21 +623,55 @@ fn column_rule_canonical_output_omits_initials_and_charges_one_cumulative_budget
             expected
         );
     }
-    let synthetic = CssColumnRule::try_new(None, Some(CssBorderStyle::None), None).unwrap();
-    assert_eq!(synthetic.serialize_specified().unwrap(), "medium");
+    // An authored initial style is the retained member: aggregate and style
+    // each cost one input and one projection node, with nothing synthesized.
+    let style_only = CssColumnRule::try_new(None, Some(CssBorderStyle::None), None).unwrap();
+    assert_eq!(style_only.serialize_specified().unwrap(), "none");
     assert_eq!(
-        synthetic
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 3, 6))
+        style_only
+            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 4))
             .unwrap(),
-        "medium"
+        "none"
     );
     assert_eq!(
-        synthetic
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 6))
+        style_only
+            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 1, 4))
             .unwrap_err()
             .kind(),
         CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
     );
+    // Without an authored style the `none` token is synthesized: it charges
+    // one projection node and no input node.
+    let synthetic = CssColumnRule::try_new(Some(CssBorderWidth::Medium), None, None).unwrap();
+    assert_eq!(synthetic.serialize_specified().unwrap(), "none");
+    assert_eq!(
+        synthetic
+            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 3, 4))
+            .unwrap(),
+        "none"
+    );
+    for (limits, expected) in [
+        (
+            CssSpecifiedValueSerializationLimits::new(1, 3, 4),
+            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+        ),
+        (
+            CssSpecifiedValueSerializationLimits::new(2, 2, 4),
+            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+        ),
+        (
+            CssSpecifiedValueSerializationLimits::new(2, 3, 3),
+            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+        ),
+    ] {
+        assert_eq!(
+            synthetic
+                .serialize_specified_with_limits(limits)
+                .unwrap_err()
+                .kind(),
+            expected
+        );
+    }
     let rule = CssColumnRule::try_new(
         Some(programmatic_width("2")),
         Some(CssBorderStyle::None),

@@ -8570,7 +8570,7 @@ impl CssCubicBezierX {
                 unreachable!("checked number literal")
             };
             let decimal = crate::exact_decimal::LexicalDecimal::new(number.representation());
-            if decimal.len != 0 && (decimal.negative || !decimal.absolute_at_most("1", 0)) {
+            if !decimal.is_zero() && (decimal.negative || !decimal.absolute_at_most("1", 0)) {
                 return None;
             }
         }

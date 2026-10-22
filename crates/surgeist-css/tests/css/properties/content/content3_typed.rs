@@ -289,7 +289,7 @@ fn canonical_functions_omit_only_defined_defaults_and_retain_symbolic_targets() 
         )))
         .serialize_specified()
         .unwrap(),
-        "target-text(\"#ch\", content)"
+        "target-text(\"#ch\")"
     );
     assert_eq!(
         item(CssContentValueItem::TargetCounter(CssTargetCounter::new(
@@ -299,7 +299,7 @@ fn canonical_functions_omit_only_defined_defaults_and_retain_symbolic_targets() 
         )))
         .serialize_specified()
         .unwrap(),
-        "target-counter(\"#ch\", chapter, decimal)"
+        "target-counter(\"#ch\", chapter)"
     );
     for (leader, expected) in [
         (CssLeaderValue::Dotted, "leader(\".\")"),

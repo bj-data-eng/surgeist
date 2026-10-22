@@ -56,12 +56,9 @@ impl CssFilterFunctionList {
 
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         charge_aggregate(writer)?;
-        for (index, function) in self.functions().iter().enumerate() {
-            if index != 0 {
-                writer.append(" ")?;
-            }
-            function.append_specified(writer)?;
-        }
+        writer.space_separated(self.functions(), |writer, function| {
+            function.append_specified(writer)
+        })?;
         Ok(())
     }
 }

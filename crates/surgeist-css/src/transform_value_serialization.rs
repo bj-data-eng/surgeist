@@ -52,7 +52,7 @@ fn ordinary_zero(component: &CssComponentValue, allow_percentage: bool) -> bool 
         }
         _ => return false,
     };
-    LexicalDecimal::new(number.representation()).len == 0
+    LexicalDecimal::new(number.representation()).is_zero()
 }
 
 fn zero_translation(value: &CssSpecifiedLengthPercentage, allow_percentage: bool) -> bool {
@@ -107,7 +107,7 @@ fn zero_angle(value: &CssAngleOrZero) -> bool {
     match value {
         CssAngleOrZero::Zero(_) => true,
         CssAngleOrZero::Angle(value) => value.literal().is_some_and(|literal| {
-            LexicalDecimal::new(literal.numeric().representation()).len == 0
+            LexicalDecimal::new(literal.numeric().representation()).is_zero()
         }),
     }
 }
@@ -200,12 +200,9 @@ impl CssTransform {
         let Self::Functions(functions) = self else {
             return writer.append("none");
         };
-        for (index, function) in functions.functions().iter().enumerate() {
-            if index != 0 {
-                writer.append(" ")?;
-            }
-            append_function(function, writer)?;
-        }
+        writer.space_separated(functions.functions(), |writer, function| {
+            append_function(function, writer)
+        })?;
         Ok(())
     }
 }
@@ -326,12 +323,7 @@ fn append_numbers(
     values: &[crate::CssSpecifiedNumber],
     writer: &mut SpecifiedRuleWriter,
 ) -> Result<()> {
-    for (index, value) in values.iter().enumerate() {
-        if index != 0 {
-            writer.append(", ")?;
-        }
-        value.append_to_rule_writer(writer)?;
-    }
+    writer.comma_separated(values, |writer, value| value.append_to_rule_writer(writer))?;
     Ok(())
 }
 

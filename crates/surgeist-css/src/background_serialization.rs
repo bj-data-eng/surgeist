@@ -11,11 +11,6 @@ use crate::{
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
 
-fn charge(writer: &mut SpecifiedRuleWriter) -> Result<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)
-}
-
 impl CssBackground {
     /// Serializes canonical specified layers without resolving contextual values.
     /// Simple literal initials may be omitted; authored omissions remain unchanged.
@@ -38,7 +33,7 @@ impl CssBackground {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        writer.source_member(0, charge)?;
+        writer.source_member(0, SpecifiedRuleWriter::node)?;
         for (index, layer) in self.layers().iter().enumerate() {
             if index != 0 {
                 // The admitted image-list count owns the layer separator.
@@ -61,7 +56,7 @@ fn is_zero(value: &CssSpecifiedLengthPercentage) -> bool {
         | CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, .. }) => number,
         _ => return false,
     };
-    crate::exact_decimal::LexicalDecimal::new(number.representation()).len == 0
+    crate::exact_decimal::LexicalDecimal::new(number.representation()).is_zero()
 }
 
 fn initial_position(position: &crate::CssBackgroundPosition) -> bool {
@@ -79,14 +74,6 @@ fn initial_size(size: &CssBackgroundSize) -> bool {
     )
 }
 
-fn before_component(writer: &mut SpecifiedRuleWriter, emitted: &mut bool) -> Result<()> {
-    if *emitted {
-        writer.append(" ")?;
-    }
-    *emitted = true;
-    Ok(())
-}
-
 fn component(
     writer: &mut SpecifiedRuleWriter,
     emitted: &mut bool,
@@ -98,7 +85,7 @@ fn component(
         if omit {
             writer.without_output(visit)
         } else {
-            before_component(writer, emitted)?;
+            writer.space_before_item(emitted)?;
             visit(writer)
         }
     })
@@ -106,7 +93,10 @@ fn component(
 
 fn append_layer(layer: &CssBackgroundLayer, writer: &mut SpecifiedRuleWriter) -> Result<()> {
     // The image list owns the admitted layer count; no item source is invented.
-    writer.source_property(crate::CssKnownProperty::BackgroundImage, charge)?;
+    writer.source_property(
+        crate::CssKnownProperty::BackgroundImage,
+        SpecifiedRuleWriter::node,
+    )?;
     let mut emitted = false;
     if let Some(image) = layer.image() {
         component(
@@ -186,7 +176,7 @@ fn append_layer(layer: &CssBackgroundLayer, writer: &mut SpecifiedRuleWriter) ->
             writer.without_output(visit)?;
         } else {
             writer.source_property(crate::CssKnownProperty::BackgroundOrigin, |writer| {
-                before_component(writer, &mut emitted)
+                writer.space_before_item(&mut emitted)
             })?;
             visit(writer)?;
         }

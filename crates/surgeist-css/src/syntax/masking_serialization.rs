@@ -72,26 +72,19 @@ provider!(CssMaskLayerBoxes, value, writer => {
         }
     }
 });
-fn before_field(writer: &mut SpecifiedRuleWriter, emitted: &mut bool) -> Result<()> {
-    if *emitted {
-        writer.append(" ")?;
-    }
-    *emitted = true;
-    Ok(())
-}
 provider!(CssMaskBorder, value, writer => {
     writer.node()?;
     let mut emitted = false;
     if let Some(source) = value.source() {
         writer.source_member(0, |writer| {
-        before_field(writer, &mut emitted)?;
+        writer.space_before_item(&mut emitted)?;
         source.append_to_rule_writer(writer)?;
             Ok(())
         })?;
     }
     if let Some(slice) = value.slice() {
         writer.source_member(1, |writer| {
-        before_field(writer, &mut emitted)?;
+        writer.space_before_item(&mut emitted)?;
         slice.append_to_rule_writer(writer)?;
             Ok(())
         })?;
@@ -112,14 +105,14 @@ provider!(CssMaskBorder, value, writer => {
     }
     if let Some(repeat) = value.repeat() {
         writer.source_member(4, |writer| {
-        before_field(writer, &mut emitted)?;
+        writer.space_before_item(&mut emitted)?;
         repeat.append_to_rule_writer(writer)?;
             Ok(())
         })?;
     }
     if let Some(mode) = value.mode() {
         writer.source_member(5, |writer| {
-        before_field(writer, &mut emitted)?;
+        writer.space_before_item(&mut emitted)?;
         mode.append_to_rule_writer(writer)?;
             Ok(())
         })?;

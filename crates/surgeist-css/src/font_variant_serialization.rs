@@ -36,12 +36,7 @@ fn named_function(
     }
     writer.append(function)?;
     writer.append("(")?;
-    for (index, item) in names.iter().enumerate() {
-        if index != 0 {
-            writer.append(", ")?;
-        }
-        name(writer, item)?;
-    }
+    writer.comma_separated(names, name)?;
     writer.append(")")
 }
 

@@ -42,13 +42,6 @@ impl CssAccentColor {
         }
     }
 }
-fn separator(writer: &mut SpecifiedRuleWriter, started: &mut bool) -> Result<()> {
-    if *started {
-        writer.append(" ")?;
-    }
-    *started = true;
-    Ok(())
-}
 impl CssCaret {
     pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
@@ -67,7 +60,7 @@ impl CssCaret {
                 if matches!(value, CssCaretColor::Auto) && (noninitial || started) {
                     writer.without_output(|writer| value.append_to_rule_writer(writer))
                 } else {
-                    separator(writer, &mut started)?;
+                    writer.space_before_item(&mut started)?;
                     value.append_to_rule_writer(writer)
                 }
             })?;
@@ -77,7 +70,7 @@ impl CssCaret {
                 if value == CssCaretAnimation::Auto && (noninitial || started) {
                     writer.without_output(|writer| value.append_to_rule_writer(writer))
                 } else {
-                    separator(writer, &mut started)?;
+                    writer.space_before_item(&mut started)?;
                     value.append_to_rule_writer(writer)
                 }
             })?;
@@ -87,7 +80,7 @@ impl CssCaret {
                 if value == CssCaretShape::Auto && (noninitial || started) {
                     writer.without_output(|writer| value.append_to_rule_writer(writer))
                 } else {
-                    separator(writer, &mut started)?;
+                    writer.space_before_item(&mut started)?;
                     value.append_to_rule_writer(writer)
                 }
             })?;

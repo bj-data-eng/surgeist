@@ -131,7 +131,10 @@ impl CssExplicitFont {
                 if matches!(line_height, crate::CssLineHeight::Normal) {
                     writer.context.charge_input(1)?;
                 } else {
-                    writer.append("/")?;
+                    // CSSOM "serialize a CSS value" step 5 spaces every item
+                    // except before ","; `/` is an item. The two bytes are
+                    // ordinary output; node work is unchanged.
+                    writer.append(" / ")?;
                     line_height.append_specified(&mut writer.context, &mut writer.css)?;
                 }
                 Ok(())

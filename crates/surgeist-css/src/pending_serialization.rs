@@ -1,7 +1,7 @@
 //! Shared serialization of a substitution-dependent whole component value.
 
 use crate::{
-    CssComponentValueErrorKind, CssComponentValues, CssSpecifiedValueSerializationError,
+    CssComponentValues, CssSpecifiedValueSerializationError,
     CssSpecifiedValueSerializationErrorKind,
     specified_serialization::SpecifiedSerializationContext,
 };
@@ -25,14 +25,40 @@ pub(crate) fn append_pending_specified(
     }
     let serialized = values
         .serialize_with_limit(context.remaining_bytes())
-        .map_err(|error| {
-            let kind = match error.kind() {
-                CssComponentValueErrorKind::ByteLimit => {
-                    CssSpecifiedValueSerializationErrorKind::ByteLimit
-                }
-                _ => CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-            };
-            CssSpecifiedValueSerializationError::new(kind)
-        })?;
+        .map_err(crate::component_values::specified_component_error)?;
     context.append(output, serialized.as_css())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{CssComponentValueLimits, CssSpecifiedValueSerializationLimits};
+
+    #[test]
+    fn retained_trailing_reverse_solidus_is_an_unserializable_boundary() {
+        // Syntax 3 makes `\` a delimiter only before a newline; without it,
+        // `\` at EOF re-tokenizes as an escape. Public construction rejects
+        // this stream, so the private harness drops the guarding newline.
+        let parsed = crate::parse_component_values("env(axis) \\\n").unwrap();
+        let items = parsed.items();
+        assert!(matches!(
+            items[items.len() - 1].view(),
+            crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Whitespace(_))
+        ));
+        let values = CssComponentValues::retain_admitted(
+            &items[..items.len() - 1],
+            CssComponentValueLimits::default(),
+        )
+        .unwrap();
+        let mut context =
+            SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::default());
+        let mut output = String::new();
+        assert_eq!(
+            append_pending_specified(&values, &mut context, &mut output)
+                .unwrap_err()
+                .kind(),
+            CssSpecifiedValueSerializationErrorKind::UnserializableBoundary
+        );
+        assert!(output.is_empty());
+    }
 }

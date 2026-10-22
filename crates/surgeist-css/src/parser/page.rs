@@ -688,7 +688,7 @@ fn nonzero_unitless_page_length(value: &CssMarginValue) -> Option<&crate::CssCom
     };
     let component = value.literal_component()?;
     if matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number))
-        if crate::exact_decimal::LexicalDecimal::new(number.representation()).len != 0)
+        if !crate::exact_decimal::LexicalDecimal::new(number.representation()).is_zero())
     {
         Some(component)
     } else {

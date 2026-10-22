@@ -28,9 +28,9 @@ trait InverseValueEquality {
 macro_rules! literal_equality {
     ($($ty:ty),+ $(,)?) => { $(impl InverseValueEquality for $ty {
         fn inverse_equal(&self, other: &Self, context: &mut SpecifiedSerializationContext) -> EqualityResult {
-            match (self.literal_component(), other.literal_component()) {
-                (Some(a), Some(b)) => Ok(crate::specified_numeric::ordinary_length_literal_equal(a, b)),
-                _ => match (self.calculation(), other.calculation()) {
+            match self.inverse_literal_eq(other) {
+                Some(equal) => Ok(equal),
+                None => match (self.calculation(), other.calculation()) {
                     (Some(a), Some(b)) => a.expression.specified_inverse_eq(&b.expression, context),
                     _ => Ok(false),
                 },
@@ -714,18 +714,12 @@ fn shortest_quad<T: InverseValueEquality>(
     context: &mut SpecifiedSerializationContext,
     current: &mut usize,
 ) -> std::result::Result<Vec<T>, CssSpecifiedValueSerializationError> {
-    *current = 3;
-    if values[1].inverse_equal(&values[3], context)? {
-        values.pop();
-        *current = 2;
-        if values[0].inverse_equal(&values[2], context)? {
-            values.pop();
-            *current = 1;
-            if values[0].inverse_equal(&values[1], context)? {
-                values.pop();
-            }
-        }
-    }
+    // A comparison failure belongs to the member that would be omitted.
+    let count = crate::common_serialization::shortest_four_side_count(|left, right| {
+        *current = right;
+        values[left].inverse_equal(&values[right], context)
+    })?;
+    values.truncate(count);
     Ok(values)
 }
 
@@ -1696,31 +1690,21 @@ fn reconstruct_colors(
             else {
                 return Ok(None);
             };
-            let count = if !right
-                .specified_inverse_eq(left, &mut writer.context)
-                .map_err(|error| right_entry.at(error.into()))?
-            {
-                4
-            } else if !top
-                .specified_inverse_eq(bottom, &mut writer.context)
-                .map_err(|error| top_entry.at(error.into()))?
-            {
-                3
-            } else if !top
-                .specified_inverse_eq(right, &mut writer.context)
-                .map_err(|error| top_entry.at(error.into()))?
-            {
-                2
-            } else {
-                1
-            };
+            let members = [top, right, bottom, left];
+            let entries = [top_entry, right_entry];
+            // A comparison failure attaches to its left-hand source member.
+            let count = crate::common_serialization::shortest_four_side_count(|a, b| {
+                members[a]
+                    .specified_inverse_eq(members[b], &mut writer.context)
+                    .map_err(|error| entries[a].at(error.into()))
+            })?;
             let mut sides = Vec::new();
             sides.try_reserve(count).map_err(|_| {
                 CssSpecifiedValueSerializationError::new(
                     CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                 )
             })?;
-            sides.extend([top, right, bottom, left].into_iter().take(count).cloned());
+            sides.extend(members.into_iter().take(count).cloned());
             Inverse::BorderColor(
                 CssBorderColorShorthand::try_new(mode, sides)
                     .expect("nonempty bounded color sides"),
@@ -2082,7 +2066,8 @@ fn transition(
     for i in 0..count {
         let duration = (!durations.values()[i].is_exact_ordinary_zero())
             .then(|| durations.values()[i].clone());
-        let delay = (!ordinary_zero_time(&delays.values()[i])).then(|| delays.values()[i].clone());
+        let delay =
+            (!delays.values()[i].is_exact_ordinary_zero()).then(|| delays.values()[i].clone());
         let easing = (easings.values()[i] != CssEasing::Keyword(CssEasingKeyword::Ease))
             .then(|| easings.values()[i].clone());
         items.push(CssTransition::from_parser(
@@ -2127,7 +2112,8 @@ fn animation(
                 .then(|| names.names()[i].clone()),
             duration: (!durations.values()[i].is_exact_ordinary_zero())
                 .then(|| durations.values()[i].clone()),
-            delay: (!ordinary_zero_time(&delays.values()[i])).then(|| delays.values()[i].clone()),
+            delay: (!delays.values()[i].is_exact_ordinary_zero())
+                .then(|| delays.values()[i].clone()),
             timing_function: (easings.values()[i] != CssEasing::Keyword(CssEasingKeyword::Ease))
                 .then(|| easings.values()[i].clone()),
             iteration_count: (!ordinary_one_count(&counts.values()[i]))
@@ -2154,11 +2140,6 @@ fn animation(
     Some(CssAnimationList::from_parser(items))
 }
 
-fn ordinary_zero_time(value: &CssTimeValue) -> bool {
-    value.literal().is_some_and(|literal| {
-        crate::exact_decimal::LexicalDecimal::new(literal.numeric().representation()).len == 0
-    })
-}
 fn ordinary_one_count(value: &CssAnimationIterationCount) -> bool {
     match value {
         CssAnimationIterationCount::Number(value) => value.literal_component().is_some_and(|value| {

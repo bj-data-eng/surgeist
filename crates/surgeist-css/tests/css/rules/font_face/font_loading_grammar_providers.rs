@@ -30,7 +30,7 @@ fn raw_queries_preserve_relative_values_and_the_original_unwrapped_source() {
             "/*😀*/ bolder 120%/1.25 Demo",
             CssFontWeight::Bolder,
             "120%",
-            "bolder 120%/1.25 Demo",
+            "bolder 120% / 1.25 Demo",
         ),
         (
             "lighter 2em Demo",

@@ -43,7 +43,6 @@ macro_rules! serialization {
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
 
-
                 self.append_specified(writer)?;
                 Ok(())
 
@@ -101,15 +100,10 @@ fn append_sides<T>(
         std::mem::discriminant(&values[left]) == std::mem::discriminant(&values[right])
             && component_equal(&values[left], &values[right], &css[left], &css[right])
     };
-    let count = if equal(0, 1) && equal(0, 2) && equal(0, 3) {
-        1
-    } else if equal(0, 2) && equal(1, 3) {
-        2
-    } else if equal(1, 3) {
-        3
-    } else {
-        4
-    };
+    let count = crate::common_serialization::shortest_four_side_count(|left, right| {
+        Ok::<_, std::convert::Infallible>(equal(left, right))
+    })
+    .unwrap_or_else(|never| match never {});
     for (index, text) in css[..count].iter().enumerate() {
         if index != 0 {
             writer.append(" ")?;
@@ -232,7 +226,7 @@ fn capture_slice(
 fn unitless_length_zero(component: Option<&CssComponentValue>) -> bool {
     matches!(component.map(CssComponentValue::view),
         Some(CssComponentValueRef::Token(CssValueTokenRef::Number(number)))
-            if LexicalDecimal::new(number.representation()).len == 0)
+            if LexicalDecimal::new(number.representation()).is_zero())
 }
 
 fn capture_width(
@@ -347,7 +341,7 @@ fn literal_initial(component: Option<&CssComponentValue>, exponent: Option<i128>
     };
     let decimal = LexicalDecimal::new(number.representation());
     match exponent {
-        None => decimal.len == 0,
+        None => decimal.is_zero(),
         Some(exponent) => {
             !decimal.negative
                 && decimal.len == 1
@@ -382,14 +376,6 @@ fn initial_outset(value: &CssBorderImageOutset) -> bool {
     })
 }
 
-fn before_component(writer: &mut SpecifiedRuleWriter, emitted: &mut bool) -> Result<()> {
-    if *emitted {
-        writer.append(" ")?;
-    }
-    *emitted = true;
-    Ok(())
-}
-
 impl CssBorderImage {
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         charge(writer, 1)?;
@@ -399,7 +385,7 @@ impl CssBorderImage {
                 if matches!(source, CssImageValue::None) {
                     writer.without_output(|writer| source.append_specified(writer))?;
                 } else {
-                    before_component(writer, &mut emitted)?;
+                    writer.space_before_item(&mut emitted)?;
                     source.append_specified(writer)?;
                 }
                 Ok(())
@@ -412,7 +398,7 @@ impl CssBorderImage {
                 if !retained_width && !retained_outset && initial_slice(slice) {
                     writer.without_output(|writer| slice.append_specified(writer))?;
                 } else {
-                    before_component(writer, &mut emitted)?;
+                    writer.space_before_item(&mut emitted)?;
                     slice.append_specified(writer)?;
                 }
                 Ok(())
@@ -447,7 +433,7 @@ impl CssBorderImage {
                 {
                     writer.without_output(|writer| repeat.append_specified(writer))?;
                 } else {
-                    before_component(writer, &mut emitted)?;
+                    writer.space_before_item(&mut emitted)?;
                     repeat.append_specified(writer)?;
                 }
                 Ok(())

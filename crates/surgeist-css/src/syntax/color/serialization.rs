@@ -703,7 +703,7 @@ fn lab_component_projection(
     // allocates no rational or expanded text and does not charge per digit.
     context.charge_projection(1)?;
     let lexical = crate::exact_decimal::LexicalDecimal::new(representation);
-    let endpoint = if lexical.len == 0 || lexical.negative {
+    let endpoint = if lexical.is_zero() || lexical.negative {
         Some("0")
     } else {
         let upper = match slot {

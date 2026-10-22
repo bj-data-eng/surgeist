@@ -9,16 +9,6 @@ use crate::{
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
 
-fn charge(writer: &mut SpecifiedRuleWriter) -> Result<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)
-}
-
-fn keyword(writer: &mut SpecifiedRuleWriter, value: &str) -> Result<()> {
-    charge(writer)?;
-    writer.append(value)
-}
-
 impl CssMarkerSide {
     /// Serializes the specified keyword without resolving directionality.
     pub fn serialize_specified(&self) -> Result<String> {
@@ -39,22 +29,19 @@ impl CssMarkerSide {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        keyword(
-            writer,
-            match self {
-                Self::MatchSelf => "match-self",
-                Self::MatchParent => "match-parent",
-            },
-        )?;
+        writer.keyword(match self {
+            Self::MatchSelf => "match-self",
+            Self::MatchParent => "match-parent",
+        })?;
         Ok(())
     }
 }
 
 fn append_type(writer: &mut SpecifiedRuleWriter, value: &CssListStyleTypeValue) -> Result<()> {
     match value {
-        CssListStyleTypeValue::None => keyword(writer, "none"),
+        CssListStyleTypeValue::None => writer.keyword("none"),
         CssListStyleTypeValue::String(value) => {
-            charge(writer)?;
+            writer.node()?;
             writer.append_string(value.as_str())
         }
         CssListStyleTypeValue::CounterStyle(value) => content_serialization::style(writer, value),
@@ -70,13 +57,10 @@ fn is_axis_keyword_name(value: &CssListStyleTypeValue) -> bool {
 }
 
 fn append_position(writer: &mut SpecifiedRuleWriter, value: CssListStylePosition) -> Result<()> {
-    keyword(
-        writer,
-        match value {
-            CssListStylePosition::Inside => "inside",
-            CssListStylePosition::Outside => "outside",
-        },
-    )
+    writer.keyword(match value {
+        CssListStylePosition::Inside => "inside",
+        CssListStylePosition::Outside => "outside",
+    })
 }
 
 impl CssListStylePosition {
@@ -155,7 +139,7 @@ impl CssListStyleValue {
         &self,
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
-        charge(writer)?; // The checked shorthand aggregate.
+        writer.node()?; // The checked shorthand aggregate.
 
         let emit_type = self.style_type().is_some_and(|value| !is_disc(value));
         let emit_image = self
@@ -180,7 +164,7 @@ impl CssListStyleValue {
                     }
                     emitted = true;
                 } else {
-                    charge(writer)?;
+                    writer.node()?;
                 }
                 Ok(())
             })?;
@@ -194,7 +178,7 @@ impl CssListStyleValue {
                     image.append_specified(writer)?;
                     emitted = true;
                 } else {
-                    charge(writer)?;
+                    writer.node()?;
                 }
                 Ok(())
             })?;
@@ -207,7 +191,7 @@ impl CssListStyleValue {
                     }
                     append_type(writer, style_type)
                 } else {
-                    charge(writer)
+                    writer.node()
                 }
             })?;
         }

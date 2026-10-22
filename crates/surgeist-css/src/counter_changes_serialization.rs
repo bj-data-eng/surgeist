@@ -1,17 +1,11 @@
 //! Bounded authored counter-change serialization with explicit property context.
 
-use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
     CssCounterChangesValue, CssCounterProperty, CssSpecifiedValueSerializationError,
     CssSpecifiedValueSerializationLimits,
 };
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
-
-fn charge(writer: &mut SpecifiedRuleWriter) -> Result<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)
-}
 
 impl CssCounterChangesValue {
     /// Emits every counter name and effective integer for the selected longhand.
@@ -50,18 +44,18 @@ impl CssCounterChangesValue {
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         let Some(changes) = self.changes() else {
-            charge(writer)?;
+            writer.node()?;
             writer.append("none")?;
             return Ok(());
         };
 
-        charge(writer)?; // Nonempty ordered list.
+        writer.node()?; // Nonempty ordered list.
         for (index, change) in changes.iter().enumerate() {
             if index != 0 {
                 writer.append(" ")?;
             }
-            charge(writer)?; // One coupled name/integer entry.
-            charge(writer)?; // Checked decoded name.
+            writer.node()?; // One coupled name/integer entry.
+            writer.node()?; // Checked decoded name.
             writer.append_identifier(change.name().as_str())?;
             writer.append(" ")?;
             if let Some(number) = change.value() {
