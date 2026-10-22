@@ -140,6 +140,7 @@ pub struct OracleMeasurementOf<S: LayoutScalar = DefaultScalar> {
     known: Option<Size<Option<S>>>,
     parent: Option<Size<Option<S>>>,
     available: Option<Size<AvailableOf<S>>>,
+    available_width: Option<AvailableOf<S>>,
     output: ComputeOutputOf<S>,
 }
 
@@ -152,6 +153,7 @@ impl<S: LayoutScalar> OracleMeasurementOf<S> {
             known: None,
             parent: None,
             available: None,
+            available_width: None,
             output,
         }
     }
@@ -176,6 +178,11 @@ impl<S: LayoutScalar> OracleMeasurementOf<S> {
         self
     }
 
+    pub const fn available_width(mut self, width: AvailableOf<S>) -> Self {
+        self.available_width = Some(width);
+        self
+    }
+
     fn matches(self, input: ComputeInputOf<S>) -> bool {
         matches_or_any(self.run_mode, input.run_mode())
             && matches_or_any(self.sizing_mode, input.sizing_mode())
@@ -183,6 +190,7 @@ impl<S: LayoutScalar> OracleMeasurementOf<S> {
             && matches_or_any(self.known, input.known())
             && matches_or_any(self.parent, input.parent())
             && matches_or_any(self.available, input.available())
+            && matches_or_any(self.available_width, input.available().width)
     }
 }
 

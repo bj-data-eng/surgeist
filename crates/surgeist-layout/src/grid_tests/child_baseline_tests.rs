@@ -1504,7 +1504,7 @@ where
                         direction: Direction::Rtl,
                         size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::AUTO),
                         grid_template_columns: vec![TrackComponentOf::px(S::from_f64(160.0))],
-                        grid_template_rows: vec![TrackComponentOf::px(S::from_f64(120.0))],
+                        grid_template_rows: vec![TrackComponentOf::AUTO],
                         ..NodeInputOf::default()
                     },
                 )
@@ -1535,7 +1535,7 @@ where
                     )),
                 );
 
-            crate::compute_grid(
+            let output = crate::compute_grid(
                 &mut tree.borrow_compute(),
                 0,
                 ComputeInputOf::for_child(
@@ -1552,6 +1552,10 @@ where
                 ),
             )
             .expect("grid context capture layout succeeds");
+            assert_eq!(
+                output.size,
+                Size::new(S::from_f64(40.0), S::from_f64(160.0))
+            );
 
             let normal_inputs = tree.inputs(1);
             assert!(
@@ -8382,7 +8386,7 @@ fn orthogonal_subgrid_grandchild_percentage_edges_use_immediate_containing_flow(
         }],
     };
     let report = collect_grid_subgrid_intrinsic_traversal::<_, core::convert::Infallible>(
-        &tree.borrow_compute(),
+        &mut tree.borrow_compute(),
         GridSubgridIntrinsicTraversalInput {
             axis: GridAxisKind::Row,
             containing_flow_axes: crate::geometry::FlowAxes::new(
@@ -8403,6 +8407,7 @@ fn orthogonal_subgrid_grandchild_percentage_edges_use_immediate_containing_flow(
             row_sizes: &[100.0, 1.0],
             container_size: Size::new(Some(100.0), Some(200.0)),
             intrinsic_min_track_facts: IntrinsicMinTrackFacts::Known(&[true, false]),
+            query: IntrinsicGridQuery::complete(),
         },
     )
     .unwrap()

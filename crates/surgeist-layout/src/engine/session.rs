@@ -52,6 +52,49 @@ struct StagedInlineFragmentGroup<Node, S: LayoutScalar> {
     fragments: Option<Vec<InlineFragmentOutputOf<S>>>,
 }
 
+// The Grid owner's bounded-stage tests use the real staging owner and real
+// host adapter; only the disposable owner's typed observation can escape.
+#[cfg(test)]
+pub(crate) fn observe_grid_probe<'input, Tree: LayoutTree>(
+    tree: &'input Tree,
+    node: Tree::Node,
+    probe: crate::grid::GridOverflowProbe<'input, '_, Tree::Node, Tree::Scalar>,
+) -> LayoutResultOf<
+    Tree::Node,
+    crate::grid::GridOverflowObservation<Tree::Scalar>,
+    Tree::Scalar,
+    Tree::MeasureError,
+> {
+    let mut owner = ComputeSession::new(tree, Vec::new());
+    let result = owner.observe_grid_overflow(node, probe);
+    assert!(owner.unrounded_entries.is_empty());
+    assert!(owner.final_entries.is_empty());
+    assert!(owner.unrounded_inline_fragment_groups.is_empty());
+    assert!(owner.final_inline_fragment_groups.is_empty());
+    assert!(owner.warm_inline_text_nodes.is_empty());
+    assert!(owner.cache_store_entries.is_empty());
+    assert!(owner.cache_clear_entries.is_empty());
+    result
+}
+
+// Seed actual retained receipts by executing previously observed ordinary leaf
+// requests through the same production owner, without constructing cache output.
+#[cfg(test)]
+type GridLeafSeedResult<Node, S, M> = LayoutResultOf<Node, CompletedLayoutBatchOf<Node, S>, S, M>;
+
+#[cfg(test)]
+pub(crate) fn seed_grid_leaf_requests<Tree: LayoutTree>(
+    tree: &Tree,
+    requests: &[(Tree::Node, ComputeInputOf<Tree::Scalar>)],
+) -> GridLeafSeedResult<Tree::Node, Tree::Scalar, Tree::MeasureError> {
+    let mut owner = ComputeSession::new(tree, Vec::new());
+    for &(node, input) in requests {
+        assert!(tree.has_leaf_measurement(node));
+        owner.compute_child(node, input)?;
+    }
+    Ok(owner.complete())
+}
+
 impl<'a, Tree> ComputeSession<'a, Tree>
 where
     Tree: LayoutTree,

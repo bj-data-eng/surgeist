@@ -3344,7 +3344,7 @@ fn grid_spanning_item_redistributes_beyond_fit_content_limit() {
         .measure_when(
             4,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(40.0, 40.0)))
-                .available(Size::new(Available::MIN_CONTENT, Available::MAX_CONTENT)),
+                .available_width(Available::MIN_CONTENT),
         )
         .measure(4, ComputeOutput::from_outer_size(Size::new(80.0, 40.0)));
     tree.insert_children(1, vec![2, 3, 4]);
@@ -4132,7 +4132,9 @@ fn shared_grid_contexts_accept_non_default_scalar() {
     let tracks = vec![TrackSizingOf::<f64>::AUTO];
     let placements = GridPlacementContext::empty();
     let subgrid_report = GridSubgridReport { items: Vec::new() };
-    let sizing_phases = GridTrackSizingPhases;
+    let sizing_phases = GridTrackSizingPhases {
+        limit: GridSizingStage::COMPLETE,
+    };
     let column_gutters = OrdinaryGridAxisGuttersOf::new(1, &[], 1.0);
     let row_gutters = OrdinaryGridAxisGuttersOf::new(1, &[], 2.0);
 
@@ -4161,6 +4163,7 @@ fn shared_grid_contexts_accept_non_default_scalar() {
         ),
         intrinsic_max_available: LogicalSizeOf::new(false, false),
         placements: &placements,
+        stage: GridSizingStage::COMPLETE,
     };
     let _track_resolution = GridTrackResolution::<f64> {
         sizing_phases,
@@ -4211,6 +4214,7 @@ fn shared_grid_contexts_accept_non_default_scalar() {
         parent_context: &parent_context,
         placements: &placements,
         containing_auto_scrollbar_pass: crate::scroll::SettledAutoScrollbarState::INITIAL,
+        sizing_stage: GridSizingStage::COMPLETE,
     };
 }
 

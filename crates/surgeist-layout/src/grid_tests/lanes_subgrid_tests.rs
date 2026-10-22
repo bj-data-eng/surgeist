@@ -3118,15 +3118,37 @@ fn grid_lanes_lane_measurement_honors_min_content_width() {
                 ..NodeInput::default()
             },
         )
+        // Block MIN/MAX under a resolved 72px inline area share the same
+        // 15px natural block extent; preferred-inline MIN is queried separately.
         .measure_when(
             2,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(72.0, 15.0)))
-                .available(Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT)),
+                .available(Size::new(Available::definite(72.0), Available::MIN_CONTENT)),
+        )
+        .measure_when(
+            2,
+            OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(72.0, 15.0)))
+                .available(Size::new(Available::definite(72.0), Available::MAX_CONTENT)),
+        )
+        .measure_when(
+            3,
+            OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(72.0, 15.0)))
+                .available(Size::new(Available::definite(72.0), Available::MIN_CONTENT)),
+        )
+        .measure_when(
+            3,
+            OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(72.0, 15.0)))
+                .available(Size::new(Available::definite(72.0), Available::MAX_CONTENT)),
+        )
+        .measure_when(
+            2,
+            OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(72.0, 15.0)))
+                .available_width(Available::MAX_CONTENT),
         )
         .measure_when(
             2,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(54.0, 30.0)))
-                .available(Size::new(Available::MIN_CONTENT, Available::MAX_CONTENT)),
+                .available_width(Available::MIN_CONTENT),
         )
         .measure_when(
             2,
@@ -3199,12 +3221,12 @@ fn grid_lanes_lane_measurement_honors_min_content_width() {
         .measure_when(
             3,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(72.0, 15.0)))
-                .available(Size::new(Available::MIN_CONTENT, Available::MAX_CONTENT)),
+                .available_width(Available::MIN_CONTENT),
         )
         .measure_when(
             3,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(72.0, 15.0)))
-                .available(Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT)),
+                .available_width(Available::MAX_CONTENT),
         )
         .measure_when(
             3,
@@ -3969,8 +3991,7 @@ fn row_subgrid_auto_track_sizing_tree(
             3,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(58.0, 84.0)))
                 .run_mode(RunMode::ComputeSize)
-                .known(Size::NONE)
-                .available(Size::new(Available::Definite(58.0), Available::MAX_CONTENT)),
+                .available_width(Available::Definite(58.0)),
         )
         .measure_when(
             3,
@@ -6691,7 +6712,7 @@ fn vertical_subgrid_percentage_edges_use_physical_area_basis() {
         }],
     };
     let report = collect_grid_subgrid_intrinsic_traversal::<_, core::convert::Infallible>(
-        &tree.borrow_compute(),
+        &mut tree.borrow_compute(),
         GridSubgridIntrinsicTraversalInput {
             axis: GridAxisKind::Column,
             containing_flow_axes: crate::geometry::FlowAxes::new(
@@ -6712,6 +6733,7 @@ fn vertical_subgrid_percentage_edges_use_physical_area_basis() {
             row_sizes: &[100.0, 1.0],
             container_size: Size::new(Some(100.0), Some(200.0)),
             intrinsic_min_track_facts: IntrinsicMinTrackFacts::Known(&[true, false]),
+            query: IntrinsicGridQuery::complete(),
         },
     )
     .unwrap()
@@ -6763,7 +6785,7 @@ fn orthogonal_subgrid_percentage_edges_use_containing_physical_area_basis() {
         }],
     };
     let report = collect_grid_subgrid_intrinsic_traversal::<_, core::convert::Infallible>(
-        &tree.borrow_compute(),
+        &mut tree.borrow_compute(),
         GridSubgridIntrinsicTraversalInput {
             axis: GridAxisKind::Column,
             containing_flow_axes: crate::geometry::FlowAxes::new(
@@ -6784,6 +6806,7 @@ fn orthogonal_subgrid_percentage_edges_use_containing_physical_area_basis() {
             row_sizes: &[100.0, 1.0],
             container_size: Size::new(Some(100.0), Some(200.0)),
             intrinsic_min_track_facts: IntrinsicMinTrackFacts::Known(&[true, false]),
+            query: IntrinsicGridQuery::complete(),
         },
     )
     .unwrap()
@@ -6866,7 +6889,7 @@ fn nested_subgrid_same_flow_projects_physical_edge_sums_before_local_track_sizin
         }],
     };
     let report = collect_grid_subgrid_intrinsic_traversal::<_, core::convert::Infallible>(
-        &tree.borrow_compute(),
+        &mut tree.borrow_compute(),
         GridSubgridIntrinsicTraversalInput {
             axis: GridAxisKind::Row,
             containing_flow_axes: crate::geometry::FlowAxes::new(
@@ -6887,6 +6910,7 @@ fn nested_subgrid_same_flow_projects_physical_edge_sums_before_local_track_sizin
             row_sizes: &[100.0, 1.0],
             container_size: Size::new(Some(100.0), Some(200.0)),
             intrinsic_min_track_facts: IntrinsicMinTrackFacts::Known(&[true, false]),
+            query: IntrinsicGridQuery::complete(),
         },
     )
     .unwrap()
@@ -7450,7 +7474,6 @@ fn traversal_subgrid<'input>(
         available_inline_size_is_known: false,
         align_self: AlignItems::Stretch,
         standalone_parent_context: None,
-        queried_axis_fully_inherited: true,
         margins: SubgridAxisEdges::default(),
         border: SubgridAxisEdges::default(),
         padding: SubgridAxisEdges::default(),
@@ -7476,7 +7499,6 @@ fn subgrid_traversal_keeps_edge_lower_bounds_off_non_intrinsic_tracks() {
             available_inline_size_is_known: false,
             align_self: AlignItems::Stretch,
             standalone_parent_context: None,
-            queried_axis_fully_inherited: true,
             margins: SubgridAxisEdges {
                 start: 10.0,
                 end: 12.0,
@@ -7511,7 +7533,6 @@ fn subgrid_traversal_places_edge_lower_bounds_in_ancestor_track_space() {
             available_inline_size_is_known: false,
             align_self: AlignItems::Stretch,
             standalone_parent_context: None,
-            queried_axis_fully_inherited: true,
             margins: SubgridAxisEdges::default(),
             border: SubgridAxisEdges::default(),
             padding: SubgridAxisEdges {
@@ -7558,7 +7579,6 @@ fn subgrid_traversal_accumulates_edge_adjustment_in_nested_translated_span() {
             available_inline_size_is_known: false,
             align_self: AlignItems::Stretch,
             standalone_parent_context: None,
-            queried_axis_fully_inherited: true,
             margins: SubgridAxisEdges {
                 start: 2.0,
                 end: 4.0,
@@ -7577,7 +7597,6 @@ fn subgrid_traversal_accumulates_edge_adjustment_in_nested_translated_span() {
                 available_inline_size_is_known: false,
                 align_self: AlignItems::Stretch,
                 standalone_parent_context: None,
-                queried_axis_fully_inherited: true,
                 margins: SubgridAxisEdges {
                     start: 3.0,
                     end: 5.0,
@@ -7618,7 +7637,6 @@ fn subgrid_traversal_accumulates_gap_adjustment_through_nested_subgrids() {
             available_inline_size_is_known: false,
             align_self: AlignItems::Stretch,
             standalone_parent_context: None,
-            queried_axis_fully_inherited: true,
             margins: SubgridAxisEdges::default(),
             border: SubgridAxisEdges::default(),
             padding: SubgridAxisEdges::default(),
@@ -7634,7 +7652,6 @@ fn subgrid_traversal_accumulates_gap_adjustment_through_nested_subgrids() {
                 available_inline_size_is_known: false,
                 align_self: AlignItems::Stretch,
                 standalone_parent_context: None,
-                queried_axis_fully_inherited: true,
                 margins: SubgridAxisEdges::default(),
                 border: SubgridAxisEdges::default(),
                 padding: SubgridAxisEdges::default(),
@@ -7671,7 +7688,6 @@ fn subgrid_traversal_applies_gap_adjustment_to_internal_edges() {
             available_inline_size_is_known: false,
             align_self: AlignItems::Stretch,
             standalone_parent_context: None,
-            queried_axis_fully_inherited: true,
             margins: SubgridAxisEdges::default(),
             border: SubgridAxisEdges::default(),
             padding: SubgridAxisEdges::default(),
@@ -7707,7 +7723,6 @@ fn subgrid_traversal_uses_positive_gap_adjustments_as_empty_track_lower_bounds()
             available_inline_size_is_known: false,
             align_self: AlignItems::Stretch,
             standalone_parent_context: None,
-            queried_axis_fully_inherited: true,
             margins: SubgridAxisEdges::default(),
             border: SubgridAxisEdges::default(),
             padding: SubgridAxisEdges::default(),
@@ -7739,7 +7754,6 @@ fn subgrid_traversal_combines_empty_edge_and_gap_lower_bounds() {
             available_inline_size_is_known: false,
             align_self: AlignItems::Stretch,
             standalone_parent_context: None,
-            queried_axis_fully_inherited: true,
             margins: SubgridAxisEdges::default(),
             border: SubgridAxisEdges::default(),
             padding: SubgridAxisEdges {
@@ -7772,7 +7786,6 @@ fn subgrid_traversal_ignores_gap_adjustment_for_single_track_subgrid() {
             available_inline_size_is_known: false,
             align_self: AlignItems::Stretch,
             standalone_parent_context: None,
-            queried_axis_fully_inherited: true,
             margins: SubgridAxisEdges::default(),
             border: SubgridAxisEdges::default(),
             padding: SubgridAxisEdges::default(),
@@ -7802,7 +7815,6 @@ fn subgrid_traversal_keeps_standalone_as_one_boundary_leaf() {
             available_inline_size_is_known: false,
             align_self: AlignItems::Stretch,
             standalone_parent_context: None,
-            queried_axis_fully_inherited: true,
             margins: SubgridAxisEdges::default(),
             border: SubgridAxisEdges::default(),
             padding: SubgridAxisEdges::default(),

@@ -3423,17 +3423,15 @@ where
         }),
         "constrained row sizing must map the resolved logical inline track to the child's physical height: {child_inputs:?}"
     );
+    // A stable MIN inventory does not authorize a column revisit. Verify the
+    // actual final placement ingress retains both resolved physical dimensions.
     assert!(
         child_inputs.iter().any(|input| {
-            input.run_mode() == RunMode::ComputeSize
-                && input.known() == Size::new(Some(scalar(40.0)), None)
-                && input.available()
-                    == Size::new(
-                        AvailableOf::definite(scalar(40.0)),
-                        AvailableOf::MIN_CONTENT,
-                    )
+            input.run_mode() == RunMode::PerformLayout
+                && input.known() == Size::new(Some(scalar(40.0)), Some(scalar(80.0)))
+                && input.parent() == Size::new(Some(scalar(40.0)), Some(scalar(80.0)))
         }),
-        "constrained column sizing must map the resolved logical block track to the child's physical width: {child_inputs:?}"
+        "final physical dimensions lost: {child_inputs:?}"
     );
 }
 
@@ -4090,7 +4088,7 @@ fn grid_spanning_item_grows_auto_track_after_min_content_track() {
         .measure_when(
             4,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(40.0, 10.0)))
-                .available(Size::new(Available::MIN_CONTENT, Available::MAX_CONTENT)),
+                .available_width(Available::MIN_CONTENT),
         )
         .measure(4, ComputeOutput::from_outer_size(Size::new(80.0, 10.0)));
     tree.insert_children(1, vec![2, 3, 4]);
@@ -4166,7 +4164,7 @@ fn grid_clipped_spanning_item_distributes_across_min_content_and_auto_tracks() {
         .measure_when(
             4,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(40.0, 10.0)))
-                .available(Size::new(Available::MIN_CONTENT, Available::MAX_CONTENT)),
+                .available_width(Available::MIN_CONTENT),
         )
         .measure(4, ComputeOutput::from_outer_size(Size::new(80.0, 10.0)));
     tree.insert_children(1, vec![2, 3, 4]);

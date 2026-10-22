@@ -9,7 +9,7 @@ pub(in crate::grid) struct SubgridChildParentContextInput<
 > {
     pub(in crate::grid) item: SubgridItemReport<Node>,
     pub(in crate::grid) child_style: &'a GridItemProjection<'input, S>,
-    pub(in crate::grid) child_container_style: Option<GridContainerProjection<'a, S>>,
+    pub(in crate::grid) child_container_style: Option<GridContainerProjection<'input, S>>,
     pub(in crate::grid) area: GridArea<S>,
     pub(in crate::grid) content_box_size: Size<S>,
     pub(in crate::grid) columns: &'a [S],
@@ -188,7 +188,7 @@ struct SubgridChildAxisContextInput<'input, 'a, Node, S: LayoutScalar = Scalar> 
     axis: GridAxisKind,
     report: SubgridAxisReport,
     child_style: &'a GridItemProjection<'input, S>,
-    child_container_style: Option<GridContainerProjection<'a, S>>,
+    child_container_style: Option<GridContainerProjection<'input, S>>,
     area: GridArea<S>,
     content_box_size: Size<S>,
     parent_columns: &'a [S],
@@ -878,6 +878,7 @@ pub(super) struct SubgridBaselineRefreshInput<'a, Node, S: LayoutScalar = Scalar
     pub(super) subgrid_report: &'a GridSubgridReport<Node>,
     pub(super) ancestor_baseline_groups: &'a FinalAncestorBaselineGroups<Node, S>,
     pub(super) containing_auto_scrollbar_pass: crate::scroll::SettledAutoScrollbarState,
+    pub(super) sizing_stage: GridSizingStage,
 }
 
 pub(super) fn refresh_subgrid_items_with_baselines<'input, Tree, M>(
@@ -1003,6 +1004,9 @@ where
                 child_context_input.item.column.can_inherit(),
                 child_context_input.item.row.can_inherit(),
             ),
+            input
+                .sizing_stage
+                .mapped(container_flow_axes, child_flow_axes),
             |constants| {
                 subgrid_child_parent_context_from_ancestor_groups_with_geometry(
                     child_context_input.for_scrollbar_pass(constants),

@@ -93,8 +93,18 @@ Source: [output](../src/output.rs).
 Grid and grid-lanes use canonical scroll-box reservations for intrinsic
 contributions and final layout. Subgrid edge contributions include the child's
 margin, border, padding, and effective gutter once at each inherited boundary,
-with the child's writing mode and settled scrollbar state. Inherited-axis Auto
-gutters do not yet feed back into the parent's intrinsic track contributions.
+with the child's writing mode and its own settled scrollbar state. Inherited-axis
+Auto reservations participate in the current parent's intrinsic contribution.
+Nested preparation stops at the corresponding physical-axis sizing point,
+including reversed axis order for orthogonal subgrids. Grid-lanes stacking
+placement is evaluated when its actual stacking-size dependency is reached or a
+qualified child-layout observation needs the stacking range; a grid-axis-only
+prefix does not run otherwise unused stacking measurements. Minimum and maximum
+contributions are measured separately against that point's track basis. A changed
+individual minimum contribution permits the source-defined once-only axis
+revisit; that revisit replaces obsolete basis-dependent contributions. The final
+row stage does not reopen columns. Final placement uses the actual used box,
+including saturation when a maximum size shrinks its gutters.
 An intrinsic Auto observation runs actual child layout in a disposable computation session over
 the same immutable inputs and invalidation basis; only its geometry observation
 returns. Probe node, inline-fragment, warm-cache, and cache-publication staging

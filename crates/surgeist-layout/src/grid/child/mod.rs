@@ -71,6 +71,7 @@ where
         parent_context,
         placements,
         containing_auto_scrollbar_pass,
+        sizing_stage,
     } = context;
     if columns.is_empty() || rows.is_empty() {
         for (source_index, child) in tree
@@ -385,6 +386,10 @@ where
                     child_context_input.item.column.can_inherit(),
                     child_context_input.item.row.can_inherit(),
                 ),
+                sizing_stage.mapped(
+                    constants.flow_axes,
+                    FlowAxes::new(child_style.writing_mode, child_style.direction),
+                ),
                 |constants| {
                     subgrid_child_parent_context_with_geometry(
                         child_context_input.for_scrollbar_pass(constants),
@@ -537,6 +542,7 @@ where
             subgrid_report,
             ancestor_baseline_groups: &ancestor_baseline_groups,
             containing_auto_scrollbar_pass,
+            sizing_stage,
         },
         &mut pending_items,
     )?;

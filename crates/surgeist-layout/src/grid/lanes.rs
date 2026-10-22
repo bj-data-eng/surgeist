@@ -1020,6 +1020,7 @@ pub(super) struct GridLanesLayoutInput<'input, 'a, Node, S: LayoutScalar = Scala
     pub(super) subgrid_report: &'a GridSubgridReport<Node>,
     pub(super) placements: &'a GridPlacementContext<'input, Node, S>,
     pub(super) containing_auto_scrollbar_pass: crate::scroll::SettledAutoScrollbarState,
+    pub(super) sizing_stage: GridSizingStage,
 }
 
 #[derive(Clone, Copy)]
@@ -1740,6 +1741,7 @@ where
         subgrid_report,
         placements,
         containing_auto_scrollbar_pass,
+        sizing_stage,
     } = input;
 
     if columns.is_empty() || rows.is_empty() {
@@ -2121,6 +2123,10 @@ where
                 LogicalSizeOf::new(
                     child_context_input.item.column.can_inherit(),
                     child_context_input.item.row.can_inherit(),
+                ),
+                sizing_stage.mapped(
+                    constants.flow_axes,
+                    crate::geometry::FlowAxes::new(child_style.writing_mode, child_style.direction),
                 ),
                 |constants| {
                     subgrid_child_parent_context(child_context_input.for_scrollbar_pass(constants))

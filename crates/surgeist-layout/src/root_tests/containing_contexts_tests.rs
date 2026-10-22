@@ -3776,32 +3776,12 @@ fn assert_logical_subgrid_axes<S: LayoutScalar>() {
                     inherited_extent, expected_extent,
                     "{parent_writing_mode:?} {parent_direction:?} {child_flow:?} {axis:?} must preserve the inherited physical extent"
                 );
-                let child_inputs = tree.cache_inputs(1);
-                assert!(
-                    child_inputs
-                        .iter()
-                        .any(|input| input.containing_flow_axes() == parent_flow_axes),
-                    "{parent_writing_mode:?} {parent_direction:?} {child_flow:?} {axis:?} must compute the subgrid through its parent flow: {child_inputs:?}"
-                );
-                assert!(
-                    child_inputs.iter().any(|input| {
-                        let inherited_extent = match topology.inherited_physical_axis {
-                            PhysicalAxis::Horizontal => parent_size.width,
-                            PhysicalAxis::Vertical => parent_size.height,
-                        };
-                        let (known, available) = match topology.inherited_physical_axis {
-                            PhysicalAxis::Horizontal => {
-                                (input.known().width, input.available().width)
-                            }
-                            PhysicalAxis::Vertical => {
-                                (input.known().height, input.available().height)
-                            }
-                        };
-                        input.containing_flow_axes() == parent_flow_axes
-                            && known == Some(inherited_extent)
-                            && available == AvailableOf::definite(inherited_extent)
-                    }),
-                    "{parent_writing_mode:?} {parent_direction:?} {child_flow:?} {axis:?} must project the inherited physical size and available area through the child flow: {child_inputs:?}"
+                // A contextual prefix cannot reuse a generic container cache
+                // key that omits its inherited tracks. Check the resulting
+                // physical loan on both axes instead of demanding that ingress.
+                assert_eq!(
+                    child.size, parent_size,
+                    "{parent_writing_mode:?} {parent_direction:?} {child_flow:?} {axis:?} must preserve both mapped physical extents"
                 );
 
                 let descendant = public_flow_output(batch.unrounded_entries(), 2);
@@ -3856,7 +3836,6 @@ fn assert_nested_orthogonal_partial_subgrid_preserves_resolved_cross_axis_and_pr
     S: LayoutScalar,
 >() {
     let scalar = scalar::<S>;
-    let parent_flow_axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     let tree = PublicFlowTree::default()
         .with_children(0, [1])
         .with_children(1, [2])
@@ -3914,7 +3893,7 @@ fn assert_nested_orthogonal_partial_subgrid_preserves_resolved_cross_axis_and_pr
             },
         );
 
-    compute_layout(
+    let batch = compute_layout(
         &tree,
         0,
         LayoutRootRequestOf::viewport(Size::splat(AvailableOf::definite(scalar(200.0))))
@@ -3922,20 +3901,19 @@ fn assert_nested_orthogonal_partial_subgrid_preserves_resolved_cross_axis_and_pr
     )
     .expect("nested orthogonal partial subgrid layout succeeds");
 
-    let inputs = tree.cache_inputs(1);
-    assert!(
-        inputs.iter().any(|input| {
-            input.run_mode() == RunMode::ComputeSize
-                && input.known() == Size::new(Some(scalar(20.0)), None)
-                && input.parent() == Size::new(Some(scalar(20.0)), Some(S::ZERO))
-                && input.containing_flow_axes() == parent_flow_axes
-                && input.available()
-                    == Size::new(
-                        AvailableOf::definite(scalar(20.0)),
-                        AvailableOf::MAX_CONTENT,
-                    )
-        }),
-        "nested partial subgrid node 1 must retain a resolved cross-axis span and provisional other axis: {inputs:?}"
+    // The 20px leaf contribution crosses the orthogonal row/column loan,
+    // while each actual 40px standalone track supplies the physical height.
+    // Generic cache_get is intentionally bypassed for contextual preparation.
+    for node in [0, 1, 2] {
+        assert_eq!(
+            public_flow_output(batch.unrounded_entries(), node).size,
+            Size::new(scalar(20.0), scalar(40.0)),
+            "node {node} lost its physical inherited basis"
+        );
+    }
+    assert_eq!(
+        public_flow_output(batch.unrounded_entries(), 3).size,
+        Size::new(scalar(20.0), scalar(10.0))
     );
 }
 

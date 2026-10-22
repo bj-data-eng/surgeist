@@ -30,6 +30,7 @@ mod alignment;
 mod axis;
 mod child;
 mod input;
+mod intrinsic_stage;
 mod lanes;
 mod named;
 mod placement;
@@ -48,6 +49,7 @@ use input::{
     GridChildInput, GridContainerInput, GridContainerProjection, GridItemProjection,
     order_modified_indexes,
 };
+use intrinsic_stage::{GridIntrinsicProbe, GridIntrinsicProbeKind, IntrinsicSubgridSource};
 pub use lanes::{
     DefiniteLaneIntrinsicItem, DefiniteLaneIntrinsicItemOf, IndefiniteLaneContributionGroup,
     IndefiniteLaneContributionGroupOf, LaneContributionFacts, LaneContributionFactsOf,
@@ -59,8 +61,9 @@ pub use lanes::{
 };
 use lanes::{
     GridLanesLayoutInput, LaneIntrinsicTrackSizeInput, apply_grid_lanes_auto_fit_policy,
-    column_flow_for_grid_lanes, grid_axis_for_grid_lanes, lane_intrinsic_track_sizes,
-    layout_grid_lanes_children, resolve_grid_lanes_placement_with_resolved_tracks,
+    column_flow_for_grid_lanes, grid_axis_for_grid_lanes, lane_axis_for_grid_lanes,
+    lane_intrinsic_track_sizes, layout_grid_lanes_children,
+    resolve_grid_lanes_placement_with_resolved_tracks,
 };
 use named::{
     GridAreaNameFacts, NamedGridError, NamedGridLines, build_grid_named_context_with_report,
@@ -143,6 +146,7 @@ where
         input.settled_auto_scrollbars(),
         |_| Ok(GridParentContext::none()),
         GridMeasurementBoundary::Ordinary,
+        GridSizingStage::COMPLETE,
     )?;
     Ok(GridComputationOf {
         output: result.output,
@@ -154,6 +158,7 @@ struct GridComputeResult<S: LayoutScalar = Scalar> {
     output: ComputeOutputOf<S>,
     report: GridComputationReport,
     baseline_groups: GridBaselineGroups<S>,
+    effective_gutter: Option<Edges<S>>,
 }
 
 impl<S: LayoutScalar> GridComputeResult<S> {
@@ -165,6 +170,7 @@ impl<S: LayoutScalar> GridComputeResult<S> {
                 rows: Vec::new(),
                 columns: Vec::new(),
             },
+            effective_gutter: None,
         }
     }
 }
@@ -183,6 +189,7 @@ fn compute_grid_with_scrollbar_settlement<'input, Tree, M>(
         M,
     >,
     measurement_boundary: GridMeasurementBoundary<Tree::Scalar>,
+    stage: GridSizingStage,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, GridComputeResult<Tree::Scalar>, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
@@ -195,6 +202,7 @@ where
             pass_input,
             &mut parent_context,
             measurement_boundary,
+            stage,
         )?;
         let Some(geometry) = result.output.scroll_geometry else {
             return Ok(result);
@@ -221,9 +229,20 @@ pub(crate) struct GridOverflowProbe<'input, 'a, Node, S: LayoutScalar> {
 enum GridOverflowLayout<'input, 'a, Node, S: LayoutScalar> {
     Ordinary(GridChildLayoutInput<'input, 'a, Node, S>),
     Lanes(GridLanesLayoutInput<'input, 'a, Node, S>),
+    Intrinsic(GridIntrinsicProbe<'input, 'a, Node, S>),
+    #[cfg(test)]
+    RootPrefix {
+        input: ComputeInputOf<S>,
+        stage: GridSizingStage,
+    },
 }
 
-pub(crate) struct GridOverflowObservation<S: LayoutScalar> {
+pub(crate) enum GridOverflowObservation<S: LayoutScalar> {
+    Children(GridChildrenObservation<S>),
+    Intrinsic(intrinsic_stage::GridIntrinsicObservation<S>),
+}
+
+pub(crate) struct GridChildrenObservation<S: LayoutScalar> {
     visible_content_size: Size<S>,
     contributions: crate::scroll::ScrollContributionAccumulatorOf<S>,
 }
@@ -236,17 +255,41 @@ impl<'input, Node, S: LayoutScalar> GridOverflowProbe<'input, '_, Node, S> {
     ) -> LayoutResultOf<Node, GridOverflowObservation<S>, S, M>
     where
         Tree: Compute<'input, M, Scalar = S> + Traverse<Node = Node>,
+        Node: Copy + Eq,
     {
         let children = match self.layout {
             GridOverflowLayout::Ordinary(input) => {
                 layout_grid_container_children(tree, node, input)?
             }
             GridOverflowLayout::Lanes(input) => layout_grid_lanes_children(tree, node, input)?,
+            GridOverflowLayout::Intrinsic(input) => {
+                return input
+                    .observe(tree, node)
+                    .map(GridOverflowObservation::Intrinsic);
+            }
+            #[cfg(test)]
+            GridOverflowLayout::RootPrefix { input, stage } => {
+                let result = compute_grid_with_scrollbar_settlement(
+                    tree,
+                    node,
+                    input,
+                    crate::scroll::SettledAutoScrollbarState::INITIAL,
+                    |_| Ok(GridParentContext::none()),
+                    GridMeasurementBoundary::Ordinary,
+                    stage,
+                )?;
+                return Ok(GridOverflowObservation::Intrinsic(
+                    intrinsic_stage::GridIntrinsicObservation {
+                        output: result.output,
+                        effective_gutter: result.effective_gutter,
+                    },
+                ));
+            }
         };
-        Ok(GridOverflowObservation {
+        Ok(GridOverflowObservation::Children(GridChildrenObservation {
             visible_content_size: children.visible_content_size,
             contributions: children.contributions,
-        })
+        }))
     }
 }
 
@@ -436,53 +479,10 @@ where
             parent_context.columns.is_some(),
             parent_context.rows.is_some(),
         ),
+        GridSizingStage::COMPLETE,
         |_| Ok(parent_context.clone()),
     )?
     .output)
-}
-
-fn compute_grid_with_context_settled_and_standalone_intrinsic_minimum<'input, Tree, M>(
-    tree: &mut Tree,
-    node: <Tree as Traverse>::Node,
-    input: ComputeInputOf<Tree::Scalar>,
-    parent_context: GridParentContext<Tree::Scalar, <Tree as Traverse>::Node>,
-    intrinsic_minimum: Size<Option<StandaloneIntrinsicMinimum>>,
-) -> LayoutResultOf<<Tree as Traverse>::Node, GridComputeResult<Tree::Scalar>, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    compute_grid_with_context_source(
-        tree,
-        node,
-        input,
-        intrinsic_minimum,
-        LogicalSizeOf::new(
-            parent_context.columns.is_some(),
-            parent_context.rows.is_some(),
-        ),
-        |_| Ok(parent_context.clone()),
-    )
-}
-
-fn compute_standalone_grid_with_context<'input, Tree, M>(
-    tree: &mut Tree,
-    node: <Tree as Traverse>::Node,
-    input: ComputeInputOf<Tree::Scalar>,
-    parent_context: GridParentContext<Tree::Scalar, <Tree as Traverse>::Node>,
-) -> LayoutResultOf<<Tree as Traverse>::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    Ok(
-        compute_grid_with_context_settled_and_standalone_intrinsic_minimum(
-            tree,
-            node,
-            input,
-            parent_context,
-            Size::NONE,
-        )?
-        .output,
-    )
 }
 
 // Rebuild inherited tracks from the unchanged parent source for each child pass.
@@ -493,6 +493,7 @@ fn compute_grid_with_context_source<'input, Tree, M>(
     input: ComputeInputOf<Tree::Scalar>,
     intrinsic_minimum: Size<Option<StandaloneIntrinsicMinimum>>,
     inherited_axes: LogicalSizeOf<bool>,
+    stage: GridSizingStage,
     mut parent_context: impl FnMut(
         &Constants<Tree::Scalar>,
     ) -> LayoutResultOf<
@@ -554,6 +555,7 @@ where
             crate::scroll::SettledAutoScrollbarState::INITIAL,
             &mut parent_context,
             GridMeasurementBoundary::StandaloneIntrinsicMinimumProbe(intrinsic_axes),
+            stage,
         )?
         .output
         .size;
@@ -571,6 +573,7 @@ where
         crate::scroll::SettledAutoScrollbarState::INITIAL,
         parent_context,
         GridMeasurementBoundary::Standalone(resolved_intrinsic_minimum),
+        stage,
     )
 }
 
@@ -587,6 +590,7 @@ fn compute_grid_with_context_result<'input, Tree, M>(
         M,
     >,
     measurement_boundary: GridMeasurementBoundary<Tree::Scalar>,
+    stage: GridSizingStage,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, GridComputeResult<Tree::Scalar>, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
@@ -630,6 +634,7 @@ where
             parent_context,
             style,
             constants,
+            stage,
         );
     }
 
@@ -684,6 +689,7 @@ where
                 input.available(),
             ),
             placements: &placements,
+            stage,
         },
     )?;
     let GridTrackResolution {
@@ -715,6 +721,7 @@ where
             row_gutters: Some(&row_gutters),
             lines,
             placements: &placements,
+            stage,
         },
     )?;
     let cyclic_percent_content_size = sizing_flow_axes.logical_size(cyclic_percent_content_size);
@@ -774,7 +781,10 @@ where
         columns: Vec::new(),
     };
     let mut final_scroll_geometry = None;
-    if input.run_mode().is_perform_layout() || needs_intrinsic_auto_observation(&style, input) {
+    let mut effective_gutter = None;
+    if (input.run_mode().is_perform_layout() || needs_intrinsic_auto_observation(&style, input))
+        && intrinsic_stage::has_layout_basis(stage, &constants, &column_tracks, &row_tracks)
+    {
         let scroll_box = canonical_scroll_box_from_source(CanonicalScrollBoxSourceOf {
             flow_axes: constants.flow_axes,
             computed_overflow: style.overflow,
@@ -787,6 +797,7 @@ where
             settled_auto_scrollbars: input.settled_auto_scrollbars(),
         })
         .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?;
+        effective_gutter = Some(scroll_box.effective_gutter());
         let constants = constants.for_used_scroll_box(scroll_box);
         let child_input = GridChildLayoutInput {
             sizing_phases,
@@ -810,17 +821,23 @@ where
             let children = layout_grid_container_children(tree, node, child_input)?;
             baselines = children.baselines;
             baseline_groups = children.baseline_groups;
-            GridOverflowObservation {
+            GridChildrenObservation {
                 visible_content_size: children.visible_content_size,
                 contributions: children.contributions,
             }
         } else {
-            tree.observe_grid_overflow(
+            let observation = tree.observe_grid_overflow(
                 node,
                 GridOverflowProbe {
                     layout: GridOverflowLayout::Ordinary(child_input),
                 },
-            )?
+            )?;
+            match observation {
+                GridOverflowObservation::Children(children) => children,
+                GridOverflowObservation::Intrinsic(_) => {
+                    unreachable!("a child-layout probe returns its child observation")
+                }
+            }
         };
         content_size = max_size(content_size, child_layout.visible_content_size);
         child_layout
@@ -859,6 +876,7 @@ where
         },
         report,
         baseline_groups,
+        effective_gutter,
     })
 }
 
@@ -914,6 +932,7 @@ fn compute_grid_lanes_with_context_result<'input, Tree, M>(
     parent_context: GridParentContext<Tree::Scalar, <Tree as Traverse>::Node>,
     style: GridContainerProjection<'_, Tree::Scalar>,
     constants: Constants<Tree::Scalar>,
+    stage: GridSizingStage,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, GridComputeResult<Tree::Scalar>, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
@@ -962,6 +981,7 @@ where
                 input.available(),
             ),
             placements: &placements,
+            stage,
         },
     )?;
     let GridTrackResolution {
@@ -981,21 +1001,29 @@ where
         ),
         track_content_sum_with_gutters(&row_tracks, &rows, gap.block, Some(&context.row_gutters)),
     );
-    if let Ok(lane_report) = resolve_grid_lanes_placement_with_resolved_tracks(
-        tree,
-        node,
-        &style,
-        &constants,
-        context.clone(),
-        &columns,
-        &rows,
-        &placements,
-        match grid_axis_for_grid_lanes(&style) {
-            GridAxisKind::Column => gap.inline,
-            GridAxisKind::Row => gap.block,
-        },
-        sizing_flow_axes.logical_size(constants.node_inner_size),
-    )? {
+    let needs_child_layout = (input.run_mode().is_perform_layout()
+        || needs_intrinsic_auto_observation(&style, input))
+        && intrinsic_stage::has_layout_basis(stage, &constants, &column_tracks, &row_tracks);
+    // Grid-axis contribution sizing does not consume stacking placement. Its
+    // range is needed only at the reached stacking sizing point or when the
+    // qualified child-layout operation can consume an actual scrollport.
+    if (stage.has_resolved_axis(lane_axis_for_grid_lanes(&style)) || needs_child_layout)
+        && let Ok(lane_report) = resolve_grid_lanes_placement_with_resolved_tracks(
+            tree,
+            node,
+            &style,
+            &constants,
+            context.clone(),
+            &columns,
+            &rows,
+            &placements,
+            match grid_axis_for_grid_lanes(&style) {
+                GridAxisKind::Column => gap.inline,
+                GridAxisKind::Row => gap.block,
+            },
+            sizing_flow_axes.logical_size(constants.node_inner_size),
+        )?
+    {
         let has_explicit_lane_tracks = match lane_report.lane_axis {
             GridAxisKind::Column => !style.grid_template_columns.is_empty(),
             GridAxisKind::Row => !style.grid_template_rows.is_empty(),
@@ -1039,6 +1067,7 @@ where
                 row_gutters: Some(&context.row_gutters),
                 lines,
                 placements: &placements,
+                stage,
             },
         )?);
     logical_content_size = LogicalSizeOf::new(
@@ -1067,7 +1096,8 @@ where
         columns: Vec::new(),
     };
     let mut final_scroll_geometry = None;
-    if input.run_mode().is_perform_layout() || needs_intrinsic_auto_observation(&style, input) {
+    let mut effective_gutter = None;
+    if needs_child_layout {
         let scroll_box = canonical_scroll_box_from_source(CanonicalScrollBoxSourceOf {
             flow_axes: constants.flow_axes,
             computed_overflow: style.overflow,
@@ -1080,6 +1110,7 @@ where
             settled_auto_scrollbars: input.settled_auto_scrollbars(),
         })
         .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?;
+        effective_gutter = Some(scroll_box.effective_gutter());
         let constants = constants.for_used_scroll_box(scroll_box);
         let layout_content_box_size =
             (output_size - constants.content_box_inset.sum_axes()).max(Size::ZERO);
@@ -1141,22 +1172,29 @@ where
             subgrid_report: &subgrid_report,
             placements: &placements,
             containing_auto_scrollbar_pass: input.settled_auto_scrollbars(),
+            sizing_stage: sizing_phases.limit,
         };
         let mut child_layout = if input.run_mode().is_perform_layout() {
             let children = layout_grid_lanes_children(tree, node, child_input)?;
             baselines = children.baselines;
             baseline_groups = children.baseline_groups;
-            GridOverflowObservation {
+            GridChildrenObservation {
                 visible_content_size: children.visible_content_size,
                 contributions: children.contributions,
             }
         } else {
-            tree.observe_grid_overflow(
+            let observation = tree.observe_grid_overflow(
                 node,
                 GridOverflowProbe {
                     layout: GridOverflowLayout::Lanes(child_input),
                 },
-            )?
+            )?;
+            match observation {
+                GridOverflowObservation::Children(children) => children,
+                GridOverflowObservation::Intrinsic(_) => {
+                    unreachable!("a child-layout probe returns its child observation")
+                }
+            }
         };
         content_size = max_size(content_size, child_layout.visible_content_size);
         child_layout
@@ -1195,6 +1233,7 @@ where
         },
         report,
         baseline_groups,
+        effective_gutter,
     })
 }
 
@@ -1954,10 +1993,51 @@ struct GridTrackResolutionInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
     available: LogicalSizeOf<AvailableOf<S>>,
     intrinsic_max_available: LogicalSizeOf<bool>,
     placements: &'a GridPlacementContext<'input, Node, S>,
+    stage: GridSizingStage,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+enum GridSizingPhase {
+    InitialFirst,
+    InitialSecond,
+    RevisitFirst,
+    RevisitSecond,
+    Complete,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct GridSizingStage {
+    first_axis: GridAxisKind,
+    through: GridSizingPhase,
+}
+
+impl GridSizingStage {
+    const COMPLETE: Self = Self {
+        first_axis: GridAxisKind::Column,
+        through: GridSizingPhase::Complete,
+    };
+
+    fn has_resolved_axis(self, axis: GridAxisKind) -> bool {
+        self.through >= GridSizingPhase::InitialSecond || self.first_axis == axis
+    }
+
+    fn mapped(self, parent: crate::geometry::FlowAxes, child: crate::geometry::FlowAxes) -> Self {
+        let first_physical = grid_axis_physical_axis(parent, self.first_axis);
+        Self {
+            first_axis: if child.inline_axis() == first_physical {
+                GridAxisKind::Column
+            } else {
+                GridAxisKind::Row
+            },
+            ..self
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
-struct GridTrackSizingPhases;
+struct GridTrackSizingPhases {
+    limit: GridSizingStage,
+}
 
 impl GridTrackSizingPhases {
     fn resolve_axis<S: LayoutScalar>(self, input: AxisTrackInput<'_, S>) -> Vec<S> {
@@ -1982,351 +2062,7 @@ fn resolve_grid_track_sizes<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let GridTrackResolutionInput {
-        style,
-        constants,
-        column_tracks,
-        row_tracks,
-        context,
-        subgrid_report,
-        sizing_flow_axes,
-        available,
-        intrinsic_max_available,
-        placements,
-    } = input;
-    let sizing_phases = GridTrackSizingPhases;
-    let GridContainerContext {
-        topology,
-        gap,
-        column_gutters,
-        row_gutters,
-        percent_basis,
-        lines,
-        ..
-    } = context;
-    let active_column_gutters = Some(&column_gutters);
-    let active_row_gutters = Some(&row_gutters);
-    let ExpandedGridTopology {
-        named_columns,
-        named_rows,
-        area_facts,
-        ..
-    } = topology;
-    let logical_node_inner_size = sizing_flow_axes.logical_size(constants.node_inner_size);
-    let logical_available_inner_size =
-        sizing_flow_axes.logical_size(constants.available_inner_size);
-    let logical_node_max_size = sizing_flow_axes.logical_size(constants.node_max_size);
-    let logical_content_box_inset_size =
-        sizing_flow_axes.logical_size(constants.content_box_inset.sum_axes());
-    let column_basis = percent_basis.inline;
-    let row_basis = percent_basis.block;
-    // Intrinsic requests keep their constraint even when the containing viewport
-    // is definite. An auto block size is content-based, so its outer available
-    // space is not a definite track-sizing space.
-    let track_available = LogicalSizeOf::new(
-        match available.inline {
-            AvailableOf::Definite(_) => logical_available_inner_size
-                .inline
-                .map_or(available.inline, AvailableOf::Definite),
-            intrinsic => intrinsic,
-        },
-        match available.block {
-            AvailableOf::Definite(_) if logical_node_inner_size.block.is_none() => {
-                AvailableOf::MAX_CONTENT
-            }
-            AvailableOf::Definite(_) => logical_available_inner_size
-                .block
-                .map_or(available.block, AvailableOf::Definite),
-            intrinsic => intrinsic,
-        },
-    );
-    let intrinsic_grid = IntrinsicGrid {
-        style,
-        constants,
-        sizing_flow_axes,
-        column_tracks,
-        row_tracks,
-        gap,
-        column_gutters: active_column_gutters,
-        row_gutters: active_row_gutters,
-        percent_basis: LogicalSizeOf::new(None, None),
-        lines,
-        named_columns: &named_columns,
-        named_rows: &named_rows,
-        area_facts: area_facts.as_ref(),
-        subgrid_report,
-        placements,
-    };
-    let (mut column_max_intrinsic_sizes, row_intrinsic_sizes) = intrinsic_track_sizes(
-        tree,
-        node,
-        intrinsic_grid,
-        sizing_flow_axes.physical_size(LogicalSizeOf::new(
-            AvailableOf::MAX_CONTENT,
-            AvailableOf::MAX_CONTENT,
-        )),
-        IntrinsicGridLowerBounds::default(),
-    )?;
-    let compute_column_min_intrinsic_sizes = available.inline == AvailableOf::MIN_CONTENT
-        || (logical_node_inner_size.inline.is_none()
-            && logical_available_inner_size.inline.is_some())
-        || column_tracks.iter().any(|track| {
-            track.min == MinTrackSizingOf::MinContent
-                || track.max == MaxTrackSizingOf::MinContent
-                || matches!(
-                    track,
-                    TrackSizingOf {
-                        min: MinTrackSizingOf::Auto,
-                        max: MaxTrackSizingOf::Auto
-                    }
-                )
-                || matches!(track.max, MaxTrackSizingOf::FitContent(_))
-        });
-    let mut column_min_intrinsic_sizes = if compute_column_min_intrinsic_sizes {
-        intrinsic_track_sizes(
-            tree,
-            node,
-            intrinsic_grid,
-            sizing_flow_axes.physical_size(LogicalSizeOf::new(
-                AvailableOf::MIN_CONTENT,
-                AvailableOf::MAX_CONTENT,
-            )),
-            IntrinsicGridLowerBounds::default(),
-        )?
-        .0
-    } else {
-        column_max_intrinsic_sizes.clone()
-    };
-    if compute_column_min_intrinsic_sizes {
-        column_max_intrinsic_sizes = intrinsic_track_sizes(
-            tree,
-            node,
-            intrinsic_grid,
-            sizing_flow_axes.physical_size(LogicalSizeOf::new(
-                AvailableOf::MAX_CONTENT,
-                AvailableOf::MAX_CONTENT,
-            )),
-            IntrinsicGridLowerBounds {
-                columns: Some(&column_min_intrinsic_sizes),
-                rows: None,
-            },
-        )?
-        .0;
-    }
-    if style.display.establishes_grid_lanes_formatting_context()
-        && grid_axis_for_grid_lanes(style) == GridAxisKind::Column
-    {
-        let lane_min = lane_intrinsic_track_sizes(
-            tree,
-            node,
-            LaneIntrinsicTrackSizeInput {
-                container_style: style,
-                constants,
-                axis: GridAxisKind::Column,
-                tracks: column_tracks,
-                gap: gap.inline,
-                available: AvailableOf::MIN_CONTENT,
-                available_basis: column_basis,
-                gutters: active_column_gutters,
-                lines,
-                placements,
-                subgrid_report,
-            },
-        )?;
-        let lane_max = lane_intrinsic_track_sizes(
-            tree,
-            node,
-            LaneIntrinsicTrackSizeInput {
-                container_style: style,
-                constants,
-                axis: GridAxisKind::Column,
-                tracks: column_tracks,
-                gap: gap.inline,
-                available: AvailableOf::MAX_CONTENT,
-                available_basis: column_basis,
-                gutters: active_column_gutters,
-                lines,
-                placements,
-                subgrid_report,
-            },
-        )?;
-        merge_lane_intrinsic_lower_bounds(&mut column_min_intrinsic_sizes, lane_min);
-        merge_lane_intrinsic_lower_bounds(&mut column_max_intrinsic_sizes, lane_max);
-    }
-    let mixed_column_intrinsic_sizes = track_resolution_intrinsic_sizes(
-        column_tracks,
-        &column_min_intrinsic_sizes,
-        &column_max_intrinsic_sizes,
-    );
-    let column_resolution_intrinsic_sizes = if available.inline == AvailableOf::MIN_CONTENT {
-        column_min_intrinsic_sizes.as_slice()
-    } else {
-        mixed_column_intrinsic_sizes.as_slice()
-    };
-    let mut columns = {
-        sizing_phases.resolve_axis(AxisTrackInput {
-            tracks: column_tracks,
-            basis: column_basis,
-            definite_size: logical_node_inner_size.inline,
-            available_size: track_available.inline,
-            gap: gap.inline,
-            gutters: active_column_gutters,
-            alignment: style.justify_content.unwrap_or(AlignContent::Stretch),
-            stretch_empty_auto_to_available: intrinsic_max_available.inline
-                && logical_node_inner_size.inline.is_none()
-                && logical_node_max_size.inline.is_some(),
-            min_intrinsic_sizes: &column_min_intrinsic_sizes,
-            max_intrinsic_sizes: column_resolution_intrinsic_sizes,
-        })
-    };
-    if logical_node_inner_size.inline.is_none()
-        && let Some(max_inline) = logical_node_max_size.inline
-    {
-        let max_inner_inline =
-            (max_inline - logical_content_box_inset_size.inline).max(Tree::Scalar::ZERO);
-        if track_sum_with_gutters(&columns, gap.inline, active_column_gutters) > max_inner_inline {
-            columns = {
-                sizing_phases.resolve_axis(AxisTrackInput {
-                    tracks: column_tracks,
-                    basis: column_basis,
-                    definite_size: logical_node_inner_size.inline,
-                    available_size: AvailableOf::Definite(max_inner_inline),
-                    gap: gap.inline,
-                    gutters: active_column_gutters,
-                    alignment: style.justify_content.unwrap_or(AlignContent::Stretch),
-                    stretch_empty_auto_to_available: false,
-                    min_intrinsic_sizes: &column_min_intrinsic_sizes,
-                    max_intrinsic_sizes: column_resolution_intrinsic_sizes,
-                })
-            };
-        }
-    }
-    let unconstrained_row_intrinsic_sizes = row_intrinsic_sizes;
-    let mut row_intrinsic_sizes = {
-        let constrained_row_intrinsic_sizes =
-            constrained_row_intrinsic_sizes(tree, node, intrinsic_grid, &columns, gap)?;
-        unconstrained_row_intrinsic_sizes
-            .iter()
-            .copied()
-            .zip(constrained_row_intrinsic_sizes)
-            .map(|(unconstrained, constrained)| unconstrained.max(constrained))
-            .collect::<Vec<_>>()
-    };
-    if style.display.establishes_grid_lanes_formatting_context()
-        && grid_axis_for_grid_lanes(style) == GridAxisKind::Row
-    {
-        let lane_rows = lane_intrinsic_track_sizes(
-            tree,
-            node,
-            LaneIntrinsicTrackSizeInput {
-                container_style: style,
-                constants,
-                axis: GridAxisKind::Row,
-                tracks: row_tracks,
-                gap: gap.block,
-                available: AvailableOf::MAX_CONTENT,
-                available_basis: row_basis,
-                gutters: active_row_gutters,
-                lines,
-                placements,
-                subgrid_report,
-            },
-        )?;
-        merge_lane_intrinsic_lower_bounds(&mut row_intrinsic_sizes, lane_rows);
-    }
-    let mut rows = {
-        sizing_phases.resolve_axis(AxisTrackInput {
-            tracks: row_tracks,
-            basis: row_basis,
-            definite_size: logical_node_inner_size.block,
-            available_size: track_available.block,
-            gap: gap.block,
-            alignment: style.align_content.unwrap_or(AlignContent::Stretch),
-            min_intrinsic_sizes: &row_intrinsic_sizes,
-            max_intrinsic_sizes: &row_intrinsic_sizes,
-            gutters: active_row_gutters,
-            stretch_empty_auto_to_available: false,
-        })
-    };
-    let row_constrained_column_intrinsic_sizes =
-        constrained_column_intrinsic_sizes(tree, node, intrinsic_grid, &columns, &rows, gap)?;
-    let mut columns_need_resolution = false;
-    for (index, contribution) in row_constrained_column_intrinsic_sizes
-        .into_iter()
-        .enumerate()
-    {
-        if let Some(min_size) = column_min_intrinsic_sizes.get_mut(index)
-            && contribution > *min_size
-        {
-            *min_size = contribution;
-            columns_need_resolution = true;
-        }
-        if let Some(max_size) = column_max_intrinsic_sizes.get_mut(index)
-            && contribution > *max_size
-        {
-            *max_size = contribution;
-            columns_need_resolution = true;
-        }
-    }
-    if columns_need_resolution {
-        let mixed_column_intrinsic_sizes = track_resolution_intrinsic_sizes(
-            column_tracks,
-            &column_min_intrinsic_sizes,
-            &column_max_intrinsic_sizes,
-        );
-        let column_resolution_intrinsic_sizes = if available.inline == AvailableOf::MIN_CONTENT {
-            column_min_intrinsic_sizes.as_slice()
-        } else {
-            mixed_column_intrinsic_sizes.as_slice()
-        };
-        columns = {
-            sizing_phases.resolve_axis(AxisTrackInput {
-                tracks: column_tracks,
-                basis: column_basis,
-                definite_size: logical_node_inner_size.inline,
-                available_size: track_available.inline,
-                gap: gap.inline,
-                gutters: active_column_gutters,
-                alignment: style.justify_content.unwrap_or(AlignContent::Stretch),
-                stretch_empty_auto_to_available: intrinsic_max_available.inline
-                    && logical_node_inner_size.inline.is_none()
-                    && logical_node_max_size.inline.is_some(),
-                min_intrinsic_sizes: &column_min_intrinsic_sizes,
-                max_intrinsic_sizes: column_resolution_intrinsic_sizes,
-            })
-        };
-        let constrained_row_intrinsic_sizes =
-            constrained_row_intrinsic_sizes(tree, node, intrinsic_grid, &columns, gap)?;
-        row_intrinsic_sizes = unconstrained_row_intrinsic_sizes
-            .iter()
-            .copied()
-            .zip(constrained_row_intrinsic_sizes)
-            .map(|(unconstrained, constrained)| unconstrained.max(constrained))
-            .collect::<Vec<_>>();
-        rows = {
-            sizing_phases.resolve_axis(AxisTrackInput {
-                tracks: row_tracks,
-                basis: row_basis,
-                definite_size: logical_node_inner_size.block,
-                available_size: track_available.block,
-                gap: gap.block,
-                alignment: style.align_content.unwrap_or(AlignContent::Stretch),
-                min_intrinsic_sizes: &row_intrinsic_sizes,
-                max_intrinsic_sizes: &row_intrinsic_sizes,
-                gutters: active_row_gutters,
-                stretch_empty_auto_to_available: false,
-            })
-        };
-    }
-
-    Ok(GridTrackResolution {
-        sizing_phases,
-        columns,
-        rows,
-        column_min_intrinsic_sizes,
-        column_max_intrinsic_sizes,
-        row_intrinsic_sizes,
-    })
+    intrinsic_stage::resolve_tracks(tree, node, input)
 }
 
 fn merge_intrinsic_lower_bounds<S: LayoutScalar>(sizes: &mut [S], lower_bounds: &[S]) {
@@ -2477,11 +2213,13 @@ where
     let logical_node_inner_size = sizing_flow_axes.logical_size(constants.node_inner_size);
     let logical_available_inner_size =
         sizing_flow_axes.logical_size(constants.available_inner_size);
-    let rerun_percent_columns = logical_node_inner_size.inline.is_none() && {
-        column_tracks.iter().any(track_has_percent_sizing)
-    };
+    let rerun_percent_columns = sizing_phases.limit.through == GridSizingPhase::Complete
+        && logical_node_inner_size.inline.is_none()
+        && { column_tracks.iter().any(track_has_percent_sizing) };
     let (layout_column_min_intrinsic_sizes, layout_column_max_intrinsic_sizes) =
-        if layout_gap != gap || rerun_percent_columns {
+        if sizing_phases.limit.through == GridSizingPhase::Complete
+            && (layout_gap != gap || rerun_percent_columns)
+        {
             let percent_basis = LogicalSizeOf::new(
                 rerun_percent_columns.then_some(logical_layout_content_box_size.inline),
                 None,
@@ -2502,8 +2240,9 @@ where
                 area_facts: area_facts.as_ref(),
                 subgrid_report,
                 placements,
+                query: IntrinsicGridQuery::complete(),
             };
-            let (min_columns, _) = intrinsic_track_sizes(
+            let min_columns = intrinsic_track_sizes(
                 tree,
                 node,
                 intrinsic_grid,
@@ -2512,8 +2251,9 @@ where
                     AvailableOf::MAX_CONTENT,
                 )),
                 IntrinsicGridLowerBounds::default(),
-            )?;
-            let (max_columns, _) = intrinsic_track_sizes(
+            )?
+            .columns;
+            let max_columns = intrinsic_track_sizes(
                 tree,
                 node,
                 intrinsic_grid,
@@ -2525,7 +2265,8 @@ where
                     columns: Some(&min_columns),
                     rows: None,
                 },
-            )?;
+            )?
+            .columns;
             (min_columns, max_columns)
         } else {
             (
@@ -2533,7 +2274,9 @@ where
                 column_max_intrinsic_sizes.to_vec(),
             )
         };
-    let layout_intrinsic_columns = if layout_gap != gap || rerun_percent_columns {
+    let layout_intrinsic_columns = if sizing_phases.limit.through == GridSizingPhase::Complete
+        && (layout_gap != gap || rerun_percent_columns)
+    {
         sizing_phases.resolve_axis(AxisTrackInput {
             tracks: column_tracks,
             basis: column_basis,
@@ -2574,45 +2317,49 @@ where
             }
         },
     );
-    let layout_row_intrinsic_sizes = if layout_columns != columns {
-        let percent_basis = LogicalSizeOf::new(
-            rerun_percent_columns.then_some(logical_layout_content_box_size.inline),
-            None,
-        );
-        let intrinsic_grid = IntrinsicGrid {
-            style,
-            constants,
-            sizing_flow_axes,
-            column_tracks,
-            row_tracks,
-            gap: layout_gap,
-            column_gutters: Some(&layout_column_gutters),
-            row_gutters: Some(&layout_row_gutters),
-            percent_basis,
-            lines,
-            named_columns: &named_columns,
-            named_rows: &named_rows,
-            area_facts: area_facts.as_ref(),
-            subgrid_report,
-            placements,
+    let layout_row_intrinsic_sizes =
+        if sizing_phases.limit.through == GridSizingPhase::Complete && layout_columns != columns {
+            let percent_basis = LogicalSizeOf::new(
+                rerun_percent_columns.then_some(logical_layout_content_box_size.inline),
+                None,
+            );
+            let intrinsic_grid = IntrinsicGrid {
+                style,
+                constants,
+                sizing_flow_axes,
+                column_tracks,
+                row_tracks,
+                gap: layout_gap,
+                column_gutters: Some(&layout_column_gutters),
+                row_gutters: Some(&layout_row_gutters),
+                percent_basis,
+                lines,
+                named_columns: &named_columns,
+                named_rows: &named_rows,
+                area_facts: area_facts.as_ref(),
+                subgrid_report,
+                placements,
+                query: IntrinsicGridQuery::complete(),
+            };
+            intrinsic_track_sizes(
+                tree,
+                node,
+                intrinsic_grid,
+                sizing_flow_axes.physical_size(LogicalSizeOf::new(
+                    AvailableOf::MAX_CONTENT,
+                    AvailableOf::MAX_CONTENT,
+                )),
+                IntrinsicGridLowerBounds {
+                    columns: Some(&layout_columns),
+                    rows: None,
+                },
+            )?
+            .into_axis(GridAxisKind::Row)
+            .into_resolved()
+            .0
+        } else {
+            row_intrinsic_sizes.to_vec()
         };
-        let (_, rows) = intrinsic_track_sizes(
-            tree,
-            node,
-            intrinsic_grid,
-            sizing_flow_axes.physical_size(LogicalSizeOf::new(
-                AvailableOf::MAX_CONTENT,
-                AvailableOf::MAX_CONTENT,
-            )),
-            IntrinsicGridLowerBounds {
-                columns: Some(&layout_columns),
-                rows: None,
-            },
-        )?;
-        rows
-    } else {
-        row_intrinsic_sizes.to_vec()
-    };
     let layout_rows = resolved_logical_layout_rows(ResolvedLogicalLayoutRowsInput {
         sizing_phases,
         tracks: row_tracks,
@@ -2652,6 +2399,7 @@ where
             parent_context,
             placements,
             containing_auto_scrollbar_pass,
+            sizing_stage: sizing_phases.limit,
         },
     )
 }
@@ -2693,6 +2441,7 @@ struct GridLayoutContext<'input, 'a, Node, S: LayoutScalar = Scalar> {
     parent_context: &'a GridParentContext<S, Node>,
     placements: &'a GridPlacementContext<'input, Node, S>,
     containing_auto_scrollbar_pass: crate::scroll::SettledAutoScrollbarState,
+    sizing_stage: GridSizingStage,
 }
 
 fn resolved_logical_layout_gap<'input, Tree, M>(
@@ -2734,7 +2483,8 @@ fn resolved_logical_layout_columns<S: LayoutScalar>(
     let logical_node_inner_size = sizing_flow_axes.logical_size(constants.node_inner_size);
     let logical_available_inner_size =
         sizing_flow_axes.logical_size(constants.available_inner_size);
-    if logical_node_inner_size.inline.is_some()
+    if sizing_phases.limit.through != GridSizingPhase::Complete
+        || logical_node_inner_size.inline.is_some()
         || !input.tracks.iter().any(track_needs_layout_resolution)
     {
         return intrinsic_columns.to_vec();
@@ -2789,7 +2539,9 @@ fn resolved_logical_layout_rows<S: LayoutScalar>(
         gutters,
     } = input;
     let logical_node_inner_size = sizing_flow_axes.logical_size(constants.node_inner_size);
-    if logical_node_inner_size.block.is_some() || !tracks.iter().any(track_needs_layout_resolution)
+    if sizing_phases.limit.through != GridSizingPhase::Complete
+        || logical_node_inner_size.block.is_some()
+        || !tracks.iter().any(track_needs_layout_resolution)
     {
         return intrinsic_rows.to_vec();
     }
