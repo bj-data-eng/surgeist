@@ -113,6 +113,69 @@ mod tests {
         )
     }
 
+    fn assert_inline_kind_reuses_segment_backing<S: LayoutScalar>() {
+        let metrics = InlineMetricsOf::try_new(S::from_f64(7.0), S::from_f64(11.0))
+            .expect("valid inline metrics");
+        let expected_segments = [
+            ShapedInlineSegmentOf::try_new(
+                InlineSegmentId::new(17),
+                S::from_f64(23.0),
+                metrics,
+                BidiLevel::try_new(5).expect("valid bidi level"),
+                InlineWhitespaceEdge::Preserve,
+                InlineBreakOpportunityOf::try_allowed_with_replacement(S::from_f64(2.0))
+                    .expect("valid replacement break"),
+            )
+            .expect("valid first shaped segment"),
+            ShapedInlineSegmentOf::try_new(
+                InlineSegmentId::new(19),
+                S::from_f64(31.0),
+                metrics,
+                BidiLevel::try_new(2).expect("valid bidi level"),
+                InlineWhitespaceEdge::Preserve,
+                InlineBreakOpportunityOf::try_allowed_with_replacement(S::from_f64(3.0))
+                    .expect("valid replacement break"),
+            )
+            .expect("valid second shaped segment"),
+        ];
+        let text = InlineTextInputOf::try_new(expected_segments.to_vec())
+            .expect("nonempty text with distinct segment identities");
+        // Construct the product projection directly to exclude any provider clone.
+        let projection = InlineParticipantProjection {
+            input: LayoutInputOf::inline_text(text),
+        };
+        let original = projection
+            .input
+            .as_inline_text()
+            .expect("stored inline text");
+        let InlineParticipantKindOf::InlineText(first) = projection.kind() else {
+            panic!("inline text must retain its participant kind");
+        };
+        let InlineParticipantKindOf::InlineText(second) = projection.kind() else {
+            panic!("repeated access must retain the inline-text kind");
+        };
+
+        assert_eq!(original.segments(), expected_segments);
+        assert_eq!(first.segments(), expected_segments);
+        assert_eq!(second.segments(), expected_segments);
+        assert!(
+            core::ptr::eq(first.segments(), original.segments()),
+            "kind inspection must reuse the projection's nonempty segment backing"
+        );
+        assert!(core::ptr::eq(second.segments(), original.segments()));
+        assert!(core::ptr::eq(first.segments(), second.segments()));
+    }
+
+    #[test]
+    fn inline_kind_reuses_segment_backing_f32() {
+        assert_inline_kind_reuses_segment_backing::<f32>();
+    }
+
+    #[test]
+    fn inline_kind_reuses_segment_backing_f64() {
+        assert_inline_kind_reuses_segment_backing::<f64>();
+    }
+
     fn assert_non_box_projection_values<S: LayoutScalar>() {
         let text_metrics = InlineMetricsOf::try_new(S::from_f64(7.0), S::from_f64(11.0))
             .expect("valid non-default text metrics");

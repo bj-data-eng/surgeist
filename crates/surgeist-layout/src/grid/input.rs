@@ -361,7 +361,7 @@ impl<S: LayoutScalar> GridOverflowFacts for GridItemProjection<S> {
 
 #[cfg(test)]
 mod tests {
-    use super::{GridChildInput, GridContainerProjection};
+    use super::{GridChildInput, GridContainerInput, GridContainerProjection};
     use crate::{
         AlignContent, AlignItems, AspectRatioOf, BoxSizing, ComputedOverflow, Direction, Display,
         Edges, FlowAxes, GridAutoFlow, GridFlowToleranceOf, GridPlacement, GridTemplateAreaRow,
@@ -387,6 +387,78 @@ mod tests {
 
     fn length_auto<S: LayoutScalar>(value: f64) -> LengthAutoOf<S> {
         LengthAutoOf::value(length_percentage(value))
+    }
+
+    fn assert_grid_container_access_reuses_backing<S: LayoutScalar>() {
+        let source = NodeInputOf::<S> {
+            display: Display::Grid,
+            grid_template_columns: vec![
+                TrackComponentOf::line_names(["content-start"]),
+                TrackComponentOf::MAX_CONTENT,
+                TrackComponentOf::line_names(["content-end"]),
+            ],
+            grid_template_rows: vec![TrackComponentOf::MIN_CONTENT],
+            grid_template_areas: GridTemplateAreas {
+                rows: vec![GridTemplateAreaRow {
+                    cells: vec![Some(String::from("content"))],
+                }],
+            },
+            grid_auto_columns: vec![TrackComponentOf::AUTO],
+            grid_auto_rows: vec![TrackComponentOf::MAX_CONTENT],
+            ..NodeInputOf::default()
+        };
+        let first_input = GridContainerInput::from_node(&source);
+        let second_input = GridContainerInput::from_node(&source);
+        let first = first_input.projection();
+        let second = second_input.projection();
+
+        for projection in [first, second] {
+            assert_eq!(
+                projection.grid_template_columns,
+                source.grid_template_columns
+            );
+            assert_eq!(projection.grid_template_rows, source.grid_template_rows);
+            assert_eq!(projection.grid_template_areas, &source.grid_template_areas);
+            assert_eq!(projection.grid_auto_columns, source.grid_auto_columns);
+            assert_eq!(projection.grid_auto_rows, source.grid_auto_rows);
+            assert!(
+                core::ptr::eq(
+                    projection.grid_template_columns,
+                    source.grid_template_columns.as_slice(),
+                ),
+                "container access must reuse the source's nonempty column backing"
+            );
+            assert!(core::ptr::eq(
+                projection.grid_template_rows,
+                source.grid_template_rows.as_slice(),
+            ));
+            assert!(core::ptr::eq(
+                projection.grid_auto_columns,
+                source.grid_auto_columns.as_slice(),
+            ));
+            assert!(core::ptr::eq(
+                projection.grid_auto_rows,
+                source.grid_auto_rows.as_slice(),
+            ));
+            assert!(core::ptr::eq(
+                projection.grid_template_areas.rows.as_slice(),
+                source.grid_template_areas.rows.as_slice(),
+            ));
+            assert!(core::ptr::eq(
+                projection.grid_template_areas.rows[0].cells.as_slice(),
+                source.grid_template_areas.rows[0].cells.as_slice(),
+            ));
+        }
+    }
+
+    #[test]
+    fn grid_container_access_reuses_backing_f32() {
+        assert_grid_container_access_reuses_backing::<f32>();
+    }
+
+    #[test]
+    fn grid_container_access_reuses_backing_f64() {
+        assert_grid_container_access_reuses_backing::<f64>();
     }
 
     fn assert_non_default_projection_values<S: LayoutScalar>() {
