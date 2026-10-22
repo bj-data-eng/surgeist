@@ -202,8 +202,8 @@ fn assert_fri06_c01_inline_model<S: LayoutScalar>() {
     assert!(!BidiLevel::try_new(0).unwrap().is_rtl());
     assert!(BidiLevel::try_new(125).unwrap().is_rtl());
     assert_eq!(
-        BidiLevel::try_new(126),
-        Err(BidiLevelError::OutOfRange { level: 126 })
+        BidiLevel::try_new(127),
+        Err(BidiLevelError::OutOfRange { level: 127 })
     );
 
     let prohibited = InlineBreakOpportunityOf::<S>::prohibited();

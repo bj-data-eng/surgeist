@@ -24,6 +24,7 @@ mod range;
 mod source_model;
 mod style;
 mod style_support;
+mod supplied_line;
 mod system;
 mod text;
 mod views;
@@ -65,6 +66,10 @@ pub use style::{
     ValidatedStyle, Weight, WhiteSpace, Width, WordBreak, Wrap,
 };
 pub use style_support::{TextStyleFeature, TextStyleSupport, UnsupportedTextStyleReason};
+pub use supplied_line::{
+    BidiLevel, BidiLevelError, InlineWhitespaceEdge, SuppliedInlineParticipant, SuppliedLine,
+    SuppliedLineEdges, SuppliedLineError, SuppliedVisualOrder,
+};
 pub use system::{Builder, System, SystemOptions};
 pub use text::Text;
 pub use views::{GlyphPlacement, RunView};

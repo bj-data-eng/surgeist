@@ -1848,3 +1848,155 @@ fn resolved_bidi_level_126_preserves_l2_mixed_line_order_both_scalars() {
     assert_line::<f32>();
     assert_line::<f64>();
 }
+
+#[test]
+fn supplied_line_projection_and_forced_break_queries_visit_linear_real_formatter_work() {
+    use crate::inline::{inline_work_visits, reset_inline_work_visits};
+    for count in [64, 128] {
+        let participants = (0..count)
+            .map(|index| {
+                mr02_atomic::<f64>(
+                    index,
+                    1.0,
+                    10.0,
+                    8.0,
+                    0,
+                    InlineBreakOpportunityOf::prohibited(),
+                )
+            })
+            .collect();
+        reset_inline_work_visits();
+        reset_inline_candidate_scan_visits();
+        let report =
+            layout_mixed_inline_run(mr02_input(AvailableOf::definite(1_000_000.0), participants));
+        assert_eq!(report.atomics.len(), count);
+        assert_eq!(
+            report.inline_extent,
+            f64::from(u32::try_from(count).unwrap())
+        );
+        assert_eq!(inline_work_visits(), [count, count, 2]);
+        assert_eq!(inline_candidate_scan_visits(), count * 2);
+
+        let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+        let metrics = InlineMetricsOf::<f64>::from_ascent_descent(8.0, 2.0).unwrap();
+        let participants = (0..count)
+            .flat_map(|index| {
+                [
+                    mr02_text(
+                        index * 2,
+                        u64::try_from(index).unwrap(),
+                        1.0,
+                        1,
+                        InlineWhitespaceEdge::DiscardAtBoth,
+                        InlineBreakOpportunityOf::prohibited(),
+                    ),
+                    mixed_forced_line_break(index * 2 + 1, axes, metrics, Clear::None),
+                ]
+            })
+            .collect();
+        reset_inline_work_visits();
+        let report =
+            layout_mixed_inline_run(mr02_input(AvailableOf::definite(100.0), participants));
+        assert!(report.fragments.is_empty());
+        assert_eq!(report.anchors.len(), count);
+        assert_eq!(report.inline_extent, 0.0);
+        assert_eq!(inline_work_visits(), [count * 2, count * 2, count * 2]);
+        assert_eq!(report.anchors.first().unwrap().source_index, 0);
+        assert_eq!(report.anchors.last().unwrap().source_index, (count - 1) * 2);
+
+        let participants = (0..count)
+            .map(|index| {
+                mr02_text::<f64>(
+                    index,
+                    u64::try_from(index).unwrap(),
+                    1.0,
+                    0,
+                    InlineWhitespaceEdge::Preserve,
+                    InlineBreakOpportunityOf::allowed(),
+                )
+            })
+            .collect();
+        reset_inline_work_visits();
+        let report = layout_mixed_inline_run(mr02_input(AvailableOf::definite(1.0), participants));
+        assert_eq!(report.fragments.len(), count);
+        assert_eq!(report.fragments.last().unwrap().line_index, count - 1);
+        assert_eq!(report.fragments.last().unwrap().inline_start, 0.0);
+        assert_eq!(inline_work_visits(), [count, count, count * 2]);
+    }
+}
+
+fn assert_mandatory_discard_queries_are_confined_to_each_actual_line<S: LayoutScalar>() {
+    use crate::inline::{inline_leading_query_units, inline_work_visits, reset_inline_work_visits};
+    for count in [4, 8] {
+        let participants = (0..count)
+            .map(|index| {
+                mr02_text::<S>(
+                    index,
+                    u64::try_from(index).unwrap(),
+                    1.0,
+                    1,
+                    InlineWhitespaceEdge::DiscardAtBoth,
+                    InlineBreakOpportunityOf::mandatory(),
+                )
+            })
+            .collect();
+        reset_inline_work_visits();
+        reset_inline_candidate_scan_visits();
+        let report = layout_mixed_inline_run(mr02_input(
+            AvailableOf::definite(S::from_f64(100.0)),
+            participants,
+        ));
+        assert!(report.fragments.is_empty());
+        assert_eq!(report.anchors.len(), count);
+        assert_eq!(report.inline_extent, S::ZERO);
+        // Each mandatory break carries the discarded segment's 8+2 strut to
+        // the next line. The first line has no strut; the final empty line does.
+        assert_eq!(
+            report.block_extent,
+            S::from_f64(f64::from(u32::try_from(count).unwrap()) * 10.0)
+        );
+        assert_eq!(report.line_bands.len(), count + 1);
+        assert_eq!(report.first_baseline, Some(S::ZERO));
+        if count == 4 {
+            assert_eq!(
+                report
+                    .anchors
+                    .iter()
+                    .map(|anchor| anchor.baseline)
+                    .collect::<Vec<_>>(),
+                [0.0, 8.0, 18.0, 28.0].map(S::from_f64)
+            );
+            assert_eq!(
+                report
+                    .line_bands
+                    .iter()
+                    .map(|band| (band.block_start, band.block_end))
+                    .collect::<Vec<_>>(),
+                [
+                    (0.0, 0.0),
+                    (0.0, 10.0),
+                    (10.0, 20.0),
+                    (20.0, 30.0),
+                    (30.0, 40.0)
+                ]
+                .map(|(start, end)| (S::from_f64(start), S::from_f64(end)))
+            );
+            assert_eq!(report.last_baseline, Some(S::from_f64(38.0)));
+        }
+        assert_eq!(inline_candidate_scan_visits(), count * 2);
+        assert_eq!(inline_work_visits(), [count, count, count * 2]);
+        // This observes actual slice lengths passed at the production Text call,
+        // not inferred private Text visits. All slots are discardable, for which
+        // the Text owner's own scan test establishes one read per passed slot.
+        assert_eq!(inline_leading_query_units(), count * 2);
+    }
+}
+
+#[test]
+fn mandatory_discard_line_queries_are_bounded_in_f32() {
+    assert_mandatory_discard_queries_are_confined_to_each_actual_line::<f32>();
+}
+#[test]
+fn mandatory_discard_line_queries_are_bounded_in_f64() {
+    assert_mandatory_discard_queries_are_confined_to_each_actual_line::<f64>();
+}

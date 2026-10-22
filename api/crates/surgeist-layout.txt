@@ -50,9 +50,6 @@ pub const surgeist_layout::AvailableOf<S>::MIN_CONTENT: Self
 pub const fn surgeist_layout::AvailableOf<S>::definite(value: S) -> Self
 pub const fn surgeist_layout::AvailableOf<S>::into_option(self) -> core::option::Option<S>
 pub fn surgeist_layout::AvailableOf<S>::roughly_eq(self, other: Self) -> bool
-pub enum surgeist_layout::BidiLevelError
-pub surgeist_layout::BidiLevelError::OutOfRange
-pub surgeist_layout::BidiLevelError::OutOfRange::level: u8
 pub enum surgeist_layout::BoxSizing
 pub surgeist_layout::BoxSizing::BorderBox
 pub surgeist_layout::BoxSizing::ContentBox
@@ -226,12 +223,7 @@ pub surgeist_layout::InlineTextInputErrorOf::InvalidReplacementInlineExtent
 pub surgeist_layout::InlineTextInputErrorOf::InvalidReplacementInlineExtent::error: surgeist_layout::NonNegativeFiniteScalarErrorOf<S>
 pub surgeist_layout::InlineTextInputErrorOf::ReplacementWithDiscardableWhitespace
 pub surgeist_layout::InlineTextInputErrorOf::ReplacementWithDiscardableWhitespace::segment_id: surgeist_layout::InlineSegmentId
-pub surgeist_layout::InlineTextInputErrorOf::ReplacementWithDiscardableWhitespace::whitespace_edge: surgeist_layout::InlineWhitespaceEdge
-pub enum surgeist_layout::InlineWhitespaceEdge
-pub surgeist_layout::InlineWhitespaceEdge::DiscardAtBoth
-pub surgeist_layout::InlineWhitespaceEdge::DiscardAtLineEnd
-pub surgeist_layout::InlineWhitespaceEdge::DiscardAtLineStart
-pub surgeist_layout::InlineWhitespaceEdge::Preserve
+pub surgeist_layout::InlineTextInputErrorOf::ReplacementWithDiscardableWhitespace::whitespace_edge: surgeist_text::supplied_line::InlineWhitespaceEdge
 pub enum surgeist_layout::LaneIntrinsicItemKind
 pub surgeist_layout::LaneIntrinsicItemKind::Definite
 pub surgeist_layout::LaneIntrinsicItemKind::Definite::span: surgeist_layout::LaneTrackSpan
@@ -746,9 +738,9 @@ pub const fn surgeist_layout::AspectRatioOf<S>::get(self) -> S
 pub fn surgeist_layout::AspectRatioOf<S>::new(value: S) -> core::option::Option<Self>
 pub struct surgeist_layout::AtomicInlineParticipationOf<S: surgeist_layout::LayoutScalar>
 impl<S: surgeist_layout::LayoutScalar> surgeist_layout::AtomicInlineParticipationOf<S>
-pub const fn surgeist_layout::AtomicInlineParticipationOf<S>::bidi_level(self) -> surgeist_layout::BidiLevel
+pub const fn surgeist_layout::AtomicInlineParticipationOf<S>::bidi_level(self) -> surgeist_text::supplied_line::BidiLevel
 pub const fn surgeist_layout::AtomicInlineParticipationOf<S>::following_break(self) -> surgeist_layout::InlineBreakOpportunityOf<S>
-pub fn surgeist_layout::AtomicInlineParticipationOf<S>::try_new(bidi_level: surgeist_layout::BidiLevel, following_break: surgeist_layout::InlineBreakOpportunityOf<S>) -> core::result::Result<Self, surgeist_layout::AtomicInlineParticipationErrorOf<S>>
+pub fn surgeist_layout::AtomicInlineParticipationOf<S>::try_new(bidi_level: surgeist_text::supplied_line::BidiLevel, following_break: surgeist_layout::InlineBreakOpportunityOf<S>) -> core::result::Result<Self, surgeist_layout::AtomicInlineParticipationErrorOf<S>>
 pub struct surgeist_layout::BaselinesOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::BaselinesOf::first: surgeist_layout::Point<core::option::Option<S>>
 pub surgeist_layout::BaselinesOf::last: surgeist_layout::Point<core::option::Option<S>>
@@ -760,11 +752,6 @@ pub fn surgeist_layout::BaselinesOf<S>::first_or_synthesize_block(self, flow_axe
 pub fn surgeist_layout::BaselinesOf<S>::last_block(self, flow_axes: surgeist_layout::FlowAxes) -> core::option::Option<S>
 pub fn surgeist_layout::BaselinesOf<S>::last_or_synthesize_block(self, flow_axes: surgeist_layout::FlowAxes, size: surgeist_layout::Size<S>) -> S
 pub fn surgeist_layout::BaselinesOf<S>::synthesized(flow_axes: surgeist_layout::FlowAxes, size: surgeist_layout::Size<S>) -> Self
-pub struct surgeist_layout::BidiLevel(_)
-impl surgeist_layout::BidiLevel
-pub const fn surgeist_layout::BidiLevel::get(self) -> u8
-pub const fn surgeist_layout::BidiLevel::is_rtl(self) -> bool
-pub const fn surgeist_layout::BidiLevel::try_new(level: u8) -> core::result::Result<Self, surgeist_layout::BidiLevelError>
 pub struct surgeist_layout::CacheKeyContext
 impl surgeist_layout::CacheKeyContext
 pub const fn surgeist_layout::CacheKeyContext::new() -> Self
@@ -1482,13 +1469,13 @@ impl<S: surgeist_layout::LayoutScalar> core::default::Default for surgeist_layou
 pub fn surgeist_layout::ScrollbarWidthOf<S>::default() -> Self
 pub struct surgeist_layout::ShapedInlineSegmentOf<S: surgeist_layout::LayoutScalar>
 impl<S: surgeist_layout::LayoutScalar> surgeist_layout::ShapedInlineSegmentOf<S>
-pub const fn surgeist_layout::ShapedInlineSegmentOf<S>::bidi_level(self) -> surgeist_layout::BidiLevel
+pub const fn surgeist_layout::ShapedInlineSegmentOf<S>::bidi_level(self) -> surgeist_text::supplied_line::BidiLevel
 pub const fn surgeist_layout::ShapedInlineSegmentOf<S>::following_break(self) -> surgeist_layout::InlineBreakOpportunityOf<S>
 pub const fn surgeist_layout::ShapedInlineSegmentOf<S>::inline_extent(self) -> S
 pub const fn surgeist_layout::ShapedInlineSegmentOf<S>::metrics(self) -> surgeist_layout::InlineMetricsOf<S>
 pub const fn surgeist_layout::ShapedInlineSegmentOf<S>::segment_id(self) -> surgeist_layout::InlineSegmentId
-pub fn surgeist_layout::ShapedInlineSegmentOf<S>::try_new(segment_id: surgeist_layout::InlineSegmentId, inline_extent: S, metrics: surgeist_layout::InlineMetricsOf<S>, bidi_level: surgeist_layout::BidiLevel, whitespace_edge: surgeist_layout::InlineWhitespaceEdge, following_break: surgeist_layout::InlineBreakOpportunityOf<S>) -> core::result::Result<Self, surgeist_layout::InlineTextInputErrorOf<S>>
-pub const fn surgeist_layout::ShapedInlineSegmentOf<S>::whitespace_edge(self) -> surgeist_layout::InlineWhitespaceEdge
+pub fn surgeist_layout::ShapedInlineSegmentOf<S>::try_new(segment_id: surgeist_layout::InlineSegmentId, inline_extent: S, metrics: surgeist_layout::InlineMetricsOf<S>, bidi_level: surgeist_text::supplied_line::BidiLevel, whitespace_edge: surgeist_text::supplied_line::InlineWhitespaceEdge, following_break: surgeist_layout::InlineBreakOpportunityOf<S>) -> core::result::Result<Self, surgeist_layout::InlineTextInputErrorOf<S>>
+pub const fn surgeist_layout::ShapedInlineSegmentOf<S>::whitespace_edge(self) -> surgeist_text::supplied_line::InlineWhitespaceEdge
 pub struct surgeist_layout::Size<T>
 pub surgeist_layout::Size::height: T
 pub surgeist_layout::Size::width: T

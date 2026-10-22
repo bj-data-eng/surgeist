@@ -19,6 +19,7 @@ constrained test bridge, not another CSS front door.
 | --- | --- |
 | Package identity, dependencies, features and targets | [Cargo.toml](Cargo.toml) |
 | Public front door and reexports | [src/lib.rs](src/lib.rs) and the definitions it reexports |
+| Mixed inline ordering/edge producer | [surgeist-text supplied lines](../surgeist-text/src/supplied_line.rs); [Layout adapter](src/inline/mod.rs) retains fitting and placement |
 | Implemented behavior and module ownership | [src/](src/); human navigation in [README.md](README.md) and [docs/](docs/) |
 | Host traversal, measurement, cache, and batch-application contracts | [src/tree.rs](src/tree.rs), [src/measurement.rs](src/measurement.rs), [src/cache.rs](src/cache.rs), [src/output.rs](src/output.rs), and [src/engine/](src/engine/) |
 | Focused verification | Tracked test modules under [src/](src/), [src/test_support/](src/test_support/), and the [tests/layout.rs](tests/layout.rs) integration target |

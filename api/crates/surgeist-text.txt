@@ -21,6 +21,9 @@ pub fn parley::layout::alignment::Alignment::from(alignment: surgeist_text::Alig
 pub enum surgeist_text::BaselineShiftFact
 pub surgeist_text::BaselineShiftFact::BackendBottomOnBaseline
 pub surgeist_text::BaselineShiftFact::Requested(surgeist_text::BaselineShift)
+pub enum surgeist_text::BidiLevelError
+pub surgeist_text::BidiLevelError::OutOfRange
+pub surgeist_text::BidiLevelError::OutOfRange::level: u8
 pub enum surgeist_text::DecorationBrush
 pub surgeist_text::DecorationBrush::Color(surgeist_text::Brush)
 pub surgeist_text::DecorationBrush::TextColor
@@ -255,6 +258,11 @@ pub surgeist_text::InlineBoxKind::InFlow
 pub surgeist_text::InlineBoxKind::OutOfFlow
 impl core::convert::From<surgeist_text::InlineBoxKind> for parley::inline_box::InlineBoxKind
 pub fn parley::inline_box::InlineBoxKind::from(kind: surgeist_text::InlineBoxKind) -> Self
+pub enum surgeist_text::InlineWhitespaceEdge
+pub surgeist_text::InlineWhitespaceEdge::DiscardAtBoth
+pub surgeist_text::InlineWhitespaceEdge::DiscardAtLineEnd
+pub surgeist_text::InlineWhitespaceEdge::DiscardAtLineStart
+pub surgeist_text::InlineWhitespaceEdge::Preserve
 pub enum surgeist_text::LineHeight
 pub surgeist_text::LineHeight::Absolute(f32)
 pub surgeist_text::LineHeight::FontSizeRelative(f32)
@@ -299,6 +307,18 @@ pub surgeist_text::Slant::Normal
 pub surgeist_text::Slant::Oblique(core::option::Option<f32>)
 impl core::convert::From<surgeist_text::Slant> for parlance::font::FontStyle
 pub fn parlance::font::FontStyle::from(slant: surgeist_text::Slant) -> Self
+pub enum surgeist_text::SuppliedInlineParticipant
+pub surgeist_text::SuppliedInlineParticipant::Atomic
+pub surgeist_text::SuppliedInlineParticipant::Atomic::level: surgeist_text::BidiLevel
+pub surgeist_text::SuppliedInlineParticipant::Boundary
+pub surgeist_text::SuppliedInlineParticipant::Boundary::level: surgeist_text::BidiLevel
+pub surgeist_text::SuppliedInlineParticipant::Text
+pub surgeist_text::SuppliedInlineParticipant::Text::edge: surgeist_text::InlineWhitespaceEdge
+pub surgeist_text::SuppliedInlineParticipant::Text::level: surgeist_text::BidiLevel
+pub enum surgeist_text::SuppliedLineError
+pub surgeist_text::SuppliedLineError::OrderBufferLength
+pub surgeist_text::SuppliedLineError::OrderBufferLength::actual: usize
+pub surgeist_text::SuppliedLineError::OrderBufferLength::expected: usize
 pub enum surgeist_text::TextAlignLast
 pub surgeist_text::TextAlignLast::Auto
 pub enum surgeist_text::TextOverflow
@@ -421,6 +441,11 @@ pub struct surgeist_text::BaselineShift(_)
 impl surgeist_text::BaselineShift
 pub const fn surgeist_text::BaselineShift::get(self) -> f32
 pub fn surgeist_text::BaselineShift::try_new(value: f32) -> surgeist_text::Result<Self>
+pub struct surgeist_text::BidiLevel(_)
+impl surgeist_text::BidiLevel
+pub const fn surgeist_text::BidiLevel::get(self) -> u8
+pub const fn surgeist_text::BidiLevel::is_rtl(self) -> bool
+pub const fn surgeist_text::BidiLevel::try_new(level: u8) -> core::result::Result<Self, surgeist_text::BidiLevelError>
 pub struct surgeist_text::Brush
 pub surgeist_text::Brush::a: f32
 pub surgeist_text::Brush::b: f32
@@ -944,6 +969,20 @@ pub struct surgeist_text::StyleKey
 impl surgeist_text::StyleKey
 pub const fn surgeist_text::StyleKey::hash(self) -> u64
 pub const fn surgeist_text::StyleKey::revision(self) -> u64
+pub struct surgeist_text::SuppliedLine<'a>
+impl<'a> surgeist_text::SuppliedLine<'a>
+pub fn surgeist_text::SuppliedLine<'a>::edges(self) -> surgeist_text::SuppliedLineEdges<'a>
+pub fn surgeist_text::SuppliedLine<'a>::leading_discard_len(self) -> usize
+pub const fn surgeist_text::SuppliedLine<'a>::new(participants: &'a [surgeist_text::SuppliedInlineParticipant]) -> Self
+pub fn surgeist_text::SuppliedLine<'a>::reorder_into<'o>(self, order: &'o mut [usize]) -> core::result::Result<surgeist_text::SuppliedVisualOrder<'a, 'o>, surgeist_text::SuppliedLineError>
+pub struct surgeist_text::SuppliedLineEdges<'a>
+impl surgeist_text::SuppliedLineEdges<'_>
+pub fn surgeist_text::SuppliedLineEdges<'_>::is_discarded(self, index: usize) -> core::option::Option<bool>
+pub const fn surgeist_text::SuppliedLineEdges<'_>::leading_discard_len(self) -> usize
+pub const fn surgeist_text::SuppliedLineEdges<'_>::trailing_discard_start(self) -> usize
+pub struct surgeist_text::SuppliedVisualOrder<'a, 'o>
+impl<'a> surgeist_text::SuppliedVisualOrder<'a, '_>
+pub fn surgeist_text::SuppliedVisualOrder<'a, '_>::iter(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = (usize, &'a surgeist_text::SuppliedInlineParticipant)> + '_
 pub struct surgeist_text::System
 impl surgeist_text::System
 pub fn surgeist_text::System::builder(&mut self, text: impl core::convert::Into<surgeist_text::Text>) -> surgeist_text::Builder<'_>

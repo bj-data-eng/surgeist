@@ -455,13 +455,13 @@ fn layout_number(value: f64, context: &Context<'_>, field: &str) -> Result<f64, 
     }
 }
 fn bidi(value: u64, context: &Context<'_>, field: &str) -> Result<String, MeasurementError> {
-    if value <= 125 {
+    if value <= 126 {
         Ok(value.to_string())
     } else {
         Err(context.error(
             field,
             MeasurementErrorKind::OutOfRange,
-            "bidi level exceeds 125",
+            "resolved bidi level exceeds 126",
         ))
     }
 }

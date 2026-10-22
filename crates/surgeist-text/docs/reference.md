@@ -28,6 +28,7 @@ private implementation organization.
 | Composition | `source`, `compose`, `Composer`, `Mark` | [composer.rs](../src/composer.rs) |
 | Pre-font source processing | `process_source_whitespace`, `ProcessedSource`, `DocumentSegmentBreaks`, processed positions/ranges and partial plaintext views | [processing.rs](../src/processing.rs) |
 | Style and fonts | `Style`, `Font`, `Brush`, decorations, flow settings | [style.rs](../src/style.rs) |
+| Supplied mixed lines | `BidiLevel`, `InlineWhitespaceEdge`, `SuppliedLine`, edge decisions and borrowed visual order | [supplied_line.rs](../src/supplied_line.rs) |
 | Paragraph layout | `Options`, `Alignment`, `Indent`, `ValidatedOptions` | [options.rs](../src/options.rs) |
 | Layout construction | `System`, `Builder`, `SystemOptions` | [system.rs](../src/system.rs) |
 | Font catalogue | `FontCatalogueMode`, issued `FontCatalogueIdentity`, `System::register_fonts` and `refresh_fonts` | [catalogue.rs](../src/catalogue.rs) |
@@ -37,6 +38,24 @@ private implementation organization.
 | Ranges and edits | `Range`, `SourcePosition`, `SourceRange`, `Edit`, `TextEdit` | [range.rs](../src/range.rs), [edit.rs](../src/edit.rs) |
 | Cache identity | `Key`, `SourceKey`, `StyleKey`, `OptionsKey`, `FontGeneration`, `Stats` | [cache.rs](../src/cache.rs) |
 | Errors | `Error`, `ErrorCode`, `ErrorDetail`, `Result` | [error.rs](../src/error.rs) |
+
+## Supplied mixed-line processing
+
+`BidiLevel` represents supplied resolved levels `0..=126`, including implicit level 126;
+explicit embedding depth 125 is a different phase. See the [metadata-only UAX9
+reference](../../../references/uax9--18.0.0--rev52-metadata.md). `SuppliedLine` borrows
+the complete logical text/atomic/boundary sequence and applies supplied edge
+policies and L2 ordering. Forced breaks delimit inputs; discarded text remains an
+ordering slot. It does not analyze Unicode, apply L1, choose breaks or place boxes.
+
+`reorder_into` initializes exact-length caller scratch. A typed length error leaves
+scratch unchanged; success borrows both backing slices and iterates local logical
+ordinals paired with their actual participants. Edge decisions retain the same
+input loan, including overlapping discard cuts for an entirely discarded line.
+These operations allocate no storage. Layout consumes this Text boundary directly
+while retaining fitting, scalar width/metric reduction, float feedback and physical
+placement. This front supplies no preparation/finalized-line identity and does not
+replace the standalone paragraph path.
 
 ## Borrowed paint readback
 

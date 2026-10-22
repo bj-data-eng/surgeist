@@ -142,7 +142,8 @@ nonnegative. Coupled baseline and line-height values satisfy
 `0 <= baseline <= lineHeight`. Zero-height text/control metrics remain legal;
 a metric-bearing start boundary has the stricter `lineHeight > 0` rule. Shape
 queries and optional intervals have ordered endpoints. Integer identifiers and
-indices are bounded to their consuming fixture types; bidi levels are `0..=125`.
+indices are bounded to their consuming fixture types; supplied resolved bidi
+levels are `0..=126` (explicit depth 125 is a different phase).
 Supported text and style strings must contain only XML 1.0 characters. Tabs,
 line feeds, carriage returns, and legal Unicode remain unchanged; forbidden
 control characters fail at their original node and field location. This check

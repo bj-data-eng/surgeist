@@ -1,8 +1,8 @@
 use super::{
     AtomicInlineParticipationOf, AvailableOf, Clear, DefaultScalar, Direction, Edges,
     InlineBoundaryKind, InlineBreakKind, InlineBreakOpportunityOf, InlineMetricsOf,
-    InlineSegmentId, InlineWhitespaceEdge, LayoutScalar, ShapedInlineSegmentOf, Size, TextAlign,
-    VerticalAlign, WritingMode,
+    InlineSegmentId, LayoutScalar, ShapedInlineSegmentOf, Size, TextAlign, VerticalAlign,
+    WritingMode,
 };
 #[cfg(test)]
 use crate::Point;
@@ -11,6 +11,8 @@ use crate::geometry::FlowAxes;
 use crate::geometry::{LogicalPointOf, LogicalSizeOf};
 #[cfg(test)]
 use std::cell::Cell;
+use std::ops::Range;
+use surgeist_text::{BidiLevel, SuppliedInlineParticipant, SuppliedLine};
 
 mod input;
 
@@ -149,6 +151,101 @@ pub(super) struct MixedInlineRunReportOf<S: LayoutScalar = DefaultScalar> {
     pub line_bands: Vec<LogicalLineBandOf<S>>,
 }
 
+#[derive(Clone, Copy, Default)]
+struct InlineSourceCursor {
+    source: usize,
+    descriptor: usize,
+}
+
+#[derive(Clone, Copy)]
+struct ProjectedInlineRun<'a, S: LayoutScalar> {
+    participants: &'a [MixedInlineParticipantOf<S>],
+    supplied: &'a [SuppliedInlineParticipant],
+}
+
+#[derive(Clone, Copy)]
+struct InlineLineInput<'a, S: LayoutScalar> {
+    participants: &'a [MixedInlineParticipantOf<S>],
+    supplied: &'a [SuppliedInlineParticipant],
+    descriptor_start: usize,
+}
+
+impl<'a, S: LayoutScalar> ProjectedInlineRun<'a, S> {
+    // A selected range never contains a forced break. The paired cursor skips
+    // only those controls, so the two slices have exactly the same ordinal map.
+    fn line(self, source: Range<usize>, descriptor_start: usize) -> InlineLineInput<'a, S> {
+        let participants = &self.participants[source];
+        InlineLineInput {
+            participants,
+            supplied: &self.supplied[descriptor_start..descriptor_start + participants.len()],
+            descriptor_start,
+        }
+    }
+}
+
+fn project_inline_participants<S: LayoutScalar>(
+    participants: &[MixedInlineParticipantOf<S>],
+) -> Vec<SuppliedInlineParticipant> {
+    participants
+        .iter()
+        .filter_map(|participant| {
+            #[cfg(test)]
+            observe_inline_work_visit(0);
+            match *participant {
+                MixedInlineParticipantOf::ShapedText(text) => {
+                    Some(SuppliedInlineParticipant::Text {
+                        level: text.segment.bidi_level(),
+                        edge: text.segment.whitespace_edge(),
+                    })
+                }
+                MixedInlineParticipantOf::Atomic { participation, .. } => {
+                    Some(SuppliedInlineParticipant::Atomic {
+                        level: participation.bidi_level(),
+                    })
+                }
+                MixedInlineParticipantOf::Boundary(control) => {
+                    Some(SuppliedInlineParticipant::Boundary {
+                        level: BidiLevel::try_new(u8::from(
+                            control.flow().direction() == Direction::Rtl,
+                        ))
+                        .expect("base direction has a valid resolved level"),
+                    })
+                }
+                MixedInlineParticipantOf::ForcedLineBreak(_) => None,
+            }
+        })
+        .collect()
+}
+
+#[cfg(test)]
+thread_local! {
+    // Actual source entries projected, source entries searched for hard line ends,
+    // and calls into Text's leading-edge query, respectively.
+    static INLINE_WORK_VISITS: Cell<[usize; 3]> = const { Cell::new([0; 3]) };
+    static INLINE_LEADING_QUERY_UNITS: Cell<usize> = const { Cell::new(0) };
+}
+#[cfg(test)]
+fn observe_inline_work_visit(kind: usize) {
+    INLINE_WORK_VISITS.with(|visits| {
+        let mut counts = visits.get();
+        counts[kind] += 1;
+        visits.set(counts);
+    });
+}
+#[cfg(test)]
+pub(super) fn reset_inline_work_visits() {
+    INLINE_WORK_VISITS.with(|visits| visits.set([0; 3]));
+    INLINE_LEADING_QUERY_UNITS.with(|visits| visits.set(0));
+}
+#[cfg(test)]
+pub(super) fn inline_work_visits() -> [usize; 3] {
+    INLINE_WORK_VISITS.with(Cell::get)
+}
+#[cfg(test)]
+pub(super) fn inline_leading_query_units() -> usize {
+    INLINE_LEADING_QUERY_UNITS.with(Cell::get)
+}
+
 #[derive(Clone, Copy)]
 struct SelectedInlineUnitOf<S: LayoutScalar> {
     participant: MixedInlineParticipantOf<S>,
@@ -159,6 +256,7 @@ struct SelectedInlineUnitOf<S: LayoutScalar> {
 #[derive(Clone)]
 struct SelectedInlineLineOf<S: LayoutScalar> {
     units: Vec<SelectedInlineUnitOf<S>>,
+    descriptor_range: Range<usize>,
     line_break: Option<ForcedLineBreakControlOf<S>>,
     post_line_clear_intent: PostLineClearIntent,
     baseline: S,
@@ -194,7 +292,7 @@ impl<S: LayoutScalar> InlineLineSummaryOf<S> {
 #[derive(Clone)]
 struct SelectedInlineLineCandidateOf<S: LayoutScalar> {
     line: SelectedInlineLineOf<S>,
-    next_source_cursor: usize,
+    next_cursor: InlineSourceCursor,
     pending_strut: Option<InlineMetricContributionOf<S>>,
 }
 
@@ -282,45 +380,12 @@ impl<S: LayoutScalar> InlineLineMetricGroupsOf<S> {
     }
 }
 
-fn discards_at_start(edge: InlineWhitespaceEdge) -> bool {
-    matches!(
-        edge,
-        InlineWhitespaceEdge::DiscardAtLineStart | InlineWhitespaceEdge::DiscardAtBoth
-    )
-}
-
-fn discards_at_end(edge: InlineWhitespaceEdge) -> bool {
-    matches!(
-        edge,
-        InlineWhitespaceEdge::DiscardAtLineEnd | InlineWhitespaceEdge::DiscardAtBoth
-    )
-}
-
 impl<S: LayoutScalar> MixedInlineParticipantOf<S> {
     fn following_break(self) -> Option<InlineBreakOpportunityOf<S>> {
         match self {
             Self::ShapedText(participant) => Some(participant.segment.following_break()),
             Self::Atomic { participation, .. } => Some(participation.following_break()),
             Self::ForcedLineBreak(_) | Self::Boundary(_) => None,
-        }
-    }
-
-    fn bidi_level(self) -> u8 {
-        match self {
-            Self::ShapedText(participant) => participant.segment.bidi_level().get(),
-            Self::Atomic { participation, .. } => participation.bidi_level().get(),
-            Self::Boundary(control) => match control.flow().direction() {
-                Direction::Ltr => 0,
-                Direction::Rtl => 1,
-            },
-            Self::ForcedLineBreak(_) => 0,
-        }
-    }
-
-    fn whitespace_edge(self) -> Option<InlineWhitespaceEdge> {
-        match self {
-            Self::ShapedText(participant) => Some(participant.segment.whitespace_edge()),
-            Self::Atomic { .. } | Self::ForcedLineBreak(_) | Self::Boundary(_) => None,
         }
     }
 
@@ -418,12 +483,14 @@ pub(super) const fn mapped_post_line_clear_intent(
 }
 
 fn summarize_inline_line<S: LayoutScalar>(
-    participants: &[MixedInlineParticipantOf<S>],
+    input: InlineLineInput<'_, S>,
     line_break: Option<ForcedLineBreakControlOf<S>>,
     selected_break: bool,
     strut: Option<InlineMetricContributionOf<S>>,
     flow_axes: FlowAxes,
 ) -> InlineLineSummaryOf<S> {
+    let participants = input.participants;
+    let edges = SuppliedLine::new(input.supplied).edges();
     let mut metric_groups = InlineLineMetricGroupsOf::from_strut(strut);
     if let Some(control) = line_break {
         metric_groups.include(
@@ -445,26 +512,16 @@ fn summarize_inline_line<S: LayoutScalar>(
                 .and_then(InlineBreakOpportunityOf::replacement_inline_extent)
         })
         .flatten();
-    let mut discarded_start_end = 0;
-    let mut discarded_end_start = participants.len();
-    let mut at_line_start = true;
+    let discarded_start_end = edges.leading_discard_len();
+    let discarded_end_start = edges.trailing_discard_start();
     let mut before_trailing_metric_groups = metric_groups;
     let mut before_trailing_inline_extent = used_inline_extent;
     for (index, participant) in participants.iter().copied().enumerate() {
-        if participant.whitespace_edge().is_some_and(discards_at_end) {
-            if discarded_end_start == participants.len() {
-                discarded_end_start = index;
-                before_trailing_metric_groups = metric_groups;
-                before_trailing_inline_extent = used_inline_extent;
-            }
-        } else {
-            discarded_end_start = participants.len();
+        if index == discarded_end_start {
+            before_trailing_metric_groups = metric_groups;
+            before_trailing_inline_extent = used_inline_extent;
         }
-
-        if at_line_start && participant.whitespace_edge().is_some_and(discards_at_start) {
-            discarded_start_end = index + 1;
-        } else {
-            at_line_start = false;
+        if index >= discarded_start_end {
             metric_groups.include(participant.alignment(), participant.metrics(flow_axes));
             used_inline_extent = used_inline_extent + participant.inline_advance(flow_axes);
         }
@@ -500,13 +557,14 @@ fn summarize_inline_line<S: LayoutScalar>(
 }
 
 fn select_inline_line<S: LayoutScalar>(
-    participants: &[MixedInlineParticipantOf<S>],
+    input: InlineLineInput<'_, S>,
     line_break: Option<ForcedLineBreakControlOf<S>>,
     selected_break: bool,
     strut: Option<InlineMetricContributionOf<S>>,
     flow_axes: FlowAxes,
 ) -> SelectedInlineLineOf<S> {
-    let summary = summarize_inline_line(participants, line_break, selected_break, strut, flow_axes);
+    let participants = input.participants;
+    let summary = summarize_inline_line(input, line_break, selected_break, strut, flow_axes);
     let units = participants
         .iter()
         .copied()
@@ -522,6 +580,7 @@ fn select_inline_line<S: LayoutScalar>(
 
     SelectedInlineLineOf {
         units,
+        descriptor_range: input.descriptor_start..input.descriptor_start + participants.len(),
         line_break: summary.line_break,
         post_line_clear_intent: summary.post_line_clear_intent,
         baseline: summary.baseline,
@@ -595,17 +654,17 @@ fn starts_inline_strut_phase<S: LayoutScalar>(line: &SelectedInlineLineOf<S>) ->
     })
 }
 
-fn inline_min_content<S: LayoutScalar>(
-    participants: &[MixedInlineParticipantOf<S>],
-    flow_axes: FlowAxes,
-) -> S {
+fn inline_min_content<S: LayoutScalar>(run: ProjectedInlineRun<'_, S>, flow_axes: FlowAxes) -> S {
+    let participants = run.participants;
+    let mut descriptor = 0;
+    let mut group_descriptor_start = 0;
     let mut maximum = S::ZERO;
     let mut group_start = 0;
     for (index, participant) in participants.iter().enumerate() {
         if matches!(participant, MixedInlineParticipantOf::ForcedLineBreak(_)) {
             maximum = maximum.max(
                 summarize_inline_line(
-                    &participants[group_start..index],
+                    run.line(group_start..index, group_descriptor_start),
                     None,
                     false,
                     None,
@@ -614,8 +673,10 @@ fn inline_min_content<S: LayoutScalar>(
                 .used_inline_extent,
             );
             group_start = index + 1;
+            group_descriptor_start = descriptor;
             continue;
         }
+        descriptor += 1;
         let Some(following_break) = participant.following_break() else {
             continue;
         };
@@ -623,7 +684,7 @@ fn inline_min_content<S: LayoutScalar>(
             continue;
         }
         let line = summarize_inline_line(
-            &participants[group_start..=index],
+            run.line(group_start..index + 1, group_descriptor_start),
             None,
             true,
             None,
@@ -631,27 +692,34 @@ fn inline_min_content<S: LayoutScalar>(
         );
         maximum = maximum.max(line.used_inline_extent);
         group_start = index + 1;
+        group_descriptor_start = descriptor;
     }
     if group_start < participants.len() {
         maximum = maximum.max(
-            summarize_inline_line(&participants[group_start..], None, false, None, flow_axes)
-                .used_inline_extent,
+            summarize_inline_line(
+                run.line(group_start..participants.len(), group_descriptor_start),
+                None,
+                false,
+                None,
+                flow_axes,
+            )
+            .used_inline_extent,
         );
     }
     maximum
 }
 
-fn inline_max_content<S: LayoutScalar>(
-    participants: &[MixedInlineParticipantOf<S>],
-    flow_axes: FlowAxes,
-) -> S {
+fn inline_max_content<S: LayoutScalar>(run: ProjectedInlineRun<'_, S>, flow_axes: FlowAxes) -> S {
+    let participants = run.participants;
+    let mut descriptor = 0;
+    let mut group_descriptor_start = 0;
     let mut maximum = S::ZERO;
     let mut group_start = 0;
     for (index, participant) in participants.iter().enumerate() {
         if matches!(participant, MixedInlineParticipantOf::ForcedLineBreak(_)) {
             maximum = maximum.max(
                 summarize_inline_line(
-                    &participants[group_start..index],
+                    run.line(group_start..index, group_descriptor_start),
                     None,
                     false,
                     None,
@@ -660,8 +728,10 @@ fn inline_max_content<S: LayoutScalar>(
                 .used_inline_extent,
             );
             group_start = index + 1;
+            group_descriptor_start = descriptor;
             continue;
         }
+        descriptor += 1;
         if participant
             .following_break()
             .map(InlineBreakOpportunityOf::kind)
@@ -671,7 +741,7 @@ fn inline_max_content<S: LayoutScalar>(
         }
         maximum = maximum.max(
             summarize_inline_line(
-                &participants[group_start..=index],
+                run.line(group_start..index + 1, group_descriptor_start),
                 None,
                 false,
                 None,
@@ -680,70 +750,59 @@ fn inline_max_content<S: LayoutScalar>(
             .used_inline_extent,
         );
         group_start = index + 1;
+        group_descriptor_start = descriptor;
     }
     if group_start < participants.len() {
         maximum = maximum.max(
-            summarize_inline_line(&participants[group_start..], None, false, None, flow_axes)
-                .used_inline_extent,
+            summarize_inline_line(
+                run.line(group_start..participants.len(), group_descriptor_start),
+                None,
+                false,
+                None,
+                flow_axes,
+            )
+            .used_inline_extent,
         );
     }
     maximum
 }
 
-fn reordered_inline_unit_indices<S: LayoutScalar>(units: &[SelectedInlineUnitOf<S>]) -> Vec<usize> {
-    let mut indices = (0..units.len()).collect::<Vec<_>>();
-    let Some(minimum_odd_level) = units
-        .iter()
-        .map(|selected| selected.participant.bidi_level())
-        .filter(|level| level % 2 == 1)
-        .min()
-    else {
-        return indices;
+fn resolved_inline_available<S: LayoutScalar>(
+    input: &MixedInlineRunInputOf<S>,
+    supplied: &[SuppliedInlineParticipant],
+) -> S {
+    let run = ProjectedInlineRun {
+        participants: &input.participants,
+        supplied,
     };
-    let maximum_level = units
-        .iter()
-        .map(|selected| selected.participant.bidi_level())
-        .max()
-        .unwrap_or(minimum_odd_level);
-
-    for level in (minimum_odd_level..=maximum_level).rev() {
-        let mut start = 0;
-        while start < indices.len() {
-            while start < indices.len() && units[indices[start]].participant.bidi_level() < level {
-                start += 1;
-            }
-            let mut end = start;
-            while end < indices.len() && units[indices[end]].participant.bidi_level() >= level {
-                end += 1;
-            }
-            indices[start..end].reverse();
-            start = end;
-        }
-    }
-
-    indices
-}
-
-fn resolved_inline_available<S: LayoutScalar>(input: &MixedInlineRunInputOf<S>) -> S {
     match input.available_inline_extent {
         AvailableOf::Definite(value) => value,
-        AvailableOf::MinContent => inline_min_content(&input.participants, input.flow_axes),
-        AvailableOf::MaxContent => inline_max_content(&input.participants, input.flow_axes),
+        AvailableOf::MinContent => inline_min_content(run, input.flow_axes),
+        AvailableOf::MaxContent => inline_max_content(run, input.flow_axes),
     }
 }
 
 fn select_next_inline_line<S: LayoutScalar>(
-    participants: &[MixedInlineParticipantOf<S>],
-    source_cursor: usize,
+    run: ProjectedInlineRun<'_, S>,
+    cursor: InlineSourceCursor,
+    next_boundary_descriptor: usize,
     available_inline_extent: S,
     wraps: bool,
     pending_strut: Option<InlineMetricContributionOf<S>>,
     flow_axes: FlowAxes,
 ) -> Option<SelectedInlineLineCandidateOf<S>> {
+    let participants = run.participants;
+    let source_cursor = cursor.source;
     if source_cursor == participants.len() {
         return pending_strut.map(|strut| SelectedInlineLineCandidateOf {
-            line: select_inline_line(&[], None, false, Some(strut), flow_axes),
-            next_source_cursor: source_cursor,
+            line: select_inline_line(
+                run.line(source_cursor..source_cursor, cursor.descriptor),
+                None,
+                false,
+                Some(strut),
+                flow_axes,
+            ),
+            next_cursor: cursor,
             pending_strut: None,
         });
     }
@@ -751,27 +810,34 @@ fn select_next_inline_line<S: LayoutScalar>(
     let mut scan = source_cursor;
     let mut latest_allowed = None;
     let mut candidate_inline_extent = S::ZERO;
-    let mut at_line_start = true;
+    #[cfg(test)]
+    observe_inline_work_visit(2);
+    let leading_query = &run.supplied[cursor.descriptor..next_boundary_descriptor];
+    #[cfg(test)]
+    INLINE_LEADING_QUERY_UNITS.with(|units| units.set(units.get() + leading_query.len()));
+    let leading_discard_len = SuppliedLine::new(leading_query).leading_discard_len();
     while scan < participants.len() {
         let participant = participants[scan];
         if let MixedInlineParticipantOf::ForcedLineBreak(control) = participant {
             return Some(SelectedInlineLineCandidateOf {
                 line: select_inline_line(
-                    &participants[source_cursor..scan],
+                    run.line(source_cursor..scan, cursor.descriptor),
                     Some(control),
                     false,
                     pending_strut,
                     flow_axes,
                 ),
-                next_source_cursor: scan + 1,
+                next_cursor: InlineSourceCursor {
+                    source: scan + 1,
+                    descriptor: cursor.descriptor + scan - source_cursor,
+                },
                 pending_strut: Some(participant.metrics(flow_axes)),
             });
         }
 
         #[cfg(test)]
         observe_inline_candidate_scan_visit();
-        if !(at_line_start && participant.whitespace_edge().is_some_and(discards_at_start)) {
-            at_line_start = false;
+        if scan - source_cursor >= leading_discard_len {
             candidate_inline_extent =
                 candidate_inline_extent + participant.inline_advance(flow_axes);
         }
@@ -781,13 +847,16 @@ fn select_next_inline_line<S: LayoutScalar>(
         {
             return Some(SelectedInlineLineCandidateOf {
                 line: select_inline_line(
-                    &participants[source_cursor..break_end],
+                    run.line(source_cursor..break_end, cursor.descriptor),
                     None,
                     true,
                     pending_strut,
                     flow_axes,
                 ),
-                next_source_cursor: break_end,
+                next_cursor: InlineSourceCursor {
+                    source: break_end,
+                    descriptor: cursor.descriptor + break_end - source_cursor,
+                },
                 pending_strut: None,
             });
         }
@@ -803,13 +872,16 @@ fn select_next_inline_line<S: LayoutScalar>(
             InlineBreakKind::Mandatory => {
                 return Some(SelectedInlineLineCandidateOf {
                     line: select_inline_line(
-                        &participants[source_cursor..scan],
+                        run.line(source_cursor..scan, cursor.descriptor),
                         None,
                         true,
                         pending_strut,
                         flow_axes,
                     ),
-                    next_source_cursor: scan,
+                    next_cursor: InlineSourceCursor {
+                        source: scan,
+                        descriptor: cursor.descriptor + scan - source_cursor,
+                    },
                     pending_strut: Some(participant.metrics(flow_axes)),
                 });
             }
@@ -819,13 +891,16 @@ fn select_next_inline_line<S: LayoutScalar>(
 
     Some(SelectedInlineLineCandidateOf {
         line: select_inline_line(
-            &participants[source_cursor..],
+            run.line(source_cursor..participants.len(), cursor.descriptor),
             None,
             false,
             pending_strut,
             flow_axes,
         ),
-        next_source_cursor: participants.len(),
+        next_cursor: InlineSourceCursor {
+            source: participants.len(),
+            descriptor: run.supplied.len(),
+        },
         pending_strut: None,
     })
 }
@@ -894,18 +969,22 @@ fn resolved_float_terminal_block_extent<S: LayoutScalar>(
 
 fn resolved_inline_unit_slots<S: LayoutScalar>(
     line: &SelectedInlineLineOf<S>,
+    supplied: &[SuppliedInlineParticipant],
     flow_axes: FlowAxes,
     text_align: TextAlign,
 ) -> (S, Vec<usize>, Vec<S>) {
     let line_inline_start = selected_line_inline_start(line, flow_axes, text_align);
-    let visual_order = reordered_inline_unit_indices(&line.units);
+    let mut order = vec![0; line.units.len()];
+    let visual_order = SuppliedLine::new(supplied)
+        .reorder_into(&mut order)
+        .expect("selected descriptor range has exactly one slot per selected unit");
     let mut visual_indices = vec![0; line.units.len()];
     let mut inline_starts = vec![S::ZERO; line.units.len()];
-    for (visual_index, source_index) in visual_order.iter().copied().enumerate() {
+    for (visual_index, (source_index, _)) in visual_order.iter().enumerate() {
         visual_indices[source_index] = visual_index;
     }
     let mut inline_start = line_inline_start;
-    for source_index in visual_order {
+    for (source_index, _) in visual_order.iter() {
         let selected = line.units[source_index];
         let selected_inline_extent = if selected.discarded {
             S::ZERO
@@ -924,9 +1003,11 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
 pub(super) fn layout_mixed_inline_run<S: LayoutScalar>(
     input: MixedInlineRunInputOf<S>,
 ) -> MixedInlineRunReportOf<S> {
-    let available = resolved_inline_available(&input);
+    let supplied = project_inline_participants(&input.participants);
+    let available = resolved_inline_available(&input, &supplied);
     layout_mixed_inline_run_from_available(
         input,
+        supplied,
         available,
         |_, _| LogicalLineBandQueryResultOf {
             inline_start: S::ZERO,
@@ -948,12 +1029,14 @@ where
     BandSource: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
     ClearSource: FnMut(S, PostLineClearIntent) -> S,
 {
-    let available = resolved_inline_available(&input);
-    layout_mixed_inline_run_from_available(input, available, band_source, clear_source)
+    let supplied = project_inline_participants(&input.participants);
+    let available = resolved_inline_available(&input, &supplied);
+    layout_mixed_inline_run_from_available(input, supplied, available, band_source, clear_source)
 }
 
 fn layout_mixed_inline_run_from_available<S, BandSource, ClearSource>(
     input: MixedInlineRunInputOf<S>,
+    supplied: Vec<SuppliedInlineParticipant>,
     available: S,
     mut band_source: BandSource,
     mut clear_source: ClearSource,
@@ -965,7 +1048,35 @@ where
 {
     let wraps = !matches!(input.available_inline_extent, AvailableOf::MaxContent);
     let mut selected_lines = Vec::new();
-    let mut source_cursor = 0;
+    let mut cursor = InlineSourceCursor::default();
+    let run = ProjectedInlineRun {
+        participants: &input.participants,
+        supplied: &supplied,
+    };
+    let mut boundary_descriptor = 0;
+    // Mandatory following breaks also delimit a line. Looking only for forced
+    // controls would repeatedly query a suffix of discardable mandatory units.
+    let mut line_boundaries = input
+        .participants
+        .iter()
+        .enumerate()
+        .filter_map(|(index, participant)| {
+            #[cfg(test)]
+            observe_inline_work_visit(1);
+            let is_forced = matches!(participant, MixedInlineParticipantOf::ForcedLineBreak(_));
+            if !is_forced {
+                boundary_descriptor += 1;
+            }
+            (is_forced
+                || participant
+                    .following_break()
+                    .is_some_and(|following| following.kind() == InlineBreakKind::Mandatory))
+            .then_some(InlineSourceCursor {
+                source: index + 1,
+                descriptor: boundary_descriptor,
+            })
+        })
+        .peekable();
     let mut pending_strut = None;
     let mut block_cursor = S::ZERO;
     let mut float_strut = None;
@@ -974,14 +1085,21 @@ where
     let mut resolved_terminal_block_extent = S::ZERO;
     let mut float_edge_phase = None;
 
-    while let Some(mut provisional) = select_next_inline_line(
-        &input.participants,
-        source_cursor,
-        available,
-        wraps,
-        pending_strut,
-        input.flow_axes,
-    ) {
+    loop {
+        let next_boundary_descriptor = line_boundaries
+            .peek()
+            .map_or(supplied.len(), |boundary| boundary.descriptor);
+        let Some(mut provisional) = select_next_inline_line(
+            run,
+            cursor,
+            next_boundary_descriptor,
+            available,
+            wraps,
+            pending_strut,
+            input.flow_axes,
+        ) else {
+            break;
+        };
         if float_strut.is_some() {
             resolve_float_strut_phase(&mut provisional.line, float_strut, input.flow_axes);
         }
@@ -1009,8 +1127,9 @@ where
             (S::ZERO, available, provisional)
         } else {
             let selected = select_next_inline_line(
-                &input.participants,
-                source_cursor,
+                run,
+                cursor,
+                next_boundary_descriptor,
                 band_available,
                 wraps,
                 pending_strut,
@@ -1059,7 +1178,16 @@ where
             block_start: block_cursor,
             block_end: selected_block_end,
         };
-        source_cursor = selected.next_source_cursor;
+        if line_boundaries
+            .peek()
+            .is_some_and(|boundary| boundary.source == selected.next_cursor.source)
+        {
+            let consumed = line_boundaries
+                .next()
+                .expect("selected hard line end is present in source");
+            debug_assert_eq!(consumed.descriptor, selected.next_cursor.descriptor);
+        }
+        cursor = selected.next_cursor;
         pending_strut = selected.pending_strut;
         let line_block_end = block_cursor + line.baseline + line.after_baseline;
         let line_inline_start =
@@ -1098,8 +1226,12 @@ where
         let line_baseline = block_start + line.baseline;
         first_baseline.get_or_insert(line_baseline);
         last_baseline = Some(line_baseline);
-        let (line_inline_start, visual_indices, inline_starts) =
-            resolved_inline_unit_slots(&line, input.flow_axes, input.text_align);
+        let (line_inline_start, visual_indices, inline_starts) = resolved_inline_unit_slots(
+            &line,
+            &supplied[line.descriptor_range.clone()],
+            input.flow_axes,
+            input.text_align,
+        );
         inline_extent = inline_extent.max(line_inline_start + line.used_inline_extent);
         post_line_clear_intents.push(line.post_line_clear_intent);
         line_bands.push(line.band);

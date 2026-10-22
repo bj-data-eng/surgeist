@@ -5609,6 +5609,12 @@ if (consumeLayoutReadyInlineBidiLevel(valid, 0) !== 1 || valid.size !== 0) {
   throw new Error('valid source-indexed bidi marker was not consumed exactly once');
 }
 rejectUnusedLayoutReadyInlineBidiLevels(valid);
+const implicit = layoutReadyInlineBidiLevels(parent('[{"sourceIndex":0,"bidiLevel":126}]'), [text]);
+if (consumeLayoutReadyInlineBidiLevel(implicit, 0) !== 126 || implicit.size !== 0) {
+  throw new Error('resolved level 126 was not preserved');
+}
+rejectUnusedLayoutReadyInlineBidiLevels(implicit);
+
 
 const matchingParent = parent('[{"sourceIndex":0,"bidiLevel":1,"whenDirection":"rtl"}]');
 matchingParent.computedStyle.direction = 'rtl';
@@ -5637,9 +5643,9 @@ for (const [label, value, children, expected] of [
   ['missing target', '[{"sourceIndex":1,"bidiLevel":1}]', [text], 'existing non-negative sourceIndex'],
   ['duplicate target', '[{"sourceIndex":0,"bidiLevel":1},{"sourceIndex":0,"bidiLevel":2}]', [text], 'duplicates sourceIndex'],
   ['duplicate scoped target', '[{"sourceIndex":0,"bidiLevel":1,"whenDirection":"ltr"},{"sourceIndex":0,"bidiLevel":2,"whenDirection":"rtl"}]', [text], 'duplicates sourceIndex'],
-  ['zero level', '[{"sourceIndex":0,"bidiLevel":0}]', [text], 'integer in 1..=125'],
-  ['high level', '[{"sourceIndex":0,"bidiLevel":126}]', [text], 'integer in 1..=125'],
-  ['fractional level', '[{"sourceIndex":0,"bidiLevel":1.5}]', [text], 'integer in 1..=125'],
+  ['zero level', '[{"sourceIndex":0,"bidiLevel":0}]', [text], 'integer in 1..=126'],
+  ['high level', '[{"sourceIndex":0,"bidiLevel":127}]', [text], 'integer in 1..=126'],
+  ['fractional level', '[{"sourceIndex":0,"bidiLevel":1.5}]', [text], 'integer in 1..=126'],
   ['BR target', '[{"sourceIndex":0,"bidiLevel":1}]', [br], 'shaped text or an atomic inline'],
   ['inactive BR target', '[{"sourceIndex":0,"bidiLevel":1,"whenDirection":"rtl"}]', [br], 'shaped text or an atomic inline'],
   ['ordinary box target', '[{"sourceIndex":0,"bidiLevel":1}]', [{...atomic, computedStyle: {display: 'block'}}], 'shaped text or an atomic inline'],

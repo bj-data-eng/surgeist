@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use surgeist_text::{BidiLevel, InlineWhitespaceEdge};
 
 use super::super::{DefaultScalar, LayoutScalar, NonNegativeFiniteScalarErrorOf};
 use super::{Clear, Direction, validate_numeric_property};
@@ -77,44 +78,6 @@ impl InlineSegmentId {
     pub const fn get(self) -> u64 {
         self.0
     }
-}
-
-/// A validated Unicode bidi embedding level.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct BidiLevel(u8);
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum BidiLevelError {
-    OutOfRange { level: u8 },
-}
-
-impl BidiLevel {
-    pub const fn try_new(level: u8) -> Result<Self, BidiLevelError> {
-        if level <= 125 {
-            Ok(Self(level))
-        } else {
-            Err(BidiLevelError::OutOfRange { level })
-        }
-    }
-
-    #[must_use]
-    pub const fn get(self) -> u8 {
-        self.0
-    }
-
-    #[must_use]
-    pub const fn is_rtl(self) -> bool {
-        self.0 % 2 == 1
-    }
-}
-
-/// Whitespace behavior at a selected line edge.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum InlineWhitespaceEdge {
-    Preserve,
-    DiscardAtLineStart,
-    DiscardAtLineEnd,
-    DiscardAtBoth,
 }
 
 /// The closed kind of break opportunity following one inline participant.

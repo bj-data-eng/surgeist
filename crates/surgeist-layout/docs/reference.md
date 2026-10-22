@@ -65,6 +65,15 @@ Source: [node input](../src/node_input/mod.rs) and its domain modules.
 - Grid input: `GridPlacement`, `GridAutoFlow`, and `GridFlowToleranceOf`.
 - Scroll input: `ComputedOverflow`, `OverflowClipMarginOf`, `ScrollPaddingOf`, `ScrollMarginOf`, and `ScrollSnapType`.
 
+Inline segments and atomic participation use Text's canonical `BidiLevel` and
+`InlineWhitespaceEdge`, imported from `surgeist_text`. Supplied resolved levels
+include 126; values `127..=255` refuse. The formatter consumes Text's borrowed
+[`SuppliedLine`](../../surgeist-text/src/supplied_line.rs) for edge decisions and
+complete mixed-participant L2 order. Layout keeps actual break choice, replacements,
+width/metric arithmetic, floats and placement. This mandatory production dependency
+currently includes Text's font and Parley dependencies; it introduces no shaping
+call into Layout. See the [shared ownership contract](../../../docs/text-layout-contract.md).
+
 ### Sizing
 
 Sources: [sizing](../src/sizing.rs) and [values](../src/value.rs).

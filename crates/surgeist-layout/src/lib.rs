@@ -194,6 +194,9 @@
 //! use surgeist_layout::{LogicalEdgesOf, LogicalPointOf, LogicalRectOf, LogicalSizeOf};
 //! ```
 
+#[cfg(test)]
+use surgeist_text::{BidiLevel, BidiLevelError, InlineWhitespaceEdge};
+
 mod block;
 mod cache;
 mod engine;
@@ -266,23 +269,23 @@ pub use measurement::{
 };
 pub use node_input::{
     AlignContent, AlignItems, AtomicInlineParticipation, AtomicInlineParticipationError,
-    AtomicInlineParticipationErrorOf, AtomicInlineParticipationOf, BidiLevel, BidiLevelError,
-    BoxSizing, Clear, ComputedOverflow, ComputedOverflowError, Direction, Display, FlexDirection,
-    FlexGrow, FlexGrowOf, FlexItemCollapse, FlexShrink, FlexShrinkOf, FlexWrap, Float,
-    FloatExclusion, FloatExclusionInterval, FloatExclusionIntervalError,
-    FloatExclusionIntervalErrorOf, FloatExclusionIntervalOf, FloatExclusionQuery,
-    FloatExclusionQueryOf, GridAutoFlow, GridFlowTolerance, GridFlowToleranceOf, GridPlacement,
-    InlineBoundaryInput, InlineBoundaryInputOf, InlineBoundaryKind, InlineBreakKind,
-    InlineBreakOpportunity, InlineBreakOpportunityOf, InlineMetrics, InlineMetricsError,
-    InlineMetricsOf, InlineSegmentId, InlineTextInput, InlineTextInputError,
-    InlineTextInputErrorOf, InlineTextInputOf, InlineWhitespaceEdge, ItemOrder, LayoutInput,
-    LayoutInputOf, LayoutInputView, LayoutInputViewOf, LineBreakDisplay, LineBreakInput,
-    LineBreakInputOf, NodeInput, NodeInputOf, Overflow, OverflowClipBox, OverflowClipMargin,
-    OverflowClipMarginOf, Position, RawGridLine, RawGridPlacement, ScrollMargin, ScrollMarginError,
-    ScrollMarginErrorOf, ScrollMarginOf, ScrollPadding, ScrollPaddingOf, ScrollPaddingValue,
-    ScrollPaddingValueOf, ScrollSnapAlign, ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop,
-    ScrollSnapStrictness, ScrollSnapType, ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf,
-    ShapedInlineSegment, ShapedInlineSegmentOf, TextAlign, VerticalAlign, WritingMode,
+    AtomicInlineParticipationErrorOf, AtomicInlineParticipationOf, BoxSizing, Clear,
+    ComputedOverflow, ComputedOverflowError, Direction, Display, FlexDirection, FlexGrow,
+    FlexGrowOf, FlexItemCollapse, FlexShrink, FlexShrinkOf, FlexWrap, Float, FloatExclusion,
+    FloatExclusionInterval, FloatExclusionIntervalError, FloatExclusionIntervalErrorOf,
+    FloatExclusionIntervalOf, FloatExclusionQuery, FloatExclusionQueryOf, GridAutoFlow,
+    GridFlowTolerance, GridFlowToleranceOf, GridPlacement, InlineBoundaryInput,
+    InlineBoundaryInputOf, InlineBoundaryKind, InlineBreakKind, InlineBreakOpportunity,
+    InlineBreakOpportunityOf, InlineMetrics, InlineMetricsError, InlineMetricsOf, InlineSegmentId,
+    InlineTextInput, InlineTextInputError, InlineTextInputErrorOf, InlineTextInputOf, ItemOrder,
+    LayoutInput, LayoutInputOf, LayoutInputView, LayoutInputViewOf, LineBreakDisplay,
+    LineBreakInput, LineBreakInputOf, NodeInput, NodeInputOf, Overflow, OverflowClipBox,
+    OverflowClipMargin, OverflowClipMarginOf, Position, RawGridLine, RawGridPlacement,
+    ScrollMargin, ScrollMarginError, ScrollMarginErrorOf, ScrollMarginOf, ScrollPadding,
+    ScrollPaddingOf, ScrollPaddingValue, ScrollPaddingValueOf, ScrollSnapAlign,
+    ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness, ScrollSnapType,
+    ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf, ShapedInlineSegment, ShapedInlineSegmentOf,
+    TextAlign, VerticalAlign, WritingMode,
 };
 pub use output::{
     Baselines, BaselinesOf, CollapsibleMargin, CollapsibleMarginOf, CompletedLayoutBatch,

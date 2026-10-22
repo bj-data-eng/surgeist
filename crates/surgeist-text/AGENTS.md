@@ -21,6 +21,7 @@ optional standalone paint adapter and consumes Text directly.
 | Source composition, ranges, validation, and edits | [src/source.rs](src/source.rs), [src/composer.rs](src/composer.rs), [src/range.rs](src/range.rs), [src/edit.rs](src/edit.rs) |
 | Exact UTF-16 storage and scalar provider mapping | [src/text.rs](src/text.rs), [src/projection.rs](src/projection.rs) |
 | Pre-font whitespace processing, correspondence and partial plaintext | [src/processing.rs](src/processing.rs), [owning tests](src/processing/tests.rs) |
+| Supplied-level mixed-line ordering and edge decisions | [src/supplied_line.rs](src/supplied_line.rs); Layout owns its consuming adapter |
 | Text style inputs, supported features, options, and diagnostics | [src/style.rs](src/style.rs), [src/style_support.rs](src/style_support.rs), [src/options.rs](src/options.rs), [src/error.rs](src/error.rs) |
 | Layout construction and cache identity | [src/system.rs](src/system.rs), [src/catalogue.rs](src/catalogue.rs), [src/cache.rs](src/cache.rs) |
 | Canonical font resources/instances and glyph-free same-instance metrics | [src/font.rs](src/font.rs), [metrics](src/font/metrics.rs) |

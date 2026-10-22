@@ -3,6 +3,7 @@
 //! §4.1/§4.2 reserves stable classic gutters as border-box space, even for
 //! hidden overflow. Available space is not an authored definite border box.
 use surgeist_layout::*;
+use surgeist_text::{BidiLevel, InlineWhitespaceEdge};
 
 struct FixedGrid<S: LayoutScalar> {
     inputs: [LayoutInputOf<S>; 2],

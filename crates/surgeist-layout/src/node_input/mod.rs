@@ -33,12 +33,11 @@ pub use grid::{
 };
 pub use inline::{
     AtomicInlineParticipation, AtomicInlineParticipationError, AtomicInlineParticipationErrorOf,
-    AtomicInlineParticipationOf, BidiLevel, BidiLevelError, InlineBoundaryInput,
-    InlineBoundaryInputOf, InlineBoundaryKind, InlineBreakKind, InlineBreakOpportunity,
-    InlineBreakOpportunityOf, InlineMetrics, InlineMetricsError, InlineMetricsOf, InlineSegmentId,
-    InlineTextInput, InlineTextInputError, InlineTextInputErrorOf, InlineTextInputOf,
-    InlineWhitespaceEdge, LineBreakDisplay, LineBreakInput, LineBreakInputOf, ShapedInlineSegment,
-    ShapedInlineSegmentOf, TextAlign, VerticalAlign, WritingMode,
+    AtomicInlineParticipationOf, InlineBoundaryInput, InlineBoundaryInputOf, InlineBoundaryKind,
+    InlineBreakKind, InlineBreakOpportunity, InlineBreakOpportunityOf, InlineMetrics,
+    InlineMetricsError, InlineMetricsOf, InlineSegmentId, InlineTextInput, InlineTextInputError,
+    InlineTextInputErrorOf, InlineTextInputOf, LineBreakDisplay, LineBreakInput, LineBreakInputOf,
+    ShapedInlineSegment, ShapedInlineSegmentOf, TextAlign, VerticalAlign, WritingMode,
 };
 pub use scroll::{
     ComputedOverflow, ComputedOverflowError, Overflow, OverflowClipBox, OverflowClipMargin,

@@ -764,10 +764,10 @@ fn parse_inline_segment(
     })?;
     let bidi_level = parse_bidi_level(xml, "segment")?;
     let whitespace_edge = match required_attr(xml, "whitespace-edge")? {
-        "preserve" => layout::InlineWhitespaceEdge::Preserve,
-        "discard-at-line-start" => layout::InlineWhitespaceEdge::DiscardAtLineStart,
-        "discard-at-line-end" => layout::InlineWhitespaceEdge::DiscardAtLineEnd,
-        "discard-at-both" => layout::InlineWhitespaceEdge::DiscardAtBoth,
+        "preserve" => surgeist_text::InlineWhitespaceEdge::Preserve,
+        "discard-at-line-start" => surgeist_text::InlineWhitespaceEdge::DiscardAtLineStart,
+        "discard-at-line-end" => surgeist_text::InlineWhitespaceEdge::DiscardAtLineEnd,
+        "discard-at-both" => surgeist_text::InlineWhitespaceEdge::DiscardAtBoth,
         raw => {
             return Err(Error::new(format!(
                 "invalid `whitespace-edge` on `<segment>`: `{raw}`"
@@ -840,10 +840,13 @@ fn parse_inline_break(
     }
 }
 
-fn parse_bidi_level(xml: roxmltree::Node<'_, '_>, tag: &str) -> Result<layout::BidiLevel, Error> {
+fn parse_bidi_level(
+    xml: roxmltree::Node<'_, '_>,
+    tag: &str,
+) -> Result<surgeist_text::BidiLevel, Error> {
     let raw = required_attr(xml, "bidi-level")?;
     let level = parse_ascii_integer::<u8>(raw)
-        .and_then(|level| layout::BidiLevel::try_new(level).ok())
+        .and_then(|level| surgeist_text::BidiLevel::try_new(level).ok())
         .ok_or_else(|| Error::new(format!("invalid `bidi-level` on `<{tag}>`: `{raw}`")))?;
     Ok(level)
 }
@@ -7022,8 +7025,8 @@ mod tests {
             layout::InlineSegmentId::new(id),
             extent,
             layout::InlineMetrics::from_ascent_descent(8.0, 2.0).unwrap(),
-            layout::BidiLevel::try_new(0).unwrap(),
-            layout::InlineWhitespaceEdge::Preserve,
+            surgeist_text::BidiLevel::try_new(0).unwrap(),
+            surgeist_text::InlineWhitespaceEdge::Preserve,
             layout::InlineBreakOpportunity::prohibited(),
         )
         .unwrap()
@@ -9572,7 +9575,7 @@ mod tests {
         assert_eq!(segments[1].bidi_level().get(), 1);
         assert_eq!(
             segments[1].whitespace_edge(),
-            layout::InlineWhitespaceEdge::DiscardAtLineStart
+            surgeist_text::InlineWhitespaceEdge::DiscardAtLineStart
         );
         assert_eq!(
             segments[2].following_break().kind(),
@@ -9652,9 +9655,23 @@ mod tests {
     }
 
     #[test]
+    fn resolved_bidi_126_survives_actual_parity_input_lowering() {
+        let segment = fri06_c06_valid_segment().replace("bidi-level=\"1\"", "bidi-level=\"126\"");
+        let tree = fri06_c06_lower(&format!(
+            r#"<div display="block">{}</div>"#,
+            fri06_c06_inline_text(&segment)
+        ))
+        .unwrap();
+        let layout::LayoutInputView::InlineText(input) = tree.layout_input(1) else {
+            panic!("actual inline text input remains inline text");
+        };
+        assert_eq!(input.segments()[0].bidi_level().get(), 126);
+    }
+
+    #[test]
     fn fri06_c06_inline_input_segment_validation_rejects_out_of_domain_choices() {
         for (field, valid, invalid) in [
-            ("bidi-level", "1", "126"),
+            ("bidi-level", "1", "127"),
             ("whitespace-edge", "preserve", "collapse"),
             ("following-break", "allowed-with-replacement", "fallback"),
         ] {
@@ -9809,8 +9826,8 @@ mod tests {
                 "duplicate atomic child index `0`",
             ),
             (
-                r#"<atomic-placeholder child-index="0" bidi-level="126" following-break="allowed" />"#,
-                "invalid `bidi-level` on `<atomic-placeholder>`: `126`",
+                r#"<atomic-placeholder child-index="0" bidi-level="127" following-break="allowed" />"#,
+                "invalid `bidi-level` on `<atomic-placeholder>`: `127`",
             ),
             (
                 r#"<atomic-placeholder child-index="0" bidi-level="0" following-break="fallback" />"#,

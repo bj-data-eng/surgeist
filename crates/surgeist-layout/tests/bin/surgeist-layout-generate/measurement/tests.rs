@@ -156,7 +156,7 @@ fn optional_shape_interval_and_explicit_empty_observations_are_distinct() {
 #[test]
 fn range_observations_cannot_mix_with_box_geometry() {
     let mut root = box_fixture();
-    root["children"] = json!([{"layoutInput":"inline-text","inlineSegments":[{"id":u64::MAX,"inlineExtent":0,"inlineBaseline":0,"inlineLineHeight":0,"bidiLevel":125,"whitespaceEdge":"preserve","followingBreak":"prohibited"}],"rangeInks":[],"children":[]}]);
+    root["children"] = json!([{"layoutInput":"inline-text","inlineSegments":[{"id":u64::MAX,"inlineExtent":0,"inlineBaseline":0,"inlineLineHeight":0,"bidiLevel":126,"whitespaceEdge":"preserve","followingBreak":"prohibited"}],"rangeInks":[],"children":[]}]);
     let xml = crate::xml::generate_xml("empty-range", &supported(&root));
     assert!(xml.contains("<range-inks/>"));
     assert!(xml.contains(&u64::MAX.to_string()));
@@ -371,4 +371,16 @@ fn viewport_constraints_use_available_space_alternatives() {
         decode_fixture(&value),
         Ok(DecodedMeasurement::Unsupported { .. })
     ));
+}
+
+#[test]
+fn resolved_bidi_126_is_admitted_but_127_refuses_at_the_actual_measurement_field() {
+    let mut root = box_fixture();
+    root["children"] = json!([{"layoutInput":"inline-text","inlineSegments":[{"id":1,"inlineExtent":1,"inlineBaseline":0,"inlineLineHeight":1,"bidiLevel":126,"whitespaceEdge":"preserve","followingBreak":"prohibited"}],"rangeInks":[],"children":[]}]);
+    let xml = crate::xml::generate_xml("resolved-level", &supported(&root));
+    assert!(xml.contains("bidi-level=\"126\""));
+    root["children"][0]["inlineSegments"][0]["bidiLevel"] = json!(127);
+    let error = decode_fixture(&root).unwrap_err();
+    assert_eq!(error.kind, MeasurementErrorKind::OutOfRange);
+    assert_eq!(error.field_path, "inlineSegments[0].bidiLevel");
 }

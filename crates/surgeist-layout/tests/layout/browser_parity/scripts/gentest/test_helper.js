@@ -1503,8 +1503,8 @@ function layoutReadyInlineBidiLevels(parent, childNodes) {
     if (bidiLevels.has(sourceIndex)) {
       throw new Error(`inline bidi level ${recordIndex} duplicates sourceIndex ${sourceIndex}`);
     }
-    if (!Number.isInteger(bidiLevel) || bidiLevel < 1 || bidiLevel > 125) {
-      throw new Error(`inline bidi level ${recordIndex} must be an integer in 1..=125`);
+    if (!Number.isInteger(bidiLevel) || bidiLevel < 1 || bidiLevel > 126) {
+      throw new Error(`inline bidi level ${recordIndex} must be an integer in 1..=126`);
     }
     if (hasDirection && whenDirection !== 'ltr' && whenDirection !== 'rtl') {
       throw new Error(`inline bidi level ${recordIndex} requires direction ltr or rtl`);
