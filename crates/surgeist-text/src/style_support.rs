@@ -23,6 +23,8 @@ pub enum TextStyleFeature {
     WhiteSpaceCollapse,
     /// Discard is executable by source processing, not yet by paragraph layout.
     WhiteSpaceDiscard,
+    /// PreserveSpaces executes in source processing, not yet in paragraph layout.
+    WhiteSpacePreserveSpaces,
     WordBreak,
     TextWrap,
     OverflowWrap,
@@ -67,6 +69,7 @@ impl TextStyleFeature {
         Self::WhiteSpacePreserve,
         Self::WhiteSpaceCollapse,
         Self::WhiteSpaceDiscard,
+        Self::WhiteSpacePreserveSpaces,
         Self::WordBreak,
         Self::TextWrap,
         Self::OverflowWrap,
@@ -125,9 +128,11 @@ impl TextStyleFeature {
             Self::WhiteSpaceCollapse => TextStyleSupport::Unsupported(
                 UnsupportedTextStyleReason::RequiresSourceRangePreservation,
             ),
-            Self::WhiteSpaceDiscard => TextStyleSupport::Unsupported(
-                UnsupportedTextStyleReason::RequiresProcessedSourceLayout,
-            ),
+            Self::WhiteSpaceDiscard | Self::WhiteSpacePreserveSpaces => {
+                TextStyleSupport::Unsupported(
+                    UnsupportedTextStyleReason::RequiresProcessedSourceLayout,
+                )
+            }
             Self::FontVariant => {
                 TextStyleSupport::Unsupported(UnsupportedTextStyleReason::RequiresFontPolicy)
             }

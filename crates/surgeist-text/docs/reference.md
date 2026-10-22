@@ -52,24 +52,49 @@ original immutable Layout.
 
 `process_source_whitespace` consumes an actual `Source`, base `Style` and explicit
 `DocumentSegmentBreaks`, returning immutable `ProcessedSource`. It currently
-executes only nonempty effective `WhiteSpace::Discard` intervals. Last applicable
-original span wins; empty spans remain records. Intrinsic span/box validation is
+executes effective Discard, Preserve and PreserveSpaces; Collapse remains
+unsupported. A document delimiter is one original occurrence: Preserve replaces
+it by one LF, PreserveSpaces by one space, and Discard deletes it. Outside those
+occurrences, Preserve and PreserveSpaces convert CR to space; PreserveSpaces also
+converts TAB to space, while Preserve retains TAB and ordinary spaces. Discard
+removes SPACE, TAB and CR. LF fallback and `Defined(Vec::new())`
+remain distinct. Last applicable original span wins; empty spans remain records.
+A delimiter crossing a change of effective mode refuses rather than splitting
+the occurrence; same-mode span-origin changes admit. Intrinsic validation is
 shared with layout, but unrelated font and style fields are retained without
-admission by this phase. LF fallback and `Defined(Vec::new())` are distinct.
+admission by this phase.
 
 The result retains original UTF-16, identity, spans, boxes and document facts.
 Processed positions/ranges use a separate numeric domain, not preparation IDs.
-Forward mapping counts retained units; inverse affinity chooses the first/last
-original endpoint in a complete preimage. A removed span remains observable at a
-zero-length projected range. Span/box views borrow original records.
+`source_to_processed(at, affinity)` maps copies linearly and deletions to one
+position. A replacement maps its original endpoints to output endpoints; a strict
+original interior maps to output start Before or end After. Inverse mapping
+collects incident original boundary candidates and chooses minimum Before or
+maximum After. Replacement edges recover original endpoints, not contraction
+interiors: this is not the inverse fiber of either forward projection. For
+deletion-only inputs the original complete-preimage extrema law is preserved.
+
+`ProcessedSpan::range(affinity)` projects both endpoints with the same choice, so
+empty spans remain collapsed. This numeric projection is neither unique computed
+style/font ownership of the normalized unit nor conservative painted coverage.
+Span/box views still borrow exact original records; editing/extraction retains
+original precision and affinity independently of projected coordinates.
 
 `plaintext_items` visits the same processed slices and actual box occurrences in
 original anchor order, with original vector order for ties. InFlow boxes remain
 atomic adjacency barriers; OutOfFlow boxes are transparent even where enumeration
-cuts a text slice. A supplied delimiter crossing an InFlow anchor refuses. No
+cuts a text slice. A supplied delimiter crossing an InFlow anchor refuses.
+`ProcessedInlineBox::position(affinity)` and `plaintext_items(affinity)` expose the
+same projection choice: an OutOfFlow anchor strictly inside a contraction appears
+before its normalized unit for Before, after it for After. Its exact original
+anchor remains unchanged; no new document order or adjacency barrier is inferred.
+Text slices partition the sole processed backing exactly once under either query.
+No
 separator, alternative content, U+FFFC or opportunity is invented. This is partial
 source-local plaintext, not a document serializer or a line-analysis result.
-Paragraph layout still rejects Discard precisely; collapse/trim, preparation,
+Paragraph layout still rejects Discard and PreserveSpaces precisely; standalone
+Preserve layout is unchanged and does not secretly consume normalized source.
+Collapse/trim, preparation,
 opportunity analysis and layout-selected line finalization remain unfinished.
 
 ## Font catalogue publications
@@ -154,7 +179,7 @@ style resolver.
 | Supported | Family lists; named/numeric weights; basic/expanded stretch; normal/italic/oblique slant; feature and variation settings; font size; line height; letter/word spacing; concrete text color; locale. |
 | Supported | Preserved whitespace; word-break, wrapping, and overflow-wrap controls; paragraph alignment; supported indent shapes; inline-box alignment facts; underline/strikethrough; decoration offset, thickness, and concrete color; concrete selection color. |
 | Unsupported: backend direction control | Explicit text direction. Automatic direction still resolves to left-to-right or right-to-left in `Layout::direction()`. |
-| Unsupported: source-range policy | Whitespace collapse. Discard executes in the separate source phase; paragraph layout does not yet consume it. |
+| Unsupported: source-range policy | Whitespace collapse. Discard/PreserveSpaces execute in the separate source phase; paragraph layout does not yet consume it. |
 | Unsupported: font or text-flow policy | Non-normal font variants, text overflow behavior beyond the accepted default, last-line alignment behavior beyond the accepted default, and text transformation. |
 | Unsupported: decoration policy | Overline and decoration styles beyond the exposed solid decoration contract. |
 | Unsupported: color resolution | Symbolic text and decoration colors. |

@@ -9,11 +9,13 @@ The API has explicit limits: whitespace collapse and explicit base direction are
 unsupported, and inline-box alignment requests do not imply backend placement.
 See the [support reference](docs/reference.md) for the current contract.
 
-`process_source_whitespace` executes source-local `WhiteSpace::Discard` before
-fonts, retaining the exact original source, document delimiter facts and UTF-16
-correspondence. Its partial plaintext iterator returns processed slices and real
-box occurrences; it does not serialize a document or analyze line opportunities.
-Paragraph layout still refuses Discard and does not yet consume this phase.
+`process_source_whitespace` executes source-local Discard, Preserve and
+PreserveSpaces before fonts, retaining exact original source, document delimiter
+facts and UTF-16 correspondence. Explicit affinity projects contraction interiors
+and transparent box anchors. Its partial plaintext iterator returns same-result
+slices and real box occurrences, without document serialization or opportunity
+analysis. Paragraph layout does not yet consume this phase: Discard and
+PreserveSpaces still refuse there; standalone Preserve layout remains unchanged.
 
 `Text` retains exact UTF-16 code units, and public source positions and ranges
 count those units. Edits can split or join surrogate pairs. Layout currently

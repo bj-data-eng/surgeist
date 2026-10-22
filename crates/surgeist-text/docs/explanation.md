@@ -35,7 +35,8 @@ currently refuses before font/cache work and never analyzes replacement text.
 This contract helps explain why whitespace collapse is explicitly rejected:
 transforming the string would need an additional mapping back to authored
 coordinates and its own operation semantics. The separate
-[source-processing phase](../src/processing.rs) now executes Discard and retains
+[source-processing phase](../src/processing.rs) executes Discard, Preserve and
+PreserveSpaces and retains
 that exact correspondence without fonts. Its partial plaintext consumer borrows
 the same result; paragraph layout has not yet integrated it. Similarly, style
 resolution and symbolic colors require caller

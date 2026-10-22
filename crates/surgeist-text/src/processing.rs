@@ -58,16 +58,28 @@ impl ProcessedRange {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MappingKind {
+    Copy,
+    Delete,
+    Replace,
+}
+
 #[derive(Debug)]
 struct MappingPiece {
     source: Range,
     processed: usize,
-    retained: bool,
+    kind: MappingKind,
 }
 
 impl MappingPiece {
     fn processed_end(&self) -> usize {
-        self.processed + if self.retained { self.source.len() } else { 0 }
+        self.processed
+            + match self.kind {
+                MappingKind::Copy => self.source.len(),
+                MappingKind::Delete => 0,
+                MappingKind::Replace => 1,
+            }
     }
 }
 
@@ -86,10 +98,10 @@ pub struct ProcessedSource {
     box_order: Vec<usize>,
 }
 
-/// Executes source-only `Discard` and captures one complete immutable result.
+/// Executes source-only Discard, Preserve or PreserveSpaces into one immutable result.
 ///
 /// Intrinsic source and document-delimiter validation precedes mode admission.
-/// Only nonempty effective Discard intervals are supported. Unused font/style
+/// Nonempty effective Collapse intervals remain unsupported. Unused font/style
 /// fields are retained without validating them for a later semantic owner.
 /// No partial result escapes. Checked capacities and fallible vector reserves
 /// do not imply a physical allocator/OOM guarantee or a successful-work quota.
@@ -102,7 +114,7 @@ pub struct ProcessedSource {
 ///     Style { white_space: WhiteSpace::Discard, ..Style::default() },
 ///     DocumentSegmentBreaks::LineFeedDefault,
 /// )?;
-/// let plaintext: Vec<u16> = processed.plaintext_items().flat_map(|item| match item {
+/// let plaintext: Vec<u16> = processed.plaintext_items(surgeist_text::Affinity::Before).flat_map(|item| match item {
 ///     PlaintextItem::Text(text) => text.code_units().iter().copied(),
 ///     PlaintextItem::InlineBox(_) => [].iter().copied(),
 /// }).collect();
@@ -121,42 +133,74 @@ pub fn process_source_whitespace(
     box_order.extend(0..source.boxes().len());
     box_order.sort_unstable_by_key(|&ordinal| (source.boxes()[ordinal].index(), ordinal));
     validate_crossings(&source, &segment_breaks, &box_order)?;
-    validate_modes(&source, &base_style)?;
+    let modes = effective_modes(&source, &base_style)?;
+    validate_modes(&modes, &segment_breaks)?;
 
     let mut units = Vec::new();
     let mut map: Vec<MappingPiece> = Vec::new();
     let mut delimiter = 0;
-    for (index, &unit) in source.text().code_units().iter().enumerate() {
-        let in_delimiter = match &segment_breaks {
-            DocumentSegmentBreaks::LineFeedDefault => unit == 0x000a,
+    let mut interval = 0;
+    let mut at = 0;
+    while at < source.text().len() {
+        while modes[interval].range.end <= at {
+            interval += 1;
+        }
+        let mode = modes[interval].mode;
+        let unit = source.text().code_units()[at];
+        let end = at.checked_add(1).ok_or_else(overflow)?;
+        let delimiter_end = match &segment_breaks {
+            DocumentSegmentBreaks::LineFeedDefault => (unit == 0x000a).then_some(end),
             DocumentSegmentBreaks::Defined(ranges) => {
-                while ranges
-                    .get(delimiter)
-                    .is_some_and(|range| range.end <= index)
-                {
-                    delimiter = delimiter.checked_add(1).ok_or_else(overflow)?;
+                if let Some(range) = ranges.get(delimiter).filter(|range| range.start == at) {
+                    delimiter += 1;
+                    Some(range.end)
+                } else {
+                    None
                 }
-                ranges
-                    .get(delimiter)
-                    .is_some_and(|range| range.contains(index))
             }
         };
-        let retained = !matches!(unit, 0x0020 | 0x0009 | 0x000d) && !in_delimiter;
-        let end = index.checked_add(1).ok_or_else(overflow)?;
-        if let Some(last) = map.last_mut().filter(|piece| piece.retained == retained) {
+        let (end, kind, replacement) = if let Some(end) = delimiter_end {
+            match mode {
+                WhiteSpace::Discard => (end, MappingKind::Delete, None),
+                WhiteSpace::Preserve => (end, MappingKind::Replace, Some(0x000a)),
+                WhiteSpace::PreserveSpaces => (end, MappingKind::Replace, Some(0x0020)),
+                WhiteSpace::Collapse => unreachable!("effective-mode admission excludes Collapse"),
+            }
+        } else {
+            match (mode, unit) {
+                (WhiteSpace::Discard, 0x0020 | 0x0009 | 0x000d) => (end, MappingKind::Delete, None),
+                (WhiteSpace::Preserve | WhiteSpace::PreserveSpaces, 0x000d)
+                | (WhiteSpace::PreserveSpaces, 0x0009) => (end, MappingKind::Replace, Some(0x0020)),
+                _ => (end, MappingKind::Copy, None),
+            }
+        };
+        if let Some(last) = map
+            .last_mut()
+            .filter(|piece| piece.kind == kind && kind != MappingKind::Replace)
+        {
             last.source.end = end;
         } else {
             reserve(&mut map, 1)?;
             map.push(MappingPiece {
-                source: Range::new(index, end),
+                source: Range::new(at, end),
                 processed: units.len(),
-                retained,
+                kind,
             });
         }
-        if retained {
-            reserve(&mut units, 1)?;
-            units.push(unit);
+        match kind {
+            MappingKind::Copy => {
+                reserve(&mut units, end - at)?;
+                units.extend_from_slice(&source.text().code_units()[at..end]);
+            }
+            MappingKind::Replace => {
+                reserve(&mut units, 1)?;
+                units.push(
+                    replacement.expect("Replace construction supplies its actual output unit"),
+                );
+            }
+            MappingKind::Delete => {}
         }
+        at = end;
     }
     Ok(ProcessedSource {
         source,
@@ -208,15 +252,29 @@ impl ProcessedSource {
         }
         Ok(processed_range(start, end))
     }
-    /// Counts retained original units strictly before the supplied endpoint.
-    pub fn source_to_processed(&self, at: SourcePosition) -> Result<ProcessedPosition> {
-        crate::range::validate_index(self.source.text(), at.get(), "source position")?;
-        Ok(ProcessedPosition(self.project(at.get())))
-    }
-    /// Returns the complete preimage's earliest or latest original endpoint.
+    /// Projects an original endpoint with explicit many-to-one affinity.
     ///
-    /// Removed interiors do not uniquely round-trip. Numeric values are checked
-    /// against this result, without claiming cross-result or stale identity.
+    /// Copy is linear; Delete maps every endpoint to one position. Replace maps
+    /// its exact endpoints to output endpoints, and a strict original interior
+    /// to output start Before / output end After. Original precision is retained
+    /// independently for extraction/editing. This is a query policy, not a new
+    /// original position or a CSS event.
+    pub fn source_to_processed(
+        &self,
+        at: SourcePosition,
+        affinity: Affinity,
+    ) -> Result<ProcessedPosition> {
+        crate::range::validate_index(self.source.text(), at.get(), "source position")?;
+        Ok(ProcessedPosition(self.project(at.get(), affinity)))
+    }
+    /// Selects the minimum Before / maximum After incident original boundary.
+    ///
+    /// Copy is linear, replacement edges map to their original exact endpoints,
+    /// and a deletion contributes its entire original endpoint interval. This is
+    /// not the inverse fiber of either forward affinity: contraction interiors
+    /// project outward but are not recovered at replacement edges. For pure
+    /// deletion it remains the complete-preimage extrema law. Numeric bounds are
+    /// result-relative, without cross-result or stale-identity authority.
     pub fn processed_to_source(
         &self,
         at: ProcessedPosition,
@@ -238,12 +296,18 @@ impl ProcessedSource {
                     &self.map[next - 1]
                 }
             };
-            if piece.retained {
-                piece.source.start + (at.0 - piece.processed)
-            } else {
-                match affinity {
+            match piece.kind {
+                MappingKind::Copy => piece.source.start + (at.0 - piece.processed),
+                MappingKind::Delete => match affinity {
                     Affinity::Before => piece.source.start,
                     Affinity::After => piece.source.end,
+                },
+                MappingKind::Replace => {
+                    if at.0 == piece.processed {
+                        piece.source.start
+                    } else {
+                        piece.source.end
+                    }
                 }
             }
         };
@@ -258,10 +322,7 @@ impl ProcessedSource {
             .map(|(ordinal, original)| ProcessedSpan {
                 ordinal,
                 original,
-                range: processed_range(
-                    self.project(original.range().start),
-                    self.project(original.range().end),
-                ),
+                source: self,
             })
     }
     /// Borrows every original box in original vector order.
@@ -277,30 +338,37 @@ impl ProcessedSource {
     /// Slicing at an OutOfFlow occurrence is presentation only, never a new
     /// adjacency/grapheme/opportunity context. No separator or alternate content
     /// is inserted, and this partial query does not serialize a whole document.
-    pub fn plaintext_items(&self) -> PlaintextItems<'_> {
+    /// OutOfFlow anchors inside a contraction appear before its output unit for
+    /// Before and after it for After. Both retain the exact original anchor;
+    /// neither creates an adjacency barrier. Text slices partition the same
+    /// processed backing exactly once under either choice.
+    pub fn plaintext_items(&self, affinity: Affinity) -> PlaintextItems<'_> {
         PlaintextItems {
             source: self,
+            affinity,
             next_box: 0,
             text_cursor: 0,
         }
     }
 
-    fn project(&self, at: usize) -> usize {
+    fn project(&self, at: usize, affinity: Affinity) -> usize {
         let next = self.map.partition_point(|piece| piece.source.end <= at);
         self.map.get(next).map_or(self.processed.len(), |piece| {
             piece.processed
-                + if piece.retained {
-                    at - piece.source.start
-                } else {
-                    0
+                + match piece.kind {
+                    MappingKind::Copy => at - piece.source.start,
+                    MappingKind::Delete => 0,
+                    MappingKind::Replace => {
+                        usize::from(at > piece.source.start && affinity == Affinity::After)
+                    }
                 }
         })
     }
-    fn box_view<'a>(&self, ordinal: usize, original: &'a InlineBox) -> ProcessedInlineBox<'a> {
+    fn box_view<'a>(&'a self, ordinal: usize, original: &'a InlineBox) -> ProcessedInlineBox<'a> {
         ProcessedInlineBox {
             ordinal,
             original,
-            position: ProcessedPosition(self.project(original.index())),
+            source: self,
         }
     }
 }
@@ -310,7 +378,7 @@ impl ProcessedSource {
 pub struct ProcessedSpan<'a> {
     ordinal: usize,
     original: &'a Span,
-    range: ProcessedRange,
+    source: &'a ProcessedSource,
 }
 impl<'a> ProcessedSpan<'a> {
     /// Original span-vector ordinal.
@@ -323,10 +391,16 @@ impl<'a> ProcessedSpan<'a> {
     pub const fn original(self) -> &'a Span {
         self.original
     }
-    /// Projected range, possibly empty after deletion.
+    /// Projects both original endpoints with the same chosen affinity.
+    ///
+    /// This ordered numeric projection is not unique normalized-unit style/font
+    /// ownership or conservative painted coverage. Empty spans stay collapsed.
     #[must_use]
-    pub const fn range(self) -> ProcessedRange {
-        self.range
+    pub fn range(self, affinity: Affinity) -> ProcessedRange {
+        processed_range(
+            self.source.project(self.original.range().start, affinity),
+            self.source.project(self.original.range().end, affinity),
+        )
     }
 }
 
@@ -335,7 +409,7 @@ impl<'a> ProcessedSpan<'a> {
 pub struct ProcessedInlineBox<'a> {
     ordinal: usize,
     original: &'a InlineBox,
-    position: ProcessedPosition,
+    source: &'a ProcessedSource,
 }
 impl<'a> ProcessedInlineBox<'a> {
     /// Original box-vector ordinal, not a preparation identity.
@@ -348,10 +422,10 @@ impl<'a> ProcessedInlineBox<'a> {
     pub const fn original(self) -> &'a InlineBox {
         self.original
     }
-    /// Projected numeric anchor; distinct original anchors may coincide here.
+    /// Projects the exact original anchor using the explicit contraction choice.
     #[must_use]
-    pub const fn position(self) -> ProcessedPosition {
-        self.position
+    pub fn position(self, affinity: Affinity) -> ProcessedPosition {
+        ProcessedPosition(self.source.project(self.original.index(), affinity))
     }
 }
 
@@ -362,7 +436,7 @@ pub struct ProcessedText<'a> {
     range: ProcessedRange,
 }
 impl<'a> ProcessedText<'a> {
-    /// Exact processed units without repair or inserted content.
+    /// Exact operation output units, without scalar repair.
     #[must_use]
     pub const fn code_units(self) -> &'a [u16] {
         self.units
@@ -386,6 +460,7 @@ pub enum PlaintextItem<'a> {
 /// Borrowing logical traversal of the processed text and original box occurrences.
 pub struct PlaintextItems<'a> {
     source: &'a ProcessedSource,
+    affinity: Affinity,
     next_box: usize,
     text_cursor: usize,
 }
@@ -394,7 +469,7 @@ impl<'a> Iterator for PlaintextItems<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(&ordinal) = self.source.box_order.get(self.next_box) {
             let original = &self.source.source.boxes()[ordinal];
-            let at = self.source.project(original.index());
+            let at = self.source.project(original.index(), self.affinity);
             if self.text_cursor < at {
                 return Some(self.text_to(at));
             }
@@ -491,7 +566,14 @@ fn validate_crossings(
     Ok(())
 }
 
-fn validate_modes(source: &Source, base: &Style) -> Result<()> {
+#[derive(Clone, Copy)]
+struct EffectiveInterval {
+    range: Range,
+    span: Option<usize>,
+    mode: WhiteSpace,
+}
+
+fn effective_modes(source: &Source, base: &Style) -> Result<Vec<EffectiveInterval>> {
     let mut events = Vec::new();
     reserve(
         &mut events,
@@ -508,7 +590,7 @@ fn validate_modes(source: &Source, base: &Style) -> Result<()> {
     let mut active = BTreeSet::new();
     let mut next = 0;
     let mut at = 0;
-    let mut pending: Option<(Range, Option<usize>, WhiteSpace)> = None;
+    let mut intervals: Vec<EffectiveInterval> = Vec::new();
     while at < source.text().len() {
         while events.get(next).is_some_and(|event| event.0 == at) {
             let (_, start, ordinal) = events[next];
@@ -526,35 +608,65 @@ fn validate_modes(source: &Source, base: &Style) -> Result<()> {
         let mode = origin.map_or(base.white_space, |ordinal| {
             source.spans()[ordinal].style().white_space
         });
-        if let Some((range, _, _)) =
-            pending
-                .as_mut()
-                .filter(|(_, previous_origin, previous_mode)| {
-                    *previous_origin == origin && *previous_mode == mode
-                })
+        if let Some(previous) = intervals
+            .last_mut()
+            .filter(|previous| previous.span == origin && previous.mode == mode)
         {
-            range.end = end;
+            previous.range.end = end;
         } else {
-            if let Some((range, span, mode)) = pending {
-                admit_mode(range, span, mode)?;
-            }
-            pending = Some((Range::new(at, end), origin, mode));
+            reserve(&mut intervals, 1)?;
+            intervals.push(EffectiveInterval {
+                range: Range::new(at, end),
+                span: origin,
+                mode,
+            });
         }
         at = end;
     }
-    if let Some((range, span, mode)) = pending {
-        admit_mode(range, span, mode)?;
-    }
-    Ok(())
+    Ok(intervals)
 }
 
-fn admit_mode(range: Range, span: Option<usize>, mode: WhiteSpace) -> Result<()> {
-    if mode != WhiteSpace::Discard {
-        return Err(Error::new(
-            ErrorCode::UnsupportedFeature,
-            "unsupported effective source-processing mode",
-        )
-        .with_detail(ErrorDetail::UnsupportedProcessingMode { range, mode, span }));
+fn validate_modes(intervals: &[EffectiveInterval], breaks: &DocumentSegmentBreaks) -> Result<()> {
+    let mut delimiter = 0;
+    for (ordinal, interval) in intervals.iter().enumerate() {
+        // At an equal offset, unsupported processing wins over delimiter mode
+        // inconsistency. Earlier intervals have already been admitted.
+        if interval.mode == WhiteSpace::Collapse {
+            return Err(Error::new(
+                ErrorCode::UnsupportedFeature,
+                "unsupported effective source-processing mode",
+            )
+            .with_detail(ErrorDetail::UnsupportedProcessingMode {
+                range: interval.range,
+                mode: interval.mode,
+                span: interval.span,
+            }));
+        }
+        if ordinal == 0 || intervals[ordinal - 1].mode == interval.mode {
+            continue;
+        }
+        if let DocumentSegmentBreaks::Defined(ranges) = breaks {
+            let at = interval.range.start;
+            while ranges.get(delimiter).is_some_and(|range| range.end <= at) {
+                delimiter += 1;
+            }
+            if let Some(&range) = ranges
+                .get(delimiter)
+                .filter(|range| range.start < at && at < range.end)
+            {
+                return Err(Error::new(
+                    ErrorCode::UnsupportedFeature,
+                    "document delimiter crosses effective processing mode",
+                )
+                .with_detail(ErrorDetail::SegmentBreakCrossesProcessingMode {
+                    occurrence: delimiter,
+                    range,
+                    at,
+                    before: intervals[ordinal - 1].mode,
+                    after: interval.mode,
+                }));
+            }
+        }
     }
     Ok(())
 }

@@ -306,6 +306,9 @@ pub enum WhiteSpace {
     Preserve,
     /// Source-only discard processing; full paragraph layout remains unsupported.
     Discard,
+    /// Preserve spaces while normalizing tabs and document delimiters to spaces.
+    /// Paragraph layout does not yet consume this processed-source mode.
+    PreserveSpaces,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -635,17 +638,20 @@ fn validate_style(style: &Style) -> Result<ParsedStyle> {
             match style.white_space {
                 WhiteSpace::Collapse => "whitespace collapse is not supported until text layout preserves authored source ranges",
                 WhiteSpace::Discard => "whitespace discard source processing is not yet consumed by paragraph layout",
+                WhiteSpace::PreserveSpaces => "preserve-spaces source processing is not yet consumed by paragraph layout",
                 WhiteSpace::Preserve => unreachable!("unsupported branch excludes Preserve"),
             },
         )
         .with_detail(ErrorDetail::UnsupportedTextStyle {
             feature: match style.white_space {
                 WhiteSpace::Discard => TextStyleFeature::WhiteSpaceDiscard,
+                WhiteSpace::PreserveSpaces => TextStyleFeature::WhiteSpacePreserveSpaces,
                 WhiteSpace::Collapse => TextStyleFeature::WhiteSpaceCollapse,
                 WhiteSpace::Preserve => unreachable!("unsupported branch excludes Preserve"),
             },
             reason: match style.white_space {
                 WhiteSpace::Discard => UnsupportedTextStyleReason::RequiresProcessedSourceLayout,
+                WhiteSpace::PreserveSpaces => UnsupportedTextStyleReason::RequiresProcessedSourceLayout,
                 WhiteSpace::Collapse => UnsupportedTextStyleReason::RequiresSourceRangePreservation,
                 WhiteSpace::Preserve => unreachable!("unsupported branch excludes Preserve"),
             },

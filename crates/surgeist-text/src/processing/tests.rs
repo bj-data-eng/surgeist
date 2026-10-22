@@ -16,16 +16,25 @@ fn position(source: &Source, at: usize) -> SourcePosition {
 fn forward(result: &ProcessedSource) -> Vec<usize> {
     (0..=result.source().text().len())
         .map(|at| {
-            result
-                .source_to_processed(position(result.source(), at))
+            let at = position(result.source(), at);
+            let before = result
+                .source_to_processed(at, Affinity::Before)
                 .unwrap()
-                .get()
+                .get();
+            assert_eq!(
+                before,
+                result
+                    .source_to_processed(at, Affinity::After)
+                    .unwrap()
+                    .get()
+            );
+            before
         })
         .collect()
 }
 fn plaintext(result: &ProcessedSource) -> Vec<u16> {
     result
-        .plaintext_items()
+        .plaintext_items(Affinity::Before)
         .flat_map(|item| match item {
             PlaintextItem::Text(text) => text.code_units().iter().copied(),
             PlaintextItem::InlineBox(_) => [].iter().copied(),
@@ -150,8 +159,8 @@ fn last_span_policy_and_original_borrowed_records_are_exact_without_font_admissi
     assert_eq!(result.base_style().font.family, ["[invalid-unused"]);
     let spans: Vec<_> = result.spans().collect();
     assert_eq!(spans.len(), 3);
-    assert_eq!(spans[1].range().start().get(), 1);
-    assert!(spans[1].range().is_empty());
+    assert_eq!(spans[1].range(Affinity::Before).start().get(), 1);
+    assert!(spans[1].range(Affinity::Before).is_empty());
     assert_eq!(spans[1].original().range(), Range::new(1, 3));
     assert!(std::ptr::eq(
         spans[1].original(),
@@ -162,7 +171,8 @@ fn last_span_policy_and_original_borrowed_records_are_exact_without_font_admissi
         WhiteSpace::Preserve
     );
     assert_eq!(result.source(), &source);
-    for mode in [WhiteSpace::Preserve, WhiteSpace::Collapse] {
+    {
+        let mode = WhiteSpace::Collapse;
         let mut unsupported = source.clone();
         unsupported.span(
             Range::new(2, 4),
@@ -190,7 +200,10 @@ fn last_span_policy_and_original_borrowed_records_are_exact_without_font_admissi
     }
     let error = process_source_whitespace(
         Source::new(" \t"),
-        Style::default(),
+        Style {
+            white_space: WhiteSpace::Collapse,
+            ..Style::default()
+        },
         DocumentSegmentBreaks::LineFeedDefault,
     )
     .unwrap_err();
@@ -198,7 +211,7 @@ fn last_span_policy_and_original_borrowed_records_are_exact_without_font_admissi
         error.detail(),
         Some(&ErrorDetail::UnsupportedProcessingMode {
             range: Range::new(0, 2),
-            mode: WhiteSpace::Preserve,
+            mode: WhiteSpace::Collapse,
             span: None
         })
     );
@@ -323,7 +336,7 @@ fn actual_atomic_box_crossing_refuses_but_out_of_flow_is_transparent() {
         } else {
             let result = result.unwrap();
             let view = result.inline_boxes().next().unwrap();
-            assert_eq!(view.position().get(), 1);
+            assert_eq!(view.position(Affinity::Before).get(), 1);
             assert_eq!(view.original().index(), 2);
             assert_eq!(view.original().kind(), InlineBoxKind::OutOfFlow);
             assert_eq!(plaintext(&result), [65, 66]);
@@ -376,7 +389,7 @@ fn plaintext_orders_real_boxes_by_original_anchor_then_vector_order_without_inve
                 view.ordinal(),
                 view.original().id(),
                 view.original().index(),
-                view.position().get()
+                view.position(Affinity::Before).get()
             ))
             .collect::<Vec<_>>(),
         [
@@ -386,7 +399,7 @@ fn plaintext_orders_real_boxes_by_original_anchor_then_vector_order_without_inve
         ]
     );
     let mut order = vec![];
-    for item in result.plaintext_items() {
+    for item in result.plaintext_items(Affinity::Before) {
         match item {
             PlaintextItem::Text(text) => order.push((text.code_units().to_vec(), None)),
             PlaintextItem::InlineBox(view) => {
@@ -414,9 +427,9 @@ fn plaintext_orders_real_boxes_by_original_anchor_then_vector_order_without_inve
         let mut source = Source::new(text);
         source.inline_box(box_(1, InlineBoxKind::InFlow, 0));
         let result = process(source, DocumentSegmentBreaks::LineFeedDefault);
-        assert_eq!(result.plaintext_items().count(), 1);
+        assert_eq!(result.plaintext_items(Affinity::Before).count(), 1);
         assert!(matches!(
-            result.plaintext_items().next(),
+            result.plaintext_items(Affinity::Before).next(),
             Some(PlaintextItem::InlineBox(_))
         ));
     }
@@ -494,7 +507,7 @@ fn intrinsic_validation_and_result_relative_bounds_remain_precise_before_modes()
     );
     assert!(
         result
-            .source_to_processed(position(foreign.source(), 5))
+            .source_to_processed(position(foreign.source(), 5), Affinity::Before)
             .is_err()
     );
     let mut system = crate::System::default();
@@ -509,3 +522,5 @@ fn intrinsic_validation_and_result_relative_bounds_remain_precise_before_modes()
         })
     );
 }
+
+mod preservation;

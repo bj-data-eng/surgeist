@@ -131,6 +131,12 @@ pub surgeist_text::ErrorDetail::SegmentBreakCrossesInlineBox::anchor: usize
 pub surgeist_text::ErrorDetail::SegmentBreakCrossesInlineBox::box_ordinal: usize
 pub surgeist_text::ErrorDetail::SegmentBreakCrossesInlineBox::id: surgeist_text::Id
 pub surgeist_text::ErrorDetail::SegmentBreakCrossesInlineBox::occurrence: usize
+pub surgeist_text::ErrorDetail::SegmentBreakCrossesProcessingMode
+pub surgeist_text::ErrorDetail::SegmentBreakCrossesProcessingMode::after: surgeist_text::WhiteSpace
+pub surgeist_text::ErrorDetail::SegmentBreakCrossesProcessingMode::at: usize
+pub surgeist_text::ErrorDetail::SegmentBreakCrossesProcessingMode::before: surgeist_text::WhiteSpace
+pub surgeist_text::ErrorDetail::SegmentBreakCrossesProcessingMode::occurrence: usize
+pub surgeist_text::ErrorDetail::SegmentBreakCrossesProcessingMode::range: surgeist_text::Range
 pub surgeist_text::ErrorDetail::SourceRevisionExhausted
 pub surgeist_text::ErrorDetail::SourceRevisionExhausted::revision: u64
 pub surgeist_text::ErrorDetail::UnresolvedFontSynthesis
@@ -255,6 +261,7 @@ pub surgeist_text::TextStyleFeature::VerticalAlign
 pub surgeist_text::TextStyleFeature::WhiteSpaceCollapse
 pub surgeist_text::TextStyleFeature::WhiteSpaceDiscard
 pub surgeist_text::TextStyleFeature::WhiteSpacePreserve
+pub surgeist_text::TextStyleFeature::WhiteSpacePreserveSpaces
 pub surgeist_text::TextStyleFeature::WordBreak
 pub surgeist_text::TextStyleFeature::WordSpacing
 impl surgeist_text::TextStyleFeature
@@ -304,6 +311,7 @@ pub enum surgeist_text::WhiteSpace
 pub surgeist_text::WhiteSpace::Collapse
 pub surgeist_text::WhiteSpace::Discard
 pub surgeist_text::WhiteSpace::Preserve
+pub surgeist_text::WhiteSpace::PreserveSpaces
 pub enum surgeist_text::Width
 pub surgeist_text::Width::Condensed
 pub surgeist_text::Width::Expanded
@@ -636,7 +644,7 @@ pub struct surgeist_text::ProcessedInlineBox<'a>
 impl<'a> surgeist_text::ProcessedInlineBox<'a>
 pub const fn surgeist_text::ProcessedInlineBox<'a>::ordinal(self) -> usize
 pub const fn surgeist_text::ProcessedInlineBox<'a>::original(self) -> &'a surgeist_text::InlineBox
-pub const fn surgeist_text::ProcessedInlineBox<'a>::position(self) -> surgeist_text::ProcessedPosition
+pub fn surgeist_text::ProcessedInlineBox<'a>::position(self, affinity: surgeist_text::Affinity) -> surgeist_text::ProcessedPosition
 pub struct surgeist_text::ProcessedPosition(_)
 impl surgeist_text::ProcessedPosition
 pub const fn surgeist_text::ProcessedPosition::get(self) -> usize
@@ -650,20 +658,20 @@ pub struct surgeist_text::ProcessedSource
 impl surgeist_text::ProcessedSource
 pub const fn surgeist_text::ProcessedSource::base_style(&self) -> &surgeist_text::Style
 pub fn surgeist_text::ProcessedSource::inline_boxes(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::ProcessedInlineBox<'_>>
-pub fn surgeist_text::ProcessedSource::plaintext_items(&self) -> surgeist_text::PlaintextItems<'_>
+pub fn surgeist_text::ProcessedSource::plaintext_items(&self, affinity: surgeist_text::Affinity) -> surgeist_text::PlaintextItems<'_>
 pub fn surgeist_text::ProcessedSource::position(&self, at: usize) -> surgeist_text::Result<surgeist_text::ProcessedPosition>
 pub const fn surgeist_text::ProcessedSource::processed_text(&self) -> &surgeist_text::Text
 pub fn surgeist_text::ProcessedSource::processed_to_source(&self, at: surgeist_text::ProcessedPosition, affinity: surgeist_text::Affinity) -> surgeist_text::Result<surgeist_text::SourcePosition>
 pub fn surgeist_text::ProcessedSource::range(&self, start: usize, end: usize) -> surgeist_text::Result<surgeist_text::ProcessedRange>
 pub const fn surgeist_text::ProcessedSource::segment_breaks(&self) -> &surgeist_text::DocumentSegmentBreaks
 pub const fn surgeist_text::ProcessedSource::source(&self) -> &surgeist_text::Source
-pub fn surgeist_text::ProcessedSource::source_to_processed(&self, at: surgeist_text::SourcePosition) -> surgeist_text::Result<surgeist_text::ProcessedPosition>
+pub fn surgeist_text::ProcessedSource::source_to_processed(&self, at: surgeist_text::SourcePosition, affinity: surgeist_text::Affinity) -> surgeist_text::Result<surgeist_text::ProcessedPosition>
 pub fn surgeist_text::ProcessedSource::spans(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::ProcessedSpan<'_>>
 pub struct surgeist_text::ProcessedSpan<'a>
 impl<'a> surgeist_text::ProcessedSpan<'a>
 pub const fn surgeist_text::ProcessedSpan<'a>::ordinal(self) -> usize
 pub const fn surgeist_text::ProcessedSpan<'a>::original(self) -> &'a surgeist_text::Span
-pub const fn surgeist_text::ProcessedSpan<'a>::range(self) -> surgeist_text::ProcessedRange
+pub fn surgeist_text::ProcessedSpan<'a>::range(self, affinity: surgeist_text::Affinity) -> surgeist_text::ProcessedRange
 pub struct surgeist_text::ProcessedText<'a>
 impl<'a> surgeist_text::ProcessedText<'a>
 pub const fn surgeist_text::ProcessedText<'a>::code_units(self) -> &'a [u16]

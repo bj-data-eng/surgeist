@@ -100,6 +100,19 @@ pub enum ErrorDetail {
         /// Original source anchor.
         anchor: usize,
     },
+    /// One actual document delimiter crosses a change of effective processing value.
+    SegmentBreakCrossesProcessingMode {
+        /// Actual delimiter-vector ordinal.
+        occurrence: usize,
+        /// Complete original delimiter extent.
+        range: super::Range,
+        /// Original offset at which the effective value changes.
+        at: usize,
+        /// Effective value before the boundary.
+        before: WhiteSpace,
+        /// Effective value after the boundary.
+        after: WhiteSpace,
+    },
     /// Result-relative processed bounds are invalid.
     InvalidProcessedRange {
         /// Requested start or position.
