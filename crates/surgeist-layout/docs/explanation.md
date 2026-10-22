@@ -9,19 +9,20 @@ completed results.
 ## Layout and integration ownership
 
 Layout owns normalized layout values, algorithm inputs, traversal contracts,
-caches, reports, and box output. Retained tree identity and sibling coordination
-belong to the root integration layer that provides the tree implementation.
+caches, box output and its direct adapters from computed style and Text. DOM owns
+the canonical retained tree; hosts implement the tree interface. Text owns
+shaping and source mappings, Render owns paint conversion, and Runtime owns
+orchestration and coherent publication. Root `surgeist` provides optional facade
+composition, bootstrap and shared API auditing. See the
+[shared text contract](../../../docs/text-layout-contract.md) for the selected
+preparation and line-finalization boundary.
 
-Root `surgeist` owns cross-crate adapters, including canonicalizing authored CSS
-sizing values, lowering computed-style values and authored CSS order into these
-layout contracts, and rejecting property-invalid authored states before layout.
-This crate does not parse authored CSS. Root also owns box-generation
-replacedness, invalidation, consumer migration and renames, facade composition,
-integration, and generated API artifacts; this crate carries no root adapters or
-API artifact copies.
-
-Text arrives as validated shaped segments. Layout constructs lines and fragment
-geometry; the integration layer supplies source association and shaping facts.
+The implemented text boundary accepts validated shaped segments. Layout selects
+breaks against box/float constraints and constructs line and fragment geometry.
+These fixed segments do not yet carry Text preparation or finalized-line
+identities; source association cannot be reconstructed from segment IDs alone.
+Layout does not parse authored CSS or resolve computed style. Its consuming
+adapters own lowering producer facts into these normalized inputs.
 The browser fixture adapter serves this same finite input boundary for tests.
 The shared generator owns browser and artifact lifecycle, while layout owns
 measurement decoding and XML semantics; see the [runtime reference](reference.md#browser-parity-runtime).
@@ -60,10 +61,10 @@ lanes-specific auto-fit collapse, and nested indefinite subgrid contribution
 projection. It does not claim stacking-axis grid-lanes baseline alignment or
 complete Level 3 behavior.
 
-Root `surgeist` owns authored CSS parsing, cascade and computed-value
-normalization, lowering into these finite inputs, cross-crate integration,
-retained identity, and generated API artifacts. The browser fixture adapter is
-only a constrained layout-ready test bridge and is not a second CSS front door.
+Layout owns lowering consumed producer facts into these finite inputs; CSS
+parsing and computed-value resolution remain with their respective owners. The
+browser fixture adapter is a constrained layout-ready test bridge, not another
+CSS front door.
 
 ## Geometry, flow, and scroll
 
@@ -80,8 +81,8 @@ them to physical geometry at a contextual boundary.
 `FlowAxes` is the sole production owner of writing-mode mapping for
 `HorizontalTb`, `VerticalRl`, `VerticalLr`, `SidewaysRl`, and `SidewaysLr`. Its
 `Direction` is the already-resolved used inline direction, not authored or
-otherwise unresolved CSS. Root `surgeist` owns computed-style lowering and
-supplies that used value through its cross-crate adapters.
+otherwise unresolved CSS. Layout owns its consuming computed-style adapter;
+callers supply that resolved value at the current normalized input boundary.
 
 Scroll inputs are normalized computed or otherwise layout-ready values, not
 authored CSS syntax. `ComputedOverflow` atomically validates the two computed
@@ -101,12 +102,11 @@ from that same geometry instead of maintaining mutable duplicate state.
 
 Every present geometry also contains `ScrollTargetGeometryOf`: the target's
 local physical border box and scroll margin plus its flow axes, block/inline snap
-alignment, and snap-stop metadata. Root consumes these values after retained
-association and coordinate transformation. Root also owns authored CSS parsing,
-computed-style normalization and lowering, explicit host scrollbar policy,
-current offsets, focus/target scrolling, snap-container association and
-selection, CSSOM, scrollbar UI, host events, and invalidation. This crate does
-not claim a live scrolling runtime.
+alignment, and snap-stop metadata. Consuming subsystems associate and transform
+these values into their own coordinate and lifetime domains. Live offsets,
+focus/target scrolling, snap selection, CSSOM, scrollbar UI and host events remain
+with those consumers; Runtime coordinates coherent publication. Layout does not
+claim a live scrolling runtime.
 
 The general signed physical and flow-relative range types keep finite ordered
 minimum and maximum bounds. When an axis runs in reverse, `FlowAxes` swaps and

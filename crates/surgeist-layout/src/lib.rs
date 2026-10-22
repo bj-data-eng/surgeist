@@ -11,9 +11,9 @@
 //! [`WritingMode::HorizontalTb`], [`WritingMode::VerticalRl`],
 //! [`WritingMode::VerticalLr`], [`WritingMode::SidewaysRl`], and
 //! [`WritingMode::SidewaysLr`]. Its [`Direction`] is the already-resolved
-//! used inline direction, not authored or otherwise unresolved CSS. Root
-//! `surgeist` owns computed-style lowering and supplies that used value through
-//! its cross-crate adapters.
+//! used inline direction, not authored or otherwise unresolved CSS. Layout owns
+//! its consuming computed-style adapter; callers supply the resolved value at
+//! the current normalized input boundary.
 //!
 //! Scroll input is normalized, computed or otherwise layout-ready input rather
 //! than authored CSS. [`ComputedOverflow`] is an atomic canonical pair; layout
@@ -44,11 +44,10 @@
 //! [`NodeInputOf::flex_item_collapse`] is a normalized, layout-ready flex
 //! effect, and [`FlexItemCollapse::Normal`] is its default. A collapsed in-flow
 //! flex item participates through a finite cross-size strut replay, publishes
-//! zero committed collapsed geometry, and hides its descendants. Root
-//! `surgeist` owns computed-style lowering from a flex item's
-//! `visibility: collapse` to this normalized state, while rendering owns
-//! painting. This leaf does not parse authored CSS or provide a general
-//! visibility model.
+//! zero committed collapsed geometry, and hides its descendants. Layout
+//! owns lowering a flex item's computed `visibility: collapse` into this
+//! normalized state, while rendering owns painting. This leaf does not parse
+//! authored CSS or provide a general visibility model.
 //!
 //! Canonical layout-ready `calc-size()` input pairs the property's calc-size
 //! basis with a validated [`CalcSizeCalculationOf`] containing finite length,
@@ -63,11 +62,14 @@
 //! [`LayoutErrorOf`] with no partial public result. Recursive compute modes are
 //! internal.
 //!
-//! Shaped text crosses this crate boundary only as validated
-//! [`InlineTextInputOf`] segments. Layout owns line geometry, while root owns
-//! source association and shaping; authored text, glyph data, and rendering do
-//! not enter this crate. [`NodeInputOf::non_box`] is the canonical tree
-//! companion for text and inline controls.
+//! The current text boundary accepts validated [`InlineTextInputOf`] segments.
+//! Layout owns break selection, box/float constraints, placement and its consuming
+//! Text adapter. Text owns shaping and source mappings; Render owns paint
+//! conversion and Runtime owns coherent publication. The fixed-segment input
+//! does not yet carry Text preparation or finalized-line identities. Authored
+//! text, glyph data and rendering do not enter this implemented boundary.
+//! [`NodeInputOf::non_box`] is the canonical tree companion for text and inline
+//! controls.
 //!
 //! Completed batches keep unrounded and final [`InlineFragmentOutputEntryOf`]
 //! phases alongside node and cache state. [`compute_layout_invalidated`] stages
@@ -115,16 +117,13 @@
 //! including the mock-keychain argument; corpus freshness checks remain
 //! browser-free.
 //!
-//! Root `surgeist` owns authored CSS and style lowering, explicit host scrollbar
-//! environment selection, box-generation replacedness, invalidation, retained
-//! node-to-scroll-container association, transformed coordinate mapping, live
-//! offsets, target/focus scrolling, snap selection, CSSOM, host UI and events,
-//! consumer migration, facade composition, cross-crate integration, and generated
-//! API artifacts. This crate consumes normalized layout-ready values and emits
-//! canonical geometry plus target metadata; it does not parse authored CSS,
-//! resolve computed style, or own a live scrolling runtime.
-//! The later inline, overflow, flex, grid, alignment, and positioned initiatives
-//! remain outside this geometry closure and are not claimed here.
+//! Layout owns its direct adapters from lower-level producers. Callers supply
+//! normalized style/box facts, host scrollbar policy and retained association;
+//! the respective consumers own live scrolling, CSSOM, rendering and host events.
+//! Runtime coordinates publication; root `surgeist` provides optional facade
+//! composition and bootstrap. This crate emits canonical geometry and target
+//! metadata; it does not parse authored CSS, resolve computed style or own a live
+//! scrolling runtime.
 //!
 //! The normalized scroll input and read-only output surface composes through the
 //! crate root in either scalar lane without constructing derived geometry:
