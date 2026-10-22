@@ -131,6 +131,98 @@ enum IntrinsicGutterInheritedAxis {
     Rows,
 }
 
+fn assert_grid_intrinsic_auto_gutter_recalculates_contribution<S: LayoutScalar>(display: Display) {
+    let scalar = S::from_f64;
+    let tree = PublicLayoutTreeOf::new()
+        .children(1, [2])
+        .children(2, [3])
+        .children(3, [])
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Grid,
+                grid_template_columns: vec![TrackComponentOf::MAX_CONTENT],
+                grid_template_rows: vec![TrackComponentOf::px(scalar(20.0))],
+                justify_content: Some(AlignContent::Start),
+                align_content: Some(AlignContent::Start),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                display,
+                size: Size::new(
+                    PreferredSizeOf::MAX_CONTENT,
+                    PreferredSizeOf::px(scalar(20.0)),
+                ),
+                grid_template_columns: vec![TrackComponentOf::px(scalar(40.0))],
+                grid_template_rows: vec![TrackComponentOf::px(scalar(30.0))],
+                overflow: computed_overflow(Overflow::Auto, Overflow::Auto),
+                scrollbar_width: ScrollbarWidthOf::try_new(scalar(5.0)).expect("finite width"),
+                justify_content: Some(AlignContent::Start),
+                align_content: Some(AlignContent::Start),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            3,
+            NodeInputOf {
+                size: Size::new(
+                    PreferredSizeOf::px(scalar(40.0)),
+                    PreferredSizeOf::px(scalar(30.0)),
+                ),
+                ..NodeInputOf::default()
+            },
+        );
+    let batch = compute_layout(
+        &tree,
+        1,
+        LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT))
+            .expect("intrinsic auto viewport"),
+    )
+    .expect("intrinsic auto contribution");
+    // Start without bars: content40x30 needs a vertical scrollbar in the
+    // authored height20. Intrinsic inline size then adds that five-unit
+    // reservation: outer45x20, content40x20, with no horizontal scrollbar.
+    assert_eq!(
+        fri08_c01_placement_output(&batch, 1).size,
+        Size::new(scalar(45.0), scalar(20.0)),
+        "{display:?}"
+    );
+    let child = fri08_c01_placement_output(&batch, 2);
+    assert_eq!(child.size, Size::new(scalar(45.0), scalar(20.0)));
+    assert_eq!(child.scrollbar_size(), Size::new(scalar(5.0), S::ZERO));
+    assert_eq!(
+        child
+            .scroll_geometry
+            .expect("settled intrinsic auto")
+            .content_box()
+            .size(),
+        Size::new(scalar(40.0), scalar(20.0))
+    );
+}
+
+#[test]
+fn grid_intrinsic_auto_gutter_recalculates_contribution_in_f32() {
+    assert_grid_intrinsic_auto_gutter_recalculates_contribution::<f32>(Display::Grid);
+}
+
+#[test]
+fn grid_intrinsic_auto_gutter_recalculates_contribution_in_f64() {
+    assert_grid_intrinsic_auto_gutter_recalculates_contribution::<f64>(Display::Grid);
+}
+
+#[test]
+fn grid_lanes_intrinsic_auto_gutter_recalculates_contribution_in_f32() {
+    assert_grid_intrinsic_auto_gutter_recalculates_contribution::<f32>(Display::GridLanes);
+}
+
+#[test]
+fn grid_lanes_intrinsic_auto_gutter_recalculates_contribution_in_f64() {
+    assert_grid_intrinsic_auto_gutter_recalculates_contribution::<f64>(Display::GridLanes);
+}
+
 fn intrinsic_gutter_subgrid_tree<S: LayoutScalar>(
     display: Display,
     writing_mode: WritingMode,
