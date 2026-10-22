@@ -9,7 +9,7 @@ use linebender_resource_handle::Blob;
 use parley::FontContext;
 use skrifa::raw::FileRef;
 
-use crate::{Error, ErrorCode, ErrorDetail, FontGeneration, Result};
+use crate::{Error, ErrorCode, ErrorDetail, FontFace, FontGeneration, Result};
 
 /// Sources available to a text system's font catalogue.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -115,6 +115,15 @@ impl Catalogue {
 
     pub(crate) const fn context_mut(&mut self) -> &mut FontContext {
         &mut self.context
+    }
+
+    pub(crate) fn registered_faces(&self) -> impl Iterator<Item = FontFace<'_>> {
+        self.registered.iter().flat_map(|registration| {
+            registration
+                .indices
+                .iter()
+                .map(|&index| FontFace::new(&registration.data, index, &self.identity))
+        })
     }
 
     pub(crate) fn with_registration(&self, bytes: Vec<u8>) -> Result<Self> {

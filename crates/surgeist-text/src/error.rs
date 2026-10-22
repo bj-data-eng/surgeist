@@ -1,6 +1,6 @@
 use std::{error, fmt};
 
-use super::{TextStyleFeature, UnsupportedTextStyleReason, WhiteSpace};
+use super::{FontCatalogueIdentity, TextStyleFeature, UnsupportedTextStyleReason, WhiteSpace};
 
 /// Text crate result alias.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -62,6 +62,10 @@ pub enum ErrorCode {
     InvalidFontInstance,
     /// Source processing could not represent or allocate its complete result.
     SourceProcessingCapacity,
+    /// Resource provenance and the expected operation basis differ.
+    FontCatalogueMismatch,
+    /// Used font-metric metadata or numeric output is invalid.
+    InvalidFontMetrics,
     InvalidRange,
     InvalidStyle,
     LayoutFailed,
@@ -71,6 +75,40 @@ pub enum ErrorCode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErrorDetail {
+    /// Associated font provenance does not match the captured operation basis.
+    FontCatalogueMismatch {
+        /// Expected publication.
+        expected: FontCatalogueIdentity,
+        /// Actual resource publication.
+        actual: FontCatalogueIdentity,
+    },
+    /// Structural admission failed for a used metric table.
+    FontMetricTable {
+        /// Actual table.
+        table: FontMetricTable,
+        /// Precise refusal.
+        reason: FontMetricTableError,
+    },
+    /// Neither hhea nor OS/2 provides a readable line-metric source.
+    MissingFontLineMetrics,
+    /// Variable metric execution is outside this static operation's domain.
+    UnsupportedVariableFontMetrics {
+        /// Intrinsically qualified fvar inventory is present.
+        fvar: bool,
+        /// Accessible MVAR is present; its delta payload was not executed.
+        mvar: bool,
+    },
+    /// Required metric or arithmetic result is outside its numeric domain.
+    InvalidFontMetric {
+        /// Named field.
+        field: FontMetricField,
+        /// Validation stage.
+        phase: FontMetricPhase,
+        /// Numeric category.
+        category: FontMetricNumericError,
+        /// Actual rejected value before clamping or substitution.
+        value: f64,
+    },
     /// The first nonempty effective interval outside the admitted processing mode.
     UnsupportedProcessingMode {
         /// Original UTF-16 interval.
@@ -257,4 +295,74 @@ pub enum NumericRequirement {
     FiniteNonNegative,
     FiniteGreaterThanZero,
     UnitInterval,
+}
+
+/// Tables used by glyph-free static metrics.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FontMetricTable {
+    /// `head`.
+    Head,
+    /// `hhea`.
+    Hhea,
+    /// `OS/2`.
+    Os2,
+    /// `MVAR`.
+    Mvar,
+}
+/// Used metric-table refusal.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FontMetricTableError {
+    /// Required table is absent.
+    Missing,
+    /// Multiple directory entries claim the table.
+    Duplicate,
+    /// Recorded range is inaccessible.
+    Inaccessible,
+    /// Contents are truncated or malformed.
+    Malformed,
+    /// Version is outside the admitted domain.
+    UnsupportedVersion,
+    /// OpenType units-per-em is invalid.
+    InvalidUnitsPerEm {
+        /// Actual rejected value.
+        value: u16,
+    },
+}
+/// Required same-instance metric fields.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FontMetricField {
+    /// Actual instance size.
+    Size,
+    /// Nonnegative baseline ascent.
+    Ascent,
+    /// Signed nonpositive descent.
+    Descent,
+    /// Signed additional line spacing.
+    Leading,
+    /// Strike center above baseline.
+    StrikeoutCenter,
+    /// Positive strike thickness.
+    StrikeoutThickness,
+}
+/// Numeric validation stage.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FontMetricPhase {
+    /// Unscaled static provider-selected units.
+    Unscaled,
+    /// Same-instance f64 scaled values.
+    Scaled,
+    /// Strike normalization or fallback.
+    StrikeoutNormalization,
+}
+/// Numeric refusal category; no clamping is applied.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FontMetricNumericError {
+    /// Required finite value is nonfinite.
+    NonFinite,
+    /// Nonnegative metric is negative.
+    Negative,
+    /// Nonpositive metric is positive.
+    Positive,
+    /// Positive metric is zero or negative.
+    NonPositive,
 }

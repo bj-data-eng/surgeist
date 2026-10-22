@@ -126,3 +126,30 @@ they do not promise same-family replacement or character coverage. Registered
 bytes remain available across refresh. Use `SystemOptions::default()` for normal
 system discovery in addition to registrations. The bundled [Ahem fixture](../tests/fixtures/fonts/ahem/PROVENANCE.md)
 is for deterministic tests; callers choose their own appropriately licensed fonts.
+
+## Read metrics without shaping text
+
+After registering an appropriately licensed font, retain its actual face and
+publication. No sample text or layout is needed:
+
+```rust
+use surgeist_text::{FontCatalogueMode, System, SystemOptions};
+
+let mut system = System::new(SystemOptions {
+    font_catalogue: FontCatalogueMode::RegisteredOnly,
+})?;
+let bytes = std::fs::read("tests/fixtures/fonts/ahem/Ahem.ttf")?;
+system.register_fonts(bytes)?;
+let face = system.registered_font_faces().next().expect("registered face").to_owned();
+let basis = face.catalogue_identity().clone();
+let metrics = face.unsynthesized_instance(20.0, &[])?.metrics(&basis)?;
+assert_eq!(metrics.ascent(), 16.0);
+assert_eq!(metrics.descent(), -4.0);
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+This static unsynthesized Ahem example reads the registered resource's own
+metrics. Keep the original publication with historical resources; substituting
+a new System publication after refresh refuses. Consult the [metric domain and
+strike normalization](reference.md#glyph-free-associated-font-metrics) before
+using these values for placement.

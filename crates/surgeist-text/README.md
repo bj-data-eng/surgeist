@@ -32,6 +32,12 @@ layouts keep their selected font resources. See [font registration](docs/how-to.
 This catalogue foundation retains the current Parley engine; prepared text and
 layout-selected line finalization remain separate unfinished work.
 
+`System::registered_font_faces` lends actual registered resources without shaping
+a sample character or resolving a Style. Retained `FontData` can select an explicit
+unsynthesized instance and query static, same-instance f64 font/strikeout metrics
+under its captured catalogue publication. Variable/MVAR metrics and unresolved
+synthesis remain unsupported; this does not change current paragraph metrics.
+
 Borrowed run, face and effective-instance views expose actual positioned output
 without copying glyph arrays. The optional standalone paint adapter belongs to
 [Render](../surgeist-render/README.md) under its `render-text` feature; Text does

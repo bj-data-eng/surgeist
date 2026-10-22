@@ -5,8 +5,9 @@ use parley::PositionedLayoutItem;
 use super::geometry::rect_from_bounds;
 use super::projection::{ProviderIndex, ScalarProjection};
 use super::{
-    BaselineShift, Brush, Direction, Edit, Id, InlineBoxKind, Key, Point, Range, Rect, Result,
-    SelectionPaint, Size, Source, Style, VerticalAlign,
+    BaselineShift, Brush, Direction, Edit, FontCatalogueIdentity, FontData, FontFace, Id,
+    InlineBoxKind, Key, Point, Range, Rect, Result, SelectionPaint, Size, Source, Style,
+    VerticalAlign,
 };
 
 /// Immutable shaped and line-broken layout.
@@ -130,7 +131,7 @@ impl Layout {
                 Run::new(
                     line_index,
                     fallback_range,
-                    FontRef::from_parley(run.run().font()),
+                    FontRef::from_parley(run.run().font(), self.key.font_catalogue()),
                     style,
                     brush,
                     RunMetrics::new(
@@ -962,32 +963,11 @@ impl FontRef {
         self.data.as_ref()
     }
 
-    fn from_parley(data: &parley::FontData) -> Self {
+    fn from_parley(data: &parley::FontData, catalogue: &FontCatalogueIdentity) -> Self {
         Self {
             id: data.data.id(),
-            data: Some(FontData::from_parley(data.clone())),
+            data: Some(FontFace::new(&data.data, data.index, catalogue).to_owned()),
         }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct FontData {
-    data: parley::FontData,
-}
-
-impl FontData {
-    fn from_parley(data: parley::FontData) -> Self {
-        Self { data }
-    }
-
-    #[must_use]
-    pub fn bytes(&self) -> &[u8] {
-        self.data.data.as_ref()
-    }
-
-    #[must_use]
-    pub const fn index(&self) -> u32 {
-        self.data.index
     }
 }
 

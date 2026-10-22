@@ -23,6 +23,7 @@ optional standalone paint adapter and consumes Text directly.
 | Pre-font whitespace processing, correspondence and partial plaintext | [src/processing.rs](src/processing.rs), [owning tests](src/processing/tests.rs) |
 | Text style inputs, supported features, options, and diagnostics | [src/style.rs](src/style.rs), [src/style_support.rs](src/style_support.rs), [src/options.rs](src/options.rs), [src/error.rs](src/error.rs) |
 | Layout construction and cache identity | [src/system.rs](src/system.rs), [src/catalogue.rs](src/catalogue.rs), [src/cache.rs](src/cache.rs) |
+| Canonical font resources/instances and glyph-free static metrics | [src/font.rs](src/font.rs), [metrics](src/font/metrics.rs) |
 | Layout outputs, geometry, movement, and optional projections | [src/layout.rs](src/layout.rs), [src/geometry.rs](src/geometry.rs) |
 | Borrowed actual run, face and instance readback | [src/views.rs](src/views.rs) |
 | Owned optional AccessKit projection | [src/accessibility.rs](src/accessibility.rs), [provenance](docs/accessibility-provenance.md) |

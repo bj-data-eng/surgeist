@@ -1,10 +1,8 @@
-use std::{fmt, sync::Arc};
-
-use skrifa::{Tag, raw::TableProvider};
+use std::fmt;
 
 use crate::{
-    Brush, DecorationKind, DecorationRun, Error, ErrorCode, ErrorDetail, FontSynthesisKind, Layout,
-    NumericRequirement, Range, Rect, Result,
+    Brush, DecorationKind, DecorationRun, EffectiveFontInstance, Error, ErrorCode, ErrorDetail,
+    FontFace, FontSynthesisKind, Layout, Range, Rect, Result,
 };
 
 /// An actual positioned glyph run borrowed from one immutable layout.
@@ -75,9 +73,8 @@ impl RunView<'_> {
     /// Actual resource and collection face used by the shaper.
     #[must_use]
     pub fn face(&self) -> FontFace<'_> {
-        FontFace {
-            data: self.run.run().font(),
-        }
+        let font = self.run.run().font();
+        FontFace::new(&font.data, font.index, self.layout.key.font_catalogue())
     }
 
     /// Fully positioned provider glyphs; offsets and baseline have already been applied.
@@ -139,188 +136,6 @@ impl GlyphPlacement {
     pub const fn advance(self) -> f32 {
         self.advance
     }
-}
-
-/// A borrowed actual provider font resource and collection face.
-#[derive(Clone, Copy)]
-pub struct FontFace<'a> {
-    data: &'a parley::FontData,
-}
-
-impl fmt::Debug for FontFace<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("FontFace")
-            .field("index", &self.index())
-            .field("bytes", &self.bytes().len())
-            .finish_non_exhaustive()
-    }
-}
-
-impl<'a> FontFace<'a> {
-    /// Whole original resource bytes, borrowed without copying.
-    #[must_use]
-    pub fn bytes(&self) -> &'a [u8] {
-        self.data.data.as_ref()
-    }
-
-    /// Actual face index within that resource.
-    #[must_use]
-    pub const fn index(&self) -> u32 {
-        self.data.index
-    }
-
-    /// Compares the actual strong allocation and collection index, not IDs or content.
-    #[must_use]
-    pub fn is_same_face(&self, other: &Self) -> bool {
-        let (left, _) = self.data.data.clone().into_raw_parts();
-        let (right, _) = other.data.data.clone().into_raw_parts();
-        self.index() == other.index() && Arc::ptr_eq(&left, &right)
-    }
-}
-
-/// A borrowed, complete shaping instance with no unresolved faux synthesis.
-#[derive(Debug)]
-pub struct EffectiveFontInstance<'a> {
-    face: FontFace<'a>,
-    size: f32,
-    axes: usize,
-    stored: &'a [i16],
-}
-
-impl<'a> EffectiveFontInstance<'a> {
-    fn qualify(face: FontFace<'a>, size: f32, stored: &'a [i16]) -> Result<Self> {
-        if !size.is_finite() || size <= 0.0 {
-            return Err(
-                Error::new(ErrorCode::InvalidFontInstance, "invalid shaping size").with_detail(
-                    ErrorDetail::InvalidNumericField {
-                        field: "shaping font size",
-                        value: size,
-                        requirement: NumericRequirement::FiniteGreaterThanZero,
-                    },
-                ),
-            );
-        }
-        let axes = axis_count(face)?;
-        if !stored.is_empty() && stored.len() != axes {
-            return Err(Error::new(
-                ErrorCode::InvalidFontInstance,
-                "normalized coordinates do not cover the actual axes",
-            )
-            .with_detail(ErrorDetail::FontCoordinateCount {
-                expected: axes,
-                actual: stored.len(),
-            }));
-        }
-        for (axis, &bits) in stored.iter().enumerate() {
-            if !(-16384..=16384).contains(&bits) {
-                return Err(Error::new(
-                    ErrorCode::InvalidFontInstance,
-                    "noncanonical normalized font coordinate",
-                )
-                .with_detail(ErrorDetail::FontCoordinate { axis, bits }));
-            }
-        }
-        Ok(Self {
-            face,
-            size,
-            axes,
-            stored,
-        })
-    }
-
-    /// The actual borrowed face used by this instance.
-    #[must_use]
-    pub const fn face(&self) -> FontFace<'a> {
-        self.face
-    }
-
-    /// Actual canonical shaping size.
-    #[must_use]
-    pub const fn font_size(&self) -> f32 {
-        self.size
-    }
-
-    /// Complete actual variation-axis count; zero only for a proven static face.
-    #[must_use]
-    pub const fn axis_count(&self) -> usize {
-        self.axes
-    }
-
-    /// Complete normalized F2Dot14 bits in actual axis order, without allocation.
-    pub fn normalized_coords(&self) -> impl ExactSizeIterator<Item = i16> + Clone + '_ {
-        (0..self.axes).map(|axis| {
-            if self.stored.is_empty() {
-                0
-            } else {
-                self.stored[axis]
-            }
-        })
-    }
-}
-
-fn axis_count(face: FontFace<'_>) -> Result<usize> {
-    let font = skrifa::FontRef::from_index(face.bytes(), face.index()).map_err(|_| malformed())?;
-    let tag = Tag::new(b"fvar");
-    let mut records = font
-        .table_directory()
-        .table_records()
-        .iter()
-        .filter(|record| record.tag() == tag);
-    if records.next().is_none() {
-        return Ok(0);
-    }
-    if records.next().is_some() {
-        return Err(malformed());
-    }
-    // Table presence is established separately: inaccessible/truncated data must
-    // never be reclassified as a static font by a permissive metadata accessor.
-    let data = font.table_data(tag).ok_or_else(malformed)?;
-    let fvar = font.fvar().map_err(|_| malformed())?;
-    let count = usize::from(fvar.axis_count());
-    let offset =
-        usize::try_from(fvar.axis_instance_arrays_offset().to_u32()).map_err(|_| malformed())?;
-    let instance_size = usize::from(fvar.instance_size());
-    let required_instance = count.checked_mul(4).and_then(|n| n.checked_add(4));
-    let axes_end = count.checked_mul(20).and_then(|n| offset.checked_add(n));
-    let table_end = axes_end.and_then(|n| {
-        usize::from(fvar.instance_count())
-            .checked_mul(instance_size)
-            .and_then(|instances| n.checked_add(instances))
-    });
-    if fvar.version().major != 1
-        || fvar.version().minor != 0
-        || data.as_bytes().get(6..8) != Some(&[0, 2])
-        || count == 0
-        || fvar.axis_size() != 20
-        || offset < 16
-        || !required_instance.is_some_and(|n| instance_size == n || instance_size == n + 2)
-        || !table_end.is_some_and(|end| end <= data.len())
-    {
-        return Err(malformed());
-    }
-    let axes = fvar.axes().map_err(|_| malformed())?;
-    if axes.len() != count {
-        return Err(malformed());
-    }
-    for (index, axis) in axes.iter().enumerate() {
-        if axis.min_value() > axis.default_value()
-            || axis.default_value() > axis.max_value()
-            || axes[..index]
-                .iter()
-                .any(|previous| previous.axis_tag() == axis.axis_tag())
-        {
-            return Err(malformed());
-        }
-    }
-    Ok(count)
-}
-
-fn malformed() -> Error {
-    Error::new(
-        ErrorCode::InvalidFontInstance,
-        "malformed actual font variation metadata",
-    )
-    .with_detail(ErrorDetail::MalformedFontVariations)
 }
 
 fn unresolved(kind: FontSynthesisKind) -> Error {

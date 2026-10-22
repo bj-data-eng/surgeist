@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_fonts::two_face_collection;
 
 const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
@@ -130,36 +131,6 @@ fn corrupt_charmap(mut font: Vec<u8>) -> Vec<u8> {
         .expect("the actual Ahem fixture has a cmap directory entry");
     font[record..record + 4].copy_from_slice(b"zzzz");
     font
-}
-
-fn two_face_collection(second: Vec<u8>) -> Vec<u8> {
-    let mut collection = Vec::from(&b"ttcf\0\x01\0\0\0\0\0\x02"[..]);
-    let first_offset = 20_u32;
-    let second_offset = first_offset
-        .checked_add(u32::try_from(AHEM.len()).expect("fixture fits a font offset"))
-        .expect("two fixtures fit font offsets");
-    collection.extend_from_slice(&first_offset.to_be_bytes());
-    collection.extend_from_slice(&second_offset.to_be_bytes());
-    for (bytes, offset) in [(AHEM, first_offset), (second.as_slice(), second_offset)] {
-        let start = collection.len();
-        collection.extend_from_slice(bytes);
-        let tables = usize::from(u16::from_be_bytes([bytes[4], bytes[5]]));
-        for table in 0..tables {
-            let field = start + 12 + table * 16 + 8;
-            let original = u32::from_be_bytes(
-                collection[field..field + 4]
-                    .try_into()
-                    .expect("four-byte table offset"),
-            );
-            collection[field..field + 4].copy_from_slice(
-                &original
-                    .checked_add(offset)
-                    .expect("fixture table offset fits")
-                    .to_be_bytes(),
-            );
-        }
-    }
-    collection
 }
 
 fn invalid_collection_face() -> Vec<u8> {

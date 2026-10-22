@@ -12,6 +12,7 @@ mod catalogue;
 mod composer;
 mod edit;
 mod error;
+mod font;
 mod geometry;
 mod id;
 mod layout;
@@ -34,17 +35,18 @@ pub use catalogue::{FontCatalogueIdentity, FontCatalogueMode};
 pub use composer::{Composer, Mark, compose, source};
 pub use edit::{Edit, TextEdit};
 pub use error::{
-    DocumentSegmentBreakError, Error, ErrorCode, ErrorDetail, FontSynthesisKind,
-    NumericRequirement, ProcessingCapacityError, Result, ShapingBoundary,
+    DocumentSegmentBreakError, Error, ErrorCode, ErrorDetail, FontMetricField,
+    FontMetricNumericError, FontMetricPhase, FontMetricTable, FontMetricTableError,
+    FontSynthesisKind, NumericRequirement, ProcessingCapacityError, Result, ShapingBoundary,
 };
+pub use font::{EffectiveFontInstance, FontData, FontFace, FontMetrics, StrikeoutMetrics};
 pub use geometry::{Point, Rect, Size};
 pub use id::Id;
 pub use layout::{
     Affinity, BaselineShiftFact, Cluster, Cursor, CursorGeometry, DecorationKind, DecorationRun,
-    FontData, FontRef, Glyph, Hit, InlineBoxMetricFact, InlineMetricFacts, Layout, Line,
-    LineMetricFact, Metrics, Movement, PaintedSelectionGeometry, PaintedSelectionRect,
-    PositionedInlineBox, Run, RunMetricFact, RunMetrics, Selection, SelectionGeometry,
-    SelectionRect,
+    FontRef, Glyph, Hit, InlineBoxMetricFact, InlineMetricFacts, Layout, Line, LineMetricFact,
+    Metrics, Movement, PaintedSelectionGeometry, PaintedSelectionRect, PositionedInlineBox, Run,
+    RunMetricFact, RunMetrics, Selection, SelectionGeometry, SelectionRect,
 };
 pub use options::{Alignment, Indent, Options, TextAlignLast, TextOverflow, ValidatedOptions};
 pub use processing::{
@@ -65,7 +67,10 @@ pub use style::{
 pub use style_support::{TextStyleFeature, TextStyleSupport, UnsupportedTextStyleReason};
 pub use system::{Builder, System, SystemOptions};
 pub use text::Text;
-pub use views::{EffectiveFontInstance, FontFace, GlyphPlacement, RunView};
+pub use views::{GlyphPlacement, RunView};
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod test_fonts;

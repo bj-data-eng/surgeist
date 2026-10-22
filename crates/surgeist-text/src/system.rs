@@ -6,8 +6,9 @@ use parley::{
 };
 
 use super::{
-    Brush, FontCatalogueIdentity, FontCatalogueMode, Id, InlineBox, Key, Layout, Options, Range,
-    Result, Source, Span, Stats, Style, Text, ValidatedOptions, ValidatedSource, ValidatedStyle,
+    Brush, FontCatalogueIdentity, FontCatalogueMode, FontFace, Id, InlineBox, Key, Layout, Options,
+    Range, Result, Source, Span, Stats, Style, Text, ValidatedOptions, ValidatedSource,
+    ValidatedStyle,
 };
 
 use crate::{catalogue::Catalogue, projection::ScalarProjection};
@@ -74,6 +75,12 @@ impl System {
     #[must_use]
     pub const fn font_catalogue_identity(&self) -> &FontCatalogueIdentity {
         self.catalogue.identity()
+    }
+
+    /// Borrows only actual registered faces, in registration then file-face order.
+    /// This performs no system discovery, family matching, fallback or glyph layout.
+    pub fn registered_font_faces(&self) -> impl Iterator<Item = FontFace<'_>> {
+        self.catalogue.registered_faces()
     }
 
     fn install_catalogue(&mut self, candidate: Catalogue) {

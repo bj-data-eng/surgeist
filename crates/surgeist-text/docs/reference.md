@@ -31,7 +31,8 @@ private implementation organization.
 | Paragraph layout | `Options`, `Alignment`, `Indent`, `ValidatedOptions` | [options.rs](../src/options.rs) |
 | Layout construction | `System`, `Builder`, `SystemOptions` | [system.rs](../src/system.rs) |
 | Font catalogue | `FontCatalogueMode`, issued `FontCatalogueIdentity`, `System::register_fonts` and `refresh_fonts` | [catalogue.rs](../src/catalogue.rs) |
-| Borrowed readback | `RunView`, `FontFace`, `EffectiveFontInstance`, `GlyphPlacement` | [views.rs](../src/views.rs) |
+| Font resources and metrics | `FontData`, `FontFace`, `EffectiveFontInstance`, `FontMetrics`, `StrikeoutMetrics` | [font.rs](../src/font.rs), [font/metrics.rs](../src/font/metrics.rs) |
+| Borrowed readback | `RunView`, positioned `GlyphPlacement`, actual decorations | [views.rs](../src/views.rs) |
 | Output and interaction | `Layout`, glyph runs, line/box facts, cursors, selections, movement | [layout.rs](../src/layout.rs) |
 | Ranges and edits | `Range`, `SourcePosition`, `SourceRange`, `Edit`, `TextEdit` | [range.rs](../src/range.rs), [edit.rs](../src/edit.rs) |
 | Cache identity | `Key`, `SourceKey`, `StyleKey`, `OptionsKey`, `FontGeneration`, `Stats` | [cache.rs](../src/cache.rs) |
@@ -115,6 +116,43 @@ No operation publishes partial registration or clears a cache on refusal.
 Registration does not define unregister, family replacement, or a new missing-
 glyph policy. These are catalogue capabilities, not prepared text or selected-
 line finalization; the scalar Parley engine remains in use.
+
+## Glyph-free associated-font metrics
+
+`System::registered_font_faces()` lends accepted registrations in request order,
+then original collection-face order. It does not enumerate discovered fonts,
+resolve a style or shape a sample. `FontFace::to_owned()` retains the actual Blob,
+collection index and catalogue publication without copying font bytes. The same
+canonical resource owner is used by layout readback. `FontData` equality retains
+its existing resource identity plus collection index semantics; catalogue
+qualification is separate. Refresh can therefore produce resource-equal handles
+with different authentic publications.
+
+`FontData::unsynthesized_instance(size, normalized_coords)` validates the actual
+face and complete canonical coordinates. Its borrowed `metrics(expected_catalogue)`
+query first requires the resource's exact publication. A historical resource
+continues to work with its original publication after refresh or System disposal;
+a later or foreign publication refuses. Queries neither shape glyphs nor change
+layout/cache statistics. The result borrows the actual resource and coordinate
+storage, rather than a temporary instance view.
+
+This metric domain supports static unsynthesized faces only. Actual fvar faces
+(including all-zero defaults) and present MVAR refuse; broader variable-instance
+readback for painting remains available. Used table entries must be unique and
+accessible, with valid required header/line metric fields. Malformed present
+tables refuse instead of silently becoming missing defaults. Earlier catalogue
+admission may already reject an invalid font.
+
+Metrics use f64 geometry at the actual f32 instance size: nonnegative ascent,
+signed nonpositive descent, and finite signed leading. A usable provider strike
+top and positive thickness become `center = top - thickness / 2`. Otherwise the
+fallback is `center = ascent / 2`, `thickness = size / 18`. At horizontal baseline
+`b`, strike top is `b - center - thickness / 2`. This query does not change the
+existing paragraph engine's f32 metrics or decoration policy, and adds no font
+matching, glyph coverage, variable-metric or complete text-engine guarantee.
+
+The new catalogue/metric error variants expand exhaustive public enums and are
+a breaking source API change in this pre-v1 crate.
 
 ## Defaults and validation
 
