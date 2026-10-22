@@ -123,7 +123,7 @@ impl TextStyleFeature {
             | Self::ConcreteDecorationColor
             | Self::SelectionColor => TextStyleSupport::Supported,
             Self::ExplicitTextDirection => TextStyleSupport::Unsupported(
-                UnsupportedTextStyleReason::RequiresParleyBaseDirection,
+                UnsupportedTextStyleReason::RequiresParagraphBaseDirection,
             ),
             Self::WhiteSpaceCollapse => TextStyleSupport::Unsupported(
                 UnsupportedTextStyleReason::RequiresSourceRangePreservation,
@@ -160,7 +160,7 @@ pub enum TextStyleSupport {
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum UnsupportedTextStyleReason {
-    RequiresParleyBaseDirection,
+    RequiresParagraphBaseDirection,
     RequiresSourceRangePreservation,
     /// The paragraph executor does not yet consume processed source.
     RequiresProcessedSourceLayout,
@@ -170,5 +170,5 @@ pub enum UnsupportedTextStyleReason {
     RequiresColorResolution,
     RequiresInlineMetricContract,
     RequiresBroadVerticalAlignPolicy,
-    IndentShapeNotExpressibleByCurrentBackend,
+    RequiresStandaloneIndentPolicy,
 }

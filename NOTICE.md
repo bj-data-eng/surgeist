@@ -134,12 +134,14 @@ The exact included license retains Copyright (c) 2006-2013 James Graham,
 Geoffrey Sneddon, and other contributors, with its full permission notice and
 disclaimer. Keep that license and credits with redistributed fixture files.
 
-### Parley 0.9.0 source references
+### Parley 0.9.0 adapted source and references
 
 The [text contract witness](references/parley-0.9-text-contract-witness.md)
 retains bounded excerpts from Parley 0.9.0, distributed by the Parley Authors.
 Each excerpt records the original file identity, covered lines and copyright
-header. These are reference excerpts, not an ingested production implementation.
+header. The Text crate also adapts selected Parley mechanisms into its owned
+implementation; its [notice](crates/surgeist-text/NOTICE.md#parley-090-adapted-source)
+covers that source separately from the reference excerpts.
 
 * Licenses: [Apache-2.0](crates/surgeist-text/licenses/parley/LICENSE-APACHE) OR [MIT](crates/surgeist-text/licenses/parley/LICENSE-MIT)
 * Homepage: [Linebender Parley](https://github.com/linebender/parley)

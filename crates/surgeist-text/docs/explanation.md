@@ -6,8 +6,9 @@
 layout facts. `Source` carries the string, style spans, optional identity and
 revision, and inline boxes. `Style` supplies the default resolved text style;
 `Options` supplies paragraph constraints. [System](../src/system.rs) validates
-these inputs, derives a cache key, and either returns a cached layout or asks
-Parley to shape, break lines, and align the result.
+these inputs, derives a cache key, and either returns an exact matching cached layout or uses owned analysis,
+font preparation, selected-line finalization and placement. The private standalone
+chooser calls the same finalizer; source and fonts stay retained by immutable phases.
 
 The resulting [Layout](../src/layout.rs) is an immutable snapshot containing
 authored source and the shaped layout. It exposes line metrics, resolved font
@@ -26,11 +27,12 @@ facade provides optional composition and shared API auditing.
 ## Source coordinates remain authored coordinates
 
 Text ranges count exact UTF-16 code units. Immutable source preserves isolated
-surrogates and endpoints within pairs for edits and extraction. Scalar layout
-uses a private lossless UTF-8 projection; public result ranges map back to units.
+surrogates and endpoints within pairs for edits and extraction. Original atoms retain raw Unicode properties and exact source associations.
+Separate private segmentation and glyph projections map their actual boundaries back to units.
 Caret geometry uses legal grapheme/provider stops and affinity, while partial-unit
-selection geometry covers the complete typographic unit. Isolated-source layout
-currently refuses before font/cache work and never analyzes replacement text.
+selection geometry covers the complete typographic unit. Isolated units have original bidi class L; their glyph-only U+FFFD replacement
+does not supply original property analysis. Host UTF-8 accessibility refuses
+ill-formed original text atomically rather than repairing the source.
 
 The separate [source-processing phase](../src/processing.rs) executes lexical
 Collapse, Discard, Preserve and PreserveSpaces with exact authored correspondence
@@ -45,8 +47,8 @@ substituting behavior.
 
 Inline-box alignment illustrates another distinction. Authored alignment and
 baseline-shift requests survive validation and appear in metric facts, while the
-current backend determines the actual box rectangle without applying those
-requests. Consumers must distinguish retained intent from completed placement.
+standalone path retains its current bottom-on-baseline geometry without
+applying those CSS alignment requests. Consumers must distinguish retained intent from completed placement.
 
 ## Identity, edits, and caching
 
@@ -54,7 +56,9 @@ A source identity is optional caller-supplied metadata; the crate does not defin
 a document identity system. The [cache key](../src/cache.rs) includes source ID,
 revision, text and inline-box content, default and span styles, layout options,
 and the authentic font catalogue publication (issuer identity and checked generation). Identity alone therefore does not stand in for the
-contents of a layout request.
+contents of a layout request. A key selects a cache candidate; captured inputs
+are compared before reuse. Explicitly supplied analyses additionally require the
+same opaque analysis identity, so equal content cannot substitute another owner.
 
 [TextEdit](../src/edit.rs) normalizes insertion, replacement, or deletion to a
 validated range and replacement text. Applying it rechecks the range against
@@ -71,7 +75,7 @@ anchors inside the replaced interval move to the inserted end. Later coordinates
 shift by the code-unit length difference. Applying an edit returns a `Source`; a new
 layout request performs validation and shaping for that version.
 
-Each `System` owns its contexts and an in-memory layout cache. Repeated identical
+Each `System` owns direct provider scratch and an in-memory layout cache. Repeated identical
 requests reuse cached layouts; counters expose hits, misses, font refreshes, and
 invalidations. Registration validates all faces off-side before publishing any
 of them. `refresh_fonts()` constructs a fresh configured font collection and
@@ -86,3 +90,18 @@ not an eager snapshot of every lazily loaded system font file. Each retained
 layout owns the actual selected font bytes, so refresh or System disposal does
 not invalidate historical output. No cache size limit is imposed. See
 [src/catalogue.rs](../src/catalogue.rs) and [src/system.rs](../src/system.rs).
+
+## Font-independent and positioned accessibility
+
+`AnalyzedSource` owns exact source, actual span winners, original Unicode facts
+and logical grapheme boundaries without font selection. Its accessibility front
+publishes source text and language with unsupported glyph/font/line/character/parent
+geometry omitted. A font preparation and resulting Layout retain that same analysis.
+Positioned projection enriches the shared semantic builder from actual finalized
+rows. Replacement rebuilds host nodes so optional fields clear coherently.
+
+Source-only queries require their exact analyzed binding; placed queries require
+both the same analysis and exact placed identity. Updates can enrich or clear a
+binding, while stale queries return a typed mismatch. Original isolated units stay
+analyzable, but AccessKit's scalar UTF-8 text domain refuses them without changing
+an existing binding. See [source provenance](owned-engine-provenance.md).

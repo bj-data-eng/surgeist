@@ -6,7 +6,6 @@ use std::{
 
 use fontique::{Collection, CollectionOptions, SourceCache};
 use linebender_resource_handle::Blob;
-use parley::FontContext;
 use skrifa::raw::FileRef;
 
 use crate::{Error, ErrorCode, ErrorDetail, FontFace, FontGeneration, Result};
@@ -95,7 +94,8 @@ struct RegisteredFont {
 pub(crate) struct Catalogue {
     mode: FontCatalogueMode,
     identity: FontCatalogueIdentity,
-    context: FontContext,
+    collection: Collection,
+    source_cache: SourceCache,
     registered: Vec<RegisteredFont>,
 }
 
@@ -104,7 +104,8 @@ impl Catalogue {
         Self {
             mode,
             identity: FontCatalogueIdentity::initial(),
-            context: new_context(mode),
+            collection: new_collection(mode),
+            source_cache: SourceCache::default(),
             registered: Vec::new(),
         }
     }
@@ -113,8 +114,13 @@ impl Catalogue {
         &self.identity
     }
 
-    pub(crate) const fn context_mut(&mut self) -> &mut FontContext {
-        &mut self.context
+    pub(crate) const fn collection_mut(&mut self) -> &mut Collection {
+        &mut self.collection
+    }
+
+    pub(crate) fn query(&mut self) -> fontique::Query<'_> {
+        self.source_cache.prune(128, false);
+        self.collection.query(&mut self.source_cache)
     }
 
     pub(crate) fn registered_faces(&self) -> impl Iterator<Item = FontFace<'_>> {
@@ -138,7 +144,7 @@ impl Catalogue {
         // All collections originate unshared: registration mutates this clone's
         // CommonData, never the published collection's registrations.
         let mut candidate = self.clone();
-        admit_registration(&mut candidate.context.collection, &registration)?;
+        admit_registration(&mut candidate.collection, &registration)?;
         candidate.registered.push(registration);
         candidate.identity = identity;
         Ok(candidate)
@@ -146,14 +152,15 @@ impl Catalogue {
 
     pub(crate) fn refreshed(&self) -> Result<Self> {
         let identity = self.identity.successor()?;
-        let mut context = new_context(self.mode);
+        let mut collection = new_collection(self.mode);
         for registration in &self.registered {
-            admit_registration(&mut context.collection, registration)?;
+            admit_registration(&mut collection, registration)?;
         }
         Ok(Self {
             mode: self.mode,
             identity,
-            context,
+            collection,
+            source_cache: SourceCache::default(),
             registered: self.registered.clone(),
         })
     }
@@ -164,14 +171,11 @@ impl Catalogue {
     }
 }
 
-fn new_context(mode: FontCatalogueMode) -> FontContext {
-    FontContext {
-        collection: Collection::new(CollectionOptions {
-            shared: false,
-            system_fonts: mode == FontCatalogueMode::System,
-        }),
-        source_cache: SourceCache::default(),
-    }
+fn new_collection(mode: FontCatalogueMode) -> Collection {
+    Collection::new(CollectionOptions {
+        shared: false,
+        system_fonts: mode == FontCatalogueMode::System,
+    })
 }
 
 fn font_indices(bytes: &[u8]) -> Result<Vec<u32>> {
@@ -228,34 +232,29 @@ mod tests {
             .with_registration(bytes.to_vec())
             .expect("Ahem is admitted");
         let old_id = registered
-            .context
             .collection
             .family_id("Ahem")
             .expect("the actual registration issues a family identity");
         let old_family = registered
-            .context
             .collection
             .family(old_id)
             .expect("the original provider resolves its issued family");
 
         let mut refreshed = registered.refreshed().expect("Ahem is replayed");
         let new_id = refreshed
-            .context
             .collection
             .family_id("Ahem")
             .expect("the fresh provider admits the replayed family");
         assert_ne!(new_id, old_id);
-        assert!(refreshed.context.collection.family(old_id).is_none());
+        assert!(refreshed.collection.family(old_id).is_none());
         let new_family = refreshed
-            .context
             .collection
             .family(new_id)
             .expect("the fresh provider resolves its own family identity");
         assert_eq!(new_family.name(), "Ahem");
-        assert!(registered.context.collection.family(new_id).is_none());
+        assert!(registered.collection.family(new_id).is_none());
         assert_eq!(
             registered
-                .context
                 .collection
                 .family(old_id)
                 .expect("refresh leaves the original provider intact")
@@ -275,28 +274,20 @@ mod tests {
     #[test]
     fn registered_only_excludes_system_families_before_and_after_refresh() {
         let mut catalogue = Catalogue::new(FontCatalogueMode::RegisteredOnly);
-        assert_eq!(catalogue.context.collection.family_names().count(), 0);
+        assert_eq!(catalogue.collection.family_names().count(), 0);
         let bytes = include_bytes!("../tests/fixtures/fonts/ahem/Ahem.ttf");
         let mut registered = catalogue
             .with_registration(bytes.to_vec())
             .expect("Ahem is admitted");
         assert_eq!(
-            registered
-                .context
-                .collection
-                .family_names()
-                .collect::<Vec<_>>(),
+            registered.collection.family_names().collect::<Vec<_>>(),
             ["Ahem"]
         );
         let mut refreshed = registered.refreshed().expect("Ahem is replayed");
         assert_eq!(
-            refreshed
-                .context
-                .collection
-                .family_names()
-                .collect::<Vec<_>>(),
+            refreshed.collection.family_names().collect::<Vec<_>>(),
             ["Ahem"]
         );
-        assert_eq!(catalogue.context.collection.family_names().count(), 0);
+        assert_eq!(catalogue.collection.family_names().count(), 0);
     }
 }

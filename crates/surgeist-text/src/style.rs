@@ -1,4 +1,5 @@
-use parley::{FontFamilyName, FontFeature, FontStyle, FontVariation, FontWeight, FontWidth};
+use fontique::{FontStyle, FontWeight, FontWidth, Language};
+use parlance::{FontFamilyName, FontFeature, FontVariation};
 
 use super::{
     Error, ErrorCode, ErrorDetail, NumericRequirement, Result, TextStyleFeature,
@@ -240,8 +241,8 @@ pub struct Style {
     pub font: Font,
     pub size: f32,
     pub line_height: LineHeight,
-    pub letter_spacing: f32,
-    pub word_spacing: f32,
+    pub letter_spacing: f64,
+    pub word_spacing: f64,
     pub brush: Brush,
     pub underline: Decoration,
     pub strikethrough: Decoration,
@@ -285,19 +286,9 @@ impl Default for Style {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LineHeight {
-    MetricsRelative(f32),
-    FontSizeRelative(f32),
-    Absolute(f32),
-}
-
-impl From<LineHeight> for parley::LineHeight {
-    fn from(line_height: LineHeight) -> Self {
-        match line_height {
-            LineHeight::MetricsRelative(value) => Self::MetricsRelative(value),
-            LineHeight::FontSizeRelative(value) => Self::FontSizeRelative(value),
-            LineHeight::Absolute(value) => Self::Absolute(value),
-        }
-    }
+    MetricsRelative(f64),
+    FontSizeRelative(f64),
+    Absolute(f64),
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -318,29 +309,10 @@ pub enum WordBreak {
     KeepAll,
 }
 
-impl From<WordBreak> for parley::WordBreak {
-    fn from(word_break: WordBreak) -> Self {
-        match word_break {
-            WordBreak::Normal => Self::Normal,
-            WordBreak::BreakAll => Self::BreakAll,
-            WordBreak::KeepAll => Self::KeepAll,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Wrap {
     None,
     Word,
-}
-
-impl From<Wrap> for parley::TextWrapMode {
-    fn from(wrap: Wrap) -> Self {
-        match wrap {
-            Wrap::None => Self::NoWrap,
-            Wrap::Word => Self::Wrap,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -348,16 +320,6 @@ pub enum OverflowWrap {
     Normal,
     Anywhere,
     BreakWord,
-}
-
-impl From<OverflowWrap> for parley::OverflowWrap {
-    fn from(overflow_wrap: OverflowWrap) -> Self {
-        match overflow_wrap {
-            OverflowWrap::Normal => Self::Normal,
-            OverflowWrap::Anywhere => Self::Anywhere,
-            OverflowWrap::BreakWord => Self::BreakWord,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -454,26 +416,18 @@ pub enum DecorationOffset {
 }
 
 impl DecorationOffset {
-    pub fn try_absolute(value: f32) -> Result<Self> {
-        validate_finite_f32(value, "decoration offset")?;
+    pub fn try_absolute(value: f64) -> Result<Self> {
+        validate_finite_f64(value, "decoration offset")?;
         Ok(Self::Absolute(DecorationOffsetValue(value)))
-    }
-
-    #[must_use]
-    pub const fn to_parley(self) -> Option<f32> {
-        match self {
-            Self::Auto => None,
-            Self::Absolute(value) => Some(value.get()),
-        }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct DecorationOffsetValue(f32);
+pub struct DecorationOffsetValue(f64);
 
 impl DecorationOffsetValue {
     #[must_use]
-    pub const fn get(self) -> f32 {
+    pub const fn get(self) -> f64 {
         self.0
     }
 }
@@ -485,26 +439,18 @@ pub enum DecorationThickness {
 }
 
 impl DecorationThickness {
-    pub fn try_absolute(value: f32) -> Result<Self> {
-        validate_positive_f32(value, "decoration thickness")?;
+    pub fn try_absolute(value: f64) -> Result<Self> {
+        validate_positive_f64(value, "decoration thickness")?;
         Ok(Self::Absolute(DecorationThicknessValue(value)))
-    }
-
-    #[must_use]
-    pub const fn to_parley(self) -> Option<f32> {
-        match self {
-            Self::Auto => None,
-            Self::Absolute(value) => Some(value.get()),
-        }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct DecorationThicknessValue(f32);
+pub struct DecorationThicknessValue(f64);
 
 impl DecorationThicknessValue {
     #[must_use]
-    pub const fn get(self) -> f32 {
+    pub const fn get(self) -> f64 {
         self.0
     }
 }
@@ -515,22 +461,14 @@ pub enum DecorationBrush {
     Color(Brush),
 }
 
-impl DecorationBrush {
-    #[must_use]
-    pub const fn to_parley(self) -> Option<Brush> {
-        match self {
-            Self::TextColor => None,
-            Self::Color(brush) => Some(brush),
-        }
-    }
-}
+impl DecorationBrush {}
 
-/// Validated style input with parsed Parley projection data.
+/// Validated style input with validated font request data.
 #[derive(Clone, Debug)]
 pub struct ValidatedStyle {
     authored: Style,
-    locale: Option<parley::Language>,
-    font_family: Option<Vec<parley::FontFamilyName<'static>>>,
+    locale: Option<Language>,
+    font_family: Option<Vec<FontFamilyName<'static>>>,
     font_features: Option<String>,
     font_variations: Option<String>,
 }
@@ -538,8 +476,8 @@ pub struct ValidatedStyle {
 impl ValidatedStyle {
     fn new(
         authored: Style,
-        locale: Option<parley::Language>,
-        font_family: Option<Vec<parley::FontFamilyName<'static>>>,
+        locale: Option<Language>,
+        font_family: Option<Vec<FontFamilyName<'static>>>,
         font_features: Option<String>,
         font_variations: Option<String>,
     ) -> Self {
@@ -582,19 +520,19 @@ impl ValidatedStyle {
         self.authored.text_transform
     }
 
-    pub(crate) const fn parley_locale(&self) -> Option<parley::Language> {
+    pub(crate) const fn font_locale(&self) -> Option<Language> {
         self.locale
     }
 
-    pub(crate) fn parley_font_family(&self) -> Option<&[parley::FontFamilyName<'static>]> {
+    pub(crate) fn parsed_font_family(&self) -> Option<&[FontFamilyName<'static>]> {
         self.font_family.as_deref()
     }
 
-    pub(crate) fn parley_font_features(&self) -> Option<&str> {
+    pub(crate) fn parsed_font_features(&self) -> Option<&str> {
         self.font_features.as_deref()
     }
 
-    pub(crate) fn parley_font_variations(&self) -> Option<&str> {
+    pub(crate) fn parsed_font_variations(&self) -> Option<&str> {
         self.font_variations.as_deref()
     }
 }
@@ -615,8 +553,8 @@ impl TryFrom<Style> for ValidatedStyle {
 }
 
 struct ParsedStyle {
-    locale: Option<parley::Language>,
-    font_family: Option<Vec<parley::FontFamilyName<'static>>>,
+    locale: Option<Language>,
+    font_family: Option<Vec<FontFamilyName<'static>>>,
     font_features: Option<String>,
     font_variations: Option<String>,
 }
@@ -625,11 +563,11 @@ fn validate_style(style: &Style) -> Result<ParsedStyle> {
     if style.direction != Direction::Auto {
         return Err(Error::new(
             ErrorCode::UnsupportedFeature,
-            "explicit text direction is not supported until Parley exposes public base-direction controls",
+            "explicit text direction requires a selected paragraph base-direction policy",
         )
         .with_detail(ErrorDetail::UnsupportedTextStyle {
             feature: TextStyleFeature::ExplicitTextDirection,
-            reason: UnsupportedTextStyleReason::RequiresParleyBaseDirection,
+            reason: UnsupportedTextStyleReason::RequiresParagraphBaseDirection,
         }));
     }
     if style.white_space != WhiteSpace::Preserve {
@@ -659,8 +597,8 @@ fn validate_style(style: &Style) -> Result<ParsedStyle> {
     }
     validate_positive_f32(style.size, "font size")?;
     validate_line_height(style.line_height)?;
-    validate_finite_f32(style.letter_spacing, "letter spacing")?;
-    validate_finite_f32(style.word_spacing, "word spacing")?;
+    validate_finite_f64(style.letter_spacing, "letter spacing")?;
+    validate_finite_f64(style.word_spacing, "word spacing")?;
     validate_slant(style.font.slant)?;
     validate_brush(style.brush, "text brush")?;
     validate_decoration(style.underline, "underline")?;
@@ -686,12 +624,12 @@ fn validate_style(style: &Style) -> Result<ParsedStyle> {
 fn validate_line_height(line_height: LineHeight) -> Result<()> {
     match line_height {
         LineHeight::MetricsRelative(value) => {
-            validate_positive_f32(value, "metrics-relative line height")
+            validate_positive_f64(value, "metrics-relative line height")
         }
         LineHeight::FontSizeRelative(value) => {
-            validate_positive_f32(value, "font-size-relative line height")
+            validate_positive_f64(value, "font-size-relative line height")
         }
-        LineHeight::Absolute(value) => validate_positive_f32(value, "absolute line height"),
+        LineHeight::Absolute(value) => validate_positive_f64(value, "absolute line height"),
     }
 }
 
@@ -727,7 +665,7 @@ fn validate_brush(brush: Brush, name: &str) -> Result<()> {
             )
             .with_detail(ErrorDetail::InvalidNumericField {
                 field: brush_channel_field(name, channel),
-                value,
+                value: f64::from(value),
                 requirement: NumericRequirement::UnitInterval,
             }));
         }
@@ -743,7 +681,7 @@ fn validate_positive_f32(value: f32, name: &str) -> Result<()> {
         )
         .with_detail(ErrorDetail::InvalidNumericField {
             field: numeric_field(name),
-            value,
+            value: f64::from(value),
             requirement: NumericRequirement::FiniteGreaterThanZero,
         }));
     }
@@ -756,7 +694,7 @@ fn validate_finite_f32(value: f32, name: &str) -> Result<()> {
             Error::new(ErrorCode::InvalidStyle, format!("{name} must be finite")).with_detail(
                 ErrorDetail::InvalidNumericField {
                     field: numeric_field(name),
-                    value,
+                    value: f64::from(value),
                     requirement: NumericRequirement::Finite,
                 },
             ),
@@ -808,8 +746,8 @@ fn brush_channel_field(name: &str, channel: &str) -> &'static str {
     }
 }
 
-fn parse_language(locale: &str) -> Result<parley::Language> {
-    parley::Language::parse(locale).map_err(|_| {
+fn parse_language(locale: &str) -> Result<Language> {
+    Language::parse(locale).map_err(|_| {
         Error::new(
             ErrorCode::InvalidStyle,
             format!("locale {locale:?} is not a valid BCP 47 language tag"),
@@ -895,6 +833,36 @@ fn validate_font_variations(source: &str) -> Result<()> {
             ErrorCode::InvalidStyle,
             "font variation settings must contain at least one setting",
         ));
+    }
+    Ok(())
+}
+
+fn validate_finite_f64(value: f64, name: &str) -> Result<()> {
+    if !value.is_finite() {
+        return Err(
+            Error::new(ErrorCode::InvalidStyle, format!("{name} must be finite")).with_detail(
+                ErrorDetail::InvalidNumericField {
+                    field: numeric_field(name),
+                    value,
+                    requirement: NumericRequirement::Finite,
+                },
+            ),
+        );
+    }
+    Ok(())
+}
+
+fn validate_positive_f64(value: f64, name: &str) -> Result<()> {
+    if !value.is_finite() || value <= 0.0 {
+        return Err(Error::new(
+            ErrorCode::InvalidStyle,
+            format!("{name} must be finite and greater than zero"),
+        )
+        .with_detail(ErrorDetail::InvalidNumericField {
+            field: numeric_field(name),
+            value,
+            requirement: NumericRequirement::FiniteGreaterThanZero,
+        }));
     }
     Ok(())
 }

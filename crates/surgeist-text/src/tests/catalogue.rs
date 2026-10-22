@@ -47,10 +47,7 @@ fn assert_ahem_glyphs(layout: &Layout) {
     );
     assert_eq!(layout.metrics().full_width(), 40.0);
     for run in &runs {
-        let data = run
-            .font()
-            .data()
-            .expect("the actual font bytes are retained");
+        let data = run.font();
         assert_eq!(data.bytes(), AHEM);
         assert_eq!(data.index(), 0);
     }
@@ -211,10 +208,7 @@ fn font_bytes_and_historical_layout_survive_registration_refresh_and_system_disp
     assert_eq!(layout.key(), old_key);
     assert_ahem_glyphs(&layout);
     drop(layout);
-    let data = retained
-        .font()
-        .data()
-        .expect("run owns the actual resource");
+    let data = retained.font();
     assert_eq!(data.bytes(), AHEM);
     assert_eq!(data.index(), 0);
     assert_eq!(

@@ -62,18 +62,40 @@ fn rewrite_tables(
             .unwrap()
             .to_be_bytes(),
     );
-    for (i, (tag, data)) in tables.into_iter().enumerate() {
+    for (i, (tag, mut data)) in tables.into_iter().enumerate() {
+        if tag == *b"head" {
+            data[8..12].fill(0);
+        }
         while !output.len().is_multiple_of(4) {
             output.push(0);
         }
         let r = 12 + i * 16;
         let offset = u32::try_from(output.len()).unwrap();
         output[r..r + 4].copy_from_slice(&tag);
+        output[r + 4..r + 8].copy_from_slice(&checksum(&data).to_be_bytes());
         output[r + 8..r + 12].copy_from_slice(&offset.to_be_bytes());
         output[r + 12..r + 16].copy_from_slice(&u32::try_from(data.len()).unwrap().to_be_bytes());
         output.extend(data);
     }
+    while !output.len().is_multiple_of(4) {
+        output.push(0);
+    }
+    let adjustment = 0xb1b0_afba_u32.wrapping_sub(checksum(&output));
+    let head = (0..usize::from(u16_at(&output, 4)))
+        .map(|index| 12 + index * 16)
+        .find(|record| output[*record..*record + 4] == *b"head")
+        .expect("Ahem has a real head table");
+    let head_offset = usize::try_from(u32_at(&output, head + 8)).unwrap();
+    output[head_offset + 8..head_offset + 12].copy_from_slice(&adjustment.to_be_bytes());
     output
+}
+
+fn checksum(bytes: &[u8]) -> u32 {
+    bytes.chunks(4).fold(0_u32, |sum, chunk| {
+        let mut word = [0; 4];
+        word[..chunk.len()].copy_from_slice(chunk);
+        sum.wrapping_add(u32::from_be_bytes(word))
+    })
 }
 
 // Authored derivative of licensed Ahem. One wght axis [0,1], default0. At +1,

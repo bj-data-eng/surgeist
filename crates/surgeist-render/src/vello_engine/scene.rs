@@ -242,8 +242,10 @@ impl VelloScene {
             .glyphs
             .extend(validated.glyphs().iter().map(|glyph| Glyph {
                 id: glyph.id(),
-                x: glyph.x(),
-                y: glyph.y(),
+                // Selected-glyph preflight qualified every coordinate in this
+                // immutable borrowed run before any encoding was appended.
+                x: glyph.x() as f32,
+                y: glyph.y() as f32,
             }));
         let glyph_end = self.encoding.resources.glyphs.len();
         if glyph_start == glyph_end {

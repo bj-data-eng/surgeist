@@ -1,23 +1,23 @@
 /// Logical point in text layout coordinates.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Point {
-    pub x: f32,
-    pub y: f32,
+    pub x: f64,
+    pub y: f64,
 }
 
 impl Point {
     #[must_use]
-    pub const fn new(x: f32, y: f32) -> Self {
+    pub const fn new(x: f64, y: f64) -> Self {
         Self { x, y }
     }
 
     #[must_use]
-    pub const fn x(self) -> f32 {
+    pub const fn x(self) -> f64 {
         self.x
     }
 
     #[must_use]
-    pub const fn y(self) -> f32 {
+    pub const fn y(self) -> f64 {
         self.y
     }
 }
@@ -25,23 +25,23 @@ impl Point {
 /// Logical size in text layout coordinates.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Size {
-    pub width: f32,
-    pub height: f32,
+    pub width: f64,
+    pub height: f64,
 }
 
 impl Size {
     #[must_use]
-    pub const fn new(width: f32, height: f32) -> Self {
+    pub const fn new(width: f64, height: f64) -> Self {
         Self { width, height }
     }
 
     #[must_use]
-    pub const fn width(self) -> f32 {
+    pub const fn width(self) -> f64 {
         self.width
     }
 
     #[must_use]
-    pub const fn height(self) -> f32 {
+    pub const fn height(self) -> f64 {
         self.height
     }
 }
@@ -55,7 +55,7 @@ pub struct Rect {
 
 impl Rect {
     #[must_use]
-    pub const fn new(x: f32, y: f32, width: f32, height: f32) -> Self {
+    pub const fn new(x: f64, y: f64, width: f64, height: f64) -> Self {
         Self {
             origin: Point::new(x, y),
             size: Size::new(width, height),
@@ -79,13 +79,4 @@ impl Rect {
             && point.x <= self.origin.x + self.size.width
             && point.y <= self.origin.y + self.size.height
     }
-}
-
-pub(crate) fn rect_from_bounds(bounds: parley::BoundingBox) -> Rect {
-    Rect::new(
-        bounds.x0 as f32,
-        bounds.y0 as f32,
-        (bounds.x1 - bounds.x0) as f32,
-        (bounds.y1 - bounds.y0) as f32,
-    )
 }

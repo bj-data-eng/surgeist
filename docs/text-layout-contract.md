@@ -137,10 +137,9 @@ The baseline is Parley `0.9.0`, crates.io checksum `8fad031076f48f0d4d85ce1aea9b
 | Parley Data | 0.9.0 | `baked` | Unicode analysis data; package use does not preserve the Parley intermediary. |
 | Parlance | 0.1.0 | `std` | Font attributes/settings shared with Fontique. |
 | Linebender resource handle | 0.1.1 | `std` | Safe immutable resource handles where the retained provider API requires them. |
-| Hashbrown | 0.17.1 | none normally; `text-accessibility` activates `default-hasher` | Cache `Equivalent` support and optional accessibility maps; `raw-entry` is not required by inspected calls. |
 | AccessKit (optional) | 0.24.1 | none | `text-accessibility` directly activates this provider and owned projection, without `parley/accesskit`. |
 
-Keep the current empty default feature set. Remove the text leaf's render feature/dependency through #1082 after moving consumers. COSMIC Text and fontdb are not Text dependencies; their former Swash stack is not the source for a new owned font stack. Do not ingest Fontique's native unsafe implementations. Source ingestion preserves original copyright and Apache-2.0 OR MIT attribution, records derived file identities/modifications, and obeys the repository's safe Rust policy. No new source acquisition is needed to define this contract.
+Keep the current empty default feature set. The owned caches and accessibility maps use the standard library and private LRU; they do not retain the upstream Hashbrown helper calls or require a direct Hashbrown dependency. Remove the text leaf's render feature/dependency through #1082 after moving consumers. COSMIC Text and fontdb are not Text dependencies; their former Swash stack is not the source for a new owned font stack. Do not ingest Fontique's native unsafe implementations. Source ingestion preserves original copyright and Apache-2.0 OR MIT attribution, records derived file identities/modifications, and obeys the repository's safe Rust policy. No new source acquisition is needed to define this contract.
 
 ## Required evidence and remaining implementation checks
 

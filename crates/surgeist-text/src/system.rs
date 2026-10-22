@@ -1,22 +1,15 @@
-use std::{borrow::Cow, collections::HashMap, ops::Range as StdRange, sync::Arc};
-
-use parley::{
-    AlignmentOptions, FontFamily, FontFeatures, FontVariations, GenericFamily, LayoutContext,
-    StyleProperty,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use super::{
-    Brush, FontCatalogueIdentity, FontCatalogueMode, FontFace, Id, InlineBox, Key, Layout, Options,
-    Range, Result, Source, Span, Stats, Style, Text, ValidatedOptions, ValidatedSource,
-    ValidatedStyle,
+    FontCatalogueIdentity, FontCatalogueMode, FontFace, Id, InlineBox, Key, Layout, Options, Range,
+    Result, Source, Span, Stats, Style, Text, ValidatedOptions, ValidatedSource, ValidatedStyle,
 };
-
-use crate::{catalogue::Catalogue, projection::ScalarProjection};
+use crate::{catalogue::Catalogue, engine, projection::SourceProjection};
 
 /// Shared font and layout system.
 pub struct System {
     catalogue: Catalogue,
-    layout_context: LayoutContext<Brush>,
+    shape_context: engine::shape::ShapeContext,
     cache: HashMap<Key, Layout>,
     stats: Stats,
 }
@@ -25,7 +18,7 @@ impl System {
     pub fn new(options: SystemOptions) -> Result<Self> {
         Ok(Self {
             catalogue: Catalogue::new(options.font_catalogue),
-            layout_context: LayoutContext::new(),
+            shape_context: engine::shape::ShapeContext::default(),
             cache: HashMap::new(),
             stats: Stats::default(),
         })
@@ -48,6 +41,50 @@ impl System {
             options,
         };
         builder.build()
+    }
+
+    /// Shapes and places the exact retained font-independent source analysis.
+    /// A cache result from an independently issued equal analysis cannot substitute.
+    pub fn layout_analyzed(
+        &mut self,
+        analyzed: &crate::AnalyzedSource,
+        options: Options,
+    ) -> Result<Layout> {
+        let options = ValidatedOptions::try_from(options)?;
+        let key = Key::from_analyzed(&analyzed.inner, options, self.catalogue.identity());
+        if let Some(layout) = self.cache.get(&key)
+            && Arc::ptr_eq(&layout.inner.prepared.analyzed, &analyzed.inner)
+            && layout.matches_request(
+                analyzed.source(),
+                analyzed.style(),
+                options.authored(),
+                self.catalogue.identity(),
+            )
+        {
+            self.stats.record_layout_hit();
+            return Ok(layout.clone());
+        }
+        self.place_analyzed(Arc::clone(&analyzed.inner), key, options)
+    }
+
+    fn place_analyzed(
+        &mut self,
+        analyzed: Arc<engine::AnalyzedData>,
+        key: Key,
+        options: ValidatedOptions,
+    ) -> Result<Layout> {
+        let prepared = engine::prepare(
+            &mut self.catalogue,
+            analyzed,
+            options,
+            &mut self.shape_context,
+        )?;
+        let placed = engine::layout::layout(prepared, options, &mut self.shape_context)?;
+        let layout = Layout::from_placed(placed, key.clone(), options.authored());
+        layout.qualify_decorations()?;
+        self.cache.insert(key, layout.clone());
+        self.stats.record_layout_miss();
+        Ok(layout)
     }
 
     /// Registers every face in an owned font file, or leaves the system unchanged.
@@ -147,166 +184,180 @@ impl Builder<'_> {
         let validated_source = ValidatedSource::try_from(self.source.clone())?;
         let validated_options = ValidatedOptions::try_from(self.options)?;
         let default_style = ValidatedStyle::try_from(self.default_style.clone())?;
-        let span_styles = validated_source
-            .span_styles()
-            .iter()
-            .map(|span| (span.range(), span.style()))
-            .collect::<Vec<_>>();
-
-        ScalarProjection::admit(validated_source.source())?;
+        SourceProjection::admit(validated_source.source())?;
         let key = Key::from_validated(
             &validated_source,
             &default_style,
             validated_options,
             self.system.catalogue.identity(),
         );
-        if let Some(layout) = self.system.cache.get(&key) {
+        if let Some(layout) = self.system.cache.get(&key)
+            && layout.matches_request(
+                validated_source.source(),
+                &self.default_style,
+                self.options,
+                self.system.catalogue.identity(),
+            )
+        {
             self.system.stats.record_layout_hit();
             return Ok(layout.clone());
         }
 
-        let layout_source = validated_source.source().clone();
-        let mut projection = ScalarProjection::new(&layout_source)?;
-        let mut builder = self.system.layout_context.ranged_builder(
-            self.system.catalogue.context_mut(),
-            &projection.text,
-            validated_options.authored().scale,
-            validated_options.authored().quantize,
-        );
-
-        push_style_defaults(&mut builder, &default_style);
-        for (range, style) in &span_styles {
-            push_style_span(
-                &mut builder,
-                projection.byte(range.start).0..projection.byte(range.end).0,
-                style,
-            );
-        }
-        for box_ in &layout_source.boxes {
-            builder.push_inline_box(parley::InlineBox {
-                id: box_.id.as_u64(),
-                kind: box_.kind.into(),
-                index: projection.byte(box_.index).0,
-                width: box_.size.width,
-                height: box_.size.height,
-            });
-        }
-
-        let mut layout = builder.build(&projection.text);
-        if let Some((amount, indent_options)) = validated_options.parley_indent() {
-            layout.set_text_indent(amount, indent_options);
-        }
-        layout.break_all_lines(validated_options.authored().width);
-        layout.align(
-            validated_options.authored().alignment.into(),
-            AlignmentOptions::default(),
-        );
-
-        projection.finish(&layout)?;
-        self.system.stats.record_layout_miss();
-
-        let layout = Layout {
-            inner: layout,
-            projection: Arc::new(projection),
-            #[cfg(feature = "text-accessibility")]
-            identity: Arc::new(()),
-            #[cfg(feature = "text-accessibility")]
-            alignment: validated_options.authored().alignment,
-            source: layout_source,
-            default_style: self.default_style.clone(),
-            key: key.clone(),
-        };
-        self.system.cache.insert(key, layout.clone());
-        Ok(layout)
+        let analyzed = engine::analyze(validated_source, default_style)?;
+        self.system.place_analyzed(analyzed, key, validated_options)
     }
-}
-
-fn push_style_defaults(builder: &mut parley::RangedBuilder<'_, Brush>, style: &ValidatedStyle) {
-    push_style_properties(builder, style, None)
-}
-
-fn push_style_span(
-    builder: &mut parley::RangedBuilder<'_, Brush>,
-    range: StdRange<usize>,
-    style: &ValidatedStyle,
-) {
-    push_style_properties(builder, style, Some(range))
-}
-
-fn push_style_properties(
-    builder: &mut parley::RangedBuilder<'_, Brush>,
-    style: &ValidatedStyle,
-    range: Option<StdRange<usize>>,
-) {
-    let mut push = |property: StyleProperty<'static, Brush>| {
-        if let Some(range) = range.clone() {
-            builder.push(property, range);
-        } else {
-            builder.push_default(property);
-        }
-    };
-    let authored = style.authored();
-
-    let family = style
-        .parley_font_family()
-        .map_or(FontFamily::from(GenericFamily::SansSerif), |families| {
-            FontFamily::List(Cow::Owned(families.to_vec()))
-        });
-
-    push(StyleProperty::FontFamily(family));
-    push(StyleProperty::FontSize(authored.size));
-    push(StyleProperty::FontWeight(authored.font.weight.into()));
-    push(StyleProperty::FontWidth(authored.font.width.into()));
-    push(StyleProperty::FontStyle(authored.font.slant.into()));
-    push(StyleProperty::FontFeatures(
-        style
-            .parley_font_features()
-            .map_or_else(FontFeatures::empty, |features| {
-                FontFeatures::Source(Cow::Owned(features.to_owned()))
-            }),
-    ));
-    push(StyleProperty::FontVariations(
-        style
-            .parley_font_variations()
-            .map_or_else(FontVariations::empty, |variations| {
-                FontVariations::Source(Cow::Owned(variations.to_owned()))
-            }),
-    ));
-    push(StyleProperty::Locale(style.parley_locale()));
-    push(StyleProperty::Brush(authored.brush));
-    push(StyleProperty::LineHeight(authored.line_height.into()));
-    push(StyleProperty::LetterSpacing(authored.letter_spacing));
-    push(StyleProperty::WordSpacing(authored.word_spacing));
-    push(StyleProperty::WordBreak(authored.word_break.into()));
-    push(StyleProperty::OverflowWrap(authored.overflow_wrap.into()));
-    push(StyleProperty::TextWrapMode(authored.wrap.into()));
-    push(StyleProperty::Underline(authored.underline.enabled()));
-    push(StyleProperty::UnderlineOffset(
-        authored.underline.offset().to_parley(),
-    ));
-    push(StyleProperty::UnderlineSize(
-        authored.underline.thickness().to_parley(),
-    ));
-    push(StyleProperty::UnderlineBrush(
-        authored.underline.brush().to_parley(),
-    ));
-    push(StyleProperty::Strikethrough(
-        authored.strikethrough.enabled(),
-    ));
-    push(StyleProperty::StrikethroughOffset(
-        authored.strikethrough.offset().to_parley(),
-    ));
-    push(StyleProperty::StrikethroughSize(
-        authored.strikethrough.thickness().to_parley(),
-    ));
-    push(StyleProperty::StrikethroughBrush(
-        authored.strikethrough.brush().to_parley(),
-    ));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn decoration_system() -> System {
+        let mut system = System::new(SystemOptions {
+            font_catalogue: FontCatalogueMode::RegisteredOnly,
+        })
+        .unwrap();
+        system
+            .register_fonts(include_bytes!("../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
+            .unwrap();
+        system
+    }
+
+    fn decoration_style(offset: f64, thickness: f64, strike: bool) -> Style {
+        let decoration = crate::Decoration::solid()
+            .with_offset(crate::DecorationOffset::try_absolute(offset).unwrap())
+            .with_thickness(crate::DecorationThickness::try_absolute(thickness).unwrap());
+        Style {
+            font: crate::Font::new().family("Ahem"),
+            size: 20.0,
+            underline: if strike {
+                crate::Decoration::none()
+            } else {
+                decoration
+            },
+            strikethrough: if strike {
+                decoration
+            } else {
+                crate::Decoration::none()
+            },
+            ..Style::default()
+        }
+    }
+
+    fn assert_decoration_refusal_preserves_publication(source: &str, strike: bool) {
+        let mut system = decoration_system();
+        let options = Options {
+            quantize: false,
+            ..Options::default()
+        };
+        let prior = system
+            .layout(
+                Source::new("A"),
+                decoration_style(2.0, 2.0, strike),
+                options,
+            )
+            .unwrap();
+        let prior_key = prior.key();
+        let prior_geometry = prior.decorations();
+        let stats = system.stats();
+        let cache_len = system.cache.len();
+        let result = system.layout(
+            Source::new(source),
+            // Strike top overflows; underline's bottom endpoint overflows.
+            decoration_style(if strike { f64::MAX } else { -f64::MAX }, f64::MAX, strike),
+            options,
+        );
+        let error = match result {
+            Err(error) => error,
+            Ok(layout) => panic!(
+                "unrepresentable enabled decoration was published: {:?}",
+                layout.decorations()
+            ),
+        };
+        assert_eq!(error.code, crate::ErrorCode::InvalidTextNumeric);
+        assert!(matches!(
+            error.detail(),
+            Some(crate::ErrorDetail::InvalidTextNumeric {
+                category: crate::TextNumericError::NonFinite,
+                ..
+            })
+        ));
+        assert_eq!(system.stats(), stats);
+        assert_eq!(system.cache.len(), cache_len);
+        assert!(system.cache.contains_key(&prior_key));
+        assert_eq!(prior.decorations(), prior_geometry);
+    }
+
+    #[test]
+    fn decoration_geometry_strike_overflow_refuses_before_cache_publication() {
+        assert_decoration_refusal_preserves_publication("A", true);
+    }
+
+    #[test]
+    fn decoration_geometry_underline_endpoint_overflow_refuses_before_cache_publication() {
+        assert_decoration_refusal_preserves_publication("A", false);
+    }
+
+    #[test]
+    fn decoration_geometry_metric_only_overflow_refuses_before_cache_publication() {
+        assert_decoration_refusal_preserves_publication("", true);
+    }
+
+    #[test]
+    fn decoration_geometry_disabled_extremes_emit_no_rectangles() {
+        let mut system = decoration_system();
+        let disabled = crate::Decoration::none()
+            .with_offset(crate::DecorationOffset::try_absolute(f64::MAX).unwrap())
+            .with_thickness(crate::DecorationThickness::try_absolute(f64::MAX).unwrap());
+        let layout = system
+            .layout(
+                Source::new("A"),
+                Style {
+                    underline: disabled,
+                    strikethrough: disabled,
+                    ..decoration_style(2.0, 2.0, true)
+                },
+                Options::default(),
+            )
+            .unwrap();
+        assert_eq!(layout.decoration_views().count(), 0);
+    }
+
+    #[test]
+    fn decoration_geometry_finite_extremes_preserve_literal_bounds() {
+        let mut system = decoration_system();
+        let options = Options {
+            quantize: false,
+            ..Options::default()
+        };
+        for source in ["A", ""] {
+            for strike in [true, false] {
+                let quarter = f64::MAX / 4.0;
+                let layout = system
+                    .layout(
+                        Source::new(source),
+                        decoration_style(quarter, quarter, strike),
+                        options,
+                    )
+                    .unwrap();
+                let decorations = layout.decorations();
+                assert_eq!(decorations.len(), 1);
+                let rect = decorations[0].rect();
+                assert_eq!(rect.origin.x, 0.0);
+                assert_eq!(
+                    rect.origin.y,
+                    if strike {
+                        -quarter - quarter / 2.0
+                    } else {
+                        -quarter
+                    }
+                );
+                assert_eq!(rect.size.width, if source.is_empty() { 0.0 } else { 20.0 });
+                assert_eq!(rect.size.height, quarter);
+                assert!((rect.origin.y + rect.size.height).is_finite());
+            }
+        }
+    }
 
     #[test]
     fn exhausted_registration_refuses_before_font_validation_or_publication() {
@@ -353,7 +404,8 @@ mod tests {
         let retained_font = layout
             .glyph_runs()
             .into_iter()
-            .find_map(|run| run.font().data().cloned())
+            .next()
+            .map(|run| run.font().clone())
             .expect("the real layout retains a resolved font");
         let font_bytes = retained_font.bytes().to_vec();
         let font_index = retained_font.index();

@@ -1,6 +1,5 @@
 use std::hash::{Hash, Hasher};
 
-use super::source_model::ValidatedSpan;
 use super::{
     Brush, Decoration, DecorationBrush, DecorationOffset, DecorationThickness, Font,
     FontCatalogueIdentity, Id, Indent, InlineBox, LineHeight, Options, Size, Slant, Source,
@@ -91,7 +90,7 @@ pub struct Key {
     styles: StyleKey,
     options: OptionsKey,
     font_catalogue: FontCatalogueIdentity,
-    pub(crate) options_width: Option<OrderedF32>,
+    pub(crate) options_width: Option<OrderedF64>,
 }
 
 impl Key {
@@ -102,21 +101,35 @@ impl Key {
         options: ValidatedOptions,
         font_catalogue: &FontCatalogueIdentity,
     ) -> Self {
-        let identity = source.identity();
+        Self::from_parts(source.source(), style.authored(), options, font_catalogue)
+    }
+
+    pub(crate) fn from_analyzed(
+        analyzed: &crate::engine::AnalyzedData,
+        options: ValidatedOptions,
+        font_catalogue: &FontCatalogueIdentity,
+    ) -> Self {
+        Self::from_parts(
+            &analyzed.source,
+            &analyzed.default_style,
+            options,
+            font_catalogue,
+        )
+    }
+
+    fn from_parts(
+        source: &Source,
+        style: &Style,
+        options: ValidatedOptions,
+        font_catalogue: &FontCatalogueIdentity,
+    ) -> Self {
         let authored_options = options.authored();
-        let source_key = SourceKey::new(
-            identity.id(),
-            identity.revision().get(),
-            stable_hash_source(source.source()),
-        );
-        let style_key = StyleKey::new(0, stable_hash_style(style.authored(), source.span_styles()));
-        let options_key = OptionsKey::new(stable_hash_options(authored_options));
         Self {
-            source: source_key,
-            styles: style_key,
-            options: options_key,
+            source: SourceKey::new(source.id(), source.revision(), stable_hash_source(source)),
+            styles: StyleKey::new(0, stable_hash_style(style, source)),
+            options: OptionsKey::new(stable_hash_options(authored_options)),
             font_catalogue: font_catalogue.clone(),
-            options_width: authored_options.width.map(OrderedF32),
+            options_width: authored_options.width.map(OrderedF64),
         }
     }
 
@@ -217,17 +230,17 @@ impl OptionsKey {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct OrderedF32(pub(crate) f32);
+pub(crate) struct OrderedF64(pub(crate) f64);
 
-impl PartialEq for OrderedF32 {
+impl PartialEq for OrderedF64 {
     fn eq(&self, other: &Self) -> bool {
         self.0.to_bits() == other.0.to_bits()
     }
 }
 
-impl Eq for OrderedF32 {}
+impl Eq for OrderedF64 {}
 
-impl std::hash::Hash for OrderedF32 {
+impl std::hash::Hash for OrderedF64 {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.to_bits().hash(state);
     }
@@ -243,20 +256,20 @@ fn stable_hash_source(source: &Source) -> u64 {
     hasher.finish()
 }
 
-fn stable_hash_style(style: &Style, spans: &[ValidatedSpan]) -> u64 {
+fn stable_hash_style(style: &Style, source: &Source) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     hash_style(style, &mut hasher);
-    spans.len().hash(&mut hasher);
-    for span in spans {
+    source.spans().len().hash(&mut hasher);
+    for span in source.spans() {
         span.range().hash(&mut hasher);
-        hash_style(span.style().authored(), &mut hasher);
+        hash_style(span.style(), &mut hasher);
     }
     hasher.finish()
 }
 
 fn stable_hash_options(options: Options) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    hash_option_f32(options.width, &mut hasher);
+    hash_option_f64(options.width, &mut hasher);
     hash_f32(options.scale, &mut hasher);
     options.alignment.hash(&mut hasher);
     options.text_overflow.hash(&mut hasher);
@@ -278,8 +291,8 @@ fn hash_style<H: Hasher>(style: &Style, hasher: &mut H) {
     hash_font(&style.font, hasher);
     hash_f32(style.size, hasher);
     hash_line_height(style.line_height, hasher);
-    hash_f32(style.letter_spacing, hasher);
-    hash_f32(style.word_spacing, hasher);
+    hash_f64(style.letter_spacing, hasher);
+    hash_f64(style.word_spacing, hasher);
     hash_brush(style.brush, hasher);
     hash_decoration(style.underline, hasher);
     hash_decoration(style.strikethrough, hasher);
@@ -319,7 +332,7 @@ fn hash_width<H: Hasher>(width: Width, hasher: &mut H) {
 fn hash_vertical_align<H: Hasher>(vertical_align: VerticalAlign, hasher: &mut H) {
     std::mem::discriminant(&vertical_align).hash(hasher);
     if let VerticalAlign::Shift(value) = vertical_align {
-        hash_f32(value.get(), hasher);
+        hash_f64(value.get(), hasher);
     }
 }
 
@@ -335,7 +348,7 @@ fn hash_line_height<H: Hasher>(line_height: LineHeight, hasher: &mut H) {
     match line_height {
         LineHeight::MetricsRelative(value)
         | LineHeight::FontSizeRelative(value)
-        | LineHeight::Absolute(value) => hash_f32(value, hasher),
+        | LineHeight::Absolute(value) => hash_f64(value, hasher),
     }
 }
 
@@ -349,14 +362,14 @@ fn hash_decoration<H: Hasher>(decoration: Decoration, hasher: &mut H) {
 fn hash_decoration_offset<H: Hasher>(offset: DecorationOffset, hasher: &mut H) {
     std::mem::discriminant(&offset).hash(hasher);
     if let DecorationOffset::Absolute(value) = offset {
-        hash_f32(value.get(), hasher);
+        hash_f64(value.get(), hasher);
     }
 }
 
 fn hash_decoration_thickness<H: Hasher>(thickness: DecorationThickness, hasher: &mut H) {
     std::mem::discriminant(&thickness).hash(hasher);
     if let DecorationThickness::Absolute(value) = thickness {
-        hash_f32(value.get(), hasher);
+        hash_f64(value.get(), hasher);
     }
 }
 
@@ -375,15 +388,15 @@ fn hash_brush<H: Hasher>(brush: Brush, hasher: &mut H) {
 }
 
 fn hash_indent<H: Hasher>(indent: Indent, hasher: &mut H) {
-    hash_f32(indent.amount, hasher);
+    hash_f64(indent.amount, hasher);
     indent.first_line.hash(hasher);
     indent.each_line.hash(hasher);
     indent.hanging.hash(hasher);
 }
 
 fn hash_size<H: Hasher>(size: Size, hasher: &mut H) {
-    hash_f32(size.width, hasher);
-    hash_f32(size.height, hasher);
+    hash_f64(size.width, hasher);
+    hash_f64(size.height, hasher);
 }
 
 fn hash_option_f32<H: Hasher>(value: Option<f32>, hasher: &mut H) {
@@ -397,5 +410,19 @@ fn hash_option_f32<H: Hasher>(value: Option<f32>, hasher: &mut H) {
 }
 
 fn hash_f32<H: Hasher>(value: f32, hasher: &mut H) {
+    value.to_bits().hash(hasher);
+}
+
+fn hash_option_f64<H: Hasher>(value: Option<f64>, hasher: &mut H) {
+    match value {
+        Some(value) => {
+            1_u8.hash(hasher);
+            hash_f64(value, hasher);
+        }
+        None => 0_u8.hash(hasher),
+    }
+}
+
+fn hash_f64<H: Hasher>(value: f64, hasher: &mut H) {
     value.to_bits().hash(hasher);
 }

@@ -187,6 +187,10 @@ pub(crate) fn preflight_selected_glyphs<'a>(run: &'a TextRun<'a>) -> Result<Vali
     let mut selected_glyph_traces = Vec::with_capacity(run.glyphs().len());
 
     for glyph in run.glyphs() {
+        // Qualify the complete borrowed run before any encoding mutation. The
+        // encoder can then lower these same immutable coordinates infallibly.
+        canonical_glyph_coordinate(glyph.x())?;
+        canonical_glyph_coordinate(glyph.y())?;
         if glyph.id() >= glyph_count {
             return Err(missing_glyph_error(glyph.id()));
         }
@@ -233,6 +237,18 @@ pub(crate) fn preflight_selected_glyphs<'a>(run: &'a TextRun<'a>) -> Result<Vali
         #[cfg(test)]
         selected_glyph_traces,
     })
+}
+
+fn canonical_glyph_coordinate(value: f64) -> Result<f32> {
+    let canonical = value as f32;
+    if !value.is_finite() || !canonical.is_finite() || (value != 0.0 && canonical == 0.0) {
+        return Err(Error::invalid_value(
+            "glyph backend coordinate",
+            value,
+            "must remain finite and preserve a nonzero value when converted to f32",
+        ));
+    }
+    Ok(canonical)
 }
 
 fn selected_color_glyph<'a>(

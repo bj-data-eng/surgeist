@@ -4,9 +4,11 @@
 
 [Cargo.toml](../Cargo.toml) defines package `surgeist-text` version `0.1.0`, library
 name `surgeist_text`, and Rust edition 2024. No `rust-version` minimum is declared.
-The implementation uses Parley `0.9.0` in [src/system.rs](../src/system.rs), with
-Fontique `0.9.0`, Skrifa `0.42.1`, and Linebender resource handle `0.1.1` called
-directly for catalogue registration and admission.
+The [owned engine](../src/engine/mod.rs) uses safe direct providers for Unicode
+analysis, font resolution, shaping and font tables. [Cargo.toml](../Cargo.toml)
+defines their exact versions; [source provenance](owned-engine-provenance.md)
+records the adapted mechanisms and cached source identities. Parley is not a
+production dependency.
 
 | Feature | Default | Effect and dependency |
 | --- | --- | --- |
@@ -30,7 +32,7 @@ private implementation organization.
 | Style and fonts | `Style`, `Font`, `Brush`, decorations, flow settings | [style.rs](../src/style.rs) |
 | Supplied mixed lines | `BidiLevel`, `InlineWhitespaceEdge`, `SuppliedLine`, edge decisions and borrowed visual order | [supplied_line.rs](../src/supplied_line.rs) |
 | Paragraph layout | `Options`, `Alignment`, `Indent`, `ValidatedOptions` | [options.rs](../src/options.rs) |
-| Layout construction | `System`, `Builder`, `SystemOptions` | [system.rs](../src/system.rs) |
+| Original analysis and layout | `AnalyzedSource`, `AnalysisIdentity`, `System`, `Builder`, `SystemOptions` | [analyzed.rs](../src/analyzed.rs), [system.rs](../src/system.rs) |
 | Font catalogue | `FontCatalogueMode`, issued `FontCatalogueIdentity`, `System::register_fonts` and `refresh_fonts` | [catalogue.rs](../src/catalogue.rs) |
 | Font resources and metrics | `FontData`, `FontFace`, `EffectiveFontInstance`, `FontMetrics`, `StrikeoutMetrics` | [font.rs](../src/font.rs), [font/metrics.rs](../src/font/metrics.rs) |
 | Borrowed readback | `RunView`, positioned `GlyphPlacement`, actual decorations | [views.rs](../src/views.rs) |
@@ -167,8 +169,9 @@ Generation exhaustion is `FontGenerationExhausted`; malformed containers/faces
 and valid faces the catalogue cannot admit are distinct `FontLoadFailed` details.
 No operation publishes partial registration or clears a cache on refusal.
 Registration does not define unregister, family replacement, or a new missing-
-glyph policy. These are catalogue capabilities, not prepared text or selected-
-line finalization; the scalar Parley engine remains in use.
+glyph policy. These are catalogue capabilities. The private owned engine retains the selected
+resources through actual preparation, selected-line finalization and placement;
+these phases do not yet expose a public mixed-line preparation protocol.
 
 ## Glyph-free associated-font metrics
 
@@ -225,15 +228,16 @@ after applying actual-instance deltas. A usable resolved strike top and positive
 thickness become `center = top - thickness / 2`. Otherwise fallback uses the
 resolved `center = ascent / 2`, `thickness = size / 18`. At horizontal baseline
 `b`, strike top is `b - center - thickness / 2`. This query does not change the
-existing paragraph engine's f32 metrics or decoration policy, and adds no font
-matching, glyph coverage, outline metrics or complete text-engine guarantee.
+paragraph decoration policy. The owned engine reads this same instance metric
+owner during shaping; the query itself adds no font matching, glyph coverage,
+outline metrics or complete text-engine guarantee.
 
 ## Defaults and validation
 
 `Options::default()` has no width constraint, scale `1.0`, start alignment,
 quantization enabled, `TextOverflow::Clip`, `TextAlignLast::Auto`, and zero indent.
 The indent defaults to first-line scope. A nonzero indent with `each_line = true`,
-`first_line = false`, and `hanging = false` is unsupported by the backend mapping.
+`first_line = false`, and `hanging = false` is unsupported by the standalone indent policy.
 
 `Style::default()` requests a 16-unit font with normal weight, width, and slant;
 the empty family list maps to generic sans-serif. It uses metric-relative line
@@ -258,12 +262,34 @@ once before returning the edited source. At `u64::MAX` it returns
 changing text, spans, or inline-box anchors. Retained sources and layouts remain
 unchanged. `SourceRevision::checked_next` returns `None` at exhaustion.
 
-Before cache/font work, layout refuses isolated surrogates with
-`IsolatedSurrogateLayout` and span/box boundaries inside a valid pair with
-`UnsupportedShapingBoundary`. Source storage and edits still support them.
-Scalar source uses one private lossless UTF-8 projection consumed by Parley;
-all returned offsets map back to source units. No original-surrogate Unicode
-analysis or shaping completion guarantee is added by this interim engine.
+`AnalyzedSource::new(Source, Style)` captures the original source and effective
+style winners once, without fonts. Raw original Unicode properties drive bidi;
+segmentation uses a separately proven private projection for isolated units.
+The glyph projection substitutes U+FFFD only for an original isolated unit;
+source associations remain exact and deletion cannot manufacture a new scalar.
+Span/box boundaries inside a valid pair refuse with `UnsupportedShapingBoundary`.
+
+The standalone Preserve profile retains its established per-unit mandatory
+breaks: CR, LF, U+2028 and U+2029 each end a line, including a terminal empty
+line. CRLF therefore ends two lines here. This is the characterized standalone
+profile, not inferred HTML delimiter policy or document normalization. The
+separate source-processing `DocumentSegmentBreaks` contract remains unchanged.
+An empty placed paragraph retains a real admitted-font strut for caret and line
+metrics, with zero intrinsic width and no fabricated source character or glyph.
+
+`System::layout_analyzed` retains that exact analysis identity. The convenience
+`System::layout` uses the same analysis, preparation, chooser, finalizer and
+placement pipeline. Renderable source without a usable selected face refuses;
+an empty registered-only catalogue remains valid for source analysis. Every
+actual shaping result must report completion before glyph extraction or cache
+publication. Refusal preserves prior layouts, catalogue identity and cache stats.
+
+Logical geometry, spacing, line-height and glyph pens use `f64`. Font size and
+actual provider glyph offsets/advances remain canonical `f32`. A glyph's composed
+position adds its run origin, logical pen and canonical local offset. Logical
+spacing and justification do not rewrite the provider advance. Concrete faux
+synthesis is resolved once on the actual font instance, without changing line
+metrics or advances; Render owns outline execution.
 
 Cursor and selection requests retain their exact endpoints. Geometry projects
 interior carets to the preceding/following legal logical stop by affinity before
@@ -271,14 +297,18 @@ bidi placement. Noncollapsed partial-unit selections cover complete typographic
 units; collapsed selections remain collapsed. Offset-taking interaction methods
 return `Result`, and invalid endpoints refuse rather than clamp.
 
-The [owned AccessKit projection](../src/accessibility.rs) retains the same layout
-identity and source maps. Updates are fallible and publish complete state only.
+The [owned AccessKit projection](../src/accessibility.rs) retains the exact analysis
+identity and source maps. Source-only updates need no point and omit font, glyph,
+line and all geometry fields. Placed updates enrich the same semantic projection
+from actual finalized rows, and replacement clears obsolete optional fields. Updates are fallible and publish complete state only.
 Host values and character lengths use UTF-8 bytes; an indivisible unit longer
 than 255 bytes is unsupported. Mixed-style units preserve all source/geometry
 and publish only uniform node metadata. Optional one-dimensional geometry is
 omitted when it cannot truthfully describe the fragments. Retained child focus
 is valid on repeat updates; parent/child collisions and ID exhaustion refuse.
-Mapping a state through another layout returns `AccessibilityLayoutMismatch`.
+Queries require the exact analyzed or placed binding that produced the state; a
+foreign identity or wrong phase returns `AccessibilityBindingMismatch`. Original
+ill-formed UTF-16 cannot form a host string and refuses before state publication.
 
 ## Style support
 
@@ -290,7 +320,7 @@ style resolver.
 | --- | --- |
 | Supported | Family lists; named/numeric weights; basic/expanded stretch; normal/italic/oblique slant; feature and variation settings; font size; line height; letter/word spacing; concrete text color; locale. |
 | Supported | Preserved whitespace; word-break, wrapping, and overflow-wrap controls; paragraph alignment; supported indent shapes; inline-box alignment facts; underline/strikethrough; decoration offset, thickness, and concrete color; concrete selection color. |
-| Unsupported: backend direction control | Explicit text direction. Automatic direction still resolves to left-to-right or right-to-left in `Layout::direction()`. |
+| Unsupported: paragraph direction control | Explicit text direction. Automatic direction still resolves to left-to-right or right-to-left in `Layout::direction()`. |
 | Unsupported: source-range policy | Whitespace collapse. Discard/PreserveSpaces execute in the separate source phase; paragraph layout does not yet consume it. |
 | Unsupported: font or text-flow policy | Non-normal font variants, text overflow behavior beyond the accepted default, last-line alignment behavior beyond the accepted default, and text transformation. |
 | Unsupported: decoration policy | Overline and decoration styles beyond the exposed solid decoration contract. |
@@ -304,10 +334,10 @@ the layout pipeline. Explicit direction and collapsed whitespace produce typed
 `UnsupportedFeature` errors during validation.
 
 Inline-box `VerticalAlign` values are validated, cached, and preserved in output
-facts. The current [Parley projection](../src/system.rs) passes box kind, source
-index, width, and height but does not apply these alignment requests.
+facts. The [standalone engine](../src/engine/layout/mod.rs) retains box kind, source
+anchor, width and height but does not execute these alignment requests.
 `BaselineShiftFact::Requested` records an authored shift;
-`BackendBottomOnBaseline` describes the backend fact used for other values.
+`BottomOnBaseline` describes the actual placement fact used for other values.
 Neither means that a requested middle, super, or shifted placement was performed.
 
 ## Focused verification

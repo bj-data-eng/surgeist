@@ -39,6 +39,26 @@ This product depends on Fontique, distributed by the Parley Authors:
 Fontique supplies safe catalogue, registration and font selection interfaces.
 Its native implementation remains an external dependency.
 
+### harfrust 0.6.2
+
+This product depends on the maintained Harfrust source in this repository:
+
+* License: [MIT](licenses/harfrust/LICENSE)
+* Homepage: [Harfrust](https://github.com/harfbuzz/harfrust)
+* Additional material: [Unicode license](licenses/harfrust/UNICODE-LICENSE)
+* Exact source and modifications: [provider provenance](../../vendor/harfrust/PROVENANCE.md)
+
+Text consumes its safe shaping interface and explicit completion/refusal status.
+
+### icu_normalizer 2.2.0
+
+This product depends on ICU4X normalization, distributed by the ICU4X Project Developers:
+
+* License: [Unicode License 3.0](licenses/icu4x/LICENSE)
+* Homepage: [ICU4X](https://icu4x.unicode.org/)
+
+The owned analyzer uses compiled canonical composition and decomposition data.
+
 ### icu_properties 2.2.0
 
 This product depends on ICU4X properties, distributed by the ICU4X Project Developers:
@@ -68,19 +88,30 @@ This product depends on Linebender resource handles:
 
 The catalogue retains registered immutable font bytes through its safe Blob API.
 
-### parley 0.9.0
+### parlance 0.1.0 and parley_data 0.9.0
 
-This product depends on parley, distributed by the Parley Authors:
+This product depends on Parlance and Parley Data, distributed by the Parley Authors:
 
 * License: [Apache License 2.0](licenses/parley/LICENSE-APACHE) or
   [MIT](licenses/parley/LICENSE-MIT)
 * Homepage: [Parley](https://github.com/linebender/parley)
 
-Parley provides the text layout implementation in the default configuration.
-The `text-accessibility` feature projects the resulting layout through Text-owned
-AccessKit integration. The adapted projection retains the upstream copyright
-and SPDX attribution in its source; the [adaptation provenance](docs/accessibility-provenance.md)
-identifies the exact input and retained mechanisms.
+Parlance supplies font attributes and settings; Parley Data supplies compiled
+Unicode analysis facts. Their exact distributed license texts match the retained
+Parley license files. Neither dependency retains the Parley layout intermediary.
+
+### Parley 0.9.0 adapted source
+
+The private owned engine and optional accessibility projection adapt mechanisms
+from Parley 0.9.0, distributed by the Parley Authors under the same retained
+[Apache-2.0](licenses/parley/LICENSE-APACHE) OR [MIT](licenses/parley/LICENSE-MIT)
+licenses. Derived source retains original copyright and SPDX notices. Text owns
+the adapted source analysis, font resolution, shaping, immutable result phases,
+line finalization, editing and accessibility behavior. The
+[owned-engine provenance](docs/owned-engine-provenance.md) records exact upstream
+file identities, derived paths and modifications. The
+[accessibility provenance](docs/accessibility-provenance.md) identifies that
+projection's exact input and modifications.
 
 ### skrifa 0.42.1
 

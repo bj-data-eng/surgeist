@@ -52,7 +52,7 @@ positioned anchor that does not contribute the same flow metrics.
 
 Verify the box's ID, source index, line, and rectangle with `inline_boxes()`.
 Use `inline_metric_facts()` when an adapter also needs requested alignment and
-baseline-shift facts. These requests are retained separately from the backend's
+baseline-shift facts. These requests are retained separately from the actual
 rectangle; consult the [alignment limits](reference.md) before interpreting them.
 Geometry and movement behavior is implemented in [src/layout.rs](../src/layout.rs)
 and exercised by the inline-box, selection, hit, and movement tests in

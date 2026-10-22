@@ -86,7 +86,7 @@ fn supplementary_and_multibyte_bmp_ranges_count_source_units() {
         assert_eq!(output.source().text().len(), units);
         assert_eq!(output.metrics().full_width(), 60.0);
         for run in output.glyph_runs() {
-            assert_eq!(run.font().data().unwrap().bytes(), AHEM);
+            assert_eq!(run.font().bytes(), AHEM);
         }
     }
 }
@@ -159,36 +159,40 @@ fn editing_can_split_and_rejoin_a_pair_without_repairing_retained_source() {
 }
 
 #[test]
-fn isolated_layout_refusal_preserves_warm_cache_and_catalogue_but_literal_replacement_shapes() {
+fn actual_refusal_preserves_original_cache_while_isolated_and_literal_units_remain_distinct() {
     let mut system = registered_ahem();
     let old = layout(&mut system, "AX");
     let warm = layout(&mut system, "AX");
     assert_eq!(warm.key(), old.key());
     let before = system.stats();
     let catalogue = system.font_catalogue_identity().clone();
-    let isolated = Source::new(Text::from_code_units(vec![0x0041, 0xd800, 0x0058]));
+    let refused = Source::new(format!("B\u{0315}{}", "\u{0300}".repeat(32)));
     let error = system
-        .layout(isolated.clone(), style(), options())
+        .layout(refused.clone(), style(), options())
         .unwrap_err();
-    assert_eq!(error.code, ErrorCode::UnsupportedFeature);
+    assert_eq!(error.code, ErrorCode::ShapingRefused);
     assert_eq!(
         error.detail(),
-        Some(&ErrorDetail::IsolatedSurrogateLayout {
-            index: 1,
-            unit: 0xd800
+        Some(&ErrorDetail::ShapingRefused {
+            reason: surgeist_text::ShapingRefusalReason::ContextLimit,
         })
     );
     assert_eq!(system.stats(), before);
     assert_eq!(system.font_catalogue_identity(), &catalogue);
-    assert_eq!(isolated.text().code_units(), [0x0041, 0xd800, 0x0058]);
+    assert_eq!(refused.text().len(), 34);
     assert_eq!(old.source().text().code_units(), [0x0041, 0x0058]);
     assert_eq!(layout(&mut system, "AX").key(), old.key());
     assert_eq!(system.stats().layout_hits(), before.layout_hits() + 1);
+    let isolated = Source::new(Text::from_code_units(vec![0x0041, 0xd800, 0x0058]));
+    let output = system.layout(isolated.clone(), style(), options()).unwrap();
+    assert_eq!(output.source(), &isolated);
+    assert_eq!(isolated.text().code_units(), [0x0041, 0xd800, 0x0058]);
     let literal = layout(&mut system, "A�X");
     assert_eq!(
         literal.source().text().code_units(),
         [0x0041, 0xfffd, 0x0058]
     );
+    assert_ne!(output.source().text(), literal.source().text());
 }
 
 #[cfg(feature = "text-accessibility")]
@@ -315,7 +319,7 @@ fn accessibility_omits_character_geometry_for_actual_styled_grapheme_pieces() {
     assert_eq!(pieces[0].font_size(), 20.0);
     assert_eq!(pieces[1].font_size(), 30.0);
     for piece in &pieces {
-        assert_eq!(piece.font().data().unwrap().bytes(), AHEM);
+        assert_eq!(piece.font().bytes(), AHEM);
     }
     let clusters = output.clusters();
     let pieces: Vec<_> = clusters

@@ -384,13 +384,14 @@ fn unsupported_text_decoration_style_error(style: TextDecorationLineStyle) -> su
 
 /// One authored glyph instance in run-local logical coordinates.
 ///
-/// The glyph identifier is interpreted against the run's font. Position and
-/// advance values are finite `f32` values; advances may be negative or zero.
+/// The glyph identifier is interpreted against the run's font. Positions are
+/// finite `f64` logical values, retained until the actual renderer
+/// conversion. The provider advance remains finite `f32` and may be negative or zero.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TextGlyph {
     id: u32,
-    x: f32,
-    y: f32,
+    x: f64,
+    y: f64,
     advance: f32,
 }
 
@@ -399,7 +400,7 @@ impl TextGlyph {
     ///
     /// Returns [`crate::ErrorCode::InvalidInput`] when `x`, `y`, or `advance`
     /// is non-finite.
-    pub fn try_new(id: u32, x: f32, y: f32, advance: f32) -> Result<Self> {
+    pub fn try_new(id: u32, x: f64, y: f64, advance: f32) -> Result<Self> {
         if !x.is_finite() || !y.is_finite() || !advance.is_finite() {
             return Err(super::Error::invalid_value(
                 "text glyph positions and advances",
@@ -418,13 +419,13 @@ impl TextGlyph {
 
     #[must_use]
     /// Returns the run-local logical x-coordinate.
-    pub const fn x(self) -> f32 {
+    pub const fn x(self) -> f64 {
         self.x
     }
 
     #[must_use]
     /// Returns the run-local logical y-coordinate.
-    pub const fn y(self) -> f32 {
+    pub const fn y(self) -> f64 {
         self.y
     }
 

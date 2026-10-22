@@ -456,7 +456,7 @@ fn intrinsic_validation_and_result_relative_bounds_remain_precise_before_modes()
                 Id::from_u64(1),
                 InlineBoxKind::InFlow,
                 0,
-                Size::new(f32::NAN, 2.0),
+                Size::new(f64::NAN, 2.0),
             ));
             s
         },

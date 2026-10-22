@@ -23,6 +23,15 @@ impl PartialEq for FontData {
 }
 
 impl FontData {
+    /// Retains the actual admitted resource without copying its byte backing.
+    pub(crate) fn from_blob(data: Blob<u8>, index: u32, catalogue: FontCatalogueIdentity) -> Self {
+        Self {
+            data,
+            index,
+            catalogue,
+        }
+    }
+
     /// Original whole-resource bytes, without copying.
     #[must_use]
     pub fn bytes(&self) -> &[u8] {
@@ -121,13 +130,109 @@ impl<'a> FontFace<'a> {
     }
 }
 
-/// A borrowed complete canonical font instance with no unresolved faux synthesis.
+/// Concrete executable synthesis in canonical glyph-local logical units.
+///
+/// The x-shear is dimensionless. Embolden is a positive local-x copy distance;
+/// zero means no copy. Neither value changes advances or line metrics.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct FontSynthesis {
+    x_shear: f32,
+    embolden: f32,
+}
+
+impl FontSynthesis {
+    /// Resolves actual Fontique degree-angle/selected-bold facts once at shaping size.
+    pub(crate) fn resolve(
+        size: f32,
+        skew_degrees: Option<f32>,
+        selected_bold: bool,
+    ) -> Result<Self> {
+        use crate::engine::text_numeric_error;
+        use crate::error::{TextNumericError as Numeric, TextNumericPhase as Phase};
+        if !size.is_finite() || size <= 0.0 {
+            return Err(text_numeric_error(
+                "synthesis font size",
+                Phase::FontSynthesis,
+                if size.is_finite() {
+                    Numeric::OutOfRange
+                } else {
+                    Numeric::NonFinite
+                },
+                f64::from(size),
+            ));
+        }
+        let x_shear = match skew_degrees {
+            None => 0.0,
+            Some(degrees) => {
+                if !degrees.is_finite() {
+                    return Err(text_numeric_error(
+                        "synthesis skew degrees",
+                        Phase::FontSynthesis,
+                        Numeric::NonFinite,
+                        f64::from(degrees),
+                    ));
+                }
+                let shear = degrees.to_radians().tan();
+                if !shear.is_finite() {
+                    return Err(text_numeric_error(
+                        "synthesis x shear",
+                        Phase::FontSynthesis,
+                        Numeric::NonFinite,
+                        f64::from(shear),
+                    ));
+                }
+                if degrees != 0.0 && shear == 0.0 {
+                    return Err(text_numeric_error(
+                        "synthesis x shear",
+                        Phase::FontSynthesis,
+                        Numeric::NonZeroLost,
+                        f64::from(degrees),
+                    ));
+                }
+                if shear == 0.0 { 0.0 } else { shear }
+            }
+        };
+        let embolden = if selected_bold {
+            let amount = size / 36.0_f32;
+            if !amount.is_finite() || amount <= 0.0 {
+                return Err(text_numeric_error(
+                    "synthesis embolden",
+                    Phase::FontSynthesis,
+                    if amount.is_finite() {
+                        Numeric::PositiveLost
+                    } else {
+                        Numeric::NonFinite
+                    },
+                    f64::from(amount),
+                ));
+            }
+            amount
+        } else {
+            0.0
+        };
+        Ok(Self { x_shear, embolden })
+    }
+
+    /// Executable dimensionless x-shear in the font's y-up coordinate system.
+    #[must_use]
+    pub const fn x_shear(self) -> f32 {
+        self.x_shear
+    }
+    /// Original-plus-positive-local-x copy distance at actual canonical size.
+    #[must_use]
+    pub const fn embolden(self) -> f32 {
+        self.embolden
+    }
+}
+
+/// A borrowed complete canonical font instance with executable synthesis.
 #[derive(Clone, Copy, Debug)]
 pub struct EffectiveFontInstance<'a> {
     face: FontFace<'a>,
     size: f32,
     axes: usize,
     stored: &'a [i16],
+    synthesis: FontSynthesis,
 }
 
 impl<'a> EffectiveFontInstance<'a> {
@@ -137,7 +242,7 @@ impl<'a> EffectiveFontInstance<'a> {
                 Error::new(ErrorCode::InvalidFontInstance, "invalid shaping size").with_detail(
                     ErrorDetail::InvalidNumericField {
                         field: "shaping font size",
-                        value: size,
+                        value: f64::from(size),
                         requirement: NumericRequirement::FiniteGreaterThanZero,
                     },
                 ),
@@ -168,7 +273,35 @@ impl<'a> EffectiveFontInstance<'a> {
             size,
             axes,
             stored,
+            synthesis: FontSynthesis::default(),
         })
+    }
+
+    pub(crate) fn qualify_synthesized(
+        face: FontFace<'a>,
+        size: f32,
+        stored: &'a [i16],
+        synthesis: FontSynthesis,
+    ) -> Result<Self> {
+        let mut instance = Self::qualify(face, size, stored)?;
+        instance.synthesis = synthesis;
+        Ok(instance)
+    }
+
+    /// Concrete synthesis retained by this actual effective instance.
+    #[must_use]
+    pub const fn synthesis(&self) -> FontSynthesis {
+        self.synthesis
+    }
+    /// Executable dimensionless x-shear.
+    #[must_use]
+    pub const fn x_shear(&self) -> f32 {
+        self.synthesis.x_shear()
+    }
+    /// Actual local-positive-x emboldening displacement.
+    #[must_use]
+    pub const fn embolden(&self) -> f32 {
+        self.synthesis.embolden()
     }
 
     /// The actual borrowed face used by this instance.
@@ -268,3 +401,99 @@ fn malformed() -> Error {
 
 mod metrics;
 pub use metrics::{FontMetrics, StrikeoutMetrics};
+
+#[cfg(test)]
+mod synthesis_tests {
+    use super::*;
+
+    #[test]
+    fn executable_synthesis_resolves_once_in_canonical_font_units() {
+        assert_eq!(
+            FontSynthesis::resolve(36.0, None, true).unwrap().embolden(),
+            1.0
+        );
+        assert_eq!(
+            FontSynthesis::resolve(18.0, None, true).unwrap().embolden(),
+            0.5
+        );
+        for (degrees, expected) in [(45.0, 1.0), (-45.0, -1.0)] {
+            let synthesis = FontSynthesis::resolve(36.0, Some(degrees), true).unwrap();
+            assert!((synthesis.x_shear() - expected).abs() < 0.000001);
+            assert_eq!(synthesis.embolden(), 1.0);
+        }
+        assert_eq!(
+            FontSynthesis::resolve(20.0, None, false).unwrap(),
+            FontSynthesis::default()
+        );
+        let error = FontSynthesis::resolve(f32::from_bits(1), None, true).unwrap_err();
+        assert!(matches!(
+            error.detail(),
+            Some(ErrorDetail::InvalidTextNumeric {
+                phase: crate::TextNumericPhase::FontSynthesis,
+                category: crate::TextNumericError::PositiveLost,
+                ..
+            })
+        ));
+        for size in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+            assert!(FontSynthesis::resolve(size, None, false).is_err());
+        }
+        assert!(FontSynthesis::resolve(20.0, Some(f32::NAN), false).is_err());
+    }
+
+    #[test]
+    fn synthesis_keeps_actual_resource_and_metric_operation_unchanged() {
+        let mut system = crate::System::new(crate::SystemOptions {
+            font_catalogue: crate::FontCatalogueMode::RegisteredOnly,
+        })
+        .unwrap();
+        let bytes = include_bytes!("../tests/fixtures/fonts/ahem/Ahem.ttf");
+        system.register_fonts(bytes.to_vec()).unwrap();
+        let layout = system
+            .layout(
+                crate::Source::new("X"),
+                crate::Style {
+                    font: crate::Font::new().family("Ahem"),
+                    size: 36.0,
+                    ..crate::Style::default()
+                },
+                crate::Options {
+                    quantize: false,
+                    ..crate::Options::default()
+                },
+            )
+            .unwrap();
+        let font = layout.run_views().next().unwrap().face().to_owned();
+        drop(layout);
+        let plain = font.unsynthesized_instance(36.0, &[]).unwrap();
+        let synthesized = EffectiveFontInstance::qualify_synthesized(
+            font.face(),
+            36.0,
+            &[],
+            FontSynthesis::resolve(36.0, Some(45.0), true).unwrap(),
+        )
+        .unwrap();
+        let plain_metrics = plain.metrics(system.font_catalogue_identity()).unwrap();
+        let synthesized_metrics = synthesized
+            .metrics(system.font_catalogue_identity())
+            .unwrap();
+        assert_eq!(
+            (
+                plain_metrics.ascent(),
+                plain_metrics.descent(),
+                plain_metrics.leading(),
+                plain_metrics.strikeout()
+            ),
+            (
+                synthesized_metrics.ascent(),
+                synthesized_metrics.descent(),
+                synthesized_metrics.leading(),
+                synthesized_metrics.strikeout()
+            )
+        );
+        assert!(plain.face().is_same_face(&synthesized.face()));
+        assert_eq!(plain.embolden(), 0.0);
+        assert_eq!(synthesized.embolden(), 1.0);
+        drop(system);
+        assert_eq!(synthesized.face().bytes(), bytes);
+    }
+}

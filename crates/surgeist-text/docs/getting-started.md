@@ -10,7 +10,7 @@ glyph runs. The executable proof is `builds_plain_text_layout` in
 - The dependencies declared in [Cargo.toml](../Cargo.toml) already available in
   the local Cargo cache. The command below uses offline mode and will fail if
   required packages are absent.
-- Fonts available to Parley's default font context. The test uses the default
+- Fonts available to Fontique's configured system collection. The test uses the default
   sans-serif request. Deterministic registered-only tests instead use the bundled
   [Ahem fixture](../tests/fixtures/fonts/ahem/PROVENANCE.md).
 
@@ -52,5 +52,7 @@ assert!(!layout.glyph_runs().is_empty());
 ```
 
 `build()` validates inputs before shaping or looking up a cached layout. Keep the
-`System` when creating subsequent layouts to reuse its font context and cache.
+`System` when creating subsequent layouts to reuse its resource/plan scratch and cache. To analyze without fonts, construct
+`AnalyzedSource::new(source, style)` and retain it; a later
+`System::layout_analyzed(&analyzed, options)` uses that same analysis identity.
 Continue with [How-to](how-to.md) to add styles, inspect geometry, or edit text.

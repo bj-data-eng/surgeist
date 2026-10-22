@@ -88,7 +88,10 @@ Existing storage limits include live qualifier buffers and their growth overlap,
 then the provider's actual draw-buffer capacity after qualifier disposal. They do
 not bound CPU time. All failures discard the unpublished run, while the original
 font, instance and glyph inputs remain available for retry. Other outline formats,
-sparse IUP, color/bitmap and emboldening retain their explicit capability refusals.
+sparse IUP and color/bitmap retain their explicit capability refusals. Concrete
+positive bold appends a local-x copy before canonical point conversion under the
+[selected policy](../../../docs/text-layout-contract.md#concrete-outline-synthesis);
+a displacement absorbed by conversion refuses with a synthesis numeric error.
 
 ## Verification sources and commands
 

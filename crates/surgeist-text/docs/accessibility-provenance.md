@@ -14,6 +14,7 @@ own immutable layout identity and exact UTF-16 source. Selectable units respect
 source graphemes and actual provider clusters, rather than upstream style-index
 splits. Host strings remain UTF-8 as required by AccessKit. Checked unit lengths
 and node identities, off-side publication, mixed-style metadata summaries, and
-source-unit affinity/selection mappings are owned adaptations. Parley still
-provides scalar shaping and positioned clusters; this is not an owned shaper or
-original-surrogate analysis implementation.
+source-unit affinity/selection mappings are owned adaptations. The owned engine now supplies original-atom analysis, actual shaping and finalized
+clusters. Source-only and placed projection share that same analysis identity;
+the public composed preparation/selected-line protocol remains separate work.
+See the [complete mechanism derivation](owned-engine-provenance.md).

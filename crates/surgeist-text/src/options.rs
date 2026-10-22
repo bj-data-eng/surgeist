@@ -6,7 +6,7 @@ use super::{
 /// Paragraph-level layout options.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Options {
-    pub width: Option<f32>,
+    pub width: Option<f64>,
     pub scale: f32,
     pub alignment: Alignment,
     pub text_overflow: TextOverflow,
@@ -39,19 +39,6 @@ pub enum Alignment {
     Justify,
 }
 
-impl From<Alignment> for parley::Alignment {
-    fn from(alignment: Alignment) -> Self {
-        match alignment {
-            Alignment::Start => Self::Start,
-            Alignment::End => Self::End,
-            Alignment::Left => Self::Left,
-            Alignment::Right => Self::Right,
-            Alignment::Center => Self::Center,
-            Alignment::Justify => Self::Justify,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum TextOverflow {
     Clip,
@@ -64,7 +51,7 @@ pub enum TextAlignLast {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Indent {
-    pub amount: f32,
+    pub amount: f64,
     pub first_line: bool,
     pub each_line: bool,
     pub hanging: bool,
@@ -81,19 +68,15 @@ impl Default for Indent {
     }
 }
 
-/// Validated layout options with parsed Parley projection data.
+/// Intrinsically valid standalone layout options.
 #[derive(Clone, Copy, Debug)]
 pub struct ValidatedOptions {
     authored: Options,
-    parley_indent: Option<(f32, parley::IndentOptions)>,
 }
 
 impl ValidatedOptions {
-    fn new(authored: Options, parley_indent: Option<(f32, parley::IndentOptions)>) -> Self {
-        Self {
-            authored,
-            parley_indent,
-        }
+    fn new(authored: Options) -> Self {
+        Self { authored }
     }
 
     #[must_use]
@@ -115,10 +98,6 @@ impl ValidatedOptions {
     pub const fn text_align_last(self) -> TextAlignLast {
         self.authored.text_align_last
     }
-
-    pub(crate) fn parley_indent(self) -> Option<(f32, parley::IndentOptions)> {
-        self.parley_indent
-    }
 }
 
 impl TryFrom<Options> for ValidatedOptions {
@@ -126,17 +105,17 @@ impl TryFrom<Options> for ValidatedOptions {
 
     fn try_from(options: Options) -> Result<Self> {
         validate_options(&options)?;
-        let parley_indent = parley_indent_options(options.indent)?;
-        Ok(Self::new(options, parley_indent))
+        validate_indent(options.indent)?;
+        Ok(Self::new(options))
     }
 }
 
 fn validate_options(options: &Options) -> Result<()> {
     validate_positive_f32(options.scale, "text scale")?;
     if let Some(width) = options.width {
-        validate_non_negative_f32(width, "layout width")?;
+        validate_non_negative_f64(width, "layout width")?;
     }
-    validate_finite_f32(options.indent.amount, "text indent")?;
+    validate_finite_f64(options.indent.amount, "text indent")?;
     Ok(())
 }
 
@@ -148,14 +127,14 @@ fn validate_positive_f32(value: f32, name: &str) -> Result<()> {
         )
         .with_detail(ErrorDetail::InvalidNumericField {
             field: numeric_field(name),
-            value,
+            value: f64::from(value),
             requirement: NumericRequirement::FiniteGreaterThanZero,
         }));
     }
     Ok(())
 }
 
-fn validate_non_negative_f32(value: f32, name: &str) -> Result<()> {
+fn validate_non_negative_f64(value: f64, name: &str) -> Result<()> {
     if !value.is_finite() || value < 0.0 {
         return Err(Error::new(
             ErrorCode::InvalidStyle,
@@ -170,7 +149,7 @@ fn validate_non_negative_f32(value: f32, name: &str) -> Result<()> {
     Ok(())
 }
 
-fn validate_finite_f32(value: f32, name: &str) -> Result<()> {
+fn validate_finite_f64(value: f64, name: &str) -> Result<()> {
     if !value.is_finite() {
         return Err(
             Error::new(ErrorCode::InvalidStyle, format!("{name} must be finite")).with_detail(
@@ -194,28 +173,16 @@ fn numeric_field(name: &str) -> &'static str {
     }
 }
 
-fn parley_indent_options(indent: Indent) -> Result<Option<(f32, parley::IndentOptions)>> {
-    if indent.amount == 0.0 {
-        return Ok(None);
-    }
-    if !indent.first_line && !indent.each_line && !indent.hanging {
-        return Ok(None);
-    }
-    if !indent.first_line && indent.each_line && !indent.hanging {
+fn validate_indent(indent: Indent) -> Result<()> {
+    if indent.amount != 0.0 && !indent.first_line && indent.each_line && !indent.hanging {
         return Err(Error::new(
             ErrorCode::UnsupportedFeature,
-            "each-line indent without first-line indent is not expressible through Parley",
+            "each-line indent without first-line indent requires a selected standalone policy",
         )
         .with_detail(ErrorDetail::UnsupportedTextStyle {
             feature: TextStyleFeature::TextIndent,
-            reason: UnsupportedTextStyleReason::IndentShapeNotExpressibleByCurrentBackend,
+            reason: UnsupportedTextStyleReason::RequiresStandaloneIndentPolicy,
         }));
     }
-    Ok(Some((
-        indent.amount,
-        parley::IndentOptions {
-            each_line: indent.each_line,
-            hanging: indent.hanging,
-        },
-    )))
+    Ok(())
 }

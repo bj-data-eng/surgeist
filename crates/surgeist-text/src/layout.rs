@@ -1,26 +1,21 @@
 use std::{fmt, sync::Arc};
 
-use parley::PositionedLayoutItem;
-
-use super::geometry::rect_from_bounds;
-use super::projection::{ProviderIndex, ScalarProjection};
 use super::{
-    BaselineShift, Brush, Direction, Edit, FontCatalogueIdentity, FontData, FontFace, Id,
-    InlineBoxKind, Key, Point, Range, Rect, Result, SelectionPaint, Size, Source, Style,
-    VerticalAlign,
+    BaselineShift, Brush, Direction, Edit, FontCatalogueIdentity, FontData, Id, InlineBoxKind, Key,
+    Options, Point, Range, Rect, Result, SelectionPaint, Size, Source, Style, VerticalAlign,
+};
+use crate::engine::{
+    PlacedLine, editing,
+    layout::data::{FinalizedRun, PlacedLayout, PreparedRun},
 };
 
-/// Immutable shaped and line-broken layout.
+/// Immutable committed rows and their sole original-source preparation owner.
 #[derive(Clone)]
 pub struct Layout {
-    pub(crate) inner: parley::Layout<Brush>,
-    pub(crate) projection: Arc<ScalarProjection>,
+    pub(crate) inner: Arc<PlacedLayout>,
     #[cfg(feature = "text-accessibility")]
     pub(crate) identity: Arc<()>,
-    #[cfg(feature = "text-accessibility")]
-    pub(crate) alignment: super::Alignment,
-    pub(crate) source: Source,
-    pub(crate) default_style: Style,
+    pub(crate) options: Options,
     pub(crate) key: Key,
 }
 
@@ -34,24 +29,55 @@ impl fmt::Debug for Layout {
 }
 
 impl Layout {
+    pub(crate) fn from_placed(inner: PlacedLayout, key: Key, options: Options) -> Self {
+        Self {
+            inner: Arc::new(inner),
+            key,
+            options,
+            #[cfg(feature = "text-accessibility")]
+            identity: Arc::new(()),
+        }
+    }
+
+    pub(crate) fn matches_request(
+        &self,
+        source: &Source,
+        style: &Style,
+        options: Options,
+        catalogue: &FontCatalogueIdentity,
+    ) -> bool {
+        self.source() == source
+            && self.default_style() == style
+            && self.options == options
+            && &self.inner.prepared.font_catalogue == catalogue
+    }
+
     #[must_use]
-    pub const fn source(&self) -> &Source {
-        &self.source
+    pub fn source(&self) -> &Source {
+        &self.inner.prepared.analyzed.source
+    }
+
+    /// Retains the exact original analysis shared by this placement and its preparation.
+    #[must_use]
+    pub fn analyzed_source(&self) -> crate::AnalyzedSource {
+        crate::AnalyzedSource::from_inner(Arc::clone(&self.inner.prepared.analyzed))
+    }
+
+    pub(crate) fn default_style(&self) -> &Style {
+        &self.inner.prepared.analyzed.default_style
     }
 
     #[must_use]
     pub fn metrics(&self) -> Metrics {
         Metrics::new(
-            Size::new(self.inner.width(), self.inner.height()),
-            self.inner.full_width(),
-            self.inner.len(),
-            self.inner.get(0).map(|line| line.metrics().baseline),
-            self.inner
-                .get(self.inner.len().saturating_sub(1))
-                .map(|line| line.metrics().baseline),
-            self.key
-                .options_width
-                .is_some_and(|width| self.inner.full_width() > width.0),
+            Size::new(self.inner.width, self.inner.height),
+            self.inner.full_width,
+            self.inner.lines.len(),
+            self.inner.lines.first().map(line_baseline),
+            self.inner.lines.last().map(line_baseline),
+            self.options
+                .width
+                .is_some_and(|width| self.inner.full_width > width),
         )
     }
 
@@ -62,7 +88,7 @@ impl Layout {
 
     #[must_use]
     pub fn direction(&self) -> Direction {
-        if self.inner.is_rtl() {
+        if self.inner.prepared.analyzed.analysis.base_level & 1 != 0 {
             Direction::RightToLeft
         } else {
             Direction::LeftToRight
@@ -71,19 +97,20 @@ impl Layout {
 
     pub fn lines(&self) -> Vec<Line> {
         self.inner
-            .lines()
+            .lines
+            .iter()
             .enumerate()
             .map(|(index, line)| {
-                let metrics = line.metrics();
+                let metrics = &line.finalized.data.metrics;
                 Line::new(
                     index,
-                    self.projection.line_range(index),
-                    metrics.baseline,
+                    line.finalized.selection.source,
+                    line_baseline(line),
                     Rect::new(
-                        metrics.inline_min_coord,
-                        metrics.block_min_coord,
-                        metrics.inline_max_coord - metrics.inline_min_coord,
-                        metrics.block_max_coord - metrics.block_min_coord,
+                        line.origin.x + metrics.inline_min,
+                        line.origin.y + metrics.block_min,
+                        metrics.inline_max - metrics.inline_min,
+                        metrics.block_max - metrics.block_min,
                     ),
                 )
             })
@@ -92,53 +119,50 @@ impl Layout {
 
     pub(crate) fn positioned_runs(
         &self,
-    ) -> impl Iterator<Item = (usize, parley::GlyphRun<'_, Brush>)> {
+    ) -> impl Iterator<Item = (usize, &PlacedLine, &FinalizedRun, &PreparedRun)> {
         self.inner
-            .lines()
+            .lines
+            .iter()
             .enumerate()
-            .flat_map(|(line_index, line)| {
-                line.items().filter_map(move |item| match item {
-                    PositionedLayoutItem::GlyphRun(run) => Some((line_index, run)),
-                    PositionedLayoutItem::InlineBox(_) => None,
-                })
+            .flat_map(|(index, line)| {
+                line.finalized
+                    .data
+                    .runs
+                    .iter()
+                    .map(move |run| (index, line, run, &line.finalized.data.font_runs[run.run]))
             })
     }
 
     pub fn glyph_runs(&self) -> Vec<Run> {
         self.positioned_runs()
-            .map(|(line_index, run)| {
-                let run_range = run.run().text_range();
-                let fallback_range = self.projection.range(run_range);
-                let brush = run.style().brush;
-                let mut ranges = run.run().visual_clusters().flat_map(|cluster| {
-                    let range = cluster.text_range();
-                    let range = self.projection.range(range);
-                    cluster.glyphs().map(move |_| range)
-                });
-                let glyphs: Vec<Glyph> = run
-                    .positioned_glyphs()
+            .map(|(index, line, run, shaped)| {
+                let glyphs = line.finalized.data.glyphs[run.glyphs.clone()]
+                    .iter()
                     .map(|glyph| {
                         Glyph::new(
-                            glyph.id,
-                            glyph.x,
-                            glyph.y,
-                            glyph.advance,
-                            ranges.next().unwrap_or(fallback_range),
+                            glyph.glyph.id,
+                            glyph.glyph.x,
+                            glyph.glyph.y,
+                            glyph.glyph.advance,
+                            glyph.glyph.source,
+                            glyph.pen,
                         )
                     })
                     .collect();
-                let style = self.style_for_run(fallback_range, &glyphs, brush);
                 Run::new(
-                    line_index,
-                    fallback_range,
-                    FontRef::from_parley(run.run().font(), self.key.font_catalogue()),
-                    style,
-                    brush,
+                    index,
+                    run.source,
+                    shaped.font.clone(),
+                    self.inner.prepared.analyzed.styles[run.style]
+                        .style
+                        .authored()
+                        .clone(),
+                    self.inner.prepared.styles[run.style].style.brush,
                     RunMetrics::new(
-                        run.run().font_size(),
-                        run.baseline(),
-                        run.offset(),
-                        run.advance(),
+                        shaped.font_size,
+                        line_baseline(line),
+                        line.origin.x + run.x,
+                        run.advance,
                     ),
                     glyphs,
                 )
@@ -150,16 +174,15 @@ impl Layout {
     pub fn inline_metric_facts(&self) -> InlineMetricFacts {
         let lines = self.lines().into_iter().map(LineMetricFact::new).collect();
         let runs = self
-            .glyph_runs()
-            .into_iter()
-            .map(|run| {
+            .positioned_runs()
+            .map(|(index, line, run, shaped)| {
                 RunMetricFact::new(
-                    run.line(),
-                    run.range(),
-                    run.font_size(),
-                    run.baseline(),
-                    run.offset(),
-                    run.advance(),
+                    index,
+                    run.source,
+                    shaped.font_size,
+                    line_baseline(line),
+                    line.origin.x + run.x,
+                    run.advance,
                 )
             })
             .collect();
@@ -176,101 +199,59 @@ impl Layout {
                     box_.vertical_align(),
                     match box_.vertical_align() {
                         VerticalAlign::Shift(shift) => BaselineShiftFact::Requested(shift),
-                        _ => BaselineShiftFact::BackendBottomOnBaseline,
+                        _ => BaselineShiftFact::BottomOnBaseline,
                     },
                 )
             })
             .collect();
-
         InlineMetricFacts::new(self.metrics(), lines, runs, inline_boxes)
-    }
-
-    fn style_for_run(&self, fallback_range: Range, glyphs: &[Glyph], brush: Brush) -> Style {
-        glyphs
-            .iter()
-            .map(|glyph| self.style_for_range(glyph.range))
-            .find(|style| style.brush == brush)
-            .or_else(|| {
-                glyphs
-                    .first()
-                    .map(|glyph| self.style_for_range(glyph.range))
-            })
-            .unwrap_or_else(|| self.style_for_range(fallback_range))
-    }
-
-    pub(crate) fn style_for_range(&self, range: Range) -> Style {
-        if range.start < range.end {
-            self.style_at(range.start)
-        } else if range.start > 0 {
-            self.style_at(range.start - 1)
-        } else {
-            self.default_style.clone()
-        }
-    }
-
-    fn style_at(&self, index: usize) -> Style {
-        self.source
-            .spans
-            .iter()
-            .rfind(|span| span.range.contains(index))
-            .map(|span| span.style.clone())
-            .unwrap_or_else(|| self.default_style.clone())
     }
 
     pub fn inline_boxes(&self) -> Vec<PositionedInlineBox> {
         self.inner
-            .lines()
+            .lines
+            .iter()
             .enumerate()
-            .flat_map(|(line_index, line)| {
-                line.items().filter_map(move |item| {
-                    let PositionedLayoutItem::InlineBox(box_) = item else {
-                        return None;
-                    };
-                    let source_box = self
-                        .source
-                        .boxes
-                        .iter()
-                        .find(|source_box| source_box.id.as_u64() == box_.id);
-                    Some(PositionedInlineBox::new(
-                        Id::from_u64(box_.id),
-                        match box_.kind {
-                            parley::InlineBoxKind::InFlow => InlineBoxKind::InFlow,
-                            parley::InlineBoxKind::OutOfFlow
-                            | parley::InlineBoxKind::CustomOutOfFlow => InlineBoxKind::OutOfFlow,
-                        },
-                        Rect::new(box_.x, box_.y, box_.width, box_.height),
-                        source_box.map_or(0, |source_box| source_box.index),
-                        source_box.map_or(VerticalAlign::Baseline, |source_box| {
-                            source_box.vertical_align
-                        }),
-                        line_index,
-                    ))
+            .flat_map(|(index, line)| {
+                line.finalized.data.boxes.iter().map(move |box_| {
+                    let source = &self.source().boxes()[box_.occurrence];
+                    PositionedInlineBox::new(
+                        source.id(),
+                        source.kind(),
+                        Rect::new(
+                            line.origin.x + box_.rect.origin.x,
+                            line.origin.y + box_.rect.origin.y,
+                            box_.rect.size.width,
+                            box_.rect.size.height,
+                        ),
+                        source.index(),
+                        source.vertical_align(),
+                        index,
+                    )
                 })
             })
             .collect()
     }
 
     pub fn clusters(&self) -> Vec<Cluster> {
-        let mut clusters = Vec::new();
-        for line in self.inner.lines() {
-            let line_metrics = line.metrics();
-            for run in line.runs() {
-                for cluster in run.clusters() {
-                    let range = cluster.text_range();
-                    let x = cluster.visual_offset().unwrap_or(line_metrics.offset);
-                    clusters.push(Cluster::new(
-                        self.projection.range(range),
+        self.inner
+            .lines
+            .iter()
+            .flat_map(|line| {
+                let metrics = &line.finalized.data.metrics;
+                line.finalized.data.clusters.iter().map(move |cluster| {
+                    Cluster::new(
+                        cluster.source,
                         Rect::new(
-                            x,
-                            line_metrics.block_min_coord,
-                            cluster.advance(),
-                            line_metrics.block_max_coord - line_metrics.block_min_coord,
+                            line.origin.x + cluster.x,
+                            line.origin.y + metrics.block_min,
+                            cluster.advance,
+                            metrics.block_max - metrics.block_min,
                         ),
-                    ));
-                }
-            }
-        }
-        clusters
+                    )
+                })
+            })
+            .collect()
     }
 
     pub fn decorations(&self) -> Vec<DecorationRun> {
@@ -279,63 +260,15 @@ impl Layout {
 
     #[must_use]
     pub fn hit(&self, point: Point) -> Hit {
-        for box_ in self.inline_boxes() {
-            if box_.rect.contains(point) {
-                return Hit::InlineBox(box_.id);
-            }
-        }
-        if self.inner.is_empty() {
-            return Hit::None;
-        }
-        let metrics = self.metrics();
-        if !Rect::new(0.0, 0.0, metrics.size.width, metrics.size.height).contains(point) {
-            return Hit::None;
-        }
-        Hit::Text(self.mapped_cursor(parley::Cursor::from_point(&self.inner, point.x, point.y)))
-    }
-
-    fn provider_cursor(&self, cursor: Cursor) -> Result<parley::Cursor> {
-        super::range::validate_index(self.source.text(), cursor.index, "cursor")?;
-        let stop = self.projection.caret(cursor.index, cursor.affinity);
-        Ok(parley::Cursor::from_byte_index(
-            &self.inner,
-            self.projection.byte(stop).0,
-            cursor.affinity.into(),
-        ))
-    }
-
-    fn mapped_cursor(&self, cursor: parley::Cursor) -> Cursor {
-        let unit = self
-            .projection
-            .unit(ProviderIndex(cursor.index()))
-            .expect("provider cursor uses validated scalar boundaries");
-        let affinity = cursor.affinity().into();
-        Cursor::new(self.projection.caret(unit, affinity), affinity)
+        editing::hit(&self.inner, point)
     }
 
     pub fn cursor(&self, cursor: Cursor) -> Result<CursorGeometry> {
-        let cursor = self.provider_cursor(cursor)?;
-        Ok(CursorGeometry::new(rect_from_bounds(
-            cursor.geometry(&self.inner, 1.0),
-        )))
+        editing::cursor(&self.inner, cursor)
     }
 
     pub fn selection(&self, selection: Selection) -> Result<SelectionGeometry> {
-        super::range::validate(self.source.text(), selection.range())?;
-        if selection.is_collapsed() {
-            return Ok(SelectionGeometry::default());
-        }
-        let range = self.projection.selection_range(selection.range());
-        let start = self.provider_cursor(Cursor::new(range.start, Affinity::After))?;
-        let end = self.provider_cursor(Cursor::new(range.end, Affinity::Before))?;
-        let projected = parley::Selection::new(start, end);
-        Ok(SelectionGeometry::new(
-            projected
-                .geometry(&self.inner)
-                .into_iter()
-                .map(|(bounds, line)| SelectionRect::new(rect_from_bounds(bounds), line))
-                .collect(),
-        ))
+        editing::selection(&self.inner, selection)
     }
 
     pub fn painted_selection(
@@ -353,45 +286,7 @@ impl Layout {
     }
 
     pub fn move_cursor(&self, cursor: Cursor, movement: Movement) -> Result<Cursor> {
-        let cursor = self.provider_cursor(cursor)?;
-        let mut moved = match movement {
-            Movement::PreviousCluster => cursor.previous_visual(&self.inner),
-            Movement::NextCluster => cursor.next_visual(&self.inner),
-            Movement::PreviousWord => cursor.previous_logical_word(&self.inner),
-            Movement::NextWord => cursor.next_logical_word(&self.inner),
-            Movement::LineStart => self.line_boundary(cursor.index(), LineBoundary::Start),
-            Movement::LineEnd => self.line_boundary(cursor.index(), LineBoundary::End),
-            Movement::PreviousLine => self.vertical_movement(cursor, VerticalMovement::Previous),
-            Movement::NextLine => self.vertical_movement(cursor, VerticalMovement::Next),
-            Movement::DocumentStart => {
-                parley::Cursor::from_byte_index(&self.inner, 0, parley::Affinity::Downstream)
-            }
-            Movement::DocumentEnd => parley::Cursor::from_byte_index(
-                &self.inner,
-                self.projection.text.len(),
-                parley::Affinity::Upstream,
-            ),
-        };
-        if matches!(movement, Movement::PreviousCluster | Movement::NextCluster) {
-            // Each scalar boundary has at most two affinities. Traverse actual provider stops,
-            // never return a caret inside an indivisible source grapheme.
-            for _ in 0..=self.source.text.len().saturating_mul(2) {
-                let unit = self.projection.unit(ProviderIndex(moved.index()))?;
-                if self.projection.is_stop(unit) {
-                    break;
-                }
-                let next = if movement == Movement::PreviousCluster {
-                    moved.previous_visual(&self.inner)
-                } else {
-                    moved.next_visual(&self.inner)
-                };
-                if next.index() == moved.index() && next.affinity() == moved.affinity() {
-                    break;
-                }
-                moved = next;
-            }
-        }
-        Ok(self.mapped_cursor(moved))
+        editing::move_cursor(&self.inner, cursor, movement)
     }
 
     pub fn move_selection(
@@ -400,125 +295,36 @@ impl Layout {
         movement: Movement,
         extend: bool,
     ) -> Result<Selection> {
-        super::range::validate(self.source.text(), selection.range())?;
-        let moved = self.move_cursor(selection.focus, movement)?;
+        super::range::validate(self.source().text(), selection.range())?;
+        let moved = self.move_cursor(selection.focus(), movement)?;
         Ok(if extend {
-            Selection::new(selection.anchor, moved)
+            Selection::new(selection.anchor(), moved)
         } else {
             Selection::collapsed(moved)
         })
     }
 
-    fn line_boundary(&self, index: usize, boundary: LineBoundary) -> parley::Cursor {
-        let unit = self
-            .projection
-            .unit(ProviderIndex(index))
-            .expect("validated cursor boundary");
-        let Some(line) = self.line_for_index(unit) else {
-            return parley::Cursor::from_byte_index(
-                &self.inner,
-                match boundary {
-                    LineBoundary::Start => 0,
-                    LineBoundary::End => self.projection.text.len(),
-                },
-                match boundary {
-                    LineBoundary::Start => parley::Affinity::Downstream,
-                    LineBoundary::End => parley::Affinity::Upstream,
-                },
-            );
-        };
-        match boundary {
-            LineBoundary::Start => parley::Cursor::from_byte_index(
-                &self.inner,
-                self.projection.byte(line.range.start).0,
-                parley::Affinity::Downstream,
-            ),
-            LineBoundary::End => parley::Cursor::from_byte_index(
-                &self.inner,
-                self.projection.byte(self.line_visible_end(line.range)).0,
-                parley::Affinity::Upstream,
-            ),
-        }
-    }
-
-    fn vertical_movement(
-        &self,
-        cursor: parley::Cursor,
-        movement: VerticalMovement,
-    ) -> parley::Cursor {
-        let lines = self.lines();
-        let Some(current_index) = self.line_index_for_cursor(
-            self.projection
-                .unit(ProviderIndex(cursor.index()))
-                .expect("validated cursor boundary"),
-            &lines,
-        ) else {
-            return cursor;
-        };
-        let next_index = match movement {
-            VerticalMovement::Previous => current_index.checked_sub(1),
-            VerticalMovement::Next => {
-                let index = current_index + 1;
-                (index < lines.len()).then_some(index)
-            }
-        };
-        let Some(next_index) = next_index else {
-            return cursor;
-        };
-        let geometry = cursor.geometry(&self.inner, 1.0);
-        let line = lines[next_index];
-        let y = line.bounds.origin.y + line.bounds.size.height * 0.5;
-        parley::Cursor::from_point(&self.inner, geometry.x0 as f32, y)
-    }
-
-    fn line_for_index(&self, index: usize) -> Option<Line> {
-        let lines = self.lines();
-        self.line_index_for_cursor(index, &lines)
-            .and_then(|line_index| lines.get(line_index).copied())
-    }
-
-    fn line_index_for_cursor(&self, index: usize, lines: &[Line]) -> Option<usize> {
-        lines
-            .iter()
-            .position(|line| index >= line.range.start && index < line.range.end)
-            .or_else(|| {
-                lines
-                    .iter()
-                    .rposition(|line| index == line.range.end && line.range.end != line.range.start)
-            })
-            .or_else(|| {
-                (!lines.is_empty() && index >= self.source.text.len()).then_some(lines.len() - 1)
-            })
-    }
-
-    fn line_visible_end(&self, range: Range) -> usize {
-        let mut end = range.end;
-        while end > range.start {
-            if matches!(self.source.text.code_units()[end - 1], 0x0a | 0x0d) {
-                end -= 1;
-            } else {
-                break;
-            }
-        }
-        end
-    }
-
     pub fn apply(&self, edit: Edit) -> Result<Source> {
-        edit.normalize(&self.source)?.apply_to(self.source.clone())
+        edit.normalize(self.source())?
+            .apply_to(self.source().clone())
     }
 }
 
-pub(crate) fn decoration_top(baseline: f32, offset_from_baseline: f32) -> f32 {
+pub(crate) fn line_baseline(line: &PlacedLine) -> f64 {
+    line.origin.y + line.finalized.data.metrics.baseline
+}
+
+pub(crate) fn decoration_top(baseline: f64, offset_from_baseline: f64) -> f64 {
     baseline - offset_from_baseline
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Metrics {
     size: Size,
-    full_width: f32,
+    full_width: f64,
     line_count: usize,
-    first_baseline: Option<f32>,
-    last_baseline: Option<f32>,
+    first_baseline: Option<f64>,
+    last_baseline: Option<f64>,
     overflow: bool,
 }
 
@@ -526,10 +332,10 @@ impl Metrics {
     #[must_use]
     pub const fn new(
         size: Size,
-        full_width: f32,
+        full_width: f64,
         line_count: usize,
-        first_baseline: Option<f32>,
-        last_baseline: Option<f32>,
+        first_baseline: Option<f64>,
+        last_baseline: Option<f64>,
         overflow: bool,
     ) -> Self {
         Self {
@@ -548,7 +354,7 @@ impl Metrics {
     }
 
     #[must_use]
-    pub const fn full_width(self) -> f32 {
+    pub const fn full_width(self) -> f64 {
         self.full_width
     }
 
@@ -558,12 +364,12 @@ impl Metrics {
     }
 
     #[must_use]
-    pub const fn first_baseline(self) -> Option<f32> {
+    pub const fn first_baseline(self) -> Option<f64> {
         self.first_baseline
     }
 
     #[must_use]
-    pub const fn last_baseline(self) -> Option<f32> {
+    pub const fn last_baseline(self) -> Option<f64> {
         self.last_baseline
     }
 
@@ -577,13 +383,13 @@ impl Metrics {
 pub struct Line {
     index: usize,
     range: Range,
-    baseline: f32,
+    baseline: f64,
     bounds: Rect,
 }
 
 impl Line {
     #[must_use]
-    pub const fn new(index: usize, range: Range, baseline: f32, bounds: Rect) -> Self {
+    pub const fn new(index: usize, range: Range, baseline: f64, bounds: Rect) -> Self {
         Self {
             index,
             range,
@@ -603,7 +409,7 @@ impl Line {
     }
 
     #[must_use]
-    pub const fn baseline(self) -> f32 {
+    pub const fn baseline(self) -> f64 {
         self.baseline
     }
 
@@ -617,7 +423,7 @@ impl Line {
 pub struct Run {
     line: usize,
     range: Range,
-    font: FontRef,
+    font: FontData,
     style: Style,
     brush: Brush,
     metrics: RunMetrics,
@@ -629,7 +435,7 @@ impl Run {
     pub fn new(
         line: usize,
         range: Range,
-        font: FontRef,
+        font: FontData,
         style: Style,
         brush: Brush,
         metrics: RunMetrics,
@@ -647,7 +453,7 @@ impl Run {
     }
 
     #[must_use]
-    pub fn font(&self) -> &FontRef {
+    pub fn font(&self) -> &FontData {
         &self.font
     }
 
@@ -677,18 +483,23 @@ impl Run {
     }
 
     #[must_use]
-    pub const fn baseline(&self) -> f32 {
+    pub const fn baseline(&self) -> f64 {
         self.metrics.baseline()
     }
 
     #[must_use]
-    pub const fn offset(&self) -> f32 {
+    pub const fn offset(&self) -> f64 {
         self.metrics.offset()
     }
 
     #[must_use]
-    pub const fn advance(&self) -> f32 {
+    pub const fn advance(&self) -> f64 {
         self.metrics.advance()
+    }
+
+    #[must_use]
+    pub const fn origin(&self) -> Point {
+        Point::new(self.metrics.offset, self.metrics.baseline)
     }
 
     #[must_use]
@@ -764,9 +575,9 @@ pub struct RunMetricFact {
     line: usize,
     range: Range,
     font_size: f32,
-    baseline: f32,
-    offset: f32,
-    advance: f32,
+    baseline: f64,
+    offset: f64,
+    advance: f64,
 }
 
 impl RunMetricFact {
@@ -775,9 +586,9 @@ impl RunMetricFact {
         line: usize,
         range: Range,
         font_size: f32,
-        baseline: f32,
-        offset: f32,
-        advance: f32,
+        baseline: f64,
+        offset: f64,
+        advance: f64,
     ) -> Self {
         Self {
             line,
@@ -805,17 +616,17 @@ impl RunMetricFact {
     }
 
     #[must_use]
-    pub const fn baseline(self) -> f32 {
+    pub const fn baseline(self) -> f64 {
         self.baseline
     }
 
     #[must_use]
-    pub const fn offset(self) -> f32 {
+    pub const fn offset(self) -> f64 {
         self.offset
     }
 
     #[must_use]
-    pub const fn advance(self) -> f32 {
+    pub const fn advance(self) -> f64 {
         self.advance
     }
 }
@@ -891,21 +702,21 @@ impl InlineBoxMetricFact {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BaselineShiftFact {
-    BackendBottomOnBaseline,
+    BottomOnBaseline,
     Requested(BaselineShift),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RunMetrics {
     font_size: f32,
-    baseline: f32,
-    offset: f32,
-    advance: f32,
+    baseline: f64,
+    offset: f64,
+    advance: f64,
 }
 
 impl RunMetrics {
     #[must_use]
-    pub const fn new(font_size: f32, baseline: f32, offset: f32, advance: f32) -> Self {
+    pub const fn new(font_size: f32, baseline: f64, offset: f64, advance: f64) -> Self {
         Self {
             font_size,
             baseline,
@@ -920,54 +731,18 @@ impl RunMetrics {
     }
 
     #[must_use]
-    pub const fn baseline(self) -> f32 {
+    pub const fn baseline(self) -> f64 {
         self.baseline
     }
 
     #[must_use]
-    pub const fn offset(self) -> f32 {
+    pub const fn offset(self) -> f64 {
         self.offset
     }
 
     #[must_use]
-    pub const fn advance(self) -> f32 {
+    pub const fn advance(self) -> f64 {
         self.advance
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct FontRef {
-    id: u64,
-    data: Option<FontData>,
-}
-
-impl FontRef {
-    #[must_use]
-    pub const fn new(id: u64) -> Self {
-        Self { id, data: None }
-    }
-
-    #[must_use]
-    pub const fn id(&self) -> u64 {
-        self.id
-    }
-
-    #[must_use]
-    pub fn with_data(mut self, data: FontData) -> Self {
-        self.data = Some(data);
-        self
-    }
-
-    #[must_use]
-    pub fn data(&self) -> Option<&FontData> {
-        self.data.as_ref()
-    }
-
-    fn from_parley(data: &parley::FontData, catalogue: &FontCatalogueIdentity) -> Self {
-        Self {
-            id: data.data.id(),
-            data: Some(FontFace::new(&data.data, data.index, catalogue).to_owned()),
-        }
     }
 }
 
@@ -978,17 +753,19 @@ pub struct Glyph {
     y: f32,
     advance: f32,
     range: Range,
+    pen: f64,
 }
 
 impl Glyph {
     #[must_use]
-    pub const fn new(id: u32, x: f32, y: f32, advance: f32, range: Range) -> Self {
+    pub const fn new(id: u32, x: f32, y: f32, advance: f32, range: Range, pen: f64) -> Self {
         Self {
             id,
             x,
             y,
             advance,
             range,
+            pen,
         }
     }
 
@@ -997,19 +774,28 @@ impl Glyph {
         self.id
     }
 
+    /// Raw canonical horizontal provider offset, added to the logical pen and run origin.
     #[must_use]
     pub const fn x(self) -> f32 {
         self.x
     }
 
+    /// Raw canonical vertical provider offset, positive downward from the run baseline.
     #[must_use]
     pub const fn y(self) -> f32 {
         self.y
     }
 
+    /// Raw canonical provider advance, before logical spacing allocation.
     #[must_use]
     pub const fn advance(self) -> f32 {
         self.advance
+    }
+
+    /// Actual logical run-local pen, including line spacing allocation.
+    #[must_use]
+    pub const fn pen(self) -> f64 {
+        self.pen
     }
 
     #[must_use]
@@ -1173,24 +959,6 @@ pub enum Affinity {
     After,
 }
 
-impl From<parley::Affinity> for Affinity {
-    fn from(affinity: parley::Affinity) -> Self {
-        match affinity {
-            parley::Affinity::Upstream => Self::Before,
-            parley::Affinity::Downstream => Self::After,
-        }
-    }
-}
-
-impl From<Affinity> for parley::Affinity {
-    fn from(affinity: Affinity) -> Self {
-        match affinity {
-            Affinity::Before => Self::Upstream,
-            Affinity::After => Self::Downstream,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CursorGeometry {
     rect: Rect,
@@ -1350,16 +1118,4 @@ pub enum Movement {
     NextLine,
     DocumentStart,
     DocumentEnd,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum LineBoundary {
-    Start,
-    End,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum VerticalMovement {
-    Previous,
-    Next,
 }

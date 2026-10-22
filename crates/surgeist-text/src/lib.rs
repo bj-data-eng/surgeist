@@ -1,4 +1,4 @@
-//! Parley-backed text layout boundary for Surgeist.
+//! Owned text preparation and standalone layout for Surgeist.
 //!
 //! This module owns text layout facts: shaping, line breaking, glyph runs,
 //! inline boxes, cursor geometry, selection geometry, and low-level movement.
@@ -7,10 +7,12 @@
 
 #[cfg(feature = "text-accessibility")]
 mod accessibility;
+mod analyzed;
 mod cache;
 mod catalogue;
 mod composer;
 mod edit;
+mod engine;
 mod error;
 mod font;
 mod geometry;
@@ -31,6 +33,7 @@ mod views;
 
 #[cfg(feature = "text-accessibility")]
 pub use accessibility::Accessibility;
+pub use analyzed::{AnalysisIdentity, AnalyzedSource};
 pub use cache::{FontGeneration, Key, OptionsKey, SourceKey, Stats, StyleKey};
 pub use catalogue::{FontCatalogueIdentity, FontCatalogueMode};
 pub use composer::{Composer, Mark, compose, source};
@@ -38,15 +41,18 @@ pub use edit::{Edit, TextEdit};
 pub use error::{
     DocumentSegmentBreakError, Error, ErrorCode, ErrorDetail, FontMetricField,
     FontMetricNumericError, FontMetricPhase, FontMetricTable, FontMetricTableError,
-    FontSynthesisKind, NumericRequirement, ProcessingCapacityError, Result, ShapingBoundary,
+    NumericRequirement, ProcessingCapacityError, Result, ShapingBoundary, ShapingRefusalReason,
+    TextNumericError, TextNumericPhase,
 };
-pub use font::{EffectiveFontInstance, FontData, FontFace, FontMetrics, StrikeoutMetrics};
+pub use font::{
+    EffectiveFontInstance, FontData, FontFace, FontMetrics, FontSynthesis, StrikeoutMetrics,
+};
 pub use geometry::{Point, Rect, Size};
 pub use id::Id;
 pub use layout::{
     Affinity, BaselineShiftFact, Cluster, Cursor, CursorGeometry, DecorationKind, DecorationRun,
-    FontRef, Glyph, Hit, InlineBoxMetricFact, InlineMetricFacts, Layout, Line, LineMetricFact,
-    Metrics, Movement, PaintedSelectionGeometry, PaintedSelectionRect, PositionedInlineBox, Run,
+    Glyph, Hit, InlineBoxMetricFact, InlineMetricFacts, Layout, Line, LineMetricFact, Metrics,
+    Movement, PaintedSelectionGeometry, PaintedSelectionRect, PositionedInlineBox, Run,
     RunMetricFact, RunMetrics, Selection, SelectionGeometry, SelectionRect,
 };
 pub use options::{Alignment, Indent, Options, TextAlignLast, TextOverflow, ValidatedOptions};

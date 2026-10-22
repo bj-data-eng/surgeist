@@ -164,6 +164,66 @@ fn prepared_vello_pass_contains_no_wgpu_resource_or_submission_authority() {
     }
 }
 
+#[test]
+fn logical_glyph_native_narrowing_is_atomic_for_the_entire_run() {
+    let font = FontData::try_from_bytes(AHEM_FONT_BYTES.to_vec(), 0).unwrap();
+    let seed = [TextGlyph::try_new(AHEM_GLYPH_X, 16_777_217.0, -0.5, -1.0).unwrap()];
+    let mut scene = VelloScene::default();
+    scene
+        .encode_text_run(&text_run_for(
+            font.clone(),
+            16.0,
+            Transform::identity(),
+            &seed,
+        ))
+        .unwrap();
+    let before = scene.observation_for_test();
+    let first = before.first_glyph_for_test().unwrap();
+    assert_eq!(first.x_for_test(), 16_777_216.0);
+    assert_eq!(first.y_for_test(), -0.5);
+    assert_eq!(before.glyph_count_for_test(), 1);
+    assert_eq!(before.glyph_run_count_for_test(), 1);
+    let patches = before.patch_count_for_test();
+    for bad in [f64::MAX, -f64::MAX, f64::from_bits(1), -f64::from_bits(1)] {
+        for bad_x in [true, false] {
+            let glyphs = [
+                TextGlyph::try_new(AHEM_GLYPH_X, 1.0, 2.0, 4.0).unwrap(),
+                TextGlyph::try_new(
+                    AHEM_GLYPH_X,
+                    if bad_x { bad } else { 3.0 },
+                    if bad_x { 4.0 } else { bad },
+                    4.0,
+                )
+                .unwrap(),
+            ];
+            let error = scene
+                .encode_text_run(&text_run_for(
+                    font.clone(),
+                    16.0,
+                    Transform::identity(),
+                    &glyphs,
+                ))
+                .expect_err("the later invalid coordinate must refuse the complete run");
+            assert_eq!(error.code(), ErrorCode::InvalidInput);
+            assert_eq!(
+                error.invalid_value_diagnostic().unwrap().field(),
+                "glyph backend coordinate"
+            );
+            let after = scene.observation_for_test();
+            assert_eq!(after.glyph_count_for_test(), 1);
+            assert_eq!(after.glyph_run_count_for_test(), 1);
+            assert_eq!(after.patch_count_for_test(), patches);
+            let first = after.first_glyph_for_test().unwrap();
+            assert_eq!(first.x_for_test(), 16_777_216.0);
+            assert_eq!(first.y_for_test(), -0.5);
+        }
+    }
+    scene
+        .encode_text_run(&text_run_for(font, 16.0, Transform::identity(), &seed))
+        .unwrap();
+    assert_eq!(scene.observation_for_test().glyph_count_for_test(), 2);
+}
+
 fn assert_prepared_vello_pass_basics(observation: &PreparedVelloPassObservation) {
     assert_eq!(
         observation.target_extent_for_test(),

@@ -149,7 +149,7 @@ fn validate_inline_box_size(size: Size) -> Result<()> {
     Ok(())
 }
 
-fn validate_inline_box_dimension(value: f32, field: &'static str) -> Result<()> {
+fn validate_inline_box_dimension(value: f64, field: &'static str) -> Result<()> {
     if !value.is_finite() || value < 0.0 {
         return Err(Error::new(
             ErrorCode::InvalidStyle,
@@ -171,7 +171,7 @@ fn validate_inline_box_vertical_align(vertical_align: VerticalAlign) -> Result<(
     Ok(())
 }
 
-fn validate_baseline_shift(value: f32) -> Result<()> {
+fn validate_baseline_shift(value: f64) -> Result<()> {
     if !value.is_finite() {
         return Err(
             Error::new(ErrorCode::InvalidStyle, "baseline shift must be finite").with_detail(
@@ -365,22 +365,22 @@ impl VerticalAlign {
         Self::Baseline
     }
 
-    pub fn try_shift(value: f32) -> Result<Self> {
+    pub fn try_shift(value: f64) -> Result<Self> {
         Ok(Self::Shift(BaselineShift::try_new(value)?))
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct BaselineShift(f32);
+pub struct BaselineShift(f64);
 
 impl BaselineShift {
-    pub fn try_new(value: f32) -> Result<Self> {
+    pub fn try_new(value: f64) -> Result<Self> {
         validate_baseline_shift(value)?;
         Ok(Self(value))
     }
 
     #[must_use]
-    pub const fn get(self) -> f32 {
+    pub const fn get(self) -> f64 {
         self.0
     }
 }
@@ -389,13 +389,4 @@ impl BaselineShift {
 pub enum InlineBoxKind {
     InFlow,
     OutOfFlow,
-}
-
-impl From<InlineBoxKind> for parley::InlineBoxKind {
-    fn from(kind: InlineBoxKind) -> Self {
-        match kind {
-            InlineBoxKind::InFlow => Self::InFlow,
-            InlineBoxKind::OutOfFlow => Self::OutOfFlow,
-        }
-    }
 }

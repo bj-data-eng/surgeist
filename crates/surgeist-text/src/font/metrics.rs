@@ -87,7 +87,7 @@ impl<'a> EffectiveFontInstance<'a> {
     ///
     /// Historical resources work under their retained original publication.
     /// Static and qualified MVAR metrics use the exact canonical coordinates.
-    /// Unresolved faux synthesis remains unsupported. A usable strike top is normalized to
+    /// Concrete synthesis leaves these line metrics unchanged. A usable strike top is normalized to
     /// center; fallback is ascent/2 and actual size/18, not raw UPEM/18.
     pub fn metrics(&self, expected_catalogue: &FontCatalogueIdentity) -> Result<FontMetrics<'a>> {
         if self.face.catalogue_identity() != expected_catalogue {

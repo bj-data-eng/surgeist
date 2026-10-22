@@ -52,6 +52,12 @@ impl error::Error for Error {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ErrorCode {
     FontSystemUnavailable,
+    /// Font resolution found no usable face for required shaping or metrics.
+    NoUsableFontFace,
+    /// Actual shaping declined required work or representability.
+    ShapingRefused,
+    /// A logical or canonical geometry conversion lost its numeric category.
+    InvalidTextNumeric,
     FontLoadFailed,
     FontGenerationExhausted,
     /// An edit cannot publish another revision of the source.
@@ -77,6 +83,22 @@ pub enum ErrorCode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErrorDetail {
+    /// The actual shaping invocation returned incomplete output.
+    ShapingRefused {
+        reason: ShapingRefusalReason,
+    },
+    /// Logical or canonical geometry could not be represented truthfully.
+    InvalidTextNumeric {
+        field: &'static str,
+        phase: TextNumericPhase,
+        category: TextNumericError,
+        value: f64,
+    },
+    /// The host requires scalar UTF-8 and cannot represent this original unit.
+    AccessibilityIllFormedSource {
+        index: usize,
+        unit: u16,
+    },
     /// Associated font provenance does not match the captured operation basis.
     FontCatalogueMismatch {
         /// Expected publication.
@@ -176,15 +198,6 @@ pub enum ErrorDetail {
         /// Unchanged stored coordinate bits.
         bits: i16,
     },
-    /// The provider still requires a concrete synthesis operation.
-    UnresolvedFontSynthesis {
-        /// Actual unresolved suggestion.
-        kind: FontSynthesisKind,
-    },
-    IsolatedSurrogateLayout {
-        index: usize,
-        unit: u16,
-    },
     UnsupportedShapingBoundary {
         index: usize,
         kind: ShapingBoundary,
@@ -193,11 +206,21 @@ pub enum ErrorDetail {
         start: usize,
         end: usize,
     },
+    /// A completed shaping result returned inconsistent parallel arrays.
+    ProviderOutputLength {
+        infos: usize,
+        positions: usize,
+    },
+    /// A returned glyph identifier is outside the selected resource.
+    ProviderGlyphBounds {
+        glyph_id: u32,
+        num_glyphs: u16,
+    },
     UnsupportedAccessibilityUnit {
         range: super::Range,
         bytes: usize,
     },
-    AccessibilityLayoutMismatch,
+    AccessibilityBindingMismatch,
     AccessibilityIdentityConflict {
         id: u64,
     },
@@ -230,7 +253,7 @@ pub enum ErrorDetail {
     },
     InvalidNumericField {
         field: &'static str,
-        value: f32,
+        value: f64,
         requirement: NumericRequirement,
     },
     UnsupportedTextStyle {
@@ -265,15 +288,6 @@ pub enum ProcessingCapacityError {
     Overflow,
     /// A fallible buffer reservation was refused.
     Allocation,
-}
-
-/// A shaping suggestion for which no concrete outline operation was supplied.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FontSynthesisKind {
-    /// Faux bold requires a concrete emboldening operation.
-    Embolden,
-    /// Faux italic or oblique requires a concrete skew operation.
-    Skew,
 }
 
 /// A shaping input boundary that must not divide a surrogate pair.
@@ -446,4 +460,69 @@ pub enum FontMetricNumericError {
     Positive,
     /// Positive metric is zero or negative.
     NonPositive,
+}
+
+/// Actual reason a shaping invocation could not complete.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ShapingRefusalReason {
+    GrowthLimit,
+    WorkLimit,
+    LookupNestingLimit,
+    ContextLimit,
+    AttachmentNestingLimit,
+    FeatureCapacityLimit,
+    ComponentHistoryLimit,
+}
+
+/// Operation at which geometry was rejected.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TextNumericPhase {
+    Preparation,
+    Shaping,
+    Finalization,
+    Placement,
+    Accessibility,
+    FontSynthesis,
+}
+
+/// Category which a geometry value failed to preserve.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TextNumericError {
+    NonFinite,
+    PositiveLost,
+    NonZeroLost,
+    OutOfRange,
+}
+
+pub(crate) fn shaping_refused(reason: harfrust::ShapingRefusal) -> Error {
+    use harfrust::ShapingRefusal as Provider;
+    let reason = match reason {
+        Provider::GrowthLimit => ShapingRefusalReason::GrowthLimit,
+        Provider::WorkLimit => ShapingRefusalReason::WorkLimit,
+        Provider::LookupNestingLimit => ShapingRefusalReason::LookupNestingLimit,
+        Provider::ContextLimit => ShapingRefusalReason::ContextLimit,
+        Provider::AttachmentNestingLimit => ShapingRefusalReason::AttachmentNestingLimit,
+        Provider::FeatureCapacityLimit => ShapingRefusalReason::FeatureCapacityLimit,
+        Provider::ComponentHistoryLimit => ShapingRefusalReason::ComponentHistoryLimit,
+    };
+    Error::new(ErrorCode::ShapingRefused, "shaping did not complete")
+        .with_detail(ErrorDetail::ShapingRefused { reason })
+}
+
+pub(crate) fn text_numeric_error(
+    field: &'static str,
+    phase: TextNumericPhase,
+    category: TextNumericError,
+    value: f64,
+) -> Error {
+    Error::new(
+        ErrorCode::InvalidTextNumeric,
+        "text geometry cannot preserve its numeric category",
+    )
+    .with_detail(ErrorDetail::InvalidTextNumeric {
+        field,
+        phase,
+        category,
+        value,
+    })
 }

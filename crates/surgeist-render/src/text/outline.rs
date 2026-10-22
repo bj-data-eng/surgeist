@@ -54,8 +54,8 @@ impl NormalizedCoordinate {
     }
 }
 
-/// Concrete font-outline synthesis, applied before y reflection and glyph placement.
-/// Nonzero emboldening is a distinguishable unsupported request on this entry.
+/// Concrete horizontal outline synthesis. Skew uses x += skew*y before scaling;
+/// positive emboldening appends a local-x translated copy to the same path.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct OutlineSynthesis {
     skew: f32,
@@ -72,7 +72,10 @@ impl OutlineSynthesis {
         }
     }
 
-    /// Validates x += skew*y and a nonnegative font-outline emboldening displacement.
+    /// Validates x += skew*y and a nonnegative scaled local-x copy displacement.
+    /// The displacement is not a design-unit amount or an expansion radius.
+    /// Text resolves permitted faux bold from actual size/36; this consumer
+    /// executes the supplied canonical displacement without resolving it again.
     pub fn try_new(skew: f32, embolden: f32) -> Result<Self> {
         if !skew.is_finite() || !embolden.is_finite() || embolden < 0.0 {
             return Err(OutlinePreparationError::InvalidSynthesis.into());
@@ -85,7 +88,7 @@ impl OutlineSynthesis {
     pub const fn skew(self) -> f32 {
         self.skew
     }
-    /// Returns the requested emboldening displacement.
+    /// Returns the scaled local-x displacement used for the appended contour copy.
     #[must_use]
     pub const fn embolden(self) -> f32 {
         self.embolden
@@ -206,6 +209,8 @@ pub enum OutlineNumericPhase {
     InkExtent,
     /// Actual backend affine conversion/composition.
     Placement,
+    /// Positive local-x synthesis displacement was absorbed by point conversion.
+    Synthesis,
 }
 
 /// Variation metadata whose malformed presence cannot mean static/default font.
@@ -279,8 +284,6 @@ pub enum OutlinePreparationError {
     UnsupportedBitmap,
     /// Nonfinite or negative synthesis input.
     InvalidSynthesis,
-    /// Nonzero emboldening needs a qualified expansion implementation.
-    UnsupportedEmboldening,
     /// Canonical numeric representation cannot preserve this input/output.
     Numeric {
         /// Failing boundary.
@@ -385,8 +388,10 @@ impl FontData {
     /// are supported. Composite variation, nonidentity component transforms, point
     /// attachment, metric overrides, sparse IUP and CFF/CFF2/VARC refuse explicitly.
     ///
-    /// All glyphs succeed before an immutable result is published. Selected color,
-    /// bitmap and nonzero emboldening requests refuse explicitly, never fall back.
+    /// Positive emboldening appends the original contours and a local-x copy
+    /// into this one path for one NonZero fill. It leaves glyph facts unchanged.
+    /// All glyphs succeed before an immutable result is published. Selected color
+    /// and bitmap requests refuse explicitly, never fall back.
     /// The returned geometry retains this face independently of the input lifetime.
     pub fn prepare_outline(
         &self,
@@ -443,9 +448,6 @@ impl FontData {
                 .num_glyphs(),
         );
         validate_variations(&font, instance, glyphs, glyph_count)?;
-        if instance.synthesis.embolden != 0.0 {
-            return Err(OutlinePreparationError::UnsupportedEmboldening.into());
-        }
         // Blob::from(Vec) boxes the byte slice before sharing it. Charge that
         // observable extent plus declared conservative logical owner headers,
         // never the historical input Vec's discarded spare capacity.
@@ -587,22 +589,34 @@ impl FontData {
                 limits.scratch_bytes,
             )?;
             scratch.resize(scratch_len, 0u8);
-            pen.begin_glyph(
-                *glyph,
-                instance.synthesis.skew,
-                f64::from(instance.size) / f64::from(units),
-            );
-            outline
-                .draw(
-                    DrawSettings::unhinted(Size::unscaled(), LocationRef::new(&coordinates))
-                        .with_path_style(PathStyle::HarfBuzz)
-                        .with_memory(Some(&mut scratch)),
-                    &mut pen,
-                )
-                .map_err(|_| {
-                    Error::from(OutlinePreparationError::Provider { glyph: glyph.id() })
-                })?;
-            pen.finish_glyph()?;
+            let copies = if instance.synthesis.embolden == 0.0 {
+                1
+            } else {
+                2
+            };
+            for copy in 0..copies {
+                pen.begin_glyph(
+                    *glyph,
+                    instance.synthesis.skew,
+                    f64::from(instance.size) / f64::from(units),
+                    if copy == 0 {
+                        0.0
+                    } else {
+                        instance.synthesis.embolden
+                    },
+                );
+                outline
+                    .draw(
+                        DrawSettings::unhinted(Size::unscaled(), LocationRef::new(&coordinates))
+                            .with_path_style(PathStyle::HarfBuzz)
+                            .with_memory(Some(&mut scratch)),
+                        &mut pen,
+                    )
+                    .map_err(|_| {
+                        Error::from(OutlinePreparationError::Provider { glyph: glyph.id() })
+                    })?;
+                pen.finish_glyph()?;
+            }
         }
         let retained_bytes = pen
             .elements
@@ -1039,6 +1053,7 @@ struct CollectingPen {
     glyph: TextGlyph,
     skew: f32,
     scale: f64,
+    copy_offset: f32,
     glyph_bounds: Option<kurbo::Rect>,
     bounds: Option<kurbo::Rect>,
     drawing: bool,
@@ -1054,15 +1069,17 @@ impl CollectingPen {
             glyph: TextGlyph::try_new(0, 0.0, 0.0, 0.0).expect("zero glyph facts are finite"),
             skew: 0.0,
             scale: 1.0,
+            copy_offset: 0.0,
             glyph_bounds: None,
             bounds: None,
             drawing: false,
         }
     }
-    fn begin_glyph(&mut self, glyph: TextGlyph, skew: f32, scale: f64) {
+    fn begin_glyph(&mut self, glyph: TextGlyph, skew: f32, scale: f64, copy_offset: f32) {
         self.glyph = glyph;
         self.skew = skew;
         self.scale = scale;
+        self.copy_offset = copy_offset;
         self.glyph_bounds = None;
         self.drawing = false;
     }
@@ -1070,9 +1087,17 @@ impl CollectingPen {
         let values = [
             f64::from(x) * self.scale
                 + f64::from(self.skew) * f64::from(y) * self.scale
-                + f64::from(self.glyph.x()),
-            -f64::from(y) * self.scale + f64::from(self.glyph.y()),
+                + self.glyph.x(),
+            -f64::from(y) * self.scale + self.glyph.y(),
         ];
+        // Preserve the original scale/shear/placement evaluation. The copy
+        // shift is in scaled local units and is added before one canonical
+        // conversion, never by translating an already-rounded retained path.
+        let original_x = values[0];
+        let mut values = values;
+        if self.copy_offset > 0.0 {
+            values[0] += f64::from(self.copy_offset);
+        }
         let mut canonical = [0.0; 2];
         for (index, value) in values.into_iter().enumerate() {
             let narrowed = value as f32;
@@ -1080,6 +1105,12 @@ impl CollectingPen {
                 self.failed.get_or_insert(OutlinePreparationError::Numeric {
                     phase: OutlineNumericPhase::PathPoint,
                     value,
+                });
+            }
+            if index == 0 && self.copy_offset > 0.0 && narrowed == original_x as f32 {
+                self.failed.get_or_insert(OutlinePreparationError::Numeric {
+                    phase: OutlineNumericPhase::Synthesis,
+                    value: f64::from(self.copy_offset),
                 });
             }
             canonical[index] = f64::from(narrowed);

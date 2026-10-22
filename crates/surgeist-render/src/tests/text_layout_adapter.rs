@@ -147,7 +147,7 @@ fn actual_registered_layout_preserves_face_instance_glyphs_ink_and_single_placem
     );
     assert_eq!(prepared.scene().commands.len(), 1);
     let (run, transform) = outline(&prepared.scene().commands[0]);
-    assert_eq!(transform, placement);
+    assert_eq!(transform, Transform::translation(7.0, 25.0).unwrap());
     assert_eq!(run.font().bytes(), AHEM);
     assert_eq!(run.font().index(), 0);
     assert_eq!(run.instance().size(), 20.0);
@@ -156,13 +156,13 @@ fn actual_registered_layout_preserves_face_instance_glyphs_ink_and_single_placem
     assert_eq!(
         run.glyphs(),
         [
-            TextGlyph::try_new(35, 0.0, 16.0, 20.0).unwrap(),
-            TextGlyph::try_new(58, 20.0, 16.0, 20.0).unwrap(),
+            TextGlyph::try_new(35, 0.0, 0.0, 20.0).unwrap(),
+            TextGlyph::try_new(58, 20.0, 0.0, 20.0).unwrap(),
         ]
     );
     assert_eq!(
         run.bounds().ink_rect(),
-        Some(Rect::try_new(0.0, 0.0, 40.0, 20.0).unwrap())
+        Some(Rect::try_new(0.0, -16.0, 40.0, 20.0).unwrap())
     );
     let Command::PreparedOutline { paint, .. } = &prepared.scene().commands[0] else {
         unreachable!()
@@ -174,7 +174,162 @@ fn actual_registered_layout_preserves_face_instance_glyphs_ink_and_single_placem
 }
 
 #[test]
-fn real_multiline_alignment_and_indent_are_already_in_glyph_positions() {
+fn actual_fractional_logical_pens_preserve_provider_advances() {
+    let spacing = 2.0_f64.powi(-30);
+    let input = system(AHEM.to_vec())
+        .layout(
+            text::Source::new("AXA"),
+            text::Style {
+                letter_spacing: spacing,
+                ..style()
+            },
+            options(),
+        )
+        .unwrap();
+    let prepared = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    let (run, transform) = outline(&prepared.scene().commands[0]);
+    assert_eq!(transform, Transform::translation(0.0, 16.0).unwrap());
+    assert_eq!(
+        run.glyphs()
+            .iter()
+            .map(|glyph| glyph.x())
+            .collect::<Vec<_>>(),
+        [0.0, 20.0 + spacing, 40.0 + 2.0 * spacing]
+    );
+    assert!(
+        run.glyphs()
+            .iter()
+            .all(|glyph| glyph.y() == 0.0 && glyph.advance() == 20.0)
+    );
+}
+
+#[test]
+fn actual_run_origin_is_outer_and_placement_order_preserves_decorations() {
+    let input = system(AHEM.to_vec())
+        .layout(
+            text::Source::new("X"),
+            decorated_style(),
+            text::Options {
+                indent: text::Indent {
+                    amount: 5.0,
+                    ..text::Indent::default()
+                },
+                ..options()
+            },
+        )
+        .unwrap();
+    let placement = Transform::try_new([2.0, 0.0, 0.0, 3.0, 7.0, 9.0]).unwrap();
+    let prepared = prepare_text_layout(&input, placement, limits()).unwrap();
+    let (run, transform) = outline(&prepared.scene().commands[0]);
+    assert_eq!(
+        run.glyphs(),
+        [TextGlyph::try_new(58, 0.0, 0.0, 20.0).unwrap()]
+    );
+    assert_eq!(
+        run.bounds().ink_rect(),
+        Some(Rect::new(0.0, -16.0, 20.0, 20.0))
+    );
+    // P*T applies the run origin before scaling. T*P would incorrectly give (12, 25).
+    assert_eq!(transform.as_array(), [2.0, 0.0, 0.0, 3.0, 17.0, 57.0]);
+    let Command::Layer { layer, children } = &prepared.scene().commands[1] else {
+        panic!("paragraph decorations retain the single placement layer");
+    };
+    assert_eq!(layer.transform(), placement);
+    let Command::Fill { shape, .. } = &children[0] else {
+        panic!("underline fill")
+    };
+    assert_eq!(shape, &crate::Shape::rect(Rect::new(5.0, 18.0, 20.0, 1.0)));
+}
+
+#[test]
+fn actual_large_run_origin_never_enters_canonical_outline_points() {
+    let origin = 16_777_217.0_f64;
+    let input = system(AHEM.to_vec())
+        .layout(
+            text::Source::new("X"),
+            style(),
+            text::Options {
+                indent: text::Indent {
+                    amount: origin,
+                    ..text::Indent::default()
+                },
+                ..options()
+            },
+        )
+        .unwrap();
+    let prepared = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    let (run, transform) = outline(&prepared.scene().commands[0]);
+    assert_eq!(transform.as_array(), [1.0, 0.0, 0.0, 1.0, origin, 16.0]);
+    assert_eq!(run.glyphs()[0].x(), 0.0);
+    assert_eq!(
+        run.bounds().ink_rect(),
+        Some(Rect::new(0.0, -16.0, 20.0, 20.0))
+    );
+}
+
+#[test]
+fn actual_registered_fallback_runs_keep_each_face_and_outer_origin() {
+    // Primary Ahem has only A in its authored cmap; Bhem is the unchanged
+    // outline/metric face with its actual family renamed. X must select Bhem.
+    let mut cmap = vec![0, 0, 0, 1, 0, 3, 0, 10, 0, 0, 0, 12];
+    cmap.extend(12_u16.to_be_bytes());
+    cmap.extend(0_u16.to_be_bytes());
+    cmap.extend(28_u32.to_be_bytes());
+    cmap.extend(0_u32.to_be_bytes());
+    cmap.extend(1_u32.to_be_bytes());
+    for word in [0x41_u32, 0x41, 35] {
+        cmap.extend(word.to_be_bytes());
+    }
+    let primary = replace_tables(vec![(*b"cmap", cmap)]);
+    let mut name = table(AHEM, *b"name").to_vec();
+    for index in 0..=name.len() - 8 {
+        if name[index..index + 8] == [0, b'A', 0, b'h', 0, b'e', 0, b'm'] {
+            name[index + 1] = b'B';
+        }
+    }
+    for index in 0..=name.len() - 4 {
+        if &name[index..index + 4] == b"Ahem" {
+            name[index] = b'B';
+        }
+    }
+    let fallback = replace_tables(vec![(*b"name", name)]);
+    let mut system = system(primary.clone());
+    system.register_fonts(fallback.clone()).unwrap();
+    let input = system
+        .layout(
+            text::Source::new("AX"),
+            text::Style {
+                font: text::Font::new().family("Ahem").family("Bhem"),
+                ..style()
+            },
+            options(),
+        )
+        .unwrap();
+    let runs: Vec<_> = input.run_views().collect();
+    assert_eq!(runs.len(), 2);
+    assert!(!runs[0].face().is_same_face(&runs[1].face()));
+    let prepared = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    let (first, first_transform) = outline(&prepared.scene().commands[0]);
+    let (second, second_transform) = outline(&prepared.scene().commands[1]);
+    assert_eq!(first.font().bytes(), primary);
+    assert_eq!(second.font().bytes(), fallback);
+    assert_eq!(
+        first.glyphs(),
+        [TextGlyph::try_new(35, 0.0, 0.0, 20.0).unwrap()]
+    );
+    assert_eq!(
+        second.glyphs(),
+        [TextGlyph::try_new(58, 0.0, 0.0, 20.0).unwrap()]
+    );
+    assert_eq!(first_transform, Transform::translation(0.0, 16.0).unwrap());
+    assert_eq!(
+        second_transform,
+        Transform::translation(20.0, 16.0).unwrap()
+    );
+}
+
+#[test]
+fn real_multiline_alignment_and_indent_are_preserved_by_run_placement() {
     for (alignment, indent, expected) in [
         (
             text::Alignment::Center,
@@ -208,12 +363,12 @@ fn real_multiline_alignment_and_indent_are_already_in_glyph_positions() {
         let mut actual = Vec::new();
         for command in &prepared.scene().commands {
             let (run, transform) = outline(command);
-            assert_eq!(transform, placement);
+            let [_, _, _, _, x, y] = transform.as_array();
             actual.extend(
                 run.glyphs()
                     .iter()
                     .filter(|g| g.id() == 58)
-                    .map(|g| (g.x(), g.y())),
+                    .map(|g| (x - 7.0 + g.x(), y - 9.0 + g.y())),
             );
         }
         assert_eq!(actual, expected);
@@ -279,7 +434,8 @@ fn actual_decorations_follow_glyphs_and_have_one_shared_placement_layer() {
         .unwrap();
     let expected = [
         Rect::try_new(0.0, 18.0, 40.0, 1.0).unwrap(),
-        Rect::try_new(0.0, 10.0, 40.0, 2.0).unwrap(),
+        // The offset is the center: baseline 16 - center 6 - half-thickness 1.
+        Rect::try_new(0.0, 9.0, 40.0, 2.0).unwrap(),
     ];
     assert_eq!(input.decoration_views().count(), 2);
     for placement in [
@@ -289,7 +445,13 @@ fn actual_decorations_follow_glyphs_and_have_one_shared_placement_layer() {
         let prepared = prepare_text_layout(&input, placement, limits()).unwrap();
         let commands = &prepared.scene().commands;
         let (_, transform) = outline(&commands[0]);
-        assert_eq!(transform, placement);
+        assert_eq!(
+            transform,
+            Transform::translation(0.0, 16.0)
+                .unwrap()
+                .then(placement)
+                .unwrap()
+        );
         let decorations = if placement == Transform::identity() {
             assert_eq!(commands.len(), 3);
             &commands[1..]
@@ -449,18 +611,18 @@ fn actual_registered_static_composite_preserves_layout_run_and_literal_ink() {
     assert_eq!(composite.glyphs()[0].id(), 58);
     assert_eq!(
         first.bounds().ink_rect(),
-        Some(Rect::new(0.0, 0.0, 20.0, 20.0))
+        Some(Rect::new(0.0, -16.0, 20.0, 20.0))
     );
     assert_eq!(
         composite.glyphs(),
-        [TextGlyph::try_new(58, 20.0, 16.0, 20.0).unwrap()]
+        [TextGlyph::try_new(58, 0.0, 0.0, 20.0).unwrap()]
     );
     assert!(
-        matches!(composite.path_elements().next(),Some(crate::PathElement::MoveTo(p)) if p.x()==20.0 && p.y()==0.0)
+        matches!(composite.path_elements().next(),Some(crate::PathElement::MoveTo(p)) if p.x()==0.0 && p.y()==-16.0)
     );
     assert_eq!(
         composite.bounds().ink_rect(),
-        Some(Rect::new(20.0, 0.0, 20.0, 20.0))
+        Some(Rect::new(0.0, -16.0, 20.0, 20.0))
     );
     assert_eq!(input.source().text().code_units(), [0x41, 0x58]);
     assert!(
@@ -495,7 +657,7 @@ fn actual_late_nonidentity_composite_refusal_exposes_no_batch_and_keeps_input_fo
 }
 
 #[test]
-fn actual_unresolved_italic_synthesis_is_preserved_as_a_text_cause() {
+fn actual_italic_synthesis_is_executed_from_the_same_effective_instance() {
     let mut source = text::Source::new("AX");
     source.span(
         text::Range::new(1, 2),
@@ -510,26 +672,21 @@ fn actual_unresolved_italic_synthesis_is_preserved_as_a_text_cause() {
     let runs: Vec<_> = input.run_views().collect();
     assert_eq!(runs.len(), 2);
     assert!(runs[0].effective_instance().is_ok());
-    let actual = runs[1].effective_instance().unwrap_err();
+    let actual = runs[1].effective_instance().unwrap();
+    assert!(actual.x_shear() > 0.0);
+    let prepared = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    let (italic, transform) = outline(&prepared.scene().commands[1]);
     assert_eq!(
-        actual.detail(),
-        Some(&text::ErrorDetail::UnresolvedFontSynthesis {
-            kind: text::FontSynthesisKind::Skew,
-        })
+        italic.instance().synthesis(),
+        OutlineSynthesis::try_new(actual.x_shear(), 0.0).unwrap()
     );
-    let error = refuse(&input, Transform::identity(), limits());
-    let TextLayoutError::Item {
-        location: TextLayoutLocation::Run { line: 0, run: 1 },
-        cause: TextLayoutCause::Text(cause),
-    } = diagnostic(&error)
-    else {
-        panic!("the actual Text synthesis refusal needs its run context: {error:?}");
-    };
+    assert_eq!(transform, Transform::translation(20.0, 16.0).unwrap());
+    // Literal Ahem top 800/bottom -200, scaled to size 20, sheared before y reflection.
+    let left = f64::from((-4.0 * f64::from(actual.x_shear())) as f32);
+    let right = f64::from((20.0 + 16.0 * f64::from(actual.x_shear())) as f32);
     assert_eq!(
-        cause.detail(),
-        Some(&text::ErrorDetail::UnresolvedFontSynthesis {
-            kind: text::FontSynthesisKind::Skew,
-        })
+        italic.bounds().ink_rect(),
+        Some(Rect::new(left, -16.0, right - left, 20.0))
     );
     assert_eq!(input.source().text().code_units(), [0x41, 0x58]);
 }
@@ -624,13 +781,38 @@ fn empty_and_actual_space_do_not_acquire_fabricated_ink() {
     )
     .unwrap();
     assert!(prepared.scene().commands.is_empty());
+    let decorated = system(AHEM.to_vec())
+        .layout(text::Source::new(""), decorated_style(), options())
+        .unwrap();
+    assert!(decorated.run_views().next().is_some());
+    assert!(
+        decorated
+            .run_views()
+            .all(|run| run.glyphs().next().is_none())
+    );
+    let prepared = prepare_text_layout(
+        &decorated,
+        Transform::identity(),
+        bounded(0, 0, ROOM, 0, 0, 2),
+    )
+    .unwrap();
+    assert_eq!(prepared.scene().commands.len(), 2);
+    for (command, expected) in prepared.scene().commands.iter().zip([
+        Rect::new(0.0, 18.0, 0.0, 1.0),
+        Rect::new(0.0, 9.0, 0.0, 2.0),
+    ]) {
+        let Command::Fill { shape, .. } = command else {
+            panic!("metric-only rows retain decorations without a glyph paint command");
+        };
+        assert_eq!(shape, &crate::Shape::rect(expected));
+    }
     let space = layout(" ");
     let prepared = prepare_text_layout(&space, Transform::identity(), limits()).unwrap();
     assert_eq!(prepared.scene().commands.len(), 1);
     let (run, _) = outline(&prepared.scene().commands[0]);
     assert_eq!(
         run.glyphs(),
-        [TextGlyph::try_new(3, 0.0, 16.0, 20.0).unwrap()]
+        [TextGlyph::try_new(3, 0.0, 0.0, 20.0).unwrap()]
     );
     assert_eq!(run.bounds().kind(), crate::TextRunBoundsKind::Empty);
     assert_eq!(run.path_elements().count(), 0);
@@ -659,7 +841,7 @@ fn genuine_variable_layout_keeps_full_default_and_nondefault_coordinate_bits() {
         assert_eq!(run.instance().coordinates()[0].bits(), bits);
         assert_eq!(
             run.bounds().ink_rect(),
-            Some(Rect::try_new(0.0, 0.0, width, 1000.0).unwrap())
+            Some(Rect::try_new(0.0, -800.0, width, 1000.0).unwrap())
         );
         if bits == 0 {
             let error = refuse(&input, Transform::identity(), bounded(1, 5, ROOM, 1, 0, 0));
@@ -677,9 +859,8 @@ fn adapter_scene_real_gpu_direct_and_base_graph_use_the_same_layout_resources() 
     use super::support::{default_graph_working_format_for_test, pixel_rgba};
     use crate::{Options, Parameters, RenderRoute, Renderer, Size};
 
-    // At size2, Ahem X nominally covers (0,0)..(2,2). The actual f32
-    // baseline1.6 is widened for outline scaling; the canonical top below
-    // retains that tiny representation offset. The explicit underline
+    // At size 2, Ahem X covers local (0,-1.6)..(2,0.4), then its actual
+    // baseline is composed through the run transform. The explicit underline
     // offset-0.4 puts the blue decoration at y2..3.
     // An actual one-unit indent yields two red rows and one blue row,
     // with x0/x3 and the final row left transparent on a 4x4 surface.
@@ -715,17 +896,17 @@ fn adapter_scene_real_gpu_direct_and_base_graph_use_the_same_layout_resources() 
     assert_eq!(run.instance().size(), 2.0);
     assert_eq!(
         run.glyphs(),
-        [TextGlyph::try_new(58, 1.0, 1.6, 2.0).unwrap()]
+        [TextGlyph::try_new(58, 0.0, 0.0, 2.0).unwrap()]
     );
     // Independently apply the published once-to-f32 path conversion to the
-    // fixture's font-space top800/bottom-200 and literal provider baseline.
+    // fixture's font-space top800/bottom-200, before the outer run baseline.
     // No bound or position returned by the adapter supplies this expectation.
     let scale = 2.0_f64 / 1000.0;
-    let top = f64::from((-800.0 * scale + f64::from(1.6_f32)) as f32);
-    let bottom = f64::from((200.0 * scale + f64::from(1.6_f32)) as f32);
+    let top = f64::from((-800.0 * scale) as f32);
+    let bottom = f64::from((200.0 * scale) as f32);
     assert_eq!(
         run.bounds().ink_rect(),
-        Some(Rect::try_new(1.0, top, 2.0, bottom - top).unwrap())
+        Some(Rect::try_new(0.0, top, 2.0, bottom - top).unwrap())
     );
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let working_format = default_graph_working_format_for_test(&mut renderer);

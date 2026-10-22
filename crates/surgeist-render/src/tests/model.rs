@@ -3548,7 +3548,7 @@ fn draw_value_try_constructors_reject_invalid_values() {
     );
     assert!(Layer::new().try_opacity(f32::NAN).is_err());
     assert!(Shadow::try_new(Point::try_new(0.0, 0.0).unwrap(), -1.0, 0.0, Color::BLACK).is_err());
-    assert!(TextGlyph::try_new(1, 0.0, f32::NAN, 1.0).is_err());
+    assert!(TextGlyph::try_new(1, 0.0, f64::NAN, 1.0).is_err());
     assert!(
         TextRun::try_new(
             FontRef::new(1),

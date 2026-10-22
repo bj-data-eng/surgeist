@@ -1,15 +1,21 @@
 use std::fmt;
 
+use crate::engine::{
+    PlacedLine,
+    layout::data::{FinalizedRun, PreparedRun},
+};
 use crate::{
-    Brush, DecorationKind, DecorationRun, EffectiveFontInstance, Error, ErrorCode, ErrorDetail,
-    FontFace, FontSynthesisKind, Layout, Range, Rect, Result,
+    Brush, DecorationKind, DecorationOffset, DecorationRun, DecorationThickness,
+    EffectiveFontInstance, FontFace, Layout, Point, Range, Rect, Result,
 };
 
-/// An actual positioned glyph run borrowed from one immutable layout.
+/// One paint-order run borrowed from the immutable committed layout.
 pub struct RunView<'a> {
     layout: &'a Layout,
     line: usize,
-    run: parley::GlyphRun<'a, Brush>,
+    placed: &'a PlacedLine,
+    run: &'a FinalizedRun,
+    shaped: &'a PreparedRun,
 }
 
 impl fmt::Debug for RunView<'_> {
@@ -23,19 +29,48 @@ impl fmt::Debug for RunView<'_> {
 }
 
 impl Layout {
-    /// Visits actual paint-order runs without allocating owned metadata or glyph vectors.
+    /// Borrows actual paint-order runs without allocating metadata or glyph vectors.
     pub fn run_views(&self) -> impl Iterator<Item = RunView<'_>> {
-        self.positioned_runs().map(|(line, run)| RunView {
-            layout: self,
-            line,
-            run,
-        })
+        self.positioned_runs()
+            .map(|(line, placed, run, shaped)| RunView {
+                layout: self,
+                line,
+                placed,
+                run,
+                shaped,
+            })
+    }
+
+    // The owning System calls this before publishing the immutable Layout. Readback
+    // uses exactly the same calculation, including zero-width metric-only runs.
+    pub(crate) fn qualify_decorations(&self) -> Result<()> {
+        for decoration in self.decoration_views() {
+            let rect = decoration.rect();
+            for (field, value) in [
+                ("decoration x", rect.origin.x),
+                ("decoration y", rect.origin.y),
+                ("decoration width", rect.size.width),
+                ("decoration height", rect.size.height),
+                ("decoration right", rect.origin.x + rect.size.width),
+                ("decoration bottom", rect.origin.y + rect.size.height),
+            ] {
+                if !value.is_finite() {
+                    return Err(crate::error::text_numeric_error(
+                        field,
+                        crate::TextNumericPhase::Placement,
+                        crate::TextNumericError::NonFinite,
+                        value,
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Visits actual decoration rectangles after the glyph paint pass, without allocation.
     pub fn decoration_views(&self) -> impl Iterator<Item = DecorationRun> + '_ {
-        self.positioned_runs()
-            .flat_map(|(_, run)| run_decorations(&run).into_iter().flatten())
+        self.run_views()
+            .flat_map(|run| run_decorations(&run).into_iter().flatten())
     }
 }
 
@@ -45,74 +80,72 @@ impl RunView<'_> {
     pub const fn line(&self) -> usize {
         self.line
     }
-
-    /// Actual underlying shaped-run ordinal within its line.
+    /// Actual shaped-run ordinal within this finalized line.
     #[must_use]
-    pub fn run_index(&self) -> usize {
-        self.run.run().index()
+    pub const fn run_index(&self) -> usize {
+        self.run.run
     }
-
-    /// UTF-16 source extent of the underlying shaped run.
+    /// Original UTF-16 source extent.
     #[must_use]
-    pub fn range(&self) -> Range {
-        self.layout.projection.range(self.run.run().text_range())
+    pub const fn range(&self) -> Range {
+        self.run.source
     }
-
-    /// Actual resolved color brush for this positioned run.
+    /// Actual effective paint brush.
     #[must_use]
     pub fn brush(&self) -> Brush {
-        self.run.style().brush
+        self.layout.inner.prepared.styles[self.run.style]
+            .style
+            .brush
     }
-
-    /// Actual shaping size, rather than an authored or inferred size.
+    /// Canonical shaping size.
     #[must_use]
-    pub fn font_size(&self) -> f32 {
-        self.run.run().font_size()
+    pub const fn font_size(&self) -> f32 {
+        self.shaped.font_size
     }
-
-    /// Actual resource and collection face used by the shaper.
+    /// Actual retained resource, face and catalogue publication.
     #[must_use]
     pub fn face(&self) -> FontFace<'_> {
-        let font = self.run.run().font();
-        FontFace::new(&font.data, font.index, self.layout.key.font_catalogue())
+        self.shaped.font.face()
     }
-
-    /// Fully positioned provider glyphs; offsets and baseline have already been applied.
+    /// Logical origin added separately to canonical run-local glyph coordinates.
+    #[must_use]
+    pub fn origin(&self) -> Point {
+        Point::new(
+            self.placed.origin.x + self.run.x,
+            crate::layout::line_baseline(self.placed),
+        )
+    }
+    /// Raw canonical glyph offsets and advances with separate logical run-local pens.
     pub fn glyphs(&self) -> impl Iterator<Item = GlyphPlacement> + '_ {
-        self.run.positioned_glyphs().map(|glyph| GlyphPlacement {
-            id: glyph.id,
-            x: glyph.x,
-            y: glyph.y,
-            advance: glyph.advance,
-        })
+        self.placed.finalized.data.glyphs[self.run.glyphs.clone()]
+            .iter()
+            .map(|glyph| GlyphPlacement {
+                id: glyph.glyph.id,
+                x: glyph.glyph.x,
+                y: glyph.glyph.y,
+                advance: glyph.glyph.advance,
+                pen: glyph.pen,
+            })
     }
-
-    /// Qualifies complete canonical normalized coordinates and unresolved synthesis.
-    ///
-    /// Empty stored coordinates mean a static face only if `fvar` is absent.
-    /// A valid variable face whose shaper cleared all-zero coordinates exposes
-    /// the complete axis count through a lazy zero iterator. Malformed present
-    /// metadata, noncanonical coordinates and unresolved faux synthesis refuse.
+    /// Qualifies complete canonical coordinates and the actual executable synthesis.
     pub fn effective_instance(&self) -> Result<EffectiveFontInstance<'_>> {
-        let run = self.run.run();
-        let synthesis = run.synthesis();
-        if synthesis.embolden() {
-            return Err(unresolved(FontSynthesisKind::Embolden));
-        }
-        if synthesis.skew().is_some() {
-            return Err(unresolved(FontSynthesisKind::Skew));
-        }
-        EffectiveFontInstance::qualify(self.face(), run.font_size(), run.normalized_coords())
+        EffectiveFontInstance::qualify_synthesized(
+            self.face(),
+            self.shaped.font_size,
+            &self.shaped.coords,
+            self.shaped.synthesis,
+        )
     }
 }
 
-/// A source-free glyph placement read directly from an actual provider run.
+/// A source-free glyph placement read directly from an actual committed run.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GlyphPlacement {
     id: u32,
     x: f32,
     y: f32,
     advance: f32,
+    pen: f64,
 }
 
 impl GlyphPlacement {
@@ -121,66 +154,74 @@ impl GlyphPlacement {
     pub const fn id(self) -> u32 {
         self.id
     }
-    /// Fully positioned horizontal coordinate.
+    /// Raw canonical horizontal provider offset, added to the logical pen and run origin.
     #[must_use]
     pub const fn x(self) -> f32 {
         self.x
     }
-    /// Fully positioned baseline-relative vertical coordinate.
+    /// Raw canonical vertical provider offset, positive downward from the run baseline.
     #[must_use]
     pub const fn y(self) -> f32 {
         self.y
     }
-    /// Actual provider advance.
+    /// Actual logical run-local pen, including line spacing allocation.
+    /// Add this and the canonical x-offset to the run origin without narrowing.
+    #[must_use]
+    pub const fn pen(self) -> f64 {
+        self.pen
+    }
+    /// Raw canonical provider advance, before logical spacing allocation.
     #[must_use]
     pub const fn advance(self) -> f32 {
         self.advance
     }
 }
 
-fn unresolved(kind: FontSynthesisKind) -> Error {
-    Error::new(
-        ErrorCode::UnsupportedFeature,
-        "font synthesis needs a concrete outline operation",
-    )
-    .with_detail(ErrorDetail::UnresolvedFontSynthesis { kind })
-}
-
-pub(crate) fn run_decorations(run: &parley::GlyphRun<'_, Brush>) -> [Option<DecorationRun>; 2] {
-    let style = run.style();
-    let metrics = run.run().metrics();
+fn run_decorations(run: &RunView<'_>) -> [Option<DecorationRun>; 2] {
+    let style = &run.layout.inner.prepared.styles[run.run.style].style;
+    let metrics = run.shaped.metrics;
+    let origin = run.origin();
     [
-        style.underline.as_ref().map(|decoration| {
-            DecorationRun::new(
-                Rect::new(
-                    run.offset(),
-                    crate::layout::decoration_top(
-                        run.baseline(),
-                        decoration.offset.unwrap_or(metrics.underline_offset),
-                    ),
-                    run.advance(),
-                    decoration.size.unwrap_or(metrics.underline_size),
-                ),
-                decoration.brush,
-                DecorationKind::Underline,
-            )
-        }),
-        style.strikethrough.as_ref().map(|decoration| {
-            DecorationRun::new(
-                Rect::new(
-                    run.offset(),
-                    crate::layout::decoration_top(
-                        run.baseline(),
-                        decoration.offset.unwrap_or(metrics.strikethrough_offset),
-                    ),
-                    run.advance(),
-                    decoration.size.unwrap_or(metrics.strikethrough_size),
-                ),
-                decoration.brush,
-                DecorationKind::Strikethrough,
-            )
-        }),
+        (
+            style.underline,
+            DecorationKind::Underline,
+            metrics.underline_top,
+            metrics.underline_thickness,
+        ),
+        (
+            style.strikethrough,
+            DecorationKind::Strikethrough,
+            metrics.strike_center,
+            metrics.strike_thickness,
+        ),
     ]
+    .map(|(decoration, kind, default_offset, default_thickness)| {
+        if !decoration.enabled() {
+            return None;
+        }
+        let offset = match decoration.offset() {
+            DecorationOffset::Auto => default_offset,
+            DecorationOffset::Absolute(value) => value.get(),
+        };
+        let thickness = match decoration.thickness() {
+            DecorationThickness::Auto => default_thickness,
+            DecorationThickness::Absolute(value) => value.get(),
+        };
+        let top = crate::layout::decoration_top(origin.y, offset)
+            - if kind == DecorationKind::Strikethrough {
+                thickness * 0.5
+            } else {
+                0.0
+            };
+        Some(DecorationRun::new(
+            Rect::new(origin.x, top, run.run.advance, thickness),
+            match decoration.brush() {
+                crate::DecorationBrush::TextColor => style.brush,
+                crate::DecorationBrush::Color(brush) => brush,
+            },
+            kind,
+        ))
+    })
 }
 
 #[cfg(test)]

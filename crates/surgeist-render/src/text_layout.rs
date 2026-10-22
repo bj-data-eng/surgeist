@@ -162,7 +162,7 @@ impl TextLayoutError {
 /// Prepares real Text glyphs and decorations without reshaping or choosing lines.
 ///
 /// Admission is atomic across the whole invocation, including simultaneous
-/// temporary/output custody. Actual normalized bits and no-synthesis proof come
+/// temporary/output custody. Actual normalized bits and executable synthesis come
 /// from Text. The published outline domain is unchanged; unsupported runs refuse
 /// the complete operation. Supplied placement is qualified for glyph ink and
 /// decoration geometry before returning. Future parent/surface composition is
@@ -188,6 +188,11 @@ pub fn prepare_text_layout(
     let mut glyphs = budget.temporary::<TextGlyph>(counts.max_glyphs)?;
 
     for (run_index, run) in layout.run_views().enumerate() {
+        // Text retains metric-only font/style rows even when they have no
+        // glyph paint. Decorations are visited independently below.
+        if run.glyphs().next().is_none() {
+            continue;
+        }
         let location = TextLayoutLocation::Run {
             line: run.line(),
             run: run_index,
@@ -195,6 +200,8 @@ pub fn prepare_text_layout(
         let instance = run
             .effective_instance()
             .map_err(|e| TextLayoutError::text(location, e))?;
+        let run_transform =
+            run_transform(&run, placement).map_err(|e| TextLayoutError::render(location, e))?;
         let face = instance.face();
         let face_index = faces
             .iter()
@@ -214,10 +221,7 @@ pub fn prepare_text_layout(
         };
         glyphs.clear();
         for glyph in run.glyphs() {
-            glyphs.push(
-                TextGlyph::try_new(glyph.id(), glyph.x(), glyph.y(), glyph.advance())
-                    .map_err(|e| TextLayoutError::render(location, e))?,
-            );
+            glyphs.push(text_glyph(glyph).map_err(|e| TextLayoutError::render(location, e))?);
         }
         let mut coordinates = budget.temporary::<NormalizedCoordinate>(instance.axis_count())?;
         let coordinate_bytes = bytes::<NormalizedCoordinate>(coordinates.capacity())?;
@@ -227,9 +231,10 @@ pub fn prepare_text_layout(
                     .map_err(|e| TextLayoutError::render(location, e))?,
             );
         }
-        let instance =
-            TextInstance::try_new(instance.font_size(), coordinates, OutlineSynthesis::none())
-                .map_err(|e| TextLayoutError::render(location, e))?;
+        let synthesis = OutlineSynthesis::try_new(instance.x_shear(), instance.embolden())
+            .map_err(|e| TextLayoutError::render(location, e))?;
+        let instance = TextInstance::try_new(instance.font_size(), coordinates, synthesis)
+            .map_err(|e| TextLayoutError::render(location, e))?;
         let remaining = budget.outline_limits();
         let admitted = match face_index {
             Some(index) => &faces[index].admitted,
@@ -241,7 +246,7 @@ pub fn prepare_text_layout(
         budget.retain(retained)?;
         budget.glyphs = add(budget.glyphs, glyphs.len())?;
         budget.path_elements = add(budget.path_elements, outline.path().elements().len())?;
-        qualify_outline_placement(kurbo::Affine::new(placement.as_array()), &outline)
+        qualify_outline_placement(kurbo::Affine::new(run_transform.as_array()), &outline)
             .map_err(|e| TextLayoutError::render(location, e))?;
         let paint = TextPaint::try_fill(Paint::from(
             color(run.brush()).map_err(|e| TextLayoutError::render(location, e))?,
@@ -249,7 +254,7 @@ pub fn prepare_text_layout(
         .map_err(|e| TextLayoutError::render(location, e))?;
         commands.push(Command::PreparedOutline {
             outline,
-            transform: placement,
+            transform: run_transform,
             paint,
         });
         drop(instance);
@@ -313,6 +318,9 @@ fn preflight(layout: &Layout, placement: Transform, limits: TextLayoutLimits) ->
     let mut max_glyphs = 0;
     let [glyph_limit, _, _, _] = limits.outlines.capacities();
     for (index, run) in layout.run_views().enumerate() {
+        if run.glyphs().next().is_none() {
+            continue;
+        }
         runs = add(runs, 1)?;
         check(TextLayoutResource::Runs, runs, limits.runs)?;
         let location = TextLayoutLocation::Run {
@@ -322,6 +330,7 @@ fn preflight(layout: &Layout, placement: Transform, limits: TextLayoutLimits) ->
         let instance = run
             .effective_instance()
             .map_err(|e| TextLayoutError::text(location, e))?;
+        run_transform(&run, placement).map_err(|e| TextLayoutError::render(location, e))?;
         coordinates = add(coordinates, instance.axis_count())?;
         check(
             TextLayoutResource::CoordinateValues,
@@ -333,8 +342,7 @@ fn preflight(layout: &Layout, placement: Transform, limits: TextLayoutLimits) ->
             glyphs = add(glyphs, 1)?;
             run_glyphs = add(run_glyphs, 1)?;
             check(TextLayoutResource::Glyphs, glyphs, glyph_limit)?;
-            TextGlyph::try_new(glyph.id(), glyph.x(), glyph.y(), glyph.advance())
-                .map_err(|e| TextLayoutError::render(location, e))?;
+            text_glyph(glyph).map_err(|e| TextLayoutError::render(location, e))?;
         }
         max_glyphs = max_glyphs.max(run_glyphs);
         color(run.brush()).map_err(|e| TextLayoutError::render(location, e))?;
@@ -365,12 +373,26 @@ fn color(brush: Brush) -> Result<Color> {
     Color::try_rgba(brush.r, brush.g, brush.b, brush.a)
 }
 
+fn text_glyph(glyph: surgeist_text::GlyphPlacement) -> Result<TextGlyph> {
+    TextGlyph::try_new(
+        glyph.id(),
+        glyph.pen() + f64::from(glyph.x()),
+        f64::from(glyph.y()),
+        glyph.advance(),
+    )
+}
+
+fn run_transform(run: &RunView<'_>, placement: Transform) -> Result<Transform> {
+    let origin = run.origin();
+    Transform::translation(origin.x, origin.y)?.then(placement)
+}
+
 fn decoration_rect(rect: surgeist_text::Rect) -> Result<crate::Rect> {
     crate::Rect::try_new(
-        f64::from(rect.origin.x),
-        f64::from(rect.origin.y),
-        f64::from(rect.size.width),
-        f64::from(rect.size.height),
+        rect.origin.x,
+        rect.origin.y,
+        rect.size.width,
+        rect.size.height,
     )
 }
 

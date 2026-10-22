@@ -31,7 +31,9 @@ path reallocation overlap. They are not an allocator measurement or CPU-time
 bound. `Scene::prepared_outline` shares the same immutable path with direct and
 graph rendering as one NonZero fill, preserving run-local Color/Gradient/Image
 paint and overlap semantics. It does not shape text or use advance boxes as ink.
-Selected color/bitmap representations and nonzero emboldening explicitly refuse.
+Concrete positive emboldening appends a scaled local-x contour copy to the same
+one-fill path under the [selected outline policy](../../docs/text-layout-contract.md#concrete-outline-synthesis).
+Selected color/bitmap representations explicitly refuse.
 Color/bitmap selection metadata is checked; unsupported paint/image payloads are
 not executed or claimed to be validated. The authored `TextRun` path retains its
 existing provider behavior, with `Unspecified` bounds permitted only by its direct

@@ -200,29 +200,35 @@ fn supplementary_and_multibyte_provider_ranges_return_source_units() {
 }
 
 #[test]
-fn isolated_layout_refuses_before_cache_or_font_publication_but_literal_replacement_works() {
+fn genuine_provider_context_refusal_retains_original_source_and_warm_publication() {
     let mut system = system();
     let old = layout(&mut system, "AX");
+    let old_lines = old.lines();
     let stats = system.stats();
     let catalogue = system.font_catalogue_identity().clone();
-    for (units, index, unit) in [(vec![0xd800], 0, 0xd800), (vec![0x61, 0xdc00], 1, 0xdc00)] {
-        let source = Source::new(Text::from_code_units(units.clone()));
-        let error = system
-            .layout(source.clone(), Style::default(), Options::default())
-            .expect_err("original surrogate analysis unavailable");
-        assert_eq!(
-            error.detail(),
-            Some(&ErrorDetail::IsolatedSurrogateLayout { index, unit })
-        );
-        assert_eq!(source.text().code_units(), units);
-        assert_eq!(system.stats(), stats);
-        assert_eq!(system.font_catalogue_identity(), &catalogue);
-    }
-    assert_eq!(old.source().text().code_units(), [0x41, 0x58]);
-    assert_eq!(
-        layout(&mut system, "\u{fffd}").source().text().code_units(),
-        [0xfffd]
+    let source = Source::identified(
+        format!("B\u{0315}{}", "\u{0300}".repeat(32)),
+        Id::from_u64(17),
+        4,
     );
+    let units = source.text().code_units().to_vec();
+    let error = system
+        .layout(source.clone(), ahem_style(), Options::default())
+        .expect_err("33-mark required reorder is a real provider context refusal");
+    assert_eq!(
+        error.detail(),
+        Some(&ErrorDetail::ShapingRefused {
+            reason: ShapingRefusalReason::ContextLimit,
+        })
+    );
+    assert_eq!(source.text().code_units(), units);
+    assert_eq!(source.id(), Some(Id::from_u64(17)));
+    assert_eq!(source.revision(), 4);
+    assert_eq!(system.stats(), stats);
+    assert_eq!(system.font_catalogue_identity(), &catalogue);
+    assert_eq!(old.source().text().code_units(), [0x41, 0x58]);
+    assert_eq!(old.lines(), old_lines);
+    assert_eq!(layout(&mut system, "AX").key(), old.key());
 }
 
 #[test]
@@ -552,7 +558,7 @@ mod accessibility {
                 .access_position(&state, Cursor::new(0, Affinity::After))
                 .expect_err("foreign layout")
                 .detail(),
-            Some(&ErrorDetail::AccessibilityLayoutMismatch)
+            Some(&ErrorDetail::AccessibilityBindingMismatch)
         );
         assert!(
             first
@@ -635,18 +641,12 @@ mod accessibility {
 
     #[test]
     fn absent_selected_font_does_not_erase_original_selectable_graphemes() {
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .expect("actual empty catalogue");
-        let layout = system
-            .layout(Source::new("ab"), Style::default(), Options::default())
-            .expect("existing no-selected-font source domain");
-        assert!(layout.clusters().is_empty());
+        let analyzed = AnalyzedSource::new(Source::new("ab"), Style::default())
+            .expect("original source analysis needs no font");
         let mut state = Accessibility::default();
         let parent = accesskit::NodeId(1000);
-        let update = layout
-            .accessibility_update(&mut state, parent, parent, Point::default())
+        let update = analyzed
+            .accessibility_update(&mut state, parent, parent)
             .expect("source host units do not require invented glyphs");
         let lengths: Vec<_> = update
             .nodes
@@ -654,7 +654,15 @@ mod accessibility {
             .flat_map(|(_, node)| node.character_lengths().iter().copied())
             .collect();
         assert_eq!(lengths, [1, 1]);
-        let position = layout
+        assert_eq!(analyzed.source().text().code_units(), [0x61, 0x62]);
+        assert!(update.nodes.iter().all(|(_, node)| node.bounds().is_none()
+            && node.font_family().is_none()
+            && node.font_size().is_none()
+            && node.character_positions().is_none()
+            && node.character_widths().is_none()
+            && node.next_on_line().is_none()
+            && node.previous_on_line().is_none()));
+        let position = analyzed
             .access_position(&state, Cursor::new(1, Affinity::After))
             .expect("original legal stop")
             .expect("actual host position");
@@ -666,17 +674,245 @@ mod accessibility {
             .1;
         assert_eq!(node.value(), Some("b"));
         assert_eq!(position.character_index, 0);
+        let selection = analyzed
+            .access_selection(
+                &state,
+                Selection::new(
+                    Cursor::new(1, Affinity::After),
+                    Cursor::new(2, Affinity::Before),
+                ),
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(selection.anchor, position);
+        assert_eq!(selection.focus.node, position.node);
+        assert_eq!(selection.focus.character_index, 1);
+    }
+
+    #[test]
+    fn empty_analyzed_source_has_a_real_empty_host_value_without_geometry() {
+        let analyzed = AnalyzedSource::new(Source::new(""), ahem_style()).unwrap();
+        let mut state = Accessibility::default();
+        let parent = accesskit::NodeId(1000);
+        let update = analyzed
+            .accessibility_update(&mut state, parent, parent)
+            .unwrap();
+        let values: Vec<_> = update
+            .nodes
+            .iter()
+            .filter_map(|(_, node)| node.value())
+            .collect();
+        assert_eq!(values, [""]);
+        assert!(update.nodes.iter().all(|(_, node)| node.bounds().is_none()));
+        let cursor = analyzed
+            .access_position(&state, Cursor::new(0, Affinity::After))
+            .unwrap()
+            .unwrap();
+        assert_eq!(cursor.character_index, 0);
+        let selection = analyzed
+            .access_selection(
+                &state,
+                Selection::collapsed(Cursor::new(0, Affinity::Before)),
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(selection.anchor, selection.focus);
+        assert_eq!(selection.anchor, cursor);
+    }
+
+    #[test]
+    fn analyzed_and_placed_accessibility_share_source_but_keep_exact_phase_bindings() {
+        let analyzed =
+            AnalyzedSource::new(Source::identified("AX", Id::from_u64(31), 7), ahem_style())
+                .unwrap();
+        let same = analyzed.clone();
+        let foreign = AnalyzedSource::new(analyzed.source().clone(), ahem_style()).unwrap();
+        let mut system = system();
+        let mut state = Accessibility::new(10);
+        let parent = accesskit::NodeId(1000);
+        let logical = analyzed
+            .accessibility_update(&mut state, parent, parent)
+            .unwrap();
+        let logical_ids: Vec<_> = logical.nodes.iter().map(|(id, _)| *id).collect();
+        let point = analyzed
+            .access_position(&state, Cursor::new(1, Affinity::After))
+            .unwrap();
+        assert_eq!(
+            same.access_position(&state, Cursor::new(1, Affinity::After))
+                .unwrap(),
+            point
+        );
+        assert_eq!(
+            foreign
+                .access_position(&state, Cursor::new(1, Affinity::After))
+                .unwrap_err()
+                .detail(),
+            Some(&ErrorDetail::AccessibilityBindingMismatch)
+        );
+        let placed = system
+            .layout_analyzed(
+                &analyzed,
+                Options {
+                    quantize: false,
+                    ..Options::default()
+                },
+            )
+            .unwrap();
+        assert!(std::sync::Arc::ptr_eq(
+            &placed.inner.prepared.analyzed,
+            &analyzed.inner
+        ));
+        let geometric = placed
+            .accessibility_update(&mut state, parent, parent, Point::new(0.25, 0.5))
+            .unwrap();
+        assert_eq!(
+            geometric
+                .nodes
+                .iter()
+                .map(|(id, _)| *id)
+                .collect::<Vec<_>>(),
+            logical_ids
+        );
+        assert!(
+            geometric
+                .nodes
+                .iter()
+                .all(|(_, node)| node.bounds().is_some())
+        );
+        assert_eq!(
+            analyzed
+                .access_position(&state, Cursor::new(1, Affinity::After))
+                .unwrap_err()
+                .detail(),
+            Some(&ErrorDetail::AccessibilityBindingMismatch)
+        );
+        assert!(
+            placed
+                .access_position(&state, Cursor::new(1, Affinity::After))
+                .unwrap()
+                .is_some()
+        );
+        let other_placement = system
+            .layout_analyzed(
+                &analyzed,
+                Options {
+                    width: Some(100.0),
+                    quantize: false,
+                    ..Options::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            other_placement
+                .access_position(&state, Cursor::new(1, Affinity::After))
+                .unwrap_err()
+                .detail(),
+            Some(&ErrorDetail::AccessibilityBindingMismatch)
+        );
+        let cleared = same
+            .accessibility_update(&mut state, parent, parent)
+            .unwrap();
+        assert_eq!(
+            cleared.nodes.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+            logical_ids
+        );
+        assert!(cleared.nodes.iter().all(|(_, node)| node.bounds().is_none()
+            && node.font_family().is_none()
+            && node.font_size().is_none()
+            && node.character_positions().is_none()
+            && node.character_widths().is_none()
+            && node.next_on_line().is_none()
+            && node.previous_on_line().is_none()));
+        assert_eq!(
+            placed
+                .access_position(&state, Cursor::new(1, Affinity::After))
+                .unwrap_err()
+                .detail(),
+            Some(&ErrorDetail::AccessibilityBindingMismatch)
+        );
+        assert_eq!(
+            analyzed
+                .access_position(&state, Cursor::new(1, Affinity::After))
+                .unwrap(),
+            point
+        );
+        drop(system);
+        assert_eq!(analyzed.source().text().code_units(), [0x41, 0x58]);
+        assert_eq!(placed.source().revision(), 7);
+    }
+
+    #[test]
+    fn original_ill_formed_host_refusal_preserves_prior_phase_binding_and_ids() {
+        let original = AnalyzedSource::new(Source::new("A"), ahem_style()).unwrap();
+        let invalid = AnalyzedSource::new(
+            Source::new(Text::from_code_units(vec![0x41, 0xd800])),
+            ahem_style(),
+        )
+        .unwrap();
+        let mut state = Accessibility::new(10);
+        let parent = accesskit::NodeId(1000);
+        let old = original
+            .accessibility_update(&mut state, parent, parent)
+            .unwrap();
+        let before = original
+            .access_position(&state, Cursor::new(0, Affinity::After))
+            .unwrap();
+        assert_eq!(
+            invalid
+                .accessibility_update(&mut state, parent, parent)
+                .unwrap_err()
+                .detail(),
+            Some(&ErrorDetail::AccessibilityIllFormedSource {
+                index: 1,
+                unit: 0xd800
+            })
+        );
+        let mut system = system();
+        let placed = system
+            .layout_analyzed(&invalid, Options::default())
+            .unwrap();
+        assert_eq!(
+            placed
+                .accessibility_update(&mut state, parent, parent, Point::default())
+                .unwrap_err()
+                .detail(),
+            Some(&ErrorDetail::AccessibilityIllFormedSource {
+                index: 1,
+                unit: 0xd800
+            })
+        );
+        assert_eq!(
+            original
+                .access_position(&state, Cursor::new(0, Affinity::After))
+                .unwrap(),
+            before
+        );
+        let repeated = original
+            .accessibility_update(&mut state, parent, parent)
+            .unwrap();
+        assert_eq!(
+            old.nodes.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+            repeated.nodes.iter().map(|(id, _)| *id).collect::<Vec<_>>()
+        );
+        assert_eq!(invalid.source().text().code_units(), [0x41, 0xd800]);
     }
 
     #[test]
     fn indivisible_255_byte_host_unit_succeeds_and_256_refuses_atomically() {
-        let mut system = system();
-        let allowed = layout(&mut system, format!("a{}", "\u{301}".repeat(127)));
-        let refused = layout(&mut system, format!("é{}", "\u{301}".repeat(127)));
+        let allowed = AnalyzedSource::new(
+            Source::new(format!("a{}", "\u{301}".repeat(127))),
+            ahem_style(),
+        )
+        .unwrap();
+        let refused = AnalyzedSource::new(
+            Source::new(format!("é{}", "\u{301}".repeat(127))),
+            ahem_style(),
+        )
+        .unwrap();
         let mut state = Accessibility::default();
         let parent = accesskit::NodeId(1000);
         let update = allowed
-            .accessibility_update(&mut state, parent, parent, Point::default())
+            .accessibility_update(&mut state, parent, parent)
             .expect("255 bytes fit actual u8 host field");
         assert!(
             update
@@ -688,7 +924,7 @@ mod accessibility {
             .access_position(&state, Cursor::new(0, Affinity::After))
             .expect("existing map");
         let error = refused
-            .accessibility_update(&mut state, parent, parent, Point::default())
+            .accessibility_update(&mut state, parent, parent)
             .expect_err("one unit cannot fit host length");
         assert_eq!(
             error.detail(),
@@ -702,6 +938,13 @@ mod accessibility {
                 .access_position(&state, Cursor::new(0, Affinity::After))
                 .expect("refusal retains map"),
             previous
+        );
+        let repeated = allowed
+            .accessibility_update(&mut state, parent, parent)
+            .unwrap();
+        assert_eq!(
+            update.nodes.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+            repeated.nodes.iter().map(|(id, _)| *id).collect::<Vec<_>>()
         );
     }
 

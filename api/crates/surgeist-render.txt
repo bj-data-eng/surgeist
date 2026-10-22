@@ -230,6 +230,7 @@ pub surgeist_render::OutlineNumericPhase::PathPoint
 pub surgeist_render::OutlineNumericPhase::Placement
 pub surgeist_render::OutlineNumericPhase::ProviderPoint
 pub surgeist_render::OutlineNumericPhase::Size
+pub surgeist_render::OutlineNumericPhase::Synthesis
 pub enum surgeist_render::OutlinePreparationError
 pub surgeist_render::OutlinePreparationError::Allocation
 pub surgeist_render::OutlinePreparationError::Allocation::resource: surgeist_render::OutlineResource
@@ -259,7 +260,6 @@ pub surgeist_render::OutlinePreparationError::Provider
 pub surgeist_render::OutlinePreparationError::Provider::glyph: u32
 pub surgeist_render::OutlinePreparationError::UnsupportedBitmap
 pub surgeist_render::OutlinePreparationError::UnsupportedColor
-pub surgeist_render::OutlinePreparationError::UnsupportedEmboldening
 pub surgeist_render::OutlinePreparationError::UnsupportedOutline
 pub surgeist_render::OutlinePreparationError::UnsupportedOutline::capability: surgeist_render::OutlineCapability
 impl core::convert::From<surgeist_render::OutlinePreparationError> for surgeist_render::Error
@@ -1376,9 +1376,9 @@ pub struct surgeist_render::TextGlyph
 impl surgeist_render::TextGlyph
 pub const fn surgeist_render::TextGlyph::advance(self) -> f32
 pub const fn surgeist_render::TextGlyph::id(self) -> u32
-pub fn surgeist_render::TextGlyph::try_new(id: u32, x: f32, y: f32, advance: f32) -> surgeist_render::Result<Self>
-pub const fn surgeist_render::TextGlyph::x(self) -> f32
-pub const fn surgeist_render::TextGlyph::y(self) -> f32
+pub fn surgeist_render::TextGlyph::try_new(id: u32, x: f64, y: f64, advance: f32) -> surgeist_render::Result<Self>
+pub const fn surgeist_render::TextGlyph::x(self) -> f64
+pub const fn surgeist_render::TextGlyph::y(self) -> f64
 pub struct surgeist_render::TextInstance
 impl surgeist_render::TextInstance
 pub fn surgeist_render::TextInstance::coordinates(&self) -> &[surgeist_render::NormalizedCoordinate]

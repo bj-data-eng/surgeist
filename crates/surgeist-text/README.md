@@ -3,10 +3,10 @@
 `surgeist-text` is the Rust library for text shaping, measurement, font-facing
 abstractions, and text layout in Surgeist surfaces. It turns text, resolved styles,
 and layout options into glyph runs, lines, inline boxes, and interaction geometry
-through Parley. The current package is version `0.1.0`, using Rust edition 2024.
+through its owned analysis, shaping and line-finalization pipeline. The current package is version `0.1.0`, using Rust edition 2024.
 
 Paragraph layout has explicit limits: whitespace collapse and explicit base direction are
-unsupported, and inline-box alignment requests do not imply backend placement.
+unsupported, and inline-box alignment requests do not imply CSS vertical-alignment execution.
 See the [support reference](docs/reference.md) for the current contract.
 
 `process_source_whitespace` executes source-local Collapse, Discard, Preserve and
@@ -20,30 +20,34 @@ layout does not yet consume this phase: Collapse, Discard and
 PreserveSpaces still refuse there; standalone Preserve layout remains unchanged.
 
 `Text` retains exact UTF-16 code units, and public source positions and ranges
-count those units. Edits can split or join surrogate pairs. Layout currently
-accepts scalar-representable source through a lossless private UTF-8 projection;
-isolated surrogates and shaping boundaries inside pairs return precise errors
-before font/cache work. Interaction and optional accessibility map back to the
-same source units. This interim boundary does not provide isolated-surrogate
-shaping or the future prepared-text pipeline.
+count those units. Edits can split or join surrogate pairs. `AnalyzedSource`
+retains original Unicode analysis without fonts; layout uses a separate glyph
+projection for isolated units. Source-only accessibility needs no placement and
+omits unsupported geometry. Positioned accessibility, interaction and paint
+readback share the committed layout. Shaping boundaries inside an original pair
+still return a precise error.
 
-`System` can discover system fonts (the default) or use only explicitly
-registered font bytes. Registration and refresh publish a new issuer-qualified
-catalogue identity and invalidate current cached layouts atomically; retained
-layouts keep their selected font resources. See [font registration](docs/how-to.md#register-fonts-without-system-discovery).
-This catalogue foundation retains the current Parley engine; prepared text and
-layout-selected line finalization remain separate unfinished work.
+`System` discovers system fonts by default or uses explicitly registered font
+bytes. Registration and refresh publish a new issuer-qualified catalogue identity
+and invalidate cached layouts atomically; retained analyses and layouts keep their
+actual source and selected resources. `System::layout_analyzed` enriches the same
+immutable analysis, while `System::layout` performs the same phases as a convenience.
+See [font registration](docs/how-to.md#register-fonts-without-system-discovery).
+The public composed preparation/selection protocol and Layout float feedback
+remain separate work.
 
 `System::registered_font_faces` lends actual registered resources without shaping
 a sample character or resolving a Style. Retained `FontData` can select an explicit
 unsynthesized instance and query same-instance f64 font/strikeout metrics under
 its captured catalogue publication. Qualified MVAR uses exact canonical coordinates,
 actual selected field tags and checked integer delta accumulation; malformed
-variation data refuses even at default/inactive coordinates. Unresolved synthesis
-remains unsupported; this does not change current paragraph metrics.
+variation data refuses even at default/inactive coordinates. Actual run instances
+retain canonical coordinates, executable x-shear and the selected translated-outline
+bold displacement; line metrics and advances receive no bold-spacing adjustment.
 
 Borrowed run, face and effective-instance views expose actual positioned output
-without copying glyph arrays. The optional standalone paint adapter belongs to
+without copying glyph arrays. Logical origins and pens are `f64`; raw canonical
+glyph offsets/advances and font sizes remain `f32`. The optional standalone paint adapter belongs to
 [Render](../surgeist-render/README.md) under its `render-text` feature; Text does
 not depend on Render.
 
@@ -69,4 +73,5 @@ and the corresponding library call.
 ## License and attribution
 
 The project uses the [MIT license](LICENSE). Third-party attribution and its
-coverage are recorded in [NOTICE.md](NOTICE.md).
+coverage are recorded in [NOTICE.md](NOTICE.md) and
+[the owned-engine source provenance](docs/owned-engine-provenance.md).

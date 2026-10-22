@@ -282,7 +282,7 @@ fn flow_policy_support_matrix_keeps_behavior_gaps_unsupported() {
 }
 
 #[test]
-fn passes_valid_locale_to_parley() {
+fn uses_valid_locale_for_shaping() {
     let mut system = System::default();
     let style = Style {
         locale: Some("en-US".to_owned()),
@@ -312,7 +312,7 @@ fn rejects_invalid_locale() {
 }
 
 #[test]
-fn passes_font_fallbacks_features_and_variations_to_parley() {
+fn uses_font_fallbacks_features_and_variations() {
     let mut system = System::default();
     let style = Style {
         font: Font::new()
@@ -629,7 +629,7 @@ fn unsupported_text_style_errors_are_typed() {
         error.detail(),
         Some(&ErrorDetail::UnsupportedTextStyle {
             feature: TextStyleFeature::ExplicitTextDirection,
-            reason: UnsupportedTextStyleReason::RequiresParleyBaseDirection,
+            reason: UnsupportedTextStyleReason::RequiresParagraphBaseDirection,
         })
     );
 }
@@ -756,7 +756,7 @@ fn rejects_each_line_indent_without_first_line_scope() {
         error.detail(),
         Some(&ErrorDetail::UnsupportedTextStyle {
             feature: TextStyleFeature::TextIndent,
-            reason: UnsupportedTextStyleReason::IndentShapeNotExpressibleByCurrentBackend,
+            reason: UnsupportedTextStyleReason::RequiresStandaloneIndentPolicy,
         })
     );
 }
@@ -780,7 +780,7 @@ fn validated_options_reject_unsupported_indent_shape() {
         error.detail(),
         Some(&ErrorDetail::UnsupportedTextStyle {
             feature: TextStyleFeature::TextIndent,
-            reason: UnsupportedTextStyleReason::IndentShapeNotExpressibleByCurrentBackend,
+            reason: UnsupportedTextStyleReason::RequiresStandaloneIndentPolicy,
         })
     );
 }
@@ -831,7 +831,7 @@ fn auto_direction_reports_resolved_base_direction() {
 }
 
 #[test]
-fn rejects_explicit_base_direction_until_parley_exposes_it() {
+fn rejects_unselected_explicit_base_direction() {
     let mut system = System::default();
     let style = Style {
         direction: Direction::RightToLeft,
@@ -911,7 +911,7 @@ fn system_build_rejects_invalid_inline_box_size_before_projection() {
         Id::from_u64(13),
         InlineBoxKind::InFlow,
         2,
-        Size::new(1.0, f32::NAN),
+        Size::new(1.0, f64::NAN),
     ));
 
     let error = builder
@@ -944,14 +944,14 @@ fn inline_box_vertical_align_is_public_and_validated() {
 
 #[test]
 fn inline_box_baseline_shift_rejects_non_finite_values() {
-    let error = VerticalAlign::try_shift(f32::INFINITY).expect_err("infinite shift is invalid");
+    let error = VerticalAlign::try_shift(f64::INFINITY).expect_err("infinite shift is invalid");
 
     assert_eq!(error.code, ErrorCode::InvalidStyle);
     assert_eq!(
         error.detail(),
         Some(&ErrorDetail::InvalidNumericField {
             field: "baseline shift",
-            value: f32::INFINITY,
+            value: f64::INFINITY,
             requirement: NumericRequirement::Finite,
         })
     );
@@ -1458,7 +1458,7 @@ fn inline_metric_facts_report_lines_runs_and_inline_boxes() {
     );
     assert_eq!(
         facts.inline_boxes()[0].baseline_shift(),
-        BaselineShiftFact::BackendBottomOnBaseline
+        BaselineShiftFact::BottomOnBaseline
     );
 }
 
@@ -1986,10 +1986,7 @@ fn glyph_runs_expose_resolved_font_data() {
     let mut builder = system.builder("effect text");
     let layout = builder.build().expect("layout should build");
     let runs = layout.glyph_runs();
-    let data = runs
-        .iter()
-        .find_map(|run| run.font().data())
-        .expect("glyph runs should expose resolved font data");
+    let data = runs.first().expect("actual resolved glyph run").font();
 
     assert!(!data.bytes().is_empty());
     assert_eq!(data.index(), 0);
@@ -2242,7 +2239,7 @@ fn decoration_text_color_brush_uses_resolved_run_brush() {
 
 #[test]
 fn decoration_metric_values_reject_invalid_numbers() {
-    let nan_offset = DecorationOffset::try_absolute(f32::NAN).expect_err("nan offset is invalid");
+    let nan_offset = DecorationOffset::try_absolute(f64::NAN).expect_err("nan offset is invalid");
     let zero_thickness =
         DecorationThickness::try_absolute(0.0).expect_err("zero thickness is invalid");
 

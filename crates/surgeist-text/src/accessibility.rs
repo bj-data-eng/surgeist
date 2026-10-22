@@ -4,10 +4,7 @@
 // Surgeist owns source-unit grouping, checked identities, geometry and atomic publication.
 // Exact origin and modifications: ../docs/accessibility-provenance.md.
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::Arc,
-};
+use std::{collections::BTreeMap, sync::Arc};
 
 use accesskit::{Node, NodeId, Role, TextDirection, TextPosition, TextSelection, TreeUpdate};
 use skrifa::{
@@ -16,15 +13,14 @@ use skrifa::{
 };
 
 use crate::{
-    Affinity, Alignment, Brush, Cursor, Error, ErrorCode, ErrorDetail, Layout, Point, Range, Rect,
-    Result, Selection, Text,
+    Affinity, Alignment, Cursor, Error, ErrorCode, ErrorDetail, Layout, Point, Range, Rect, Result,
+    Selection, Text,
 };
 
-/// Accessibility bindings for one immutable layout and its exact source mapping.
+/// Accessibility bindings for one exact analyzed-source or placed projection.
 #[derive(Clone)]
 pub struct Accessibility {
-    layout: Option<Arc<()>>,
-    source: Option<Text>,
+    binding: Option<Binding>,
     spans: Vec<AccessSpan>,
     next_id: Option<u64>,
 }
@@ -53,8 +49,7 @@ impl Accessibility {
     #[must_use]
     pub fn new(first_node_id: u64) -> Self {
         Self {
-            layout: None,
-            source: None,
+            binding: None,
             spans: Vec::new(),
             next_id: Some(first_node_id),
         }
@@ -77,9 +72,9 @@ struct Metadata {
 }
 
 impl Metadata {
-    fn from_run(run: &parley::Run<'_, Brush>, locale: Option<String>) -> Self {
-        let font = run.font();
-        let family = FontRef::from_index(font.data.as_ref(), font.index)
+    fn from_run(run: &crate::engine::layout::data::PreparedRun, locale: Option<String>) -> Self {
+        let font = &run.font;
+        let family = FontRef::from_index(font.bytes(), font.index())
             .ok()
             .and_then(|font| font.name().ok())
             .and_then(|name| {
@@ -91,9 +86,9 @@ impl Metadata {
             });
         Self {
             family,
-            size: run.font_size(),
-            weight: run.font_attrs().weight.value(),
-            italic: matches!(run.font_attrs().style, fontique::FontStyle::Italic),
+            size: run.font_size,
+            weight: run.font_attrs.weight.value(),
+            italic: matches!(run.font_attrs.style, fontique::FontStyle::Italic),
             locale,
         }
     }
@@ -149,37 +144,16 @@ struct LocaleRun {
 struct LocaleIndex(Vec<LocaleRun>);
 
 impl LocaleIndex {
-    fn new(source: &crate::Source, default: &crate::Style) -> Self {
-        let mut edges = Vec::new();
-        for (ordinal, span) in source.spans().iter().enumerate() {
-            if !span.range().is_empty() {
-                edges.push((span.range().start, ordinal, true));
-                edges.push((span.range().end, ordinal, false));
-            }
-        }
-        edges.sort_unstable();
-        let mut active = BTreeSet::new();
-        let mut runs = Vec::<LocaleRun>::new();
-        let mut previous = 0;
-        let mut locale = default.locale.clone();
-        let mut edges = edges.into_iter().peekable();
-        while let Some(&(position, _, _)) = edges.peek() {
-            Self::push(&mut runs, previous, position, locale);
-            while edges.peek().is_some_and(|edge| edge.0 == position) {
-                let (_, ordinal, entering) = edges.next().expect("peeked locale edge");
-                if entering {
-                    active.insert(ordinal);
-                } else {
-                    active.remove(&ordinal);
-                }
-            }
-            locale = active.last().map_or_else(
-                || default.locale.clone(),
-                |ordinal| source.spans()[*ordinal].style().locale.clone(),
+    fn new(styles: &[crate::engine::resolve::AnalyzedStyleRun]) -> Self {
+        let mut runs = Vec::new();
+        for run in styles {
+            Self::push(
+                &mut runs,
+                run.range.start,
+                run.range.end,
+                run.style.authored().locale.clone(),
             );
-            previous = position;
         }
-        Self::push(&mut runs, previous, source.text().len(), locale);
         Self(runs)
     }
 
@@ -243,177 +217,346 @@ fn fragment_memberships(ranges: &[Range], fragments: &[Fragment]) -> Vec<Vec<usi
     memberships
 }
 
-impl Layout {
-    /// Builds a complete host update and atomically replaces its source bindings.
-    pub fn accessibility_update(
-        &self,
-        state: &mut Accessibility,
-        parent: NodeId,
-        focus: NodeId,
-        origin: Point,
-    ) -> Result<TreeUpdate> {
-        let locales = LocaleIndex::new(&self.source, &self.default_style);
-        let lines = self.lines();
-        let mut fragments = Vec::new();
-        for (line_index, line) in self.inner.lines().enumerate() {
-            for run in line.runs() {
-                for cluster in run.clusters() {
-                    let metrics = line.metrics();
-                    fragments.push(Fragment {
-                        range: self.projection.range(cluster.text_range()),
-                        bounds: Rect::new(
-                            cluster.visual_offset().unwrap_or(metrics.offset),
-                            metrics.block_min_coord,
-                            cluster.advance(),
-                            metrics.block_max_coord - metrics.block_min_coord,
-                        ),
-                        line: line_index,
-                        rtl: cluster.is_rtl(),
-                        word: cluster.is_word_boundary() && !cluster.is_space_or_nbsp(),
-                        metadata: Metadata::from_run(
-                            &run,
-                            locales.uniform(self.projection.range(cluster.text_range())),
-                        ),
-                    });
-                }
+#[derive(Clone)]
+struct Binding {
+    analyzed: Arc<crate::engine::AnalyzedData>,
+    placed: Option<Arc<()>>,
+}
+
+#[derive(Clone, Copy)]
+enum Projection<'a> {
+    Analyzed(&'a Arc<crate::engine::AnalyzedData>),
+    Placed(&'a Layout, Point),
+}
+
+impl Projection<'_> {
+    fn analyzed(&self) -> &Arc<crate::engine::AnalyzedData> {
+        match self {
+            Self::Analyzed(analyzed) => analyzed,
+            Self::Placed(layout, _) => &layout.inner.prepared.analyzed,
+        }
+    }
+
+    fn binding(self) -> Binding {
+        Binding {
+            analyzed: self.analyzed().clone(),
+            placed: match self {
+                Self::Analyzed(_) => None,
+                Self::Placed(layout, _) => Some(layout.identity.clone()),
+            },
+        }
+    }
+}
+
+pub(crate) fn analyzed_update(
+    analyzed: &Arc<crate::engine::AnalyzedData>,
+    state: &mut Accessibility,
+    parent: NodeId,
+    focus: NodeId,
+) -> Result<TreeUpdate> {
+    update(Projection::Analyzed(analyzed), state, parent, focus)
+}
+
+pub(crate) fn analyzed_access_position(
+    analyzed: &Arc<crate::engine::AnalyzedData>,
+    state: &Accessibility,
+    cursor: Cursor,
+) -> Result<Option<TextPosition>> {
+    validate_binding(state, analyzed, None)?;
+    crate::range::validate_index(
+        analyzed.source.text(),
+        cursor.index(),
+        "accessibility cursor",
+    )?;
+    let unit = crate::engine::editing::caret_at(
+        &analyzed.projection.graphemes,
+        cursor.index(),
+        cursor.affinity(),
+    );
+    Ok(access_stop(state, unit, cursor.affinity()))
+}
+
+pub(crate) fn analyzed_access_selection(
+    analyzed: &Arc<crate::engine::AnalyzedData>,
+    state: &Accessibility,
+    selection: Selection,
+) -> Result<Option<TextSelection>> {
+    validate_binding(state, analyzed, None)?;
+    crate::range::validate(analyzed.source.text(), selection.range())?;
+    let (anchor, focus) = if selection.is_collapsed() {
+        let point = analyzed_access_position(analyzed, state, selection.focus())?;
+        (point, point)
+    } else {
+        let range = selection.range();
+        let start = crate::engine::editing::caret_at(
+            &analyzed.projection.graphemes,
+            range.start,
+            Affinity::Before,
+        );
+        let end = crate::engine::editing::caret_at(
+            &analyzed.projection.graphemes,
+            range.end,
+            Affinity::After,
+        );
+        selection_positions(state, selection, Range::new(start, end))
+    };
+    Ok(anchor
+        .zip(focus)
+        .map(|(anchor, focus)| TextSelection { anchor, focus }))
+}
+
+fn selection_positions(
+    state: &Accessibility,
+    selection: Selection,
+    range: Range,
+) -> (Option<TextPosition>, Option<TextPosition>) {
+    let start = access_stop(state, range.start, Affinity::After);
+    let end = access_stop(state, range.end, Affinity::Before);
+    if selection.anchor().index() <= selection.focus().index() {
+        (start, end)
+    } else {
+        (end, start)
+    }
+}
+
+fn validate_binding(
+    state: &Accessibility,
+    analyzed: &Arc<crate::engine::AnalyzedData>,
+    placed: Option<&Arc<()>>,
+) -> Result<()> {
+    let valid = state.binding.as_ref().is_some_and(|binding| {
+        Arc::ptr_eq(&binding.analyzed, analyzed)
+            && match (&binding.placed, placed) {
+                (None, None) => true,
+                (Some(actual), Some(expected)) => Arc::ptr_eq(actual, expected),
+                _ => false,
+            }
+    });
+    if !valid {
+        return Err(ax_error(ErrorDetail::AccessibilityBindingMismatch));
+    }
+    Ok(())
+}
+
+fn access_stop(state: &Accessibility, unit: usize, affinity: Affinity) -> Option<TextPosition> {
+    let span = match affinity {
+        Affinity::After => state.spans.iter().find(|span| span.range.start == unit),
+        Affinity::Before => state.spans.iter().rev().find(|span| span.range.end == unit),
+    }
+    .or_else(|| state.spans.iter().rev().find(|span| span.range.end == unit))
+    .or_else(|| state.spans.iter().find(|span| span.range.start == unit))?;
+    let character_index =
+        usize::from(unit == span.range.end && !span.range.is_empty() && !span.hard_break);
+    Some(TextPosition {
+        node: span.id,
+        character_index,
+    })
+}
+
+fn update(
+    projection: Projection<'_>,
+    state: &mut Accessibility,
+    parent: NodeId,
+    focus: NodeId,
+) -> Result<TreeUpdate> {
+    let analyzed = projection.analyzed();
+    let host_text = original_host_text(analyzed.source.text())?;
+    let locales = LocaleIndex::new(&analyzed.styles);
+    let lines = match projection {
+        Projection::Analyzed(_) => Vec::new(),
+        Projection::Placed(layout, _) => layout.lines(),
+    };
+    let mut fragments = Vec::new();
+    if let Projection::Placed(layout, _) = projection {
+        for (line_index, line) in layout.inner.lines.iter().enumerate() {
+            let data = &line.finalized.data;
+            let metrics = &data.metrics;
+            for cluster in &data.clusters {
+                let run = &data.font_runs[cluster.run];
+                fragments.push(Fragment {
+                    range: cluster.source,
+                    bounds: Rect::new(
+                        line.origin.x + cluster.x,
+                        line.origin.y + metrics.block_min,
+                        cluster.advance,
+                        metrics.block_max - metrics.block_min,
+                    ),
+                    line: line_index,
+                    rtl: cluster.level & 1 != 0,
+                    word: cluster.boundary >= crate::engine::analysis::Boundary::Word
+                        && !cluster.whitespace.is_space_or_nbsp(),
+                    metadata: Metadata::from_run(run, locales.uniform(cluster.source)),
+                });
             }
         }
-        let mut descriptors: Vec<_> = self
+    }
+    let mut descriptors: Vec<_> = match projection {
+        Projection::Analyzed(_) => analyzed
             .projection
+            .graphemes
+            .windows(2)
+            .map(|pair| NodeDescriptor {
+                range: Range::new(pair[0], pair[1]),
+                empty_line: None,
+            })
+            .collect(),
+        Projection::Placed(layout, _) => layout
+            .inner
+            .interaction
             .selectable_ranges()
             .map(|range| NodeDescriptor {
                 range,
                 empty_line: None,
             })
+            .collect(),
+    };
+    if matches!(projection, Projection::Analyzed(_)) && analyzed.source.text().is_empty() {
+        descriptors.push(NodeDescriptor {
+            range: Range::new(0, 0),
+            empty_line: None,
+        });
+    }
+    for line in &lines {
+        if line.range().is_empty() {
+            descriptors.push(NodeDescriptor {
+                range: line.range(),
+                empty_line: Some(line.index()),
+            });
+        }
+    }
+    descriptors.sort_by_key(|descriptor| descriptor.key());
+    descriptors.dedup();
+    let same = state
+        .binding
+        .as_ref()
+        .is_some_and(|binding| Arc::ptr_eq(&binding.analyzed, analyzed));
+    let retained: BTreeMap<_, _> = if same {
+        state
+            .spans
+            .iter()
+            .map(|span| ((span.range.start, span.range.end, span.empty_line), span.id))
+            .collect()
+    } else {
+        BTreeMap::new()
+    };
+    let missing = descriptors
+        .iter()
+        .filter(|descriptor| !retained.contains_key(&descriptor.key()))
+        .count();
+    let available = state.next_id.map_or(0, |next| {
+        let excluded =
+            u128::from(parent.0 >= next) + u128::from(focus != parent && focus.0 >= next);
+        u128::from(u64::MAX) - u128::from(next) + 1 - excluded
+    });
+    if missing as u128 > available {
+        return Err(ax_error(ErrorDetail::AccessibilityIdentityExhausted));
+    }
+    let mut next_id = state.next_id;
+    let mut spans = Vec::new();
+    let mut nodes = Vec::new();
+    let mut line_nodes = Vec::<(usize, usize)>::new();
+    let ranges: Vec<_> = descriptors
+        .iter()
+        .map(|descriptor| descriptor.range)
+        .collect();
+    let memberships = fragment_memberships(&ranges, &fragments);
+    for (range_index, descriptor) in descriptors.into_iter().enumerate() {
+        let range = descriptor.range;
+        let start = analyzed.projection.byte(range.start).0;
+        let end = analyzed.projection.byte(range.end).0;
+        let text = &host_text[start..end];
+        let length = u8::try_from(text.len()).map_err(|_| {
+            ax_error(ErrorDetail::UnsupportedAccessibilityUnit {
+                range,
+                bytes: text.len(),
+            })
+        })?;
+        let id = retained.get(&descriptor.key()).copied();
+        let id = match id {
+            Some(id) => id,
+            None => issue_id(&mut next_id, parent, focus)?,
+        };
+        if id == parent {
+            return Err(ax_error(ErrorDetail::AccessibilityIdentityConflict {
+                id: id.0,
+            }));
+        }
+        let pieces: Vec<_> = memberships[range_index]
+            .iter()
+            .map(|index| &fragments[*index])
+            .filter(|fragment| {
+                descriptor
+                    .empty_line
+                    .is_none_or(|line| fragment.line == line)
+            })
             .collect();
-        for line in &lines {
-            if line.range().is_empty() {
-                descriptors.push(NodeDescriptor {
-                    range: line.range(),
-                    empty_line: Some(line.index()),
+        let mut node = Node::new(Role::TextRun);
+        if matches!(projection, Projection::Analyzed(_))
+            && let Some(locale) = locales.uniform(range)
+        {
+            node.set_language(locale);
+        }
+
+        node.set_value(text.to_owned());
+        node.set_character_lengths(if range.is_empty() {
+            Vec::new()
+        } else {
+            vec![length]
+        });
+        if let Some(first) = pieces.first() {
+            let Projection::Placed(_, origin) = projection else {
+                unreachable!("only placed rows have fragments")
+            };
+            let bounds = pieces
+                .iter()
+                .skip(1)
+                .fold(first.bounds, |bounds, fragment| {
+                    union(bounds, fragment.bounds)
+                });
+            node.set_bounds(host_rect(bounds, origin)?);
+            let direction = pieces.iter().all(|fragment| fragment.rtl == first.rtl);
+            let one_line = pieces.iter().all(|fragment| fragment.line == first.line);
+            if direction {
+                node.set_text_direction(if first.rtl {
+                    TextDirection::RightToLeft
+                } else {
+                    TextDirection::LeftToRight
                 });
             }
-        }
-        descriptors.sort_by_key(|descriptor| descriptor.key());
-        descriptors.dedup();
-        let same = state
-            .layout
-            .as_ref()
-            .is_some_and(|identity| Arc::ptr_eq(identity, &self.identity));
-        let retained: BTreeMap<_, _> = if same {
-            state
-                .spans
+            first.metadata.apply(&mut node, &pieces);
+            if pieces
                 .iter()
-                .map(|span| ((span.range.start, span.range.end, span.empty_line), span.id))
-                .collect()
-        } else {
-            BTreeMap::new()
-        };
-        let missing = descriptors
-            .iter()
-            .filter(|descriptor| !retained.contains_key(&descriptor.key()))
-            .count();
-        let available = state.next_id.map_or(0, |next| {
-            let excluded =
-                u128::from(parent.0 >= next) + u128::from(focus != parent && focus.0 >= next);
-            u128::from(u64::MAX) - u128::from(next) + 1 - excluded
-        });
-        if missing as u128 > available {
-            return Err(ax_error(ErrorDetail::AccessibilityIdentityExhausted));
-        }
-        let mut next_id = state.next_id;
-        let mut spans = Vec::new();
-        let mut nodes = Vec::new();
-        let mut line_nodes = Vec::<(usize, usize)>::new();
-        let ranges: Vec<_> = descriptors
-            .iter()
-            .map(|descriptor| descriptor.range)
-            .collect();
-        let memberships = fragment_memberships(&ranges, &fragments);
-        for (range_index, descriptor) in descriptors.into_iter().enumerate() {
-            let range = descriptor.range;
-            let start = self.projection.byte(range.start).0;
-            let end = self.projection.byte(range.end).0;
-            let text = &self.projection.text[start..end];
-            let length = u8::try_from(text.len()).map_err(|_| {
-                ax_error(ErrorDetail::UnsupportedAccessibilityUnit {
-                    range,
-                    bytes: text.len(),
-                })
-            })?;
-            let id = retained.get(&descriptor.key()).copied();
-            let id = match id {
-                Some(id) => id,
-                None => issue_id(&mut next_id, parent, focus)?,
+                .any(|fragment| fragment.range.start == range.start && fragment.word)
+            {
+                node.set_word_starts(vec![0]);
+            }
+            // Single fragments have an exact one-dimensional host projection. Multiple
+            // pieces remain exact internally; omit optional fields rather than invent precision.
+            if pieces.len() == 1 {
+                node.set_character_positions(vec![0.0]);
+                node.set_character_widths(vec![host_width(bounds.size.width)?]);
+            }
+            if one_line {
+                line_nodes.push((first.line, nodes.len()));
+            }
+        } else if let Some(line) = descriptor.empty_line.and_then(|index| lines.get(index)) {
+            let Projection::Placed(_, origin) = projection else {
+                unreachable!("only placed rows have visual lines")
             };
-            if id == parent {
-                return Err(ax_error(ErrorDetail::AccessibilityIdentityConflict {
-                    id: id.0,
-                }));
-            }
-            let pieces: Vec<_> = memberships[range_index]
-                .iter()
-                .map(|index| &fragments[*index])
-                .filter(|fragment| {
-                    descriptor
-                        .empty_line
-                        .is_none_or(|line| fragment.line == line)
-                })
-                .collect();
-            let mut node = Node::new(Role::TextRun);
-            node.set_value(text.to_owned());
-            node.set_character_lengths(if range.is_empty() {
-                Vec::new()
-            } else {
-                vec![length]
-            });
-            if let Some(first) = pieces.first() {
-                let bounds = pieces
-                    .iter()
-                    .skip(1)
-                    .fold(first.bounds, |bounds, fragment| {
-                        union(bounds, fragment.bounds)
-                    });
-                node.set_bounds(host_rect(bounds, origin));
-                let direction = pieces.iter().all(|fragment| fragment.rtl == first.rtl);
-                let one_line = pieces.iter().all(|fragment| fragment.line == first.line);
-                if direction {
-                    node.set_text_direction(if first.rtl {
-                        TextDirection::RightToLeft
-                    } else {
-                        TextDirection::LeftToRight
-                    });
-                }
-                first.metadata.apply(&mut node, &pieces);
-                if pieces
-                    .iter()
-                    .any(|fragment| fragment.range.start == range.start && fragment.word)
-                {
-                    node.set_word_starts(vec![0]);
-                }
-                // Single fragments have an exact one-dimensional host projection. Multiple
-                // pieces remain exact internally; omit optional fields rather than invent precision.
-                if pieces.len() == 1 {
-                    node.set_character_positions(vec![0.0]);
-                    node.set_character_widths(vec![bounds.size.width]);
-                }
-                if one_line {
-                    line_nodes.push((first.line, nodes.len()));
-                }
-            } else if let Some(line) = descriptor.empty_line.and_then(|index| lines.get(index)) {
-                node.set_bounds(host_rect(line.bounds(), origin));
-                line_nodes.push((line.index(), nodes.len()));
-            }
-            node.set_text_align(match self.alignment {
+            node.set_bounds(host_rect(line.bounds(), origin)?);
+            line_nodes.push((line.index(), nodes.len()));
+        }
+        if let Projection::Placed(layout, _) = projection {
+            node.set_text_align(match layout.options.alignment {
                 Alignment::Start => {
-                    if self.inner.is_rtl() {
+                    if layout.direction() == crate::Direction::RightToLeft {
                         accesskit::TextAlign::Right
                     } else {
                         accesskit::TextAlign::Left
                     }
                 }
                 Alignment::End => {
-                    if self.inner.is_rtl() {
+                    if layout.direction() == crate::Direction::RightToLeft {
                         accesskit::TextAlign::Left
                     } else {
                         accesskit::TextAlign::Right
@@ -424,49 +567,63 @@ impl Layout {
                 Alignment::Center => accesskit::TextAlign::Center,
                 Alignment::Justify => accesskit::TextAlign::Justify,
             });
-            spans.push(AccessSpan {
-                range,
-                empty_line: descriptor.empty_line,
-                id,
-                hard_break: text.ends_with('\n') || text.ends_with('\r'),
-            });
-            nodes.push((id, node));
         }
-        // This is off-side candidate state. No IDs or bindings are published on any refusal.
-        for pair in line_nodes.windows(2) {
-            if pair[0].0 == pair[1].0 {
-                let previous = pair[0].1;
-                let next = pair[1].1;
-                let previous_id = nodes[previous].0;
-                let next_id = nodes[next].0;
-                nodes[previous].1.set_next_on_line(next_id);
-                nodes[next].1.set_previous_on_line(previous_id);
-            }
+        spans.push(AccessSpan {
+            range,
+            empty_line: descriptor.empty_line,
+            id,
+            hard_break: text.ends_with('\n') || text.ends_with('\r'),
+        });
+        nodes.push((id, node));
+    }
+    // This is off-side candidate state. No IDs or bindings are published on any refusal.
+    for pair in line_nodes.windows(2) {
+        if pair[0].0 == pair[1].0 {
+            let previous = pair[0].1;
+            let next = pair[1].1;
+            let previous_id = nodes[previous].0;
+            let next_id = nodes[next].0;
+            nodes[previous].1.set_next_on_line(next_id);
+            nodes[next].1.set_previous_on_line(previous_id);
         }
-        let mut parent_node = Node::new(Role::Paragraph);
+    }
+    let mut parent_node = Node::new(Role::Paragraph);
+    if let Projection::Placed(layout, origin) = projection {
         parent_node.set_bounds(host_rect(
             Rect::new(
                 0.0,
                 0.0,
-                self.metrics().size().width,
-                self.metrics().size().height,
+                layout.metrics().size().width,
+                layout.metrics().size().height,
             ),
             origin,
-        ));
-        parent_node.set_children(spans.iter().map(|span| span.id).collect::<Vec<_>>());
-        nodes.push((parent, parent_node));
-        *state = Accessibility {
-            layout: Some(self.identity.clone()),
-            source: Some(self.source.text().clone()),
-            spans,
-            next_id,
-        };
-        Ok(TreeUpdate {
-            nodes,
-            tree: None,
-            tree_id: accesskit::TreeId::ROOT,
-            focus,
-        })
+        )?);
+    }
+    parent_node.set_children(spans.iter().map(|span| span.id).collect::<Vec<_>>());
+    nodes.push((parent, parent_node));
+    *state = Accessibility {
+        binding: Some(projection.binding()),
+        spans,
+        next_id,
+    };
+    Ok(TreeUpdate {
+        nodes,
+        tree: None,
+        tree_id: accesskit::TreeId::ROOT,
+        focus,
+    })
+}
+
+impl Layout {
+    /// Builds a complete host update and atomically replaces its source bindings.
+    pub fn accessibility_update(
+        &self,
+        state: &mut Accessibility,
+        parent: NodeId,
+        focus: NodeId,
+        origin: Point,
+    ) -> Result<TreeUpdate> {
+        update(Projection::Placed(self, origin), state, parent, focus)
     }
 
     pub fn access_position(
@@ -475,10 +632,12 @@ impl Layout {
         cursor: Cursor,
     ) -> Result<Option<TextPosition>> {
         self.validate_accessibility(state)?;
-        super::range::validate_index(self.source.text(), cursor.index(), "accessibility cursor")?;
-        Ok(self.access_stop(
+        super::range::validate_index(self.source().text(), cursor.index(), "accessibility cursor")?;
+        Ok(access_stop(
             state,
-            self.projection.caret(cursor.index(), cursor.affinity()),
+            self.inner
+                .interaction
+                .caret(cursor.index(), cursor.affinity()),
             cursor.affinity(),
         ))
     }
@@ -489,20 +648,14 @@ impl Layout {
         selection: Selection,
     ) -> Result<Option<TextSelection>> {
         self.validate_accessibility(state)?;
-        super::range::validate(self.source.text(), selection.range())?;
+        super::range::validate(self.source().text(), selection.range())?;
         let (anchor, focus) = if selection.is_collapsed() {
             let cursor = selection.focus();
             let point = self.access_position(state, cursor)?;
             (point, point)
         } else {
-            let range = self.projection.selection_range(selection.range());
-            let start = self.access_stop(state, range.start, Affinity::After);
-            let end = self.access_stop(state, range.end, Affinity::Before);
-            if selection.anchor().index() <= selection.focus().index() {
-                (start, end)
-            } else {
-                (end, start)
-            }
+            let range = self.inner.interaction.selection_range(selection.range());
+            selection_positions(state, selection, range)
         };
         Ok(anchor
             .zip(focus)
@@ -510,35 +663,7 @@ impl Layout {
     }
 
     fn validate_accessibility(&self, state: &Accessibility) -> Result<()> {
-        if !state
-            .layout
-            .as_ref()
-            .is_some_and(|identity| Arc::ptr_eq(identity, &self.identity))
-            || state.source.as_ref() != Some(self.source.text())
-        {
-            return Err(ax_error(ErrorDetail::AccessibilityLayoutMismatch));
-        }
-        Ok(())
-    }
-
-    fn access_stop(
-        &self,
-        state: &Accessibility,
-        unit: usize,
-        affinity: Affinity,
-    ) -> Option<TextPosition> {
-        let span = match affinity {
-            Affinity::After => state.spans.iter().find(|span| span.range.start == unit),
-            Affinity::Before => state.spans.iter().rev().find(|span| span.range.end == unit),
-        }
-        .or_else(|| state.spans.iter().rev().find(|span| span.range.end == unit))
-        .or_else(|| state.spans.iter().find(|span| span.range.start == unit))?;
-        let character_index =
-            usize::from(unit == span.range.end && !span.range.is_empty() && !span.hard_break);
-        Some(TextPosition {
-            node: span.id,
-            character_index,
-        })
+        validate_binding(state, &self.inner.prepared.analyzed, Some(&self.identity))
     }
 }
 
@@ -572,13 +697,70 @@ fn union(a: Rect, b: Rect) -> Rect {
     )
 }
 
-fn host_rect(rect: Rect, origin: Point) -> accesskit::Rect {
-    accesskit::Rect {
-        x0: f64::from(origin.x + rect.origin.x),
-        y0: f64::from(origin.y + rect.origin.y),
-        x1: f64::from(origin.x + rect.origin.x + rect.size.width),
-        y1: f64::from(origin.y + rect.origin.y + rect.size.height),
+fn original_host_text(text: &Text) -> Result<String> {
+    let mut result = String::new();
+    let mut index = 0;
+    for decoded in char::decode_utf16(text.code_units().iter().copied()) {
+        let ch = decoded.map_err(|error| {
+            ax_error(ErrorDetail::AccessibilityIllFormedSource {
+                index,
+                unit: error.unpaired_surrogate(),
+            })
+        })?;
+        result.push(ch);
+        index += ch.len_utf16();
     }
+    Ok(result)
+}
+
+fn host_width(value: f64) -> Result<f32> {
+    use crate::{TextNumericError as Numeric, TextNumericPhase as Phase};
+    let converted = value as f32;
+    let category = if !value.is_finite() {
+        Some(Numeric::NonFinite)
+    } else if !converted.is_finite() {
+        Some(Numeric::OutOfRange)
+    } else if value > 0.0 && converted <= 0.0 {
+        Some(Numeric::PositiveLost)
+    } else if value != 0.0 && converted == 0.0 {
+        Some(Numeric::NonZeroLost)
+    } else {
+        None
+    };
+    if let Some(category) = category {
+        return Err(crate::engine::text_numeric_error(
+            "accessibility character width",
+            Phase::Accessibility,
+            category,
+            value,
+        ));
+    }
+    Ok(converted)
+}
+
+fn host_rect(rect: Rect, origin: Point) -> Result<accesskit::Rect> {
+    let values = [
+        origin.x + rect.origin.x,
+        origin.y + rect.origin.y,
+        origin.x + rect.origin.x + rect.size.width,
+        origin.y + rect.origin.y + rect.size.height,
+    ];
+    for value in values {
+        if !value.is_finite() {
+            return Err(crate::engine::text_numeric_error(
+                "accessibility bounds",
+                crate::TextNumericPhase::Accessibility,
+                crate::TextNumericError::NonFinite,
+                value,
+            ));
+        }
+    }
+    Ok(accesskit::Rect {
+        x0: values[0],
+        y0: values[1],
+        x1: values[2],
+        y1: values[3],
+    })
 }
 
 #[cfg(test)]
@@ -588,6 +770,47 @@ mod tests {
         FontCatalogueMode, Id, InlineBox, InlineBoxKind, Options, Size, Source, Style, System,
         SystemOptions,
     };
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn host_text_uses_exact_original_scalars_and_refuses_isolated_units() {
+        let text = Text::from_code_units(vec![0xd83d, 0xde00, 0xfffd, 0x00a6]);
+        assert_eq!(original_host_text(&text).unwrap(), "😀\u{fffd}\u{a6}");
+        for (units, index, unit) in [
+            (vec![0xd83d, 0xde00, 0xd800], 2, 0xd800),
+            (vec![0x41, 0xdc00], 1, 0xdc00),
+        ] {
+            assert_eq!(
+                original_host_text(&Text::from_code_units(units))
+                    .unwrap_err()
+                    .detail(),
+                Some(&ErrorDetail::AccessibilityIllFormedSource { index, unit })
+            );
+        }
+    }
+
+    #[test]
+    fn host_numeric_categories_keep_logical_precision_and_refuse_lost_width() {
+        let rect = host_rect(
+            Rect::new(0.25, 0.5, 1.0, 2.0),
+            Point::new(1_099_511_627_776.0, 1_099_511_627_776.0),
+        )
+        .unwrap();
+        assert_eq!(rect.x0, 1_099_511_627_776.25);
+        assert_eq!(rect.x1, 1_099_511_627_777.25);
+        assert_eq!(rect.y0, 1_099_511_627_776.5);
+        assert_eq!(rect.y1, 1_099_511_627_778.5);
+        assert_eq!(host_width(0.0).unwrap(), 0.0);
+        assert!(matches!(
+            host_width(f64::MIN_POSITIVE).unwrap_err().detail(),
+            Some(ErrorDetail::InvalidTextNumeric {
+                phase: crate::TextNumericPhase::Accessibility,
+                category: crate::TextNumericError::PositiveLost,
+                ..
+            })
+        ));
+        assert!(host_rect(Rect::new(f64::MAX, 0.0, f64::MAX, 1.0), Point::default()).is_err());
+    }
 
     #[test]
     fn distinct_box_only_lines_keep_distinct_ids_and_reuse_each_actual_focus() {
@@ -664,7 +887,7 @@ mod tests {
                 .access_position(&exhausted, Cursor::new(0, Affinity::After))
                 .expect_err("refusal published no mapping")
                 .detail(),
-            Some(&ErrorDetail::AccessibilityLayoutMismatch)
+            Some(&ErrorDetail::AccessibilityBindingMismatch)
         );
     }
 
@@ -692,13 +915,14 @@ mod tests {
                 ..Style::default()
             },
         );
-        let index = LocaleIndex::new(
-            &source,
-            &Style {
-                locale: Some("en".into()),
-                ..Style::default()
-            },
-        );
+        let source = crate::ValidatedSource::try_from(source).unwrap();
+        let default = crate::ValidatedStyle::try_from(Style {
+            locale: Some("en".into()),
+            ..Style::default()
+        })
+        .unwrap();
+        let styles = crate::engine::resolve::analyze_styles(&source, &default);
+        let index = LocaleIndex::new(&styles);
         assert_eq!(index.uniform(Range::new(0, 2)).as_deref(), Some("fr"));
         assert_eq!(index.uniform(Range::new(2, 4)).as_deref(), Some("de"));
         assert_eq!(index.uniform(Range::new(4, 5)).as_deref(), Some("fr"));

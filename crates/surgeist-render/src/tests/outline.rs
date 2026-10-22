@@ -334,3 +334,124 @@ fn prepared_outline_real_gpu_color_gradient_and_image_keep_run_local_paint_space
         }
     }
 }
+
+#[test]
+fn bold_contour_copies_are_one_nonzero_fill_on_direct_and_base_graph_routes() {
+    let outlines: Vec<_> = [overlapping_outline(), overlapping_composite_outline()]
+        .into_iter()
+        .map(|plain| {
+            let instance = TextInstance::try_new(
+                plain.instance().size(),
+                plain.instance().coordinates().to_vec(),
+                OutlineSynthesis::try_new(0.0, plain.instance().size() / 36.0_f32).unwrap(),
+            )
+            .unwrap();
+            let prepared = plain
+                .font()
+                .prepare_outline(
+                    &instance,
+                    plain.glyphs(),
+                    OutlineLimits::new(2, 32, 1 << 20, 1 << 20),
+                )
+                .unwrap();
+            assert_eq!(prepared.path_elements().count(), 20);
+            assert_eq!(prepared.glyphs(), plain.glyphs());
+            assert_eq!(prepared.instance(), &instance);
+            prepared
+        })
+        .collect();
+    // The original preparations, font inputs and instance temporaries have
+    // dropped. Retained preparations supply both encoder and GPU geometry.
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let working_format = default_graph_working_format_for_test(&mut renderer);
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(2.0, 2.0), 1.0)).unwrap();
+    for outline in outlines {
+        for graph in [false, true] {
+            let mut scene = Scene::new();
+            scene.fill(
+                Shape::rect(Rect::new(0.0, 0.0, 2.0, 2.0)),
+                Color::try_rgba(1.0, 1.0, 1.0, 1.0).unwrap(),
+            );
+            scene.prepared_outline(
+                outline.clone(),
+                Transform::scale(0.002, 0.002).unwrap(),
+                TextPaint::try_fill(Color::try_rgba(1.0, 0.0, 0.0, 0.5).unwrap().into()).unwrap(),
+            );
+            let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+            let encoded =
+                encode_vello_scene_with_initial_transform(&normalized, Transform::identity())
+                    .unwrap();
+            let observation = encoded.observation_for_test();
+            let draws = observation.solid_path_draws_for_test().unwrap();
+            assert_eq!(draws.len(), 2); // white background, then one text path
+            assert_eq!(draws[1].fill_rule, VelloFillRuleObservationForTest::NonZero);
+            assert_eq!(
+                draws[1]
+                    .geometry
+                    .iter()
+                    .filter(|point| matches!(point, VelloPathElementObservationForTest::MoveTo(_)))
+                    .count(),
+                4
+            );
+            let stats = if graph {
+                pollster::block_on(renderer.render_forced_base_graph_for_test(
+                    &mut surface,
+                    &scene,
+                    Parameters::default(),
+                    working_format,
+                ))
+                .unwrap()
+                .stats
+            } else {
+                pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default()))
+                    .unwrap()
+            };
+            assert_eq!(
+                stats.route,
+                Some(if graph {
+                    RenderRoute::GpuGraph
+                } else {
+                    RenderRoute::DirectVello
+                })
+            );
+            let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+            let [r, g, b, a] = pixel_rgba(&output, 0, 0);
+            assert!(
+                r >= 253 && (125..=130).contains(&g) && (125..=130).contains(&b) && a == 255,
+                "graph={graph}, one half-opacity path at shared original/copy ink: {:?}",
+                [r, g, b, a]
+            );
+        }
+    }
+}
+
+#[test]
+fn any_absorbed_bold_point_refuses_even_when_other_copy_points_move() {
+    let font = FontData::try_from_bytes(AHEM_FONT_BYTES.to_vec(), 0).unwrap();
+    let instance =
+        TextInstance::try_new(36.0, vec![], OutlineSynthesis::try_new(0.0, 1.0).unwrap()).unwrap();
+    // Exact IEEE ties-to-even facts isolate partial copy loss: the left point
+    // moves, but the right original/copy both round to33554464.
+    assert_ne!(33_554_426.0_f64 as f32, 33_554_427.0_f64 as f32);
+    assert_eq!(33_554_462.0_f64 as f32, 33_554_463.0_f64 as f32);
+    let glyphs = [
+        TextGlyph::try_new(AHEM_GLYPH_X, 20.0, 30.0, -10.0).unwrap(),
+        TextGlyph::try_new(AHEM_GLYPH_X, 33_554_426.0, 0.0, 0.0).unwrap(),
+    ];
+    let error = font
+        .prepare_outline(
+            &instance,
+            &glyphs,
+            OutlineLimits::new(2, 20, 1 << 20, 1 << 20),
+        )
+        .unwrap_err();
+    assert!(matches!(
+        error.outline_preparation_diagnostic(),
+        Some(crate::OutlinePreparationError::Numeric {
+            phase: crate::OutlineNumericPhase::Synthesis,
+            value: 1.0,
+        })
+    ));
+    assert_eq!(glyphs[1].x(), 33_554_426.0);
+}

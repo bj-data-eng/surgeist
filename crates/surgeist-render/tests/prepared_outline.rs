@@ -296,7 +296,7 @@ fn prepared_outline_limits_refuse_whole_runs_and_retry_preserves_original_inputs
 }
 
 #[test]
-fn prepared_outline_numeric_and_unsupported_synthesis_refusals_do_not_publish_empty() {
+fn prepared_outline_numeric_and_invalid_synthesis_refusals_do_not_publish_empty() {
     let font = font(AHEM);
     // Actual path underflow and overflow, rather than an arbitrary size cap.
     for (size, skew) in [(f32::from_bits(1), 0.0), (f32::MAX, 1.0)] {
@@ -313,7 +313,7 @@ fn prepared_outline_numeric_and_unsupported_synthesis_refusals_do_not_publish_em
             OutlinePreparationError::Numeric { .. }
         ));
     }
-    let huge = TextGlyph::try_new(X, f32::MAX, 0.0, 1.0).unwrap();
+    let huge = TextGlyph::try_new(X, f64::from(f32::MAX), 0.0, 1.0).unwrap();
     assert!(matches!(
         diagnostic(
             &font
@@ -322,16 +322,12 @@ fn prepared_outline_numeric_and_unsupported_synthesis_refusals_do_not_publish_em
         ),
         OutlinePreparationError::Numeric { .. }
     ));
-    let bold = TextInstance::try_new(1000.0, vec![], OutlineSynthesis::try_new(0.0, 1.0).unwrap())
-        .unwrap();
-    assert_eq!(
-        diagnostic(
-            &font
-                .prepare_outline(&bold, &[glyph()], limits())
-                .unwrap_err()
-        ),
-        OutlinePreparationError::UnsupportedEmboldening
-    );
+    for (skew, displacement) in [(f32::NAN, 1.0), (0.0, -1.0), (0.0, f32::INFINITY)] {
+        assert_eq!(
+            diagnostic(&OutlineSynthesis::try_new(skew, displacement).unwrap_err()),
+            OutlinePreparationError::InvalidSynthesis
+        );
+    }
     let invalid = TextGlyph::try_new(281, 0.0, 0.0, 0.0).unwrap();
     assert_eq!(
         diagnostic(
