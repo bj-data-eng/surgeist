@@ -794,3 +794,177 @@ fn max_constrained_intrinsic_grid_aligns_children_with_final_content_box_f32() {
 fn max_constrained_intrinsic_grid_aligns_children_with_final_content_box_f64() {
     qualify_max_constrained_alignment::<f64>();
 }
+
+struct OrthogonalSubgridChain<S: LayoutScalar> {
+    inputs: [LayoutInputOf<S>; 5],
+}
+
+impl<S: LayoutScalar> Traverse for OrthogonalSubgridChain<S> {
+    type Node = usize;
+    type Scalar = S;
+    type Children<'a>
+        = std::iter::Copied<std::slice::Iter<'a, usize>>
+    where
+        Self: 'a;
+
+    fn children(&self, node: usize) -> Self::Children<'_> {
+        let children: &[usize] = match node {
+            0 => &[1],
+            1 => &[2],
+            2 => &[3, 4],
+            _ => &[],
+        };
+        children.iter().copied()
+    }
+    fn child_count(&self, node: usize) -> usize {
+        match node {
+            0 | 1 => 1,
+            2 => 2,
+            _ => 0,
+        }
+    }
+    fn child(&self, node: usize, index: usize) -> usize {
+        self.children(node).nth(index).unwrap()
+    }
+}
+
+impl<S: LayoutScalar> LayoutTree for OrthogonalSubgridChain<S> {
+    type MeasureError = std::convert::Infallible;
+    fn node_input(&self, node: usize) -> &NodeInputOf<S> {
+        self.inputs[node].as_box().unwrap()
+    }
+    fn layout_input(&self, node: usize) -> LayoutInputViewOf<'_, S> {
+        self.inputs[node].as_view()
+    }
+}
+
+fn qualify_orthogonal_standalone_contribution<S: LayoutScalar>() {
+    let mut failures = Vec::new();
+    for parent_mode in [WritingMode::HorizontalTb, WritingMode::VerticalRl] {
+        for orthogonal in [false, true] {
+            let child_mode = if orthogonal {
+                match parent_mode {
+                    WritingMode::HorizontalTb => WritingMode::VerticalRl,
+                    _ => WritingMode::HorizontalTb,
+                }
+            } else {
+                parent_mode
+            };
+            let tree = OrthogonalSubgridChain::<S> {
+                inputs: [
+                    LayoutInputOf::box_input(NodeInputOf {
+                        display: Display::Grid,
+                        writing_mode: parent_mode,
+                        size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::MAX_CONTENT),
+                        grid_template_columns: vec![TrackComponentOf::MAX_CONTENT],
+                        grid_template_rows: vec![TrackComponentOf::AUTO],
+                        justify_content: Some(AlignContent::Start),
+                        align_content: Some(AlignContent::Start),
+                        ..NodeInputOf::default()
+                    }),
+                    LayoutInputOf::box_input(NodeInputOf {
+                        display: Display::Grid,
+                        writing_mode: parent_mode,
+                        grid_template_columns: vec![TrackComponentOf::Subgrid(SubgridTrack::new(
+                            vec![],
+                        ))],
+                        grid_template_rows: vec![TrackComponentOf::AUTO, TrackComponentOf::AUTO],
+                        justify_content: Some(AlignContent::Start),
+                        align_content: Some(AlignContent::Start),
+                        ..NodeInputOf::default()
+                    }),
+                    LayoutInputOf::box_input(NodeInputOf {
+                        display: Display::Grid,
+                        writing_mode: child_mode,
+                        grid_template_columns: vec![if orthogonal {
+                            TrackComponentOf::Subgrid(SubgridTrack::new(vec![]))
+                        } else {
+                            TrackComponentOf::AUTO
+                        }],
+                        grid_template_rows: vec![if orthogonal {
+                            TrackComponentOf::AUTO
+                        } else {
+                            TrackComponentOf::Subgrid(SubgridTrack::new(vec![]))
+                        }],
+                        grid_row: GridPlacement::try_span(2).unwrap(),
+                        justify_content: Some(AlignContent::Start),
+                        align_content: Some(AlignContent::Start),
+                        ..NodeInputOf::default()
+                    }),
+                    LayoutInputOf::box_input(NodeInputOf {
+                        display: Display::Block,
+                        writing_mode: child_mode,
+                        size: physical_size(parent_mode, preferred(40.0), preferred(30.0)),
+                        grid_column: GridPlacement::try_line(1).unwrap(),
+                        grid_row: GridPlacement::try_line(1).unwrap(),
+                        ..NodeInputOf::default()
+                    }),
+                    LayoutInputOf::box_input(NodeInputOf {
+                        display: Display::Block,
+                        writing_mode: child_mode,
+                        size: physical_size(parent_mode, preferred(60.0), preferred(50.0)),
+                        grid_column: GridPlacement::try_line(if orthogonal { 2 } else { 1 })
+                            .unwrap(),
+                        grid_row: GridPlacement::try_line(if orthogonal { 1 } else { 2 }).unwrap(),
+                        ..NodeInputOf::default()
+                    }),
+                ],
+            };
+            // Grid2 §12 per-axis recursion: A's column query sees C as an
+            // ordinary standalone item in that SAME physical dimension, even
+            // though orthogonal C calls it its Row. Fixed leaf contributions
+            // share one such track, so max(40,60)=60; the two inherited tracks
+            // in the perpendicular dimension sum30+50=80. Writing Modes4 §6.1
+            // maps those literal dimensions to60x80 or reciprocal80x60.
+            let batch = match compute_layout(
+                &tree,
+                0,
+                LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap(),
+            ) {
+                Ok(batch) => batch,
+                Err(error) => {
+                    failures.push(format!(
+                        "{parent_mode:?} orthogonal={orthogonal}: {error:?}"
+                    ));
+                    continue;
+                }
+            };
+            let size = |node| {
+                batch
+                    .unrounded_entries()
+                    .iter()
+                    .find(|entry| entry.node() == node)
+                    .unwrap()
+                    .output()
+                    .size
+            };
+            let actual = [size(0), size(1), size(2), size(3), size(4)];
+            let outer = physical_size(parent_mode, S::from_f64(60.0), S::from_f64(80.0));
+            let expected = [
+                outer,
+                outer,
+                outer,
+                physical_size(parent_mode, S::from_f64(40.0), S::from_f64(30.0)),
+                physical_size(parent_mode, S::from_f64(60.0), S::from_f64(50.0)),
+            ];
+            eprintln!(
+                "{} orthogonal_standalone {parent_mode:?} orthogonal={orthogonal}: actual={actual:?}, expected={expected:?}",
+                std::any::type_name::<S>()
+            );
+            if actual != expected {
+                failures.push(format!("{parent_mode:?} orthogonal={orthogonal}: actual={actual:?}, expected={expected:?}"));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn nested_subgrid_standalone_contribution_keeps_physical_axis_across_orthogonal_modes_f32() {
+    qualify_orthogonal_standalone_contribution::<f32>();
+}
+
+#[test]
+fn nested_subgrid_standalone_contribution_keeps_physical_axis_across_orthogonal_modes_f64() {
+    qualify_orthogonal_standalone_contribution::<f64>();
+}
