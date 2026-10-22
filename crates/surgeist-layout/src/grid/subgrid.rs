@@ -187,6 +187,7 @@ pub(super) struct SubgridTraversalNode<'input, Node, S: LayoutScalar = Scalar> {
     pub(super) margins: SubgridAxisEdges<S>,
     pub(super) border: SubgridAxisEdges<S>,
     pub(super) padding: SubgridAxisEdges<S>,
+    pub(super) scrollbar_gutter: SubgridAxisEdges<S>,
     pub(super) parent_gap: S,
     pub(super) subgrid_gap: S,
     pub(super) children: Vec<SubgridTraversalChild<'input, Node, S>>,
@@ -457,8 +458,14 @@ where
         return Err(SubgridTraversalError::MissingIntrinsicMinTrackFacts);
     }
 
-    let local_start_edge = subgrid.margins.start + subgrid.border.start + subgrid.padding.start;
-    let local_end_edge = subgrid.margins.end + subgrid.border.end + subgrid.padding.end;
+    let local_start_edge = subgrid.margins.start
+        + subgrid.border.start
+        + subgrid.padding.start
+        + subgrid.scrollbar_gutter.start;
+    let local_end_edge = subgrid.margins.end
+        + subgrid.border.end
+        + subgrid.padding.end
+        + subgrid.scrollbar_gutter.end;
 
     let start_role_adjustment = if child_line_transform.line_direction > 0 {
         &mut context.accumulated_start_adjustment
@@ -1838,17 +1845,53 @@ where
         })
         .transpose_with_node(tree, node)?;
     let current_flow_axes = crate::geometry::FlowAxes::new(style.writing_mode, style.direction);
-    let (margins, border, padding) = traversal_axis_edges(
-        queried_axis,
-        current_flow_axes,
+    // Intrinsic track bases can be provisional zero. Only the actual known or
+    // authored child size may clamp its reservation; track estimates are not
+    // qualified border-box dimensions.
+    // This is the same standalone-axis intrinsic probe as the descendant
+    // traversal below. Preserve its local minimum overlay while qualifying the
+    // gutter; the original authored minimum is resolved by the real phase.
+    let intrinsic_minimum = standalone_intrinsic_minimum_phases(
+        &nested_container_style,
+        LogicalSizeOf::new(
+            item_report.column.can_inherit(),
+            item_report.row.can_inherit(),
+        ),
+    );
+    let mut gutter_input = *nested_container;
+    gutter_input.suppress_intrinsic_minimum(intrinsic_minimum.map(|minimum| minimum.is_some()));
+    let gutter_style = gutter_input.projection();
+    let traversal_constants = Constants::with_intrinsic_minimum::<Tree, M>(
+        tree,
+        node,
+        &gutter_style,
+        ComputeInputOf::for_child(
+            RunMode::ComputeSize,
+            SizingMode::InherentSize,
+            RequestedAxis::Both,
+            Size::NONE,
+            area_basis,
+            crate::ContainingLayoutContext::new(
+                containing_flow_axes,
+                crate::ParentFormattingContext::Grid,
+            ),
+            Size::splat(AvailableOf::MAX_CONTENT),
+        ),
+        Size::NONE,
+    )?;
+    let resolved_scrollbar_gutter = traversal_constants.scrollbar_gutter;
+    let [margins, border, padding, scrollbar_gutter] = [
         resolved_margin,
         resolved_border,
         resolved_padding,
-    );
+        resolved_scrollbar_gutter,
+    ]
+    .map(|edges| traversal_axis_edges(queried_axis, current_flow_axes, edges));
     let physical_content_box_size = (physical_area_size
         - resolved_margin.sum_axes()
         - resolved_border.sum_axes()
-        - resolved_padding.sum_axes())
+        - resolved_padding.sum_axes()
+        - resolved_scrollbar_gutter.sum_axes())
     .max(Size::ZERO);
     let logical_content_box_size = current_flow_axes.logical_size(physical_content_box_size);
     let content_box_size = Size::new(
@@ -1879,6 +1922,7 @@ where
                 margin: resolved_margin.map(Some),
                 border: resolved_border,
                 padding: resolved_padding,
+                scrollbar_gutter: resolved_scrollbar_gutter,
             },
             parent_column_geometry,
             parent_row_geometry,
@@ -1900,6 +1944,7 @@ where
             margins,
             border,
             padding,
+            scrollbar_gutter,
             parent_gap: parent_axis_gap,
             subgrid_gap: parent_axis_gap,
             children: Vec::new(),
@@ -1963,6 +2008,7 @@ where
         margins,
         border,
         padding,
+        scrollbar_gutter,
         parent_gap: parent_axis_gap,
         subgrid_gap: subgrid_axis_gap,
         children,
@@ -2026,12 +2072,18 @@ where
     };
     let available = Size::new(AvailableOf::MAX_CONTENT, AvailableOf::MAX_CONTENT);
     let container_style = nested_container.projection();
-    let intrinsic_minimum = standalone_intrinsic_minimum_phases(&container_style, &parent_context);
+    let intrinsic_minimum = standalone_intrinsic_minimum_phases(
+        &container_style,
+        LogicalSizeOf::new(
+            parent_context.columns.is_some(),
+            parent_context.rows.is_some(),
+        ),
+    );
     let intrinsic_axes = intrinsic_minimum.map(|minimum| minimum.is_some());
     let mut traversal_input = *nested_container;
     traversal_input.suppress_intrinsic_minimum(intrinsic_axes);
     let traversal_style = traversal_input.projection();
-    let constants = Constants::new_with_reservation::<Tree, M>(
+    let constants = Constants::with_intrinsic_minimum::<Tree, M>(
         tree,
         node,
         &traversal_style,
@@ -2047,7 +2099,6 @@ where
             ),
             available,
         ),
-        false,
         Size::NONE,
     )?;
     let initialized = initialize_grid_tracks::<Tree, M>(
@@ -2347,46 +2398,18 @@ fn resolved_subgrid_axis_gap<S: LayoutScalar>(
 fn traversal_axis_edges<S: LayoutScalar>(
     axis: GridAxisKind,
     flow_axes: crate::geometry::FlowAxes,
-    margin: Edges<S>,
-    border: Edges<S>,
-    padding: Edges<S>,
-) -> (
-    SubgridAxisEdges<S>,
-    SubgridAxisEdges<S>,
-    SubgridAxisEdges<S>,
-) {
-    let margin = flow_axes.logical_edges(margin);
-    let border = flow_axes.logical_edges(border);
-    let padding = flow_axes.logical_edges(padding);
+    edges: Edges<S>,
+) -> SubgridAxisEdges<S> {
+    let edges = flow_axes.logical_edges(edges);
     match axis {
-        GridAxisKind::Column => (
-            SubgridAxisEdges {
-                start: margin.inline_start,
-                end: margin.inline_end,
-            },
-            SubgridAxisEdges {
-                start: border.inline_start,
-                end: border.inline_end,
-            },
-            SubgridAxisEdges {
-                start: padding.inline_start,
-                end: padding.inline_end,
-            },
-        ),
-        GridAxisKind::Row => (
-            SubgridAxisEdges {
-                start: margin.block_start,
-                end: margin.block_end,
-            },
-            SubgridAxisEdges {
-                start: border.block_start,
-                end: border.block_end,
-            },
-            SubgridAxisEdges {
-                start: padding.block_start,
-                end: padding.block_end,
-            },
-        ),
+        GridAxisKind::Column => SubgridAxisEdges {
+            start: edges.inline_start,
+            end: edges.inline_end,
+        },
+        GridAxisKind::Row => SubgridAxisEdges {
+            start: edges.block_start,
+            end: edges.block_end,
+        },
     }
 }
 
@@ -2588,6 +2611,21 @@ mod tests {
     }
 
     impl<'input> Compute<'input, Infallible> for TraversalTreeCompute<'input> {
+        fn observe_grid_overflow(
+            &mut self,
+            _node: Self::Node,
+            _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
+        ) -> crate::LayoutResultOf<
+            Self::Node,
+            crate::grid::GridOverflowObservation<Self::Scalar>,
+            Self::Scalar,
+            Infallible,
+        > {
+            panic!(
+                "this focused computation fixture does not admit intrinsic Grid Auto overflow observation"
+            );
+        }
+
         fn node_input(&self, _node: Self::Node) -> &'input NodeInput {
             self.input
         }

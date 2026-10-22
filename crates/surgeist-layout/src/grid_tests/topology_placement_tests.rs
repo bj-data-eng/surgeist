@@ -2472,6 +2472,21 @@ fn grid_compute_size_applies_aspect_ratio_to_max_size() {
     }
 
     impl<'input> Compute<'input> for NoChildMeasurementTreeCompute<'input> {
+        fn observe_grid_overflow(
+            &mut self,
+            _node: Self::Node,
+            _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
+        ) -> crate::LayoutResultOf<
+            Self::Node,
+            crate::grid::GridOverflowObservation<Self::Scalar>,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            panic!(
+                "this focused computation fixture does not admit intrinsic Grid Auto overflow observation"
+            );
+        }
+
         fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             &self.styles[&node]
         }
@@ -2597,6 +2612,21 @@ fn grid_content_size_mode_ignores_authored_size() {
     }
 
     impl<'input> Compute<'input> for NoChildMeasurementTreeCompute<'input> {
+        fn observe_grid_overflow(
+            &mut self,
+            _node: Self::Node,
+            _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
+        ) -> crate::LayoutResultOf<
+            Self::Node,
+            crate::grid::GridOverflowObservation<Self::Scalar>,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            panic!(
+                "this focused computation fixture does not admit intrinsic Grid Auto overflow observation"
+            );
+        }
+
         fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             &self.styles[&node]
         }
@@ -4093,6 +4123,7 @@ fn shared_grid_contexts_accept_non_default_scalar() {
         node_max_size: Size::NONE,
         available_inner_size: Size::splat(Some(100.0)),
         content_box_inset: Edges::ZERO,
+        scrollbar_gutter: Edges::ZERO,
         padding: Edges::ZERO,
         border: Edges::ZERO,
     };

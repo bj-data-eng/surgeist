@@ -301,17 +301,17 @@ impl<S: LayoutScalar> Traverse for OracleTreeOf<S> {
     }
 }
 
-pub struct OracleComputeOf<'input, S: LayoutScalar = DefaultScalar> {
+pub struct OracleComputeOf<'input, 'output, S: LayoutScalar = DefaultScalar> {
     children: &'input HashMap<u32, Vec<u32>>,
     layout_inputs: &'input HashMap<u32, LayoutInputOf<S>>,
     measurements: &'input HashMap<u32, Vec<OracleMeasurementOf<S>>>,
-    compute_inputs: &'input mut HashMap<u32, Vec<ComputeInputOf<S>>>,
-    layouts: &'input mut HashMap<u32, NodeOutputOf<S>>,
-    final_layouts: &'input mut HashMap<u32, NodeOutputOf<S>>,
+    compute_inputs: &'output mut HashMap<u32, Vec<ComputeInputOf<S>>>,
+    layouts: &'output mut HashMap<u32, NodeOutputOf<S>>,
+    final_layouts: &'output mut HashMap<u32, NodeOutputOf<S>>,
 }
 
 impl<S: LayoutScalar> OracleTreeOf<S> {
-    pub fn borrow_compute(&mut self) -> OracleComputeOf<'_, S> {
+    pub fn borrow_compute(&mut self) -> OracleComputeOf<'_, '_, S> {
         OracleComputeOf {
             children: &self.children,
             layout_inputs: &self.layout_inputs,
@@ -339,7 +339,7 @@ impl<S: LayoutScalar> OracleTreeOf<S> {
     }
 }
 
-impl<'input, S: LayoutScalar> Traverse for OracleComputeOf<'input, S> {
+impl<'input, S: LayoutScalar> Traverse for OracleComputeOf<'input, '_, S> {
     type Node = u32;
     type Scalar = S;
     type Children<'a>
@@ -365,7 +365,7 @@ impl<'input, S: LayoutScalar> Traverse for OracleComputeOf<'input, S> {
     }
 }
 
-impl<'input, S: LayoutScalar> Compute<'input> for OracleComputeOf<'input, S> {
+impl<'input, S: LayoutScalar> Compute<'input> for OracleComputeOf<'input, '_, S> {
     fn node_input(&self, node: Self::Node) -> &'input NodeInputOf<S> {
         match self.layout_inputs.get(&node) {
             Some(input) => input
@@ -384,6 +384,28 @@ impl<'input, S: LayoutScalar> Compute<'input> for OracleComputeOf<'input, S> {
 
     fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutputOf<S>) {
         self.layouts.insert(node, layout);
+    }
+
+    fn observe_grid_overflow(
+        &mut self,
+        node: Self::Node,
+        probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
+    ) -> crate::LayoutResultOf<
+        Self::Node,
+        crate::grid::GridOverflowObservation<Self::Scalar>,
+        Self::Scalar,
+    > {
+        let mut layouts = HashMap::new();
+        let mut final_layouts = HashMap::new();
+        let mut observation = OracleComputeOf {
+            children: self.children,
+            layout_inputs: self.layout_inputs,
+            measurements: self.measurements,
+            compute_inputs: &mut *self.compute_inputs,
+            layouts: &mut layouts,
+            final_layouts: &mut final_layouts,
+        };
+        probe.observe(&mut observation, node)
     }
 
     fn compute_child(
@@ -422,7 +444,7 @@ impl<'input, S: LayoutScalar> Compute<'input> for OracleComputeOf<'input, S> {
     }
 }
 
-impl<'input, S: LayoutScalar> Round for OracleComputeOf<'input, S> {
+impl<'input, S: LayoutScalar> Round for OracleComputeOf<'input, '_, S> {
     fn unrounded(&self, node: Self::Node) -> crate::LayoutResultOf<Self::Node, NodeOutputOf<S>, S> {
         self.layouts.get(&node).copied().ok_or_else(|| {
             LayoutErrorOf::new(

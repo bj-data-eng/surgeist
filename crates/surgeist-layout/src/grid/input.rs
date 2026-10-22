@@ -503,7 +503,7 @@ mod tests {
             }));
             let phases = super::super::standalone_intrinsic_minimum_phases(
                 &projection,
-                &super::super::GridParentContext::<S, u32>::none(),
+                crate::geometry::LogicalSizeOf::new(false, false),
             );
             assert_eq!(phases.width, None);
             assert_eq!(

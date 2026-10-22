@@ -90,6 +90,19 @@ Source: [output](../src/output.rs).
 - Inline output: `InlineFragmentOutputOf` and `InlineFragmentOutputEntryOf`.
 - Root context: `LayoutRootContextOf`, `FlexItemRootContextOf`, and `ContainingLayoutContext`.
 
+Grid and grid-lanes use canonical scroll-box reservations for intrinsic
+contributions and final layout. Subgrid edge contributions include the child's
+margin, border, padding, and effective gutter once at each inherited boundary,
+with the child's writing mode and settled scrollbar state. Inherited-axis Auto
+gutters do not yet feed back into the parent's intrinsic track contributions.
+An intrinsic Auto observation runs actual child layout in a disposable computation session over
+the same immutable inputs and invalidation basis; only its geometry observation
+returns. Probe node, inline-fragment, warm-cache, and cache-publication staging
+is discarded. Fully known size-only requests retain their measurement fast
+path. Gutter rectangles describe layout geometry; painting and live scrolling
+remain consumer responsibilities. The supplied finite scrollbar thickness is
+an input, including zero; Layout does not select a host scrollbar policy.
+
 ### Finite grid utilities
 
 Sources: [grid](../src/grid/mod.rs) and [track values](../src/value.rs).

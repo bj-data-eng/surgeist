@@ -113,6 +113,11 @@ pub(super) fn with_projected_subgrid_child_input<'input, Node: Copy, S: LayoutSc
     input: SubgridChildParentContextInput<'input, Node, S>,
     consume: impl FnOnce(super::child::SubgridChildParentContextInput<'input, '_, Node, S>) -> R,
 ) -> R {
+    assert_eq!(
+        input.child_style.scrollbar_width.get(),
+        S::ZERO,
+        "abstract inheritance fixtures supply zero scrollbar thickness"
+    );
     let child_input = grid_child_input!(input.child_style);
     let child_container_style = child_input
         .nested_container()
@@ -134,6 +139,7 @@ pub(super) fn with_projected_subgrid_child_input<'input, Node: Copy, S: LayoutSc
         margin: input.margin,
         border: input.border,
         padding: input.padding,
+        scrollbar_gutter: Edges::ZERO,
     })
 }
 

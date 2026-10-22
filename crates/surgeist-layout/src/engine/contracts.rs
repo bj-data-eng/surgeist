@@ -22,6 +22,19 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>: Traverse {
         input: ComputeInputOf<Self::Scalar>,
     ) -> LayoutResultOf<Self::Node, ComputeOutputOf<Self::Scalar>, Self::Scalar, M>;
 
+    // Return only actual Grid overflow observations. Implementations isolate
+    // every probe output/fragment/cache write from their publishing computation.
+    fn observe_grid_overflow(
+        &mut self,
+        node: Self::Node,
+        probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
+    ) -> LayoutResultOf<
+        Self::Node,
+        crate::grid::GridOverflowObservation<Self::Scalar>,
+        Self::Scalar,
+        M,
+    >;
+
     fn float_exclusion_interval(
         &self,
         _node: Self::Node,

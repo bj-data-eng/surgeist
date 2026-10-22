@@ -1487,6 +1487,21 @@ fn flex_compute_size_short_circuits_when_container_size_is_definite() {
     }
 
     impl<'input> Compute<'input> for FlexTreeCompute<'input> {
+        fn observe_grid_overflow(
+            &mut self,
+            _node: Self::Node,
+            _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
+        ) -> crate::LayoutResultOf<
+            Self::Node,
+            crate::grid::GridOverflowObservation<Self::Scalar>,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            panic!(
+                "this focused computation fixture does not admit intrinsic Grid Auto overflow observation"
+            );
+        }
+
         fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             &self.styles[&node]
         }
@@ -1923,6 +1938,21 @@ fn flex_compute_size_uses_definite_min_max_without_measuring_children() {
     }
 
     impl<'input> Compute<'input> for FlexTreeCompute<'input> {
+        fn observe_grid_overflow(
+            &mut self,
+            _node: Self::Node,
+            _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
+        ) -> crate::LayoutResultOf<
+            Self::Node,
+            crate::grid::GridOverflowObservation<Self::Scalar>,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            panic!(
+                "this focused computation fixture does not admit intrinsic Grid Auto overflow observation"
+            );
+        }
+
         fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             &self.styles[&node]
         }

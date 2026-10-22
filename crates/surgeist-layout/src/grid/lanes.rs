@@ -2073,7 +2073,7 @@ where
         let child_container_style = placements
             .nested_container_input(source_index)
             .map(GridContainerInput::projection);
-        let child_context = subgrid_child_parent_context(SubgridChildParentContextInput {
+        let child_context_input = SubgridChildParentContextInput {
             item: *subgrid_report
                 .items
                 .get(source_index)
@@ -2092,8 +2092,8 @@ where
             margin: item.unresolved_margin,
             border,
             padding,
-        })
-        .map_err(|error| subgrid_child_context_container_error(node, child, error))?;
+            scrollbar_gutter: Edges::ZERO,
+        };
         let child_flow_axes =
             crate::geometry::FlowAxes::new(child_style.writing_mode, child_style.direction);
         let child_input = ComputeInputOf::for_child(
@@ -2110,8 +2110,24 @@ where
                 .map(|value| AvailableOf::Definite(value.max(Tree::Scalar::ZERO))),
         )
         .with_containing_auto_scrollbar_pass(containing_auto_scrollbar_pass);
-        let mut output = if child_context.has_inherited_axis() {
-            compute_grid_with_context(tree, child, child_input, child_context)?
+        let mut output = if child_context_input.item.column.can_inherit()
+            || child_context_input.item.row.can_inherit()
+        {
+            compute_grid_with_context_source(
+                tree,
+                child,
+                child_input,
+                Size::NONE,
+                LogicalSizeOf::new(
+                    child_context_input.item.column.can_inherit(),
+                    child_context_input.item.row.can_inherit(),
+                ),
+                |constants| {
+                    subgrid_child_parent_context(child_context_input.for_scrollbar_pass(constants))
+                        .map_err(|error| subgrid_child_context_container_error(node, child, error))
+                },
+            )?
+            .output
         } else {
             tree.compute_child(child, child_input)?
         };

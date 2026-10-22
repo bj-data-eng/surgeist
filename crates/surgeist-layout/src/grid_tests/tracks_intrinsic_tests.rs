@@ -3788,6 +3788,21 @@ fn grid_nested_stretch_resolves_block_padding_percent_against_inline_size() {
     }
 
     impl<'input> Compute<'input> for RecursiveTreeCompute<'input> {
+        fn observe_grid_overflow(
+            &mut self,
+            _node: Self::Node,
+            _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
+        ) -> crate::LayoutResultOf<
+            Self::Node,
+            crate::grid::GridOverflowObservation<Self::Scalar>,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            panic!(
+                "this focused computation fixture does not admit intrinsic Grid Auto overflow observation"
+            );
+        }
+
         fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             &self.styles[&node]
         }
@@ -3972,6 +3987,21 @@ fn grid_nested_percent_margins_resolve_against_resolved_nested_inline_size() {
     }
 
     impl<'input> Compute<'input> for RecursiveTreeCompute<'input> {
+        fn observe_grid_overflow(
+            &mut self,
+            _node: Self::Node,
+            _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
+        ) -> crate::LayoutResultOf<
+            Self::Node,
+            crate::grid::GridOverflowObservation<Self::Scalar>,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            panic!(
+                "this focused computation fixture does not admit intrinsic Grid Auto overflow observation"
+            );
+        }
+
         fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             &self.styles[&node]
         }

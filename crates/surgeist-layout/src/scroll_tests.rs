@@ -4,8 +4,8 @@ use crate::scroll::{
     FlowRelativeScrollRangeOf, OptimalRegionInsetsOf, OverflowClipOf, PhysicalClipAxisOf,
     PhysicalScrollOffsetOf, PhysicalScrollRangeOf, ScrollContributionAccumulatorOf,
     ScrollCoordinateErrorOf, ScrollOriginAxes, ScrollOriginProgression, ScrollRectErrorOf,
-    ScrollRectOf, ScrollTargetGeometryOf, ScrollbarReservationOf, SettledAutoScrollbarState,
-    UsedOverflow, UsedOverflowGutter, canonical_scroll_geometry_from_source,
+    ScrollRectOf, ScrollTargetGeometryOf, SettledAutoScrollbarState, UsedOverflow,
+    UsedOverflowGutter, canonical_scroll_geometry_from_source,
 };
 use crate::{
     ComputedOverflow, Direction, Edges, FlowAxes, LayoutScalar, LogicalAxis, Overflow,
@@ -1065,38 +1065,48 @@ fn scrollbar_size_uses_scroll_overflow_on_opposite_physical_axis() {
 
 #[test]
 fn scrollbar_reservation_places_inline_gutter_by_direction() {
-    let ltr = ScrollbarReservationOf::from_overflow(
-        computed_overflow(Overflow::Auto, Overflow::Scroll),
-        false,
-        12.0,
-        Direction::Ltr,
-    );
-    let rtl = ScrollbarReservationOf::from_overflow(
-        computed_overflow(Overflow::Auto, Overflow::Scroll),
-        false,
-        12.0,
-        Direction::Rtl,
-    );
-
-    assert_eq!(ltr.size(), Size::new(12.0, 0.0));
-    assert_eq!(ltr.inset(), Edges::new(0.0, 12.0, 0.0, 0.0));
-    assert_eq!(rtl.size(), Size::new(12.0, 0.0));
-    assert_eq!(rtl.inset(), Edges::new(0.0, 0.0, 0.0, 12.0));
+    let geometry = |direction| {
+        crate::scroll::canonical_scroll_box_from_source(crate::scroll::CanonicalScrollBoxSourceOf {
+            flow_axes: FlowAxes::new(WritingMode::HorizontalTb, direction),
+            computed_overflow: computed_overflow(Overflow::Auto, Overflow::Scroll),
+            item_is_replaced: false,
+            border_box_size: Size::new(100.0, 100.0),
+            border: Edges::ZERO,
+            padding: Edges::ZERO,
+            scrollbar_gutter: ScrollbarGutter::Auto,
+            scrollbar_width: ScrollbarWidthOf::try_new(12.0).unwrap(),
+            settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
+        })
+        .unwrap()
+    };
+    let ltr = geometry(Direction::Ltr);
+    let rtl = geometry(Direction::Rtl);
+    assert_eq!(ltr.effective_gutter().sum_axes(), Size::new(12.0, 0.0));
+    assert_eq!(ltr.content_box_inset(), Edges::new(0.0, 12.0, 0.0, 0.0));
+    assert_eq!(rtl.effective_gutter().sum_axes(), Size::new(12.0, 0.0));
+    assert_eq!(rtl.content_box_inset(), Edges::new(0.0, 0.0, 0.0, 12.0));
 }
 
 #[test]
 fn content_box_inset_includes_padding_border_and_scrollbar_reservation() {
     let padding = Edges::new(1.0, 2.0, 3.0, 4.0);
     let border = Edges::new(5.0, 6.0, 7.0, 8.0);
-    let reservation = ScrollbarReservationOf::from_overflow(
-        computed_overflow(Overflow::Auto, Overflow::Scroll),
-        false,
-        9.0,
-        Direction::Ltr,
-    );
-
+    let geometry = crate::scroll::canonical_scroll_box_from_source(
+        crate::scroll::CanonicalScrollBoxSourceOf {
+            flow_axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            computed_overflow: computed_overflow(Overflow::Auto, Overflow::Scroll),
+            item_is_replaced: false,
+            border_box_size: Size::new(100.0, 100.0),
+            border,
+            padding,
+            scrollbar_gutter: ScrollbarGutter::Auto,
+            scrollbar_width: ScrollbarWidthOf::try_new(9.0).unwrap(),
+            settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
+        },
+    )
+    .unwrap();
     assert_eq!(
-        crate::scroll::content_box_inset_with_scrollbar(padding, border, reservation),
+        geometry.content_box_inset(),
         Edges::new(6.0, 17.0, 10.0, 12.0)
     );
 }

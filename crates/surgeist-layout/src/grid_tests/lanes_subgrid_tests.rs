@@ -1969,6 +1969,7 @@ where
         node_max_size: Size::NONE,
         available_inner_size: Size::NONE,
         content_box_inset: Edges::ZERO,
+        scrollbar_gutter: Edges::ZERO,
         padding: Edges::ZERO,
         border: Edges::ZERO,
     };
@@ -2109,6 +2110,7 @@ where
                 node_max_size: Size::NONE,
                 available_inner_size: Size::NONE,
                 content_box_inset: Edges::ZERO,
+                scrollbar_gutter: Edges::ZERO,
                 padding: Edges::ZERO,
                 border: Edges::ZERO,
             };
@@ -2719,6 +2721,21 @@ fn grid_lanes_content_size_uses_measured_lane_margin_boxes() {
     }
 
     impl<'input> Compute<'input> for RecursiveTreeCompute<'input> {
+        fn observe_grid_overflow(
+            &mut self,
+            _node: Self::Node,
+            _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
+        ) -> crate::LayoutResultOf<
+            Self::Node,
+            crate::grid::GridOverflowObservation<Self::Scalar>,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            panic!(
+                "this focused computation fixture does not admit intrinsic Grid Auto overflow observation"
+            );
+        }
+
         fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             &self.styles[&node]
         }
@@ -5371,6 +5388,7 @@ fn lane_axis_margin_box_measurement_resolves_affine_margins_against_grid_axis() 
         node_max_size: Size::NONE,
         available_inner_size: Size::new(Some(200.0), Some(80.0)),
         content_box_inset: Edges::ZERO,
+        scrollbar_gutter: Edges::ZERO,
         padding: Edges::ZERO,
         border: Edges::ZERO,
     };
@@ -5495,6 +5513,21 @@ impl<'input> Traverse for LaneMarginMeasureTreeCompute<'input> {
 }
 
 impl<'input> Compute<'input> for LaneMarginMeasureTreeCompute<'input> {
+    fn observe_grid_overflow(
+        &mut self,
+        _node: Self::Node,
+        _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
+    ) -> crate::LayoutResultOf<
+        Self::Node,
+        crate::grid::GridOverflowObservation<Self::Scalar>,
+        Self::Scalar,
+        core::convert::Infallible,
+    > {
+        panic!(
+            "this focused computation fixture does not admit intrinsic Grid Auto overflow observation"
+        );
+    }
+
     fn node_input(&self, node: Self::Node) -> &'input NodeInput {
         assert_eq!(node, Self::CHILD);
         self.child_style
@@ -5774,6 +5807,21 @@ fn grid_lanes_compute_result_accepts_non_default_scalar() {
     }
 
     impl<'input> Compute<'input> for F64GridTreeCompute<'input> {
+        fn observe_grid_overflow(
+            &mut self,
+            _node: Self::Node,
+            _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
+        ) -> crate::LayoutResultOf<
+            Self::Node,
+            crate::grid::GridOverflowObservation<Self::Scalar>,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            panic!(
+                "this focused computation fixture does not admit intrinsic Grid Auto overflow observation"
+            );
+        }
+
         fn node_input(&self, node: Self::Node) -> &'input NodeInputOf<f64> {
             &self.styles[node]
         }
@@ -7409,6 +7457,7 @@ fn traversal_subgrid<'input>(
         parent_gap: 0.0,
         subgrid_gap: 0.0,
         children,
+        scrollbar_gutter: SubgridAxisEdges::default(),
     })
 }
 
@@ -7437,6 +7486,7 @@ fn subgrid_traversal_keeps_edge_lower_bounds_off_non_intrinsic_tracks() {
             parent_gap: 0.0,
             subgrid_gap: 0.0,
             children: Vec::new(),
+            scrollbar_gutter: SubgridAxisEdges::default(),
         })],
     })
     .unwrap();
@@ -7471,6 +7521,7 @@ fn subgrid_traversal_places_edge_lower_bounds_in_ancestor_track_space() {
             parent_gap: 20.0,
             subgrid_gap: 10.0,
             children: vec![traversal_leaf(&default_input, 2, 1, 2)],
+            scrollbar_gutter: SubgridAxisEdges::default(),
         })],
     })
     .unwrap();
@@ -7536,7 +7587,9 @@ fn subgrid_traversal_accumulates_edge_adjustment_in_nested_translated_span() {
                 parent_gap: 0.0,
                 subgrid_gap: 0.0,
                 children: vec![traversal_leaf(&default_input, 3, 1, 2)],
+                scrollbar_gutter: SubgridAxisEdges::default(),
             })],
+            scrollbar_gutter: SubgridAxisEdges::default(),
         })],
     })
     .unwrap();
@@ -7588,7 +7641,9 @@ fn subgrid_traversal_accumulates_gap_adjustment_through_nested_subgrids() {
                 parent_gap: 20.0,
                 subgrid_gap: 28.0,
                 children: vec![traversal_leaf(&default_input, 3, 1, 2)],
+                scrollbar_gutter: SubgridAxisEdges::default(),
             })],
+            scrollbar_gutter: SubgridAxisEdges::default(),
         })],
     })
     .unwrap();
@@ -7623,6 +7678,7 @@ fn subgrid_traversal_applies_gap_adjustment_to_internal_edges() {
             parent_gap: 10.0,
             subgrid_gap: 20.0,
             children: vec![traversal_leaf(&default_input, 2, 2, 3)],
+            scrollbar_gutter: SubgridAxisEdges::default(),
         })],
     })
     .unwrap();
@@ -7658,6 +7714,7 @@ fn subgrid_traversal_uses_positive_gap_adjustments_as_empty_track_lower_bounds()
             parent_gap: 0.0,
             subgrid_gap: 10.0,
             children: Vec::new(),
+            scrollbar_gutter: SubgridAxisEdges::default(),
         })],
     })
     .unwrap();
@@ -7692,6 +7749,7 @@ fn subgrid_traversal_combines_empty_edge_and_gap_lower_bounds() {
             parent_gap: 10.0,
             subgrid_gap: 20.0,
             children: Vec::new(),
+            scrollbar_gutter: SubgridAxisEdges::default(),
         })],
     })
     .unwrap();
@@ -7721,6 +7779,7 @@ fn subgrid_traversal_ignores_gap_adjustment_for_single_track_subgrid() {
             parent_gap: 10.0,
             subgrid_gap: 30.0,
             children: vec![traversal_leaf(&default_input, 2, 1, 2)],
+            scrollbar_gutter: SubgridAxisEdges::default(),
         })],
     })
     .unwrap();
@@ -7750,6 +7809,7 @@ fn subgrid_traversal_keeps_standalone_as_one_boundary_leaf() {
             parent_gap: 0.0,
             subgrid_gap: 0.0,
             children: vec![traversal_leaf(&default_input, 2, 1, 2)],
+            scrollbar_gutter: SubgridAxisEdges::default(),
         })],
     })
     .unwrap();

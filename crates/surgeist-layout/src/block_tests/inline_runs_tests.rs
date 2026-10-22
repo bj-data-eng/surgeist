@@ -94,6 +94,21 @@ impl<'input, S: LayoutScalar> Traverse for Fri06C03FixedSizeTreeCompute<'input, 
 }
 
 impl<'input, S: LayoutScalar> Compute<'input, ()> for Fri06C03FixedSizeTreeCompute<'input, S> {
+    fn observe_grid_overflow(
+        &mut self,
+        _node: Self::Node,
+        _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
+    ) -> crate::LayoutResultOf<
+        Self::Node,
+        crate::grid::GridOverflowObservation<Self::Scalar>,
+        Self::Scalar,
+        (),
+    > {
+        panic!(
+            "this focused computation fixture does not admit intrinsic Grid Auto overflow observation"
+        );
+    }
+
     fn node_input(&self, node: Self::Node) -> &'input NodeInputOf<S> {
         if node == 0 {
             self.root

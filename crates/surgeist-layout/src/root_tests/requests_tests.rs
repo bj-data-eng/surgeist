@@ -4740,6 +4740,21 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
     }
 
     impl<'input> Compute<'input> for HiddenTreeCompute<'input> {
+        fn observe_grid_overflow(
+            &mut self,
+            _node: Self::Node,
+            _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
+        ) -> crate::LayoutResultOf<
+            Self::Node,
+            crate::grid::GridOverflowObservation<Self::Scalar>,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            panic!(
+                "this focused computation fixture does not admit intrinsic Grid Auto overflow observation"
+            );
+        }
+
         fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             self.inputs[&node]
                 .as_box()
@@ -4931,6 +4946,21 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
     }
 
     impl<'input> Compute<'input> for HiddenTreeCompute<'input> {
+        fn observe_grid_overflow(
+            &mut self,
+            _node: Self::Node,
+            _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
+        ) -> crate::LayoutResultOf<
+            Self::Node,
+            crate::grid::GridOverflowObservation<Self::Scalar>,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            panic!(
+                "this focused computation fixture does not admit intrinsic Grid Auto overflow observation"
+            );
+        }
+
         fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             self.inputs[&node]
                 .as_box()

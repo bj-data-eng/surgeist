@@ -366,6 +366,20 @@ where
         })
     }
 
+    fn observe_grid_overflow(
+        &mut self,
+        node: Self::Node,
+        probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
+    ) -> LayoutResultOf<
+        Self::Node,
+        crate::grid::GridOverflowObservation<Self::Scalar>,
+        Self::Scalar,
+        Tree::MeasureError,
+    > {
+        let mut observation = Self::new(self.tree, self.invalidated_nodes.clone());
+        probe.observe(&mut observation, node)
+    }
+
     fn float_exclusion_interval(
         &self,
         node: Self::Node,
@@ -917,5 +931,453 @@ mod tests {
 
         assert_lane::<f32>();
         assert_lane::<f64>();
+    }
+}
+
+#[cfg(test)]
+mod grid_overflow_observation_tests {
+    use super::*;
+    use crate::test_support::layout_tree::PublicLayoutTreeOf;
+    use crate::*;
+    use std::collections::HashMap;
+
+    #[derive(Clone, Debug, Default, PartialEq)]
+    struct ObservationRetainedState<S: LayoutScalar> {
+        unrounded: HashMap<u32, NodeOutputOf<S>>,
+        final_outputs: HashMap<u32, NodeOutputOf<S>>,
+        caches: HashMap<u32, CacheOf<S>>,
+    }
+
+    impl<S: LayoutScalar> ObservationRetainedState<S> {
+        fn prepare_grid_test_batch(&self, batch: &CompletedLayoutBatchOf<u32, S>) -> Self {
+            let mut prepared = self.clone();
+            for node in batch.invalidated_nodes() {
+                prepared.unrounded.remove(node);
+                prepared.final_outputs.remove(node);
+                prepared.caches.remove(node);
+            }
+            for entry in batch.unrounded_entries() {
+                prepared.unrounded.insert(entry.node(), entry.output());
+            }
+            for entry in batch.final_entries() {
+                prepared.final_outputs.insert(entry.node(), entry.output());
+            }
+            for entry in batch.cache_clear_entries() {
+                prepared.caches.remove(&entry.node());
+            }
+            for entry in batch.cache_store_entries() {
+                prepared
+                    .caches
+                    .entry(entry.node())
+                    .or_default()
+                    .store_with_context(entry.input(), entry.context(), entry.output());
+            }
+            prepared
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum GridGutterInlineMeasureError {
+        Injected,
+    }
+
+    struct GridGutterInlineTree<S: LayoutScalar> {
+        tree: PublicLayoutTreeOf<S>,
+        retained: ObservationRetainedState<S>,
+        fragments: Vec<InlineFragmentOutputOf<S>>,
+        cache_reads: std::cell::RefCell<Vec<(u32, ComputeInputOf<S>, bool)>>,
+        measurement_reads: std::cell::RefCell<Vec<LeafMeasureInputOf<S>>>,
+        fail_at_width: std::cell::Cell<Option<S>>,
+    }
+
+    impl<S: LayoutScalar> GridGutterInlineTree<S> {
+        fn new(display: Display) -> Self {
+            let scalar = S::from_f64;
+            let text = InlineTextInputOf::try_new(vec![
+                ShapedInlineSegmentOf::try_new(
+                    InlineSegmentId::new(1),
+                    scalar(25.0),
+                    InlineMetricsOf::from_ascent_descent(scalar(8.0), scalar(2.0)).unwrap(),
+                    BidiLevel::try_new(0).unwrap(),
+                    InlineWhitespaceEdge::Preserve,
+                    InlineBreakOpportunityOf::allowed(),
+                )
+                .unwrap(),
+                ShapedInlineSegmentOf::try_new(
+                    InlineSegmentId::new(2),
+                    scalar(20.0),
+                    InlineMetricsOf::from_ascent_descent(scalar(8.0), scalar(2.0)).unwrap(),
+                    BidiLevel::try_new(0).unwrap(),
+                    InlineWhitespaceEdge::Preserve,
+                    InlineBreakOpportunityOf::prohibited(),
+                )
+                .unwrap(),
+            ])
+            .unwrap();
+            let tree = PublicLayoutTreeOf::new()
+                .children(2, [3, 5])
+                .children(3, [4])
+                .children(4, [])
+                .children(5, [6])
+                .children(6, [])
+                .style(
+                    2,
+                    NodeInputOf {
+                        display,
+                        size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(scalar(20.0))),
+                        grid_template_columns: vec![TrackComponentOf::flex(
+                            TrackFlexFactorOf::try_new(S::ONE).unwrap(),
+                        )],
+                        grid_template_rows: vec![
+                            TrackComponentOf::px(scalar(30.0)),
+                            TrackComponentOf::px(scalar(10.0)),
+                        ],
+                        overflow: ComputedOverflow::try_new(Overflow::Auto, Overflow::Auto)
+                            .unwrap(),
+                        scrollbar_gutter: ScrollbarGutter::Stable,
+                        scrollbar_width: ScrollbarWidthOf::try_new(scalar(5.0)).unwrap(),
+                        justify_content: Some(AlignContent::Start),
+                        align_content: Some(AlignContent::Start),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    3,
+                    NodeInputOf {
+                        display: Display::Block,
+                        text_align: TextAlign::LegacyRight,
+                        ..NodeInputOf::default()
+                    },
+                )
+                .input(4, LayoutInputOf::inline_text(text))
+                .style(
+                    5,
+                    NodeInputOf {
+                        display: Display::Block,
+                        align_self: Some(AlignItems::Start),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    6,
+                    NodeInputOf {
+                        display: Display::Block,
+                        position: Position::Absolute,
+                        inset: Edges::new(
+                            LengthAutoOf::AUTO,
+                            LengthAutoOf::ZERO,
+                            LengthAutoOf::AUTO,
+                            LengthAutoOf::ZERO,
+                        ),
+                        ..NodeInputOf::default()
+                    },
+                );
+            Self {
+                tree,
+                retained: ObservationRetainedState::default(),
+                fragments: Vec::new(),
+                cache_reads: std::cell::RefCell::new(Vec::new()),
+                measurement_reads: std::cell::RefCell::new(Vec::new()),
+                fail_at_width: std::cell::Cell::new(None),
+            }
+        }
+
+        fn request(width: f64) -> LayoutRootRequestOf<S> {
+            LayoutRootRequestOf::viewport(Size::new(
+                AvailableOf::Definite(S::from_f64(width)),
+                AvailableOf::MAX_CONTENT,
+            ))
+            .unwrap()
+        }
+    }
+
+    impl<S: LayoutScalar> Traverse for GridGutterInlineTree<S> {
+        type Node = u32;
+        type Scalar = S;
+        type Children<'a>
+            = <PublicLayoutTreeOf<S> as Traverse>::Children<'a>
+        where
+            Self: 'a;
+        fn children(&self, node: u32) -> Self::Children<'_> {
+            Traverse::children(&self.tree, node)
+        }
+        fn child_count(&self, node: u32) -> usize {
+            self.tree.child_count(node)
+        }
+        fn child(&self, node: u32, index: usize) -> u32 {
+            self.tree.child(node, index)
+        }
+    }
+
+    impl<S: LayoutScalar> LayoutTree for GridGutterInlineTree<S> {
+        type MeasureError = GridGutterInlineMeasureError;
+        fn node_input(&self, node: u32) -> &NodeInputOf<S> {
+            self.tree.node_input(node)
+        }
+        fn layout_input(&self, node: u32) -> LayoutInputViewOf<'_, S> {
+            self.tree.layout_input(node)
+        }
+        fn has_leaf_measurement(&self, node: u32) -> bool {
+            node == 6
+        }
+        fn measure_leaf(
+            &self,
+            node: u32,
+            input: LeafMeasureInputOf<S>,
+        ) -> Option<Result<Size<S>, Self::MeasureError>> {
+            assert_eq!(node, 6);
+            self.measurement_reads.borrow_mut().push(input);
+            if self.fail_at_width.get().is_some()
+                && self.fail_at_width.get()
+                    == input
+                        .available_content_size()
+                        .width
+                        .definite_value()
+                        .map(NonNegativeFiniteOf::get)
+            {
+                Some(Err(GridGutterInlineMeasureError::Injected))
+            } else {
+                Some(Ok(Size::new(S::from_f64(10.0), S::from_f64(5.0))))
+            }
+        }
+        fn cache_get(
+            &self,
+            node: u32,
+            input: &ComputeInputOf<S>,
+            context: CacheKeyContext,
+        ) -> Option<ComputeOutputOf<S>> {
+            // This host deliberately reuses text entries only. Retained container
+            // measurements may be declined, ensuring the observation really runs.
+            let output = if matches!(
+                self.tree.layout_input(node),
+                LayoutInputViewOf::InlineText(_)
+            ) {
+                self.retained
+                    .caches
+                    .get(&node)
+                    .and_then(|cache| cache.get_with_context(input, context))
+            } else {
+                None
+            };
+            self.cache_reads
+                .borrow_mut()
+                .push((node, *input, output.is_some()));
+            output
+        }
+        fn unrounded_layout(&self, node: u32) -> Option<NodeOutputOf<S>> {
+            self.retained.unrounded.get(&node).copied()
+        }
+        fn unrounded_inline_fragments(&self, node: u32) -> Option<&[InlineFragmentOutputOf<S>]> {
+            (node == 4).then_some(self.fragments.as_slice())
+        }
+    }
+
+    impl<S: LayoutScalar> LayoutBatchSink<u32, S> for GridGutterInlineTree<S> {
+        type Error = core::convert::Infallible;
+        type Prepared = (ObservationRetainedState<S>, Vec<InlineFragmentOutputOf<S>>);
+        fn prepare_layout_batch(
+            &self,
+            batch: &CompletedLayoutBatchOf<u32, S>,
+        ) -> Result<Self::Prepared, Self::Error> {
+            Ok((
+                self.retained.prepare_grid_test_batch(batch),
+                batch
+                    .unrounded_inline_fragments()
+                    .iter()
+                    .filter(|entry| entry.node() == 4)
+                    .map(|entry| entry.fragment())
+                    .collect(),
+            ))
+        }
+        fn commit_layout_batch(&mut self, prepared: Self::Prepared) {
+            (self.retained, self.fragments) = prepared;
+        }
+    }
+
+    fn assert_isolated_observation<S: LayoutScalar>() {
+        for display in [Display::Grid, Display::GridLanes] {
+            let reference_tree = GridGutterInlineTree::<S>::new(display);
+            let reference =
+                compute_layout(&reference_tree, 2, GridGutterInlineTree::<S>::request(80.0))
+                    .unwrap();
+            // Actual root width80 minus the5-unit stable inline-edge gutter gives
+            // text75. Shaped advance45 leaves30 units of right-alignment space.
+            assert_eq!(
+                reference
+                    .unrounded_inline_fragments()
+                    .iter()
+                    .map(|entry| entry.fragment().rect().origin())
+                    .collect::<Vec<_>>(),
+                vec![
+                    Point::new(S::from_f64(30.0), S::ZERO),
+                    Point::new(S::from_f64(55.0), S::ZERO)
+                ]
+            );
+            for (seed_width, probe_hit, final_hit) in [(80.0, false, true), (50.0, true, false)] {
+                let mut tree = GridGutterInlineTree::<S>::new(display);
+                compute_layout(&tree, 2, GridGutterInlineTree::<S>::request(seed_width))
+                    .unwrap()
+                    .apply_to(&mut tree)
+                    .unwrap();
+                tree.cache_reads.borrow_mut().clear();
+                let mut session = ComputeSession::new(&tree, Vec::new());
+                let measured = crate::grid::compute_grid(
+                    &mut session,
+                    2,
+                    ComputeInputOf::for_child(
+                        RunMode::ComputeSize,
+                        SizingMode::InherentSize,
+                        RequestedAxis::Both,
+                        Size::new(None, Some(S::from_f64(20.0))),
+                        Size::NONE,
+                        ContainingLayoutContext::new(
+                            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                            ParentFormattingContext::NoParent,
+                        ),
+                        Size::splat(AvailableOf::MAX_CONTENT),
+                    ),
+                )
+                .unwrap();
+                assert_eq!(
+                    measured.size,
+                    Size::new(S::from_f64(50.0), S::from_f64(20.0))
+                );
+                // The real Grid intrinsic operation arranged descendants only in its
+                // disposable sibling. No observational node/fragment/cache state or
+                // warm-text permission is published into the consuming Session.
+                assert!(session.unrounded_entries.is_empty());
+                assert!(session.unrounded_inline_fragment_groups.is_empty());
+                assert!(session.warm_inline_text_nodes.is_empty());
+                assert!(
+                    session
+                        .cache_store_entries
+                        .iter()
+                        .all(|entry| !entry.input().run_mode().is_perform_layout())
+                );
+                super::super::root::compute_root(
+                    &mut session,
+                    2,
+                    GridGutterInlineTree::<S>::request(80.0).available(),
+                )
+                .unwrap();
+                super::super::rounding::round_layout(&mut session, 2).unwrap();
+                let batch = session.complete_for_root(2);
+                let reads = tree.cache_reads.borrow();
+                for (width, hit) in [(45.0, probe_hit), (75.0, final_hit)] {
+                    assert!(
+                        reads.iter().any(|(node, input, actual)| *node == 4
+                            && input.run_mode().is_perform_layout()
+                            && input.parent().width == Some(S::from_f64(width))
+                            && *actual == hit),
+                        "actual {display:?} text request width{width} hit={hit}: {reads:?}"
+                    );
+                }
+                assert_eq!(batch.final_entries(), reference.final_entries());
+                assert_eq!(
+                    batch.unrounded_inline_fragments(),
+                    reference.unrounded_inline_fragments()
+                );
+                assert_eq!(
+                    batch.final_inline_fragments(),
+                    reference.final_inline_fragments()
+                );
+                assert!(
+                    batch
+                        .cache_store_entries()
+                        .iter()
+                        .all(|entry| entry.node() != 4
+                            || !entry.input().run_mode().is_perform_layout()
+                            || entry.input().parent().width == Some(S::from_f64(75.0)))
+                );
+            }
+            let mut tree = GridGutterInlineTree::<S>::new(display);
+            compute_layout(&tree, 2, GridGutterInlineTree::<S>::request(80.0))
+                .unwrap()
+                .apply_to(&mut tree)
+                .unwrap();
+            let before = (tree.retained.clone(), tree.fragments.clone());
+            tree.cache_reads.borrow_mut().clear();
+            tree.measurement_reads.borrow_mut().clear();
+            tree.fail_at_width.set(Some(S::from_f64(45.0)));
+            let invalidated =
+                super::super::validation::validate_layout_request(&tree, 2, &[6]).unwrap();
+            let mut session = ComputeSession::new(&tree, invalidated);
+            let result = crate::grid::compute_grid(
+                &mut session,
+                2,
+                ComputeInputOf::for_child(
+                    RunMode::ComputeSize,
+                    SizingMode::InherentSize,
+                    RequestedAxis::Both,
+                    Size::new(None, Some(S::from_f64(20.0))),
+                    Size::NONE,
+                    ContainingLayoutContext::new(
+                        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                        ParentFormattingContext::NoParent,
+                    ),
+                    Size::splat(AvailableOf::MAX_CONTENT),
+                ),
+            );
+            assert!(
+                result.is_err(),
+                "isolated host measurement not reached: result={result:?} reads={:?} measurements={:?}",
+                tree.cache_reads.borrow(),
+                tree.measurement_reads.borrow()
+            );
+            let error = result.unwrap_err();
+            assert_eq!(error.site(), LayoutErrorSiteOf::Node(6));
+            assert_eq!(error.operation(), LayoutOperation::LeafMeasurement);
+            assert_eq!(
+                error.kind(),
+                &LayoutErrorKindOf::Measurement(GridGutterInlineMeasureError::Injected)
+            );
+            // The actual out-of-flow leaf is excluded from intrinsic track
+            // contributions. Its first provider request is reached in the
+            // isolated child layout. Invalidation deliberately bypasses the
+            // host's text-cache lookup, so it is not an after-text query oracle.
+            assert_eq!(tree.measurement_reads.borrow().len(), 1);
+            assert_eq!(
+                tree.measurement_reads
+                    .borrow()
+                    .last()
+                    .unwrap()
+                    .available_content_size()
+                    .width
+                    .definite_value()
+                    .map(NonNegativeFiniteOf::get),
+                Some(S::from_f64(45.0))
+            );
+            assert!(session.unrounded_entries.is_empty());
+            assert!(session.unrounded_inline_fragment_groups.is_empty());
+            assert!(session.warm_inline_text_nodes.is_empty());
+            assert!(
+                session
+                    .cache_store_entries
+                    .iter()
+                    .all(|entry| !entry.input().run_mode().is_perform_layout())
+            );
+            assert_eq!((tree.retained.clone(), tree.fragments.clone()), before);
+            tree.fail_at_width.set(None);
+            let retry = compute_layout_invalidated(
+                &tree,
+                2,
+                GridGutterInlineTree::<S>::request(80.0),
+                &[6],
+            )
+            .unwrap();
+            assert_eq!(retry.final_entries(), reference.final_entries());
+            assert_eq!(
+                retry.final_inline_fragments(),
+                reference.final_inline_fragments()
+            );
+        }
+    }
+    #[test]
+    fn grid_gutter_isolated_warm_inline_observation_in_f32() {
+        assert_isolated_observation::<f32>();
+    }
+    #[test]
+    fn grid_gutter_isolated_warm_inline_observation_in_f64() {
+        assert_isolated_observation::<f64>();
     }
 }

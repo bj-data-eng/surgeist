@@ -335,28 +335,24 @@ where
         let child_container_style = placements
             .nested_container_input(source_index)
             .map(GridContainerInput::projection);
-        let child_context = subgrid_child_parent_context_with_geometry(
-            SubgridChildParentContextInput {
-                item: *subgrid_item,
-                child_style: &child_style,
-                child_container_style,
-                area,
-                content_box_size: subgrid_content_box_size,
-                columns,
-                rows,
-                gap,
-                parent_named_columns: &named_columns,
-                parent_named_rows: &named_rows,
-                parent_area_facts: area_facts.as_ref(),
-                parent_baseline_groups: &empty_baseline_groups,
-                margin: item.unresolved_margin,
-                border,
-                padding,
-            },
-            Some(&column_geometry),
-            Some(&row_geometry),
-        )
-        .map_err(|error| subgrid_child_context_container_error(node, child, error))?;
+        let child_context_input = SubgridChildParentContextInput {
+            item: *subgrid_item,
+            child_style: &child_style,
+            child_container_style,
+            area,
+            content_box_size: subgrid_content_box_size,
+            columns,
+            rows,
+            gap,
+            parent_named_columns: &named_columns,
+            parent_named_rows: &named_rows,
+            parent_area_facts: area_facts.as_ref(),
+            parent_baseline_groups: &empty_baseline_groups,
+            margin: item.unresolved_margin,
+            border,
+            padding,
+            scrollbar_gutter: Edges::ZERO,
+        };
         let child_input = ComputeInputOf::for_child(
             RunMode::PerformLayout,
             SizingMode::InherentSize,
@@ -374,17 +370,31 @@ where
                 .map(|value| AvailableOf::Definite(value.max(Tree::Scalar::ZERO))),
         )
         .with_containing_auto_scrollbar_pass(containing_auto_scrollbar_pass);
-        let mut output = if child_context.has_inherited_axis() {
+        let mut output = if child_context_input.item.column.can_inherit()
+            || child_context_input.item.row.can_inherit()
+        {
             // Subgrid layout depends on the parent grid's used tracks, so this
             // intentionally bypasses the generic child layout cache until that
             // cache can include context-sensitive grid keys.
-            compute_grid_with_context_and_standalone_intrinsic_minimum(
+            compute_grid_with_context_source(
                 tree,
                 child,
                 child_input,
-                child_context,
                 item.standalone_intrinsic_minimum,
+                LogicalSizeOf::new(
+                    child_context_input.item.column.can_inherit(),
+                    child_context_input.item.row.can_inherit(),
+                ),
+                |constants| {
+                    subgrid_child_parent_context_with_geometry(
+                        child_context_input.for_scrollbar_pass(constants),
+                        Some(&column_geometry),
+                        Some(&row_geometry),
+                    )
+                    .map_err(|error| subgrid_child_context_container_error(node, child, error))
+                },
             )?
+            .output
         } else {
             tree.compute_child(child, child_input)?
         };

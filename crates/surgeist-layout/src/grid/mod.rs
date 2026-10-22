@@ -16,9 +16,9 @@ use crate::layout_math::{
 use crate::output::PhysicalBaseline;
 use crate::scroll::{
     CanonicalScrollBoxOf, CanonicalScrollBoxSourceOf, CanonicalScrollGeometrySourceOf,
-    ClipMarginSourceOf, OptimalRegionInsetsOf, ScrollOriginAxes, ScrollOriginProgression,
-    ScrollbarReservationOf, canonical_scroll_box_from_source,
-    canonical_scroll_geometry_from_source, content_box_inset_with_scrollbar,
+    ClipMarginSourceOf, MeasuredLeafContentBoxInsetSourceOf, OptimalRegionInsetsOf,
+    ScrollOriginAxes, ScrollOriginProgression, canonical_scroll_box_from_source,
+    canonical_scroll_geometry_from_source, measured_leaf_content_box_inset,
 };
 use crate::sizing::resolve::{
     EdgesResultExt, ResolvedPreferredSize, SizeResultExt, SizingResolutionError,
@@ -141,7 +141,7 @@ where
         node,
         input,
         input.settled_auto_scrollbars(),
-        GridParentContext::none(),
+        |_| Ok(GridParentContext::none()),
         GridMeasurementBoundary::Ordinary,
     )?;
     Ok(GridComputationOf {
@@ -174,7 +174,14 @@ fn compute_grid_with_scrollbar_settlement<'input, Tree, M>(
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
     initial_state: crate::scroll::SettledAutoScrollbarState,
-    parent_context: GridParentContext<Tree::Scalar, <Tree as Traverse>::Node>,
+    mut parent_context: impl FnMut(
+        &Constants<Tree::Scalar>,
+    ) -> LayoutResultOf<
+        <Tree as Traverse>::Node,
+        GridParentContext<Tree::Scalar, <Tree as Traverse>::Node>,
+        Tree::Scalar,
+        M,
+    >,
     measurement_boundary: GridMeasurementBoundary<Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, GridComputeResult<Tree::Scalar>, Tree::Scalar, M>
 where
@@ -186,12 +193,9 @@ where
             tree,
             node,
             pass_input,
-            parent_context.clone(),
+            &mut parent_context,
             measurement_boundary,
         )?;
-        if !input.run_mode().is_perform_layout() {
-            return Ok(result);
-        }
         let Some(geometry) = result.output.scroll_geometry else {
             return Ok(result);
         };
@@ -206,6 +210,53 @@ where
         }
         pass_input = input.with_settled_auto_scrollbars(next_state);
     }
+}
+
+// The resolved child-layout source is borrowed for one observation only. It
+// preserves contextual tracks, baselines and the child's own scrollbar pass.
+pub(crate) struct GridOverflowProbe<'input, 'a, Node, S: LayoutScalar> {
+    layout: GridOverflowLayout<'input, 'a, Node, S>,
+}
+
+enum GridOverflowLayout<'input, 'a, Node, S: LayoutScalar> {
+    Ordinary(GridChildLayoutInput<'input, 'a, Node, S>),
+    Lanes(GridLanesLayoutInput<'input, 'a, Node, S>),
+}
+
+pub(crate) struct GridOverflowObservation<S: LayoutScalar> {
+    visible_content_size: Size<S>,
+    contributions: crate::scroll::ScrollContributionAccumulatorOf<S>,
+}
+
+impl<'input, Node, S: LayoutScalar> GridOverflowProbe<'input, '_, Node, S> {
+    pub(crate) fn observe<Tree, M>(
+        self,
+        tree: &mut Tree,
+        node: Node,
+    ) -> LayoutResultOf<Node, GridOverflowObservation<S>, S, M>
+    where
+        Tree: Compute<'input, M, Scalar = S> + Traverse<Node = Node>,
+    {
+        let children = match self.layout {
+            GridOverflowLayout::Ordinary(input) => {
+                layout_grid_container_children(tree, node, input)?
+            }
+            GridOverflowLayout::Lanes(input) => layout_grid_lanes_children(tree, node, input)?,
+        };
+        Ok(GridOverflowObservation {
+            visible_content_size: children.visible_content_size,
+            contributions: children.contributions,
+        })
+    }
+}
+
+fn needs_intrinsic_auto_observation<S: LayoutScalar>(
+    style: &GridContainerProjection<'_, S>,
+    input: ComputeInputOf<S>,
+) -> bool {
+    input.run_mode() == RunMode::ComputeSize
+        && style.scrollbar_width.get() > S::ZERO
+        && (style.overflow.x() == Overflow::Auto || style.overflow.y() == Overflow::Auto)
 }
 
 fn sizing_algorithm_for_grid_display(display: Display) -> SizingAlgorithm {
@@ -248,14 +299,14 @@ enum GridMeasurementBoundary<S: LayoutScalar> {
     Standalone(Size<Option<S>>),
 }
 
-fn standalone_intrinsic_minimum_phases<S: LayoutScalar, Node>(
+fn standalone_intrinsic_minimum_phases<S: LayoutScalar>(
     style: &GridContainerProjection<'_, S>,
-    parent_context: &GridParentContext<S, Node>,
+    inherited_axes: LogicalSizeOf<bool>,
 ) -> Size<Option<StandaloneIntrinsicMinimum>> {
     let style_flow_axes = crate::geometry::FlowAxes::new(style.writing_mode, style.direction);
     let standalone_physical_axes = style_flow_axes.physical_size(LogicalSizeOf::new(
-        parent_context.columns.is_none(),
-        parent_context.rows.is_none(),
+        !inherited_axes.inline,
+        !inherited_axes.block,
     ));
     Size::new(
         standalone_physical_axes
@@ -366,6 +417,7 @@ fn intrinsic_max_available<S: LayoutScalar>(
     )
 }
 
+#[cfg(test)]
 fn compute_grid_with_context<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
@@ -375,38 +427,18 @@ fn compute_grid_with_context<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let style_input = input::project_grid_container!(tree, node);
-    let intrinsic_minimum =
-        standalone_intrinsic_minimum_phases(&style_input.projection(), &parent_context);
-    compute_grid_with_context_and_standalone_intrinsic_minimum(
+    Ok(compute_grid_with_context_source(
         tree,
         node,
         input,
-        parent_context,
-        intrinsic_minimum,
-    )
-}
-
-fn compute_grid_with_context_and_standalone_intrinsic_minimum<'input, Tree, M>(
-    tree: &mut Tree,
-    node: <Tree as Traverse>::Node,
-    input: ComputeInputOf<Tree::Scalar>,
-    parent_context: GridParentContext<Tree::Scalar, <Tree as Traverse>::Node>,
-    intrinsic_minimum: Size<Option<StandaloneIntrinsicMinimum>>,
-) -> LayoutResultOf<<Tree as Traverse>::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    Ok(
-        compute_grid_with_context_settled_and_standalone_intrinsic_minimum(
-            tree,
-            node,
-            input,
-            parent_context,
-            intrinsic_minimum,
-        )?
-        .output,
-    )
+        Size::NONE,
+        LogicalSizeOf::new(
+            parent_context.columns.is_some(),
+            parent_context.rows.is_some(),
+        ),
+        |_| Ok(parent_context.clone()),
+    )?
+    .output)
 }
 
 fn compute_grid_with_context_settled_and_standalone_intrinsic_minimum<'input, Tree, M>(
@@ -419,30 +451,17 @@ fn compute_grid_with_context_settled_and_standalone_intrinsic_minimum<'input, Tr
 where
     Tree: Compute<'input, M>,
 {
-    let style_input = input::project_grid_container!(tree, node);
-    let contextual_minimum =
-        standalone_intrinsic_minimum_phases(&style_input.projection(), &parent_context);
-    let intrinsic_minimum = Size::new(
-        intrinsic_minimum.width.or(contextual_minimum.width),
-        intrinsic_minimum.height.or(contextual_minimum.height),
-    );
-    if intrinsic_minimum.width.is_some() || intrinsic_minimum.height.is_some() {
-        compute_standalone_grid_with_context_settled(
-            tree,
-            node,
-            input,
-            parent_context,
-            intrinsic_minimum,
-        )
-    } else {
-        compute_grid_with_context_settled(
-            tree,
-            node,
-            input,
-            parent_context,
-            GridMeasurementBoundary::Ordinary,
-        )
-    }
+    compute_grid_with_context_source(
+        tree,
+        node,
+        input,
+        intrinsic_minimum,
+        LogicalSizeOf::new(
+            parent_context.columns.is_some(),
+            parent_context.rows.is_some(),
+        ),
+        |_| Ok(parent_context.clone()),
+    )
 }
 
 fn compute_standalone_grid_with_context<'input, Tree, M>(
@@ -454,29 +473,45 @@ fn compute_standalone_grid_with_context<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let style_input = input::project_grid_container!(tree, node);
-    let intrinsic_minimum =
-        standalone_intrinsic_minimum_phases(&style_input.projection(), &parent_context);
-    Ok(compute_standalone_grid_with_context_settled(
-        tree,
-        node,
-        input,
-        parent_context,
-        intrinsic_minimum,
-    )?
-    .output)
+    Ok(
+        compute_grid_with_context_settled_and_standalone_intrinsic_minimum(
+            tree,
+            node,
+            input,
+            parent_context,
+            Size::NONE,
+        )?
+        .output,
+    )
 }
 
-fn compute_standalone_grid_with_context_settled<'input, Tree, M>(
+// Rebuild inherited tracks from the unchanged parent source for each child pass.
+// A parent's auto-scrollbar pass is not this child's settled scrollbar state.
+fn compute_grid_with_context_source<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
-    parent_context: GridParentContext<Tree::Scalar, <Tree as Traverse>::Node>,
     intrinsic_minimum: Size<Option<StandaloneIntrinsicMinimum>>,
+    inherited_axes: LogicalSizeOf<bool>,
+    mut parent_context: impl FnMut(
+        &Constants<Tree::Scalar>,
+    ) -> LayoutResultOf<
+        <Tree as Traverse>::Node,
+        GridParentContext<Tree::Scalar, <Tree as Traverse>::Node>,
+        Tree::Scalar,
+        M,
+    >,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, GridComputeResult<Tree::Scalar>, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
+    let style_input = input::project_grid_container!(tree, node);
+    let contextual_minimum =
+        standalone_intrinsic_minimum_phases(&style_input.projection(), inherited_axes);
+    let intrinsic_minimum = Size::new(
+        intrinsic_minimum.width.or(contextual_minimum.width),
+        intrinsic_minimum.height.or(contextual_minimum.height),
+    );
     let intrinsic_axes = intrinsic_minimum.map(|minimum| minimum.is_some());
     let resolved_intrinsic_minimum = if intrinsic_axes.width || intrinsic_axes.height {
         let available = Size::new(
@@ -512,11 +547,12 @@ where
         )
         .with_settled_auto_scrollbars(input.settled_auto_scrollbars())
         .with_containing_auto_scrollbar_pass(input.containing_auto_scrollbar_pass());
-        let measured = compute_grid_with_context_settled(
+        let measured = compute_grid_with_scrollbar_settlement(
             tree,
             node,
             probe_input,
-            parent_context.clone(),
+            crate::scroll::SettledAutoScrollbarState::INITIAL,
+            &mut parent_context,
             GridMeasurementBoundary::StandaloneIntrinsicMinimumProbe(intrinsic_axes),
         )?
         .output
@@ -528,32 +564,13 @@ where
     } else {
         Size::NONE
     };
-    compute_grid_with_context_settled(
-        tree,
-        node,
-        input,
-        parent_context,
-        GridMeasurementBoundary::Standalone(resolved_intrinsic_minimum),
-    )
-}
-
-fn compute_grid_with_context_settled<'input, Tree, M>(
-    tree: &mut Tree,
-    node: <Tree as Traverse>::Node,
-    input: ComputeInputOf<Tree::Scalar>,
-    parent_context: GridParentContext<Tree::Scalar, <Tree as Traverse>::Node>,
-    measurement_boundary: GridMeasurementBoundary<Tree::Scalar>,
-) -> LayoutResultOf<<Tree as Traverse>::Node, GridComputeResult<Tree::Scalar>, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
     compute_grid_with_scrollbar_settlement(
         tree,
         node,
         input,
         crate::scroll::SettledAutoScrollbarState::INITIAL,
         parent_context,
-        measurement_boundary,
+        GridMeasurementBoundary::Standalone(resolved_intrinsic_minimum),
     )
 }
 
@@ -561,7 +578,14 @@ fn compute_grid_with_context_result<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
-    parent_context: GridParentContext<Tree::Scalar, <Tree as Traverse>::Node>,
+    mut parent_context: impl FnMut(
+        &Constants<Tree::Scalar>,
+    ) -> LayoutResultOf<
+        <Tree as Traverse>::Node,
+        GridParentContext<Tree::Scalar, <Tree as Traverse>::Node>,
+        Tree::Scalar,
+        M,
+    >,
     measurement_boundary: GridMeasurementBoundary<Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, GridComputeResult<Tree::Scalar>, Tree::Scalar, M>
 where
@@ -577,14 +601,15 @@ where
         GridMeasurementBoundary::Standalone(minimum) => minimum,
     };
     let style = style_input.projection();
-    let constants = Constants::new_with_reservation::<Tree, M>(
+    let constants = Constants::with_intrinsic_minimum::<Tree, M>(
         tree,
         node,
         &style,
         input,
-        input.run_mode().is_perform_layout(),
         standalone_intrinsic_minimum,
     )?;
+
+    let parent_context = parent_context(&constants)?;
 
     if input.run_mode() == RunMode::ComputeSize
         && let Size {
@@ -749,7 +774,7 @@ where
         columns: Vec::new(),
     };
     let mut final_scroll_geometry = None;
-    if input.run_mode().is_perform_layout() {
+    if input.run_mode().is_perform_layout() || needs_intrinsic_auto_observation(&style, input) {
         let scroll_box = canonical_scroll_box_from_source(CanonicalScrollBoxSourceOf {
             flow_axes: constants.flow_axes,
             computed_overflow: style.overflow,
@@ -762,28 +787,41 @@ where
             settled_auto_scrollbars: input.settled_auto_scrollbars(),
         })
         .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?;
-        let mut child_layout = layout_grid_container_children(
-            tree,
-            node,
-            GridChildLayoutInput {
-                sizing_phases,
-                style: &style,
-                constants: &constants,
-                column_tracks: &column_tracks,
-                row_tracks: &row_tracks,
-                context,
-                columns: &columns,
-                rows: &rows,
-                column_min_intrinsic_sizes: &column_min_intrinsic_sizes,
-                column_max_intrinsic_sizes: &column_max_intrinsic_sizes,
-                row_intrinsic_sizes: &row_intrinsic_sizes,
-                output_size,
-                subgrid_report: &subgrid_report,
-                parent_context: &parent_context,
-                placements: &placements,
-                containing_auto_scrollbar_pass: input.settled_auto_scrollbars(),
-            },
-        )?;
+        let constants = constants.for_used_scroll_box(scroll_box);
+        let child_input = GridChildLayoutInput {
+            sizing_phases,
+            style: &style,
+            constants: &constants,
+            column_tracks: &column_tracks,
+            row_tracks: &row_tracks,
+            context,
+            columns: &columns,
+            rows: &rows,
+            column_min_intrinsic_sizes: &column_min_intrinsic_sizes,
+            column_max_intrinsic_sizes: &column_max_intrinsic_sizes,
+            row_intrinsic_sizes: &row_intrinsic_sizes,
+            output_size,
+            subgrid_report: &subgrid_report,
+            parent_context: &parent_context,
+            placements: &placements,
+            containing_auto_scrollbar_pass: input.settled_auto_scrollbars(),
+        };
+        let mut child_layout = if input.run_mode().is_perform_layout() {
+            let children = layout_grid_container_children(tree, node, child_input)?;
+            baselines = children.baselines;
+            baseline_groups = children.baseline_groups;
+            GridOverflowObservation {
+                visible_content_size: children.visible_content_size,
+                contributions: children.contributions,
+            }
+        } else {
+            tree.observe_grid_overflow(
+                node,
+                GridOverflowProbe {
+                    layout: GridOverflowLayout::Ordinary(child_input),
+                },
+            )?
+        };
         content_size = max_size(content_size, child_layout.visible_content_size);
         child_layout
             .contributions
@@ -807,8 +845,6 @@ where
                 .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?,
         );
         final_scroll_geometry = Some(geometry);
-        baselines = child_layout.baselines;
-        baseline_groups = child_layout.baseline_groups;
     }
 
     let output = if input.run_mode() == RunMode::ComputeSize {
@@ -1031,7 +1067,7 @@ where
         columns: Vec::new(),
     };
     let mut final_scroll_geometry = None;
-    if input.run_mode().is_perform_layout() {
+    if input.run_mode().is_perform_layout() || needs_intrinsic_auto_observation(&style, input) {
         let scroll_box = canonical_scroll_box_from_source(CanonicalScrollBoxSourceOf {
             flow_axes: constants.flow_axes,
             computed_overflow: style.overflow,
@@ -1044,6 +1080,7 @@ where
             settled_auto_scrollbars: input.settled_auto_scrollbars(),
         })
         .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?;
+        let constants = constants.for_used_scroll_box(scroll_box);
         let layout_content_box_size =
             (output_size - constants.content_box_inset.sum_axes()).max(Size::ZERO);
         let logical_layout_content_box_size =
@@ -1093,22 +1130,34 @@ where
             intrinsic_sizes: &row_intrinsic_sizes,
             gutters: Some(&context.row_gutters),
         });
-        let mut child_layout = layout_grid_lanes_children(
-            tree,
-            node,
-            GridLanesLayoutInput {
-                style: &style,
-                constants: &constants,
-                container_content_box_size: logical_layout_content_box_size,
-                context,
-                columns: &layout_columns,
-                rows: &layout_rows,
-                gap: layout_gap,
-                subgrid_report: &subgrid_report,
-                placements: &placements,
-                containing_auto_scrollbar_pass: input.settled_auto_scrollbars(),
-            },
-        )?;
+        let child_input = GridLanesLayoutInput {
+            style: &style,
+            constants: &constants,
+            container_content_box_size: logical_layout_content_box_size,
+            context,
+            columns: &layout_columns,
+            rows: &layout_rows,
+            gap: layout_gap,
+            subgrid_report: &subgrid_report,
+            placements: &placements,
+            containing_auto_scrollbar_pass: input.settled_auto_scrollbars(),
+        };
+        let mut child_layout = if input.run_mode().is_perform_layout() {
+            let children = layout_grid_lanes_children(tree, node, child_input)?;
+            baselines = children.baselines;
+            baseline_groups = children.baseline_groups;
+            GridOverflowObservation {
+                visible_content_size: children.visible_content_size,
+                contributions: children.contributions,
+            }
+        } else {
+            tree.observe_grid_overflow(
+                node,
+                GridOverflowProbe {
+                    layout: GridOverflowLayout::Lanes(child_input),
+                },
+            )?
+        };
         content_size = max_size(content_size, child_layout.visible_content_size);
         child_layout
             .contributions
@@ -1132,8 +1181,6 @@ where
                 .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?,
         );
         final_scroll_geometry = Some(geometry);
-        baselines = child_layout.baselines;
-        baseline_groups = child_layout.baseline_groups;
     }
 
     let output = if input.run_mode() == RunMode::ComputeSize {
@@ -2795,11 +2842,30 @@ struct Constants<S: LayoutScalar = Scalar> {
     node_max_size: Size<Option<S>>,
     available_inner_size: Size<Option<S>>,
     content_box_inset: Edges<S>,
+    scrollbar_gutter: Edges<S>,
     padding: Edges<S>,
     border: Edges<S>,
 }
 
 impl<S: LayoutScalar> Constants<S> {
+    fn for_used_scroll_box(self, scroll_box: CanonicalScrollBoxOf<S>) -> Self {
+        let content_box_inset = scroll_box.content_box_inset();
+        // Intrinsic sizing needs the requested inset, while placement uses the
+        // final allocated box's saturated inset. Rebase the inner quantities
+        // without changing which outer dimensions were originally definite.
+        let inset_difference = self.content_box_inset.sum_axes() - content_box_inset.sum_axes();
+        Self {
+            explicit_definite_content_size: self
+                .explicit_definite_content_size
+                .add_optional(inset_difference),
+            node_inner_size: self.node_inner_size.add_optional(inset_difference),
+            available_inner_size: self.available_inner_size.add_optional(inset_difference),
+            content_box_inset,
+            scrollbar_gutter: scroll_box.effective_gutter(),
+            ..self
+        }
+    }
+
     #[cfg(test)]
     fn new<'input, Tree, M>(
         tree: &Tree,
@@ -2810,15 +2876,14 @@ impl<S: LayoutScalar> Constants<S> {
     where
         Tree: Compute<'input, M, Scalar = S>,
     {
-        Self::new_with_reservation::<Tree, M>(tree, node, style, input, false, Size::NONE)
+        Self::with_intrinsic_minimum::<Tree, M>(tree, node, style, input, Size::NONE)
     }
 
-    fn new_with_reservation<'input, Tree, M>(
+    fn with_intrinsic_minimum<'input, Tree, M>(
         tree: &Tree,
         node: <Tree as Traverse>::Node,
         style: &GridContainerProjection<'_, S>,
         input: ComputeInputOf<S>,
-        canonical_ordinary_reservation: bool,
         standalone_intrinsic_minimum: Size<Option<S>>,
     ) -> LayoutResultOf<<Tree as Traverse>::Node, Self, S, M>
     where
@@ -2835,16 +2900,6 @@ impl<S: LayoutScalar> Constants<S> {
         let flow_axes = crate::geometry::FlowAxes::new(style.writing_mode, style.direction);
         let padding_border = padding + border;
         let padding_border_size = padding_border.sum_axes();
-        let legacy_content_box_inset = content_box_inset_with_scrollbar(
-            padding,
-            border,
-            ScrollbarReservationOf::from_overflow(
-                style.overflow,
-                style.item_is_replaced,
-                style.scrollbar_width.get(),
-                style.direction,
-            ),
-        );
         let box_sizing_adjustment = if style.box_sizing == BoxSizing::ContentBox {
             padding_border_size
         } else {
@@ -2928,17 +2983,28 @@ impl<S: LayoutScalar> Constants<S> {
         )
         .apply_aspect_ratio(*style.aspect_ratio)
         .add_optional(box_sizing_adjustment);
-        let content_box_inset = if canonical_ordinary_reservation {
+        let scroll_box = {
             let provisional_outer_size = input
                 .known()
                 .or(style_size.clamp_min_before_max_optional(min_size, max_size))
                 .max_optional(padding_border_size.map(Some));
-            let unconstrained_scroll_box_size = padding_border_size
-                + Size::splat(style.scrollbar_width.get() + style.scrollbar_width.get());
+            // An available or maximum constraint is not an allocated intrinsic
+            // border box. For an unknown axis, qualify the full requested inset
+            // against exactly the extent it requires. This intermediate basis
+            // is used only for insets; final geometry uses the resolved output.
+            let requested_inset =
+                measured_leaf_content_box_inset(MeasuredLeafContentBoxInsetSourceOf {
+                    flow_axes,
+                    computed_overflow: style.overflow,
+                    item_is_replaced: style.item_is_replaced,
+                    scrollbar_gutter: style.scrollbar_gutter,
+                    scrollbar_width: style.scrollbar_width,
+                    settled_auto_scrollbars: input.settled_auto_scrollbars(),
+                    padding,
+                    border,
+                });
             let scroll_box_size = provisional_outer_size
-                .or(input.available().map(AvailableOf::into_option))
-                .or(max_size)
-                .unwrap_or(unconstrained_scroll_box_size)
+                .unwrap_or(requested_inset.sum_axes())
                 .max(padding_border_size);
             canonical_scroll_box_from_source(CanonicalScrollBoxSourceOf {
                 flow_axes,
@@ -2952,10 +3018,9 @@ impl<S: LayoutScalar> Constants<S> {
                 settled_auto_scrollbars: input.settled_auto_scrollbars(),
             })
             .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?
-            .content_box_inset()
-        } else {
-            legacy_content_box_inset
         };
+        let content_box_inset = scroll_box.content_box_inset();
+        let scrollbar_gutter = scroll_box.effective_gutter();
         let explicit_definite_outer_size = input.known().or(style_size);
         let explicit_definite_content_size =
             explicit_definite_outer_size.sub_optional_unchecked(content_box_inset.sum_axes());
@@ -2981,6 +3046,7 @@ impl<S: LayoutScalar> Constants<S> {
             node_max_size: max_size,
             available_inner_size,
             content_box_inset,
+            scrollbar_gutter,
             padding,
             border,
         })

@@ -125,6 +125,21 @@ mod tests {
     }
 
     impl<'input, S: LayoutScalar> Compute<'input, Infallible> for ProjectionTree<'input, S> {
+        fn observe_grid_overflow(
+            &mut self,
+            _node: Self::Node,
+            _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
+        ) -> crate::LayoutResultOf<
+            Self::Node,
+            crate::grid::GridOverflowObservation<Self::Scalar>,
+            Self::Scalar,
+            Infallible,
+        > {
+            panic!(
+                "this focused computation fixture does not admit intrinsic Grid Auto overflow observation"
+            );
+        }
+
         fn node_input(&self, _node: Self::Node) -> &'input NodeInputOf<S> {
             self.layout_input.as_box().expect("box projection source")
         }

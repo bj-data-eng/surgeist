@@ -5441,6 +5441,21 @@ impl<'input> Traverse for Fri05C04FlexAutoPassTreeCompute<'input> {
 }
 
 impl<'input> Compute<'input> for Fri05C04FlexAutoPassTreeCompute<'input> {
+    fn observe_grid_overflow(
+        &mut self,
+        _node: Self::Node,
+        _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
+    ) -> crate::LayoutResultOf<
+        Self::Node,
+        crate::grid::GridOverflowObservation<Self::Scalar>,
+        Self::Scalar,
+        core::convert::Infallible,
+    > {
+        panic!(
+            "this focused computation fixture does not admit intrinsic Grid Auto overflow observation"
+        );
+    }
+
     fn node_input(&self, node: Self::Node) -> &'input NodeInput {
         &self.styles[&node]
     }

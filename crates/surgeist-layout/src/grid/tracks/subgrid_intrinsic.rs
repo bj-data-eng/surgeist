@@ -140,7 +140,7 @@ where
         rows: vec![TrackBaselineGroup::default(); grid.row_tracks.len()],
         columns: vec![TrackBaselineGroup::default(); grid.column_tracks.len()],
     };
-    let child_context = subgrid_child_parent_context(SubgridChildParentContextInput {
+    let child_context_input = SubgridChildParentContextInput {
         item: subgrid_item,
         child_style,
         child_container_style: Some(child_container_style),
@@ -156,19 +156,23 @@ where
         margin: sizing.unresolved_margin,
         border,
         padding,
-    })
-    .map_err(|error| subgrid_child_context_error(child, error))?;
-    if !child_context.has_inherited_axis() {
-        return tree.compute_child(child, input);
-    }
-
-    compute_grid_with_context_and_standalone_intrinsic_minimum(
+        scrollbar_gutter: Edges::ZERO,
+    };
+    Ok(compute_grid_with_context_source(
         tree,
         child,
         input,
-        child_context,
         sizing.standalone_intrinsic_minimum,
-    )
+        LogicalSizeOf::new(
+            child_context_input.item.column.can_inherit(),
+            child_context_input.item.row.can_inherit(),
+        ),
+        |constants| {
+            subgrid_child_parent_context(child_context_input.for_scrollbar_pass(constants))
+                .map_err(|error| subgrid_child_context_error(child, error))
+        },
+    )?
+    .output)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1336,6 +1340,7 @@ mod tests {
             node_max_size: Size::NONE,
             available_inner_size: Size::new(Some(100.0), Some(200.0)),
             content_box_inset: Edges::ZERO,
+            scrollbar_gutter: Edges::ZERO,
             padding: Edges::ZERO,
             border: Edges::ZERO,
         };
@@ -1451,6 +1456,7 @@ mod tests {
             node_max_size: Size::NONE,
             available_inner_size: Size::new(Some(100.0), Some(200.0)),
             content_box_inset: Edges::ZERO,
+            scrollbar_gutter: Edges::ZERO,
             padding: Edges::ZERO,
             border: Edges::ZERO,
         };

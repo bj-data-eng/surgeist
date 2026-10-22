@@ -131,6 +131,484 @@ enum IntrinsicGutterInheritedAxis {
     Rows,
 }
 
+fn assert_grid_gutter_inherited_content_geometry<S: LayoutScalar>() {
+    let scalar = S::from_f64;
+    for display in [Display::Grid, Display::GridLanes] {
+        // The literal boolean says whether inline-start is the lower physical
+        // coordinate. Sideways-lr reverses the vertical inline progression.
+        for (writing_mode, ltr_starts_low) in [
+            (WritingMode::HorizontalTb, true),
+            (WritingMode::VerticalRl, true),
+            (WritingMode::VerticalLr, true),
+            (WritingMode::SidewaysRl, true),
+            (WritingMode::SidewaysLr, false),
+        ] {
+            for direction in [Direction::Ltr, Direction::Rtl] {
+                for (gutter, reserved) in [
+                    (ScrollbarGutter::Auto, 0.0),
+                    (ScrollbarGutter::Stable, 5.0),
+                    (ScrollbarGutter::StableBothEdges, 10.0),
+                ] {
+                    for (inherited_axis, depth) in [
+                        (IntrinsicGutterInheritedAxis::Rows, 1),
+                        (IntrinsicGutterInheritedAxis::Columns, 1),
+                        (IntrinsicGutterInheritedAxis::Columns, 2),
+                    ] {
+                        let tree = intrinsic_gutter_subgrid_tree::<S>(
+                            display,
+                            writing_mode,
+                            direction,
+                            inherited_axis,
+                            depth,
+                            gutter,
+                        );
+                        let batch = compute_layout(
+                            &tree,
+                            1,
+                            LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT))
+                                .expect("intrinsic geometry viewport"),
+                        )
+                        .expect("inherited gutter geometry");
+                        for node in 2..depth + 2 {
+                            let remaining_layers = f64::from(depth + 2 - node);
+                            let outer_inline = 40.0 + reserved * remaining_layers;
+                            let content_inline = outer_inline - reserved;
+                            let child = fri08_c01_placement_output(&batch, node);
+                            let geometry = child.scroll_geometry.expect("canonical child box");
+                            let child_direction = if node % 2 == 0 {
+                                direction
+                            } else {
+                                Direction::Ltr
+                            };
+                            let starts_low = ltr_starts_low == (child_direction == Direction::Ltr);
+                            let content_origin = match gutter {
+                                ScrollbarGutter::Auto => 0.0,
+                                ScrollbarGutter::Stable if starts_low => 0.0,
+                                ScrollbarGutter::Stable | ScrollbarGutter::StableBothEdges => 5.0,
+                            };
+                            let (expected_outer, expected_content, expected_origin) =
+                                if writing_mode.is_vertical() {
+                                    (
+                                        Size::new(scalar(20.0), scalar(outer_inline)),
+                                        Size::new(scalar(20.0), scalar(content_inline)),
+                                        Point::new(S::ZERO, scalar(content_origin)),
+                                    )
+                                } else {
+                                    (
+                                        Size::new(scalar(outer_inline), scalar(20.0)),
+                                        Size::new(scalar(content_inline), scalar(20.0)),
+                                        Point::new(scalar(content_origin), S::ZERO),
+                                    )
+                                };
+                            assert_eq!(
+                                child.size, expected_outer,
+                                "{display:?} {writing_mode:?} {direction:?} node{node}"
+                            );
+                            assert_eq!(geometry.content_box().size(), expected_content);
+                            assert_eq!(geometry.content_box().origin(), expected_origin);
+                        }
+                        let leaf = fri08_c01_placement_output(&batch, depth + 2);
+                        assert_eq!(
+                            leaf.size,
+                            if writing_mode.is_vertical() {
+                                Size::new(scalar(20.0), scalar(40.0))
+                            } else {
+                                Size::new(scalar(40.0), scalar(20.0))
+                            }
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn grid_gutter_inherited_content_geometry_in_f32() {
+    assert_grid_gutter_inherited_content_geometry::<f32>();
+}
+
+#[test]
+fn grid_gutter_inherited_content_geometry_in_f64() {
+    assert_grid_gutter_inherited_content_geometry::<f64>();
+}
+
+fn assert_grid_gutter_intrinsic_box_edges<S: LayoutScalar>() {
+    let scalar = S::from_f64;
+    for display in [Display::Grid, Display::GridLanes] {
+        for (preferred, minimum, track) in [
+            (
+                PreferredSizeOf::MIN_CONTENT,
+                MinSizeOf::AUTO,
+                TrackComponentOf::MIN_CONTENT,
+            ),
+            (
+                PreferredSizeOf::MAX_CONTENT,
+                MinSizeOf::AUTO,
+                TrackComponentOf::MAX_CONTENT,
+            ),
+        ] {
+            for (overflow, gutter, width, expected_inline, content_x) in [
+                (Overflow::Hidden, ScrollbarGutter::Auto, 5.0, 46.0, 3.0),
+                (Overflow::Hidden, ScrollbarGutter::Stable, 5.0, 51.0, 3.0),
+                (
+                    Overflow::Hidden,
+                    ScrollbarGutter::StableBothEdges,
+                    5.0,
+                    56.0,
+                    8.0,
+                ),
+                (
+                    Overflow::Hidden,
+                    ScrollbarGutter::StableBothEdges,
+                    0.0,
+                    46.0,
+                    3.0,
+                ),
+                (
+                    Overflow::Visible,
+                    ScrollbarGutter::StableBothEdges,
+                    5.0,
+                    46.0,
+                    3.0,
+                ),
+                (
+                    Overflow::Clip,
+                    ScrollbarGutter::StableBothEdges,
+                    5.0,
+                    46.0,
+                    3.0,
+                ),
+            ] {
+                let tree = PublicLayoutTreeOf::new()
+                    .children(1, [2])
+                    .children(2, [3])
+                    .children(3, [])
+                    .style(
+                        1,
+                        NodeInputOf {
+                            display: Display::Grid,
+                            grid_template_columns: vec![track.clone()],
+                            grid_template_rows: vec![TrackComponentOf::px(scalar(26.0))],
+                            justify_content: Some(AlignContent::Start),
+                            align_content: Some(AlignContent::Start),
+                            ..NodeInputOf::default()
+                        },
+                    )
+                    .style(
+                        2,
+                        NodeInputOf {
+                            display,
+                            size: Size::new(preferred.clone(), PreferredSizeOf::AUTO),
+                            min_size: Size::new(minimum.clone(), MinSizeOf::AUTO),
+                            grid_template_columns: vec![TrackComponentOf::px(scalar(40.0))],
+                            grid_template_rows: vec![TrackComponentOf::px(scalar(20.0))],
+                            padding: Edges::all(LengthOf::px(scalar(2.0))),
+                            border: Edges::all(LengthOf::px(scalar(1.0))),
+                            overflow: computed_overflow(overflow, overflow),
+                            scrollbar_gutter: gutter,
+                            scrollbar_width: ScrollbarWidthOf::try_new(scalar(width))
+                                .expect("finite thickness"),
+                            justify_content: Some(AlignContent::Start),
+                            align_content: Some(AlignContent::Start),
+                            ..NodeInputOf::default()
+                        },
+                    )
+                    .style(
+                        3,
+                        NodeInputOf {
+                            size: Size::new(
+                                PreferredSizeOf::px(scalar(40.0)),
+                                PreferredSizeOf::px(scalar(20.0)),
+                            ),
+                            ..NodeInputOf::default()
+                        },
+                    );
+                let batch = compute_layout(
+                    &tree,
+                    1,
+                    LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT))
+                        .expect("intrinsic viewport"),
+                )
+                .expect("intrinsic box edges");
+                assert_eq!(
+                    fri08_c01_placement_output(&batch, 1).size,
+                    Size::new(scalar(expected_inline), scalar(26.0)),
+                    "{display:?} {preferred:?} {minimum:?} {overflow:?} {gutter:?}"
+                );
+                let child = fri08_c01_placement_output(&batch, 2);
+                let geometry = child.scroll_geometry.expect("canonical box edges");
+                // Border1, then gutter, then padding2: the full gutter is
+                // inside the padding box, not an enlargement of the border.
+                assert_eq!(
+                    geometry.padding_box().origin(),
+                    Point::new(scalar(1.0), scalar(1.0))
+                );
+                assert_eq!(
+                    geometry.padding_box().size(),
+                    Size::new(scalar(expected_inline - 2.0), scalar(24.0))
+                );
+                assert_eq!(
+                    geometry.content_box().origin(),
+                    Point::new(scalar(content_x), scalar(3.0))
+                );
+                assert_eq!(
+                    geometry.content_box().size(),
+                    Size::new(scalar(40.0), scalar(20.0))
+                );
+                assert_eq!(
+                    fri08_c01_placement_output(&batch, 3).location,
+                    geometry.content_box().origin()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn grid_gutter_intrinsic_box_edges_in_f32() {
+    assert_grid_gutter_intrinsic_box_edges::<f32>();
+}
+
+#[test]
+fn grid_gutter_intrinsic_box_edges_in_f64() {
+    assert_grid_gutter_intrinsic_box_edges::<f64>();
+}
+
+fn assert_grid_gutter_intrinsic_minimum_refusal<S: LayoutScalar>() {
+    for display in [Display::Grid, Display::GridLanes] {
+        for (minimum, behavior) in [
+            (MinSizeOf::MIN_CONTENT, SizingBehavior::MinContent),
+            (MinSizeOf::MAX_CONTENT, SizingBehavior::MaxContent),
+        ] {
+            let tree = PublicLayoutTreeOf::<S>::new()
+                .children(1, [2])
+                .children(2, [])
+                .style(
+                    1,
+                    NodeInputOf {
+                        display: Display::Grid,
+                        grid_template_columns: vec![TrackComponentOf::MAX_CONTENT],
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    2,
+                    NodeInputOf {
+                        display,
+                        min_size: Size::new(minimum, MinSizeOf::AUTO),
+                        overflow: computed_overflow(Overflow::Hidden, Overflow::Hidden),
+                        scrollbar_gutter: ScrollbarGutter::StableBothEdges,
+                        scrollbar_width: ScrollbarWidthOf::try_new(S::from_f64(5.0))
+                            .expect("finite width"),
+                        ..NodeInputOf::default()
+                    },
+                );
+            let error = compute_layout(&tree, 1,
+                LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).expect("intrinsic viewport"))
+                .expect_err("standalone explicit intrinsic minimum is not a supported grid-item sizing capability");
+            let LayoutErrorKindOf::UnsupportedCapability(
+                LayoutUnsupportedCapability::SizingBehavior(unsupported),
+            ) = error.kind()
+            else {
+                panic!("exact sizing capability refusal expected: {error:?}");
+            };
+            assert_eq!(error.site(), LayoutErrorSiteOf::Node(2));
+            assert_eq!(unsupported.property(), SizingProperty::Minimum);
+            assert_eq!(unsupported.behavior(), behavior);
+            assert_eq!(unsupported.algorithm(), SizingAlgorithm::Grid);
+            assert_eq!(unsupported.axis(), PhysicalAxis::Horizontal);
+        }
+    }
+}
+
+#[test]
+fn grid_gutter_intrinsic_minimum_refusal_in_f32() {
+    assert_grid_gutter_intrinsic_minimum_refusal::<f32>();
+}
+
+#[test]
+fn grid_gutter_intrinsic_minimum_refusal_in_f64() {
+    assert_grid_gutter_intrinsic_minimum_refusal::<f64>();
+}
+
+fn assert_grid_gutter_cache_invalidation_and_atomicity<S: LayoutScalar>() {
+    let request = LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT))
+        .expect("intrinsic cached viewport");
+    for display in [Display::Grid, Display::GridLanes] {
+        let mut tree = Fri08C06RAtomicTree::new(intrinsic_gutter_subgrid_tree::<S>(
+            display,
+            WritingMode::HorizontalTb,
+            Direction::Rtl,
+            IntrinsicGutterInheritedAxis::Columns,
+            2,
+            ScrollbarGutter::StableBothEdges,
+        ));
+        let cold = compute_layout(&tree, 1, request).expect("cold gutter batch");
+        assert_eq!(
+            fri08_c01_placement_output(&cold, 1).size.width,
+            S::from_f64(60.0)
+        );
+        let cold_outputs = cold.final_entries().to_vec();
+        cold.apply_to(&mut tree).expect("atomic cold publication");
+        tree.cache_queries.borrow_mut().clear();
+        let warm = compute_layout(&tree, 1, request).expect("warm gutter batch");
+        assert_eq!(warm.final_entries(), cold_outputs);
+        assert!(
+            tree.cache_queries.borrow().iter().any(|(_, hit)| *hit),
+            "actual committed cache reuse"
+        );
+
+        let mut changed = tree.tree.node_input(3).clone();
+        changed.scrollbar_gutter = ScrollbarGutter::Stable;
+        tree.tree
+            .insert_input(3, LayoutInputOf::box_input(changed.clone()));
+        let invalidated = compute_layout_invalidated(&tree, 1, request, &[3])
+            .expect("changed descendant gutter invalidates its ancestor contribution");
+        assert_eq!(
+            fri08_c01_placement_output(&invalidated, 1).size.width,
+            S::from_f64(55.0)
+        );
+        invalidated
+            .apply_to(&mut tree)
+            .expect("atomic changed publication");
+        let retained_before_failure = tree.retained.clone();
+        let mut invalid = changed.clone();
+        invalid.padding = Edges::all(LengthOf::px(
+            super::fixtures::fri06_mr02_geometry_error_largest_finite::<S>(),
+        ));
+        tree.tree.insert_input(3, LayoutInputOf::box_input(invalid));
+        let error = compute_layout_invalidated(&tree, 1, request, &[3])
+            .expect_err("finite individual edges with non-finite arithmetic cannot publish");
+        // The existing canonical-geometry adapter maps rejected overflowing
+        // inset arithmetic to this typed child geometry failure.
+        assert_eq!(error.site(), LayoutErrorSiteOf::Node(3));
+        assert_eq!(error.operation(), LayoutOperation::ChildLayout);
+        assert_eq!(
+            error.kind(),
+            &LayoutErrorKindOf::InternalInvariant(
+                LayoutInternalInvariant::InvalidBlockScrollGeometry
+            )
+        );
+        assert_eq!(
+            tree.retained, retained_before_failure,
+            "failure preserves prior outputs and actual cache owner"
+        );
+        tree.tree.insert_input(3, LayoutInputOf::box_input(changed));
+        let retry = compute_layout_invalidated(&tree, 1, request, &[3])
+            .expect("retry after failed gutter geometry");
+        assert_eq!(
+            fri08_c01_placement_output(&retry, 1).size.width,
+            S::from_f64(55.0)
+        );
+    }
+}
+
+#[test]
+fn grid_gutter_cache_invalidation_and_atomicity_in_f32() {
+    assert_grid_gutter_cache_invalidation_and_atomicity::<f32>();
+}
+
+#[test]
+fn grid_gutter_cache_invalidation_and_atomicity_in_f64() {
+    assert_grid_gutter_cache_invalidation_and_atomicity::<f64>();
+}
+
+fn assert_grid_gutter_child_auto_context<S: LayoutScalar>() {
+    let scalar = S::from_f64;
+    for display in [Display::Grid, Display::GridLanes] {
+        let tree = PublicLayoutTreeOf::new()
+            .children(1, [2])
+            .children(2, [3, 4])
+            .children(3, [])
+            .children(4, [])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Grid,
+                    size: Size::new(
+                        PreferredSizeOf::px(scalar(100.0)),
+                        PreferredSizeOf::px(scalar(100.0)),
+                    ),
+                    grid_template_columns: vec![TrackComponentOf::px(scalar(100.0))],
+                    grid_template_rows: vec![TrackComponentOf::px(scalar(100.0))],
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display,
+                    grid_template_columns: subgrid_track_of(),
+                    grid_template_rows: vec![
+                        TrackComponentOf::px(scalar(120.0)),
+                        TrackComponentOf::px(scalar(20.0)),
+                    ],
+                    overflow: computed_overflow(Overflow::Auto, Overflow::Auto),
+                    scrollbar_width: ScrollbarWidthOf::try_new(scalar(10.0))
+                        .expect("finite thickness"),
+                    justify_content: Some(AlignContent::Start),
+                    align_content: Some(AlignContent::Start),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                3,
+                NodeInputOf {
+                    size: Size::new(
+                        PreferredSizeOf::px(scalar(95.0)),
+                        PreferredSizeOf::px(scalar(120.0)),
+                    ),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                4,
+                NodeInputOf {
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(scalar(20.0))),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch = compute_layout(
+            &tree,
+            1,
+            LayoutRootRequestOf::viewport(Size::splat(AvailableOf::Definite(scalar(100.0))))
+                .expect("fixed viewport"),
+        )
+        .expect("contextual auto settlement");
+        let child = fri08_c01_placement_output(&batch, 2);
+        assert_eq!(child.size, Size::splat(scalar(100.0)));
+        assert_eq!(
+            child.scrollbar_size(),
+            Size::splat(scalar(10.0)),
+            "{display:?}"
+        );
+        assert_eq!(
+            child
+                .scroll_geometry
+                .expect("settled box")
+                .content_box()
+                .size(),
+            Size::splat(scalar(90.0))
+        );
+        assert_eq!(
+            fri08_c01_placement_output(&batch, 4).size.width,
+            scalar(90.0),
+            "inherited tracks must use this child's settled pass"
+        );
+    }
+}
+
+#[test]
+fn grid_gutter_child_auto_context_in_f32() {
+    assert_grid_gutter_child_auto_context::<f32>();
+}
+
+#[test]
+fn grid_gutter_child_auto_context_in_f64() {
+    assert_grid_gutter_child_auto_context::<f64>();
+}
+
 fn assert_grid_intrinsic_auto_gutter_recalculates_contribution<S: LayoutScalar>(display: Display) {
     let scalar = S::from_f64;
     let tree = PublicLayoutTreeOf::new()
@@ -3627,6 +4105,7 @@ fn fri08_c08_t05_impossible_state_standalone_nested_lanes_intrinsic_scroll_and_o
             parent_gap: 0.0,
             subgrid_gap: 0.0,
             children: vec![traversal_leaf(&default_input, 2, 1, 2)],
+            scrollbar_gutter: SubgridAxisEdges::default(),
         })],
     })
     .unwrap();
@@ -4066,6 +4545,7 @@ fn grid_lanes_layout_rejects_overflowed_affine_tolerance_resolution() {
         node_max_size: Size::NONE,
         available_inner_size: Size::splat(Some(10.0)),
         content_box_inset: Edges::ZERO,
+        scrollbar_gutter: Edges::ZERO,
         padding: Edges::ZERO,
         border: Edges::ZERO,
     };
@@ -4267,6 +4747,21 @@ fn grid_content_box_compute_size_does_not_add_scrollbar_to_authored_size() {
     }
 
     impl<'input> Compute<'input> for NoChildMeasurementTreeCompute<'input> {
+        fn observe_grid_overflow(
+            &mut self,
+            _node: Self::Node,
+            _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
+        ) -> crate::LayoutResultOf<
+            Self::Node,
+            crate::grid::GridOverflowObservation<Self::Scalar>,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            panic!(
+                "this focused computation fixture does not admit intrinsic Grid Auto overflow observation"
+            );
+        }
+
         fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             &self.styles[&node]
         }
@@ -4677,4 +5172,110 @@ fn subgrid_eligibility_allows_clipped_overflow() {
 
     assert!(report.eligible);
     assert_eq!(report.reason, None);
+}
+
+fn assert_grid_gutter_intrinsic_auto_flows_and_context<S: LayoutScalar>() {
+    let scalar = S::from_f64;
+    for display in [Display::Grid, Display::GridLanes] {
+        for writing_mode in [
+            WritingMode::HorizontalTb,
+            WritingMode::VerticalRl,
+            WritingMode::VerticalLr,
+            WritingMode::SidewaysRl,
+            WritingMode::SidewaysLr,
+        ] {
+            for direction in [Direction::Ltr, Direction::Rtl] {
+                for contextual in [false, true] {
+                    for (content_block, expected_inline, reserved) in
+                        [(20.0, 40.0, 0.0), (30.0, 45.0, 5.0)]
+                    {
+                        let mut tree = intrinsic_gutter_subgrid_tree::<S>(
+                            display,
+                            writing_mode,
+                            direction,
+                            IntrinsicGutterInheritedAxis::Rows,
+                            1,
+                            ScrollbarGutter::Auto,
+                        );
+                        let mut child = tree.node_input(2).clone();
+                        child.overflow = computed_overflow(Overflow::Auto, Overflow::Auto);
+                        if !contextual {
+                            child.grid_template_rows =
+                                vec![TrackComponentOf::px(scalar(content_block))];
+                            child.grid_auto_flow = GridAutoFlow::Row;
+                            child.size = if writing_mode.is_vertical() {
+                                Size::new(
+                                    PreferredSizeOf::px(scalar(20.0)),
+                                    PreferredSizeOf::MAX_CONTENT,
+                                )
+                            } else {
+                                Size::new(
+                                    PreferredSizeOf::MAX_CONTENT,
+                                    PreferredSizeOf::px(scalar(20.0)),
+                                )
+                            };
+                        }
+                        tree = tree.style(2, child).style(
+                            3,
+                            NodeInputOf {
+                                display: Display::Block,
+                                writing_mode,
+                                size: if writing_mode.is_vertical() {
+                                    Size::new(
+                                        PreferredSizeOf::px(scalar(content_block)),
+                                        PreferredSizeOf::px(scalar(40.0)),
+                                    )
+                                } else {
+                                    Size::new(
+                                        PreferredSizeOf::px(scalar(40.0)),
+                                        PreferredSizeOf::px(scalar(content_block)),
+                                    )
+                                },
+                                ..NodeInputOf::default()
+                            },
+                        );
+                        let batch = compute_layout(
+                            &tree,
+                            1,
+                            LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT))
+                                .unwrap(),
+                        )
+                        .expect("intrinsic Auto observation in the source flow and context");
+                        let (outer, content, reservation) = if writing_mode.is_vertical() {
+                            (
+                                Size::new(scalar(20.0), scalar(expected_inline)),
+                                Size::new(scalar(20.0), scalar(40.0)),
+                                Size::new(S::ZERO, scalar(reserved)),
+                            )
+                        } else {
+                            (
+                                Size::new(scalar(expected_inline), scalar(20.0)),
+                                Size::new(scalar(40.0), scalar(20.0)),
+                                Size::new(scalar(reserved), S::ZERO),
+                            )
+                        };
+                        assert_eq!(
+                            fri08_c01_placement_output(&batch, 1).size,
+                            outer,
+                            "{display:?} {writing_mode:?} {direction:?} contextual={contextual} content_block={content_block}"
+                        );
+                        let child = fri08_c01_placement_output(&batch, 2);
+                        assert_eq!(child.size, outer);
+                        assert_eq!(child.scrollbar_size(), reservation);
+                        assert_eq!(child.scroll_geometry.unwrap().content_box().size(), content);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn grid_gutter_intrinsic_auto_flows_and_context_in_f32() {
+    assert_grid_gutter_intrinsic_auto_flows_and_context::<f32>();
+}
+
+#[test]
+fn grid_gutter_intrinsic_auto_flows_and_context_in_f64() {
+    assert_grid_gutter_intrinsic_auto_flows_and_context::<f64>();
 }

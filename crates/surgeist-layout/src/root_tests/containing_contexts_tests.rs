@@ -361,6 +361,21 @@ impl<'input, S: LayoutScalar> Traverse for Fri06C07DirectTree<'input, S> {
 }
 
 impl<'input, S: LayoutScalar> Compute<'input, ()> for Fri06C07DirectTree<'input, S> {
+    fn observe_grid_overflow(
+        &mut self,
+        _node: Self::Node,
+        _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
+    ) -> crate::LayoutResultOf<
+        Self::Node,
+        crate::grid::GridOverflowObservation<Self::Scalar>,
+        Self::Scalar,
+        (),
+    > {
+        panic!(
+            "this focused computation fixture does not admit intrinsic Grid Auto overflow observation"
+        );
+    }
+
     fn node_input(&self, node: Self::Node) -> &'input NodeInputOf<S> {
         self.0.node_input(node)
     }
@@ -5641,6 +5656,21 @@ fn assert_logical_flex_public_contexts_hidden_layout_recurses_with_containing_fl
     }
 
     impl<'input, S: LayoutScalar> Compute<'input> for HiddenTreeCompute<'input, S> {
+        fn observe_grid_overflow(
+            &mut self,
+            _node: Self::Node,
+            _probe: crate::grid::GridOverflowProbe<'input, '_, Self::Node, Self::Scalar>,
+        ) -> crate::LayoutResultOf<
+            Self::Node,
+            crate::grid::GridOverflowObservation<Self::Scalar>,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            panic!(
+                "this focused computation fixture does not admit intrinsic Grid Auto overflow observation"
+            );
+        }
+
         fn node_input(&self, node: Self::Node) -> &'input NodeInputOf<S> {
             &self.styles[&node]
         }

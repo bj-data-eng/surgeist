@@ -22,6 +22,16 @@ pub(in crate::grid) struct SubgridChildParentContextInput<
     pub(in crate::grid) margin: Edges<Option<S>>,
     pub(in crate::grid) border: Edges<S>,
     pub(in crate::grid) padding: Edges<S>,
+    pub(in crate::grid) scrollbar_gutter: Edges<S>,
+}
+
+impl<Node, S: LayoutScalar> SubgridChildParentContextInput<'_, '_, Node, S> {
+    pub(in crate::grid) fn for_scrollbar_pass(mut self, constants: &Constants<S>) -> Self {
+        self.scrollbar_gutter = constants.scrollbar_gutter;
+        self.content_box_size =
+            (self.content_box_size - self.scrollbar_gutter.sum_axes()).max(Size::ZERO);
+        self
+    }
 }
 
 pub(in crate::grid) fn subgrid_child_parent_context<'input, Node, S: LayoutScalar>(
@@ -141,6 +151,7 @@ where
             margin: input.margin,
             border: input.border,
             padding: input.padding,
+            scrollbar_gutter: input.scrollbar_gutter,
         })?,
         rows: subgrid_child_axis_context(SubgridChildAxisContextInput {
             parent_grid,
@@ -165,6 +176,7 @@ where
             margin: input.margin,
             border: input.border,
             padding: input.padding,
+            scrollbar_gutter: input.scrollbar_gutter,
         })?,
     })
 }
@@ -193,6 +205,7 @@ struct SubgridChildAxisContextInput<'input, 'a, Node, S: LayoutScalar = Scalar> 
     margin: Edges<Option<S>>,
     border: Edges<S>,
     padding: Edges<S>,
+    scrollbar_gutter: Edges<S>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -228,6 +241,7 @@ fn subgrid_child_axis_context<'input, Node: Copy + PartialEq, S: LayoutScalar>(
         input.margin,
         input.border,
         input.padding,
+        input.scrollbar_gutter,
     );
     let inherited = inherit_subgrid_tracks_with_geometry(
         SubgridTrackInheritanceInput {
@@ -776,10 +790,11 @@ fn axis_margin_border_padding<S: LayoutScalar>(
     margin: Edges<Option<S>>,
     border: Edges<S>,
     padding: Edges<S>,
+    scrollbar_gutter: Edges<S>,
 ) -> (S, S) {
     let margin = flow_axes.logical_edges(margin);
     let border = flow_axes.logical_edges(border);
-    let padding = flow_axes.logical_edges(padding);
+    let padding = flow_axes.logical_edges(padding + scrollbar_gutter);
     match axis.logical_axis() {
         LogicalAxis::Inline => (
             margin.inline_start.unwrap_or(S::ZERO) + border.inline_start + padding.inline_start,
@@ -940,32 +955,25 @@ where
             .nested_container
             .as_ref()
             .map(GridContainerInput::projection);
-        let child_context = subgrid_child_parent_context_from_ancestor_groups_with_geometry(
-            SubgridChildParentContextInput {
-                item: subgrid_item,
-                child_style: &child_style,
-                child_container_style,
-                area: item.area,
-                content_box_size: subgrid_content_box_size,
-                columns: input.columns,
-                rows: input.rows,
-                gap: input.gap,
-                parent_named_columns: &input.named_columns,
-                parent_named_rows: &input.named_rows,
-                parent_area_facts: input.area_facts.as_ref(),
-                parent_baseline_groups: &empty_baseline_groups,
-                margin: sizing.unresolved_margin,
-                border,
-                padding,
-            },
-            input.ancestor_baseline_groups,
-            input.template_area_expanded_axes,
-            input.node,
-            Some(input.column_geometry),
-            Some(input.row_geometry),
-        )
-        .map_err(|error| subgrid_child_context_container_error(input.node, item.node, error))?;
-        if !child_context.has_inherited_axis() {
+        let child_context_input = SubgridChildParentContextInput {
+            item: subgrid_item,
+            child_style: &child_style,
+            child_container_style,
+            area: item.area,
+            content_box_size: subgrid_content_box_size,
+            columns: input.columns,
+            rows: input.rows,
+            gap: input.gap,
+            parent_named_columns: &input.named_columns,
+            parent_named_rows: &input.named_rows,
+            parent_area_facts: input.area_facts.as_ref(),
+            parent_baseline_groups: &empty_baseline_groups,
+            margin: sizing.unresolved_margin,
+            border,
+            padding,
+            scrollbar_gutter: Edges::ZERO,
+        };
+        if !subgrid_item.column.can_inherit() && !subgrid_item.row.can_inherit() {
             continue;
         }
         let child_input = ComputeInputOf::for_child(
@@ -986,12 +994,28 @@ where
                 .map(|value| AvailableOf::Definite(value.max(Tree::Scalar::ZERO))),
         )
         .with_containing_auto_scrollbar_pass(input.containing_auto_scrollbar_pass);
-        let result = compute_grid_with_context_settled_and_standalone_intrinsic_minimum(
+        let result = compute_grid_with_context_source(
             tree,
             item.node,
             child_input,
-            child_context,
             sizing.standalone_intrinsic_minimum,
+            LogicalSizeOf::new(
+                child_context_input.item.column.can_inherit(),
+                child_context_input.item.row.can_inherit(),
+            ),
+            |constants| {
+                subgrid_child_parent_context_from_ancestor_groups_with_geometry(
+                    child_context_input.for_scrollbar_pass(constants),
+                    input.ancestor_baseline_groups,
+                    input.template_area_expanded_axes,
+                    input.node,
+                    Some(input.column_geometry),
+                    Some(input.row_geometry),
+                )
+                .map_err(|error| {
+                    subgrid_child_context_container_error(input.node, item.node, error)
+                })
+            },
         )?;
         let GridComputeResult {
             mut output,

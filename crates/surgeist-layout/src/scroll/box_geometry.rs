@@ -764,53 +764,6 @@ const _: DefaultScrollBoxClipGutterDerivation = derive_scroll_box_clip_gutter::<
 const _: OptimalRegionInsetOf<DefaultScalar> =
     OptimalRegionInsetOf::Value(LengthPercentageOf::ZERO);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct ScrollbarReservationOf<S: LayoutScalar> {
-    #[cfg(test)]
-    size: Size<S>,
-    inset: Edges<S>,
-}
-
-impl<S: LayoutScalar> ScrollbarReservationOf<S> {
-    #[must_use]
-    pub(crate) fn from_overflow(
-        overflow: ComputedOverflow,
-        item_is_replaced: bool,
-        scrollbar_width_value: S,
-        direction: Direction,
-    ) -> Self {
-        Self::from_used_overflow(
-            UsedOverflow::from_computed(overflow, item_is_replaced),
-            scrollbar_width_value,
-            direction,
-        )
-    }
-
-    fn from_used_overflow(
-        overflow: UsedOverflow,
-        scrollbar_width_value: S,
-        direction: Direction,
-    ) -> Self {
-        let size = scrollbar_size_from_used_overflow(overflow, scrollbar_width_value);
-        Self {
-            #[cfg(test)]
-            size,
-            inset: scrollbar_inset_from_size(size, direction),
-        }
-    }
-
-    #[must_use]
-    #[cfg(test)]
-    pub(crate) const fn size(self) -> Size<S> {
-        self.size
-    }
-
-    #[must_use]
-    pub(crate) const fn inset(self) -> Edges<S> {
-        self.inset
-    }
-}
-
 #[must_use]
 pub(crate) fn scrollbar_size_from_overflow<S: LayoutScalar>(
     overflow: ComputedOverflow,
@@ -847,37 +800,12 @@ fn scrollbar_size_from_used_overflow<S: LayoutScalar>(
     )
 }
 
-#[must_use]
-fn scrollbar_inset_from_size<S: LayoutScalar>(size: Size<S>, direction: Direction) -> Edges<S> {
-    match direction {
-        Direction::Ltr => Edges {
-            right: size.width,
-            bottom: size.height,
-            ..Edges::<S>::ZERO
-        },
-        Direction::Rtl => Edges {
-            left: size.width,
-            bottom: size.height,
-            ..Edges::<S>::ZERO
-        },
-    }
-}
-
-#[must_use]
-pub(crate) fn content_box_inset_with_scrollbar<S: LayoutScalar>(
-    padding: Edges<S>,
-    border: Edges<S>,
-    reservation: ScrollbarReservationOf<S>,
-) -> Edges<S> {
-    padding + border + reservation.inset()
-}
-
 #[cfg(test)]
 mod fri05_c02_box_clip_gutter_tests {
     use super::*;
     use crate::{
-        LengthPercentageOf, OverflowClipBox, PhysicalSide, ScrollbarGutter, ScrollbarWidthOf,
-        WritingMode,
+        Direction, LengthPercentageOf, OverflowClipBox, PhysicalSide, ScrollbarGutter,
+        ScrollbarWidthOf, WritingMode,
     };
 
     fn scalar<S: LayoutScalar>(value: f64) -> S {

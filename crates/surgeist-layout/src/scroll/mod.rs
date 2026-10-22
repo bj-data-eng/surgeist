@@ -1,5 +1,5 @@
 use super::{
-    ComputedOverflow, DefaultScalar, Direction, Edges, FlowAxes, LayoutScalar, LengthPercentageOf,
+    ComputedOverflow, DefaultScalar, Edges, FlowAxes, LayoutScalar, LengthPercentageOf,
     LogicalAxis, NumericResolutionOf, Overflow, OverflowClipBox, PercentageBasisOf, PhysicalAxis,
     PhysicalSide, Point, ScrollbarGutter, ScrollbarWidthOf, Size,
     scalar::{canonical_zero, round_layout_coordinate},
@@ -19,8 +19,7 @@ use box_geometry::{AutoScrollbarOverflowObservation, scroll_rect_axis_interval, 
 pub(crate) use box_geometry::{
     CanonicalScrollBoxOf, CanonicalScrollBoxSourceOf, ClipMarginSourceOf,
     MeasuredLeafContentBoxInsetSourceOf, OptimalRegionInsetOf, OptimalRegionInsetsOf,
-    ScrollbarReservationOf, SettledAutoScrollbarState, UsedOverflow, UsedOverflowAxis,
-    content_box_inset_with_scrollbar, measured_leaf_content_box_inset,
+    SettledAutoScrollbarState, UsedOverflow, UsedOverflowAxis, measured_leaf_content_box_inset,
     scrollbar_size_from_overflow,
 };
 
