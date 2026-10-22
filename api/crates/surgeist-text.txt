@@ -64,6 +64,7 @@ pub surgeist_text::ErrorCode::HitTestFailed
 pub surgeist_text::ErrorCode::InvalidRange
 pub surgeist_text::ErrorCode::InvalidStyle
 pub surgeist_text::ErrorCode::LayoutFailed
+pub surgeist_text::ErrorCode::SourceRevisionExhausted
 pub surgeist_text::ErrorCode::UnsupportedFeature
 pub enum surgeist_text::ErrorDetail
 pub surgeist_text::ErrorDetail::FontFacesNotAdmitted
@@ -86,6 +87,8 @@ pub surgeist_text::ErrorDetail::InvalidSourceRange
 pub surgeist_text::ErrorDetail::InvalidSourceRange::end: usize
 pub surgeist_text::ErrorDetail::InvalidSourceRange::start: usize
 pub surgeist_text::ErrorDetail::InvalidSourceRange::text_len: usize
+pub surgeist_text::ErrorDetail::SourceRevisionExhausted
+pub surgeist_text::ErrorDetail::SourceRevisionExhausted::revision: u64
 pub surgeist_text::ErrorDetail::UnsupportedCombination
 pub surgeist_text::ErrorDetail::UnsupportedCombination::feature: &'static str
 pub surgeist_text::ErrorDetail::UnsupportedCombination::reason: &'static str
@@ -647,9 +650,9 @@ pub const fn surgeist_text::SourceRange::start(self) -> surgeist_text::SourcePos
 pub fn surgeist_text::SourceRange::try_new(text: &str, start: usize, end: usize) -> surgeist_text::Result<Self>
 pub struct surgeist_text::SourceRevision(_)
 impl surgeist_text::SourceRevision
+pub const fn surgeist_text::SourceRevision::checked_next(self) -> core::option::Option<Self>
 pub const fn surgeist_text::SourceRevision::get(self) -> u64
 pub const fn surgeist_text::SourceRevision::new(value: u64) -> Self
-pub const fn surgeist_text::SourceRevision::next(self) -> Self
 pub struct surgeist_text::Span
 impl surgeist_text::Span
 pub const fn surgeist_text::Span::new(range: surgeist_text::Range, style: surgeist_text::Style) -> Self

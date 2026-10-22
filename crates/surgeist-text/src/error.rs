@@ -54,6 +54,8 @@ pub enum ErrorCode {
     FontSystemUnavailable,
     FontLoadFailed,
     FontGenerationExhausted,
+    /// An edit cannot publish another revision of the source.
+    SourceRevisionExhausted,
     InvalidRange,
     InvalidStyle,
     LayoutFailed,
@@ -73,6 +75,11 @@ pub enum ErrorDetail {
     },
     FontGenerationExhausted {
         generation: u64,
+    },
+    /// The source revision that has no successor.
+    SourceRevisionExhausted {
+        /// The exhausted revision.
+        revision: u64,
     },
     InvalidSourceRange {
         start: usize,

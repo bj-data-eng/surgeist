@@ -1,6 +1,8 @@
 use std::ops::Range as StdRange;
 
-use super::{Range, Result, Source, SourceRange, range};
+use super::{
+    Error, ErrorCode, ErrorDetail, Range, Result, Source, SourceRange, SourceRevision, range,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TextEdit {
@@ -35,10 +37,22 @@ impl TextEdit {
         &self.inserted_text
     }
 
+    /// Applies the edit at the next source revision, refusing revision exhaustion.
     pub fn apply_to(&self, mut source: Source) -> Result<Source> {
         let source_range = SourceRange::try_new(source.text(), self.range.start, self.range.end)?;
+        let revision = SourceRevision::new(source.revision)
+            .checked_next()
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorCode::SourceRevisionExhausted,
+                    "source revision is exhausted",
+                )
+                .with_detail(ErrorDetail::SourceRevisionExhausted {
+                    revision: source.revision,
+                })
+            })?;
         project_edit_ranges(&mut source, source_range, self.inserted_text.len());
-        source.revision = source.revision.saturating_add(1);
+        source.revision = revision.get();
         source
             .text
             .replace_range(StdRange::from(self.range), &self.inserted_text);

@@ -17,9 +17,13 @@ impl SourceRevision {
         self.0
     }
 
+    /// Returns the next revision, or `None` when its identity space is exhausted.
     #[must_use]
-    pub const fn next(self) -> Self {
-        Self(self.0.saturating_add(1))
+    pub const fn checked_next(self) -> Option<Self> {
+        match self.0.checked_add(1) {
+            Some(value) => Some(Self(value)),
+            None => None,
+        }
     }
 }
 

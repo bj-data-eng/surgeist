@@ -77,6 +77,12 @@ box dimensions, and unique inline-box IDs before cache lookup. Font size and
 scale must be finite and positive; layout width and box dimensions must be finite
 and nonnegative; brush channels must be finite and within `0..=1`.
 
+`TextEdit::apply_to` validates the target range and advances the source revision
+once before returning the edited source. At `u64::MAX` it returns
+`SourceRevisionExhausted`, including that revision in `ErrorDetail`, before
+changing text, spans, or inline-box anchors. Retained sources and layouts remain
+unchanged. `SourceRevision::checked_next` returns `None` at exhaustion.
+
 ## Style support
 
 [TextStyleFeature::ALL and support()](../src/style_support.rs) enumerate the

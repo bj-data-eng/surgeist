@@ -1696,6 +1696,50 @@ fn source_revision_exhaustion_refuses_edit_without_publishing_changed_source() {
 }
 
 #[test]
+fn source_revision_checked_advance_stops_at_maximum() {
+    assert_eq!(
+        SourceRevision::new(0).checked_next(),
+        Some(SourceRevision::new(1))
+    );
+    assert_eq!(
+        SourceRevision::new(u64::MAX - 1).checked_next(),
+        Some(SourceRevision::new(u64::MAX))
+    );
+    let maximum = SourceRevision::new(u64::MAX);
+    assert_eq!(maximum.checked_next(), None);
+    assert_eq!(maximum.get(), u64::MAX);
+}
+
+#[test]
+fn source_revision_last_edit_succeeds_then_refuses_another_publication() {
+    let original = Source::identified("hello", Id::from_u64(41), u64::MAX - 1);
+    let edit = TextEdit::replace(&original, Range::new(1, 4), "ipp")
+        .expect("replacement has valid source boundaries");
+    let final_source = edit
+        .apply_to(original.clone())
+        .expect("the last available source revision can be published");
+
+    assert_eq!(final_source.text(), "hippo");
+    assert_eq!(final_source.id(), original.id());
+    assert_eq!(final_source.revision(), u64::MAX);
+    assert_eq!(original.text(), "hello");
+    assert_eq!(original.revision(), u64::MAX - 1);
+
+    let next = TextEdit::insert(&final_source, 5, "!").expect("next insert is a valid edit");
+    let error = next
+        .apply_to(final_source.clone())
+        .expect_err("the exhausted revision cannot publish changed source");
+    assert_eq!(error.code, ErrorCode::SourceRevisionExhausted);
+    assert_eq!(
+        error.detail(),
+        Some(&ErrorDetail::SourceRevisionExhausted { revision: u64::MAX })
+    );
+    assert_eq!(final_source.text(), "hippo");
+    assert_eq!(final_source.id(), original.id());
+    assert_eq!(final_source.revision(), u64::MAX);
+}
+
+#[test]
 fn text_edit_normalizes_insert_replace_and_delete() {
     let source = Source::identified("hello", Id::from_u64(4), 10);
 
