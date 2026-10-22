@@ -184,6 +184,15 @@ use it to avoid ordinary auto-inline fill, flex uses it when selecting automatic
 main-size suggestions, and grid and grid-lanes use it when resolving normal
 alignment while preserving explicit stretch.
 
+Participating replaced boxes establish independent formatting contexts: float
+placement preserves their resolved size, and their own block margins cannot
+collapse through the box. External adjacent sibling margins still follow the
+ordinary collapse rules. The host leaf provider supplies finite content
+measurements selected from actual natural dimensions or the applicable fallback
+when the host treats natural dimensions as absent. A missing measurement provider
+does not mean absent natural dimensions; a genuine zero measurement is zero-sized
+content, not absence.
+
 `ContainingLayoutContext` keeps the containing flow axes and
 `ParentFormattingContext` role together as the complete containing context and
 cache identity. Flex-item roots require explicit parent flow axes and keep the

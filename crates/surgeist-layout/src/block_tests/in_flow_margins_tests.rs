@@ -345,6 +345,90 @@ fn replaced_block_child_keeps_measured_auto_inline_size_in_both_scalar_lanes() {
     assert_lane::<f64>();
 }
 
+fn assert_replaced_block_consumes_host_selected_content_sizes<S: LayoutScalar>() {
+    let scalar = scalar_value::<S>;
+    // These are concrete host measurements. Choosing whether natural facts may
+    // be used, and which object-size fallback applies, belongs to that host.
+    // In particular, a zero measurement is actual zero, not absent dimensions.
+    let host_measurements = [
+        ("natural content", Size::new(scalar(50.0), scalar(10.0))),
+        (
+            "host fallback without natural dimensions",
+            Size::new(scalar(300.0), scalar(150.0)),
+        ),
+        ("zero-sized content", Size::ZERO),
+    ];
+    for (measurement_kind, measurement) in host_measurements {
+        for replaced in [false, true] {
+            for authored_size in [false, true] {
+                let tree = PublicBlockTree::default()
+                    .with_children(0, [1])
+                    .with_children(1, [])
+                    .with_style(
+                        0,
+                        NodeInputOf {
+                            display: Display::Block,
+                            size: Size::new(
+                                PreferredSizeOf::px(scalar(400.0)),
+                                PreferredSizeOf::AUTO,
+                            ),
+                            ..NodeInputOf::default()
+                        },
+                    )
+                    .with_style(
+                        1,
+                        NodeInputOf {
+                            display: Display::Block,
+                            item_is_replaced: replaced,
+                            size: if authored_size {
+                                Size::new(
+                                    PreferredSizeOf::px(scalar(80.0)),
+                                    PreferredSizeOf::px(scalar(40.0)),
+                                )
+                            } else {
+                                Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::AUTO)
+                            },
+                            ..NodeInputOf::default()
+                        },
+                    )
+                    .with_measurement(1, measurement);
+                let batch = compute_layout(
+                    &tree,
+                    0,
+                    LayoutRootRequestOf::viewport(Size::new(
+                        AvailableOf::definite(scalar(400.0)),
+                        AvailableOf::MAX_CONTENT,
+                    ))
+                    .expect("finite host-measurement viewport"),
+                )
+                .expect("host-selected content measurement lays out");
+                let expected = if authored_size {
+                    Size::new(scalar(80.0), scalar(40.0))
+                } else if replaced {
+                    measurement
+                } else {
+                    Size::new(scalar(400.0), measurement.height)
+                };
+                assert_eq!(
+                    public_final_output(&batch, 1).size,
+                    expected,
+                    "{measurement_kind}, replaced={replaced}, authored_size={authored_size}",
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn replaced_block_consumes_host_selected_content_sizes_in_f32() {
+    assert_replaced_block_consumes_host_selected_content_sizes::<f32>();
+}
+
+#[test]
+fn replaced_block_consumes_host_selected_content_sizes_in_f64() {
+    assert_replaced_block_consumes_host_selected_content_sizes::<f64>();
+}
+
 fn assert_replaced_zero_height_leaf_prevents_margin_collapse_through<S: LayoutScalar>() {
     let scalar = scalar_value::<S>;
     for replaced in [false, true] {

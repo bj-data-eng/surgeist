@@ -468,8 +468,8 @@ where
                 logical_child_size,
                 containing_size,
             );
-            let inline_size_is_auto =
-                parent_inline_preferred_size_is_auto(&child_style, constants.flow_axes);
+            let inline_size_can_shrink =
+                parent_inline_size_can_shrink(&child_style, constants.flow_axes);
             let placement = float_exclusions.place_bfc_block(
                 ProviderBandContext {
                     tree,
@@ -482,11 +482,11 @@ where
                     margin: child_margin,
                     clear: child_style.clear,
                     fallback: preview_fallback,
-                    inline_size_is_auto,
+                    inline_size_can_shrink,
                 },
             )?;
 
-            if inline_size_is_auto {
+            if inline_size_can_shrink {
                 let parent_non_auto_margin =
                     parent_logical_unresolved_margin.map(resolved_length_auto_fallback_zero);
                 let band_child_inline =
@@ -666,7 +666,7 @@ where
                         fallback_location.x - inset_offset.x,
                         fallback_location.y - inset_offset.y,
                     ),
-                    inline_size_is_auto: parent_inline_preferred_size_is_auto(
+                    inline_size_can_shrink: parent_inline_size_can_shrink(
                         &child_style,
                         constants.flow_axes,
                     ),
@@ -816,24 +816,26 @@ fn block_child_avoids_float_exclusions<S: LayoutScalar>(
         && !style.display.is_inline_level()
         && style.common.position != Position::Absolute
         && style.float.is_none()
-        && (matches!(
-            style.display,
-            crate::Display::Flex | crate::Display::Grid | crate::Display::GridLanes
-        ) || (!style.common.item_is_replaced
-            && style
+        && (style.common.item_is_replaced
+            || matches!(
+                style.display,
+                crate::Display::Flex | crate::Display::Grid | crate::Display::GridLanes
+            )
+            || style
                 .common
                 .overflow
-                .establishes_independent_formatting_context()))
+                .establishes_independent_formatting_context())
 }
 
-fn parent_inline_preferred_size_is_auto<S: LayoutScalar>(
+fn parent_inline_size_can_shrink<S: LayoutScalar>(
     style: &BlockChildProjection<'_, S>,
     parent_flow_axes: crate::geometry::FlowAxes,
 ) -> bool {
-    match parent_flow_axes.inline_axis() {
-        PhysicalAxis::Horizontal => style.common.size.width.is_auto(),
-        PhysicalAxis::Vertical => style.common.size.height.is_auto(),
-    }
+    !style.common.item_is_replaced
+        && match parent_flow_axes.inline_axis() {
+            PhysicalAxis::Horizontal => style.common.size.width.is_auto(),
+            PhysicalAxis::Vertical => style.common.size.height.is_auto(),
+        }
 }
 
 fn set_parent_inline_available<S: LayoutScalar>(

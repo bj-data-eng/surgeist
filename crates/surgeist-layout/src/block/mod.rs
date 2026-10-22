@@ -539,8 +539,8 @@ impl<S: LayoutScalar> Constants<S> {
         let is_root = input.run_mode() == RunMode::PerformRootLayout;
         let boundary_margins_can_collapse =
             input.parent_formatting_context() == ParentFormattingContext::BlockFlow;
-        let blocks_margin_collapse = !style.common.item_is_replaced
-            && style
+        let blocks_margin_collapse = style.common.item_is_replaced
+            || style
                 .common
                 .overflow
                 .establishes_independent_formatting_context();

@@ -1627,6 +1627,16 @@ fn fri06_c04_bfc_role_exact_positive_and_negative_matrix_both_scalars() {
                 ("block-hidden", Display::Block, hidden, false),
                 ("block-scroll", Display::Block, scroll, false),
                 ("block-auto", Display::Block, auto, false),
+                (
+                    "replaced-block-visible",
+                    Display::Block,
+                    ComputedOverflow::VISIBLE,
+                    true,
+                ),
+                ("replaced-block-clip", Display::Block, clip, true),
+                ("replaced-block-hidden", Display::Block, hidden, true),
+                ("replaced-block-scroll", Display::Block, scroll, true),
+                ("replaced-block-auto", Display::Block, auto, true),
             ];
             for (label, display, overflow, item_is_replaced) in positive {
                 let subject = sized(
@@ -1661,9 +1671,6 @@ fn fri06_c04_bfc_role_exact_positive_and_negative_matrix_both_scalars() {
             let ordinary_negative = [
                 ("block-visible", ComputedOverflow::VISIBLE, false),
                 ("block-clip", clip, false),
-                ("replaced-block-hidden", hidden, true),
-                ("replaced-block-scroll", scroll, true),
-                ("replaced-block-auto", auto, true),
             ];
             for (label, overflow, item_is_replaced) in ordinary_negative {
                 let subject = sized(

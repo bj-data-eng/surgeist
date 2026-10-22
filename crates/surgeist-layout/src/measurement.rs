@@ -431,7 +431,8 @@ where
     let prevents_margin_collapse = input.parent_formatting_context()
         != crate::ParentFormattingContext::BlockFlow
         || style.display != crate::Display::Block
-        || !style.item_is_replaced && style.overflow.establishes_independent_formatting_context()
+        || style.item_is_replaced
+        || style.overflow.establishes_independent_formatting_context()
         || style.position == Position::Absolute
         || padding.at_physical_side(block_start) > S::ZERO
         || padding.at_physical_side(block_end) > S::ZERO

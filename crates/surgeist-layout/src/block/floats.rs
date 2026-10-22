@@ -100,7 +100,9 @@ pub(super) struct BfcBandCandidate<S: LayoutScalar> {
     pub(super) margin: Edges<S>,
     pub(super) clear: Clear,
     pub(super) fallback: Point<S>,
-    pub(super) inline_size_is_auto: bool,
+    /// Ordinary auto inline sizing may shrink to a float band. A replacement
+    /// instead needs a band that fits its resolved natural or authored size.
+    pub(super) inline_size_can_shrink: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -312,7 +314,7 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             margin,
             clear,
             fallback,
-            inline_size_is_auto,
+            inline_size_can_shrink,
         } = candidate;
         let logical_size = self.flow_axes.logical_size(size);
         let logical_margin = self.flow_axes.logical_edges(margin);
@@ -338,13 +340,13 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             let fallback_end =
                 fallback_logical.inline + logical_size.inline + logical_margin.inline_end;
             let available_inline = (band.inline_end - band.inline_start).max(S::ZERO);
-            let required_inline = if inline_size_is_auto {
+            let required_inline = if inline_size_can_shrink {
                 logical_margin.inline_sum()
             } else {
                 margin_box_inline
             };
             if required_inline <= available_inline {
-                let inline = if !inline_size_is_auto
+                let inline = if !inline_size_can_shrink
                     && fallback_start >= band.inline_start
                     && fallback_end <= band.inline_end
                 {
