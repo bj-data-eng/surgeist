@@ -106,7 +106,7 @@ fn accepted_namespace_after_initial_layers_closes_imports_and_activates_bindings
 }
 
 #[test]
-fn layers_after_imports_or_namespaces_still_close_both_preludes() {
+fn layers_after_imports_or_namespaces_close_both_preludes() {
     for prefix in [
         "@import 'first.css'; @layer later; ",
         "@namespace svg 'urn:svg'; @layer later; ",

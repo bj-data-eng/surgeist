@@ -1,6 +1,9 @@
 //! New public raw-input boundary: CSSOM selectorText consumes retained syntax,
 //! not clean-report validation. Expectations follow CSSOM's complete-input
 //! selector algorithm, Nesting 1 anchors and Cascade 6 scope-body anchor meaning.
+use crate::css::support::color_and_selector_fixtures::{
+    assert_selector_input_rejected, assert_strict_validation_rejects,
+};
 use surgeist_css::*;
 
 fn clean(source: &str, context: CssStyleSelectorContext) -> CssParsedStyleSelectors {
@@ -59,14 +62,13 @@ fn ordinary_and_nested_inputs_preserve_explicit_and_implicit_anchor_meaning() {
     // grammar. The implicit parent relationship remains symbolic, never bound
     // to a manufactured containing rule or selector list.
     let source = "> .child, + .sibling, .implicit";
-    assert!(
+    assert_selector_input_rejected(
+        source,
         parse_style_selector_list(
             source,
             &CssNamespaceContext::default(),
-            CssStyleSelectorContext::Ordinary
-        )
-        .syntax()
-        .is_none()
+            CssStyleSelectorContext::Ordinary,
+        ),
     );
     let nested = clean(source, CssStyleSelectorContext::Nested);
     let [
@@ -220,14 +222,13 @@ fn namespace_aware_relative_payload_survives_input_drop_with_one_genuine_occurre
             .namespace(),
         &CssNamespaceConstraint::Default
     );
-    assert!(
+    assert_selector_input_rejected(
+        RAW,
         parse_style_selector_list(
             RAW,
             &CssNamespaceContext::default(),
-            CssStyleSelectorContext::Nested
-        )
-        .syntax()
-        .is_none()
+            CssStyleSelectorContext::Nested,
+        ),
     );
 }
 
@@ -248,15 +249,9 @@ fn complete_input_failure_is_atomic_and_reports_original_responsible_positions()
             ".ok)",
             ".ok { } .later",
         ] {
-            let report =
-                parse_style_selector_list(source, &CssNamespaceContext::default(), context);
-            assert!(report.syntax().is_none(), "{source}: {report:?}");
-            assert!(
-                report
-                    .diagnostics()
-                    .iter()
-                    .any(|d| d.action() == CssRecoveryAction::RejectInput),
-                "{report:?}"
+            assert_selector_input_rejected(
+                source,
+                parse_style_selector_list(source, &CssNamespaceContext::default(), context),
             );
         }
     }
@@ -303,7 +298,7 @@ fn forgiving_and_implicit_eof_recovery_remain_admitted_with_diagnostics() {
                 .iter()
                 .any(|d| d.action() == CssRecoveryAction::PreserveInvalidSelectorListItem)
         );
-        assert!(report.into_validation_result().is_err());
+        assert_strict_validation_rejects(report);
         let eof = parse_style_selector_list(":is(.ok", &CssNamespaceContext::default(), context);
         assert!(eof.syntax().is_some());
         assert!(
@@ -311,15 +306,12 @@ fn forgiving_and_implicit_eof_recovery_remain_admitted_with_diagnostics() {
                 .iter()
                 .any(|d| d.action() == CssRecoveryAction::RetainWithImplicitClosure)
         );
-        assert!(eof.into_validation_result().is_err());
-        let lexical = parse_style_selector_list(
-            ":is(.ok, [x=\"bad\n\"])",
-            &CssNamespaceContext::default(),
-            context,
-        );
-        assert!(
-            lexical.syntax().is_none(),
-            "bad inner string rejects the whole lexical envelope"
+        assert_strict_validation_rejects(eof);
+        // A bad inner string rejects the whole lexical envelope.
+        let lexical = ":is(.ok, [x=\"bad\n\"])";
+        assert_selector_input_rejected(
+            lexical,
+            parse_style_selector_list(lexical, &CssNamespaceContext::default(), context),
         );
     }
 }

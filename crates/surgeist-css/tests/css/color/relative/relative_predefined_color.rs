@@ -6,6 +6,7 @@
 //! values remain authored, and no origin conversion or calculation evaluation
 //! is expected at this boundary.
 
+use crate::css::support::{declaration_color, parsed_color as parsed};
 use surgeist_color::PredefinedColorSpace;
 use surgeist_css::*;
 
@@ -96,23 +97,6 @@ impl Space {
             [("r", R), ("g", G), ("b", B)]
         }
     }
-}
-
-fn parsed(text: &str) -> CssColor {
-    let source = format!("color:{text}");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 1);
-    assert!(validate_style_attribute(&source).is_ok());
-    let CssKnownPropertyValueRef::Color(value) = report.syntax()[0]
-        .known()
-        .unwrap()
-        .property_value()
-        .unwrap()
-    else {
-        panic!("color declaration")
-    };
-    value.value().clone()
 }
 
 fn expression(value: CssComponentValue, space: Space, alpha: bool) -> CssRelativeColorExpression {
@@ -584,12 +568,7 @@ fn assert_transport(expansion: &CssExpansion, declaration: &CssDeclaration) {
     else {
         panic!("typed color contribution")
     };
-    let CssKnownPropertyValueRef::Color(expected) =
-        declaration.known().unwrap().property_value().unwrap()
-    else {
-        panic!("source color")
-    };
-    assert_eq!(actual, expected.value());
+    assert_eq!(actual, declaration_color(declaration));
     let relative = actual.relative_value().unwrap();
     assert!(
         matches!(relative.channels()[0].value(), CssRelativeColorExpressionValue::Percentage(value) if value.numeric().representation() == "-20")

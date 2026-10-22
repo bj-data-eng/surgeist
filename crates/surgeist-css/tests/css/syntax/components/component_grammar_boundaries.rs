@@ -3,12 +3,16 @@
 //! selected MQ5 WD20260219 §3, Variables CR20220616 §2,
 //! Sizing3 WD20260904 §3.1.1 and Transforms1 CR20190214 §9.1.
 //! This is not a public raw-error stream or generic grammar DSL test.
+use crate::css::support::authored_syntax::{
+    assert_diagnostics, assert_invalid_property_value, assert_strict_rejection,
+    parsed_origin as parsed,
+};
 use surgeist_css::{
     CssBlockKind, CssComponentValueErrorKind, CssComponentValueRef, CssCustomPropertyName,
     CssErrorCode, CssGeneralEnclosed, CssGeneralEnclosedError, CssImportance, CssKnownProperty,
     CssKnownPropertyValueRef, CssMediaConditionKind, CssMediaQuery, CssMediaType,
-    CssNamespaceContext, CssParsedOrigin, CssPropertyNameRef, CssRecoveryAction, CssRule,
-    CssSupportsConstructionError, CssValueOrigin, CssValueTokenRef, ErrorKind,
+    CssNamespaceContext, CssPropertyNameRef, CssPropertyValueErrorKind, CssRecoveryAction, CssRule,
+    CssSerializedOrigin, CssSupportsConstructionError, CssValueOrigin, CssValueTokenRef, ErrorKind,
     parse_component_values, parse_css_supports_declaration, parse_media_query,
     parse_media_query_list, parse_property_value, parse_property_value_text,
     parse_property_value_text_for_grammar, parse_rule,
@@ -30,13 +34,6 @@ fn opaque(query: &CssMediaQuery) -> &CssGeneralEnclosed {
         panic!("opaque any-value enclosure")
     };
     value
-}
-
-fn parsed(origin: &CssValueOrigin) -> &CssParsedOrigin {
-    let CssValueOrigin::Parsed(origin) = origin else {
-        panic!("actual parsed source origin")
-    };
-    origin
 }
 
 fn root_punctuation(component: &surgeist_css::CssComponentValue) {
@@ -85,11 +82,12 @@ fn whole_width_production_matches_complete_input_and_rejects_a_valid_prefix_with
         assert_eq!(origin.span().end().byte_offset().value(), source.len());
         assert!(declaration.parsed_name().is_none());
     }
-    for source in [
-        "12px 13px",
-        "12px,13px",
-        "auto extra",
-        "calc(1px + 2px) extra",
+    // `<width>` takes one value, so the first token after it is responsible.
+    for (source, responsible, token) in [
+        ("12px 13px", 5, "13px"),
+        ("12px,13px", 4, ","),
+        ("auto extra", 5, "extra"),
+        ("calc(1px + 2px) extra", 16, "extra"),
     ] {
         for report in [
             width(source),
@@ -107,15 +105,23 @@ fn whole_width_production_matches_complete_input_and_rejects_a_valid_prefix_with
             assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
             assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
         }
-        assert!(
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
-                parse_component_values(source).unwrap(),
-                CssImportance::Normal
-            )
-            .is_err(),
-            "supplied checked value still needs whole width grammar: {source}"
-        );
+        // A supplied checked value still needs the whole width grammar.
+        let error = parse_property_value(
+            CssPropertyNameRef::Known(property),
+            parse_component_values(source).unwrap(),
+            CssImportance::Normal,
+        )
+        .unwrap_err();
+        let CssPropertyValueErrorKind::Grammar(kind) = error.kind() else {
+            panic!("{source}: {error:?}")
+        };
+        assert_invalid_property_value(kind, property, Some(token));
+        let CssSerializedOrigin::Token(origin) = error.origin() else {
+            panic!("{source}: {error:?}")
+        };
+        let origin = parsed(origin);
+        assert_eq!(origin.source().as_str(), source);
+        assert_eq!(origin.span().start().byte_offset().value(), responsible);
     }
 }
 
@@ -233,12 +239,24 @@ fn escaped_ident_values_do_not_acquire_function_or_at_keyword_kind() {
         at.items()[0].view(),
         CssComponentValueRef::Token(CssValueTokenRef::AtKeyword("future"))
     ));
-    assert!(CssGeneralEnclosed::try_from_component(at.items()[0].clone()).is_err());
+    // `<general-enclosed>` is a function or a parenthesized block, never an
+    // at-keyword token.
+    let error = CssGeneralEnclosed::try_from_component(at.items()[0].clone()).unwrap_err();
+    assert!(matches!(
+        error,
+        CssGeneralEnclosedError::WrongOuterComponent { .. }
+    ));
+    assert_eq!(error.origin(), at.items()[0].origin());
     let function = parse_component_values("future()").unwrap();
     assert!(
         matches!(function.items()[0].view(), CssComponentValueRef::Function(value) if value.name() == "future")
     );
-    assert!(CssGeneralEnclosed::try_from_component(function.items()[0].clone()).is_ok());
+    assert_eq!(
+        CssGeneralEnclosed::try_from_component(function.items()[0].clone())
+            .unwrap()
+            .authored(),
+        Some("future()")
+    );
 
     let escaped = parse_rule(r"\@media all {}", &CssNamespaceContext::default());
     assert!(escaped.is_clean(), "{escaped:?}");
@@ -266,8 +284,18 @@ fn actual_literal_grammars_match_decoded_ascii_case_variants_but_require_their_t
         };
         assert_eq!(value.value().serialize_specified().unwrap(), "auto");
     }
+    // A function or at-keyword is not the `auto` identifier.
     for source in ["auto()", "@auto"] {
-        assert!(width(source).syntax().is_none(), "{source}");
+        let report = width(source);
+        assert!(report.syntax().is_none(), "{source}");
+        assert_diagnostics(
+            report.diagnostics(),
+            &[(
+                CssErrorCode::InvalidPropertyValue,
+                CssRecoveryAction::RejectInput,
+                0,
+            )],
+        );
     }
     for source in [
         "translateX(12px)",
@@ -375,9 +403,19 @@ fn root_semicolon_and_bang_are_allowed_by_any_value_but_excluded_from_declaratio
 fn nullable_defining_grammars_do_not_make_nonnullable_known_property_values_match() {
     let custom = CssCustomPropertyName::try_new("--empty").unwrap();
     for source in ["", " \t", "/**/"] {
+        let report = width(source);
         assert!(
-            width(source).syntax().is_none(),
+            report.syntax().is_none(),
             "width needs its own value: {source:?}"
+        );
+        let [diagnostic] = report.diagnostics() else {
+            panic!("one missing-value rejection: {source:?}: {report:?}")
+        };
+        assert_invalid_property_value(diagnostic.error().kind(), CssKnownProperty::Width, None);
+        assert_eq!(
+            diagnostic.error().position().byte_offset().value(),
+            source.len(),
+            "{source:?}"
         );
         let report = parse_property_value_text(
             source,
@@ -435,6 +473,14 @@ fn recursive_lexical_faults_reject_checked_values_and_only_the_owning_media_memb
         assert!(
             property.syntax().is_none(),
             "declaration-value cannot retain a bad nested token: {payload}"
+        );
+        let [diagnostic] = property.diagnostics() else {
+            panic!("one lexical rejection: {payload}: {property:?}")
+        };
+        assert_eq!(
+            diagnostic.error().position().byte_offset().value(),
+            payload.find(responsible).unwrap(),
+            "{payload}"
         );
         let source = format!("future({payload}),print");
         let report = parse_media_query_list(&source);
@@ -521,14 +567,20 @@ fn missing_function_end_can_match_property_grammar_while_retaining_eof_fault_and
                     diagnostic.error().position().byte_offset().value(),
                     source.len()
                 );
-                assert!(report.clone().into_validation_result().is_err());
+                assert_strict_rejection(
+                    report.clone().into_validation_result(),
+                    report.diagnostics(),
+                );
             }
             (false, CssValueOrigin::Parsed(close)) => {
                 assert!(close.source().same_snapshot(original));
                 assert_eq!(close.span().start().byte_offset().value(), source.len() - 1);
                 assert_eq!(close.span().end().byte_offset().value(), source.len());
                 assert!(report.is_clean());
-                assert!(report.clone().into_validation_result().is_ok());
+                assert_eq!(
+                    report.clone().into_validation_result().unwrap(),
+                    *report.syntax()
+                );
             }
             _ => panic!("authored close and EOF-implied close must remain distinct"),
         }

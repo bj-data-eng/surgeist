@@ -3,6 +3,7 @@
 //! is the adopted grammar, checked construction and cumulative resource contract,
 //! with Cartesian horizontal/vertical and symbolic flow block/inline serialization.
 
+use crate::css::support::serialization_limits::assert_limits as budget;
 use surgeist_css::{
     CssBlockPosition as B, CssHorizontalPosition as H, CssInlinePosition as I,
     CssPositionConstructionError as E, CssRelativeAxisPosition as R,
@@ -48,32 +49,6 @@ fn parsed(text: &str) -> CssPosition {
     };
     value.position().unwrap().clone()
 }
-fn budget(
-    expected: &str,
-    input: usize,
-    projection: usize,
-    serialize: impl Fn(L) -> Result<String, CssSpecifiedValueSerializationError>,
-) {
-    assert_eq!(
-        serialize(L::new(input, projection, expected.len())).unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (
-            L::new(input - 1, projection, expected.len()),
-            K::InputNodeLimit,
-        ),
-        (
-            L::new(input, projection - 1, expected.len()),
-            K::ProjectionNodeLimit,
-        ),
-        (L::new(input, projection, expected.len() - 1), K::ByteLimit),
-    ] {
-        assert_eq!(serialize(limits).unwrap_err().kind(), kind, "{expected}");
-    }
-    assert_eq!(serialize(L::default()).unwrap(), expected);
-}
-
 #[test]
 fn cartesian_payload_getters_preserve_physical_and_axis_relative_identity() {
     for horizontal in [H::Left, H::Center, H::Right, H::XStart, H::XEnd] {

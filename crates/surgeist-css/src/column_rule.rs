@@ -44,7 +44,7 @@ impl CssColumnRule {
     }
 
     /// Serializes the specified shorthand in width, style, color order.
-    /// Initial-valued members are omitted; an all-initial rule emits `medium`.
+    /// Initial-valued members are omitted; an all-initial rule emits `none`.
     pub fn serialize_specified(&self) -> Result<String> {
         self.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::default())
     }
@@ -77,22 +77,19 @@ impl CssColumnRule {
         let all_initial = !(emit_width || emit_style || emit_color);
         if let Some(width) = self.width() {
             writer.source_member(0, |writer| {
-                if emit_width || all_initial {
+                if emit_width {
                     width.append_specified(&mut writer.context, &mut writer.css)
                 } else {
                     writer.context.charge_input(1)?;
                     writer.context.charge_projection(1)
                 }
             })?;
-        } else if all_initial {
-            writer.source_member(0, |writer| {
-                writer.context.charge_projection(1)?;
-                writer.append("medium")
-            })?;
         }
+        // The `<line-width> || <line-style> || <color>` family keeps one
+        // member when all are initial; `none` is its shortest representation.
         if let Some(style) = self.style() {
             writer.source_member(1, |writer| {
-                if emit_style {
+                if emit_style || all_initial {
                     if writer.css.len() != start {
                         writer.append(" ")?;
                     }
@@ -101,6 +98,12 @@ impl CssColumnRule {
                     writer.context.charge_input(1)?;
                     writer.context.charge_projection(1)
                 }
+            })?;
+        } else if all_initial {
+            // A synthesized style charges one projection node and no input node.
+            writer.source_member(1, |writer| {
+                writer.context.charge_projection(1)?;
+                writer.append("none")
             })?;
         }
         if let Some(color) = self.color() {

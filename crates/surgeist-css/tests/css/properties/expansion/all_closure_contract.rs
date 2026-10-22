@@ -1,6 +1,7 @@
 //! All original-component closure, symbolic reset and provenance contract.
 //! Cascade5 CR20220113 #all-shorthand/#propdef-all; Syntax3 original recovery
 //! provenance; Variables1 pending reentry; current public authored contracts.
+use crate::css::support::authored_property::checked_components;
 use surgeist_css::*;
 
 const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
@@ -10,25 +11,11 @@ const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
     ("revert", CssGlobalKeyword::Revert),
     ("revert-layer", CssGlobalKeyword::RevertLayer),
 ];
-fn checked(
-    values: CssComponentValues,
-    grammar: bool,
-    importance: CssImportance,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
-    if grammar {
-        parse_property_value_for_grammar(CssKnownProperty::All.grammar(), values, importance)
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::All),
-            values,
-            importance,
-        )
-    }
-}
 fn source(text: &str, importance: CssImportance, grammar: bool) -> CssDeclaration {
     let values = parse_component_values(text).unwrap();
     let before = values.clone();
-    let declaration = checked(values.clone(), grammar, importance).unwrap();
+    let declaration =
+        checked_components(CssKnownProperty::All, values.clone(), grammar, importance).unwrap();
     assert_eq!(declaration.value_components(), &values);
     assert_eq!(values, before);
     assert!(declaration.position().is_none());
@@ -91,7 +78,13 @@ fn checked_all_globals_reject_original_comment_eof_before_serialized_recovery() 
             for importance in [CssImportance::Normal, CssImportance::Important] {
                 for _ in 0..2 {
                     strict_error(
-                        &checked(values.clone(), grammar, importance).unwrap_err(),
+                        &checked_components(
+                            CssKnownProperty::All,
+                            values.clone(),
+                            grammar,
+                            importance,
+                        )
+                        .unwrap_err(),
                         &original,
                     );
                     assert_eq!(values, before);
@@ -108,7 +101,13 @@ fn checked_all_pending_values_reject_original_function_eof_before_admission() {
         for grammar in [false, true] {
             for _ in 0..2 {
                 strict_error(
-                    &checked(values.clone(), grammar, CssImportance::Important).unwrap_err(),
+                    &checked_components(
+                        CssKnownProperty::All,
+                        values.clone(),
+                        grammar,
+                        CssImportance::Important,
+                    )
+                    .unwrap_err(),
                     original,
                 );
                 assert_eq!(values, before);
@@ -164,7 +163,13 @@ fn mixed_origin_all_recovery_rejects_the_actual_comment_source_without_fabricati
     assert_eq!(values.items()[0].origin(), &CssValueOrigin::Programmatic);
     for grammar in [false, true] {
         strict_error(
-            &checked(values.clone(), grammar, CssImportance::Important).unwrap_err(),
+            &checked_components(
+                CssKnownProperty::All,
+                values.clone(),
+                grammar,
+                CssImportance::Important,
+            )
+            .unwrap_err(),
             "/*",
         );
         assert_eq!(values, before);

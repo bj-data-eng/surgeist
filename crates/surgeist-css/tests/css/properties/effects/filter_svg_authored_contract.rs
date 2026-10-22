@@ -2,13 +2,15 @@
 //! Source: Filter Effects 1 WD20181218 §§3,9.13.1–2,10,11.5;
 //! selected Color4 and complete shared Color owner, Values4, Cascade5,
 //! Variables1, Syntax3 and CSSOM WD20210826 §6.7.2.
+use crate::css::support::{
+    check_named_components as checked_components, detached_checked_declaration as checked,
+};
 use surgeist_css::*;
 
 const FLOOD: &str = "flood-color";
 const ALPHA: &str = "flood-opacity";
 const LIGHT: &str = "lighting-color";
 const INTERPOLATION: &str = "color-interpolation-filters";
-const NAMES: [&str; 4] = [FLOOD, ALPHA, LIGHT, INTERPOLATION];
 const COLOR_GOLDENS: &[(&str, &str)] = &[
     ("red", "red"),
     ("currentColor", "currentcolor"),
@@ -75,33 +77,6 @@ const OPACITY_GOLDENS: &[(&str, &str)] = &[
 fn property(name: &str) -> CssKnownProperty {
     CssKnownProperty::from_name(name)
         .unwrap_or_else(|| panic!("missing authored Filter1 property: {name}"))
-}
-fn checked_components(
-    name: &str,
-    values: CssComponentValues,
-    grammar: bool,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
-    let p = property(name);
-    if grammar {
-        parse_property_value_for_grammar(p.grammar(), values, CssImportance::Important)
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(p),
-            values,
-            CssImportance::Important,
-        )
-    }
-}
-fn checked(name: &str, text: &str, grammar: bool) -> CssDeclaration {
-    let values = parse_component_values(text).unwrap();
-    let before = values.clone();
-    let source = checked_components(name, values.clone(), grammar).unwrap();
-    assert_eq!(source.value_components(), &values);
-    assert_eq!(values, before);
-    assert!(source.position().is_none());
-    assert!(source.parsed_name().is_none());
-    assert!(source.parsed_value().is_none());
-    source
 }
 fn fronts(name: &str, text: &str) -> Vec<CssDeclaration> {
     let css = format!("/*😀*/{}:{text}!important", name.to_ascii_uppercase());
@@ -226,12 +201,13 @@ fn invalid(name: &str, text: &str) {
     let values = parse_component_values(text).unwrap();
     let before = values.clone();
     for grammar in [false, true] {
-        assert!(matches!(
+        assert_eq!(
             checked_components(name, values.clone(), grammar)
                 .unwrap_err()
                 .kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
+            &CssPropertyValueErrorKind::Grammar(diagnostic.error().kind().clone()),
+            "{name}:{text}"
+        );
     }
     for report in [
         parse_property_value_text(text, CssPropertyNameRef::Known(p), CssImportance::Normal),
@@ -418,38 +394,6 @@ fn four_terminal_expansions_preserve_original_occurrence_and_both_importance_sta
             ));
             assert!(values.items()[0].replacement_components().is_none());
             assert_eq!(source, before);
-        }
-    }
-}
-#[test]
-fn css_wide_keywords_and_all_membership_cover_each_filter_terminal() {
-    let CssPropertyKindRef::UniversalReset(all) = CssKnownProperty::All.metadata().unwrap().kind()
-    else {
-        panic!("all metadata")
-    };
-    for name in NAMES {
-        let p = property(name);
-        assert!(!all.excludes(CssPropertyNameRef::Known(p)));
-        for (text, keyword) in [
-            ("initial", CssGlobalKeyword::Initial),
-            ("inherit", CssGlobalKeyword::Inherit),
-            ("unset", CssGlobalKeyword::Unset),
-            ("revert", CssGlobalKeyword::Revert),
-            ("revert-layer", CssGlobalKeyword::RevertLayer),
-        ] {
-            for source in fronts(name, text) {
-                let values = completed(&source);
-                assert_eq!(
-                    values.items()[0].value(),
-                    CssContributionValueRef::Global(keyword)
-                );
-                assert!(values.items()[0].ordinary_value().is_none());
-                assert!(values.items()[0].replacement_components().is_none());
-                assert_eq!(
-                    source.to_specified_css().unwrap(),
-                    format!("{name}: {text} !important;")
-                );
-            }
         }
     }
 }
@@ -792,22 +736,6 @@ fn existing_color_provider_controls_execute_all_color_goldens_before_new_registr
     for &(input, expected) in COLOR_GOLDENS {
         canonical("color", input, expected);
     }
-}
-#[test]
-fn all_symbolic_reset_includes_each_filter_terminal_without_resolving_targets() {
-    let source = checked("all", "revert-layer", false);
-    let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&source).unwrap()
-    else {
-        panic!("symbolic all")
-    };
-    assert_eq!(reset.keyword(), CssGlobalKeyword::RevertLayer);
-    assert!(reset.source().same_occurrence(&source));
-    for name in NAMES {
-        assert!(!reset.excludes(CssPropertyNameRef::Known(property(name))));
-    }
-    assert!(reset.excludes(CssPropertyNameRef::Known(CssKnownProperty::Direction)));
-    assert!(reset.excludes(CssPropertyNameRef::Known(CssKnownProperty::UnicodeBidi)));
 }
 #[test]
 fn hinted_flood_calculation_uses_existing_seven_input_eight_projection_provider_price() {

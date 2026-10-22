@@ -514,7 +514,7 @@ fn parsed_conic_second_position_and_from_keep_the_original_source_spans() {
 }
 
 #[test]
-fn intrinsic_conic_geometry_defaults_are_omitted_with_all_authored_nodes_still_charged() {
+fn intrinsic_conic_geometry_defaults_are_omitted_with_all_authored_nodes_charged() {
     // Images4 §§3.3.1, 3.3.3, 3.5.2 and §8: these spellings have the same
     // intrinsic meaning. The checked model still retains every authored field.
     for (start, end) in [

@@ -85,12 +85,9 @@ impl CssFontFamilyList {
     }
 
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        for (index, family) in self.families().iter().enumerate() {
-            if index != 0 {
-                writer.append(", ")?;
-            }
-            family.append_specified(writer)?;
-        }
+        writer.comma_separated(self.families(), |writer, family| {
+            family.append_specified(writer)
+        })?;
         Ok(())
     }
 }
@@ -182,11 +179,8 @@ pub fn serialize_font_face_family_list_with_limits(
     limits: CssSpecifiedValueSerializationLimits,
 ) -> Result<String> {
     let mut writer = SpecifiedRuleWriter::new(limits);
-    for (index, family) in families.iter().enumerate() {
-        if index != 0 {
-            writer.append(", ")?;
-        }
-        family.append_to_rule_writer(&mut writer)?;
-    }
+    writer.comma_separated(families, |writer, family| {
+        family.append_to_rule_writer(writer)
+    })?;
     Ok(writer.css)
 }

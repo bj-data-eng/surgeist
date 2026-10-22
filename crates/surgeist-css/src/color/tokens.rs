@@ -2,7 +2,7 @@
 
 use super::keywords::{Word, word};
 use super::protocol::{CssColorProtocolError, CssColorSlot, LexicalRecord, LexicalTable};
-use crate::tokenization::color_tokens::{Span, Token, TokenKind};
+use crate::tokenization::tokenizer::{Span, Token, TokenKind};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ClassifiedToken {
@@ -200,7 +200,7 @@ impl<'owner> TokenReader<'owner> {
         self.unit = if matches!(
             self.token.map(|token| token.kind),
             Some(TokenKind::Number {
-                kind: crate::tokenization::color_tokens::NumberKind::Dimension,
+                kind: crate::tokenization::tokenizer::NumberKind::Dimension,
                 ..
             })
         ) {
@@ -264,7 +264,7 @@ mod tests {
     use super::super::protocol::{ActionDescription, CssColorOperationOwner, LexicalOperation};
     use super::*;
     use crate::tokenization::bounded::InputKind;
-    use crate::tokenization::color_tokens::NameKind;
+    use crate::tokenization::tokenizer::NameKind;
     #[test]
     fn escaped_keywords_and_long_profile_spans_use_actual_flat_records() {
         let input = "\\72 GB( --évery-long-profile-name ) CanvasText lightgoldenrodyellow";

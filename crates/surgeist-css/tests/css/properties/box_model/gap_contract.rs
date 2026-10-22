@@ -1,7 +1,10 @@
 //! Public specified-value contracts from CSS Box Alignment 3 WD 2026-01-30
 //! §§8.1, 8.2, and 8.4.
 
-use crate::css::support::important_declaration as parsed;
+use crate::css::support::property_admission::assert_declaration_rejected as rejected;
+use crate::css::support::{
+    checked_grammar_declaration as checked, important_declaration as parsed,
+};
 use surgeist_css::*;
 
 fn scalar(text: &str) -> CssSpecifiedNonNegativeLengthPercentage {
@@ -19,15 +22,6 @@ fn scalar(text: &str) -> CssSpecifiedNonNegativeLengthPercentage {
         CssSpecifiedNonNegativeLengthPercentage::try_from_component(component.clone())
             .expect("checked nonnegative scalar")
     }
-}
-
-fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        CssPropertyGrammar::from_name(name).expect("gap grammar"),
-        parse_component_values(value).expect("valid component syntax"),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"))
 }
 
 fn row_value(declaration: &CssDeclaration) -> CssGapValue {
@@ -153,23 +147,22 @@ fn typed_shorthand_preserves_authored_arity_and_independent_row_column_values() 
 #[test]
 fn negative_literals_and_non_gap_tokens_are_invalid_but_math_remains_symbolic() {
     for name in ["row-gap", "column-gap", "gap", "grid-gap"] {
-        for value in ["-1px", "-1e-100%", "1fr", "1", "auto", "1px 2px 3px"] {
-            let report = parse_style_attribute(&format!("color:red;{name}:{value};color:blue"));
-            assert_eq!(report.syntax().len(), 2, "{name}:{value}");
-            assert_eq!(report.diagnostics().len(), 1, "{name}:{value}");
-            assert_eq!(
-                report.diagnostics()[0].action(),
-                CssRecoveryAction::DropDeclaration
-            );
-            assert!(
-                parse_property_value_for_grammar(
-                    CssPropertyGrammar::from_name(name).unwrap(),
-                    parse_component_values(value).unwrap(),
-                    CssImportance::Normal,
-                )
-                .is_err(),
-                "checked {name}:{value}"
-            );
+        // A gap shorthand admits two components; each longhand admits one.
+        let shorthand = matches!(name, "gap" | "grid-gap");
+        for (value, longhand_token, shorthand_token) in [
+            ("-1px", "-1px", "-1px"),
+            ("-1e-100%", "-1e-100%", "-1e-100%"),
+            ("1fr", "1fr", "1fr"),
+            ("1", "1", "1"),
+            ("auto", "auto", "auto"),
+            ("1px 2px 3px", "2px", "3px"),
+        ] {
+            let token = if shorthand {
+                shorthand_token
+            } else {
+                longhand_token
+            };
+            rejected(name, value, Some(token));
         }
     }
     for name in ["row-gap", "column-gap", "gap"] {

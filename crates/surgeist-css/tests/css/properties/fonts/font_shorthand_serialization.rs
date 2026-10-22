@@ -1,3 +1,5 @@
+use crate::css::support::important_declaration;
+use crate::css::support::named_property::longhand_contributions as longhands;
 use surgeist_css::*;
 
 fn font(source: &str) -> CssFontValue {
@@ -12,21 +14,6 @@ fn font(source: &str) -> CssFontValue {
         panic!("font property")
     };
     value.font().clone()
-}
-
-fn declaration(value: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("font:{value}!important"));
-    assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
-    report.syntax()[0].clone()
-}
-
-fn longhands(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("font longhands")
-    };
-    values
 }
 
 fn direct_longhand(name: &str, value: &str) -> CssLonghandValue {
@@ -52,7 +39,7 @@ fn explicit_shorthand_serializes_in_grammar_order_and_preserves_family_boundarie
     let serialized = authored.serialize_specified().unwrap();
     assert_eq!(
         serialized,
-        "oblique 25deg small-caps bold condensed 16px/1.2 A\\ B, A B, \"serif\", serif"
+        "oblique 25deg small-caps bold condensed 16px / 1.2 A\\ B, A B, \"serif\", serif"
     );
     let CssFontValue::Explicit(reparsed) = font(&serialized) else {
         panic!("explicit font")
@@ -121,7 +108,7 @@ fn constructed_normal_components_have_the_same_expansion_as_their_canonical_form
 
     // Expansion accepts declarations, so serialization is the public bridge
     // from a constructed shorthand value back into that boundary.
-    let normalized = longhands(&declaration(&css));
+    let normalized = longhands(&important_declaration("font", &css));
     for (item, (name, expected)) in normalized.items()[..7].iter().zip([
         ("font-family", "serif"),
         ("font-size", "medium"),
@@ -138,7 +125,7 @@ fn constructed_normal_components_have_the_same_expansion_as_their_canonical_form
         );
     }
 
-    let authored = declaration("normal normal normal normal medium/normal serif");
+    let authored = important_declaration("font", "normal normal normal normal medium/normal serif");
     let original = longhands(&authored);
     assert_eq!(original.items().len(), 19);
     assert_eq!(normalized.items().len(), 19);
@@ -158,7 +145,7 @@ fn six_system_fonts_keep_only_settable_members_symbolic() {
         "small-caption",
         "status-bar",
     ] {
-        let source = declaration(keyword);
+        let source = important_declaration("font", keyword);
         let CssKnownPropertyValueRef::Font(wrapper) =
             source.known().unwrap().property_value().unwrap()
         else {
@@ -205,14 +192,14 @@ fn globals_and_pending_system_reentry_preserve_all_members_and_provenance() {
         ("revert", CssGlobalKeyword::Revert),
         ("revert-layer", CssGlobalKeyword::RevertLayer),
     ] {
-        let source = declaration(keyword);
+        let source = important_declaration("font", keyword);
         let values = longhands(&source);
         assert_eq!(values.items().len(), 19);
         assert!(values.items().iter().all(|item| item.value()
             == CssContributionValueRef::Global(expected)
             && item.source().same_occurrence(&source)));
     }
-    let source = declaration("env(font)");
+    let source = important_declaration("font", "env(font)");
     let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
         panic!("pending system font")
     };
@@ -260,7 +247,7 @@ fn shorthand_uses_one_cumulative_budget_for_all_components() {
     }
     assert_eq!(
         authored.serialize_specified().unwrap(),
-        "italic bold 16px/1.2 serif"
+        "italic bold 16px / 1.2 serif"
     );
 
     let normal_components = CssExplicitFont::try_new(
@@ -295,8 +282,30 @@ fn mixed_symbolic_math_remains_parseable_after_canonical_serialization() {
     let serialized = authored.serialize_specified().unwrap();
     assert_eq!(
         serialized,
-        "oblique calc(15deg) calc(700) calc(14px)/calc(1.2) serif"
+        "oblique calc(15deg) calc(700) calc(14px) / calc(1.2) serif"
     );
     let reparsed = font(&serialized);
     assert_eq!(reparsed.serialize_specified().unwrap(), serialized);
+}
+
+#[test]
+fn cssom_block_spaces_the_line_height_separator() {
+    // CSSOM "serialize a CSS value" step 5 joins component items with a space
+    // unless the second item is ","; the `/` delimiter is an item, and
+    // neither CSSOM nor Fonts 4 defines a font-specific exception. Browsers
+    // that emit `16px/2` diverge from the specification.
+    for (source, expected) in [
+        ("font: 16px/2 Alpha", "font: 16px / 2 Alpha;"),
+        ("font: 16px / 2 Alpha", "font: 16px / 2 Alpha;"),
+        ("font: 16px/normal Alpha", "font: 16px Alpha;"),
+        ("font: 16px Alpha", "font: 16px Alpha;"),
+    ] {
+        let report = parse_style_attribute(source);
+        assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
+        let serialized = CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax())
+            .unwrap()
+            .serialize_cssom()
+            .unwrap();
+        assert_eq!(serialized, expected, "{source}");
+    }
 }

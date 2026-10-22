@@ -1,7 +1,7 @@
 //! Authored selector emission. Symbolic nesting and scope anchors stay symbolic.
 //! This provider owns selector grammar; enclosing rule formatting has a separate owner.
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
-use crate::syntax::{CssPseudoSuffixContext, CssSelectorGrammarContext};
+use crate::syntax::{CssCompoundMember, CssPseudoSuffixContext, CssSelectorGrammarContext};
 use crate::*;
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
 /// Output proof scope, independent of the existing intrinsic selector grammar.
@@ -390,14 +390,6 @@ fn invalid_context() -> CssSpecifiedValueSerializationError {
 }
 
 impl SpecifiedRuleWriter {
-    pub(crate) fn node(&mut self) -> Result<()> {
-        self.context.charge_input(1)?;
-        self.context.charge_projection(1)
-    }
-    pub(crate) fn keyword(&mut self, text: &str) -> Result<()> {
-        self.node()?;
-        self.append(text)
-    }
     pub(crate) fn combinator(&mut self, value: CssSelectorCombinator, leading: bool) -> Result<()> {
         self.append(match (value, leading) {
             (CssSelectorCombinator::Descendant, true) => "",
@@ -770,22 +762,6 @@ impl SpecifiedRuleWriter {
                             }
                         }
                     }
-                    for _ in 0..value.nesting_selectors() {
-                        self.keyword("&")?;
-                    }
-                    for _ in 0..value.scope_anchors() {
-                        self.keyword("&")?;
-                    }
-                    for id in value.ids() {
-                        self.node()?;
-                        self.append("#")?;
-                        self.selector_identifier(id)?;
-                    }
-                    for class in value.classes() {
-                        self.node()?;
-                        self.append(".")?;
-                        self.selector_identifier(class)?;
-                    }
                     push(
                         &mut work,
                         Event::CompoundTail(value, 0, 0, grammar, CssPseudoSuffixContext::Generic),
@@ -798,14 +774,43 @@ impl SpecifiedRuleWriter {
                         push(&mut work, Event::Compound(part.selector(), grammar))?;
                     }
                 }
+                Event::CompoundTail(value, 0, index, grammar, suffix) => {
+                    // CSSOM "serialize a selector" emits the compound's simple
+                    // selectors in authored order.
+                    let Some(member) = value.members().get(index) else {
+                        push(&mut work, Event::CompoundTail(value, 1, 0, grammar, suffix))?;
+                        continue;
+                    };
+                    push(
+                        &mut work,
+                        Event::CompoundTail(value, 0, index + 1, grammar, suffix),
+                    )?;
+                    match *member {
+                        CssCompoundMember::Nesting | CssCompoundMember::ScopeAnchor => {
+                            self.keyword("&")?;
+                        }
+                        CssCompoundMember::Id(member) => {
+                            self.node()?;
+                            self.append("#")?;
+                            self.selector_identifier(&value.ids()[member])?;
+                        }
+                        CssCompoundMember::Class(member) => {
+                            self.node()?;
+                            self.append(".")?;
+                            self.selector_identifier(&value.classes()[member])?;
+                        }
+                        CssCompoundMember::Attribute(member) => {
+                            push(&mut work, Event::Attribute(&value.attributes()[member]))?;
+                        }
+                        CssCompoundMember::PseudoClass(member) => push(
+                            &mut work,
+                            Event::Pseudo(&value.pseudo_classes()[member], grammar),
+                        )?,
+                    }
+                }
                 Event::CompoundTail(value, phase, index, grammar, mut suffix) => {
                     let event = match phase {
-                        0 => value.attributes().get(index).map(Event::Attribute),
                         1 => value
-                            .pseudo_classes()
-                            .get(index)
-                            .map(|p| Event::Pseudo(p, grammar)),
-                        2 => value
                             .pseudo_elements()
                             .and_then(|s| s.segments().get(index))
                             .map(|s| match s {
@@ -825,11 +830,6 @@ impl SpecifiedRuleWriter {
                             Event::CompoundTail(value, phase, index + 1, grammar, suffix),
                         )?;
                         push(&mut work, event)?;
-                    } else if phase < 2 {
-                        push(
-                            &mut work,
-                            Event::CompoundTail(value, phase + 1, 0, grammar, suffix),
-                        )?;
                     }
                 }
 

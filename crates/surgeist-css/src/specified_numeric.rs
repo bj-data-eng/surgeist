@@ -396,7 +396,7 @@ fn checked_literal(
         }
     };
     let decimal = crate::exact_decimal::LexicalDecimal::new(number.representation());
-    if matches!(unit, LiteralUnit::Unitless) && decimal.len != 0 {
+    if matches!(unit, LiteralUnit::Unitless) && !decimal.is_zero() {
         return Err(CssNumericConstructionError::at(
             CssNumericConstructionErrorKind::RootDomainMismatch,
             Some(component),
@@ -461,13 +461,13 @@ pub(crate) fn ordinary_length_literal_equal(
     let unitless_zero = |value: &CssComponentValue| {
         matches!(value.view(),
             CssComponentValueRef::Token(CssValueTokenRef::Number(number))
-                if crate::exact_decimal::LexicalDecimal::new(number.representation()).len == 0)
+                if crate::exact_decimal::LexicalDecimal::new(number.representation()).is_zero())
     };
     let pixel_zero = |value: &CssComponentValue| {
         matches!(value.view(),
             CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
                 if unit.eq_ignore_ascii_case("px")
-                    && crate::exact_decimal::LexicalDecimal::new(number.representation()).len == 0)
+                    && crate::exact_decimal::LexicalDecimal::new(number.representation()).is_zero())
     };
     (unitless_zero(left) && pixel_zero(right)) || (unitless_zero(right) && pixel_zero(left))
 }
@@ -923,6 +923,40 @@ enum SpecifiedLengthValue<C> {
     Calculation(C),
 }
 
+impl<C> SpecifiedLengthValue<C> {
+    /// Compares two literals for shortest-form decisions, or returns `None`
+    /// when either side is math.
+    ///
+    /// Values 4 Appendix C makes `<quirky-length>` a type of `<length>`; the
+    /// retained Number denotes the px length with the same exact decimal, so it
+    /// equals that explicit px literal. Other units stay distinct.
+    fn inverse_literal_eq(&self, other: &Self) -> Option<bool> {
+        let quirky_px = |quirky: &CssComponentValue, explicit: &CssComponentValue| {
+            use crate::exact_decimal::LexicalDecimal;
+            match (quirky.view(), explicit.view()) {
+                (
+                    CssComponentValueRef::Token(CssValueTokenRef::Number(quirky)),
+                    CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }),
+                ) => {
+                    unit.eq_ignore_ascii_case("px")
+                        && LexicalDecimal::new(quirky.representation())
+                            .value_eq(&LexicalDecimal::new(number.representation()))
+                }
+                _ => false,
+            }
+        };
+        Some(match (self, other) {
+            (Self::Literal(left), Self::Literal(right))
+            | (Self::QuirkyNumber(left), Self::QuirkyNumber(right)) => {
+                ordinary_length_literal_equal(left, right)
+            }
+            (Self::QuirkyNumber(quirky), Self::Literal(explicit))
+            | (Self::Literal(explicit), Self::QuirkyNumber(quirky)) => quirky_px(quirky, explicit),
+            _ => return None,
+        })
+    }
+}
+
 fn capture_quirky_length(
     component: &CssComponentValue,
     context: &mut SpecifiedSerializationContext,
@@ -997,7 +1031,7 @@ impl CssSpecifiedLength {
         };
         let decimal = crate::exact_decimal::LexicalDecimal::new(number.representation());
         // Ordinary exact zero keeps its ordinary serialization and identity.
-        if decimal.len == 0 {
+        if decimal.is_zero() {
             return Self::try_from_component(component);
         }
         Ok(Self {
@@ -1059,6 +1093,11 @@ impl CssSpecifiedLength {
     pub fn zero() -> Self {
         Self::try_from_component(CssComponentValue::try_number("0").expect("zero token"))
             .expect("zero length")
+    }
+
+    /// Shortest-form literal equality, treating a quirky Number as its px length.
+    pub(crate) fn inverse_literal_eq(&self, other: &Self) -> Option<bool> {
+        self.value.inverse_literal_eq(&other.value)
     }
 
     /// Borrows the original ordinary token, when this is a literal.
@@ -1172,7 +1211,7 @@ impl CssSpecifiedNonNegativeLength {
         };
         let decimal = crate::exact_decimal::LexicalDecimal::new(number.representation());
         // Ordinary exact zero keeps its ordinary serialization and identity.
-        if decimal.len == 0 {
+        if decimal.is_zero() {
             return Self::try_from_component(component);
         }
         if decimal.negative {
@@ -1226,6 +1265,11 @@ impl CssSpecifiedNonNegativeLength {
     pub fn zero() -> Self {
         Self::try_from_component(CssComponentValue::try_number("0").expect("zero token"))
             .expect("zero length")
+    }
+
+    /// Shortest-form literal equality, treating a quirky Number as its px length.
+    pub(crate) fn inverse_literal_eq(&self, other: &Self) -> Option<bool> {
+        self.value.inverse_literal_eq(&other.value)
     }
 
     /// Borrows the original ordinary token, when this is a literal.
@@ -1347,7 +1391,7 @@ impl CssSpecifiedLengthPercentage {
         };
         let decimal = crate::exact_decimal::LexicalDecimal::new(number.representation());
         // Ordinary exact zero keeps its ordinary serialization and identity.
-        if decimal.len == 0 {
+        if decimal.is_zero() {
             return Self::try_from_component(component);
         }
         Ok(Self {
@@ -1397,6 +1441,11 @@ impl CssSpecifiedLengthPercentage {
     pub fn zero() -> Self {
         Self::try_from_component(CssComponentValue::try_number("0").expect("zero token"))
             .expect("zero length-percentage")
+    }
+
+    /// Shortest-form literal equality, treating a quirky Number as its px length.
+    pub(crate) fn inverse_literal_eq(&self, other: &Self) -> Option<bool> {
+        self.value.inverse_literal_eq(&other.value)
     }
 
     /// Borrows the ordinary token, when this is a literal.
@@ -1518,7 +1567,7 @@ impl CssSpecifiedNonNegativeLengthPercentage {
         };
         let decimal = crate::exact_decimal::LexicalDecimal::new(number.representation());
         // Ordinary exact zero keeps its ordinary serialization and identity.
-        if decimal.len == 0 {
+        if decimal.is_zero() {
             return Self::try_from_component(component);
         }
         if decimal.negative {
@@ -1574,6 +1623,11 @@ impl CssSpecifiedNonNegativeLengthPercentage {
     pub fn zero() -> Self {
         Self::try_from_component(CssComponentValue::try_number("0").expect("zero token"))
             .expect("zero length-percentage")
+    }
+
+    /// Shortest-form literal equality, treating a quirky Number as its px length.
+    pub(crate) fn inverse_literal_eq(&self, other: &Self) -> Option<bool> {
+        self.value.inverse_literal_eq(&other.value)
     }
 
     /// Borrows the original ordinary token, when this is a literal.

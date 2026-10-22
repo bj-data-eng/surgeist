@@ -1,3 +1,5 @@
+use crate::css::support::math_depth::MathDepthBoundary;
+use crate::css::support::value_assertions::assert_numeric_kind;
 use surgeist_css::*;
 
 #[test]
@@ -230,13 +232,23 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
         assert!(CssPercentageCalculation::try_literal(value).is_none());
         assert!(CssLengthCalculation::try_dimension(value, CssLengthUnit::Rem).is_none());
         assert!(CssLengthPercentageCalculation::try_percentage(value).is_none());
-        assert!(
-            CssAngleCalculation::try_literal(&value.to_string(), CssAngleUnit::Degrees).is_err()
+        assert_numeric_kind(
+            CssAngleCalculation::try_literal(&value.to_string(), CssAngleUnit::Degrees),
+            surgeist_css::CssNumericConstructionErrorKind::Component(
+                surgeist_css::CssComponentValueErrorKind::InvalidDimension,
+            ),
         );
-        assert!(CssTimeCalculation::try_literal(&value.to_string(), CssTimeUnit::Seconds).is_err());
-        assert!(
-            CssFrequencyCalculation::try_literal(&value.to_string(), CssFrequencyUnit::Hertz)
-                .is_err()
+        assert_numeric_kind(
+            CssTimeCalculation::try_literal(&value.to_string(), CssTimeUnit::Seconds),
+            surgeist_css::CssNumericConstructionErrorKind::Component(
+                surgeist_css::CssComponentValueErrorKind::InvalidDimension,
+            ),
+        );
+        assert_numeric_kind(
+            CssFrequencyCalculation::try_literal(&value.to_string(), CssFrequencyUnit::Hertz),
+            surgeist_css::CssNumericConstructionErrorKind::Component(
+                surgeist_css::CssComponentValueErrorKind::InvalidDimension,
+            ),
         );
     }
 
@@ -302,96 +314,40 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
 }
 
 #[test]
-fn existing_calc_consumer_preserves_exact_depth_boundary_and_later_sibling() {
-    for depth in [255_usize, 256] {
-        let source = format!(
-            "width: {}1px{}; color: red",
-            "calc(".repeat(depth),
-            ")".repeat(depth)
-        );
-        let report = parse_style_attribute(&source);
-        assert!(
-            report.is_clean(),
-            "depth {depth}: {:?}",
-            report.diagnostics()
-        );
-        assert_eq!(report.syntax().len(), 2);
+fn calc_consumer_preserves_exact_depth_boundary_and_later_sibling() {
+    MathDepthBoundary {
+        template: "width: {}1px{}; color: red",
+        accepted: &[255, 256],
+        rejected: &[257],
+        sibling_retained: true,
     }
-
-    let depth = 257_usize;
-    let source = format!(
-        "width: {}1px{}; color: red",
-        "calc(".repeat(depth),
-        ")".repeat(depth)
-    );
-    let first_over_limit = source
-        .match_indices("calc(")
-        .nth(256)
-        .expect("257th authored calculation")
-        .0;
-    let report = parse_style_attribute(&source);
-    assert_eq!(report.syntax().len(), 1);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("over-limit calculation must produce one diagnostic");
-    };
-    assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-    assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
-    assert_eq!(
-        diagnostic.error().position().byte_offset().value(),
-        first_over_limit
-    );
+    .assert();
 }
 
 #[test]
 fn opacity_percentage_calculation_preserves_exact_depth_boundary() {
-    for depth in [255_usize, 256] {
-        let source = format!(
-            "opacity: {}1%{}; color: red",
-            "calc(".repeat(depth),
-            ")".repeat(depth)
-        );
-        let report = parse_style_attribute(&source);
-        assert!(
-            report.is_clean(),
-            "depth {depth}: {:?}",
-            report.diagnostics()
-        );
-        assert_eq!(report.syntax().len(), 2, "depth {depth}");
-        let CssKnownPropertyValueRef::Opacity(opacity) = report.syntax()[0]
-            .known()
-            .unwrap()
-            .property_value()
-            .unwrap()
-        else {
-            panic!("expected opacity at depth {depth}");
-        };
-        assert!(matches!(
-            opacity.value(),
-            CssOpacityValue::PercentageCalculation(_)
-        ));
+    MathDepthBoundary {
+        template: "opacity: {}1%{}; color: red",
+        accepted: &[255, 256],
+        rejected: &[257],
+        sibling_retained: true,
     }
-
-    let depth = 257_usize;
-    let source = format!(
-        "opacity: {}1%{}; color: red",
-        "calc(".repeat(depth),
-        ")".repeat(depth)
-    );
-    let first_over_limit = source
-        .match_indices("calc(")
-        .nth(256)
-        .expect("257th authored calculation")
-        .0;
-    let report = parse_style_attribute(&source);
-    assert_eq!(report.syntax().len(), 1);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("over-limit opacity calculation must produce one diagnostic");
-    };
-    assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-    assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
-    assert_eq!(
-        diagnostic.error().position().byte_offset().value(),
-        first_over_limit
+    .assert_with(
+        |depth, _, report| {
+            let CssKnownPropertyValueRef::Opacity(opacity) = report.syntax()[0]
+                .known()
+                .unwrap()
+                .property_value()
+                .unwrap()
+            else {
+                panic!("expected opacity at depth {depth}");
+            };
+            assert!(matches!(
+                opacity.value(),
+                CssOpacityValue::PercentageCalculation(_)
+            ));
+        },
+        |_, _, _| {},
     );
 }
 
@@ -715,7 +671,7 @@ fn scalar_property_accessors_preserve_exact_literal_domains() {
 }
 
 #[test]
-fn ratio_literal_zero_and_symbolic_negative_math_keep_their_existing_domains() {
+fn ratio_literal_zero_and_symbolic_negative_math_keep_their_domains() {
     let literal_report = parse_style_attribute("aspect-ratio: 0; color: red");
     assert_eq!(literal_report.syntax().len(), 2);
     assert!(literal_report.is_clean());

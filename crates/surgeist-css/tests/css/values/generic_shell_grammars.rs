@@ -15,7 +15,7 @@ fn assert_span(source: &str, diagnostic: &surgeist_css::CssRecoveryDiagnostic, a
 }
 
 #[test]
-fn c14_generic_authored_shells_retain_structure() {
+fn generic_rule_and_declaration_shells_retain_nested_structure_and_positions() {
     let source = concat!(
         "@media screen { .inside { color: red; } } ",
         ".😀 { --tone: blue; width: 2px !important; }",

@@ -691,16 +691,11 @@ fn append_four<T>(
             role(right),
         )
     };
-    let (first, second, third, fourth) = (role(0), role(1), role(2), role(3));
-    let selected: Vec<&CapturedNumericComponent> = if equal(0, 1) && equal(0, 2) && equal(0, 3) {
-        vec![first]
-    } else if equal(0, 2) && equal(1, 3) {
-        vec![first, second]
-    } else if equal(1, 3) {
-        vec![first, second, third]
-    } else {
-        vec![first, second, third, fourth]
-    };
+    let count = crate::common_serialization::shortest_four_side_count(|left, right| {
+        Ok::<_, std::convert::Infallible>(equal(left, right))
+    })
+    .unwrap_or_else(|never| match never {});
+    let selected: Vec<&CapturedNumericComponent> = (0..count).map(role).collect();
     if values.kind == CssScrollSideKind::Logical {
         writer.source_member(0, |writer| writer.append("logical "))?;
     }

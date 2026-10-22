@@ -162,12 +162,9 @@ impl CssFontFaceSourceList {
 
     pub(crate) fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         charge(writer, 1)?;
-        for (index, source) in self.sources().iter().enumerate() {
-            if index != 0 {
-                writer.append(", ")?;
-            }
-            source.append_specified(writer)?;
-        }
+        writer.comma_separated(self.sources(), |writer, source| {
+            source.append_specified(writer)
+        })?;
         Ok(())
     }
 }

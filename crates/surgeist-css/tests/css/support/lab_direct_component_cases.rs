@@ -1,7 +1,65 @@
 //! The Color 4 CRD 2026-09-08 §§9.3/9.4 parsed-value lightness and chroma
 //! bounds for direct Lab-family literals. Each row is an authored color and
 //! its independently derived specified text; consumers run the table
-//! standalone and as the first `color-mix()` operand.
+//! standalone and as the first `color-mix()` operand, through the same
+//! [`assert_specified_text`] runner.
+
+use super::{checked_color, checked_color_declaration, component_values, declaration_color};
+use surgeist_css::*;
+
+/// `source` serializes as `expected` through both the checked and the
+/// parsed `color` entry, without mutating either declaration, and the
+/// expected text re-enters as itself.
+pub fn assert_specified_text(source: &str, expected: &str) {
+    let checked = checked_color_declaration(source);
+    let source_attribute = format!("color:{source}!important;opacity:.5");
+    let report = parse_style_attribute(&source_attribute);
+    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
+    assert_eq!(report.syntax().len(), 2);
+    let parsed = &report.syntax()[0];
+    assert_eq!(
+        report.syntax()[1].known().unwrap().property(),
+        CssKnownProperty::Opacity
+    );
+    assert_eq!(checked.importance(), CssImportance::Important);
+    assert_eq!(parsed.importance(), CssImportance::Important);
+    assert_eq!(checked.value_components(), &component_values(source));
+    assert_eq!(
+        parsed.value_components().serialize().unwrap().as_css(),
+        source
+    );
+    let CssValueOrigin::Parsed(origin) = parsed.value_components().items()[0].origin() else {
+        panic!("real parsed source origin")
+    };
+    assert_eq!(origin.source().as_str(), source_attribute);
+    assert_eq!(origin.span().start().byte_offset().value(), 6);
+    // A function component's public origin is its opening token, including
+    // the authored name and '('; its child and closing tokens own their spans.
+    assert_eq!(
+        origin.span().end().byte_offset().value(),
+        6 + source.find('(').unwrap() + 1
+    );
+    let checked_before = checked.clone();
+    let parsed_before = parsed.clone();
+    // Execute both actual entry routes before asserting either output, so RED
+    // in one route does not prevent the other route's writer from executing.
+    let checked_result = declaration_color(&checked).to_specified_css();
+    let parsed_result = declaration_color(parsed).to_specified_css();
+    assert_eq!(
+        checked_result,
+        declaration_color(&checked).to_specified_css()
+    );
+    assert_eq!(parsed_result, declaration_color(parsed).to_specified_css());
+    assert_eq!(checked, checked_before);
+    assert_eq!(parsed, &parsed_before);
+    assert_eq!(checked_result.unwrap(), expected, "{source}: checked entry");
+    assert_eq!(parsed_result.unwrap(), expected, "{source}: parsed entry");
+    // Reentry complements the explicit independent literal oracle.
+    assert_eq!(
+        checked_color(expected).to_specified_css().unwrap(),
+        expected
+    );
+}
 
 macro_rules! lab_direct_component_cases {
     ($case:ident) => {

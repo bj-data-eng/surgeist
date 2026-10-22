@@ -2,12 +2,12 @@
 //! https://www.w3.org/TR/2024/WD-css-values-5-20241111/#request-url-modifiers
 //! The constructor and inspection API retain authored request syntax, without
 //! applying Fetch operations or cryptographic interpretation.
+use crate::css::support::value_assertions::background_image_url as parsed;
 use surgeist_css::{
     CssComponentValue, CssComponentValueErrorKind, CssComponentValueRef, CssComponentValues,
-    CssIdent, CssImageValue, CssKnownPropertyValueRef, CssRequestUrlModifierRef as Request, CssUrl,
-    CssUrlCrossOrigin as CrossOrigin, CssUrlFunction, CssUrlModifier, CssUrlModifierFunction,
-    CssUrlReferrerPolicy as Policy, CssValueOrigin, CssValueTokenRef, parse_component_values,
-    parse_style_attribute,
+    CssIdent, CssRequestUrlModifierRef as Request, CssUrl, CssUrlCrossOrigin as CrossOrigin,
+    CssUrlFunction, CssUrlModifier, CssUrlModifierFunction, CssUrlReferrerPolicy as Policy,
+    CssValueOrigin, CssValueTokenRef, parse_component_values,
 };
 
 fn function(name: &str, text: &str) -> CssUrlModifierFunction {
@@ -16,23 +16,6 @@ fn function(name: &str, text: &str) -> CssUrlModifierFunction {
         parse_component_values(text).unwrap(),
     )
     .unwrap()
-}
-
-fn parsed(text: &str) -> CssUrl {
-    let report = parse_style_attribute(&format!("background-image:{text}"));
-    assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let CssKnownPropertyValueRef::BackgroundImage(images) = report.syntax()[0]
-        .known()
-        .unwrap()
-        .property_value()
-        .unwrap()
-    else {
-        panic!("background image")
-    };
-    let [CssImageValue::Url(url)] = images.images().images() else {
-        panic!("URL")
-    };
-    url.clone()
 }
 
 #[test]
@@ -245,11 +228,13 @@ fn request_metadata_qualifies_authored_grammar_and_downstream_execution() {
         function("referrerpolicy", "origin").request_modifier(),
         Some(Request::ReferrerPolicy(Policy::Origin))
     );
-    assert!(
+    assert_eq!(
         CssUrlModifierFunction::try_new(
             CssIdent::try_new("referrerpolicy").unwrap(),
             parse_component_values("default").unwrap()
         )
-        .is_err()
+        .unwrap_err()
+        .kind(),
+        CssComponentValueErrorKind::InvalidFunction
     );
 }

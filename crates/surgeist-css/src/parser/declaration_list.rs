@@ -1,4 +1,5 @@
-//! Raw ordinary-property declaration lists, with CSS Syntax 3 (2021-12-24) §5.4.5 synchronization.
+//! Raw ordinary-property declaration lists, with CSS Syntax 3 (2021-12-24) §5.4.5 synchronization,
+//! and the bad-declaration remnants shared with the style-attribute front.
 use super::*;
 
 /// Parses raw declaration-list text with recovery and ordinary property grammar.
@@ -14,7 +15,7 @@ use super::*;
 /// rejected once by this ordinary-property consumer. Every other initial token,
 /// including a stray closing delimiter, starts one invalid unit consumed through
 /// the next root semicolon or EOF. Nested semicolons do not synchronize recovery.
-/// Unlike [`super::parse_style_attribute`], a stray closer therefore discards the
+/// As in [`super::parse_style_attribute`], a stray closer therefore discards the
 /// declarations following it in that same unit. Qualified rules and descriptors
 /// are not admitted. Diagnostic spans exclude the recovery semicolon.
 ///
@@ -89,6 +90,12 @@ pub(crate) fn parse_declaration_list_text_with_context(
                     .expect("selected candidate")
                     .clone();
                 input.reset(&start);
+                if !at_rule && !matches!(token, Token::Ident(_)) {
+                    diagnostics.extend(drop_bad_declaration(
+                        source, &mut input, &recovery, start_byte, end_byte,
+                    ));
+                    continue;
+                }
                 let components = recovery.check_declaration_list_unit(source, &input, at_rule);
                 let result = if at_rule {
                     advance_to(&mut input, end_byte);
@@ -97,9 +104,6 @@ pub(crate) fn parse_declaration_list_text_with_context(
                 } else {
                     input.parse_until_before(Delimiter::Semicolon, |unit| {
                         let openings = components?;
-                        if !matches!(token, Token::Ident(_)) {
-                            return Err(location.new_unexpected_token_error::<Error>(token));
-                        }
                         let name = unit.expect_ident_cloned()?;
                         unit.expect_colon()?;
                         if !generic_valid {
@@ -140,6 +144,84 @@ pub(crate) fn parse_declaration_list_text_with_context(
             diagnostics.extend(recovery.take_implicit_closure_diagnostics(source));
             crate::CssParseReport::new(CssDeclarationList::new(declarations), diagnostics)
         }),
+    )
+}
+
+/// Skips the empty slots before a declaration-list unit: whitespace,
+/// comments and `;`. Returns the unit's start.
+pub(super) fn skip_empty_declaration_slots(input: &mut Parser<'_, '_>) -> usize {
+    loop {
+        let state = input.state();
+        match input.next_including_whitespace_and_comments() {
+            Ok(Token::WhiteSpace(_) | Token::Comment(_) | Token::Semicolon) => {}
+            Ok(_) | Err(_) => {
+                input.reset(&state);
+                return input.position().byte_index();
+            }
+        }
+    }
+}
+
+/// Whether the next unit starts with neither an identifier nor an at-keyword,
+/// so it cannot begin a declaration or a rule.
+pub(super) fn starts_bad_declaration(input: &mut Parser<'_, '_>) -> bool {
+    let state = input.state();
+    let bad = input
+        .next_including_whitespace_and_comments()
+        .is_ok_and(|token| !matches!(token, Token::Ident(_) | Token::AtKeyword(_)));
+    input.reset(&state);
+    bad
+}
+
+/// The end of the remnants of a bad declaration that starts at `start` in
+/// the unwrapped root list.
+pub(super) fn bad_declaration_end(
+    document: &crate::syntax_consumption::SyntaxDocument<'_>,
+    start: usize,
+) -> usize {
+    let mut cursor = document
+        .root_cursor_at_source(start)
+        .expect("a declaration-list unit starts at a root token");
+    crate::syntax_consumption::consume_declaration_candidate(&mut cursor);
+    cursor
+        .boundary()
+        .source
+        .expect("original source boundary")
+        .offset
+}
+
+/// Syntax 3 (2026 CRD) §5.5.6: a declaration whose first token is not an
+/// `<ident-token>` consumes the remnants of a bad declaration (not nested:
+/// a `}` is discarded, and whole blocks and functions are consumed) through
+/// the next root `;` or EOF. The dropped unit excludes that `;`.
+/// <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-the-remnants-of-a-bad-declaration>
+pub(super) fn drop_bad_declaration<'i>(
+    source: &'i str,
+    input: &mut Parser<'i, '_>,
+    recovery: &RecoveryState,
+    start: usize,
+    end: usize,
+) -> Option<crate::CssRecoveryDiagnostic> {
+    advance_to(input, start);
+    let state = input.state();
+    let location = input.current_source_location();
+    let token = input
+        .next_including_whitespace_and_comments()
+        .expect("a bad declaration starts with its first token")
+        .clone();
+    input.reset(&state);
+    // A structural resource failure inside the remnants owns the diagnostic.
+    let error = match recovery.check_declaration_list_unit(source, input, false) {
+        Ok(_) => location.new_unexpected_token_error::<Error>(token),
+        Err(resource) => resource,
+    };
+    advance_to(input, end);
+    block_item_diagnostic_from_start(
+        source,
+        error,
+        start,
+        end,
+        crate::CssRecoveryAction::DropDeclaration,
     )
 }
 

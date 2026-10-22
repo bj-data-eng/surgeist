@@ -1,7 +1,7 @@
 use surgeist_css::*;
 
 #[test]
-fn c13_images_and_gradients_retain_typed_structure() {
+fn images_and_gradients_retain_typed_structure() {
     let report = parse_style_attribute(concat!(
         "background-image: url(hero.png), none, ",
         "linear-gradient(to right top, red 0%, 25%, blue), ",
@@ -68,7 +68,7 @@ fn c13_images_and_gradients_retain_typed_structure() {
 }
 
 #[test]
-fn c13_radial_extent_rules_accept_only_shape_compatible_sizes() {
+fn radial_extent_rules_accept_only_shape_compatible_sizes() {
     for valid in [
         "radial-gradient(circle 20px, red, blue)",
         "radial-gradient(20px circle, red, blue)",
@@ -105,7 +105,7 @@ fn c13_radial_extent_rules_accept_only_shape_compatible_sizes() {
 }
 
 #[test]
-fn c13_color_stop_hints_require_interleaved_stop_order() {
+fn color_stop_hints_require_interleaved_stop_order() {
     for invalid in [
         "linear-gradient(red,)",
         "linear-gradient(20%, red, blue)",
@@ -127,7 +127,7 @@ fn c13_color_stop_hints_require_interleaved_stop_order() {
 }
 
 #[test]
-fn c13_images_keep_globals_substitutions_and_exact_invalid_recovery_distinct() {
+fn images_keep_globals_substitutions_and_exact_invalid_recovery_distinct() {
     let report = parse_style_attribute(concat!(
         "background-image: inherit; ",
         "background-image: var(--hero, linear-gradient(red, blue)); ",

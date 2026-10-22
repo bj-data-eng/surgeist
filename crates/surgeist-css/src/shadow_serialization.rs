@@ -70,12 +70,9 @@ impl CssBoxShadowList {
 
     fn append_specified(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         charge_aggregate(writer)?;
-        for (index, shadow) in self.shadows().iter().enumerate() {
-            if index != 0 {
-                writer.append(", ")?;
-            }
-            shadow.append_specified(writer)?;
-        }
+        writer.comma_separated(self.shadows(), |writer, shadow| {
+            shadow.append_specified(writer)
+        })?;
         Ok(())
     }
 }

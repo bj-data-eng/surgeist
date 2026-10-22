@@ -8,6 +8,7 @@
 //! Values 4 SHA256: 7b6b68c34d00d7f6945e66e4e2efa913266299f597d5825393cae85dac1cc78c
 //! Surgeist's exact authored-numeric contract requires range checks before float narrowing.
 
+use crate::css::support::property_admission::assert_checked_matches_diagnostic;
 use surgeist_css::{
     CssErrorCode, CssImportance, CssKnownProperty as Property, CssPropertyNameRef,
     CssRecoveryAction, parse_component_values, parse_property_value, parse_style_attribute,
@@ -157,14 +158,10 @@ fn assert_rejected(property: Property, authored: &str) {
         CssErrorCode::InvalidPropertyValue
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert!(validate_style_attribute(&source).is_err(), "{source}");
-    assert!(
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
-            parse_component_values(authored).expect("balanced Grid value"),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "checked Grid construction rejects {source}"
+    assert_eq!(
+        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        report.diagnostics(),
+        "{source}"
     );
+    assert_checked_matches_diagnostic(property, authored, diagnostic);
 }

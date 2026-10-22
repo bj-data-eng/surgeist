@@ -8,5 +8,7 @@ mod recovery;
 mod source;
 mod tokenization;
 
+mod declaration_identity_authoring;
 mod diagnostic_foundation;
 mod structured_errors;
+mod typed_diagnostic_matrices;

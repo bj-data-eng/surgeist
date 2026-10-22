@@ -97,12 +97,9 @@ impl CssInsetShape {
         charge_node(writer)?;
         writer.append("inset(")?;
         charge_node(writer)?; // Authored offsets list, independently of arity.
-        for (index, offset) in self.offsets().values().iter().enumerate() {
-            if index != 0 {
-                writer.append(" ")?;
-            }
-            offset.append_specified(&mut writer.context, &mut writer.css)?;
-        }
+        writer.space_separated(self.offsets().values(), |writer, offset| {
+            offset.append_specified(&mut writer.context, &mut writer.css)
+        })?;
         if let Some(round) = self.round() {
             writer.append(" round ")?;
             round.append_specified(writer)?;

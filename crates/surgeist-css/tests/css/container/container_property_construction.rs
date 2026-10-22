@@ -1,19 +1,9 @@
 //! Independent ordinary values and construction contracts for Conditional5 §5.1–5.3.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/
+use crate::css::support::authored_syntax::container_names as names;
 use crate::css::support::important_checked_components as declaration;
 use surgeist_css::*;
 
-fn names(values: &[&str]) -> CssContainerNames {
-    CssContainerNames::Names(
-        CssContainerNameList::try_new(
-            values
-                .iter()
-                .map(|name| CssContainerName::try_from_decoded(*name).unwrap())
-                .collect(),
-        )
-        .unwrap(),
-    )
-}
 fn assert_programmatic(components: &CssComponentValues) {
     assert!(
         components
@@ -75,7 +65,7 @@ fn six_type_states_have_exact_canonical_tokens_and_checked_declaration_values() 
 }
 
 #[test]
-fn decoded_names_preserve_old_spelling_contract_and_reject_reserved_values() {
+fn decoded_names_keep_their_spelling_and_reject_reserved_values() {
     for decoded in ["1pane", "a b", "a,b", "-", "café"] {
         let name = CssContainerName::try_from_decoded(decoded).unwrap();
         assert_eq!(name.as_str(), decoded);

@@ -4,6 +4,7 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types
 //! https://www.w3.org/TR/2023/CRD-css-easing-1-20230213/#cubic-bezier-easing-functions
 
+use crate::css::support::value_assertions::first_token as parsed_token;
 use surgeist_css::*;
 
 fn number(text: &str) -> CssSpecifiedNumber {
@@ -27,21 +28,6 @@ fn percentage_math(text: &str) -> CssSpecifiedPercentage {
             .unwrap(),
     )
     .unwrap()
-}
-
-fn parsed_token(text: &str) -> CssComponentValue {
-    parse_component_values(text)
-        .unwrap()
-        .items()
-        .iter()
-        .find(|component| {
-            !matches!(
-                component.view(),
-                CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
-            )
-        })
-        .unwrap()
-        .clone()
 }
 
 fn number_spelling(value: &CssSpecifiedNumber) -> &str {
@@ -101,11 +87,10 @@ fn signed_percentage_checks_its_root_and_preserves_rejected_origin() {
         );
     }
     for text in ["-1e-999%", "-1e999%"] {
-        assert!(
-            CssSpecifiedNonNegativePercentage::try_from_component(
-                CssComponentValue::try_token(text).unwrap()
-            )
-            .is_err()
+        crate::css::support::value_assertions::assert_component_rejected(
+            CssSpecifiedNonNegativePercentage::try_from_component,
+            CssComponentValue::try_token(text).unwrap(),
+            surgeist_css::CssNumericConstructionErrorKind::OutOfRange,
         );
     }
 }
@@ -587,7 +572,7 @@ fn signed_scalar_projection_has_exact_independent_budgets_and_atomic_errors() {
 }
 
 #[test]
-fn shared_signed_number_projection_keeps_cumulative_existing_variation_budgets() {
+fn shared_signed_number_projection_keeps_cumulative_variation_budgets() {
     let value = CssFontVariationSettings::Variations(
         CssFontVariationList::try_new(vec![
             CssFontVariation::new(CssOpenTypeTag::try_new("wght").unwrap(), number("-1")),

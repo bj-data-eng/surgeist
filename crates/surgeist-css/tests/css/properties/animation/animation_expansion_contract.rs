@@ -9,6 +9,7 @@
 //! time/count origins. Original/replacement provenance is asserted separately.
 
 use crate::css::support::checked_property_grammar_declaration as checked;
+use crate::css::support::sole_declaration as parsed;
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -33,22 +34,7 @@ const ORDINARY: [&str; 8] = [
     "paused, running",
     "fade, slide",
 ];
-const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
-    ("initial", CssGlobalKeyword::Initial),
-    ("inherit", CssGlobalKeyword::Inherit),
-    ("unset", CssGlobalKeyword::Unset),
-    ("revert", CssGlobalKeyword::Revert),
-    ("revert-layer", CssGlobalKeyword::RevertLayer),
-];
 
-fn parsed(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one retained declaration")
-    };
-    source.clone()
-}
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
         expand_declaration(source).expect("available intrinsic contributions")
@@ -298,34 +284,6 @@ fn sparse_items_fill_individual_slots_and_preserve_keyword_priority() {
         assert_payloads(&values, expected);
         for item in values.items() {
             assert_ordinary(item, &source);
-        }
-    }
-}
-
-#[test]
-fn all_five_css_wide_values_propagate_to_every_longhand() {
-    for property in MEMBERS {
-        for (css, keyword) in GLOBALS {
-            let source = checked(property, css);
-            let values = completed(&source);
-            assert_eq!(names(&values), [property]);
-            let item = &values.items()[0];
-            assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-            assert!(item.ordinary_value().is_none());
-            assert_source(item, &source);
-        }
-    }
-}
-#[test]
-fn all_five_css_wide_shorthands_set_eight_ordered_globals() {
-    for (css, keyword) in GLOBALS {
-        let source = parsed(&format!("animation:{css}!important"));
-        let values = completed(&source);
-        assert_eq!(names(&values), MEMBERS);
-        for item in values.items() {
-            assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-            assert!(item.ordinary_value().is_none());
-            assert_source(item, &source);
         }
     }
 }

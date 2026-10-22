@@ -2,7 +2,10 @@
 //! `border-spacing` (selected 2011-06-07 Recommendation).
 //! https://www.w3.org/TR/2011/REC-CSS2-20110607/tables.html#propdef-border-spacing
 
-use crate::css::support::style_declaration_reporting_source as declaration;
+use crate::css::support::property_admission::{
+    assert_component_rejected, assert_style_attribute_rejected,
+};
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
 
 fn contribution(source: &CssDeclaration) -> CssLonghandContribution {
@@ -66,16 +69,23 @@ fn checked_single_length_rejects_bare_negative_percent_and_keyword_values() {
         let value = nonnegative_length(css);
         assert_eq!(value.serialize_specified().unwrap(), css);
     }
-    for css in ["-1px", "-2em", "1%", "auto"] {
-        assert!(
-            CssSpecifiedNonNegativeLength::try_from_component(
-                CssComponentValue::try_token(css).unwrap()
-            )
-            .is_err(),
-            "{css}"
+    for (css, kind) in [
+        ("-1px", CssNumericConstructionErrorKind::OutOfRange),
+        ("-2em", CssNumericConstructionErrorKind::OutOfRange),
+        ("1%", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("auto", CssNumericConstructionErrorKind::RootDomainMismatch),
+    ] {
+        assert_component_rejected(
+            CssSpecifiedNonNegativeLength::try_from_component,
+            CssComponentValue::try_token(css).unwrap(),
+            kind,
         );
-        assert!(!parse_style_attribute(&format!("border-spacing:{css} 0")).is_clean());
-        assert!(!parse_style_attribute(&format!("border-spacing:0 {css}")).is_clean());
+        for pair in [
+            format!("border-spacing:{css} 0"),
+            format!("border-spacing:0 {css}"),
+        ] {
+            assert_style_attribute_rejected(&pair, CssKnownProperty::BorderSpacing, Some(css));
+        }
     }
 }
 

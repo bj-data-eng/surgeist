@@ -4,8 +4,8 @@
 //! equivalence does not erase these authored distinctions. These tests use no
 //! newly added integer type, constructor or accessor.
 
-use crate::css::support::counted_style_declaration as declaration;
 use crate::css::support::descriptor_phases;
+use crate::css::support::sole_declaration as declaration;
 use descriptor_phases::*;
 
 use std::fmt::Debug;

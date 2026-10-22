@@ -1,42 +1,17 @@
 //! Checked supports retains authored tokens and their original provenance while
 //! applying supports grammar independently of property support or evaluation.
+use crate::css::support::authored_syntax::{
+    assert_same_parsed_origin as same_parsed_origin, checked_supports_condition as condition,
+    checked_supports_declaration, component_list as values, component_token as token,
+};
 use surgeist_css::{
     CssBlockKind, CssCalculationExpressionRef, CssComponentValue, CssComponentValueErrorKind,
-    CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssGlobalKeyword,
-    CssImportance, CssKnownPropertyValueRef, CssNamespaceConstraint, CssNamespaceContext,
-    CssOpacityValue, CssRule, CssSelector, CssSerializedOrigin, CssSupportsCondition,
-    CssSupportsConditionKind, CssSupportsConstructionError, CssSupportsDeclaration, CssValueOrigin,
-    CssValueTokenRef, parse_component_values, parse_sheet,
+    CssComponentValueLimits, CssComponentValueRef, CssGlobalKeyword, CssImportance,
+    CssKnownPropertyValueRef, CssNamespaceConstraint, CssNamespaceContext, CssOpacityValue,
+    CssRule, CssSelector, CssSerializedOrigin, CssSupportsCondition, CssSupportsConditionKind,
+    CssSupportsConstructionError, CssSupportsDeclaration, CssValueOrigin, CssValueTokenRef,
+    parse_component_values, parse_sheet,
 };
-
-fn values(items: Vec<CssComponentValue>) -> CssComponentValues {
-    CssComponentValues::try_new(items).unwrap()
-}
-
-fn token(source: &str) -> CssComponentValue {
-    CssComponentValue::try_token(source).unwrap()
-}
-
-fn condition(source: &str) -> CssSupportsCondition {
-    CssSupportsCondition::try_from_components(
-        parse_component_values(source).unwrap(),
-        &CssNamespaceContext::default(),
-    )
-    .unwrap()
-}
-
-fn declaration(source: &str) -> CssSupportsDeclaration {
-    CssSupportsDeclaration::try_from_components(parse_component_values(source).unwrap()).unwrap()
-}
-
-fn same_parsed_origin(actual: &CssValueOrigin, expected: &CssValueOrigin) {
-    let (CssValueOrigin::Parsed(actual), CssValueOrigin::Parsed(expected)) = (actual, expected)
-    else {
-        panic!("original parsed token origins")
-    };
-    assert!(actual.source().same_snapshot(expected.source()));
-    assert_eq!(actual.span(), expected.span());
-}
 
 #[test]
 fn programmatic_width_keeps_exact_spelling_and_has_no_source_coordinates() {
@@ -133,7 +108,7 @@ fn mixed_source_declaration_preserves_each_original_snapshot_inside_a_new_wrappe
 #[test]
 fn construction_from_parsed_components_does_not_claim_an_authored_declaration_slice() {
     let source = "WIDth/**/: +001.5PX";
-    let constructed = declaration(source);
+    let constructed = checked_supports_declaration(source);
     assert_eq!(constructed.authored(), None);
     assert_eq!(constructed.serialize().unwrap().as_css(), source);
     let sheet = parse_sheet(&format!("/*😀*/\n@supports ({source}) {{}}"));
@@ -207,7 +182,7 @@ fn identical_numeric_spellings_from_distinct_snapshots_keep_distinct_leaf_identi
 #[test]
 fn supports_declaration_validity_is_independent_of_known_property_value_support() {
     for source in ["width:", "future:yes", "width:red", "--x:"] {
-        let declaration = declaration(source);
+        let declaration = checked_supports_declaration(source);
         assert!(declaration.known().is_none(), "{source}");
         assert_eq!(declaration.serialize().unwrap().as_css(), source);
         assert!(matches!(
@@ -216,11 +191,14 @@ fn supports_declaration_validity_is_independent_of_known_property_value_support(
         ));
     }
     assert_eq!(
-        declaration("width:inherit").known().unwrap().global(),
+        checked_supports_declaration("width:inherit")
+            .known()
+            .unwrap()
+            .global(),
         Some(CssGlobalKeyword::Inherit)
     );
     assert!(
-        declaration("width:var(--size)")
+        checked_supports_declaration("width:var(--size)")
             .known()
             .unwrap()
             .substitution_dependent()
@@ -231,7 +209,7 @@ fn supports_declaration_validity_is_independent_of_known_property_value_support(
 #[test]
 fn terminal_importance_is_excluded_from_the_value_but_preserved_in_serialization() {
     let source = "width:1px !/**/ImPoRtAnT/**/";
-    let declaration = declaration(source);
+    let declaration = checked_supports_declaration(source);
     assert_eq!(declaration.importance(), CssImportance::Important);
     assert_eq!(declaration.serialize().unwrap().as_css(), source);
     let output = values(declaration.value_components().to_vec())
@@ -627,7 +605,7 @@ fn authored_legacy_property_alias_keeps_its_own_grammar_in_parsed_and_constructe
     let grammar = CssPropertyGrammar::from_name("glyph-orientation-vertical").unwrap();
     for value in ["0deg", "inherit", "var(--orientation)"] {
         let source = format!("glyph-orientation-vertical:{value}");
-        let constructed = declaration(&source);
+        let constructed = checked_supports_declaration(&source);
         let report = parse_sheet(&format!("@supports ({source}) {{}}"));
         assert!(report.is_clean(), "{report:?}");
         let CssRule::Supports(rule) = &report.syntax().rules()[0] else {

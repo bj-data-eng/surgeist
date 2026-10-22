@@ -5,20 +5,12 @@
 //! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/>
 
 use crate::css::support::admitted_selector as parsed;
-use surgeist_css::{
-    CssNamespaceContext, CssNthPattern, CssPseudoClass, CssPseudoSelectorListItem,
-    CssRecoveryAction, CssSelector, parse_selector,
+use crate::css::support::color_and_selector_fixtures::{
+    assert_selector_input_rejected, nth_coefficients as coefficients,
 };
-
-fn coefficients(pattern: CssNthPattern) -> (i32, i32) {
-    match pattern {
-        CssNthPattern::Odd => (2, 1),
-        CssNthPattern::Even => (2, 0),
-        CssNthPattern::Integer(b) => (0, b),
-        CssNthPattern::AnPlusB(value) => (value.a(), value.b()),
-        _ => panic!("unexpected nth pattern: {pattern:?}"),
-    }
-}
+use surgeist_css::{
+    CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem, CssSelector, parse_selector,
+};
 
 fn nth_pair(selector: &CssSelector) -> (i32, i32) {
     match selector {
@@ -158,21 +150,15 @@ fn trivia_and_escaped_units_do_not_admit_signed_or_number_flag_offsets_after_a_m
         r"2\6e -/**/0002%",
     ] {
         let source = format!(":nth-child({argument})");
-        let report = parse_selector(&source, &CssNamespaceContext::default());
-        assert!(report.syntax().is_none(), "{source}: {report:?}");
-        assert!(!report.is_clean(), "{source}: {report:?}");
-        assert!(
-            report
-                .diagnostics()
-                .iter()
-                .any(|diagnostic| { diagnostic.action() == CssRecoveryAction::RejectInput }),
-            "{source}: {report:?}"
+        assert_selector_input_rejected(
+            &source,
+            parse_selector(&source, &CssNamespaceContext::default()),
         );
     }
 }
 
 #[test]
-fn out_of_model_offsets_preserve_the_existing_delegated_bounded_result() {
+fn out_of_model_offsets_preserve_the_delegated_bounded_result() {
     // Source-backed characterization of unchanged provider behavior only.
     // These final mathematical offsets do not fit i32; this does not assert
     // unbounded CSS arithmetic or prescribe a new rejection/clamping policy.

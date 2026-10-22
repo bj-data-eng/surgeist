@@ -6,21 +6,9 @@
 //! around 10^16: adding one to either signed 10^16 rounds back to that value,
 //! while cancellation before adding one leaves exactly one.
 
+use crate::css::support::value_assertions::calculated_length as length;
+use crate::css::support::value_assertions::calculated_number as number;
 use surgeist_css::*;
-
-fn number(source: &str) -> CssSpecifiedNumber {
-    CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(parse_component_values(source).unwrap()).unwrap(),
-    )
-    .unwrap()
-}
-
-fn length(source: &str) -> CssSpecifiedLength {
-    CssSpecifiedLength::try_from_calculation(
-        CssLengthCalculation::try_from_components(parse_component_values(source).unwrap()).unwrap(),
-    )
-    .unwrap()
-}
 
 #[test]
 fn numeric_cancellation_uses_source_order_for_all_three_term_permutations() {

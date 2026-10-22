@@ -1,5 +1,8 @@
 //! Literal selected Selectors 4 grammar expectations for the new Column model,
 //! its existing authored providers and cumulative specified-output boundary.
+use crate::css::support::color_and_selector_fixtures::{
+    assert_selector_input_rejected, assert_strict_validation_rejects,
+};
 use crate::css::support::validated_selector_in as parsed;
 use surgeist_css::*;
 
@@ -68,9 +71,7 @@ fn column_tokens_preserve_relation_and_namespace_boundaries() {
         &CssQualifiedNamePrefix::ExplicitNone
     );
     for source in ["col||", "col|||", "||td", "svg| Col", "[svg |Data]"] {
-        let report = parse_selector(source, &namespaces);
-        assert!(report.syntax().is_none(), "{source:?}: {report:?}");
-        assert!(report.into_validation_result().is_err());
+        assert_selector_input_rejected(source, parse_selector(source, &namespaces));
     }
 }
 
@@ -116,7 +117,7 @@ fn constructed_column_relatives_emit_and_reparse_with_shadow_outer_compounds() {
 }
 
 #[test]
-fn constructed_column_relatives_share_existing_node_and_utf8_limits() {
+fn constructed_column_relatives_share_the_node_and_utf8_limits() {
     let value = column_has(CssSelector::Class("日本".into()));
     let before = value.clone();
     let expected = ":has(|| .日本)";
@@ -319,7 +320,7 @@ fn class_dot_adjacency_is_shared_by_nested_scope_logical_has_and_supports_hosts(
     ] {
         let report = parse_sheet(source);
         assert!(!report.is_clean(), "{source:?}");
-        assert!(report.into_validation_result().is_err());
+        assert_strict_validation_rejects(report);
     }
     // Balanced unsupported selector syntax is the existing general-enclosed
     // supports alternative; it must not become a typed selector test.

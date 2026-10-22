@@ -37,9 +37,9 @@ impl CssCursor {
         match self {
             Self::Keyword(value) => keyword(*value, writer),
             Self::Images(value) => {
-                charge(writer)?;
+                writer.node()?;
                 for image in value.images() {
-                    charge(writer)?;
+                    writer.node()?;
                     source(image.source(), writer)?;
                     if let Some([x, y]) = image.hotspot() {
                         writer.append(" ")?;
@@ -55,26 +55,21 @@ impl CssCursor {
     }
 }
 
-fn charge(writer: &mut SpecifiedRuleWriter) -> Result<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)
-}
-
 fn source(source: &CssCursorImageSource, writer: &mut SpecifiedRuleWriter) -> Result<()> {
     match source {
         CssCursorImageSource::Url(url) => url.append_to_rule_writer(writer),
         CssCursorImageSource::UrlSet(set) => {
-            charge(writer)?;
+            writer.node()?;
             writer.append("image-set(")?;
             for (index, option) in set.options().iter().enumerate() {
                 if index != 0 {
                     writer.append(", ")?;
                 }
-                charge(writer)?;
+                writer.node()?;
                 match option.reference() {
                     CssCursorUrlSetReference::Url(url) => url.append_to_rule_writer(writer)?,
                     CssCursorUrlSetReference::String(value) => {
-                        charge(writer)?;
+                        writer.node()?;
                         writer.append_string(value.as_str())?;
                     }
                 }
@@ -91,9 +86,9 @@ fn source(source: &CssCursorImageSource, writer: &mut SpecifiedRuleWriter) -> Re
                     value.append_to_rule_writer(writer)?;
                 }
                 if let Some(value) = image_type {
-                    charge(writer)?;
+                    writer.node()?;
                     writer.append(" type(")?;
-                    charge(writer)?;
+                    writer.node()?;
                     writer.append_string(value.as_str())?;
                     writer.append(")")?;
                 }

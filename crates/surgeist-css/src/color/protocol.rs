@@ -6,7 +6,7 @@
 use super::grammar::GrammarRecord;
 use crate::numeric::bounded_decimal::DecimalDigit;
 use crate::tokenization::bounded::{InputCursor, InputKind, Request as InputRequest, Scalar};
-use crate::tokenization::color_tokens::{Record, Request as TokenRequest, Token, TokenCursor};
+use crate::tokenization::tokenizer::{Record, Request as TokenRequest, Token, TokenCursor};
 
 /// A nonzero-sized allocation-free anchor, exclusively lent to one operation.
 pub struct CssColorOperationOwner {
@@ -290,8 +290,8 @@ impl RecordTable<'_> {
     ) -> Result<NumberHeader, CssColorProtocolError> {
         self.qualify(index, slot)?;
         let header = match slot.data {
-            Data::Token(crate::tokenization::color_tokens::Token {
-                kind: crate::tokenization::color_tokens::TokenKind::Number { layout, digits, .. },
+            Data::Token(crate::tokenization::tokenizer::Token {
+                kind: crate::tokenization::tokenizer::TokenKind::Number { layout, digits, .. },
                 ..
             }) => NumberHeader {
                 layout,
@@ -327,10 +327,10 @@ impl RecordTable<'_> {
     ) -> Result<Option<RecordRange>, CssColorProtocolError> {
         self.qualify(index, slot)?;
         let range = match slot.data {
-            Data::Token(crate::tokenization::color_tokens::Token {
+            Data::Token(crate::tokenization::tokenizer::Token {
                 kind:
-                    crate::tokenization::color_tokens::TokenKind::Name {
-                        kind: crate::tokenization::color_tokens::NameKind::Ident,
+                    crate::tokenization::tokenizer::TokenKind::Name {
+                        kind: crate::tokenization::tokenizer::NameKind::Ident,
                         units,
                     },
                 ..
@@ -757,7 +757,7 @@ impl<'owner> ColorAction<'_, 'owner> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tokenization::color_tokens::{NameKind, TokenKind};
+    use crate::tokenization::tokenizer::{NameKind, TokenKind};
 
     #[test]
     fn a_slot_bank_is_part_of_every_qualified_observation() {

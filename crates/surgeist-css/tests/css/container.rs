@@ -3,6 +3,7 @@
 mod container_authored_construction;
 mod container_authored_grouping;
 mod container_boolean_grammar;
+mod container_condition_authoring;
 mod container_general_enclosed;
 mod container_prelude_construction;
 mod container_prelude_grammar;

@@ -1,23 +1,15 @@
 //! Motion WD20241105 offset imports the whole offset-rotate property.
 //! Values3 §2.2: reorderable combinators are not associative; a || [b || c]
 //! excludes b a c. The modifier and angle cannot straddle the distance.
+use crate::css::support::{check_property_components, known_property};
 use surgeist_css::*;
 
-fn property() -> CssKnownProperty {
-    CssKnownProperty::from_name("offset").expect("the selected offset property")
-}
-
 fn checked(value: &str, grammar: bool) -> Result<CssDeclaration, CssPropertyValueParseError> {
-    let components = parse_component_values(value).unwrap();
-    if grammar {
-        parse_property_value_for_grammar(property().grammar(), components, CssImportance::Important)
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(property()),
-            components,
-            CssImportance::Important,
-        )
-    }
+    check_property_components(
+        known_property("offset"),
+        parse_component_values(value).unwrap(),
+        grammar,
+    )
 }
 
 #[test]
@@ -32,7 +24,10 @@ fn whole_rotation_and_distance_can_swap_without_splitting_rotation() {
         ] {
             let report = parse_style_attribute(&format!("offset:{value}!important"));
             assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
-            assert_eq!(report.syntax()[0].known().unwrap().property(), property());
+            assert_eq!(
+                report.syntax()[0].known().unwrap().property(),
+                known_property("offset")
+            );
             assert_eq!(report.syntax()[0].to_specified_css().unwrap(), expected);
             for grammar in [false, true] {
                 assert_eq!(
@@ -82,13 +77,13 @@ fn distance_cannot_split_the_quoted_rotation_constituent() {
                     let text = if grammar {
                         parse_property_value_text_for_grammar(
                             &value,
-                            property().grammar(),
+                            known_property("offset").grammar(),
                             CssImportance::Important,
                         )
                     } else {
                         parse_property_value_text(
                             &value,
-                            CssPropertyNameRef::Known(property()),
+                            CssPropertyNameRef::Known(known_property("offset")),
                             CssImportance::Important,
                         )
                     };
@@ -104,7 +99,7 @@ fn pending_grouping_failure_preserves_source_and_allows_whole_rotation_retry() {
     let report = parse_style_attribute("/*😀*/offset:var(--motion)!important");
     assert!(report.is_clean());
     let source = report.syntax()[0].clone();
-    assert_eq!(source.known().unwrap().property(), property());
+    assert_eq!(source.known().unwrap().property(), known_property("offset"));
     let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
         panic!("pending")
     };

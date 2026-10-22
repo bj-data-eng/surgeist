@@ -1,16 +1,8 @@
 //! Typed authored overflow wrapping contracts from CSS Text 4 §6.4 (2026-08-14).
 
-use crate::css::support::important_pair_declaration as parsed;
+use crate::css::support::checked_grammar_declaration as checked;
+use crate::css::support::important_declaration as parsed;
 use surgeist_css::*;
-
-fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        CssPropertyGrammar::from_name(name).expect("known spelling"),
-        parse_component_values(value).unwrap(),
-        CssImportance::Important,
-    )
-    .expect("checked authored value")
-}
 
 fn exact_value(source: &CssDeclaration) -> CssOverflowWrap {
     let CssKnownPropertyValueRef::OverflowWrap(wrapper) =

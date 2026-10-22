@@ -1,7 +1,8 @@
+use crate::css::support::property_admission::assert_component_rejected;
 use surgeist_css::*;
 
 #[test]
-fn c14_multicolumn_properties_retain_typed_structure() {
+fn multicolumn_properties_retain_typed_structure() {
     let report = parse_style_attribute(concat!(
         "column-count: 3; ",
         "column-fill: balance-all; ",
@@ -196,12 +197,14 @@ fn multicolumn_calculations_remain_symbolic_and_checked_constructors_reject_lite
         )
         .is_none()
     );
-    for css in ["-1px", "auto"] {
-        assert!(
-            surgeist_css::CssSpecifiedNonNegativeLength::try_from_component(
-                surgeist_css::CssComponentValue::try_token(css).unwrap()
-            )
-            .is_err()
+    for (css, kind) in [
+        ("-1px", CssNumericConstructionErrorKind::OutOfRange),
+        ("auto", CssNumericConstructionErrorKind::RootDomainMismatch),
+    ] {
+        assert_component_rejected(
+            surgeist_css::CssSpecifiedNonNegativeLength::try_from_component,
+            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+            kind,
         );
     }
 }

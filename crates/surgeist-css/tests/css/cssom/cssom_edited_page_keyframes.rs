@@ -60,7 +60,10 @@ fn contextual_admission_establishes_page_and_keyframes_group_permission_not_styl
             ))
         ));
         let rejected = candidate.admit(&CssNamespaceContext::default(), Context::Style);
-        assert!(!rejected.is_clean(), "{source}: {rejected:?}");
+        crate::css::support::value_assertions::assert_first_code(
+            rejected.diagnostics(),
+            surgeist_css::CssErrorCode::InvalidAtRulePlacement,
+        );
         assert!(rejected.syntax().is_none());
     }
 }
@@ -337,33 +340,38 @@ fn coupled_recursive_payloads_share_input_projection_and_output_limits_and_allow
         );
         assert_eq!(outer.serialize_cssom().unwrap(), expected);
         if kind != Resource::ByteLimit {
-            assert!(
-                View::try_group_with_limits(Prelude::Media(&query), &outer_children, limits)
-                    .is_err()
+            crate::css::support::value_assertions::assert_rule_resource(
+                View::try_group_with_limits(Prelude::Media(&query), &outer_children, limits),
+                kind,
             );
         }
     }
     // Group construction checks compact specified output, whose wrapper byte
     // count differs from literal CSSOM. A separate byte boundary checks that phase.
-    assert!(
+    use crate::css::support::value_assertions::assert_rule_resource;
+    assert_rule_resource(
         View::try_group_with_limits(
             Prelude::Media(&query),
             &outer_children,
-            Limits::new(100_000, 100_000, 1)
-        )
-        .is_err()
+            Limits::new(100_000, 100_000, 1),
+        ),
+        Resource::ByteLimit,
     );
-    assert!(
+    assert_rule_resource(
         View::try_page_with_limits(
             CssPageRuleView::new(selectors.syntax().as_ref().unwrap(), &page_block, &[]),
-            Limits::new(0, 100, 100)
-        )
-        .is_err()
+            Limits::new(0, 100, 100),
+        ),
+        Resource::InputNodeLimit,
     );
-    assert!(
-        CssKeyframesRuleView::try_new_with_limits(&name, &[], Limits::new(100, 0, 100)).is_err()
+    assert_rule_resource(
+        CssKeyframesRuleView::try_new_with_limits(&name, &[], Limits::new(100, 0, 100)),
+        Resource::ProjectionNodeLimit,
     );
-    assert!(View::try_keyframes_with_limits(whole, Limits::new(100, 100, 1)).is_err());
+    assert_rule_resource(
+        View::try_keyframes_with_limits(whole, Limits::new(100, 100, 1)),
+        Resource::ByteLimit,
+    );
 }
 
 #[test]
@@ -396,7 +404,10 @@ fn whole_keyframes_exact_empty_child_work_is_cumulative_not_restarted() {
         let failure = leaf.serialize_cssom_with_limits(limits).unwrap_err();
         assert_eq!(failure.kind(), Error::Resource(kind));
         assert_eq!(failure.keyframe_block_index(), Some(1));
-        assert!(CssKeyframesRuleView::try_new_with_limits(&name, &children, limits).is_err());
+        crate::css::support::value_assertions::assert_rule_resource(
+            CssKeyframesRuleView::try_new_with_limits(&name, &children, limits),
+            kind,
+        );
         assert_eq!(whole.serialize_cssom_with_limits(exact).unwrap(), expected);
     }
     let query = group_query();

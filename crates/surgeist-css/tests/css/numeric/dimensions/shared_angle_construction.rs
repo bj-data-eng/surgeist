@@ -4,6 +4,7 @@
 //! https://www.w3.org/TR/2023/CRD-css-images-3-20231218/#serialization
 
 use crate::css::support::checked_color as color;
+use crate::css::support::value_assertions::assert_calculation_rejected;
 use surgeist_css::*;
 
 fn zero_angle() -> CssAngleOrZero {
@@ -116,7 +117,7 @@ fn parsed_context_angles(text: &str) -> Vec<CssAngleOrZero> {
 }
 
 #[test]
-fn all_existing_angle_parser_contexts_share_literal_units_zero_and_symbolic_root() {
+fn all_angle_parser_contexts_share_literal_units_zero_and_symbolic_root() {
     for (text, unit) in [
         ("-25deg", CssAngleUnit::Degrees),
         ("-25grad", CssAngleUnit::Gradians),
@@ -160,7 +161,12 @@ fn one_shared_angle_retains_four_literal_units_and_exact_coefficients() {
         assert_eq!(value.numeric().representation(), "-0.25");
         assert_eq!(value.unit(), unit);
         for invalid in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-            assert!(CssAngleLiteral::try_new(&invalid.to_string(), unit).is_err());
+            assert_eq!(
+                CssAngleLiteral::try_new(&invalid.to_string(), unit)
+                    .unwrap_err()
+                    .kind(),
+                surgeist_css::CssComponentValueErrorKind::InvalidDimension
+            );
         }
     }
     assert_ne!(zero_angle(), angle(0.0, CssAngleUnit::Degrees));
@@ -318,18 +324,16 @@ fn shared_angle_math_retains_raw_provenance_and_semantic_aggregate_equality() {
         (CssImageOrientation::Angle(first)) == (CssImageOrientation::Angle(second)),
         "shared_angle_math_retains_raw_provenance_and_semantic_aggregate_equality: direct equality contract"
     );
-    assert!(
-        CssAngleCalculation::try_from_components(parse_component_values("calc(1px)").unwrap())
-            .is_err()
-    );
-    assert!(
-        CssAngleCalculation::try_from_components(parse_component_values("calc(1%)").unwrap())
-            .is_err()
-    );
+    for source in ["calc(1px)", "calc(1%)"] {
+        assert_calculation_rejected(
+            CssAngleCalculation::try_from_components(parse_component_values(source).unwrap()),
+            Some(surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch),
+        );
+    }
 }
 
 #[test]
-fn gradient_serializer_omits_only_existing_literal_default_directions() {
+fn gradient_serializer_omits_only_authored_literal_default_directions() {
     for (value, unit) in [
         (180.0, CssAngleUnit::Degrees),
         (200.0, CssAngleUnit::Gradians),
@@ -372,7 +376,7 @@ fn gradient_serializer_omits_only_existing_literal_default_directions() {
 }
 
 #[test]
-fn omitted_shared_angle_still_counts_with_sibling_images_under_cumulative_limits() {
+fn omitted_shared_angle_counts_with_sibling_images_under_cumulative_limits() {
     let list = CssImageValueList::try_new(vec![
         CssImageValue::Gradient(gradient(angle(180.0, CssAngleUnit::Degrees))),
         CssImageValue::None,

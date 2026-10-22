@@ -1,6 +1,7 @@
 //! Functional new body-front expectations, independently derived from the adopted
 //! genuine-source contract, selected Syntax/Nesting/Cascade/Conditional sources,
 //! and existing authored/context/partition contracts.
+use crate::css::support::rules::assert_clean_and_valid as clean;
 use surgeist_css::*;
 
 fn envelope<'a, T>(
@@ -17,11 +18,6 @@ fn envelope<'a, T>(
     );
     assert_eq!(fragment.origin().span().end().byte_offset().value(), end);
     fragment
-}
-
-fn clean<T: Clone>(report: &CssParseReport<Option<CssBlockFragment<T>>>) {
-    assert!(report.is_clean());
-    assert!(report.clone().into_validation_result().is_ok());
 }
 
 fn recovered<T: Clone + std::fmt::Debug>(report: &CssParseReport<Option<CssBlockFragment<T>>>) {

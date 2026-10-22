@@ -1,4 +1,7 @@
-use surgeist_css::{CssMediaQuery, parse_media_query, parse_media_query_list};
+use crate::css::support::authored_syntax::assert_diagnostics;
+use surgeist_css::{
+    CssErrorCode, CssMediaQuery, CssRecoveryAction, parse_media_query, parse_media_query_list,
+};
 
 // MQ5 section 3 prefers media conditions/features before general-enclosed,
 // whose optional any-value contents come from Syntax 3 section 7.2.
@@ -53,13 +56,33 @@ fn invalid_range_derivations_can_use_general_enclosed_grammar() {
 
 #[test]
 fn malformed_outer_queries_recover_each_list_member() {
-    for source in [
-        "screen and",
-        "future() future()",
-        "future() and (color) or (hover)",
+    // Each first member fails at the comma where a condition is missing,
+    // at a second operand without an operator, or at `or` mixed into `and`.
+    for (source, responsible) in [
+        ("screen and", Some(10)),
+        ("future() future()", Some(9)),
+        ("future() and (color) or (hover)", Some(21)),
     ] {
         let report = parse_media_query_list(&format!("{source}, print"));
-        assert!(!report.is_clean(), "{source}");
+        let expected = (
+            CssErrorCode::InvalidMediaQuery,
+            CssRecoveryAction::ReplaceMediaQueryWithNever,
+        );
+        match responsible {
+            Some(offset) => {
+                assert_diagnostics(report.diagnostics(), &[(expected.0, expected.1, offset)]);
+            }
+            None => {
+                let [diagnostic] = report.diagnostics() else {
+                    panic!("{source}: {report:?}")
+                };
+                assert_eq!(
+                    (diagnostic.error().code(), diagnostic.action()),
+                    expected,
+                    "{source}"
+                );
+            }
+        }
         assert!(matches!(
             report.syntax().queries(),
             [CssMediaQuery::Never(_), CssMediaQuery::Typed(_)]
@@ -178,7 +201,7 @@ fn known_features_and_explicit_condition_groups_precede_fallback() {
 }
 
 #[test]
-fn general_enclosed_operands_keep_existing_operator_structure() {
+fn general_enclosed_operands_keep_their_operator_structure() {
     use surgeist_css::{CssMediaConditionKind, CssMediaType};
     for (source, expected) in [
         ("not future()", 0),

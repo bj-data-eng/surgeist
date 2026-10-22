@@ -1,41 +1,11 @@
 //! Functional public-model contracts accompanying full authored Masking support.
 //! Expected strings come from the selected grammar and documented shared numeric
 //! policy. Work formulas visit retained semantic nodes, including shortened edges.
+use crate::css::support::serialization_limits::assert_limits as bounds;
 use surgeist_css::*;
 type Limits = CssSpecifiedValueSerializationLimits;
-type Error = CssSpecifiedValueSerializationError;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
-fn bounds(
-    expected: &str,
-    input: usize,
-    projection: usize,
-    serialize: impl Fn(Limits) -> Result<String, Error>,
-) {
-    assert_eq!(
-        serialize(Limits::new(input, projection, expected.len())).unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (
-            Limits::new(input - 1, projection, expected.len()),
-            Kind::InputNodeLimit,
-        ),
-        (
-            Limits::new(input, projection - 1, expected.len()),
-            Kind::ProjectionNodeLimit,
-        ),
-        (
-            Limits::new(input, projection, expected.len() - 1),
-            Kind::ByteLimit,
-        ),
-    ] {
-        for _ in 0..2 {
-            assert_eq!(serialize(limits).unwrap_err().kind(), kind);
-        }
-    }
-    assert_eq!(serialize(Limits::default()).unwrap(), expected);
-}
 fn number(text: &str) -> CssSpecifiedNonNegativeNumber {
     CssSpecifiedNonNegativeNumber::try_from_component(CssComponentValue::try_number(text).unwrap())
         .unwrap()

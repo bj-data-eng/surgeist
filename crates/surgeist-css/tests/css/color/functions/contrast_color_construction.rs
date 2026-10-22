@@ -1,9 +1,6 @@
 //! Color 5 WD20260908 §8 preserves one input; function nodes compose within 256 levels.
+use crate::css::support::color_and_selector_fixtures::named_color as named;
 use surgeist_css::*;
-
-fn named(name: &str) -> CssColor {
-    CssColor::from_named(CssNamedColor::try_new(name).unwrap())
-}
 
 fn contrast(color: CssColor) -> CssColor {
     CssColor::from_contrast_color(CssContrastColor::try_new(color).unwrap())

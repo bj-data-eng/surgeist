@@ -160,7 +160,7 @@ fn checked_property_and_grammar_reentry_preserve_supplied_angle_origins_during_s
 }
 
 #[test]
-fn angle_calculations_use_existing_numeric_projection_without_orientation_rounding() {
+fn angle_calculations_use_the_numeric_projection_without_orientation_rounding() {
     for (authored, expected) in [
         ("calc(15deg + 15deg)", "calc(30deg)"),
         ("flip calc(15deg + 15deg)", "calc(30deg) flip"),

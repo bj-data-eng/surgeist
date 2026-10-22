@@ -133,7 +133,7 @@ fn escape_diagnostic(
 }
 
 pub(super) fn maximum_nested_depth(source: &str) -> u32 {
-    scan_delimiters(source, 0).maximum
+    scan_delimiters(source, 0, StructuralListContext::Stylesheet).maximum
 }
 
 /// Returns the first opening delimiter enclosed by exactly `depth` open blocks,
@@ -166,8 +166,9 @@ pub(super) struct SpecializedEofLimit {
 pub(super) fn preflight_specialized_eof_limit(
     source: &str,
     base_depth: u32,
+    list: StructuralListContext,
 ) -> Option<SpecializedEofLimit> {
-    let scan = scan_delimiters(source, base_depth);
+    let scan = scan_delimiters(source, base_depth, list);
     let target = scan.eof_limit?;
     let at_rule = next_source_token(source, target.unit_start).and_then(|(_, _, token)| {
         if let Token::AtKeyword(name) = token {
@@ -178,7 +179,7 @@ pub(super) fn preflight_specialized_eof_limit(
     });
     let rule_production = at_rule.as_deref().and_then(|name| {
         if name.eq_ignore_ascii_case("media") {
-            Some("baseline.media.query-list")
+            Some("official.media.query-list-core")
         } else if name.eq_ignore_ascii_case("supports") {
             Some("baseline.rule.supports")
         } else if name.eq_ignore_ascii_case("container") {
@@ -219,12 +220,16 @@ struct DelimiterLimitTarget {
     first_root_curly: Option<usize>,
 }
 
-fn scan_delimiters(source: &str, base_depth: u32) -> DelimiterScan {
+// Root units end where the structural preflight's list consumer ends them:
+// Syntax 3 (2026 CRD) §5.5.1 keeps a stylesheet-root `;` inside a qualified
+// rule's prelude and discards CDO/CDC before a unit, while §5.5.5 ends every
+// block-contents unit at a `;`. Only an at-rule ends at its own `;` (§5.5.2).
+fn scan_delimiters(source: &str, base_depth: u32, list: StructuralListContext) -> DelimiterScan {
     let mut offset = 0;
     let mut blocks: Vec<(BlockKind, usize)> = Vec::new();
     let mut unclosed_token = None;
     let mut maximum = base_depth;
-    let mut unit_start = None;
+    let mut unit: Option<StructuralUnit> = None;
     let mut first_root_curly = None;
     let mut target = None;
     let mut over_limit_components = Vec::new();
@@ -236,12 +241,20 @@ fn scan_delimiters(source: &str, base_depth: u32) -> DelimiterScan {
             continue;
         }
         if blocks.is_empty() {
-            if matches!(token, Token::Semicolon) {
-                unit_start = None;
+            if list.ignores_prefix(&token, unit.is_none()) {
+                continue;
+            }
+            if matches!(token, Token::Semicolon) && list.semicolon_ends_unit(unit) {
+                unit = None;
                 first_root_curly = None;
                 continue;
             }
-            unit_start.get_or_insert(token_start);
+            unit.get_or_insert(StructuralUnit {
+                start: token_start,
+                dispatch: crate::syntax_consumption::rule_dispatch(
+                    crate::syntax_consumption::native_token_kind(&token),
+                ),
+            });
         }
 
         let token_closing = match &token {
@@ -278,7 +291,7 @@ fn scan_delimiters(source: &str, base_depth: u32) -> DelimiterScan {
             }
             if target.is_none() && depth >= STRUCTURAL_NESTING_LIMIT {
                 target = Some(DelimiterLimitTarget {
-                    unit_start: unit_start.unwrap_or(token_start),
+                    unit_start: unit.map_or(token_start, |unit| unit.start),
                     opening_offset: token_start,
                     first_root_curly,
                 });
@@ -304,7 +317,7 @@ fn scan_delimiters(source: &str, base_depth: u32) -> DelimiterScan {
             if blocks.is_empty() {
                 // A completed prelude component does not terminate its rule.
                 if closing == BlockKind::Curly {
-                    unit_start = None;
+                    unit = None;
                     first_root_curly = None;
                 }
                 target = None;
@@ -340,7 +353,8 @@ fn source_normalization_view(
     source: &str,
     base_depth: u32,
 ) -> (Cow<'_, str>, Vec<std::ops::Range<usize>>) {
-    let ranges = scan_delimiters(source, base_depth).over_limit_components;
+    let ranges = scan_delimiters(source, base_depth, StructuralListContext::Stylesheet)
+        .over_limit_components;
     if ranges.is_empty() {
         return (Cow::Borrowed(source), Vec::new());
     }
@@ -837,6 +851,12 @@ impl StyleContextCaptures {
 // Execution batching is independent of the authored 256-level admission limit.
 const STRUCTURAL_PARSE_CHUNK: usize = 32;
 
+// Test-only work counter: source tokens walked by structural preflight.
+#[cfg(test)]
+thread_local! {
+    pub(super) static PREFLIGHT_TOKENS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 pub(super) struct StructuralPreflight {
     pub(super) unit_start: usize,
     pub(super) unit_end: usize,
@@ -878,19 +898,40 @@ pub(super) enum GroupKind {
 }
 
 impl GroupKind {
+    const AT_RULES: [Self; 7] = [
+        Self::Layer,
+        Self::Media,
+        Self::Supports,
+        Self::Container,
+        Self::When,
+        Self::Else,
+        Self::Scope,
+    ];
+
+    const fn at_rule_name(self) -> Option<&'static str> {
+        match self {
+            Self::Layer => Some("layer"),
+            Self::Media => Some("media"),
+            Self::Supports => Some("supports"),
+            Self::Container => Some("container"),
+            Self::When => Some("when"),
+            Self::Else => Some("else"),
+            Self::Scope => Some("scope"),
+            Self::Style | Self::Component | Self::FragmentBody | Self::Other => None,
+        }
+    }
+
+    // A group at-rule's production comes from the parser's one at-rule table.
     fn production(self) -> &'static str {
         match self {
-            Self::Layer => "baseline.rule.layer-block",
-            Self::Media => "baseline.rule.media",
-            Self::Supports => "baseline.rule.supports",
-            Self::Container => "baseline.rule.container",
-            Self::When => "ext.rule.when",
-            Self::Else => "ext.rule.else",
-            Self::Scope => "baseline.rule.scope",
             Self::Style => "baseline.rule.style",
             Self::Component => "css.declaration",
             Self::FragmentBody => "css.block",
             Self::Other => "css.qualified-rule",
+            group => super::rule_list::at_rule_production(
+                group.at_rule_name().expect("a group at-rule kind"),
+            )
+            .expect("every group at-rule is admitted"),
         }
     }
 
@@ -956,7 +997,7 @@ pub(super) fn preflight_structural_nesting(
     root_style_ancestor: bool,
     root_list_context: StructuralListContext,
     fragment_body: bool,
-) -> Option<StructuralPreflight> {
+) -> Vec<StructuralPreflight> {
     // Restarting cssparser at each verified token boundary exposes opening and
     // closing tokens without calling `parse_nested_block`; comments, strings,
     // URLs, and escapes therefore keep cssparser's token semantics while this
@@ -965,10 +1006,15 @@ pub(super) fn preflight_structural_nesting(
     let mut frames: Vec<StructuralFrame> = Vec::new();
     let mut groups: Vec<StructuralGroup> = Vec::new();
     let mut unit_starts: Vec<Option<StructuralUnit>> = vec![None];
+    // Every bounded unit of this source, in source order. A unit's own deeper
+    // chains belong to its isolated replay, so none is collected inside it.
+    let mut targets = Vec::new();
     let mut target: Option<StructuralPreflight> = None;
     let mut target_group_depth = 0;
 
     while let Some((token_start, token_end, token)) = next_source_token(source, offset) {
+        #[cfg(test)]
+        PREFLIGHT_TOKENS.with(|tokens| tokens.set(tokens.get() + 1));
         offset = token_end;
         if let Some(closing) = closing_block(&token)
             && let Some(frame) = frames.pop_if(|frame| frame.block == closing)
@@ -982,7 +1028,7 @@ pub(super) fn preflight_structural_nesting(
                 if target.is_some() && groups.len() < target_group_depth {
                     let mut completed = target.take().expect("target exists");
                     completed.unit_end = token_end;
-                    return Some(completed);
+                    targets.push(completed);
                 }
             }
             continue;
@@ -1164,7 +1210,9 @@ pub(super) fn preflight_structural_nesting(
         });
     }
 
-    target
+    // A unit still open at EOF ends there.
+    targets.extend(target);
+    targets
 }
 
 fn group_kind(source: &str, unit_start: usize, opening_offset: usize) -> GroupKind {
@@ -1178,16 +1226,13 @@ fn group_kind(source: &str, unit_start: usize, opening_offset: usize) -> GroupKi
             GroupKind::Style
         };
     };
-    match name.to_ascii_lowercase().as_str() {
-        "layer" => GroupKind::Layer,
-        "media" => GroupKind::Media,
-        "supports" => GroupKind::Supports,
-        "container" => GroupKind::Container,
-        "when" => GroupKind::When,
-        "else" => GroupKind::Else,
-        "scope" => GroupKind::Scope,
-        _ => GroupKind::Other,
-    }
+    GroupKind::AT_RULES
+        .into_iter()
+        .find(|kind| {
+            kind.at_rule_name()
+                .is_some_and(|known| known.eq_ignore_ascii_case(&name))
+        })
+        .unwrap_or(GroupKind::Other)
 }
 
 fn looks_like_custom_declaration(prelude: &str) -> bool {
@@ -1300,7 +1345,7 @@ fn scan_nested_tokens<'i>(
 }
 
 fn unclosed_openings(source: &str) -> Vec<usize> {
-    scan_delimiters(source, 0).unclosed
+    scan_delimiters(source, 0, StructuralListContext::Stylesheet).unclosed
 }
 
 pub(super) fn next_source_token<'i>(

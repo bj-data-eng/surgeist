@@ -1,13 +1,15 @@
 //! CSS Env 1 WD 2025-09-23 §3 assumes the entire descriptor grammar valid
 //! when its env functions are syntactically valid. Syntax 3 CRD 2026-10-01 §7.2
 //! permits matched blocks in declaration-value, while excluding unmatched
-//! closers and root semicolons/bangs. These tests use existing public fronts.
+//! closers and root semicolons/bangs. These tests use the public string and component fronts.
 
+use crate::css::support::rules::{ExpectedRejection, descriptor_rejected_at, invalid_descriptor};
 use surgeist_css::{
     CssAuthoredFontFaceDescriptorValue as FaceValue, CssComponentValues,
-    CssFontFaceDescriptorKind as FaceKind, CssFontPaletteDescriptorKind as PaletteKind,
-    CssFontPaletteDescriptorValue as PaletteValue, CssFontPaletteDescriptorValueRef,
-    CssRecoveryAction, CssRule, CssValueOrigin, parse_component_values, parse_font_face_block,
+    CssFontFaceDescriptorKind as FaceKind, CssFontFaceValueErrorKind,
+    CssFontPaletteDescriptorKind as PaletteKind, CssFontPaletteDescriptorValue as PaletteValue,
+    CssFontPaletteDescriptorValueRef, CssFontPaletteValueErrorKind, CssRecoveryAction, CssRule,
+    CssValueOrigin, parse_component_values, parse_font_face_block,
     parse_font_face_descriptor_value, parse_font_palette_descriptor_value,
     parse_font_palette_values_block, parse_sheet,
 };
@@ -184,43 +186,60 @@ fn palette_rule_retains_pending_matched_blocks_and_following_rule() {
 
 #[test]
 fn malformed_env_and_ordinary_root_blocks_remain_invalid_in_raw_and_checked_fronts() {
-    for value in [
-        "{}",
-        "{hello}",
-        "env() {}",
-        "env(123) {}",
-        "env(choice) env() {}",
+    // A root block opens no production of either ordinary grammar. Env 1
+    // §3 defers only a syntactically valid env(), so a malformed one leaves
+    // the ordinary grammar, which rejects the env() function token itself.
+    for (value, token) in [
+        ("{}", "{"),
+        ("{hello}", "{"),
+        ("env() {}", "env("),
+        ("env(123) {}", "env("),
+        ("env(choice) env() {}", "env("),
     ] {
+        let at = |expected: ExpectedRejection| expected.at(token);
+        let face_rejection = at(invalid_descriptor("font-face", "font-width"));
         let face = parse_font_face_descriptor_value(value, FaceKind::FontWidth);
         assert!(face.syntax().is_none(), "{value}: {face:?}");
-        assert!(!face.is_clean());
+        face_rejection.assert_first(&face);
         let components = parse_component_values(value).unwrap();
-        assert!(FaceValue::try_from_components(FaceKind::FontWidth, components.clone()).is_err());
+        let error =
+            FaceValue::try_from_components(FaceKind::FontWidth, components.clone()).unwrap_err();
+        let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
+            panic!("{value}: grammar failure: {error:?}")
+        };
+        face_rejection.assert_kind(detail);
+        // The palette fronts name their at-rule and descriptor too.
         for kind in PALETTE_KINDS {
+            let palette_rejection = at(invalid_descriptor("font-palette-values", kind.css_name()));
             let palette = parse_font_palette_descriptor_value(value, kind);
             assert!(
                 palette.syntax().is_none(),
                 "{}:{value}: {palette:?}",
                 kind.css_name()
             );
-            assert!(!palette.is_clean());
-            assert!(PaletteValue::try_new(kind, components.clone()).is_err());
+            palette_rejection.assert_first(&palette);
+            let error = PaletteValue::try_new(kind, components.clone()).unwrap_err();
+            let CssFontPaletteValueErrorKind::Grammar(detail) = error.kind() else {
+                panic!("{}:{value}: grammar failure: {error:?}", kind.css_name())
+            };
+            palette_rejection.assert_kind(detail);
         }
     }
 }
 
 #[test]
 fn root_bangs_semicolons_and_unmatched_closers_are_not_rescued_by_valid_env() {
-    for value in [
-        "env(choice)!important",
-        "env(choice);",
-        "env(choice)}",
-        "env(choice)]",
-        "env(choice))",
+    for (value, token) in [
+        ("env(choice)!important", "!"),
+        ("env(choice);", ";"),
+        ("env(choice)}", "}"),
+        ("env(choice)]", "]"),
+        ("env(choice))", ")"),
     ] {
+        let face_rejection = descriptor_rejected_at("font-face", "font-width", token);
         let face = parse_font_face_descriptor_value(value, FaceKind::FontWidth);
         assert!(face.syntax().is_none(), "{value}: {face:?}");
-        assert!(!face.is_clean());
+        face_rejection.assert_first(&face);
         for kind in PALETTE_KINDS {
             let palette = parse_font_palette_descriptor_value(value, kind);
             assert!(
@@ -228,16 +247,25 @@ fn root_bangs_semicolons_and_unmatched_closers_are_not_rescued_by_valid_env() {
                 "{}:{value}: {palette:?}",
                 kind.css_name()
             );
-            assert!(!palette.is_clean());
+            descriptor_rejected_at("font-palette-values", kind.css_name(), token)
+                .assert_first(&palette);
         }
         // Component admission may itself reject unmatched closers. If it admits
-        // the token stream, the existing descriptor constructor must reject it.
+        // the token stream, the descriptor constructor must reject it.
         if let Ok(components) = parse_component_values(value) {
-            assert!(
-                FaceValue::try_from_components(FaceKind::FontWidth, components.clone()).is_err()
-            );
+            let error = FaceValue::try_from_components(FaceKind::FontWidth, components.clone())
+                .unwrap_err();
+            let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
+                panic!("{value}: grammar failure: {error:?}")
+            };
+            face_rejection.assert_kind(detail);
             for kind in PALETTE_KINDS {
-                assert!(PaletteValue::try_new(kind, components.clone()).is_err());
+                let error = PaletteValue::try_new(kind, components.clone()).unwrap_err();
+                let CssFontPaletteValueErrorKind::Grammar(detail) = error.kind() else {
+                    panic!("{}:{value}: grammar failure: {error:?}", kind.css_name())
+                };
+                descriptor_rejected_at("font-palette-values", kind.css_name(), token)
+                    .assert_kind(detail);
             }
         }
     }

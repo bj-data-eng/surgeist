@@ -278,7 +278,7 @@ fn terminated_comments_and_comment_lookalikes_in_token_payloads_stay_clean() {
     ] {
         let report = parse_sheet(source);
         assert!(report.is_clean(), "{source}: {report:?}");
-        assert!(validate_sheet(source).is_ok());
+        assert_eq!(validate_sheet(source).unwrap(), *report.syntax());
     }
     let source = format!("/*{}*/.x{{}}", "([{\"".repeat(300));
     let report = parse_sheet(&source);

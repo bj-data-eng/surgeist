@@ -164,7 +164,7 @@ pub(crate) fn parsed_alpha(alpha: Option<&CssColorComponent>) -> CssParsedColorA
                 _ => unreachable!("direct alpha component"),
             };
             let lexical = LexicalDecimal::new(text);
-            let class = if lexical.len == 0 || lexical.negative {
+            let class = if lexical.is_zero() || lexical.negative {
                 ScalarClass::Zero
             } else if lexical.at_least_unit_endpoint(percentage) {
                 ScalarClass::One

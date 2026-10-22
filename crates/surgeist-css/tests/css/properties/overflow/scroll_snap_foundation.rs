@@ -3,6 +3,10 @@
 //! Four-side shorthand reset membership is unsettled; these tests do not claim
 //! that an ordinary four-side value has a completed intrinsic expansion.
 
+use crate::css::support::checked_grammar_declaration as checked;
+use crate::css::support::important_declaration as declaration;
+use crate::css::support::named_property::invalid_named_value_at as assert_invalid;
+use crate::css::support::selected_grammar as grammar;
 use surgeist_css::*;
 
 fn assert_four_expansion(result: Result<CssExpansion, CssExpansionError>) {
@@ -87,29 +91,6 @@ const ALL: &[(&str, &str)] = &[
     ("scroll-margin", "1px 2px 3px 4px"),
 ];
 
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("selected grammar: {name}"))
-}
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one selected declaration: {source}")
-    };
-    declaration.clone()
-}
-
-fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"))
-}
-
 #[test]
 fn every_selected_scroll_snap_name_has_known_identity_and_accepts_its_ordinary_grammar() {
     assert_eq!(ALL.len(), 25);
@@ -157,24 +138,6 @@ fn every_selected_scroll_snap_name_has_known_identity_and_accepts_its_ordinary_g
 }
 
 #[test]
-fn every_selected_scroll_snap_name_accepts_whole_value_css_wide_keywords() {
-    for &(name, _) in ALL {
-        for keyword in ["initial", "inherit", "unset", "revert", "revert-layer"] {
-            let parsed = declaration(name, keyword);
-            let constructed = checked(name, keyword);
-            assert_eq!(
-                parsed.known().unwrap().property(),
-                grammar(name).target_property()
-            );
-            assert_eq!(
-                constructed.known().unwrap().property(),
-                grammar(name).target_property()
-            );
-        }
-    }
-}
-
-#[test]
 fn snap_type_requires_an_axis_before_optional_strictness_and_align_has_two_roles() {
     for value in [
         "none",
@@ -200,18 +163,20 @@ fn snap_type_requires_an_axis_before_optional_strictness_and_align_has_two_roles
         declaration("scroll-snap-stop", value);
         checked("scroll-snap-stop", value);
     }
-    for (name, value) in [
-        ("scroll-snap-type", "mandatory"),
-        ("scroll-snap-type", "proximity"),
-        ("scroll-snap-type", "mandatory x"),
-        ("scroll-snap-type", "x mandatory proximity"),
-        ("scroll-snap-type", "x x"),
-        ("scroll-snap-type", "none mandatory"),
-        ("scroll-snap-align", "start end center"),
-        ("scroll-snap-align", "mandatory"),
-        ("scroll-snap-stop", "none"),
+    // Scroll Snap 1 §5.1: the axis comes first, so the leading strictness
+    // keyword is responsible.
+    assert_invalid("scroll-snap-type", "mandatory x", "mandatory x");
+    for (name, value, rest) in [
+        ("scroll-snap-type", "mandatory", "mandatory"),
+        ("scroll-snap-type", "proximity", "proximity"),
+        ("scroll-snap-type", "x mandatory proximity", "proximity"),
+        ("scroll-snap-type", "x x", "x"),
+        ("scroll-snap-type", "none mandatory", "mandatory"),
+        ("scroll-snap-align", "start end center", "center"),
+        ("scroll-snap-align", "mandatory", "mandatory"),
+        ("scroll-snap-stop", "none", "none"),
     ] {
-        assert_invalid(name, value);
+        assert_invalid(name, value, rest);
     }
 }
 
@@ -229,17 +194,17 @@ fn scroll_insets_keep_length_and_length_percentage_domains_distinct() {
         declaration(name, value);
         checked(name, value);
     }
-    for (name, value) in [
-        ("scroll-margin-top", "5%"),
-        ("scroll-margin-inline-end", "auto"),
-        ("scroll-margin-bottom", "calc(2px + 3%)"),
-        ("scroll-padding-top", "-1px"),
-        ("scroll-padding-block-end", "-1e-999px"),
-        ("scroll-padding-inline-start", "-1e-999%"),
-        ("scroll-padding-bottom", "2fr"),
-        ("scroll-padding-left", "calc(2 + 3)"),
+    for (name, value, rest) in [
+        ("scroll-margin-top", "5%", "5%"),
+        ("scroll-margin-inline-end", "auto", "auto"),
+        ("scroll-margin-bottom", "calc(2px + 3%)", "calc(2px + 3%)"),
+        ("scroll-padding-top", "-1px", "-1px"),
+        ("scroll-padding-block-end", "-1e-999px", "-1e-999px"),
+        ("scroll-padding-inline-start", "-1e-999%", "-1e-999%"),
+        ("scroll-padding-bottom", "2fr", "2fr"),
+        ("scroll-padding-left", "calc(2 + 3)", "calc(2 + 3)"),
     ] {
-        assert_invalid(name, value);
+        assert_invalid(name, value, rest);
     }
 }
 
@@ -270,40 +235,19 @@ fn physical_and_logical_shorthands_admit_their_defined_arities_and_marker() {
             }
         }
     }
-    for (name, value) in [
-        ("scroll-padding", "1px 2px 3px 4px 5px"),
-        ("scroll-padding", "logical 1px 2px 3px 4px 5px"),
-        ("scroll-padding", "-1px"),
-        ("scroll-padding", "logical -1px"),
-        ("scroll-margin", "1px 2px 3px 4px 5px"),
-        ("scroll-margin", "logical 1px 2px 3px 4px 5px"),
-        ("scroll-margin", "1%"),
-        ("scroll-padding-block", "1px 2px 3px"),
-        ("scroll-margin-inline", "1px 2px 3px"),
+    for (name, value, rest) in [
+        ("scroll-padding", "1px 2px 3px 4px 5px", "5px"),
+        ("scroll-padding", "logical 1px 2px 3px 4px 5px", "5px"),
+        ("scroll-padding", "-1px", "-1px"),
+        ("scroll-padding", "logical -1px", "-1px"),
+        ("scroll-margin", "1px 2px 3px 4px 5px", "5px"),
+        ("scroll-margin", "logical 1px 2px 3px 4px 5px", "5px"),
+        ("scroll-margin", "1%", "1%"),
+        ("scroll-padding-block", "1px 2px 3px", "3px"),
+        ("scroll-margin-inline", "1px 2px 3px", "3px"),
     ] {
-        assert_invalid(name, value);
+        assert_invalid(name, value, rest);
     }
-}
-
-fn assert_invalid(name: &str, value: &str) {
-    let source = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&source);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one invalid value diagnostic: {source}")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    assert_eq!(report.syntax().len(), 2, "{source}");
-    assert!(validate_style_attribute(&source).is_err());
-    assert!(
-        parse_property_value_for_grammar(
-            grammar(name),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "checked construction accepted {name}:{value}"
-    );
 }
 
 #[test]

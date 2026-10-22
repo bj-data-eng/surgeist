@@ -3,30 +3,12 @@
 //! the selected 2026-01-22 grammar and Syntax 3, not captured provider output.
 //! Selected shadow providers retain compound outer arguments and independent
 //! relative :has() arguments, following their pinned operational source.
+use crate::css::support::color_and_selector_fixtures::assert_strict_validation_rejects;
+use crate::css::support::color_and_selector_fixtures::{
+    assert_empty_list_construction, assert_selector_item_dropped, namespace_context as context,
+};
+use crate::css::support::{validated_selector as parsed, validated_selector_in as parsed_in};
 use surgeist_css::*;
-
-fn context() -> CssNamespaceContext {
-    CssNamespaceContext::from_bindings([
-        (None, CssNamespaceName::new("urn:default")),
-        (
-            Some(CssNamespacePrefix::try_new("svg").unwrap()),
-            CssNamespaceName::new("urn:svg"),
-        ),
-    ])
-}
-
-fn parsed_in(source: &str, context: &CssNamespaceContext) -> CssSelector {
-    let report = parse_selector(source, context);
-    assert!(report.is_clean(), "{source:?}: {report:?}");
-    report
-        .into_validation_result()
-        .unwrap()
-        .expect("one selector")
-}
-
-fn parsed(source: &str) -> CssSelector {
-    parsed_in(source, &CssNamespaceContext::default())
-}
 
 fn exact_in(source: &str, expected: &str, context: &CssNamespaceContext) -> CssSelector {
     let selector = parsed_in(source, context);
@@ -81,7 +63,7 @@ fn reject_in(source: &str, context: &CssNamespaceContext) {
         }),
         "rejected syntax cannot publish retained EOF closure"
     );
-    assert!(report.into_validation_result().is_err());
+    assert_strict_validation_rejects(report);
 }
 
 fn reject(source: &str) {
@@ -102,7 +84,7 @@ fn reject_list_in(source: &str, context: &CssNamespaceContext) {
     assert_eq!(rejection.error().code(), CssErrorCode::InvalidSelector);
     assert_eq!(rejection.span().start().byte_offset().value(), 0);
     assert_eq!(rejection.span().end().byte_offset().value(), source.len());
-    assert!(report.into_validation_result().is_err());
+    assert_strict_validation_rejects(report);
 }
 
 fn pseudo_list(selector: CssSelector) -> CssPseudoSelectorList {
@@ -239,7 +221,7 @@ fn class_whitespace_drops_its_style_rule_and_preserves_neighbors() {
         rejected.span().end().byte_offset().value(),
         source.find(failed).unwrap() + failed.len()
     );
-    assert!(report.into_validation_result().is_err());
+    assert_strict_validation_rejects(report);
 }
 
 #[test]
@@ -665,9 +647,20 @@ fn checked_complex_and_list_construction_preserve_nonempty_order() {
         CssSelector::Complex(checked).to_specified_css().unwrap(),
         "A > B"
     );
-    assert!(CssComplexSelector::try_new(value.first().clone(), Vec::new()).is_err());
+    assert_eq!(
+        CssComplexSelector::try_new(value.first().clone(), Vec::new())
+            .unwrap_err()
+            .kind(),
+        &CssSelectorConstructionErrorKind::EmptyComplexRest
+    );
+    // Selectors 4 §3.6: a pseudo-element belongs only to the last compound.
     let pseudo = parsed("A::before");
-    assert!(CssComplexSelector::try_new(compound(&pseudo).clone(), value.rest().to_vec()).is_err());
+    assert_eq!(
+        CssComplexSelector::try_new(compound(&pseudo).clone(), value.rest().to_vec())
+            .unwrap_err()
+            .kind(),
+        &CssSelectorConstructionErrorKind::NonTerminalPseudoElement { compound_index: 0 }
+    );
     let checked = CssSelectorList::try_new(vec![
         CssSelector::Class("One".into()),
         CssSelector::Key("Two".into()),
@@ -680,9 +673,9 @@ fn checked_complex_and_list_construction_preserve_nonempty_order() {
             CssSelector::Key("Two".into())
         ]
     );
-    assert!(CssSelectorList::try_new(Vec::new()).is_err());
-    assert!(CssPseudoSelectorList::try_new(Vec::new()).is_err());
-    assert!(CssRelativeSelectorList::try_new(Vec::new()).is_err());
+    assert_empty_list_construction(CssSelectorList::try_new(Vec::new()));
+    assert_empty_list_construction(CssPseudoSelectorList::try_new(Vec::new()));
+    assert_empty_list_construction(CssRelativeSelectorList::try_new(Vec::new()));
 }
 
 #[test]
@@ -859,7 +852,7 @@ fn forgiving_members_drop_invalid_selectors_without_becoming_strict_clean_report
                 ..diagnostic.span().end().byte_offset().value()],
             dropped
         );
-        assert!(report.into_validation_result().is_err());
+        assert_strict_validation_rejects(report);
     }
     for source in [":not(.One,:unknown(x))", ":has(.One,:unknown(x))"] {
         reject(source);
@@ -895,7 +888,7 @@ fn forgiving_empty_lists_remain_valid_authored_states() {
                 diagnostic.action() == CssRecoveryAction::DropSelectorListItem
             })
         );
-        assert!(report.into_validation_result().is_err());
+        assert_strict_validation_rejects(report);
     }
     reject(":not()");
     reject(":has()");
@@ -915,11 +908,23 @@ fn pseudo_elements_and_nested_has_are_restricted_through_nested_logical_function
     ] {
         reject(source);
     }
-    for (source, expected) in [
-        (":is(::before,.One)", ":is(.One)"),
-        (":where(:not(::before),.One)", ":where(.One)"),
-        (":is(:where(::before,.Two),.One)", ":is(:where(.Two), .One)"),
-        (":has(:is(:has(.bad),.One))", ":has(:is(.One))"),
+    for (source, expected, dropped) in [
+        (":is(::before,.One)", ":is(.One)", "::before"),
+        (
+            ":where(:not(::before),.One)",
+            ":where(.One)",
+            ":not(::before)",
+        ),
+        (
+            ":is(:where(::before,.Two),.One)",
+            ":is(:where(.Two), .One)",
+            "::before",
+        ),
+        (
+            ":has(:is(:has(.bad),.One))",
+            ":has(:is(.One))",
+            ":has(.bad)",
+        ),
     ] {
         let report = parse_selector(source, &CssNamespaceContext::default());
         assert_eq!(
@@ -931,12 +936,7 @@ fn pseudo_elements_and_nested_has_are_restricted_through_nested_logical_function
                 .unwrap(),
             expected
         );
-        assert!(
-            report.diagnostics().iter().any(|diagnostic| {
-                diagnostic.action() == CssRecoveryAction::DropSelectorListItem
-            })
-        );
-        assert!(report.into_validation_result().is_err());
+        assert_selector_item_dropped(source, report, dropped);
     }
 }
 
@@ -977,7 +977,7 @@ fn missing_eof_closure_is_reported_only_for_retained_syntax() {
     );
     assert_eq!(closure.span().start().byte_offset().value(), source.len());
     assert_eq!(closure.span().end().byte_offset().value(), source.len());
-    assert!(report.into_validation_result().is_err());
+    assert_strict_validation_rejects(report);
     reject(":not(.One,???");
 }
 
@@ -996,12 +996,7 @@ fn nested_logical_members_inherit_compound_only_and_suffix_restrictions() {
                     .unwrap(),
                 format!("{function}(:{name}(.One))")
             );
-            assert_eq!(report.diagnostics().len(), 1);
-            assert_eq!(
-                report.diagnostics()[0].action(),
-                CssRecoveryAction::DropSelectorListItem
-            );
-            assert!(report.into_validation_result().is_err());
+            assert_selector_item_dropped(&source, report, ".bad > .child");
             let source = format!("{function}(:{name}(:not(.bad > .child),.One))");
             let report = parse_selector(&source, &CssNamespaceContext::default());
             assert_eq!(
@@ -1013,7 +1008,7 @@ fn nested_logical_members_inherit_compound_only_and_suffix_restrictions() {
                     .unwrap(),
                 format!("{function}(:{name}(.One))")
             );
-            assert!(report.into_validation_result().is_err());
+            assert_selector_item_dropped(&source, report, ":not(.bad > .child)");
             let empty_source = format!("{function}(:{name}())");
             let empty = parse_selector(&empty_source, &CssNamespaceContext::default());
             assert_eq!(
@@ -1042,7 +1037,7 @@ fn nested_logical_members_inherit_compound_only_and_suffix_restrictions() {
             .unwrap(),
         "::before:where(:focus)"
     );
-    assert!(report.into_validation_result().is_err());
+    assert_selector_item_dropped("::before:where(:focus,.bad)", report, ".bad");
     reject("::before:not(.bad)");
     exact(":not(.One > .Two)", ":not(.One > .Two)");
 }
@@ -1304,7 +1299,7 @@ fn malformed_strict_list_discards_complete_rule_contents_with_exact_recovery_uni
         after.position().byte_offset().value(),
         source.find(".after").unwrap()
     );
-    assert!(report.into_validation_result().is_err());
+    assert_strict_validation_rejects(report);
 }
 
 #[test]
@@ -1465,7 +1460,7 @@ fn deep_logical_parse_clone_emit_and_limit_recovery_work_on_an_ordinary_stack() 
                 detail.enclosing_production().as_str(),
                 "baseline.selector.complex"
             );
-            assert!(report.into_validation_result().is_err());
+            assert_strict_validation_rejects(report);
             exact(".after", ".after");
         })
         .unwrap()

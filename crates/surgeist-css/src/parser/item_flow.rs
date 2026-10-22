@@ -23,6 +23,7 @@ type ParseResult<'i, T> = Result<T, ParseError<'i, Error>>;
 pub(super) fn parse_item_direction<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> ParseResult<'i, CssItemDirection> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssItemDirection::Auto),
@@ -30,7 +31,7 @@ pub(super) fn parse_item_direction<'i, 't>(
         "column" => Ok(CssItemDirection::Column),
         "row-reverse" => Ok(CssItemDirection::RowReverse),
         "column-reverse" => Ok(CssItemDirection::ColumnReverse),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
@@ -43,6 +44,7 @@ pub(super) fn parse_item_wrap<'i, 't>(input: &mut Parser<'i, 't>) -> ParseResult
 }
 
 fn wrap_keyword<'i, 't>(input: &mut Parser<'i, 't>) -> ParseResult<'i, CssItemWrap> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssItemWrap::Mode(CssItemWrapMode::Auto)),
@@ -51,7 +53,7 @@ fn wrap_keyword<'i, 't>(input: &mut Parser<'i, 't>) -> ParseResult<'i, CssItemWr
         "normal" => Ok(CssItemWrap::Order(CssItemWrapOrder::Normal)),
         "reverse" => Ok(CssItemWrap::Order(CssItemWrapOrder::Reverse)),
         "wrap-reverse" => Ok(CssItemWrap::WrapReverse),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
@@ -63,13 +65,15 @@ fn parse_wrap_width<'i, 't>(
     if width == 1 {
         return Ok(first);
     }
+    // A second keyword of the same kind is itself responsible.
+    let second_location = input.current_source_location();
     let second = wrap_keyword(input)?;
     match (first, second) {
         (CssItemWrap::Mode(mode), CssItemWrap::Order(order))
         | (CssItemWrap::Order(order), CssItemWrap::Mode(mode)) => {
             Ok(CssItemWrap::Both(mode, order))
         }
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(second_location)),
     }
 }
 
@@ -80,12 +84,13 @@ pub(super) fn parse_item_pack<'i, 't>(input: &mut Parser<'i, 't>) -> ParseResult
 }
 
 fn pack_keyword<'i, 't>(input: &mut Parser<'i, 't>) -> ParseResult<'i, CssItemPack> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "normal" => Ok(CssItemPack::Normal),
         "dense" => Ok(CssItemPack::Dense),
         "balance" => Ok(CssItemPack::Balance),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
@@ -97,12 +102,14 @@ fn parse_pack_width<'i, 't>(
     if width == 1 {
         return Ok(first);
     }
+    // A second keyword that cannot pair with the first is itself responsible.
+    let second_location = input.current_source_location();
     let second = pack_keyword(input)?;
     match (first, second) {
         (CssItemPack::Dense, CssItemPack::Balance) | (CssItemPack::Balance, CssItemPack::Dense) => {
             Ok(CssItemPack::DenseBalance)
         }
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(second_location)),
     }
 }
 

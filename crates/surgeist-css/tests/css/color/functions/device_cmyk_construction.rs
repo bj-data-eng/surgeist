@@ -1,6 +1,7 @@
 //! Functional new-API evidence, independent of the preimplementation authored RED.
 //! Color 5 WD20260908 §6 owns grammar/ink identity; the shared structural
 //! ceiling counts every function, including numeric, color and image ancestors.
+use crate::css::support::declaration_color;
 use surgeist_css::*;
 
 fn number(text: &str, programmatic: bool) -> CssColorComponent {
@@ -282,15 +283,9 @@ fn parser_payload_keeps_typed_literals_calculations_and_sources() {
     let text = "color:device-cmyk(-.2 140% calc(1 / 2) calc(50%) / calc(25%))";
     let report = parse_style_attribute(text);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let CssKnownPropertyValueRef::Color(value) = report.syntax()[0]
-        .known()
-        .unwrap()
-        .property_value()
-        .unwrap()
-    else {
-        panic!("color")
-    };
-    let payload = value.value().device_cmyk_value().unwrap();
+    let payload = declaration_color(&report.syntax()[0])
+        .device_cmyk_value()
+        .unwrap();
     assert_eq!(payload.syntax(), CssColorSyntax::Modern);
     let [
         CssColorComponent::Number(c),

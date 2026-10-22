@@ -6,6 +6,8 @@
 //! This suite uses existing callable APIs; new named model construction and
 //! cumulative resource limits receive separate functional tests.
 
+use crate::css::support::property_admission::assert_checked_matches_diagnostic;
+use crate::css::support::property_admission::validated_declaration;
 use surgeist_css::*;
 
 fn clip(source: &CssDeclaration) -> &CssClipPath {
@@ -17,28 +19,19 @@ fn clip(source: &CssDeclaration) -> &CssClipPath {
     value.value()
 }
 
-fn declaration(value: &str) -> CssDeclaration {
-    let source = format!("clip-path:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert_eq!(
-        validate_style_attribute(&source),
-        Ok(report.syntax().clone())
-    );
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one authored declaration")
-    };
+fn clip_path_declaration(value: &str) -> CssDeclaration {
+    let declaration = validated_declaration("clip-path", value, CssImportance::Important);
     let CssKnownPropertyValueRef::ClipPath(parsed) =
         declaration.known().unwrap().property_value().unwrap()
     else {
         panic!("clip-path property")
     };
     assert_eq!(parsed.as_css(), value, "retain authored function and order");
-    declaration.clone()
+    declaration
 }
 
 fn accept(authored: &str, expected: &str) {
-    let source = declaration(authored);
+    let source = clip_path_declaration(authored);
     assert_eq!(clip(&source).serialize_specified().unwrap(), expected);
     let components = parse_component_values(authored).unwrap();
     let checked = parse_property_value(
@@ -236,14 +229,7 @@ fn reject(value: &str) {
         validate_style_attribute(&source).unwrap_err().diagnostics(),
         report.diagnostics()
     );
-    assert!(
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ClipPath),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err()
-    );
+    assert_checked_matches_diagnostic(CssKnownProperty::ClipPath, value, diagnostic);
 }
 
 #[test]

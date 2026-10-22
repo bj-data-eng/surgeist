@@ -1,15 +1,11 @@
 //! Authored Overflow 3 keywords and the Cascade 5 overlay alias.
 
-use crate::css::support::first_declaration as parsed;
+use crate::css::support::named_property::longhand_contributions;
+use crate::css::support::normal_declaration as parsed;
 use surgeist_css::*;
 
 fn ordinary(source: &CssDeclaration) -> Vec<CssLonghandValue> {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("completed overflow contributions")
-    };
-    values
+    longhand_contributions(source)
         .items()
         .iter()
         .map(|item| item.ordinary_value().unwrap().clone())

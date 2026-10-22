@@ -5,27 +5,11 @@
 //! frozen WebKit 73aa6c89 CSSLightDarkColor.cpp:66–72 serializes each stored color.
 //! Masking 1 CRD20210805 §7.1/§7.9 admits images in mask layers.
 
-use crate::css::support::style_declaration_reporting_source as declaration;
+use crate::css::support::color_and_selector_fixtures::{
+    background_images as images, expanded_longhands as expanded,
+};
+use crate::css::support::{parsed_color as color, sole_declaration as declaration};
 use surgeist_css::*;
-
-fn color(css: &str) -> CssColor {
-    let source = declaration(&format!("color:{css}"));
-    let CssKnownPropertyValueRef::Color(value) = source.known().unwrap().property_value().unwrap()
-    else {
-        panic!("typed color")
-    };
-    value.value().clone()
-}
-
-fn images(css: &str) -> CssImageValueList {
-    let source = declaration(&format!("background-image:{css}"));
-    let CssKnownPropertyValueRef::BackgroundImage(value) =
-        source.known().unwrap().property_value().unwrap()
-    else {
-        panic!("typed background images")
-    };
-    value.images().clone()
-}
 
 fn background(css: &str) -> CssBackground {
     let source = declaration(&format!("background:{css}"));
@@ -35,19 +19,6 @@ fn background(css: &str) -> CssBackground {
         panic!("typed background")
     };
     value.background().clone()
-}
-
-fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("completed expansion")
-    };
-    for value in values.items() {
-        assert!(value.source().same_occurrence(source));
-        assert_eq!(value.source().importance(), source.importance());
-    }
-    values
 }
 
 #[test]
@@ -131,7 +102,7 @@ fn light_dark_children_use_standalone_serialization_under_origin_and_mix_roles()
 }
 
 #[test]
-fn light_dark_contextual_exclusion_propagates_through_existing_color_wrappers() {
+fn light_dark_contextual_exclusion_propagates_through_color_wrappers() {
     for source in [
         "light-dark(red, blue)",
         "alpha(from light-dark(red, blue))",

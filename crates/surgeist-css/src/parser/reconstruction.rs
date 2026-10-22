@@ -189,6 +189,37 @@ pub(super) fn parse_bounded(
     crate::CssParseReport::new(syntax, diagnostics)
 }
 
+// Test-only replay measures: bounded parses started, and their live nesting.
+#[cfg(test)]
+thread_local! {
+    pub(super) static REPLAY_PARSES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    pub(super) static REPLAY_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    pub(super) static REPLAY_MAX_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+struct ReplayDepthProbe;
+
+#[cfg(test)]
+impl ReplayDepthProbe {
+    fn enter() -> Self {
+        REPLAY_PARSES.with(|parses| parses.set(parses.get() + 1));
+        let depth = REPLAY_DEPTH.with(|depth| {
+            depth.set(depth.get() + 1);
+            depth.get()
+        });
+        REPLAY_MAX_DEPTH.with(|maximum| maximum.set(maximum.get().max(depth)));
+        Self
+    }
+}
+
+#[cfg(test)]
+impl Drop for ReplayDepthProbe {
+    fn drop(&mut self) {
+        REPLAY_DEPTH.with(|depth| depth.set(depth.get() - 1));
+    }
+}
+
 fn parse_bounded_with_captures(
     source: &str,
     source_snapshot: &CssSourceSnapshot,
@@ -197,7 +228,10 @@ fn parse_bounded_with_captures(
     style_context_captures: StyleContextCaptures,
     parser_context: crate::CssParserContext,
 ) -> crate::CssParseReport<BoundedParseSyntax> {
-    if let Some(limit) = preflight_specialized_eof_limit(source, base_depth) {
+    #[cfg(test)]
+    let _probe = ReplayDepthProbe::enter();
+    if let Some(limit) = preflight_specialized_eof_limit(source, base_depth, context.list_context())
+    {
         // A terminal fragment prelude cannot be erased and replaced by a
         // different original unit. Lists alone recover by masking this unit.
         let (syntax, mut diagnostics) = match context {
@@ -254,7 +288,7 @@ fn parse_bounded_with_captures(
         }
         return crate::CssParseReport::new(syntax, diagnostics);
     }
-    let Some(preflight) = preflight_structural_nesting(
+    let targets = preflight_structural_nesting(
         source,
         base_depth,
         context.is_style(),
@@ -264,7 +298,8 @@ fn parse_bounded_with_captures(
             context,
             BoundedParseContext::GroupBlock | BoundedParseContext::ScopedBlock { .. }
         ),
-    ) else {
+    );
+    if targets.is_empty() {
         let recovery = RecoveryState::at_depth_with_snapshot(
             source,
             base_depth,
@@ -312,20 +347,30 @@ fn parse_bounded_with_captures(
                 BoundedParseSyntax::Rules,
             ),
         };
-    };
-    if matches!(&preflight.outcome, StructuralPreflightOutcome::Split) {
-        for &content_start in preflight
-            .style_context_starts
-            .iter()
-            .chain(&preflight.style_ancestry_starts)
-        {
-            style_context_captures.register(content_start);
+    }
+    for preflight in &targets {
+        if matches!(&preflight.outcome, StructuralPreflightOutcome::Split) {
+            for &content_start in preflight
+                .style_context_starts
+                .iter()
+                .chain(&preflight.style_ancestry_starts)
+            {
+                style_context_captures.register(content_start);
+            }
         }
     }
-    let masked = mask_source_span(source, preflight.unit_start, preflight.unit_end);
-    // Parse at most one bounded structural chunk at a time. Same-length masks
-    // retain original byte/line coordinates, and the completed child syntax is
-    // spliced back into its parser-produced enclosing groups.
+    // Every bounded unit is masked once in one same-length copy, which keeps
+    // original byte/line coordinates. The outer parse admits every ancestor;
+    // each unit is then replayed in isolation and spliced back into its
+    // parser-produced enclosing groups. Units replay latest first; order does
+    // not depend on that: each splice inserts at its unit's start offset, and
+    // the report orders diagnostics by their error positions.
+    let masked = mask_source_spans(
+        source,
+        targets
+            .iter()
+            .map(|preflight| preflight.unit_start..preflight.unit_end),
+    );
     let scoped_body = match &context {
         BoundedParseContext::Candidate {
             context: super::CssRuleAdmissionContext::Scope(_),
@@ -348,107 +393,113 @@ fn parse_bounded_with_captures(
         style_context_captures.clone(),
         parser_context,
     );
-    let (outer_syntax, mut diagnostics) = outer.into_parts();
-
-    // Native admission of every authored ancestor precedes publication of its
-    // isolated descendants. This also preserves whole-input fragment rejection.
-    if !bounded_parent_admitted(&outer_syntax, &preflight.parents) {
-        return crate::CssParseReport::new(outer_syntax, diagnostics);
-    }
-
-    match preflight.outcome {
-        StructuralPreflightOutcome::Split => {
-            let isolated = isolate_source_span(source, preflight.unit_start, preflight.unit_end);
-            let has_style_ancestor = inherited_style_ancestor
-                || preflight
-                    .style_ancestry_starts
-                    .last()
-                    .is_some_and(|&content_start| {
-                        style_context_captures.contains_parsed(content_start)
-                    });
-            let child_context = if preflight
-                .style_context_starts
-                .last()
-                .is_some_and(|&content_start| style_context_captures.contains_parsed(content_start))
-            {
-                BoundedParseContext::Style
-            } else if scoped_body.is_some()
-                || preflight
-                    .parents
-                    .iter()
-                    .any(|parent| matches!(parent.kind, GroupKind::Scope))
-            {
-                let body = match preflight.parents.last().map(|parent| parent.kind) {
-                    Some(GroupKind::Scope) => ScopedBodyKind::Scope,
-                    Some(
-                        GroupKind::Media
-                        | GroupKind::Supports
-                        | GroupKind::Layer
-                        | GroupKind::Container
-                        | GroupKind::When
-                        | GroupKind::Else,
-                    ) => ScopedBodyKind::OrdinaryGroup,
-                    _ => scoped_body.unwrap_or(ScopedBodyKind::Scope),
-                };
-                BoundedParseContext::Scoped {
-                    has_style_ancestor,
-                    body,
-                }
-            } else {
-                BoundedParseContext::Rules { top_level: false }
-            };
-            let child = parse_sheet_bounded(
-                &isolated,
-                source_snapshot,
-                preflight.parent_depth,
-                child_context,
-                style_context_captures,
-                parser_context,
-            );
-            let (child_sheet, mut child_diagnostics) = child.into_parts();
-            diagnostics.append(&mut child_diagnostics);
-            let syntax = splice_bounded_syntax(
-                outer_syntax,
-                &preflight.parents,
-                preflight.unit_start,
-                child_sheet.rules().to_vec(),
-            );
-            crate::CssParseReport::new(syntax, diagnostics)
+    drop(masked);
+    let (mut syntax, mut diagnostics) = outer.into_parts();
+    for preflight in targets.into_iter().rev() {
+        // Native admission of every authored ancestor precedes publication of
+        // its isolated descendants. This also preserves whole-input fragment
+        // rejection.
+        if !bounded_parent_admitted(&syntax, &preflight.parents) {
+            continue;
         }
-        StructuralPreflightOutcome::NestingLimit {
-            opening_offset,
-            enclosing_production,
-        } => {
-            diagnostics.retain(|diagnostic| {
-                diagnostic.action() != crate::CssRecoveryAction::RetainWithImplicitClosure
-            });
-            let error = from_parse_error(
-                source,
-                crate::error::nesting_limit(
-                    source,
-                    opening_offset,
-                    recovery::STRUCTURAL_NESTING_LIMIT,
-                    enclosing_production,
-                ),
-            );
-            if let Some(span) = crate::CssSourceSpan::new(
-                crate::CssSourcePosition::from_byte_offset_in(source, preflight.unit_start),
-                crate::CssSourcePosition::from_byte_offset_in(source, preflight.unit_end),
-            ) && let Some(diagnostic) = crate::CssRecoveryDiagnostic::new(
-                error,
-                span,
-                crate::CssRecoveryAction::StopAtNestingLimit,
-            ) {
-                diagnostics.push(diagnostic);
+        let rules = match preflight.outcome {
+            StructuralPreflightOutcome::Split => {
+                let child_context = split_child_context(
+                    &preflight,
+                    &style_context_captures,
+                    inherited_style_ancestor,
+                    scoped_body,
+                );
+                let isolated =
+                    isolate_source_span(source, preflight.unit_start, preflight.unit_end);
+                let child = parse_sheet_bounded(
+                    &isolated,
+                    source_snapshot,
+                    preflight.parent_depth,
+                    child_context,
+                    style_context_captures.clone(),
+                    parser_context,
+                );
+                let (child_sheet, mut child_diagnostics) = child.into_parts();
+                diagnostics.append(&mut child_diagnostics);
+                child_sheet.rules().to_vec()
             }
-            let syntax = splice_bounded_syntax(
-                outer_syntax,
-                &preflight.parents,
-                preflight.unit_start,
-                Vec::new(),
-            );
-            crate::CssParseReport::new(syntax, diagnostics)
+            StructuralPreflightOutcome::NestingLimit {
+                opening_offset,
+                enclosing_production,
+            } => {
+                diagnostics.retain(|diagnostic| {
+                    diagnostic.action() != crate::CssRecoveryAction::RetainWithImplicitClosure
+                });
+                let error = from_parse_error(
+                    source,
+                    crate::error::nesting_limit(
+                        source,
+                        opening_offset,
+                        recovery::STRUCTURAL_NESTING_LIMIT,
+                        enclosing_production,
+                    ),
+                );
+                if let Some(span) = crate::CssSourceSpan::new(
+                    crate::CssSourcePosition::from_byte_offset_in(source, preflight.unit_start),
+                    crate::CssSourcePosition::from_byte_offset_in(source, preflight.unit_end),
+                ) && let Some(diagnostic) = crate::CssRecoveryDiagnostic::new(
+                    error,
+                    span,
+                    crate::CssRecoveryAction::StopAtNestingLimit,
+                ) {
+                    diagnostics.push(diagnostic);
+                }
+                Vec::new()
+            }
+        };
+        syntax = splice_bounded_syntax(syntax, &preflight.parents, preflight.unit_start, rules);
+    }
+    crate::CssParseReport::new(syntax, diagnostics)
+}
+
+// An isolated unit keeps its style or scoped grammar from its actual parents.
+fn split_child_context(
+    preflight: &recovery::StructuralPreflight,
+    style_context_captures: &StyleContextCaptures,
+    inherited_style_ancestor: bool,
+    scoped_body: Option<ScopedBodyKind>,
+) -> BoundedParseContext {
+    let has_style_ancestor = inherited_style_ancestor
+        || preflight
+            .style_ancestry_starts
+            .last()
+            .is_some_and(|&content_start| style_context_captures.contains_parsed(content_start));
+    if preflight
+        .style_context_starts
+        .last()
+        .is_some_and(|&content_start| style_context_captures.contains_parsed(content_start))
+    {
+        BoundedParseContext::Style
+    } else if scoped_body.is_some()
+        || preflight
+            .parents
+            .iter()
+            .any(|parent| matches!(parent.kind, GroupKind::Scope))
+    {
+        let body = match preflight.parents.last().map(|parent| parent.kind) {
+            Some(GroupKind::Scope) => ScopedBodyKind::Scope,
+            Some(
+                GroupKind::Media
+                | GroupKind::Supports
+                | GroupKind::Layer
+                | GroupKind::Container
+                | GroupKind::When
+                | GroupKind::Else,
+            ) => ScopedBodyKind::OrdinaryGroup,
+            _ => scoped_body.unwrap_or(ScopedBodyKind::Scope),
+        };
+        BoundedParseContext::Scoped {
+            has_style_ancestor,
+            body,
         }
+    } else {
+        BoundedParseContext::Rules { top_level: false }
     }
 }
 
@@ -557,14 +608,23 @@ pub(super) fn scoped_rule_into_chunk_rule(rule: CssScopedRule) -> CssRule {
 }
 
 fn mask_source_span(source: &str, start: usize, end: usize) -> String {
+    mask_source_spans(source, std::iter::once(start..end))
+}
+
+fn mask_source_spans(
+    source: &str,
+    spans: impl IntoIterator<Item = std::ops::Range<usize>>,
+) -> String {
     let mut masked = source.as_bytes().to_vec();
-    for byte in masked
-        .get_mut(start.min(source.len())..end.min(source.len()))
-        .into_iter()
-        .flatten()
-    {
-        if !matches!(*byte, b'\n' | b'\r' | b'\x0c') {
-            *byte = b' ';
+    for span in spans {
+        for byte in masked
+            .get_mut(span.start.min(source.len())..span.end.min(source.len()))
+            .into_iter()
+            .flatten()
+        {
+            if !matches!(*byte, b'\n' | b'\r' | b'\x0c') {
+                *byte = b' ';
+            }
         }
     }
     String::from_utf8(masked).expect("ASCII masking preserves UTF-8")

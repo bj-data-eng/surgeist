@@ -18,6 +18,7 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::CssFeatureId] =
 pub(super) fn parse_resize<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssResize, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "none" => Ok(CssResize::None),
@@ -26,7 +27,7 @@ pub(super) fn parse_resize<'i, 't>(
         "vertical" => Ok(CssResize::Vertical),
         "block" => Ok(CssResize::Block),
         "inline" => Ok(CssResize::Inline),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
@@ -75,11 +76,12 @@ pub(super) fn parse_contain<'i, 't>(
 pub(super) fn parse_border_collapse<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBorderCollapse, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "collapse" => Ok(CssBorderCollapse::Collapse),
         "separate" => Ok(CssBorderCollapse::Separate),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
@@ -99,22 +101,24 @@ pub(super) fn parse_border_spacing<'i, 't>(
 pub(super) fn parse_caption_side<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssCaptionSide, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "top" => Ok(CssCaptionSide::Top),
         "bottom" => Ok(CssCaptionSide::Bottom),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
 pub(super) fn parse_empty_cells<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssEmptyCells, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "show" => Ok(CssEmptyCells::Show),
         "hide" => Ok(CssEmptyCells::Hide),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
@@ -139,6 +143,7 @@ pub(super) fn parse_page_line_minimum<'i, 't>(
 pub(super) fn parse_break_between<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBreakBetween, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssBreakBetween::Auto),
@@ -153,13 +158,14 @@ pub(super) fn parse_break_between<'i, 't>(
         "column" => Ok(CssBreakBetween::Column),
         "avoid-region" => Ok(CssBreakBetween::AvoidRegion),
         "region" => Ok(CssBreakBetween::Region),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
 pub(super) fn parse_break_inside<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBreakInside, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssBreakInside::Auto),
@@ -167,13 +173,14 @@ pub(super) fn parse_break_inside<'i, 't>(
         "avoid-page" => Ok(CssBreakInside::AvoidPage),
         "avoid-column" => Ok(CssBreakInside::AvoidColumn),
         "avoid-region" => Ok(CssBreakInside::AvoidRegion),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
 pub(super) fn parse_page_break_between<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBreakBetween, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssBreakBetween::Auto),
@@ -183,29 +190,31 @@ pub(super) fn parse_page_break_between<'i, 't>(
         "right" => Ok(CssBreakBetween::Right),
         "recto" => Ok(CssBreakBetween::Recto),
         "verso" => Ok(CssBreakBetween::Verso),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
 pub(super) fn parse_page_break_inside<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBreakInside, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssBreakInside::Auto),
         "avoid" => Ok(CssBreakInside::Avoid),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
 pub(super) fn parse_table_layout<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTableLayout, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssTableLayout::Auto),
         "fixed" => Ok(CssTableLayout::Fixed),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
@@ -307,17 +316,19 @@ pub(super) fn parse_display<'i, 't>(
 pub(super) fn parse_box_sizing<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBoxSizing, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "content-box" => Ok(CssBoxSizing::ContentBox),
         "border-box" => Ok(CssBoxSizing::BorderBox),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
 pub(super) fn parse_position<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssLayoutPosition, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "static" => Ok(CssLayoutPosition::Static),
@@ -325,24 +336,26 @@ pub(super) fn parse_position<'i, 't>(
         "absolute" => Ok(CssLayoutPosition::Absolute),
         "fixed" => Ok(CssLayoutPosition::Fixed),
         "sticky" => Ok(CssLayoutPosition::Sticky),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
 pub(super) fn parse_direction<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssDirection, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "ltr" => Ok(CssDirection::Ltr),
         "rtl" => Ok(CssDirection::Rtl),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
 pub(super) fn parse_overflow<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssOverflow, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "visible" => Ok(CssOverflow::Visible),
@@ -350,7 +363,7 @@ pub(super) fn parse_overflow<'i, 't>(
         "hidden" => Ok(CssOverflow::Hidden),
         "scroll" => Ok(CssOverflow::Scroll),
         "auto" | "overlay" => Ok(CssOverflow::Auto),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
@@ -369,6 +382,7 @@ pub(super) fn parse_overflow_value<'i, 't>(
 pub(super) fn parse_float<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFloat, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "left" => Ok(CssFloat::Left),
@@ -376,13 +390,14 @@ pub(super) fn parse_float<'i, 't>(
         "none" => Ok(CssFloat::None),
         "inline-start" => Ok(CssFloat::InlineStart),
         "inline-end" => Ok(CssFloat::InlineEnd),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
 pub(super) fn parse_clear<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssClear, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "left" => Ok(CssClear::Left),
@@ -391,31 +406,33 @@ pub(super) fn parse_clear<'i, 't>(
         "none" => Ok(CssClear::None),
         "inline-start" => Ok(CssClear::InlineStart),
         "inline-end" => Ok(CssClear::InlineEnd),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
 pub(super) fn parse_visibility<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssVisibility, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "visible" => Ok(CssVisibility::Visible),
         "hidden" => Ok(CssVisibility::Hidden),
         "collapse" => Ok(CssVisibility::Collapse),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
 pub(super) fn parse_content_visibility<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssContentVisibility, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "visible" => Ok(CssContentVisibility::Visible),
         "hidden" => Ok(CssContentVisibility::Hidden),
         "auto" => Ok(CssContentVisibility::Auto),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 

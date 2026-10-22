@@ -1,6 +1,9 @@
 //! Selected Page3 property applicability composes with Cascade5 globals and Values3/4
 //! authored lengths. Page-local custom declarations use the approved bounded
 //! WebKit witness; variable lookup, fallback selection and cascade stay downstream.
+use crate::css::support::rules::ExpectedRejection;
+use crate::css::support::rules::assert_clean_and_valid as clean;
+use crate::css::support::rules::page_pseudo;
 use surgeist_css::*;
 
 const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
@@ -10,11 +13,6 @@ const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
     ("revert", CssGlobalKeyword::Revert),
     ("revert-layer", CssGlobalKeyword::RevertLayer),
 ];
-
-fn clean<T: Clone>(report: &CssParseReport<T>) {
-    assert!(report.is_clean(), "{:?}", report.diagnostics());
-    assert!(report.clone().into_validation_result().is_ok());
-}
 
 fn page_list(body: &str, front: usize) -> CssDeclarationList {
     match front {
@@ -771,12 +769,17 @@ fn page_payload_normalization_retains_pending_custom_and_composed_occurrences() 
             .reenter(parse_component_values("2Q").unwrap())
             .is_ok()
     );
-    assert!(
+    assert_eq!(
         normalize_sheet_with_limits(
             report.syntax(),
             CssNormalizationLimits::try_new(0, 0, 0, 0).unwrap()
         )
-        .is_err()
+        .unwrap_err()
+        .kind(),
+        &CssNormalizationErrorKind::LimitExceeded {
+            resource: CssNormalizationResource::Rules,
+            limit: 0
+        }
     );
 }
 
@@ -872,7 +875,10 @@ fn actual_group_page_values_compose_without_lifting_style_ancestor_placement() {
         parse_scope_block(input, &ns, CssStyleAncestor::Absent),
         parse_scoped_group_block(input, &ns, CssStyleAncestor::Present),
     ] {
-        assert!(!report.is_clean());
+        // Page 3 §3: @page belongs at top level or in a conditional group.
+        ExpectedRejection::new(CssErrorCode::InvalidAtRulePlacement)
+            .in_rule("page")
+            .assert_first(&report);
         let [CssScopedRule::Style(style)] = report.syntax().as_ref().unwrap().body().rules() else {
             panic!("following style survives excluded Page")
         };
@@ -881,11 +887,4 @@ fn actual_group_page_values_compose_without_lifting_style_ancestor_placement() {
             "color: red;"
         );
     }
-}
-
-fn page_pseudo(page: &surgeist_css::CssPageRule) -> Option<surgeist_css::CssPagePseudo> {
-    page.selectors()
-        .selectors()
-        .first()
-        .and_then(|s| s.pseudos().first().copied())
 }

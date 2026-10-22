@@ -9,6 +9,7 @@
 //! Exercises authored placement without query evaluation or definition lookup.
 
 use crate::css::support::descriptor_phases;
+use crate::css::support::rules::normalized_rule_contexts as rule_contexts;
 use descriptor_phases::*;
 
 use surgeist_css::*;
@@ -30,17 +31,6 @@ fn kind_name(kind: CssRuleContextKindRef<'_>) -> &'static str {
         CssRuleContextKindRef::Keyframes(_) => "keyframes",
         _ => "other",
     }
-}
-
-fn rule_contexts(sheet: &CssNormalizedSheet) -> Vec<&CssRuleContext> {
-    sheet
-        .items()
-        .iter()
-        .filter_map(|item| match item {
-            CssNormalizedItem::Rule(context) => Some(context),
-            _ => None,
-        })
-        .collect()
 }
 
 fn assert_position(source: &str, marker: &str, position: CssSourcePosition) {
@@ -282,7 +272,7 @@ fn scoped_font_and_keyframes_keep_valid_payload_after_local_recovery() {
 }
 
 #[test]
-fn style_ancestors_still_reject_definitions_through_nested_scope_and_groups() {
+fn style_ancestors_reject_definitions_through_nested_scope_and_groups() {
     for definition in [COUNTER, FONT, KEYFRAMES] {
         for (prefix, suffix) in [
             ("host{", "}"),
@@ -323,7 +313,7 @@ fn style_ancestors_still_reject_definitions_through_nested_scope_and_groups() {
 }
 
 #[test]
-fn reserved_definition_names_drop_locally_at_existing_and_new_routes() {
+fn reserved_definition_names_drop_locally_at_top_level_and_inside_media_and_scope() {
     for invalid in [
         "@counter-style none{system:cyclic;symbols:x}",
         "@keyframes none{from{opacity:0}}",

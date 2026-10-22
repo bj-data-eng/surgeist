@@ -1,12 +1,7 @@
 //! Conditional Rules 3 method overload grammar, distinct from rule grammar.
+use crate::css::support::authored_syntax::supports_declaration as declaration;
 use surgeist_css::*;
 
-fn declaration(condition: &CssSupportsCondition) -> &CssSupportsDeclaration {
-    let CssSupportsConditionKind::Declaration(value) = condition.kind() else {
-        panic!("declaration condition")
-    };
-    value
-}
 fn original(origin: &CssValueOrigin, text: &str) {
     let CssValueOrigin::Parsed(origin) = origin else {
         panic!("original argument origin: {origin:?}")
@@ -150,5 +145,9 @@ fn method_retry_preserves_component_and_recovered_errors_and_valid_retry() {
         panic!("original component resource failure")
     };
     assert_eq!(error.kind(), CssComponentValueErrorKind::NestingLimit);
-    assert!(parse_css_supports_condition("color:red").is_ok());
+    assert!(
+        declaration(&parse_css_supports_condition("color:red").unwrap())
+            .known()
+            .is_some()
+    );
 }

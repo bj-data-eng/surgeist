@@ -4,6 +4,7 @@
 //! https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/#the-mask
 //! No future serializer API or additional mask fields are required by these tests.
 
+use crate::css::support::check_property_components;
 use surgeist_css::*;
 
 const ORDERS: &[&str] = &[
@@ -97,22 +98,11 @@ fn exact_layer(declaration: &CssDeclaration, source: &str) {
     assert_eq!(*value, expected);
 }
 
-fn checked(value: &str, grammar: bool) -> CssDeclaration {
+fn checked_mask(value: &str, grammar: bool) -> CssDeclaration {
     let components = parse_component_values(value).unwrap();
-    let result = if grammar {
-        parse_property_value_for_grammar(
-            CssKnownProperty::Mask.grammar(),
-            components.clone(),
-            CssImportance::Important,
-        )
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Mask),
-            components.clone(),
-            CssImportance::Important,
-        )
-    };
-    let declaration = result.unwrap_or_else(|error| panic!("{value}: {error:?}"));
+    let declaration =
+        check_property_components(CssKnownProperty::Mask, components.clone(), grammar)
+            .unwrap_or_else(|error| panic!("{value}: {error:?}"));
     assert_eq!(declaration.importance(), CssImportance::Important);
     assert!(declaration.position().is_none());
     assert!(declaration.parsed_name().is_none());
@@ -163,14 +153,14 @@ fn validator_admits_all_six_component_group_orders() {
 #[test]
 fn checked_property_admits_permutations_with_supplied_components_and_origins() {
     for value in ORDERS {
-        exact_layer(&checked(value, false), value);
+        exact_layer(&checked_mask(value, false), value);
     }
 }
 
 #[test]
 fn checked_grammar_admits_permutations_with_supplied_components_and_origins() {
     for value in ORDERS {
-        exact_layer(&checked(value, true), value);
+        exact_layer(&checked_mask(value, true), value);
     }
 }
 
@@ -181,8 +171,8 @@ fn optional_second_repeat_size_and_position_stop_at_following_groups() {
         assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
         assert_eq!(mask(&report.syntax()[0]).layers().len(), 1);
         assert!(validate_style_attribute(&format!("mask:{value}")).is_ok());
-        checked(value, false);
-        checked(value, true);
+        checked_mask(value, false);
+        checked_mask(value, true);
     }
 }
 
@@ -200,8 +190,8 @@ fn layer_boundaries_and_existing_complete_orders_remain_admitted() {
         let count = if value.contains(',') { 2 } else { 1 };
         assert_eq!(mask(&report.syntax()[0]).layers().len(), count);
         assert!(validate_style_attribute(&format!("mask:{value}")).is_ok());
-        assert_eq!(mask(&checked(value, false)).layers().len(), count);
-        assert_eq!(mask(&checked(value, true)).layers().len(), count);
+        assert_eq!(mask(&checked_mask(value, false)).layers().len(), count);
+        assert_eq!(mask(&checked_mask(value, true)).layers().len(), count);
     }
 }
 
@@ -233,8 +223,12 @@ fn malformed_groups_drop_only_local_declaration_with_exact_recovery_coordinates(
 #[test]
 fn validator_rejects_duplicate_groups_invalid_sizes_and_empty_layers() {
     for value in INVALID {
-        assert!(
-            validate_style_attribute(&format!("mask:{value}; color:blue")).is_err(),
+        let source = format!("mask:{value}; color:blue");
+        let report = parse_style_attribute(&source);
+        assert!(!report.diagnostics().is_empty(), "{value}");
+        assert_eq!(
+            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            report.diagnostics(),
             "{value}"
         );
     }

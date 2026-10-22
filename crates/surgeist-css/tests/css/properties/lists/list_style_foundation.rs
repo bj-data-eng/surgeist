@@ -3,6 +3,11 @@
 //! Counter-style names and `symbols()` follow Counter Styles 3 (2021-07-27);
 //! generic custom identifiers follow CSS Values 4 (2024-03-12) §4.2.
 
+use crate::css::support::named_property::important_property_declaration as declaration;
+use crate::css::support::named_property::longhand_contributions;
+use crate::css::support::named_property::{
+    assert_checked_value_rejected_at, assert_programmatic_rejection, assert_value_diagnostic_at,
+};
 use surgeist_css::*;
 
 const TYPE: CssKnownProperty = CssKnownProperty::ListStyleType;
@@ -11,27 +16,12 @@ const IMAGE: CssKnownProperty = CssKnownProperty::ListStyleImage;
 const SHORTHAND: CssKnownProperty = CssKnownProperty::ListStyle;
 const MEMBERS: [CssKnownProperty; 3] = [POSITION, IMAGE, TYPE];
 
-fn declaration(property: CssKnownProperty, value: &str) -> CssDeclaration {
-    let source = format!("{}:{value}!important", property.canonical_name());
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    assert_eq!(declaration.known().unwrap().property(), property);
-    declaration.clone()
-}
-
 fn ordinary(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("ordinary list-style expansion")
-    };
-    values.items().to_vec()
+    longhand_contributions(source).items().to_vec()
 }
 
-fn rejected(property: CssKnownProperty, value: &str) {
+fn rejected<'a>(property: CssKnownProperty, value: &str, rest: impl Into<Option<&'a str>>) {
+    let rest = rest.into();
     let source = format!("color:red;{}:{value};height:2px", property.canonical_name());
     let report = parse_style_attribute(&source);
     assert_eq!(
@@ -50,7 +40,15 @@ fn rejected(property: CssKnownProperty, value: &str) {
         )
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
+    assert_value_diagnostic_at(
+        diagnostic.error(),
+        property,
+        format!("color:red;{}:", property.canonical_name()).len(),
+        value,
+        rest,
+    );
     assert!(validate_style_attribute(&source).is_err());
+    assert_checked_value_rejected_at(property, value, rest);
 }
 
 #[test]
@@ -189,28 +187,32 @@ fn shorthand_accepts_unordered_members_and_allocates_ambiguous_none() {
 
 #[test]
 fn invalid_longhand_domains_and_shorthand_duplicates_drop_only_their_declaration() {
-    for (property, value) in [
-        (TYPE, "inherit disc"),
-        (TYPE, "default"),
-        (TYPE, r"\64 efault"),
-        (TYPE, "symbols()"),
-        (TYPE, "symbols(numeric \"0\")"),
-        (TYPE, "symbols(cyclic none)"),
-        (IMAGE, "red"),
-        (IMAGE, "linear-gradient(red,)"),
-        (IMAGE, "none url(\"a\")"),
-        (POSITION, "center"),
-        (POSITION, "inside outside"),
-        (SHORTHAND, ""),
-        (SHORTHAND, "none none none"),
-        (SHORTHAND, "inside outside square"),
-        (SHORTHAND, "none none square"),
-        (SHORTHAND, "none none url(\"a\")"),
-        (SHORTHAND, "none square url(\"a\")"),
-        (SHORTHAND, "inside outside inside"),
-        (SHORTHAND, "linear-gradient(red,)"),
+    // Counter Styles 3 §6.1: numeric symbols() needs two symbols, so the `)`
+    // that ends it after one cannot continue it. In the shorthand,
+    // url() is the first component no remaining operand admits, and a
+    // committed image fails inside itself as list-style-image does.
+    rejected(TYPE, "symbols(numeric \"0\")", ")");
+    rejected(SHORTHAND, "none none url(\"a\")", r#"url("a")"#);
+    rejected(SHORTHAND, "none square url(\"a\")", r#"url("a")"#);
+    rejected(SHORTHAND, "linear-gradient(red,)", ")");
+    for (property, value, rest) in [
+        (TYPE, "inherit disc", "disc"),
+        (TYPE, "default", "default"),
+        (TYPE, r"\64 efault", r#"\64 efault"#),
+        (TYPE, "symbols()", ")"),
+        (TYPE, "symbols(cyclic none)", "none)"),
+        (IMAGE, "red", "red"),
+        (IMAGE, "linear-gradient(red,)", ")"),
+        (IMAGE, "none url(\"a\")", r#"url("a")"#),
+        (POSITION, "center", "center"),
+        (POSITION, "inside outside", "outside"),
+        (SHORTHAND, "", ""),
+        (SHORTHAND, "none none none", "none"),
+        (SHORTHAND, "inside outside square", "square"),
+        (SHORTHAND, "none none square", "square"),
+        (SHORTHAND, "inside outside inside", "inside"),
     ] {
-        rejected(property, value);
+        rejected(property, value, rest);
     }
 }
 
@@ -242,13 +244,13 @@ fn checked_construction_uses_the_same_grammar_and_retains_programmatic_origin() 
         let components =
             CssComponentValues::try_new(vec![CssComponentValue::try_ident(invalid).unwrap()])
                 .unwrap();
-        assert!(
+        assert_programmatic_rejection(
             parse_property_value(
                 CssPropertyNameRef::Known(property),
                 components,
                 CssImportance::Normal,
-            )
-            .is_err()
+            ),
+            property,
         );
     }
 }
@@ -282,43 +284,6 @@ fn shorthand_contributions_follow_position_image_type_and_reset_omissions() {
             assert_eq!(item.source().importance(), CssImportance::Important);
             assert!(item.replacement_components().is_none());
         }
-    }
-}
-
-#[test]
-fn global_values_and_all_reset_keep_every_list_style_terminal_symbolic() {
-    for property in [TYPE, POSITION, IMAGE, SHORTHAND] {
-        let expected_members = if property == SHORTHAND {
-            &MEMBERS[..]
-        } else {
-            &[property][..]
-        };
-        for (spelling, keyword) in [
-            ("initial", CssGlobalKeyword::Initial),
-            ("inherit", CssGlobalKeyword::Inherit),
-            ("unset", CssGlobalKeyword::Unset),
-            ("revert", CssGlobalKeyword::Revert),
-            ("revert-layer", CssGlobalKeyword::RevertLayer),
-        ] {
-            let source = declaration(property, spelling);
-            let values = ordinary(&source);
-            assert_eq!(values.len(), expected_members.len());
-            for (item, member) in values.iter().zip(expected_members) {
-                assert_eq!(item.property(), *member);
-                assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-                assert!(item.source().same_occurrence(&source));
-                assert_eq!(item.source().importance(), CssImportance::Important);
-            }
-        }
-    }
-    let source = declaration(CssKnownProperty::All, "initial");
-    let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&source).unwrap()
-    else {
-        panic!("all has a universal reset")
-    };
-    for property in MEMBERS {
-        assert!(!reset.excludes(CssPropertyNameRef::Known(property)));
     }
 }
 

@@ -1,17 +1,8 @@
 //! Public construction, projection and owned-tree operations at supported depth.
 use crate::css::support::isolated_stack;
 
-use surgeist_css::{
-    CssNamespaceContext, CssSupportsCondition, CssSupportsConditionKind, parse_component_values,
-};
-
-fn construct(source: &str) -> CssSupportsCondition {
-    CssSupportsCondition::try_from_components(
-        parse_component_values(source).unwrap(),
-        &CssNamespaceContext::default(),
-    )
-    .unwrap()
-}
+use crate::css::support::authored_syntax::checked_supports_condition as construct;
+use surgeist_css::CssSupportsConditionKind;
 
 #[test]
 fn supported_supports_depth_and_owned_child_lifetimes_fit_an_ordinary_caller_stack() {

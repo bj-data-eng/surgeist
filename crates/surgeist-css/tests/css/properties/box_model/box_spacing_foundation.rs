@@ -2,6 +2,7 @@
 //! §§4.2, 4.4, 4.7. Logical 1 issue 3030 leaves the complete reset
 //! footprint of the four-side shorthands unsettled.
 
+use crate::css::support::property_admission::assert_declaration_rejected as rejected;
 use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
@@ -43,27 +44,6 @@ fn accepted(name: &str, value: &str) {
             value
         );
     }
-}
-
-fn invalid(name: &str, value: &str) {
-    let source = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&source);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one invalid-value diagnostic: {source}")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    assert_eq!(report.syntax().len(), 2, "{source}");
-    assert!(validate_style_attribute(&source).is_err());
-    assert!(
-        parse_property_value_for_grammar(
-            grammar(name),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "checked construction accepted {name}:{value}"
-    );
 }
 
 fn one_value(source: &CssDeclaration) -> CssLonghandValue {
@@ -155,12 +135,24 @@ fn margin_accepts_signed_length_percentages_and_auto_but_padding_is_nonnegative(
                     accepted(&name, value);
                 }
             } else {
-                for value in ["auto", "-1px", "-1%", "-1e-999px", "-1e-999%"] {
-                    invalid(&name, value);
+                for (value, token) in [
+                    ("auto", Some("auto")),
+                    ("-1px", Some("-1px")),
+                    ("-1%", Some("-1%")),
+                    ("-1e-999px", Some("-1e-999px")),
+                    ("-1e-999%", Some("-1e-999%")),
+                ] {
+                    rejected(&name, value, token);
                 }
             }
-            for value in ["1", "1fr", "min-content", "fit-content(1px)", "calc(1 + 2)"] {
-                invalid(&name, value);
+            for (value, token) in [
+                ("1", Some("1")),
+                ("1fr", Some("1fr")),
+                ("min-content", Some("min-content")),
+                ("fit-content(1px)", Some("fit-content(")),
+                ("calc(1 + 2)", Some("calc(")),
+            ] {
+                rejected(&name, value, token);
             }
         }
     }
@@ -173,19 +165,19 @@ fn four_side_shorthands_accept_physical_or_prefixed_logical_one_to_four_values()
             accepted(family, values);
             accepted(family, &format!("logical {values}"));
         }
-        for values in [
-            "",
-            "logical",
-            "logical logical 1px",
-            "1px logical",
-            "1px 2px 3px 4px 5px",
-            "logical 1px 2px 3px 4px 5px",
+        for (values, token) in [
+            ("", None),
+            ("logical", Some("logical")),
+            ("logical logical 1px", Some("logical")),
+            ("1px logical", Some("logical")),
+            ("1px 2px 3px 4px 5px", Some("5px")),
+            ("logical 1px 2px 3px 4px 5px", Some("5px")),
         ] {
-            invalid(family, values);
+            rejected(family, values, token);
         }
     }
     accepted("margin", "logical auto -1px 2% -3px");
-    invalid("padding", "logical 1px -1e-999px");
+    rejected("padding", "logical 1px -1e-999px", Some("-1e-999px"));
     for name in [
         "margin-block",
         "margin-inline",
@@ -194,8 +186,8 @@ fn four_side_shorthands_accept_physical_or_prefixed_logical_one_to_four_values()
     ] {
         accepted(name, "1px");
         accepted(name, "1px 2px");
-        invalid(name, "logical 1px");
-        invalid(name, "1px 2px 3px");
+        rejected(name, "logical 1px", Some("logical"));
+        rejected(name, "1px 2px 3px", Some("3px"));
     }
 }
 
@@ -317,7 +309,7 @@ fn css_wide_values_and_pending_reentry_participate_at_every_property() {
                     }
                 }
             }
-            invalid(&name, "initial 1px");
+            rejected(&name, "initial 1px", Some("1px"));
             let source = declaration(&name, "var(--space)");
             let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
                 panic!("{name} retains pending substitution")

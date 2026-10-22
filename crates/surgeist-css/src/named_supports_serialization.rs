@@ -1,11 +1,11 @@
 //! Canonical specified serialization of authored named support tests.
 
 use crate::{
-    CssComponentValue, CssComponentValueErrorKind, CssComponentValueRef, CssImportance,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, CssSupportsConditionRule, CssSupportsTestBody,
-    CssSupportsTestDeclaration, CssSupportsTestItem, CssValueTokenRef,
-    component_values::CssCanonicalBuilder, specified_rule_serialization::SpecifiedRuleWriter,
+    CssComponentValue, CssComponentValueRef, CssImportance, CssSpecifiedValueSerializationError,
+    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits,
+    CssSupportsConditionRule, CssSupportsTestBody, CssSupportsTestDeclaration, CssSupportsTestItem,
+    CssValueTokenRef, component_values::CssCanonicalBuilder,
+    specified_rule_serialization::SpecifiedRuleWriter,
 };
 
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
@@ -265,8 +265,10 @@ impl SpecifiedRuleWriter {
         let mut builder = CssCanonicalBuilder::new(self.context.remaining_bytes());
         builder
             .push_components(components)
-            .map_err(component_error)?;
-        let serialized = builder.finish().map_err(component_error)?;
+            .map_err(crate::component_values::specified_component_error)?;
+        let serialized = builder
+            .finish()
+            .map_err(crate::component_values::specified_component_error)?;
         self.append(serialized.as_css())
     }
 }
@@ -312,14 +314,6 @@ fn capacity_error() -> CssSpecifiedValueSerializationError {
     CssSpecifiedValueSerializationError::new(
         CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
     )
-}
-
-fn component_error(error: crate::CssComponentValueError) -> CssSpecifiedValueSerializationError {
-    let kind = match error.kind() {
-        CssComponentValueErrorKind::ByteLimit => CssSpecifiedValueSerializationErrorKind::ByteLimit,
-        _ => CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-    };
-    CssSpecifiedValueSerializationError::new(kind)
 }
 
 impl crate::CssSupportsTestChildRef<'_> {

@@ -400,21 +400,27 @@ fn checked_scalar_front_doors_reject_dimensions_that_cannot_enter_the_models() {
         );
     }
     for text in ["calc(1px)", "calc(1deg)", "calc(1s)"] {
-        assert!(
+        assert_eq!(
             CssNumberCalculation::try_from_components(parse_component_values(text).unwrap())
-                .is_err(),
+                .unwrap_err()
+                .kind(),
+            &CssNumericConstructionErrorKind::RootDomainMismatch,
             "{text}"
         );
-        assert!(
+        assert_eq!(
             CssPercentageCalculation::try_from_components(parse_component_values(text).unwrap())
-                .is_err(),
+                .unwrap_err()
+                .kind(),
+            &CssNumericConstructionErrorKind::RootDomainMismatch,
             "{text}"
         );
     }
     for text in ["calc(1px)", "calc(1%)", "calc(1s)"] {
-        assert!(
+        assert_eq!(
             CssAngleCalculation::try_from_components(parse_component_values(text).unwrap())
-                .is_err(),
+                .unwrap_err()
+                .kind(),
+            &CssNumericConstructionErrorKind::RootDomainMismatch,
             "{text}"
         );
     }

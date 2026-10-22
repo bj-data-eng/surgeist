@@ -16,6 +16,8 @@ pub(crate) use parse::promote_nodes;
 pub(crate) use parse::{has_unescaped_final, odd_trailing_backslashes};
 pub(crate) use retained::{equivalent_in_same_input_with, retained_backing_bytes_with};
 mod serialize;
+#[cfg(test)]
+mod tokenizer_agreement_tests;
 pub(crate) use serialize::{CssCanonicalBuilder, CssCanonicalToken};
 
 use std::fmt;
@@ -74,14 +76,37 @@ pub(crate) fn specified_root_components(components: &[CssComponentValue]) -> &[C
     &components[start..end]
 }
 
+/// The one conversion from a component-value failure met while serializing
+/// retained components into a specified-serialization failure.
+///
+/// Resource failures keep their resource kind. Byte and node limits follow the
+/// serialization budget, so a larger budget may succeed; nesting and component
+/// limits are structural limits of the retained graph, which no serialization
+/// budget changes. Retained components were checked at construction and keep
+/// their lexical form, so any other failure is an unrepresentable boundary,
+/// never a resource exhaustion.
 pub(crate) fn specified_component_error(
     error: CssComponentValueError,
 ) -> crate::CssSpecifiedValueSerializationError {
     use crate::CssSpecifiedValueSerializationErrorKind as Kind;
+    use CssComponentValueErrorKind as Component;
     crate::CssSpecifiedValueSerializationError::new(match error.kind() {
-        CssComponentValueErrorKind::ByteLimit => Kind::ByteLimit,
-        CssComponentValueErrorKind::UnserializableBoundary => Kind::UnserializableBoundary,
-        _ => Kind::CapacityOverflow,
+        Component::ByteLimit => Kind::ByteLimit,
+        Component::NestingLimit | Component::ComponentLimit | Component::CapacityOverflow => {
+            Kind::CapacityOverflow
+        }
+        Component::UnserializableBoundary
+        | Component::BadString
+        | Component::BadUrl
+        | Component::UnmatchedClosingDelimiter
+        | Component::EmptyInput
+        | Component::TrailingInput
+        | Component::InvalidToken
+        | Component::InvalidIdentifier
+        | Component::InvalidNumber
+        | Component::InvalidDimension
+        | Component::InvalidFunction
+        | Component::InvalidString => Kind::UnserializableBoundary,
     })
 }
 

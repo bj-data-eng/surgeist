@@ -5,6 +5,7 @@
 //! singleton normal terminal; the eight authored settable members remain intact.
 //! These tests use the existing public metadata/expansion/normalization boundary.
 
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
 
 const MEMBERS: [CssKnownProperty; 8] = [
@@ -17,15 +18,6 @@ const MEMBERS: [CssKnownProperty; 8] = [
     CssKnownProperty::BackgroundClip,
     CssKnownProperty::BackgroundColor,
 ];
-
-fn declaration(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one authored declaration")
-    };
-    source.clone()
-}
 
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
@@ -224,25 +216,6 @@ fn explicit_layers_preserve_all_components_and_single_final_color() {
             .iter()
             .all(|item| item.replacement_components().is_none())
     );
-}
-
-#[test]
-fn all_five_css_wide_keywords_expand_symbolically_to_nine_members() {
-    for (css, keyword) in [
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("initial", CssGlobalKeyword::Initial),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        let source = declaration(&format!("background:{css}!important"));
-        let values = completed(&source);
-        for item in values.items() {
-            assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-            assert!(item.ordinary_value().is_none());
-            assert!(item.replacement_components().is_none());
-        }
-    }
 }
 
 #[test]

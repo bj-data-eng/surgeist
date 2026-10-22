@@ -1,21 +1,12 @@
 //! Existing-public-API behavior from CSS Fonts 4 WD (2026-09-07) §§2.2 and 2.7.
 //! Exact typed numeric payloads follow with the functional weight model.
 
-use crate::css::support::important_retained_declaration as declaration;
+use crate::css::support::checked_grammar_declaration as checked;
+use crate::css::support::important_declaration as declaration;
+use crate::css::support::known_property;
+use crate::css::support::named_property::assert_checked_value_rejected_at;
+use crate::css::support::selected_grammar as grammar;
 use surgeist_css::*;
-
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).expect("font grammar")
-}
-
-fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).expect("valid component stream"),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"))
-}
 
 #[test]
 fn property_accepts_keywords_exact_numbers_and_number_math() {
@@ -63,20 +54,21 @@ fn exact_bounds_and_wrong_numeric_domains_drop_only_the_weight_declaration() {
             panic!("one invalid weight diagnostic: {source}: {report:?}");
         };
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
+        assert_eq!(
+            diagnostic.error().code(),
+            CssErrorCode::InvalidPropertyValue
+        );
         assert_eq!(report.syntax().len(), 2, "neighbors survive: {source}");
         assert!(validate_style_attribute(&source).is_err());
     }
-    for invalid in ["0", "1001", "50%", "400px", "normal bold"] {
-        assert!(
-            parse_property_value_for_grammar(
-                grammar("font-weight"),
-                parse_component_values(invalid).unwrap(),
-                CssImportance::Normal,
-            )
-            .is_err(),
-            "checked construction accepted {invalid}"
-        );
+    for (invalid, rest) in [
+        ("0", "0"),
+        ("1001", "1001"),
+        ("50%", "50%"),
+        ("400px", "400px"),
+        ("normal bold", "bold"),
+    ] {
+        assert_checked_value_rejected_at(known_property("font-weight"), invalid, rest);
     }
 }
 
@@ -139,38 +131,6 @@ fn inherited_normal_weight_has_one_intrinsic_contribution_and_pending_reentry() 
             .kind(),
         &CssExpansionErrorKind::ResidualSubstitution
     );
-}
-
-#[test]
-fn symbolic_global_weights_contribute_once_without_losing_importance() {
-    for (spelling, keyword) in [
-        ("initial", CssGlobalKeyword::Initial),
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        let source = declaration("font-weight", spelling);
-        checked("font-weight", spelling);
-        let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).expect("weight global expansion")
-        else {
-            panic!("one symbolic longhand contribution");
-        };
-        let [item] = values.items() else {
-            panic!("one weight contribution");
-        };
-        assert_eq!(item.property(), CssKnownProperty::FontWeight);
-        assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-        assert!(item.source().same_occurrence(&source));
-        assert_eq!(item.source().importance(), CssImportance::Important);
-    }
-    let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&declaration("all", "initial")).unwrap()
-    else {
-        panic!("all contributes its universal reset");
-    };
-    assert!(!reset.excludes(CssPropertyNameRef::Known(CssKnownProperty::FontWeight)));
 }
 
 #[test]

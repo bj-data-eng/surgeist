@@ -13,6 +13,8 @@
 //! These runtime tests use only preexisting public APIs. Source preservation,
 //! checked construction, recovery, and validator parity are Surgeist contracts.
 
+use crate::css::support::property_admission::Responsible::{self, At};
+use crate::css::support::property_admission::{assert_checked_rejected, assert_invalid_value};
 use surgeist_css::{
     CssDeclaration, CssErrorCode, CssImportance, CssKnownProperty as Property,
     CssKnownPropertyValueRef, CssPropertyNameRef, CssRecoveryAction, CssTokenKind, ErrorKind,
@@ -78,23 +80,35 @@ fn template_axes_and_the_implemented_grid_auto_flow_branch_share_the_relaxed_bod
 #[test]
 fn fixed_surroundings_and_one_automatic_repeat_remain_required() {
     for property in TEMPLATE_AXES {
-        for authored in [
-            "1fr repeat(auto-fit, 10px)",
-            "repeat(auto-fit, 10px) 1fr",
-            "auto repeat(auto-fill, 10px)",
-            "repeat(auto-fill, 10px) min-content",
-            "repeat(auto-fill, 10px) fit-content(20px)",
-            "minmax(auto, 1fr) repeat(auto-fit, 10px)",
-            "repeat(2, 1fr) repeat(auto-fit, 10px)",
-            "repeat(auto-fit, 10px) repeat(2, auto)",
-            "repeat(auto-fill, 10px) repeat(auto-fit, 20px)",
-            "1fr repeat(auto-fit, auto)",
-            "repeat(auto-fit, auto) auto",
-            "repeat(auto-fit, auto) fit-content(20px)",
-            "repeat(auto-fit, auto) repeat(2, 1fr)",
-            "repeat(auto-fill, auto) repeat(auto-fit, 1fr)",
+        for (authored, token) in [
+            ("1fr repeat(auto-fit, 10px)", At("auto-fit")),
+            ("repeat(auto-fit, 10px) 1fr", At("1fr")),
+            ("auto repeat(auto-fill, 10px)", At("auto-fill")),
+            ("repeat(auto-fill, 10px) min-content", At("min-content")),
+            (
+                "repeat(auto-fill, 10px) fit-content(20px)",
+                At("fit-content("),
+            ),
+            ("minmax(auto, 1fr) repeat(auto-fit, 10px)", At("auto-fit")),
+            ("repeat(2, 1fr) repeat(auto-fit, 10px)", At("auto-fit")),
+            ("repeat(auto-fit, 10px) repeat(2, auto)", At("auto")),
+            (
+                "repeat(auto-fill, 10px) repeat(auto-fit, 20px)",
+                At("auto-fit"),
+            ),
+            ("1fr repeat(auto-fit, auto)", At("auto-fit")),
+            ("repeat(auto-fit, auto) auto", At("auto")),
+            (
+                "repeat(auto-fit, auto) fit-content(20px)",
+                At("fit-content("),
+            ),
+            ("repeat(auto-fit, auto) repeat(2, 1fr)", At("1fr")),
+            (
+                "repeat(auto-fill, auto) repeat(auto-fit, 1fr)",
+                At("auto-fit"),
+            ),
         ] {
-            assert_rejected(property, authored);
+            assert_rejected(property, authored, token);
         }
     }
 }
@@ -102,42 +116,46 @@ fn fixed_surroundings_and_one_automatic_repeat_remain_required() {
 #[test]
 fn repeat_content_remains_nonrecursive_nonempty_and_subject_to_track_size_grammar() {
     for property in TEMPLATE_AXES {
-        for authored in [
-            "repeat(auto-fit, repeat(2, 10px))",
-            "repeat(auto-fill, repeat(auto-fit, 10px))",
-            "repeat(2, repeat(auto-fill, 10px))",
-            "repeat(auto-fit,)",
-            "repeat(auto-fill, [only])",
-            "repeat(auto-fit, -1px)",
-            "repeat(auto-fill, -1%)",
-            "repeat(auto-fit, -1fr)",
-            "repeat(auto-fit, fit-content(-1px))",
-            "repeat(auto-fill, minmax(1fr, 10px))",
-            "repeat(auto-fit, minmax(auto, -1fr))",
-            "repeat(auto-fit, 1)",
-            "repeat(auto-fill, none)",
+        for (authored, token) in [
+            ("repeat(auto-fit, repeat(2, 10px))", Some("repeat(")),
+            ("repeat(auto-fill, repeat(auto-fit, 10px))", Some("repeat(")),
+            ("repeat(2, repeat(auto-fill, 10px))", Some("repeat(")),
+            ("repeat(auto-fit,)", Some(")")),
+            ("repeat(auto-fill, [only])", Some(")")),
+            ("repeat(auto-fit, -1px)", Some("-1px")),
+            ("repeat(auto-fill, -1%)", Some("-1%")),
+            ("repeat(auto-fit, -1fr)", Some("-1fr")),
+            ("repeat(auto-fit, fit-content(-1px))", Some("-1px")),
+            ("repeat(auto-fill, minmax(1fr, 10px))", Some("1fr")),
+            ("repeat(auto-fit, minmax(auto, -1fr))", Some("-1fr")),
+            ("repeat(auto-fit, 1)", Some("1")),
+            ("repeat(auto-fill, none)", Some("none")),
         ] {
-            assert_rejected(property, authored);
+            assert_rejected(property, authored, token);
         }
     }
 }
 
 #[test]
-fn implicit_track_lists_still_accept_sizes_without_repetition_or_line_names() {
+fn implicit_track_lists_accept_sizes_without_repetition_or_line_names() {
     for property in [Property::GridAutoRows, Property::GridAutoColumns] {
         assert_accepted(property, "auto 1fr fit-content(20%) minmax(auto, 1fr)");
-        for authored in [
-            "repeat(2, 10px)",
-            "repeat(auto-fill, 10px)",
-            "repeat(auto-fit, auto)",
-            "[start] 10px",
+        for (authored, token) in [
+            ("repeat(2, 10px)", Some("repeat(")),
+            ("repeat(auto-fill, 10px)", Some("repeat(")),
+            ("repeat(auto-fit, auto)", Some("repeat(")),
+            ("[start] 10px", Some("[")),
         ] {
-            assert_rejected(property, authored);
+            assert_rejected(property, authored, token);
         }
     }
     assert_accepted(Property::Grid, "auto-flow 1fr / 10px");
-    assert_rejected(Property::Grid, "auto-flow repeat(auto-fit, 10px) / 10px");
-    assert_rejected(Property::Grid, "auto-flow [start] 10px / 10px");
+    assert_rejected(
+        Property::Grid,
+        "auto-flow repeat(auto-fit, 10px) / 10px",
+        Some("repeat("),
+    );
+    assert_rejected(Property::Grid, "auto-flow [start] 10px / 10px", Some("["));
 }
 
 #[test]
@@ -194,7 +212,7 @@ fn a_flexible_minimum_inside_auto_repeat_reports_its_source_token() {
         let token = detail.encountered().expect("responsible fraction");
         assert_eq!(token.kind(), CssTokenKind::Dimension);
         assert_eq!(token.authored(), "1fr");
-        assert_rejected(property, "repeat(auto-fit, minmax(1fr, 10px))");
+        assert_rejected(property, "repeat(auto-fit, minmax(1fr, 10px))", Some("1fr"));
     }
 }
 
@@ -262,7 +280,8 @@ fn assert_checked(property: Property, authored: &str) {
     assert!(retained.source().same_snapshot(original.source()));
 }
 
-fn assert_rejected(property: Property, authored: &str) {
+fn assert_rejected<'a>(property: Property, authored: &str, token: impl Into<Responsible<'a>>) {
+    let token = token.into();
     let dropped = format!("{}:{authored};", property.canonical_name());
     let source = format!("color:red;{dropped}width:3px");
     let report = parse_style_attribute(&source);
@@ -280,9 +299,7 @@ fn assert_rejected(property: Property, authored: &str) {
         "{source}"
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert!(
-        matches!(diagnostic.error().kind(), ErrorKind::InvalidPropertyValue(detail) if detail.property() == property)
-    );
+    assert_invalid_value(diagnostic.error().kind(), property, token);
     let start = "color:red;".len();
     assert_eq!(diagnostic.span().start().byte_offset().value(), start);
     assert_eq!(
@@ -293,14 +310,14 @@ fn assert_rejected(property: Property, authored: &str) {
         validate_style_attribute(&source).unwrap_err().diagnostics(),
         report.diagnostics()
     );
-    assert!(
+    assert_checked_rejected(
         parse_property_value(
             CssPropertyNameRef::Known(property),
             parse_component_values(authored).unwrap(),
             CssImportance::Normal,
-        )
-        .is_err(),
-        "checked construction rejects {authored}"
+        ),
+        property,
+        token,
     );
 }
 

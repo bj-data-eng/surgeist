@@ -5106,12 +5106,7 @@
         },
         "diagnostics": [
           {
-            "code": "invalid_qualified_rule",
-            "action": "drop_declaration",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "unknown_at_rule",
+            "code": "unexpected_token",
             "action": "drop_declaration",
             "payload_relation": "intersects"
           }
@@ -5134,7 +5129,7 @@
         },
         "diagnostics": [
           {
-            "code": "invalid_qualified_rule",
+            "code": "unexpected_token",
             "action": "drop_declaration",
             "payload_relation": "intersects"
           },
@@ -16129,7 +16124,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "payload_relation": "recovery_ends_at"
+            "payload_relation": "intersects"
           }
         ]
       }
@@ -16543,7 +16538,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "payload_relation": "recovery_ends_at"
+            "payload_relation": "intersects"
           }
         ]
       }

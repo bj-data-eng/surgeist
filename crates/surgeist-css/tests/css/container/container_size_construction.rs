@@ -1,10 +1,8 @@
 //! Typed authored contracts for Conditional 5 size features and scoped Values5 §9.
 //! Existing callable-boundary recognition evidence is in container_size_grammar.
+use crate::css::support::authored_syntax::checked_container_condition as condition;
 use surgeist_css::*;
 
-fn condition(source: &str) -> CssContainerCondition {
-    CssContainerCondition::try_from_components(parse_component_values(source).unwrap()).unwrap()
-}
 fn feature(condition: &CssContainerCondition) -> &CssContainerFeatureQuery {
     let CssContainerConditionKind::Feature(feature) = condition.kind() else {
         panic!("recognized feature: {condition:?}")
@@ -220,7 +218,10 @@ fn pending_values_keep_whole_operand_and_required_domain_without_typing_fallback
         assert_eq!(pending.domain(), domain);
         assert_eq!(pending.serialize().unwrap().as_css(), expected);
         assert_eq!(pending.components().serialize().unwrap().as_css(), expected);
-        assert!(pending.serialize_with_limit(1).is_err());
+        // Each pending operand starts with a function name longer than one byte.
+        let error = pending.serialize_with_limit(1).unwrap_err();
+        assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
+        assert_eq!(error.origin(), pending.components().items()[0].origin());
         let CssValueOrigin::Parsed(origin) = pending.components().items()[0].origin() else {
             panic!("original operand")
         };
@@ -266,12 +267,21 @@ fn tree_counting_is_inspectable_and_remains_symbolic_in_container_context() {
             source.find("sibling-").unwrap()
         );
     }
-    assert!(
-        CssNumberCalculation::try_from_components(
-            parse_component_values("sibling-count()").unwrap()
-        )
-        .is_err()
+    // Tree-counting functions are scoped to element-backed contexts, so the
+    // context-free number grammar does not know the function.
+    let error = CssNumberCalculation::try_from_components(
+        parse_component_values("sibling-count()").unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(
+        error.kind(),
+        &CssNumericConstructionErrorKind::UnknownFunction
     );
+    let CssValueOrigin::Parsed(origin) = error.origin().expect("located failure") else {
+        panic!("{error:?}")
+    };
+    assert_eq!(origin.source().as_str(), "sibling-count()");
+    assert_eq!(origin.span().start().byte_offset().value(), 0);
     let condition = condition("(width: calc(sibling-index() * 1px))");
     let CssContainerFeatureQuery::Width(range) = feature(&condition) else {
         panic!("width")

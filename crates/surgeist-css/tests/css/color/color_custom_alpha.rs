@@ -1,54 +1,17 @@
 //! Authored custom color and alpha grammar from the selected Color5 definition.
 //! Profile binding and computed colors belong to later owners.
+use crate::css::support::color_and_selector_fixtures::{
+    assert_color_value_rejected_at, parsed_important_declaration,
+};
+use crate::css::support::color_property::color_property_value as wrapper;
+use crate::css::support::detached_checked_declaration;
 use surgeist_css::*;
 
-fn parsed(text: &str) -> CssDeclaration {
-    let source = format!("color:{text}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one color declaration")
-    };
-    let declaration = declaration.clone();
-    assert_eq!(declaration.importance(), CssImportance::Important);
-    assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
-        text
-    );
-    let CssValueOrigin::Parsed(origin) = declaration.value_components().items()[0].origin() else {
-        panic!("original function origin")
-    };
-    assert_eq!(origin.source().as_str(), source);
-    assert_eq!(origin.span().start().byte_offset().value(), 6);
-    declaration
-}
-
-fn checked(text: &str) -> CssDeclaration {
-    let components = parse_component_values(text).unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        components.clone(),
-        CssImportance::Important,
-    )
-    .unwrap();
-    assert_eq!(declaration.importance(), CssImportance::Important);
-    assert_eq!(declaration.value_components(), &components);
-    assert!(declaration.position().is_none());
-    assert!(declaration.parsed_value().is_none());
-    declaration
-}
-
-fn wrapper(declaration: &CssDeclaration) -> &CssColorPropertyValue {
-    let CssKnownPropertyValueRef::Color(value) =
-        declaration.known().unwrap().property_value().unwrap()
-    else {
-        panic!("ordinary color property")
-    };
-    value
-}
-
 fn admits_authored_color(text: &str) {
-    for declaration in [parsed(text), checked(text)] {
+    for declaration in [
+        parsed_important_declaration("color", text),
+        detached_checked_declaration("color", text, false),
+    ] {
         let value = wrapper(&declaration);
         assert_eq!(value.as_css(), text);
         let color = value.value();
@@ -68,23 +31,51 @@ fn admits_authored_color(text: &str) {
     }
 }
 
-fn rejects(text: &str) {
+/// The color grammar rejects `text` through the style attribute, dropping
+/// only its declaration, and through checked components. `responsible` is
+/// the first token that violates the grammar with its byte offset in `text`;
+/// a truncated argument list or a calculation names no single token, so only
+/// the color grammar kind is checked.
+fn rejects(text: &str, responsible: Option<(&str, usize)>) {
     let report = parse_style_attribute(&format!("color:{text};opacity:.5"));
-    assert_eq!(report.diagnostics().len(), 1, "{text}");
+    let [diagnostic] = report.diagnostics() else {
+        panic!("{text}: one diagnostic: {report:?}")
+    };
+    assert_eq!(
+        diagnostic.error().code(),
+        CssErrorCode::InvalidColorSyntax,
+        "{text}"
+    );
+    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
+    if let Some((_, at)) = responsible {
+        assert_eq!(
+            diagnostic.error().position().byte_offset().value(),
+            "color:".len() + at,
+            "{text}"
+        );
+    }
     assert_eq!(report.syntax().len(), 1, "{text}");
     assert_eq!(
         report.syntax()[0].known().unwrap().property(),
         CssKnownProperty::Opacity
     );
-    assert!(
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
-            parse_component_values(text).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "{text}"
+    let checked = parse_property_value(
+        CssPropertyNameRef::Known(CssKnownProperty::Color),
+        parse_component_values(text).unwrap(),
+        CssImportance::Normal,
     );
+    match responsible {
+        Some((token, at)) => {
+            assert_color_value_rejected_at(checked, CssKnownProperty::Color, text, token, at)
+        }
+        None => assert!(
+            matches!(
+                checked.unwrap_err().kind(),
+                CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidColorSyntax(_))
+            ),
+            "{text}"
+        ),
+    }
 }
 
 #[test]
@@ -104,8 +95,8 @@ fn ordinary_custom_colors_preserve_exact_literals_missing_values_and_math() {
         admits_authored_color(text);
     }
     for declaration in [
-        parsed("color(--P 1e100 none 20% -2)"),
-        checked("color(--P 1e100 none 20% -2)"),
+        parsed_important_declaration("color", "color(--P 1e100 none 20% -2)"),
+        detached_checked_declaration("color", "color(--P 1e100 none 20% -2)", false),
     ] {
         let custom = wrapper(&declaration).value().custom_value().unwrap();
         assert_eq!(custom.profile().as_str(), "--P");
@@ -127,8 +118,8 @@ fn ordinary_custom_colors_preserve_exact_literals_missing_values_and_math() {
         assert!(custom.alpha().is_none());
     }
     for declaration in [
-        parsed("color(--P 1e-100 0.1% / none)"),
-        checked("color(--P 1e-100 0.1% / none)"),
+        parsed_important_declaration("color", "color(--P 1e-100 0.1% / none)"),
+        detached_checked_declaration("color", "color(--P 1e-100 0.1% / none)", false),
     ] {
         let custom = wrapper(&declaration).value().custom_value().unwrap();
         let CssColorComponent::Number(tiny) = &custom.channels()[0] else {
@@ -153,7 +144,10 @@ fn custom_profile_names_accept_case_escapes_and_bare_dashes() {
         ("color(-- 1)", "--"),
     ] {
         admits_authored_color(text);
-        for declaration in [parsed(text), checked(text)] {
+        for declaration in [
+            parsed_important_declaration("color", text),
+            detached_checked_declaration("color", text, false),
+        ] {
             assert_eq!(
                 wrapper(&declaration)
                     .value()
@@ -177,8 +171,15 @@ fn relative_custom_colors_admit_unbound_profile_names_in_channels_and_alpha() {
         admits_authored_color(text);
     }
     for declaration in [
-        parsed("color(from red --P cyan calc(magenta * 2) / alpha)"),
-        checked("color(from red --P cyan calc(magenta * 2) / alpha)"),
+        parsed_important_declaration(
+            "color",
+            "color(from red --P cyan calc(magenta * 2) / alpha)",
+        ),
+        detached_checked_declaration(
+            "color",
+            "color(from red --P cyan calc(magenta * 2) / alpha)",
+            false,
+        ),
     ] {
         let relative = wrapper(&declaration)
             .value()
@@ -215,7 +216,10 @@ fn relative_custom_colors_admit_direct_constant_names_and_constant_math() {
 #[test]
 fn relative_alpha_accepts_an_omitted_override() {
     admits_authored_color("alpha(from red)");
-    for declaration in [parsed("alpha(from red)"), checked("alpha(from red)")] {
+    for declaration in [
+        parsed_important_declaration("color", "alpha(from red)"),
+        detached_checked_declaration("color", "alpha(from red)", false),
+    ] {
         let alpha = wrapper(&declaration).value().alpha_value().unwrap();
         assert_eq!(alpha.source().named().unwrap().name(), "red");
         assert!(alpha.alpha().is_none());
@@ -241,7 +245,10 @@ fn relative_alpha_accepts_none_numeric_percentage_and_channel_math_overrides() {
         ("alpha(from red / alpha)", "channel"),
         ("alpha(from red / calc(alpha / 2))", "calculation"),
     ] {
-        for declaration in [parsed(text), checked(text)] {
+        for declaration in [
+            parsed_important_declaration("color", text),
+            detached_checked_declaration("color", text, false),
+        ] {
             let alpha = wrapper(&declaration)
                 .value()
                 .alpha_value()
@@ -327,7 +334,10 @@ fn nested_custom_and_alpha_descendants_keep_typed_branches() {
 
 #[test]
 fn substitution_reentry_accepts_expanded_custom_and_alpha_colors() {
-    for declaration in [parsed("var(--paint)"), checked("var(--paint)")] {
+    for declaration in [
+        parsed_important_declaration("color", "var(--paint)"),
+        detached_checked_declaration("color", "var(--paint)", false),
+    ] {
         let CssExpansion::Pending(pending) = expand_declaration(&declaration).unwrap() else {
             panic!("pending color")
         };
@@ -360,7 +370,10 @@ fn substitutions_remain_pending_and_strict_reentry_rejects_residuals() {
         "color(from var(--source) --P cyan)",
         "alpha(from red / env(opacity))",
     ] {
-        for declaration in [parsed(text), checked(text)] {
+        for declaration in [
+            parsed_important_declaration("color", text),
+            detached_checked_declaration("color", text, false),
+        ] {
             let known = declaration.known().unwrap();
             assert!(known.property_value().is_none());
             assert_eq!(known.substitution_dependent().unwrap().as_css(), text);
@@ -390,52 +403,52 @@ fn substitutions_remain_pending_and_strict_reentry_rejects_residuals() {
 
 #[test]
 fn malformed_custom_lists_and_wrong_dimensions_stay_invalid() {
-    for text in [
-        "color(--P)",
-        "color(--P / .5)",
-        "color(--P 1, 2)",
-        "color(--P 1 /)",
-        "color(--P 1 / .5 / .2)",
-        "color(--P 1px)",
-        "color(--P calc(1deg))",
-        "color(from red --P)",
-        "color(from red --P calc(cyan + 1%))",
-        "color(from red --P calc(none))",
-        "color(from red --P cyan / calc(1px))",
+    for (text, responsible) in [
+        ("color(--P)", None),
+        ("color(--P / .5)", Some(("/", 10))),
+        ("color(--P 1, 2)", Some((",", 11))),
+        ("color(--P 1 /)", None),
+        ("color(--P 1 / .5 / .2)", Some(("/", 17))),
+        ("color(--P 1px)", Some(("1px", 10))),
+        ("color(--P calc(1deg))", None),
+        ("color(from red --P)", None),
+        ("color(from red --P calc(cyan + 1%))", None),
+        ("color(from red --P calc(none))", None),
+        ("color(from red --P cyan / calc(1px))", None),
     ] {
-        rejects(text);
+        rejects(text, responsible);
     }
 }
 
 #[test]
 fn alpha_requires_from_and_rejects_foreign_channels_dimensions_and_extra_slashes() {
-    for text in [
-        "alpha()",
-        "alpha(red)",
-        "alpha(/ .5)",
-        "alpha(from red /)",
-        "alpha(from red / .5 / .2)",
-        "alpha(from red / r)",
-        "alpha(from red / cyan)",
-        "alpha(from red / calc(h / 2))",
-        "alpha(from red / 1px)",
-        "alpha(from red / calc(1deg))",
+    for (text, responsible) in [
+        ("alpha()", None),
+        ("alpha(red)", Some(("red", 6))),
+        ("alpha(/ .5)", Some(("/", 6))),
+        ("alpha(from red /)", None),
+        ("alpha(from red / .5 / .2)", Some(("/", 20))),
+        ("alpha(from red / r)", Some(("r", 17))),
+        ("alpha(from red / cyan)", Some(("cyan", 17))),
+        ("alpha(from red / calc(h / 2))", None),
+        ("alpha(from red / 1px)", Some(("1px", 17))),
+        ("alpha(from red / calc(1deg))", None),
     ] {
-        rejects(text);
+        rejects(text, responsible);
     }
 }
 
 #[test]
 fn profile_channel_names_do_not_leak_into_ordinary_or_predefined_numeric_roots() {
-    for text in [
-        "color(--P cyan)",
-        "color(--P pi)",
-        "color(--P calc(cyan))",
-        "color(--P 1 / alpha)",
-        "rgb(from red cyan g b)",
-        "color(from red srgb cyan g b)",
+    for (text, responsible) in [
+        ("color(--P cyan)", Some(("cyan", 10))),
+        ("color(--P pi)", Some(("pi", 10))),
+        ("color(--P calc(cyan))", None),
+        ("color(--P 1 / alpha)", Some(("alpha", 14))),
+        ("rgb(from red cyan g b)", Some(("cyan", 13))),
+        ("color(from red srgb cyan g b)", Some(("cyan", 20))),
     ] {
-        rejects(text);
+        rejects(text, responsible);
     }
     assert!(
         CssNumberCalculation::try_from_components(parse_component_values("calc(cyan)").unwrap())
@@ -460,7 +473,10 @@ fn predefined_relative_and_two_color_values_remain_available() {
         "rgb(from red r g b)",
         "color-mix(in srgb, red 25%, blue 50%)",
     ] {
-        for declaration in [parsed(text), checked(text)] {
+        for declaration in [
+            parsed_important_declaration("color", text),
+            detached_checked_declaration("color", text, false),
+        ] {
             let color = wrapper(&declaration).value();
             if text.starts_with("color(srgb") {
                 assert!(color.predefined_value().is_some());
@@ -475,8 +491,8 @@ fn predefined_relative_and_two_color_values_remain_available() {
 
 // Each witness is a separate test so an expected parsed failure cannot hide
 // checked admission, alpha math, aggregate transport, or substitution reentry.
-fn checked_color(text: &str) {
-    let declaration = checked(text);
+fn assert_checked_color_value(text: &str) {
+    let declaration = detached_checked_declaration("color", text, false);
     let value = wrapper(&declaration);
     assert_eq!(value.as_css(), text);
     let color = value.value();
@@ -491,27 +507,27 @@ fn checked_color(text: &str) {
 
 #[test]
 fn checked_custom_color_accepts_exact_variable_channels() {
-    checked_color("color(--P 1e100 none 20% -2)");
+    assert_checked_color_value("color(--P 1e100 none 20% -2)");
 }
 
 #[test]
 fn checked_relative_custom_color_accepts_symbolic_channel_math() {
-    checked_color("color(from red --P cyan calc(magenta * 2) / alpha)");
+    assert_checked_color_value("color(from red --P cyan calc(magenta * 2) / alpha)");
 }
 
 #[test]
 fn checked_relative_alpha_accepts_transparency_math() {
-    checked_color("alpha(from red / calc(alpha / 2))");
+    assert_checked_color_value("alpha(from red / calc(alpha / 2))");
 }
 
 #[test]
 fn parsed_relative_alpha_accepts_transparency_math() {
-    let declaration = parsed("alpha(from red / calc(alpha / 2))");
+    let declaration = parsed_important_declaration("color", "alpha(from red / calc(alpha / 2))");
     assert!(wrapper(&declaration).value().alpha_value().is_some());
 }
 
 fn reenters_color(text: &str) {
-    let declaration = checked("var(--paint)");
+    let declaration = detached_checked_declaration("color", "var(--paint)", false);
     let CssExpansion::Pending(pending) = expand_declaration(&declaration).unwrap() else {
         panic!("pending color")
     };
@@ -539,7 +555,7 @@ fn substitution_reentry_accepts_relative_alpha_math() {
     reenters_color("alpha(from red / calc(alpha / 2))");
 }
 
-fn checked_border_color(text: &str) {
+fn assert_checked_border_color_value(text: &str) {
     let components = parse_component_values(text).unwrap();
     let declaration = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::BorderColor),
@@ -570,12 +586,12 @@ fn checked_border_color(text: &str) {
 
 #[test]
 fn checked_border_color_transports_custom_channels() {
-    checked_border_color("color(--P 1e100 none 20% -2)");
+    assert_checked_border_color_value("color(--P 1e100 none 20% -2)");
 }
 
 #[test]
 fn checked_border_color_transports_relative_alpha_math() {
-    checked_border_color("alpha(from red / calc(alpha / 2))");
+    assert_checked_border_color_value("alpha(from red / calc(alpha / 2))");
 }
 
 #[test]

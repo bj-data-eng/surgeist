@@ -130,7 +130,7 @@ fn specified(item: &CssLonghandContribution) -> String {
 }
 
 #[test]
-fn normative_twelve_names_resolve_to_their_existing_canonical_grammars_and_support() {
+fn normative_twelve_names_resolve_to_their_canonical_grammars_and_support() {
     for &(alias, canonical, _, property) in CASES {
         assert_eq!(
             CssKnownProperty::from_name(alias),

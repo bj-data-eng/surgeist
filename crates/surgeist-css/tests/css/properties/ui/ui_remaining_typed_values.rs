@@ -1,5 +1,6 @@
 //! New typed APIs, tested functionally with implementation from UI4/Images4 and CSSOM.
 use crate::css::support::normal_checked_declaration as declaration;
+use crate::css::support::serialization_limits::assert_node_limits;
 use surgeist_css::*;
 
 fn caret(text: &str) -> CssCaret {
@@ -25,48 +26,6 @@ fn time(number: &str, unit: CssTimeUnit) -> CssInterestDelayValue {
         CssTimeLiteral::try_new(number, unit).unwrap(),
     ))
 }
-fn exact_limits(
-    emit: impl Fn(
-        CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError>,
-    expected: &str,
-    nodes: usize,
-) {
-    assert_eq!(
-        emit(CssSpecifiedValueSerializationLimits::new(
-            nodes,
-            nodes,
-            expected.len()
-        ))
-        .unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (
-            CssSpecifiedValueSerializationLimits::new(nodes - 1, nodes, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
-        (
-            CssSpecifiedValueSerializationLimits::new(nodes, nodes - 1, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
-        ),
-        (
-            CssSpecifiedValueSerializationLimits::new(nodes, nodes, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
-        ),
-    ] {
-        assert_eq!(emit(limits).unwrap_err().kind(), kind);
-    }
-    assert_eq!(
-        emit(CssSpecifiedValueSerializationLimits::new(
-            nodes,
-            nodes,
-            expected.len()
-        ))
-        .unwrap(),
-        expected
-    );
-}
 #[test]
 fn checked_caret_preserves_roles_while_auto_projection_omits_initials() {
     assert!(CssCaret::try_new(None, None, None).is_none());
@@ -91,11 +50,9 @@ fn checked_caret_preserves_roles_while_auto_projection_omits_initials() {
         Some(CssCaretShape::Block),
     )
     .unwrap();
-    exact_limits(
-        |limits| value.serialize_specified_with_limits(limits),
-        "manual block",
-        4,
-    );
+    assert_node_limits("manual block", 4, |limits| {
+        value.serialize_specified_with_limits(limits)
+    });
     assert!(matches!(value.color(), Some(CssCaretColor::Auto)));
     assert_eq!(value.animation(), Some(CssCaretAnimation::Manual));
     assert_eq!(value.shape(), Some(CssCaretShape::Block));
@@ -105,11 +62,9 @@ fn checked_caret_preserves_roles_while_auto_projection_omits_initials() {
         Some(CssCaretShape::Auto),
     )
     .unwrap();
-    exact_limits(
-        |limits| all.serialize_specified_with_limits(limits),
-        "auto",
-        4,
-    );
+    assert_node_limits("auto", 4, |limits| {
+        all.serialize_specified_with_limits(limits)
+    });
 }
 #[test]
 fn typed_keyword_providers_reparse_each_distinct_ui_identity() {
@@ -148,11 +103,9 @@ fn typed_keyword_providers_reparse_each_distinct_ui_identity() {
         (CssInteractivity::Auto, "auto"),
         (CssInteractivity::Inert, "inert"),
     ] {
-        exact_limits(
-            |limits| value.serialize_specified_with_limits(limits),
-            text,
-            1,
-        );
+        assert_node_limits(text, 1, |limits| {
+            value.serialize_specified_with_limits(limits)
+        });
         let d = declaration(CssKnownProperty::Interactivity, text);
         let CssKnownPropertyValueRef::Interactivity(v) =
             d.known().unwrap().property_value().unwrap()
@@ -178,11 +131,9 @@ fn typed_keyword_providers_reparse_each_distinct_ui_identity() {
         (CssAppearance::Textfield, "textfield"),
         (CssAppearance::MenulistButton, "menulist-button"),
     ] {
-        exact_limits(
-            |limits| value.serialize_specified_with_limits(limits),
-            text,
-            1,
-        );
+        assert_node_limits(text, 1, |limits| {
+            value.serialize_specified_with_limits(limits)
+        });
         let d = declaration(CssKnownProperty::Appearance, text);
         let CssKnownPropertyValueRef::Appearance(v) = d.known().unwrap().property_value().unwrap()
         else {
@@ -193,11 +144,9 @@ fn typed_keyword_providers_reparse_each_distinct_ui_identity() {
     assert!(matches!(CssAccentColor::default(), CssAccentColor::Auto));
     let accent = CssAccentColor::Color(Box::new(CssColor::transparent()));
     assert!(accent.color().is_some());
-    exact_limits(
-        |limits| accent.serialize_specified_with_limits(limits),
-        "transparent",
-        1,
-    );
+    assert_node_limits("transparent", 1, |limits| {
+        accent.serialize_specified_with_limits(limits)
+    });
 }
 #[test]
 fn interest_omission_uses_exact_signed_time_proof_and_preserves_second_presence() {
@@ -228,20 +177,16 @@ fn interest_omission_uses_exact_signed_time_proof_and_preserves_second_presence(
         Some(time("-1000", CssTimeUnit::Milliseconds)),
     )
     .unwrap();
-    exact_limits(
-        |limits| value.serialize_specified_with_limits(limits),
-        "-1s",
-        3,
-    );
+    assert_node_limits("-1s", 3, |limits| {
+        value.serialize_specified_with_limits(limits)
+    });
     assert!(value.authored_end().is_some());
     let repeated = CssInterestDelay::try_new(time("-1", CssTimeUnit::Seconds), None).unwrap();
     assert!(repeated.authored_end().is_none());
     assert_eq!(repeated.start(), repeated.end());
-    exact_limits(
-        |limits| repeated.serialize_specified_with_limits(limits),
-        "-1s",
-        2,
-    );
+    assert_node_limits("-1s", 2, |limits| {
+        repeated.serialize_specified_with_limits(limits)
+    });
     assert!(
         CssDuration::try_new(CssTimeValue::from_literal(
             CssTimeLiteral::try_new("-1", CssTimeUnit::Seconds).unwrap()
@@ -397,11 +342,9 @@ fn stripes_checked_construction_preserves_optional_thickness_and_exact_origins()
     assert!(stripe.thickness().is_some());
     let stripes = CssStripes::try_new(vec![stripe]).unwrap();
     let before = stripes.clone();
-    exact_limits(
-        |limits| stripes.serialize_specified_with_limits(limits),
-        "stripes(red)",
-        4,
-    );
+    assert_node_limits("stripes(red)", 4, |limits| {
+        stripes.serialize_specified_with_limits(limits)
+    });
     assert_eq!(stripes, before);
     assert!(stripes.original_component().is_none());
     assert!(matches!(
@@ -427,7 +370,7 @@ fn stripes_checked_construction_preserves_optional_thickness_and_exact_origins()
     );
 }
 #[test]
-fn stripe_thickness_uses_exact_ranges_signed_flex_and_existing_grid_boundary() {
+fn stripe_thickness_uses_exact_ranges_signed_flex_and_grid_boundary() {
     for text in [
         "-1%",
         "100.00000000000000000001%",

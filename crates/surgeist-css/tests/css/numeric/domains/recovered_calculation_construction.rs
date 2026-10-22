@@ -18,7 +18,11 @@ use surgeist_css::{
 fn property(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssDeclarationList> {
     let report = parse_style_attribute(source);
     assert_eq!(report.syntax().len(), 1, "{source}");
-    assert!(!report.is_clean(), "{source} recovers by implicit closure");
+    // Syntax 3 §5.4.9: the implicit closure at EOF is a parse error.
+    crate::css::support::value_assertions::assert_first_code(
+        report.diagnostics(),
+        surgeist_css::CssErrorCode::UnexpectedEnd,
+    );
     report
 }
 

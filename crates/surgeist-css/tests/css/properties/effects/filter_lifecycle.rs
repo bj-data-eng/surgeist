@@ -4,32 +4,10 @@
 //! https://raw.githubusercontent.com/w3c/csswg-drafts/034f50a78495b619478342d71117cd7ca7e76de7/filter-effects-2/Overview.bs
 //! This checks authored grammar and intrinsic lifecycle, not filter execution.
 
+use crate::css::support::property_admission::validated_known_declaration as declaration;
 use surgeist_css::*;
 
 const BACKDROP_SOURCE: &str = "https://raw.githubusercontent.com/w3c/csswg-drafts/034f50a78495b619478342d71117cd7ca7e76de7/filter-effects-2/Overview.bs";
-
-fn declaration(
-    property: CssKnownProperty,
-    value: &str,
-    importance: CssImportance,
-) -> CssDeclaration {
-    let suffix = if importance == CssImportance::Important {
-        "!important"
-    } else {
-        ""
-    };
-    let source = format!("{}:{value}{suffix}", property.canonical_name());
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert_eq!(
-        validate_style_attribute(&source),
-        Ok(report.syntax().clone())
-    );
-    let [value] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}");
-    };
-    value.clone()
-}
 
 fn filter_value(declaration: &CssDeclaration) -> &CssFilter {
     match declaration.known().unwrap().property_value().unwrap() {

@@ -3,6 +3,7 @@
 //! reset/set `0` and increment `1`. Values 4 defines exact integer tokens and
 //! symbolic integer-root math; expected text is sourced from those contracts.
 
+use crate::css::support::named_property::normal_property_declaration as parsed;
 use surgeist_css::*;
 
 fn name(value: &str) -> CssContentCounterName {
@@ -11,13 +12,6 @@ fn name(value: &str) -> CssContentCounterName {
 
 fn entry(value: &str, number: Option<CssIntegerValue>) -> CssCounterChangeValue {
     CssCounterChangeValue::new(name(value), number)
-}
-
-fn parsed(property: CssKnownProperty, value: &str) -> CssDeclaration {
-    let source = format!("{}:{value}", property.canonical_name());
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    report.syntax()[0].clone()
 }
 
 fn current(declaration: &CssDeclaration) -> &CssCounterChangesValue {

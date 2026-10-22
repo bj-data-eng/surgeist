@@ -1,4 +1,5 @@
 //! Ordinary resolution ranges and signed authored calculation/media domains.
+use crate::css::support::value_assertions::assert_numeric_kind;
 use surgeist_css::*;
 
 #[test]
@@ -27,7 +28,17 @@ fn ordinary_resolution_preserves_positive_units_and_rejects_negative_nonfinite_v
             f32::INFINITY,
             f32::NEG_INFINITY,
         ] {
-            assert!(CssResolutionLiteral::try_new(&number.to_string(), unit).is_err());
+            let kind = if number.is_finite() {
+                surgeist_css::CssNumericConstructionErrorKind::OutOfRange
+            } else {
+                surgeist_css::CssNumericConstructionErrorKind::Component(
+                    surgeist_css::CssComponentValueErrorKind::InvalidDimension,
+                )
+            };
+            assert_numeric_kind(
+                CssResolutionLiteral::try_new(&number.to_string(), unit),
+                kind,
+            );
         }
     }
 }
@@ -54,7 +65,12 @@ fn frequency_calculation_convenience_preserves_signed_finite_units() {
             ));
         }
         for number in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-            assert!(CssFrequencyCalculation::try_literal(&number.to_string(), unit).is_err());
+            assert_numeric_kind(
+                CssFrequencyCalculation::try_literal(&number.to_string(), unit),
+                surgeist_css::CssNumericConstructionErrorKind::Component(
+                    surgeist_css::CssComponentValueErrorKind::InvalidDimension,
+                ),
+            );
         }
     }
 }
@@ -370,7 +386,12 @@ mod construction {
         assert!(error.source().is_none());
         assert_eq!(error.path(), None);
         for number in ["", " ", "1 2", "1e", "NaN", "infinity", "-inf", "1.", "1hz"] {
-            assert!(CssFrequencyLiteral::try_new(number, CssFrequencyUnit::Hertz).is_err());
+            assert_eq!(
+                CssFrequencyLiteral::try_new(number, CssFrequencyUnit::Hertz)
+                    .unwrap_err()
+                    .kind(),
+                surgeist_css::CssComponentValueErrorKind::InvalidDimension
+            );
             let error = CssResolutionLiteral::try_new(number, CssResolutionUnit::Dpi).unwrap_err();
             assert_eq!(
                 error.kind(),
@@ -776,7 +797,7 @@ mod construction {
     }
 
     #[test]
-    fn actual_frequency_math_keeps_existing_simplification_and_cumulative_limits() {
+    fn actual_frequency_math_keeps_simplification_and_cumulative_limits() {
         let value = frequency("calc(1hz + 2hz)");
         let original = value.clone();
         assert_eq!(

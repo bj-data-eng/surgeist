@@ -225,7 +225,7 @@ impl NumberClass {
     }
     fn exact(text: &str) -> Self {
         let decimal = LexicalDecimal::new(text);
-        if decimal.len == 0 {
+        if decimal.is_zero() {
             Self::Zero
         } else if decimal.negative {
             Self::Negative
@@ -302,7 +302,7 @@ impl<'a> PreparedNumber<'a> {
                 // An operation-free leaf emits its exact coefficient, so its
                 // rounded text is checked as the literal's is.
                 let rounds_to_zero = if let Some(text) = value.exact_coefficient() {
-                    LexicalDecimal::new(text).len != 0
+                    !LexicalDecimal::new(text).is_zero()
                         && crate::numeric_formatting::format_css_number_with_sign(
                             text,
                             0,
@@ -414,7 +414,7 @@ impl<'a> PreparedAngle<'a> {
                     CssAngleUnit::Degrees => decimal.is_angle_full_turn(360),
                     CssAngleUnit::Gradians => decimal.is_angle_full_turn(400),
                     CssAngleUnit::Turns => decimal.is_angle_full_turn(1),
-                    CssAngleUnit::Radians => decimal.len == 0,
+                    CssAngleUnit::Radians => decimal.is_zero(),
                 }
             }
             Self::Calculation(value) => value

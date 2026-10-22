@@ -73,11 +73,16 @@ fn three_level_composition_spends_exact_native_budget_once_and_later_sibling_ret
     );
     assert_eq!(format(root, exact).unwrap(), expected);
     // Existing eager constructors keep their independent validation contracts.
-    assert!(
+    for result in [
         CssImportRuleView::try_new_with_limits(original, &empty_media, Limits::new(0, 0, 0))
-            .is_err()
-    );
-    assert!(CssKeyframesRuleView::try_new_with_limits(&name, &[], Limits::new(0, 0, 0)).is_err());
+            .map(drop),
+        CssKeyframesRuleView::try_new_with_limits(&name, &[], Limits::new(0, 0, 0)).map(drop),
+    ] {
+        assert!(
+            matches!(result, Err(ref error) if matches!(error.kind(), Error::Resource(_))),
+            "{result:?}"
+        );
+    }
 }
 
 #[test]

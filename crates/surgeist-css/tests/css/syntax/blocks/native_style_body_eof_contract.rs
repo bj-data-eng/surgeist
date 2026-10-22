@@ -1,6 +1,7 @@
 //! Native style-body missing-input and recovery contracts.
 //! Syntax3 CRD 20261001 §§5.5.2, 5.5.9–10 and 8; selected Nesting1
 //! WD20260122 §§3.3–3.4; original-source error and clean-report contracts.
+use crate::css::support::authored_syntax::assert_unclean_sheet as strict;
 use surgeist_css::*;
 
 fn span(actual: CssSourceSpan, start: usize, end: usize) {
@@ -26,7 +27,7 @@ fn style<'a>(rule: &'a CssRule, name: &str) -> &'a CssStyleRule {
     style
 }
 
-fn declaration(
+fn assert_declaration(
     list: &CssDeclarationList,
     source: &str,
     name: CssKnownProperty,
@@ -74,25 +75,9 @@ fn closure(diagnostic: &CssRecoveryDiagnostic, eof: usize) {
     span(diagnostic.span(), eof, eof);
 }
 
-fn strict(source: &str, report: &CssParseReport<CssSheet>) {
-    assert!(!report.is_clean());
-    assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
-        report.diagnostics()
-    );
-    assert_eq!(
-        report
-            .clone()
-            .into_validation_result()
-            .unwrap_err()
-            .diagnostics(),
-        report.diagnostics()
-    );
-}
-
 fn scoped_parent<'a>(report: &'a CssParseReport<CssSheet>, source: &str) -> &'a CssScopeRule {
     let parent = style(&report.syntax().rules()[0], "x");
-    declaration(
+    assert_declaration(
         parent.declarations(),
         source,
         CssKnownProperty::Color,
@@ -107,7 +92,7 @@ fn scoped_parent<'a>(report: &'a CssParseReport<CssSheet>, source: &str) -> &'a 
     let [CssScopedRule::NestedDeclarations(run)] = scope.rules().rules() else {
         panic!("only the original scoped declaration run survives")
     };
-    declaration(
+    assert_declaration(
         run.declarations(),
         source,
         CssKnownProperty::Width,
@@ -150,7 +135,7 @@ fn native_style_media_ends_at_parent_bound_and_keeps_original_sibling() {
             panic!("parent and later sibling")
         };
         let parent = style(parent, "x");
-        declaration(
+        assert_declaration(
             parent.declarations(),
             source,
             CssKnownProperty::Color,
@@ -162,7 +147,7 @@ fn native_style_media_ends_at_parent_bound_and_keeps_original_sibling() {
         assert!(parent.rules().is_empty());
         let sibling = style(sibling, "after");
         assert_eq!(sibling.position().byte_offset().value(), after);
-        declaration(
+        assert_declaration(
             sibling.declarations(),
             source,
             CssKnownProperty::Height,
@@ -183,7 +168,7 @@ fn native_style_media_ends_at_parent_bound_and_keeps_original_sibling() {
     let [parent] = report.syntax().rules() else {
         panic!("retained parent")
     };
-    declaration(
+    assert_declaration(
         style(parent, "x").declarations(),
         source,
         CssKnownProperty::Color,
@@ -208,7 +193,7 @@ fn native_style_media_at_whole_source_eof_keeps_parent_and_separate_closure_faul
         panic!("retained implicitly closed parent")
     };
     let parent = style(parent, "x");
-    declaration(
+    assert_declaration(
         parent.declarations(),
         source,
         CssKnownProperty::Color,
@@ -234,7 +219,7 @@ fn scoped_style_ancestor_media_uses_scope_bound_and_preserves_both_declaration_o
     let scope = scoped_parent(&report, source);
     assert!(scope.root().is_none() && scope.limit().is_none());
     let sibling = style(&report.syntax().rules()[1], "after");
-    declaration(
+    assert_declaration(
         sibling.declarations(),
         source,
         CssKnownProperty::Height,
@@ -293,7 +278,7 @@ fn actual_media_semicolon_has_missing_body_contract_and_local_following_runs() {
             panic!("retained parent")
         };
         let parent = style(parent, "x");
-        declaration(
+        assert_declaration(
             parent.declarations(),
             source,
             CssKnownProperty::Color,
@@ -313,7 +298,7 @@ fn actual_media_semicolon_has_missing_body_contract_and_local_following_runs() {
             else {
                 panic!("scope runs before and after dropped media")
             };
-            declaration(
+            assert_declaration(
                 before.declarations(),
                 source,
                 CssKnownProperty::Width,
@@ -322,7 +307,7 @@ fn actual_media_semicolon_has_missing_body_contract_and_local_following_runs() {
                 26,
                 29,
             );
-            declaration(
+            assert_declaration(
                 after.declarations(),
                 source,
                 CssKnownProperty::Height,
@@ -335,7 +320,7 @@ fn actual_media_semicolon_has_missing_body_contract_and_local_following_runs() {
             let [CssRule::NestedDeclarations(after)] = parent.rules() else {
                 panic!("following declaration run")
             };
-            declaration(
+            assert_declaration(
                 after.declarations(),
                 source,
                 CssKnownProperty::Height,
@@ -381,7 +366,7 @@ fn legal_layer_statement_eof_is_retained_at_native_style_and_scoped_bounds() {
         let report = parse_sheet(source);
         assert_eq!(report.syntax().rules().len(), 2);
         let parent = style(&report.syntax().rules()[0], "x");
-        declaration(
+        assert_declaration(
             parent.declarations(),
             source,
             CssKnownProperty::Color,
@@ -401,7 +386,7 @@ fn legal_layer_statement_eof_is_retained_at_native_style_and_scoped_bounds() {
             else {
                 panic!("scoped declaration run then admitted layer statement")
             };
-            declaration(
+            assert_declaration(
                 run.declarations(),
                 source,
                 CssKnownProperty::Width,
@@ -467,7 +452,7 @@ fn invalid_layer_prelude_precedes_missing_body_in_both_native_contexts() {
         let report = parse_sheet(source);
         assert_eq!(report.syntax().rules().len(), 2);
         let parent = style(&report.syntax().rules()[0], "x");
-        declaration(
+        assert_declaration(
             parent.declarations(),
             source,
             CssKnownProperty::Color,
@@ -513,7 +498,7 @@ fn contextual_when_body_keeps_owned_missing_token_category_at_native_eof() {
         panic!("retained sibling styles")
     };
     let parent = style(parent, "x");
-    declaration(
+    assert_declaration(
         parent.declarations(),
         source,
         CssKnownProperty::Color,
@@ -552,7 +537,7 @@ fn isolated_real_style_block_preserves_native_bound_and_original_source_origin()
             .syntax()
             .as_ref()
             .expect("retained genuine style block");
-        declaration(
+        assert_declaration(
             block.declarations(),
             source,
             CssKnownProperty::Color,
@@ -594,7 +579,7 @@ fn complete_media_blocks_are_clean_in_both_native_owning_contexts() {
         panic!("one parent style")
     };
     let parent = style(parent, "x");
-    declaration(
+    assert_declaration(
         parent.declarations(),
         ordinary,
         CssKnownProperty::Color,
@@ -609,7 +594,7 @@ fn complete_media_blocks_are_clean_in_both_native_owning_contexts() {
     let [CssRule::NestedDeclarations(run)] = media.rules() else {
         panic!("direct media declaration run")
     };
-    declaration(
+    assert_declaration(
         run.declarations(),
         ordinary,
         CssKnownProperty::Width,
@@ -627,7 +612,7 @@ fn complete_media_blocks_are_clean_in_both_native_owning_contexts() {
         panic!("one scoped parent style")
     };
     let parent = style(parent, "x");
-    declaration(
+    assert_declaration(
         parent.declarations(),
         scoped,
         CssKnownProperty::Color,
@@ -646,7 +631,7 @@ fn complete_media_blocks_are_clean_in_both_native_owning_contexts() {
     else {
         panic!("direct scoped run and complete media")
     };
-    declaration(
+    assert_declaration(
         before.declarations(),
         scoped,
         CssKnownProperty::Width,
@@ -658,7 +643,7 @@ fn complete_media_blocks_are_clean_in_both_native_owning_contexts() {
     let [CssScopedRule::NestedDeclarations(run)] = media.rules().rules() else {
         panic!("direct scoped media declaration run")
     };
-    declaration(
+    assert_declaration(
         run.declarations(),
         scoped,
         CssKnownProperty::Height,
@@ -677,7 +662,7 @@ fn explicit_scope_root_with_style_ancestor_retains_direct_color_and_sheet_siblin
     let [before, parent, after] = report.syntax().rules() else {
         panic!("original preceding and following styles")
     };
-    declaration(
+    assert_declaration(
         style(before, "before").declarations(),
         source,
         CssKnownProperty::Width,
@@ -703,7 +688,7 @@ fn explicit_scope_root_with_style_ancestor_retains_direct_color_and_sheet_siblin
     let [CssScopedRule::NestedDeclarations(run)] = scope.rules().rules() else {
         panic!("direct Color run, no dropped media node")
     };
-    declaration(
+    assert_declaration(
         run.declarations(),
         source,
         CssKnownProperty::Color,
@@ -714,7 +699,7 @@ fn explicit_scope_root_with_style_ancestor_retains_direct_color_and_sheet_siblin
     );
     let after = style(after, "after");
     assert_eq!(after.position().byte_offset().value(), 58);
-    declaration(
+    assert_declaration(
         after.declarations(),
         source,
         CssKnownProperty::Height,

@@ -266,19 +266,21 @@ fn radial_constructor_checks_shape_size_matrix_without_inventing_defaults() {
 
 #[test]
 fn generic_position_requires_edge_offsets_on_both_axes_or_neither() {
-    assert!(
+    assert_eq!(
         CssPhysicalPosition::try_new(
             CssHorizontalPosition::LeftOffset(signed_length_percentage("10px")),
-            CssVerticalPosition::Center,
+            CssVerticalPosition::Center
         )
-        .is_err()
+        .unwrap_err(),
+        CssPositionConstructionError::UnpairedEdgeOffsets
     );
-    assert!(
+    assert_eq!(
         CssPhysicalPosition::try_new(
             CssHorizontalPosition::Center,
-            CssVerticalPosition::BottomOffset(signed_length_percentage("20px")),
+            CssVerticalPosition::BottomOffset(signed_length_percentage("20px"))
         )
-        .is_err()
+        .unwrap_err(),
+        CssPositionConstructionError::UnpairedEdgeOffsets
     );
 
     let paired = CssPhysicalPosition::try_new(

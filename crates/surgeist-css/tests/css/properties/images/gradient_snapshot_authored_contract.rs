@@ -16,6 +16,8 @@
 //! No contextual geometry, stop fixup, color interpolation, or rendering oracle.
 //! Repeating-conic and other unselected Images 4 siblings are outside this leaf.
 
+use crate::css::support::authored_property;
+use crate::css::support::authored_property::parsed;
 use surgeist_css::{
     CssKnownProperty as P, CssSpecifiedValueSerializationErrorKind as K,
     CssSpecifiedValueSerializationLimits as L, *,
@@ -31,45 +33,12 @@ const SELECTED: [&str; 5] = [
     "conic-gradient",
 ];
 
-fn parsed(property: P, value: &str) -> CssDeclaration {
-    let source = format!("/*😀*/{}:{value}!important", property.canonical_name());
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert_eq!(validate_style_attribute(&source).unwrap(), *report.syntax());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    assert_eq!(declaration.importance(), CssImportance::Important);
-    assert_eq!(declaration.known().unwrap().property(), property);
-    declaration.clone()
-}
-
 fn fronts(property: P, value: &str) -> Vec<CssDeclaration> {
-    let parsed = parsed(property, value);
-    let components = parse_component_values(value).unwrap();
-    let before = components.clone();
-    let mut declarations = vec![parsed];
-    for grammar in [false, true] {
-        let checked = if grammar {
-            parse_property_value_for_grammar(
-                property.grammar(),
-                components.clone(),
-                CssImportance::Important,
-            )
-        } else {
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
-                components.clone(),
-                CssImportance::Important,
-            )
-        }
-        .unwrap_or_else(|error| panic!("checked {value}: {error:?}"));
-        assert_eq!(checked.value_components(), &before);
-        assert_eq!(checked.importance(), CssImportance::Important);
-        declarations.push(checked);
-    }
-    assert_eq!(components, before);
-    declarations
+    vec![
+        parsed(property, value),
+        authored_property::checked(property, value, false),
+        authored_property::checked(property, value, true),
+    ]
 }
 
 fn image(declaration: &CssDeclaration) -> &CssImageValue {
@@ -534,7 +503,7 @@ fn checked_singleton_stop_list_and_image_construction_accept_one_real_stop() {
     );
 }
 #[test]
-fn checked_stop_list_still_rejects_empty_and_hint_only_or_endpoint_hints() {
+fn checked_stop_list_rejects_empty_and_hint_only_or_endpoint_hints() {
     assert!(CssColorStopList::try_new(vec![]).is_none());
     let hint = CssSpecifiedLengthPercentage::try_from_component(
         CssComponentValue::try_token("50%").unwrap(),
@@ -697,37 +666,6 @@ fn pending_substitution_is_whole_value_strict_reusable_and_preserves_source_iden
     }
 }
 #[test]
-fn css_wide_values_remain_distinct_from_pending_and_ordinary_gradients() {
-    for property in [
-        P::BackgroundImage,
-        P::MaskImage,
-        P::BorderImageSource,
-        P::ListStyleImage,
-    ] {
-        for (text, keyword) in [
-            ("inherit", CssGlobalKeyword::Inherit),
-            ("initial", CssGlobalKeyword::Initial),
-            ("unset", CssGlobalKeyword::Unset),
-            ("revert", CssGlobalKeyword::Revert),
-            ("revert-layer", CssGlobalKeyword::RevertLayer),
-        ] {
-            for source in fronts(property, text) {
-                assert_eq!(source.known().unwrap().global(), Some(keyword));
-                let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                    expand_declaration(&source).unwrap()
-                else {
-                    panic!("global expansion")
-                };
-                assert_eq!(
-                    values.items()[0].value(),
-                    CssContributionValueRef::Global(keyword)
-                );
-                assert!(values.items()[0].ordinary_value().is_none());
-            }
-        }
-    }
-}
-#[test]
 fn normalization_preserves_gradient_order_importance_pending_and_occurrence_provenance() {
     let report = parse_sheet(
         ".a{background-image:conic-gradient(red,blue)!important;background-image:linear-gradient(in lab,red 0 20%,blue);background-image:var(--g);background-image:unset}",
@@ -847,7 +785,7 @@ fn selected_gradient_serialization_limits_are_atomic_reusable_and_cumulative() {
     );
 }
 #[test]
-fn unchanged_images3_two_stop_single_position_contract_still_round_trips() {
+fn images3_two_stop_single_position_contract_round_trips() {
     for function in LINEAR.into_iter().chain(RADIAL) {
         round_trip(&format!("{function}(red -10%, 40%, blue 120%)"));
     }
@@ -978,7 +916,7 @@ fn named_and_relative_flow_positions_keep_the_adopted_symbolic_output() {
 }
 
 #[test]
-fn existing_line_stop_calculations_remain_symbolic_without_geometry() {
+fn line_stop_calculations_remain_symbolic_without_geometry() {
     for function in LINEAR.into_iter().chain(RADIAL) {
         for declaration in fronts(
             P::BackgroundImage,

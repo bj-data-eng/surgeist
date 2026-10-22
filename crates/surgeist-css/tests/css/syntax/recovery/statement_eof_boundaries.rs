@@ -1,9 +1,10 @@
 //! Existing-callable Syntax 3 §5.5.2 EOF/semicolon boundaries, with the adopted
 //! UnexpectedEnd + RetainNonconformingRule diagnostic contract.
+use crate::css::support::authored_syntax::assert_unclean_sheet as assert_nonclean_validation;
 use surgeist_css::{
-    CssCustomMediaBody, CssErrorCode, CssImportTarget, CssNamespaceContext, CssParseReport,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssScopedRule, CssSheet, ErrorKind,
-    parse_rule, parse_sheet, validate_sheet,
+    CssCustomMediaBody, CssErrorCode, CssImportTarget, CssNamespaceContext, CssRecoveryAction,
+    CssRecoveryDiagnostic, CssRule, CssScopedRule, ErrorKind, parse_rule, parse_sheet,
+    validate_sheet,
 };
 
 fn assert_eof(diagnostic: &CssRecoveryDiagnostic, source: &str, start: usize, end: usize) {
@@ -29,22 +30,6 @@ fn assert_eof(diagnostic: &CssRecoveryDiagnostic, source: &str, start: usize, en
     assert_eq!(
         diagnostic.error().position().column().value() as usize,
         last_line.encode_utf16().count()
-    );
-}
-
-fn assert_nonclean_validation(source: &str, report: &CssParseReport<CssSheet>) {
-    assert!(!report.is_clean());
-    assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
-        report.diagnostics()
-    );
-    assert_eq!(
-        report
-            .clone()
-            .into_validation_result()
-            .unwrap_err()
-            .diagnostics(),
-        report.diagnostics()
     );
 }
 

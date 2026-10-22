@@ -1171,20 +1171,11 @@ fn descriptor_value_fragment<T: Send>(
             state.retain_component_closures(openings);
             Ok(value)
         })()
-        .map_err(|error| {
-            if crate::error::is_resource_parse_error(&error)
-                || matches!(
-                    &error.kind,
-                    cssparser::ParseErrorKind::Custom(error)
-                        if matches!(error.kind(), crate::ErrorKind::InvalidComponentValue(_))
-                )
-            {
-                error
-            } else if let Some((owner, descriptor)) = descriptor {
-                crate::error::with_descriptor_context(error, owner, descriptor)
-            } else {
-                error
+        .map_err(|error| match descriptor {
+            Some((owner, descriptor)) => {
+                crate::error::with_descriptor_value_context(error, owner, descriptor)
             }
+            None => error,
         });
         let (syntax, diagnostics) = match result {
             Ok(value) => (Some(value), state.take_implicit_closure_diagnostics(source)),
@@ -1313,7 +1304,14 @@ pub fn parse_font_palette_descriptor_value(
             input.expect_exhausted().map_err(basic)?;
             state.retain_component_closures(openings);
             Ok(value)
-        })();
+        })()
+        .map_err(|error| {
+            crate::error::with_descriptor_value_context(
+                error,
+                "font-palette-values",
+                descriptor.css_name(),
+            )
+        });
         let (syntax, diagnostics) = match result {
             Ok(value) => (Some(value), state.take_implicit_closure_diagnostics(source)),
             Err(error) => (
@@ -1342,7 +1340,14 @@ pub fn parse_color_profile_descriptor_value(
             input.expect_exhausted().map_err(basic)?;
             state.retain_component_closures(openings);
             Ok(value)
-        })();
+        })()
+        .map_err(|error| {
+            crate::error::with_descriptor_value_context(
+                error,
+                "color-profile",
+                descriptor.css_name(),
+            )
+        });
         let (syntax, diagnostics) = match result {
             Ok(value) => (Some(value), state.take_implicit_closure_diagnostics(source)),
             Err(error) => (
@@ -1519,12 +1524,12 @@ fn property_value_text(
 // Distinguish a rejected first rule from parse_one_rule's trailing-input error.
 // The latter must not be reinterpreted as an error in the completed rule body.
 struct SingleRuleParser<'s> {
-    grammar: StrictRuleParser<'s>,
+    grammar: RuleParser<'s>,
     completed: bool,
 }
 
 impl<'i> AtRuleParser<'i> for SingleRuleParser<'i> {
-    type Prelude = StrictAtRulePrelude;
+    type Prelude = AtRulePrelude;
     type AtRule = Vec<CssRule>;
     type Error = Error;
 
@@ -1543,7 +1548,7 @@ impl<'i> AtRuleParser<'i> for SingleRuleParser<'i> {
     ) -> Result<Self::AtRule, ()> {
         let result = self.grammar.rule_without_block(prelude, start);
         self.completed = result.is_ok();
-        result
+        result.map(RuleListItem::into_rules)
     }
 
     fn parse_block<'t>(
@@ -1554,12 +1559,12 @@ impl<'i> AtRuleParser<'i> for SingleRuleParser<'i> {
     ) -> Result<Self::AtRule, ParseError<'i, Error>> {
         let result = AtRuleParser::parse_block(&mut self.grammar, prelude, start, input);
         self.completed = result.is_ok();
-        result
+        result.map(RuleListItem::into_rules)
     }
 }
 
 impl<'i> QualifiedRuleParser<'i> for SingleRuleParser<'i> {
-    type Prelude = Vec<CssSelector>;
+    type Prelude = CssStyleSelectorList;
     type QualifiedRule = Vec<CssRule>;
     type Error = Error;
 
@@ -1578,7 +1583,7 @@ impl<'i> QualifiedRuleParser<'i> for SingleRuleParser<'i> {
     ) -> Result<Self::QualifiedRule, ParseError<'i, Error>> {
         let result = QualifiedRuleParser::parse_block(&mut self.grammar, prelude, start, input);
         self.completed = result.is_ok();
-        result
+        result.map(RuleListItem::into_rules)
     }
 }
 
@@ -1638,7 +1643,7 @@ pub(super) fn parse_rule_inner(
     let mut parser_input = ParserInput::new(&working_source);
     let mut input = Parser::new(&mut parser_input);
     let mut parser = SingleRuleParser {
-        grammar: StrictRuleParser::top_level(source, state.clone()),
+        grammar: RuleParser::top_level(source, state.clone()),
         completed: false,
     };
     input.skip_whitespace();

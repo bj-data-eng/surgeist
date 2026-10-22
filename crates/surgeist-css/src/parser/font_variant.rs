@@ -223,17 +223,21 @@ fn feature_names<'i, 't>(
         .parse_nested_block(|nested| {
             let mut names = Vec::new();
             loop {
+                nested.skip_whitespace();
+                let location = nested.current_source_location();
                 let ident = nested.expect_ident_cloned().map_err(basic)?;
                 let name = CssFontFeatureValueName::try_new(ident.as_ref())
-                    .map_err(|_| unexpected_at(nested.current_source_location()))?;
+                    .map_err(|_| unexpected_at(location))?;
                 names.push(name);
                 if nested.is_exhausted() {
                     break;
                 }
+                // Fonts 4: a single-name function ends after its name, so the
+                // token after it is responsible.
+                if !multiple {
+                    return Err(unexpected_at(nested.current_source_location()));
+                }
                 nested.expect_comma().map_err(basic)?;
-            }
-            if !multiple && names.len() != 1 {
-                return Err(unexpected_at(nested.current_source_location()));
             }
             Ok(names)
         })

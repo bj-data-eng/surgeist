@@ -4,33 +4,10 @@
 //! New typed models and CSSOM canonical serialization are tested with their
 //! functional implementation, rather than introducing unavailable APIs here.
 
+use crate::css::support::important_speech_declaration as declaration;
+use crate::css::support::known_property as property;
+use crate::css::support::named_property::longhand_contributions as expanded;
 use surgeist_css::*;
-
-fn property(name: &str) -> CssKnownProperty {
-    CssKnownProperty::from_name(name)
-        .unwrap_or_else(|| panic!("Speech mixing property must be admitted: {name}"))
-}
-
-fn declaration(name: &str, text: &str) -> CssDeclaration {
-    let source = format!("{name}:{text}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [value] = report.syntax().as_slice() else {
-        panic!("one complete mixing declaration: {source}")
-    };
-    assert_eq!(value.known().unwrap().property(), property(name));
-    assert_eq!(value.importance(), CssImportance::Important);
-    value.clone()
-}
-
-fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("ordinary/global mixing value completes")
-    };
-    values
-}
 
 fn ordinary(name: &str, text: &str) -> CssLonghandValue {
     let values = expanded(&declaration(name, text));
@@ -402,7 +379,13 @@ fn mixing_case_escapes_comments_exact_coefficients_and_raw_byte_limits_preserve_
                 .as_css(),
             text
         );
-        assert!(components.serialize_with_limit(text.len() - 1).is_err());
+        assert_eq!(
+            components
+                .serialize_with_limit(text.len() - 1)
+                .unwrap_err()
+                .kind(),
+            CssComponentValueErrorKind::ByteLimit
+        );
         assert_eq!(components.serialize().unwrap().as_css(), text);
         let checked = parse_property_value(
             CssPropertyNameRef::Known(property(canonical)),

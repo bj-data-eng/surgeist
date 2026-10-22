@@ -11,7 +11,7 @@ struct InvalidDeclaration {
     property: CssKnownProperty,
 }
 
-const C12_INVALID_DECLARATIONS: &[InvalidDeclaration] = &[
+const RESIDUAL_INVALID_DECLARATIONS: &[InvalidDeclaration] = &[
     InvalidDeclaration {
         authored_name: "border-collapse",
         invalid_value: "collapse separate",
@@ -176,8 +176,8 @@ fn property_names(declarations: &surgeist_css::CssDeclarationList) -> Vec<&str> 
 }
 
 #[test]
-fn text_four_percentage_word_spacing_keeps_original_c12_neighbors() {
-    // CSS Text 4 §8.1 admits a signed <length-percentage>; this captured C12
+fn text_four_percentage_word_spacing_keeps_original_neighbors() {
+    // CSS Text 4 §8.1 admits a signed <length-percentage>; this captured
     // input is valid, while `1fr` remains the recovery control above.
     let source = "--😀: kept; word-spacing: 10%; color: red";
     let report = parse_style_attribute(source);
@@ -257,7 +257,7 @@ fn assert_one_invalid_declaration(
 
     assert_eq!(
         surgeist_css::validate_style_attribute(source)
-            .expect_err("strict validation rejects recovered C12 syntax")
+            .expect_err("strict validation rejects recovered residual syntax")
             .diagnostics(),
         report.diagnostics(),
         "{source}",
@@ -265,8 +265,8 @@ fn assert_one_invalid_declaration(
 }
 
 #[test]
-fn c12_residual_recovery_preserves_siblings_and_boundaries() {
-    for case in C12_INVALID_DECLARATIONS {
+fn residual_property_recovery_preserves_siblings_and_boundaries() {
+    for case in RESIDUAL_INVALID_DECLARATIONS {
         let invalid = format!("{}: {};", case.authored_name, case.invalid_value);
         let source = format!("--😀: kept; {invalid} color: red");
         let unit_start = source.find(&invalid).expect("invalid declaration");
@@ -407,7 +407,7 @@ fn c12_residual_recovery_preserves_siblings_and_boundaries() {
             [CssRule::Page(_), CssRule::Style(_)]
         ));
         let [nested_diagnostic] = nested_report.diagnostics() else {
-            panic!("page-context depth {depth} must recover one C12 declaration");
+            panic!("page-context depth {depth} must recover one residual declaration");
         };
         let invalid_start = nested_source.find(&invalid).expect("nested declaration");
         assert_eq!(
@@ -459,7 +459,7 @@ fn c12_residual_recovery_preserves_siblings_and_boundaries() {
 
         assert_eq!(
             surgeist_css::validate_sheet(&nested_source)
-                .expect_err("strict validation rejects nested C12 recovery")
+                .expect_err("strict validation rejects nested residual recovery")
                 .diagnostics(),
             nested_report.diagnostics(),
             "depth {depth}",

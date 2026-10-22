@@ -6,6 +6,10 @@
 //! alpha/weight leaves keep specified calculations and dimensions; ordinary
 //! RGB/HSL/HWB scalar alpha finalizes. Authored graphs and resource charges stay.
 
+use crate::css::support::color_and_selector_fixtures::assert_color_grammar_failure;
+use crate::css::support::color_and_selector_fixtures::{
+    assert_color_limit_error as assert_error, assert_color_limits,
+};
 use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
@@ -640,46 +644,12 @@ fn protected_direct_origin_relative_profile_and_non_alpha_policies() {
     );
 }
 
-fn assert_error(value: &CssColor, limits: Limits, expected: Kind) {
-    let before = value.clone();
-    let result = value.to_specified_css_with_limits(limits);
-    assert_eq!(result, value.to_specified_css_with_limits(limits));
-    assert_eq!(value, &before);
-    assert_eq!(result.unwrap_err().kind(), expected, "{limits:?}");
-}
-
-fn assert_limits(source: &str, expected: &str, inputs: usize, projections: usize) {
-    let value = color(source);
-    for (limits, kind) in [
-        (
-            Limits::new(inputs - 1, usize::MAX, usize::MAX),
-            Kind::InputNodeLimit,
-        ),
-        (
-            Limits::new(usize::MAX, projections - 1, usize::MAX),
-            Kind::ProjectionNodeLimit,
-        ),
-        (
-            Limits::new(inputs, projections, expected.len() - 1),
-            Kind::ByteLimit,
-        ),
-    ] {
-        assert_error(&value, limits, kind);
-    }
-    let limits = Limits::new(inputs, projections, expected.len());
-    let before = value.clone();
-    let result = value.to_specified_css_with_limits(limits);
-    assert_eq!(result, value.to_specified_css_with_limits(limits));
-    assert_eq!(value, before);
-    assert_eq!(result.unwrap(), expected, "{source}");
-}
-
 #[test]
 fn alpha_numeric_exact_input_projection_and_final_bytes() {
     // Color + none channel = 2/2. calc(1 / 128) has wrapper/product/two
     // leaves = 4 inputs; two leaves/inverse/resolved product = 4 projections.
-    assert_limits(
-        "color(--P none / calc(1 / 128))",
+    assert_color_limits(
+        &color("color(--P none / calc(1 / 128))"),
         "color(--P none / calc(0.007813))",
         6,
         6,
@@ -690,8 +660,8 @@ fn alpha_numeric_exact_input_projection_and_final_bytes() {
 fn alpha_percentage_exact_scale_counts_and_bytes() {
     // calc(.78125%) = 2/1. Percentage-to-number adds a percentage leaf,
     // its inverse and the resolved product = 3 projections, no input work.
-    assert_limits(
-        "color(--P none / calc(.78125%))",
+    assert_color_limits(
+        &color("color(--P none / calc(.78125%))"),
         "color(--P none / calc(0.007813))",
         4,
         6,
@@ -703,8 +673,8 @@ fn alpha_contextual_exact_counts_and_bytes() {
     // calc wrapper/product/three leaves = 5 inputs. Three leaves, inverse
     // and Product = 5 projections; the single Number reuses its scalar.
     // Alpha uses Identity, plus Color and none each charge one projection.
-    assert_limits(
-        "color(--P none / calc(.0078125 * 1em / 1px))",
+    assert_color_limits(
+        &color("color(--P none / calc(.0078125 * 1em / 1px))"),
         "color(--P none / calc(0.007813 * 1em / 1px))",
         7,
         7,
@@ -715,8 +685,8 @@ fn alpha_contextual_exact_counts_and_bytes() {
 fn alpha_contextual_percentage_suffix_and_scale_counts() {
     // A percentage product lacks the combined Number node (5 projections).
     // The /100% scale adds percentage leaf/inverse/product = 3 more.
-    assert_limits(
-        "color(--P none / calc(.0078125% * 1em / 1px))",
+    assert_color_limits(
+        &color("color(--P none / calc(.0078125% * 1em / 1px))"),
         "color(--P none / calc(0.007813% * 1em / 1px / 100%))",
         7,
         10,
@@ -726,8 +696,8 @@ fn alpha_contextual_percentage_suffix_and_scale_counts() {
 #[test]
 fn weight_numeric_exact_counts_and_percent_suffix_bytes() {
     // Mix + two named colors = 3/3. calc percentage = 2/1, Identity scale.
-    assert_limits(
-        "color-mix(red calc(.0078125%), blue)",
+    assert_color_limits(
+        &color("color-mix(red calc(.0078125%), blue)"),
         "color-mix(red calc(0.007813%), blue)",
         5,
         4,
@@ -738,8 +708,8 @@ fn weight_numeric_exact_counts_and_percent_suffix_bytes() {
 fn weight_contextual_exact_counts_and_bytes() {
     // Three color roots plus wrapper/product/three leaves (5 inputs).
     // Percentage product: 3 leaves + inverse + product = 5 projections.
-    assert_limits(
-        "color-mix(red calc(.0078125% * 1em / 1px), blue)",
+    assert_color_limits(
+        &color("color-mix(red calc(.0078125% * 1em / 1px), blue)"),
         "color-mix(red calc(0.007813% * 1em / 1px), blue)",
         8,
         8,
@@ -749,8 +719,8 @@ fn weight_contextual_exact_counts_and_bytes() {
 #[test]
 fn weights_charge_siblings_cumulatively() {
     // Three roots + two 2/1 percentage calculations = 7/5 total.
-    assert_limits(
-        "color-mix(red calc(.0078125%), blue calc(.0078125%))",
+    assert_color_limits(
+        &color("color-mix(red calc(.0078125%), blue calc(.0078125%))"),
         "color-mix(red calc(0.007813%), blue calc(0.007813%))",
         7,
         5,
@@ -762,8 +732,10 @@ fn nested_mix_charges_alpha_weight_and_remaining_bytes() {
     // Five color roots + none + Number alpha 4/4 + two weights 2/1 = 14/12.
     // The ordinary child runs after the outer and inner mix prefixes have
     // already spent output bytes; its scratch/local writer has that remainder.
-    assert_limits(
-        "color-mix(color-mix(color(--P none / calc(1 / 128)) calc(.0078125%), blue) calc(50%), red)",
+    assert_color_limits(
+        &color(
+            "color-mix(color-mix(color(--P none / calc(1 / 128)) calc(.0078125%), blue) calc(50%), red)",
+        ),
         "color-mix(color-mix(color(--P none / calc(0.007813)) calc(0.007813%), blue) calc(50%), red)",
         14,
         12,
@@ -772,50 +744,52 @@ fn nested_mix_charges_alpha_weight_and_remaining_bytes() {
 
 #[test]
 fn unchanged_coefficients_prove_exact_graph_counts_independently_of_rounding() {
-    assert_limits(
-        "color(--P none / calc(1 / 2))",
+    assert_color_limits(
+        &color("color(--P none / calc(1 / 2))"),
         "color(--P none / calc(0.5))",
         6,
         6,
     );
-    assert_limits(
-        "color(--P none / calc(50%))",
+    assert_color_limits(
+        &color("color(--P none / calc(50%))"),
         "color(--P none / calc(0.5))",
         4,
         6,
     );
-    assert_limits(
-        "color(--P none / calc(.5 * 1em / 1px))",
+    assert_color_limits(
+        &color("color(--P none / calc(.5 * 1em / 1px))"),
         "color(--P none / calc(0.5 * 1em / 1px))",
         7,
         7,
     );
-    assert_limits(
-        "color(--P none / calc(.5% * 1em / 1px))",
+    assert_color_limits(
+        &color("color(--P none / calc(.5% * 1em / 1px))"),
         "color(--P none / calc(0.5% * 1em / 1px / 100%))",
         7,
         10,
     );
-    assert_limits(
-        "color-mix(red calc(50%), blue)",
+    assert_color_limits(
+        &color("color-mix(red calc(50%), blue)"),
         "color-mix(red calc(50%), blue)",
         5,
         4,
     );
-    assert_limits(
-        "color-mix(red calc(.5% * 1em / 1px), blue)",
+    assert_color_limits(
+        &color("color-mix(red calc(.5% * 1em / 1px), blue)"),
         "color-mix(red calc(0.5% * 1em / 1px), blue)",
         8,
         8,
     );
-    assert_limits(
-        "color-mix(red calc(50%), blue calc(50%))",
+    assert_color_limits(
+        &color("color-mix(red calc(50%), blue calc(50%))"),
         "color-mix(red calc(50%), blue calc(50%))",
         7,
         5,
     );
-    assert_limits(
-        "color-mix(color-mix(color(--P none / calc(1 / 2)) calc(50%), blue) calc(50%), red)",
+    assert_color_limits(
+        &color(
+            "color-mix(color-mix(color(--P none / calc(1 / 2)) calc(50%), blue) calc(50%), red)",
+        ),
         "color-mix(color-mix(color(--P none / calc(0.5)) calc(50%), blue) calc(50%), red)",
         14,
         12,
@@ -1145,13 +1119,13 @@ fn invalid_alpha_and_weight_dimensions_recover_without_losing_siblings() {
             CssKnownProperty::Opacity
         );
         assert!(validate_style_attribute(&source).is_err());
-        assert!(
+        assert_color_grammar_failure(
             parse_property_value(
                 CssPropertyNameRef::Known(CssKnownProperty::Color),
                 components(invalid),
-                CssImportance::Normal
-            )
-            .is_err()
+                CssImportance::Normal,
+            ),
+            invalid,
         );
     }
 }

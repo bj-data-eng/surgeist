@@ -14,8 +14,9 @@
 //! Source-defined initials are compared with explicitly authored values through
 //! existing property wrapper accessors.
 
+use crate::css::support::property_admission::assert_checked_matches_diagnostic;
 use crate::css::support::{
-    checked_property_grammar_declaration as checked, style_declaration as parsed,
+    checked_property_grammar_declaration as checked, sole_declaration as parsed,
 };
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
@@ -414,14 +415,7 @@ fn invalid_compositing_values_recover_atomically_and_keep_color_control() {
                 validate_style_attribute(&css).unwrap_err().diagnostics(),
                 report.diagnostics()
             );
-            assert!(
-                parse_property_value(
-                    CssPropertyNameRef::Known(property),
-                    parse_component_values(value).unwrap(),
-                    CssImportance::Normal
-                )
-                .is_err()
-            );
+            assert_checked_matches_diagnostic(property, value, diagnostic);
         }
     }
 }
@@ -885,20 +879,33 @@ fn blend_list_and_primitive_output_obey_independent_text_and_cumulative_limits()
             .unwrap(),
         "isolate"
     );
-    for limits in [
-        Limits::new(0, 1, 8),
-        Limits::new(1, 0, 8),
-        Limits::new(1, 1, 0),
+    for (limits, kind) in [
+        (
+            Limits::new(0, 1, 8),
+            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+        ),
+        (
+            Limits::new(1, 0, 8),
+            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+        ),
+        (
+            Limits::new(1, 1, 0),
+            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+        ),
     ] {
-        assert!(
+        assert_eq!(
             CssBlendMode::Multiply
                 .serialize_specified_with_limits(limits)
-                .is_err()
+                .unwrap_err()
+                .kind(),
+            kind
         );
-        assert!(
+        assert_eq!(
             CssIsolation::Isolate
                 .serialize_specified_with_limits(limits)
-                .is_err()
+                .unwrap_err()
+                .kind(),
+            kind
         );
     }
 }
@@ -974,7 +981,7 @@ fn sibling_rule_output_shares_final_byte_budget_and_preserves_original_sheet() {
 }
 
 #[test]
-fn existing_color_control_retains_symbolic_initial_occurrence_and_normalization() {
+fn color_control_retains_symbolic_initial_occurrence_and_normalization() {
     let CssPropertyKindRef::Longhand(metadata) = P::Color.metadata().unwrap().kind() else {
         panic!("color")
     };

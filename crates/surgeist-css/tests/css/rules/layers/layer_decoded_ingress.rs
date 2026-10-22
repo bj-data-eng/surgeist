@@ -1,6 +1,7 @@
+use crate::css::support::rules::ExpectedRejection;
 use surgeist_css::{
-    CssImportLayer, CssLayerName, CssNamespaceContext, CssRule, CssValueOrigin, parse_rule,
-    parse_sheet,
+    CssErrorCode, CssImportLayer, CssLayerName, CssNamespaceContext, CssRule, CssValueOrigin,
+    parse_rule, parse_sheet,
 };
 
 // Cascade 5 CR 2022-01-13 §6.4.2 takes <ident> components. CSS Syntax consumes an escaped
@@ -113,17 +114,20 @@ fn decoded_admission_retains_reserved_keywords_and_actual_authored_grammar() {
     assert_eq!(name.serialize_specified().unwrap(), "default.Case");
     let report = parse_rule("@layer default.Case;", &CssNamespaceContext::default());
     assert!(report.is_clean());
-    for invalid in [
-        "@layer 1edge;",
-        "@layer a b;",
-        "@layer a..b;",
-        "@layer a. b;",
-        "@layer a .b;",
-        r"@layer \69 nherit;",
-        "@layer safe.INITIAL;",
+    // Cascade 5 §6.4.2: <layer-name> = <ident> [ '.' <ident> ]* without
+    // whitespace, and no component may be a CSS-wide keyword.
+    let prelude = ExpectedRejection::new(CssErrorCode::InvalidAtRulePrelude).in_rule("layer");
+    for (invalid, expected) in [
+        ("@layer 1edge;", prelude.clone().at("1edge")),
+        ("@layer a b;", prelude.clone().at("b")),
+        ("@layer a..b;", prelude.clone().at(".")),
+        ("@layer a. b;", prelude.clone().at(" ")),
+        ("@layer a .b;", prelude.clone().at(".")),
+        (r"@layer \69 nherit;", prelude.clone()),
+        ("@layer safe.INITIAL;", prelude.clone().at("INITIAL")),
     ] {
         let report = parse_rule(invalid, &CssNamespaceContext::default());
         assert!(report.syntax().is_none(), "{invalid}");
-        assert!(!report.is_clean(), "{invalid}");
+        expected.assert_first(&report);
     }
 }

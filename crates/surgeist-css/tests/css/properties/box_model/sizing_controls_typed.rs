@@ -1,4 +1,4 @@
-use crate::css::support::first_declaration_reporting_diagnostics as parsed;
+use crate::css::support::normal_declaration as parsed;
 use surgeist_css::*;
 
 fn programmatic_size(number: &str, unit: &str) -> CssSizeValue {

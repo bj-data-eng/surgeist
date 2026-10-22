@@ -5,6 +5,7 @@
 //! SHA256: 05aa64853c4428146973943b35caf121e44c1076bdf5b8c29f8896dba9b778e2
 //! Empty `[]` is still a valid single `<line-names>` block.
 
+use crate::css::support::property_admission::assert_checked_matches_diagnostic;
 use surgeist_css::{
     CssErrorCode, CssImportance, CssKnownProperty as Property, CssPropertyNameRef,
     CssRecoveryAction, parse_component_values, parse_property_value, parse_style_attribute,
@@ -82,14 +83,10 @@ fn rejected(value: &str) {
         CssErrorCode::InvalidPropertyValue
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert!(validate_style_attribute(&source).is_err(), "{source}");
-    assert!(
-        parse_property_value(
-            CssPropertyNameRef::Known(Property::GridTemplateColumns),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "checked construction rejects: {value}"
+    assert_eq!(
+        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        report.diagnostics(),
+        "{source}"
     );
+    assert_checked_matches_diagnostic(Property::GridTemplateColumns, value, diagnostic);
 }

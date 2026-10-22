@@ -1,6 +1,10 @@
 //! Public authored font-variant contracts from CSS Fonts 4 WD 2026-09-07 §§6.4–6.11.
 
+use crate::css::support::checked_grammar_declaration as checked;
 use crate::css::support::important_declaration as parsed;
+use crate::css::support::named_property::assert_implicit_closure_rejection;
+use crate::css::support::named_property::invalid_named_value_at as invalid;
+use crate::css::support::selected_grammar as grammar;
 use surgeist_css::*;
 
 const LONGHANDS: [&str; 7] = [
@@ -12,43 +16,6 @@ const LONGHANDS: [&str; 7] = [
     "font-variant-position",
     "font-variant-emoji",
 ];
-
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("known grammar: {name}"))
-}
-
-fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("{name}:{value}: {error:?}"))
-}
-
-fn invalid(name: &str, value: &str) {
-    let source = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&source);
-    assert_eq!(report.syntax().len(), 2, "neighbors: {source}");
-    assert!(
-        report.diagnostics().iter().any(|diagnostic| {
-            diagnostic.action() == CssRecoveryAction::DropDeclaration
-                && diagnostic.error().code() != CssErrorCode::UnknownProperty
-        }),
-        "invalid value should be diagnosed: {source}: {:?}",
-        report.diagnostics()
-    );
-    assert!(validate_style_attribute(&source).is_err(), "{source}");
-    assert!(
-        parse_property_value_for_grammar(
-            grammar(name),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "checked construction accepted {name}:{value}"
-    );
-}
 
 fn name(value: &str) -> CssFontFeatureValueName {
     CssFontFeatureValueName::try_new(value).unwrap()
@@ -234,33 +201,49 @@ fn full_shorthand_preserves_groups_but_serializes_in_fonts_four_order() {
 
 #[test]
 fn longhands_and_shorthand_reject_duplicate_or_malformed_alternates() {
-    for value in [
-        "stylistic()",
-        "stylistic(A, B)",
-        "styleset()",
-        "styleset(A,)",
-        "styleset(,A)",
-        "styleset(A B)",
-        "character-variant()",
-        "character-variant(A B)",
-        "swash()",
-        "ornaments(A, B)",
-        "annotation(A B)",
-        "historical-forms()",
-        "unknown(A)",
-        "stylistic(A) stylistic(B)",
-        "styleset(A) styleset(B)",
-        "historical-forms historical-forms",
-        "normal stylistic(A)",
+    // Fonts 4 font-variant-alternates: stylistic() and ornaments() take one
+    // feature-value name, so the comma after it is responsible.
+    for name in ["font-variant-alternates", "font-variant"] {
+        invalid(name, "stylistic(A, B)", ", B)");
+    }
+    for name in ["font-variant-alternates", "font-variant"] {
+        invalid(name, "ornaments(A, B)", ", B)");
+    }
+    for (value, rest) in [
+        ("stylistic()", ")"),
+        ("styleset()", ")"),
+        ("styleset(A,)", ")"),
+        ("styleset(,A)", ",A)"),
+        ("styleset(A B)", "B)"),
+        ("character-variant()", ")"),
+        ("character-variant(A B)", "B)"),
+        ("swash()", ")"),
+        ("annotation(A B)", "B)"),
+        ("historical-forms()", "historical-forms()"),
+        ("unknown(A)", "unknown(A)"),
+        ("stylistic(A) stylistic(B)", "stylistic(B)"),
+        ("styleset(A) styleset(B)", "styleset(B)"),
+        ("historical-forms historical-forms", "historical-forms"),
+        ("normal stylistic(A)", "stylistic(A)"),
     ] {
-        invalid("font-variant-alternates", value);
-        invalid("font-variant", value);
+        invalid("font-variant-alternates", value, rest);
+        invalid("font-variant", value, rest);
     }
-    for value in ["normal emoji", "text unicode", "emoji emoji", "none text"] {
-        invalid("font-variant", value);
+    for (value, rest) in [
+        ("normal emoji", "emoji"),
+        ("text unicode", "unicode"),
+        ("emoji emoji", "emoji"),
+        ("none text", "text"),
+    ] {
+        invalid("font-variant", value, rest);
     }
-    for value in ["none", "text emoji", "normal text", "emoji unicode"] {
-        invalid("font-variant-emoji", value);
+    for (value, rest) in [
+        ("none", "none"),
+        ("text emoji", "emoji"),
+        ("normal text", "text"),
+        ("emoji unicode", "unicode"),
+    ] {
+        invalid("font-variant-emoji", value, rest);
     }
     for value in ["normal", "text", "emoji", "unicode"] {
         let declaration = parsed("font-variant-emoji", value);
@@ -613,13 +596,14 @@ fn recovered_eof_function_retains_diagnostic_but_strict_inputs_reject_it() {
     assert_eq!(values.stylistic().unwrap().as_str(), "A");
     assert!(validate_style_attribute(source).is_err());
     let recovered_components = parse_component_values("stylistic(A").unwrap();
-    assert!(
-        parse_property_value_for_grammar(
+    assert_implicit_closure_rejection(
+        &parse_property_value_for_grammar(
             grammar("font-variant-alternates"),
             recovered_components.clone(),
             CssImportance::Normal,
         )
-        .is_err()
+        .unwrap_err(),
+        "stylistic(A",
     );
     let pending = parsed("font-variant-alternates", "var(--alt)");
     let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
@@ -762,6 +746,6 @@ fn normalization_keeps_distinct_font_variant_occurrences_in_order() {
 fn full_variant_does_not_expand_the_restricted_font_prefix() {
     parsed("font", "small-caps 16px Demo");
     parsed("font", "normal 16px Demo");
-    invalid("font", "emoji 16px Demo");
-    invalid("font", "stylistic(A) 16px Demo");
+    invalid("font", "emoji 16px Demo", "emoji 16px Demo");
+    invalid("font", "stylistic(A) 16px Demo", "stylistic(A) 16px Demo");
 }

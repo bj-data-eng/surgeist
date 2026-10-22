@@ -1,16 +1,17 @@
 //! Exact authored Fonts 4 font-size and the shared explicit font size component.
 
+use crate::css::support::named_property::assert_programmatic_rejection;
+use crate::css::support::named_property::normal_grammar_components;
 use surgeist_css::{
     CssComponentValue, CssComponentValueRef, CssComponentValues, CssContributionValueRef,
     CssContributions, CssExpansion, CssExpansionErrorKind, CssFontSize, CssFontValue,
     CssGlobalKeyword, CssImportance, CssInitialValueRef, CssKnownProperty,
     CssKnownPropertyValueRef, CssLengthPercentageCalculation, CssLonghandValueRef,
-    CssNumericConstructionErrorKind, CssPropertyGrammar, CssPropertyKindRef,
-    CssPropertyValueErrorKind, CssRecoveryAction, CssSerializedOrigin,
+    CssNumericConstructionErrorKind, CssPropertyKindRef, CssPropertyValueErrorKind,
+    CssRecoveryAction, CssSerializedOrigin,
     CssSpecifiedNonNegativeLengthPercentage as SizeLengthPercentage,
     CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
-    CssValueTokenRef, expand_declaration, parse_component_values, parse_property_value_for_grammar,
-    parse_style_attribute,
+    CssValueTokenRef, expand_declaration, parse_component_values, parse_style_attribute,
 };
 
 fn scalar(text: &str) -> SizeLengthPercentage {
@@ -29,16 +30,6 @@ fn property(text: &str) -> CssFontSize {
         panic!("font-size wrapper")
     };
     value.size().clone()
-}
-
-fn checked(
-    components: CssComponentValues,
-) -> Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError> {
-    parse_property_value_for_grammar(
-        CssPropertyGrammar::from_name("font-size").unwrap(),
-        components,
-        CssImportance::Normal,
-    )
 }
 
 #[test]
@@ -266,7 +257,9 @@ fn current_wrapper_initial_and_importance_contributions_are_typed() {
 
 #[test]
 fn checked_and_pending_reentry_preserve_original_and_programmatic_origins() {
-    let parsed = checked(parse_component_values("1.250px ").unwrap()).unwrap();
+    let parsed =
+        normal_grammar_components("font-size", parse_component_values("1.250px ").unwrap())
+            .unwrap();
     let CssKnownPropertyValueRef::FontSize(value) =
         parsed.known().unwrap().property_value().unwrap()
     else {
@@ -284,7 +277,11 @@ fn checked_and_pending_reentry_preserve_original_and_programmatic_origins() {
     assert_eq!(number.serialize_specified().unwrap(), "1.25px");
 
     let programmatic = CssComponentValue::try_dimension("1.25", "PX").unwrap();
-    let checked_value = checked(CssComponentValues::try_new(vec![programmatic]).unwrap()).unwrap();
+    let checked_value = normal_grammar_components(
+        "font-size",
+        CssComponentValues::try_new(vec![programmatic]).unwrap(),
+    )
+    .unwrap();
     let CssKnownPropertyValueRef::FontSize(value) =
         checked_value.known().unwrap().property_value().unwrap()
     else {
@@ -295,7 +292,8 @@ fn checked_and_pending_reentry_preserve_original_and_programmatic_origins() {
     };
     assert_eq!(number.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(number.serialize_specified().unwrap(), "1.25px");
-    let invalid = checked(
+    let invalid = normal_grammar_components(
+        "font-size",
         CssComponentValues::try_new(vec![CssComponentValue::try_token("-1e-999px").unwrap()])
             .unwrap(),
     )
@@ -313,7 +311,10 @@ fn checked_and_pending_reentry_preserve_original_and_programmatic_origins() {
         CssComponentValue::try_token("0px").unwrap(),
     ])
     .unwrap();
-    assert!(checked(adjacent).is_err());
+    assert_programmatic_rejection(
+        normal_grammar_components("font-size", adjacent),
+        CssKnownProperty::FontSize,
+    );
 
     let report = parse_style_attribute("font-size:env(size)!important");
     let source = &report.syntax()[0];

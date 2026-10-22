@@ -1,5 +1,6 @@
 //! Whole-rule checked import contracts: Cascade optional-clause interpretation,
 //! exact component provenance, and strict admission independent of loading.
+use crate::css::support::rules::import_from_components as construct;
 use surgeist_css::{
     CssCalculationExpressionRef, CssComponentValue, CssComponentValueErrorKind,
     CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssImportConstructionError,
@@ -15,13 +16,6 @@ fn values(items: Vec<CssComponentValue>) -> CssComponentValues {
 }
 fn token(source: &str) -> CssComponentValue {
     CssComponentValue::try_token(source).unwrap()
-}
-fn construct(source: &str) -> CssImportRule {
-    CssImportRule::try_from_components(
-        parse_component_values(source).unwrap(),
-        &CssNamespaceContext::default(),
-    )
-    .unwrap()
 }
 fn tail(source: &str) -> CssImportRule {
     construct(&format!("@import 'x' {source};"))

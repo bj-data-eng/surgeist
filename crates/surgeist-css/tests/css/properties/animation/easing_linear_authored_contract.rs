@@ -3,6 +3,11 @@
 //! These specified-value contracts preserve omissions and symbolic inputs;
 //! creation/fixup and computed serialization require the later numeric phase.
 
+use crate::css::support::property_admission::Responsible::{self, At};
+use crate::css::support::property_admission::{
+    assert_checked_closure_rejected, assert_checked_rejected, assert_reentry_rejected,
+    assert_style_attribute_rejected,
+};
 use surgeist_css::*;
 
 const LONGHANDS: [CssKnownProperty; 2] = [
@@ -194,24 +199,29 @@ fn symbolic_number_and_percentage_graphs_remain_authored_and_roundtrip() {
 
 #[test]
 fn malformed_singleton_and_wrong_domain_stops_reject_atomically_and_recover() {
-    for invalid in [
-        "linear()",
-        "linear(0)",
-        "linear(0 0% 100%)",
-        "linear(0,)",
-        "linear(,1)",
-        "linear(0,,1)",
-        "linear(0 1)",
-        "linear(0%, 1)",
-        "linear(0 10px, 1)",
-        "linear(1s, 1)",
-        "linear(0 0% 20% 40%, 1)",
-        "linear(0% 0 20%, 1)",
-        "linear(calc(1px), 1)",
-        "linear(0 calc(1), 1)",
-        "linear(0, 1) junk",
+    // An easing function token commits the shorthand's `<easing-function>`
+    // operand (Values 4 §2.2), so every consumer names the token inside it
+    // (Easing 2 §2.1): linear() needs two stops, so a `)` that ends it
+    // earlier cannot continue the function and is responsible.
+    for (invalid, token) in [
+        ("linear()", Some(")")),
+        ("linear(0)", Some(")")),
+        ("linear(0 0% 100%)", Some(")")),
+        ("linear(0,)", Some(")")),
+        ("linear(,1)", Some(",")),
+        ("linear(0,,1)", Some(",")),
+        ("linear(0 1)", Some("1")),
+        ("linear(0%, 1)", Some(",")),
+        ("linear(0 10px, 1)", Some("10px")),
+        ("linear(1s, 1)", Some("1s")),
+        ("linear(0 0% 20% 40%, 1)", Some("40%")),
+        ("linear(0% 0 20%, 1)", Some("20%")),
+        ("linear(calc(1px), 1)", Some("calc(")),
+        ("linear(0 calc(1), 1)", Some("calc(")),
+        ("linear(0, 1) junk", Some("junk")),
     ] {
         for property in CONSUMERS {
+            let token = Responsible::from(token);
             let value = body(property, invalid);
             let components = parse_component_values(&value).unwrap();
             for result in [
@@ -226,11 +236,10 @@ fn malformed_singleton_and_wrong_domain_stops_reject_atomically_and_recover() {
                     CssImportance::Normal,
                 ),
             ] {
-                assert!(result.is_err(), "{}:{value}", property.canonical_name());
+                assert_checked_rejected(result, property, token);
             }
             let css = format!("{}:{value};transition-delay:2s", property.canonical_name());
-            let report = parse_style_attribute(&css);
-            assert!(!report.is_clean(), "{css}");
+            let report = assert_style_attribute_rejected(&css, property, token);
             let [survivor] = report.syntax().as_slice() else {
                 panic!("invalid declaration drops as a unit: {css}")
             };
@@ -238,7 +247,6 @@ fn malformed_singleton_and_wrong_domain_stops_reject_atomically_and_recover() {
                 survivor.known().unwrap().property(),
                 CssKnownProperty::TransitionDelay
             );
-            assert!(validate_style_attribute(&css).is_err());
         }
     }
 }
@@ -325,13 +333,20 @@ fn pending_linear_reentry_is_strict_repeatable_and_preserves_replacement_origins
         let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
             panic!("whole-value substitution remains pending")
         };
-        for invalid in ["linear(0)", "linear(0, 1", "linear(0, var(--again))"] {
-            assert!(
-                pending
-                    .reenter(parse_component_values(&body(property, invalid)).unwrap())
-                    .is_err()
-            );
-        }
+        let reenter =
+            |invalid| pending.reenter(parse_component_values(&body(property, invalid)).unwrap());
+        // A single stop is too few (Easing 2 §2.1.2), so the stop is
+        // responsible in every consumer.
+        assert_reentry_rejected(reenter("linear(0)"), property, At(")"));
+        let error = reenter("linear(0, 1").unwrap_err();
+        let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+            panic!("an unclosed replacement is invalid: {error:?}")
+        };
+        assert_checked_closure_rejected(Err(error.clone()));
+        assert!(matches!(
+            reenter("linear(0, var(--again))").unwrap_err().kind(),
+            CssExpansionErrorKind::ResidualSubstitution
+        ));
         let replacement = parse_component_values(&body(property, "linear(0 20% 40%, 1)")).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()

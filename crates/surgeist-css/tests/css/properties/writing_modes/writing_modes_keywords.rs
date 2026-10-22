@@ -1,6 +1,7 @@
 //! Canonical Writing Modes keyword contracts.
 //! WM3 REC2019-12-10 §§2/3/5 and WM4 CR2019-07-30 §3.2 require these
 //! 16 keywords. No glyph alias grammar or math-substitution assertion is made.
+use crate::css::support::named_property::property_declaration as declaration;
 use CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -86,24 +87,6 @@ const KEYWORDS: &[(P, &str, Expected)] = &[
         Expected::Orientation(CssTextOrientation::Sideways),
     ),
 ];
-
-fn declaration(property: P, text: &str, importance: CssImportance) -> CssDeclaration {
-    let suffix = if importance == CssImportance::Important {
-        "!important"
-    } else {
-        ""
-    };
-    let report = parse_style_attribute(&format!("{}:{text}{suffix}", property.canonical_name()));
-    assert!(
-        report.is_clean(),
-        "{property:?}:{text}: {:?}",
-        report.diagnostics()
-    );
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    declaration.clone()
-}
 
 fn assert_keyword(declaration: &CssDeclaration, text: &str, expected: Expected) {
     let raw = match (
@@ -282,7 +265,7 @@ fn writing_mode_ordinary_global_and_pending_states_expand() {
 }
 
 #[test]
-fn sixteen_existing_keywords_have_exact_parsed_and_checked_views() {
+fn sixteen_keywords_have_exact_parsed_and_checked_views() {
     assert_eq!(KEYWORDS.len(), 16);
     for &(property, text, expected) in KEYWORDS {
         for importance in [CssImportance::Normal, CssImportance::Important] {
@@ -328,7 +311,7 @@ fn sixteen_existing_keywords_have_exact_parsed_and_checked_views() {
 }
 
 #[test]
-fn existing_text_orientation_metadata_and_transport_remain_complete() {
+fn text_orientation_metadata_and_transport_are_complete() {
     metadata(P::TextOrientation, true);
     let metadata = P::TextOrientation.metadata().unwrap();
     let CssPropertyKindRef::Longhand(longhand) = metadata.kind() else {

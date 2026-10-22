@@ -86,33 +86,25 @@ impl CssOutlineColor {
     }
 }
 
-fn slot(writer: &mut SpecifiedRuleWriter, started: &mut bool) -> Result<()> {
-    if *started {
-        writer.append(" ")?;
-    }
-    *started = true;
-    Ok(())
-}
-
 impl CssOutline {
     pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         writer.node()?;
         let mut started = false;
         if let Some(width) = self.width() {
             writer.source_member(0, |writer| {
-                slot(writer, &mut started)?;
+                writer.space_before_item(&mut started)?;
                 width.append_to_rule_writer(writer)
             })?;
         }
         if let Some(style) = self.style() {
             writer.source_member(1, |writer| {
-                slot(writer, &mut started)?;
+                writer.space_before_item(&mut started)?;
                 style.append_to_rule_writer(writer)
             })?;
         } else if matches!(self.color(), Some(CssOutlineColor::Auto)) {
             // The generated disambiguator belongs to the selected style slot.
             writer.source_member(1, |writer| {
-                slot(writer, &mut started)?;
+                writer.space_before_item(&mut started)?;
                 writer.context.charge_projection(1)?;
                 writer.append("none")
             })?;
@@ -124,7 +116,7 @@ impl CssOutline {
                 {
                     writer.without_output(|writer| color.append_to_rule_writer(writer))
                 } else {
-                    slot(writer, &mut started)?;
+                    writer.space_before_item(&mut started)?;
                     color.append_to_rule_writer(writer)
                 }
             })?;

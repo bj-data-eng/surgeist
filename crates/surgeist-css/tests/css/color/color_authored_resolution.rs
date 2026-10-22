@@ -1,4 +1,4 @@
-use crate::css::support::checked_color as color;
+use crate::css::support::{checked_color as color, declaration_color};
 use surgeist_color::{Color, ColorSpace, PredefinedColorSpace};
 use surgeist_css::*;
 
@@ -263,9 +263,15 @@ fn controlled_site_less_failure_retains_its_actual_backing_until_explicit_recove
         op.as_ref().unwrap().action(),
         CssAuthoredColorActionDescription::Stopped
     );
-    assert!(CssAuthoredColorOperation::take(&mut op).is_err());
+    assert_eq!(
+        CssAuthoredColorOperation::take(&mut op).err(),
+        Some(CssColorProtocolError::Terminal)
+    );
     assert!(op.is_some());
-    assert!(CssAuthoredColorOperation::recover(&mut op).is_err());
+    assert_eq!(
+        CssAuthoredColorOperation::recover(&mut op).err(),
+        Some(CssColorProtocolError::Terminal)
+    );
     assert!(op.is_some());
     op.as_mut().unwrap().abandon();
     op.as_mut().unwrap().abandon();
@@ -353,7 +359,10 @@ fn numerical_error_moves_the_reached_branch_path_before_stopping() {
     assert_eq!(path.steps(), [CssColorPathStep::Second]);
     assert!(path.capacity() >= 1);
     assert_eq!(*origin, None);
-    assert!(CssAuthoredColorOperation::take(&mut op).is_err());
+    assert_eq!(
+        CssAuthoredColorOperation::take(&mut op).err(),
+        Some(CssColorProtocolError::Terminal)
+    );
     op.as_mut().unwrap().abandon();
     let _ = CssAuthoredColorOperation::recover(&mut op).unwrap();
     drop(op);
@@ -401,7 +410,10 @@ fn dropped_reservation_receipts_belong_only_to_their_actual_buffers() {
             let receipt = guard.reserve_path().unwrap();
             assert_eq!(receipt.actual_len(), 0);
             assert!(receipt.actual_capacity() >= 1);
-            assert!(guard.reserve_path().is_err());
+            assert_eq!(
+                guard.reserve_path().err(),
+                Some(CssColorProtocolError::WrongAction)
+            );
         }
         assert_eq!(
             op.as_ref().unwrap().action(),
@@ -415,9 +427,12 @@ fn dropped_reservation_receipts_belong_only_to_their_actual_buffers() {
     assert!(first.capacity_observation().is_some());
     assert!(second.capacity_observation().is_some());
     let retained = first.capacity();
-    assert!(first.cleanup().is_err());
+    assert_eq!(first.cleanup(), Err(CssColorProtocolError::WrongAction));
     first.capacity_observed().unwrap();
-    assert!(first.capacity_observed().is_err());
+    assert_eq!(
+        first.capacity_observed(),
+        Err(CssColorProtocolError::WrongAction)
+    );
     assert!(
         second.capacity_observation().is_some(),
         "acknowledgement does not target another buffer with equal-looking metadata"
@@ -746,7 +761,10 @@ fn dropped_record_generation_abandons_before_acknowledgement_and_owner_reuse_is_
         op.as_ref().unwrap().action(),
         CssAuthoredColorActionDescription::Stopped
     );
-    assert!(CssAuthoredColorOperation::take(&mut op).is_err());
+    assert_eq!(
+        CssAuthoredColorOperation::take(&mut op).err(),
+        Some(CssColorProtocolError::Terminal)
+    );
     let _ = CssAuthoredColorOperation::recover(&mut op).unwrap();
     drop(op);
     path.cleanup().unwrap();
@@ -865,15 +883,7 @@ fn parser_produced_eof_recovery_remains_resolvable_and_retains_implicit_closures
     let report = parse_declaration_list_text(text);
     assert!(!report.is_clean());
     assert_eq!(report.syntax().len(), 1);
-    let CssKnownPropertyValueRef::Color(value) = report.syntax().as_slice()[0]
-        .known()
-        .unwrap()
-        .property_value()
-        .unwrap()
-    else {
-        panic!("color")
-    };
-    let root = value.value();
+    let root = declaration_color(&report.syntax()[0]);
     let CssColorComponent::NumberCalculation(calculation) = &root
         .light_dark_value()
         .unwrap()
@@ -995,7 +1005,10 @@ fn stopped_error(
         op.as_ref().unwrap().action(),
         CssAuthoredColorActionDescription::Stopped
     );
-    assert!(CssAuthoredColorOperation::take(&mut op).is_err());
+    assert_eq!(
+        CssAuthoredColorOperation::take(&mut op).err(),
+        Some(CssColorProtocolError::Terminal)
+    );
     op.as_mut().unwrap().abandon();
     let recovery = CssAuthoredColorOperation::recover(&mut op).unwrap();
     assert!(std::ptr::eq(recovery.authored(), root));
@@ -1097,7 +1110,7 @@ fn reached_unavailable_unsupported_and_malformed_facts_remain_site_less_and_reco
 }
 
 #[test]
-fn existing_capacity_reservations_still_require_their_actual_observation() {
+fn outstanding_capacity_reservations_require_their_actual_observation() {
     let facts = facts();
     let root = color("rgb(1 2 3)");
     let mut owner = CssColorOperationOwner::new();
@@ -1269,7 +1282,10 @@ fn a_wrong_completion_after_prepare_returns_protocol_without_releasing_backing()
     );
     assert_eq!(before, op.as_ref().unwrap().cleanup_layout());
     assert_eq!(lengths, [banks[0].len(), banks[1].len(), banks[2].len()]);
-    assert!(CssAuthoredColorOperation::take(&mut op).is_err());
+    assert_eq!(
+        CssAuthoredColorOperation::take(&mut op).err(),
+        Some(CssColorProtocolError::Terminal)
+    );
     let _ = CssAuthoredColorOperation::recover(&mut op).unwrap();
     drop(op);
     drop(banks);

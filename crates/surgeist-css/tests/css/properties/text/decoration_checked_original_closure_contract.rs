@@ -87,7 +87,7 @@ fn checked_decoration_rejects_recovered_thickness_without_consuming_the_child() 
 }
 
 #[test]
-fn complete_and_programmatic_decoration_children_keep_existing_checked_output() {
+fn complete_and_programmatic_decoration_children_keep_their_checked_output() {
     assert!(CssTextDecoration::try_new(None, None, None, None).is_none());
     for text in [
         "red",

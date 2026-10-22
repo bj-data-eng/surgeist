@@ -1,5 +1,7 @@
 //! Reviewed literal WPT adaptations at the ordinary recovering parser boundary.
-//! Source-only CSSOM and execution assertions remain explicitly deferred data.
+//! Nested selectorText and src tech() serialization cases replay through the
+//! crate's serializers; other source-only CSSOM and execution assertions
+//! remain explicitly deferred data.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -8,7 +10,10 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 
-use surgeist_css::{CssDeclarationList, CssPropertyNameRef, CssRule, parse_sheet};
+use surgeist_css::{
+    CssDeclarationList, CssNamespaceContext, CssPropertyNameRef, CssRule, CssStyleSelectorContext,
+    parse_sheet,
+};
 
 use crate::css::support::digest;
 
@@ -595,12 +600,208 @@ fn wpt_vectors_bind_declared_sources_and_keep_deferred_assertions_explicit() {
     }
     let deferred: Vec<DeferredCase> = vectors(DEFERRED_CASES, "source-only-cssom-and-execution");
     assert_eq!(deferred.len(), 116);
-    for case in deferred {
-        assert!(ids.insert(case.id), "duplicate source-only case");
+    let mut dispositions = BTreeMap::<&str, usize>::new();
+    for case in &deferred {
+        assert!(ids.insert(case.id.clone()), "duplicate source-only case");
         assert_source_binding(&case.source);
-        assert!(case.disposition.starts_with("deferred-"));
+        let disposition = match case.disposition.as_str() {
+            NESTED_SELECTOR_TEXT | FONT_SRC_TECH_SET => case.disposition.as_str(),
+            other => {
+                assert!(other.starts_with("deferred-"), "{} disposition", case.id);
+                "deferred"
+            }
+        };
+        *dispositions.entry(disposition).or_default() += 1;
         assert!(!case.reason.is_empty());
         assert!(!case.input.is_null());
         assert!(!case.expectation.is_null());
     }
+    // The replayed cases run in `wpt_nested_selector_text_*` and
+    // `wpt_font_face_src_tech_*`; every other source-only case stays deferred.
+    assert_eq!(
+        dispositions,
+        BTreeMap::from([
+            ("deferred", 84),
+            (FONT_SRC_TECH_SET, 1),
+            (NESTED_SELECTOR_TEXT, 31),
+        ])
+    );
+}
+
+const NESTED_SELECTOR_TEXT: &str = "replayed-nested-selector-text";
+const FONT_SRC_TECH_SET: &str = "replayed-font-src-tech-keyword-set";
+
+fn replayed(disposition: &str) -> Vec<DeferredCase> {
+    vectors::<DeferredCase>(DEFERRED_CASES, "source-only-cssom-and-execution")
+        .into_iter()
+        .filter(|case| case.disposition == disposition)
+        .collect()
+}
+
+fn text_field<'a>(value: &'a serde_json::Value, field: &str, id: &str) -> &'a str {
+    value[field]
+        .as_str()
+        .unwrap_or_else(|| panic!("{id}: string field {field}"))
+}
+
+// WPT `testNestedSelector(sel, {expected=sel, parent=".foo"})` inserts
+// `${parent} { ${sel} { color: green; }}` and reads the inner rule's
+// selectorText. Nesting 1 (WD 2026-01-22) §6: "When serializing a relative
+// selector in a nested style rule, the selector must be absolutized, with the
+// implied nesting selector inserted"; §3.1 leaves a selector that already
+// contains `&` unchanged.
+// https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#cssom
+#[test]
+fn wpt_nested_selector_text_absolutizes_relative_selectors() {
+    let cases = replayed(NESTED_SELECTOR_TEXT);
+    // The rows include `.class&`, `[attr]&`, `#id&`, `:hover&` and
+    // `:is(div)&`: CSSOM "serialize a selector" emits a compound's simple
+    // selectors, including `&`, in authored order.
+    assert_eq!(cases.len(), 31);
+    let mut failures = Vec::new();
+    for case in cases {
+        assert_source_binding(&case.source);
+        let parent = text_field(&case.input, "parent", &case.id);
+        let selector = text_field(&case.input, "selector", &case.id);
+        let expected = text_field(&case.expectation, "selector_text", &case.id);
+        let literal = &case.source.case;
+        assert!(
+            literal.starts_with(&format!("testNestedSelector(\"{selector}\"")),
+            "{} selector binding",
+            case.id
+        );
+        if literal.contains("expected:") {
+            assert!(
+                literal.contains(&format!("expected:\"{expected}\"")),
+                "{} expected binding",
+                case.id
+            );
+        } else {
+            assert_eq!(expected, selector, "{} default expectation", case.id);
+        }
+        if literal.contains("parent:") {
+            assert!(
+                literal.contains(&format!("parent:\"{parent}\"")),
+                "{} parent binding",
+                case.id
+            );
+        } else {
+            assert_eq!(parent, ".foo", "{} default parent", case.id);
+        }
+        let input = format!("{parent} {{ {selector} {{ color: green; }}}}");
+        let report = parse_sheet(&input);
+        let [CssRule::Style(outer)] = report.syntax().rules() else {
+            failures.push(format!("{} lost its outer rule: {report:?}", case.id));
+            continue;
+        };
+        let [CssRule::Style(inner)] = outer.rules() else {
+            failures.push(format!("{} lost its inner rule: {report:?}", case.id));
+            continue;
+        };
+        match inner.selectors().serialize_cssom(
+            &CssNamespaceContext::default(),
+            CssStyleSelectorContext::Nested,
+        ) {
+            Ok(actual) if actual == expected => {}
+            actual => failures.push(format!(
+                "{} {}:{} {input:?}: expected selectorText {expected:?}, got {actual:?}",
+                case.id, case.source.path, case.source.line
+            )),
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "WPT nested selectorText mismatches:\n{}",
+        failures.join("\n")
+    );
+}
+
+/// WPT `check_same_tech`: with no `tech(` in the authored source the
+/// serialization has none; otherwise the `tech(...)` lists (greedy
+/// `/tech\((.+)\)/`, split on `/,\s*/`) agree once sorted, the authored list
+/// lowercased after sorting.
+fn same_tech(serialized: &str, specified: &str) -> Result<(), String> {
+    fn techs(text: &str) -> Option<Vec<&str>> {
+        let start = text.find("tech(")? + "tech(".len();
+        let end = text.rfind(')')?;
+        let mut list: Vec<&str> = text
+            .get(start..end)?
+            .split(',')
+            .map(str::trim_start)
+            .collect();
+        list.sort_unstable();
+        Some(list)
+    }
+    if !specified.contains("tech(") {
+        return if serialized.contains("tech(") {
+            Err("expected no tech() function".to_owned())
+        } else {
+            Ok(())
+        };
+    }
+    let specified = techs(specified).expect("authored tech() list").join(", ");
+    let serialized = techs(serialized)
+        .ok_or("serialization lost its tech() list")?
+        .join(", ");
+    if serialized == specified.to_ascii_lowercase() {
+        Ok(())
+    } else {
+        Err(format!(
+            "tech() lists differ: {serialized:?} vs {specified:?}"
+        ))
+    }
+}
+
+// WPT css/css-fonts/parsing/font-face-src-tech.html compares the specified
+// `src` with its getPropertyValue() serialization for each accepted row not
+// marked dontcomparetech. CSSOM (editor's draft 2026-08-31, the selected
+// planning edition, "serialize a CSS component value") serializes keywords
+// ASCII-lowercased, and Fonts 4 §4.3.1 defines the `<font-tech>` keywords.
+// https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-face-src-parsing
+#[test]
+fn wpt_font_face_src_tech_keyword_sets_survive_serialization() {
+    let mut cases = replayed(FONT_SRC_TECH_SET);
+    assert_eq!(cases.len(), 1);
+    let case = cases.remove(0);
+    let text = assert_source_binding(&case.source);
+    assert!(text.contains("if (t.valid && !t.dontcomparetech)"));
+    let table = case.source.path.as_str();
+    let font: Vec<FontCase> = vectors(FONT_CASES, "recovering-font-face-src-presence");
+    let profile = selected_font_expectations(&font);
+    let rows: Vec<_> = font
+        .iter()
+        .filter(|row| row.source.path == table)
+        .filter(|row| expected_src_presence(row, &profile))
+        .filter(|row| !row.source.case.contains("dontcomparetech: true"))
+        .collect();
+    // Twelve accepted rows of the upstream table compare their technologies.
+    assert_eq!(rows.len(), 12);
+    let mut failures = Vec::new();
+    for row in rows {
+        assert_font_case_binding(row);
+        let input = format!("@font-face {{ src: {}}}", row.src);
+        let report = parse_sheet(&input);
+        let [CssRule::FontFace(rule)] = report.syntax().rules() else {
+            failures.push(format!("{} lost its @font-face: {report:?}", row.id));
+            continue;
+        };
+        let Some(src) = ordinary_face!(rule.descriptors(), Src) else {
+            failures.push(format!("{} lost its src descriptor: {report:?}", row.id));
+            continue;
+        };
+        let result = src
+            .serialize_specified()
+            .map_err(|error| format!("{error:?}"))
+            .and_then(|serialized| {
+                same_tech(&serialized, &row.src).map_err(|why| format!("{serialized:?}: {why}"))
+            });
+        if let Err(why) = result {
+            failures.push(format!("{} {:?}: {why}", row.id, row.src));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "WPT src tech() serialization mismatches:\n{}",
+        failures.join("\n")
+    );
 }

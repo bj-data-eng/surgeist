@@ -54,10 +54,12 @@ standards profile.
 The oracle is characterization, not a correctness oracle. It is captured from
 the current public parser, so it detects behavior changes but cannot show that
 the captured behavior is right; a re-captured oracle is never evidence for a
-behavior change. The I01 observables fixture
-(`tests/fixtures/i01-c01-observables.tsv`) is characterization on the same
-terms. Independent evidence comes from the CSS-owned expected classes and
-reconciliation records, and from the
+behavior change. The public-report characterization fixture
+(`tests/fixtures/public-report-characterization.tsv`) is characterization on
+the same terms; rows reconciled with the specifications leave it for the
+spec-cited [report expectations](../../css/corpora/report_expectations.rs).
+Independent evidence comes from those expectations, the CSS-owned expected
+classes and reconciliation records, and from the
 [canonical comparison](../../css/corpora/csstree/csstree_canonical.rs). That comparison serializes
 Surgeist's public parse result for each upstream-parsed case and compares it with
 CSSTree's own generator expectation: the case's `canonical_css`, or its input

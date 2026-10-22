@@ -3266,11 +3266,6 @@ impl CssKeyframeDeclaration {
             .position()
             .expect("parser-only keyframe source has a name origin")
     }
-
-    #[cfg(test)]
-    pub(crate) fn property(&self) -> crate::test_support::CssProperty {
-        crate::test_support::declaration_body_property(self.body())
-    }
 }
 
 /// The complete importance state of an ordinary authored declaration.
@@ -3598,11 +3593,6 @@ impl CssDeclaration {
     #[must_use]
     pub fn same_occurrence(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.occurrence, &other.occurrence)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn property(&self) -> crate::test_support::CssProperty {
-        crate::test_support::declaration_property(self)
     }
 }
 
@@ -8570,7 +8560,7 @@ impl CssCubicBezierX {
                 unreachable!("checked number literal")
             };
             let decimal = crate::exact_decimal::LexicalDecimal::new(number.representation());
-            if decimal.len != 0 && (decimal.negative || !decimal.absolute_at_most("1", 0)) {
+            if !decimal.is_zero() && (decimal.negative || !decimal.absolute_at_most("1", 0)) {
                 return None;
             }
         }
@@ -9276,7 +9266,8 @@ pub use color::*;
 mod selector;
 pub use selector::*;
 pub(crate) use selector::{
-    CssPseudoSuffixContext, CssSelectorGrammarContext, selector_is_valid_pseudo_suffix,
+    CssCompoundMember, CssCompoundMembers, CssPseudoSuffixContext, CssSelectorGrammarContext,
+    selector_is_valid_pseudo_suffix,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

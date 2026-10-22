@@ -1,13 +1,9 @@
 //! Exact decimal transport is independent of the tokenizer's binary32 cache.
 //! Dyadic goldens below follow directly from powers of two, not parser output.
 
+use crate::css::support::property_admission::assert_reentry_rejected;
+use crate::css::support::sole_declaration;
 use surgeist_css::*;
-
-fn declaration(text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("opacity: {text} !important"));
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    report.syntax()[0].clone()
-}
 
 fn wrapper(declaration: &CssDeclaration) -> &CssOpacityPropertyValue {
     let CssKnownPropertyValueRef::Opacity(value) =
@@ -40,7 +36,7 @@ fn parsed_exact_scalars_preserve_kind_spelling_and_original_span() {
         "-1e100%",
         "1e1000000000",
     ] {
-        let source = declaration(text);
+        let source = sole_declaration(&format!("opacity: {} !important", text));
         let value = exact(wrapper(&source).value());
         assert_eq!(value.numeric().representation(), text.trim_end_matches('%'));
         assert_eq!(
@@ -143,7 +139,7 @@ fn all_scalar_magnitudes_retain_lexemes_and_kinds() {
         "-0%",
         "-0e99999999999999999999%",
     ] {
-        let source = declaration(text);
+        let source = sole_declaration(&format!("opacity: {} !important", text));
         let scalar = exact(wrapper(&source).value());
         assert_eq!(
             scalar.numeric().representation(),
@@ -174,7 +170,7 @@ fn all_scalar_magnitudes_retain_lexemes_and_kinds() {
     }
     for coefficient in 0..=100 {
         let text = format!("{coefficient}%");
-        let source = declaration(&text);
+        let source = sole_declaration(&format!("opacity: {text} !important"));
         let scalar = exact(wrapper(&source).value());
         assert_eq!(scalar.numeric().representation(), coefficient.to_string());
         assert_eq!(scalar.kind(), CssOpacityScalarKind::Percentage);
@@ -191,7 +187,7 @@ fn contribution_scalar(value: &CssLonghandContribution) -> &CssOpacityScalar {
 
 #[test]
 fn expansion_and_strict_reentry_transport_the_same_exact_payload() {
-    let source = declaration("-1e-47%");
+    let source = sole_declaration(&format!("opacity: {} !important", "-1e-47%"));
     let expected = exact(wrapper(&source).value());
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
         expand_declaration(&source).unwrap()
@@ -205,7 +201,7 @@ fn expansion_and_strict_reentry_transport_the_same_exact_payload() {
         values.items()[0].source().importance(),
         CssImportance::Important
     );
-    let pending = declaration("var(--fade)");
+    let pending = sole_declaration("opacity: var(--fade) !important");
     let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
         panic!("pending value")
     };
@@ -226,10 +222,10 @@ fn expansion_and_strict_reentry_transport_the_same_exact_payload() {
         values.items()[0].source().importance(),
         CssImportance::Important
     );
-    assert!(
-        handle
-            .reenter(parse_component_values("1px").unwrap())
-            .is_err()
+    assert_reentry_rejected(
+        handle.reenter(parse_component_values("1px").unwrap()),
+        CssKnownProperty::Opacity,
+        Some("1px"),
     );
 }
 

@@ -2,7 +2,7 @@
 //! for CSS Box Alignment 3, 2026-01-30, §§4–7.
 //! https://www.w3.org/TR/2026/WD-css-align-3-20260130/
 
-use crate::css::support::style_declaration_reporting_source as declaration;
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
 
 fn normal(overflow: Option<CssOverflowPosition>) -> CssAlignmentValue {

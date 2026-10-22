@@ -7,6 +7,7 @@ use crate::{
 pub(super) fn parse_container_type<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssContainerType, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let first = input.expect_ident_cloned().map_err(basic)?;
     let initial = match first.to_ascii_lowercase().as_str() {
         "normal" => CssContainerType::Normal,
@@ -14,12 +15,13 @@ pub(super) fn parse_container_type<'i, 't>(
         "inline-size" => CssContainerType::InlineSize,
         "scroll-state" => CssContainerType::ScrollState,
         _ => {
-            return Err(unexpected_at(input.current_source_location()));
+            return Err(unexpected_at(keyword_location));
         }
     };
     if input.is_exhausted() {
         return Ok(initial);
     }
+    let keyword_location = input.current_source_location();
     let second = input.expect_ident_cloned().map_err(basic)?;
     let combined = match (initial, second.to_ascii_lowercase().as_str()) {
         (CssContainerType::Size, "scroll-state") | (CssContainerType::ScrollState, "size") => {
@@ -28,7 +30,7 @@ pub(super) fn parse_container_type<'i, 't>(
         (CssContainerType::InlineSize, "scroll-state")
         | (CssContainerType::ScrollState, "inline-size") => CssContainerType::InlineSizeScrollState,
         _ => {
-            return Err(unexpected_at(input.current_source_location()));
+            return Err(unexpected_at(keyword_location));
         }
     };
     input.expect_exhausted().map_err(basic)?;
@@ -50,16 +52,17 @@ fn names<'i, 't>(
                 break;
             }
         }
+        let keyword_location = input.current_source_location();
         let ident = input.expect_ident_cloned().map_err(basic)?;
         if none {
-            return Err(unexpected_at(input.current_source_location()));
+            return Err(unexpected_at(keyword_location));
         }
         if ident.eq_ignore_ascii_case("none") && names.is_empty() {
             none = true;
             continue;
         }
         let name = CssContainerName::try_from_decoded(ident.to_string())
-            .ok_or_else(|| unexpected_at(input.current_source_location()))?;
+            .ok_or_else(|| unexpected_at(keyword_location))?;
         names.push(name);
     }
     if none {

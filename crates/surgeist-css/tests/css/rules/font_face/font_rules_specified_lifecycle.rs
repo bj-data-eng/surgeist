@@ -2,23 +2,18 @@
 //! Fixtures use only descriptors and feature-index forms admitted before #759.
 
 use crate::css::support::descriptor_phases;
+use crate::css::support::rules::clean_sheet as sheet;
 use descriptor_phases::*;
 
 use surgeist_css::{
     CssAuthoredFontFaceDescriptorValue as Authored, CssFontDisplay,
     CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value,
     CssFontFeatureValueKind as BlockKind, CssFontFeatureValuesItem as Item,
-    CssFontFeatureValuesRule, CssNormalizedItem, CssRule, CssRuleContextKindRef, CssSheet,
+    CssFontFeatureValuesRule, CssNormalizedItem, CssRule, CssRuleContextKindRef,
     CssSpecifiedRuleSerializationErrorKind as RuleError,
     CssSpecifiedValueSerializationErrorKind as ValueError,
-    CssSpecifiedValueSerializationLimits as Limits, normalize_sheet, parse_sheet,
+    CssSpecifiedValueSerializationLimits as Limits, normalize_sheet,
 };
-
-fn sheet(source: &str) -> CssSheet {
-    let report = parse_sheet(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    report.syntax().clone()
-}
 
 fn features(rule: &CssRule) -> &CssFontFeatureValuesRule {
     let CssRule::FontFeatureValues(rule) = rule else {
@@ -270,7 +265,7 @@ fn authored_duplicates_provenance_and_normalized_payloads_are_retained() {
 }
 
 #[test]
-fn generic_group_composes_the_existing_font_rule_provider() {
+fn generic_group_composes_the_font_rule_provider() {
     let input = sheet("@media all { @font-face { font-family: Demo; } }");
     let before = input.clone();
     assert_eq!(

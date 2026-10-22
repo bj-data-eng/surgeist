@@ -1,9 +1,7 @@
 //! Conditional5 style-query structure, lexical ownership and checked boundaries.
+use crate::css::support::authored_syntax::checked_container_condition as construct;
 use surgeist_css::*;
 
-fn construct(source: &str) -> CssContainerCondition {
-    CssContainerCondition::try_from_components(parse_component_values(source).unwrap()).unwrap()
-}
 fn style(condition: &CssContainerCondition) -> &CssContainerStyleQuery {
     let CssContainerConditionKind::Style(query) = condition.kind() else {
         panic!("style")

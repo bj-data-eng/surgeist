@@ -2,11 +2,8 @@
 //! sections 5.4 and 6.2. Values remain syntax, without computed-value evaluation.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#style-container
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#typedef-declaration-value
+use crate::css::support::authored_syntax::checked_container_condition as checked;
 use surgeist_css::*;
-
-fn checked(source: &str) -> CssContainerCondition {
-    CssContainerCondition::try_from_components(parse_component_values(source).unwrap()).unwrap()
-}
 
 fn assert_style(source: &str) {
     let condition = checked(source);
@@ -48,7 +45,7 @@ fn assert_opaque(source: &str) {
 }
 
 #[test]
-fn existing_custom_features_and_unknown_enclosures_keep_their_classification() {
+fn custom_features_and_unknown_enclosures_keep_their_classification() {
     for source in [
         "style(--theme)",
         "style(--theme: dark)",

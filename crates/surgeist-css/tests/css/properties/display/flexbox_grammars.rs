@@ -5,7 +5,7 @@ use surgeist_css::{
 };
 
 #[test]
-fn c14_flex_flow_retain_typed_structure() {
+fn flex_flow_retains_typed_structure() {
     let report = parse_style_attribute(concat!(
         "flex-flow: wrap-reverse column; ",
         "flex-flow: row-reverse wrap; ",

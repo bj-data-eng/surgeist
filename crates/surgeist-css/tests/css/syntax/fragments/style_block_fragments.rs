@@ -1,4 +1,5 @@
 //! Real-brace style-body parsing retains authored contents and genuine origins.
+use crate::css::support::authored_syntax::assert_diagnostics;
 use surgeist_css::{
     CssDeclaration, CssKnownProperty, CssKnownPropertyValueRef, CssNamespaceContext,
     CssNamespaceName, CssNamespacePrefix, CssRecoveryAction, CssRule, CssSelector,
@@ -238,7 +239,15 @@ fn relative_children_retain_namespace_constraints_without_a_fabricated_parent() 
     let missing = parse("{svg|leaf{color:red}}");
     assert!(missing.syntax().is_some());
     assert!(missing.syntax().as_ref().unwrap().rules().is_empty());
-    assert!(!missing.is_clean());
+    // The undeclared prefix fails at that prefix, dropping the nested rule.
+    assert_diagnostics(
+        missing.diagnostics(),
+        &[(
+            surgeist_css::CssErrorCode::InvalidSelector,
+            surgeist_css::CssRecoveryAction::DropQualifiedRule,
+            "{".len(),
+        )],
+    );
 }
 
 #[test]

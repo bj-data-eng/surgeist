@@ -64,6 +64,12 @@ impl<'a> LexicalDecimal<'a> {
             exponent_adjustment,
         }
     }
+    /// Whether the exact value is zero, whatever its sign or exponent spelling.
+    /// This is the one exact-zero predicate for retained numeric literals.
+    pub(crate) const fn is_zero(&self) -> bool {
+        self.len == 0
+    }
+
     pub(crate) fn digits(&self) -> impl Iterator<Item = u8> + '_ {
         self.significant
             .bytes()

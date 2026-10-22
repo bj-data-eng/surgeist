@@ -1,5 +1,6 @@
 //! Containment2 authored checked/reentry fronts must retain original EOF failures.
 //! Browser recovery remains available and does not turn a recovered report clean.
+use crate::css::support::property_admission::assert_implicit_closure;
 use surgeist_css::*;
 const PROPERTY: CssKnownProperty = CssKnownProperty::ContentVisibility;
 const GLOBALS: [&str; 5] = ["initial", "inherit", "unset", "revert", "revert-layer"];
@@ -232,7 +233,7 @@ fn browser_recovery_retains_diagnostics_and_occurrences_through_normalization() 
         let css = format!("/*😀*/.a{{color:red;content-visibility:{text}");
         let report = parse_sheet(&css);
         let before = report.clone();
-        assert!(!report.is_clean());
+        assert_implicit_closure(&css, &report);
         assert_eq!(
             validate_sheet(&css).unwrap_err().diagnostics(),
             report.diagnostics()
@@ -261,13 +262,20 @@ fn browser_recovery_retains_diagnostics_and_occurrences_through_normalization() 
             assert_eq!(item.order(), order);
             assert!(item.source().same_occurrence(&rule.declarations()[order]));
         }
-        assert!(
-            normalize_report_with_limits(
-                &report,
-                CssNormalizationLimits::try_new(0, 1, 2, 1).unwrap()
-            )
-            .is_err()
+        // Color and the recovered declaration each contribute one longhand.
+        let error = normalize_report_with_limits(
+            &report,
+            CssNormalizationLimits::try_new(0, 1, 2, 1).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.kind(),
+            &CssNormalizationErrorKind::LimitExceeded {
+                resource: CssNormalizationResource::Contributions,
+                limit: 1,
+            }
         );
+        assert_eq!(error.declaration_order(), Some(1));
         assert_eq!(report, before);
     }
 }

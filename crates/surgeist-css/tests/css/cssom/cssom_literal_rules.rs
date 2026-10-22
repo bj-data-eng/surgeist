@@ -1,4 +1,6 @@
 //! Independent literal CSSOM composition expectations; compact output stays separate.
+use crate::css::support::serialization_limits::LimitLadder;
+use crate::css::support::value_assertions::clean_rule as rule;
 use std::error::Error;
 use surgeist_css::{
     CssDeclarationBlockError, CssDeclarationBlockErrorKind, CssImportance, CssKnownProperty,
@@ -8,12 +10,6 @@ use surgeist_css::{
     CssSpecifiedValueSerializationErrorKind as Resource,
     CssSpecifiedValueSerializationLimits as Limits, parse_rule, parse_selector, parse_sheet,
 };
-
-fn rule(source: &str) -> CssRule {
-    let report = parse_rule(source, &CssNamespaceContext::default());
-    assert!(report.is_clean(), "{source}: {report:?}");
-    report.syntax().clone().expect("one admitted rule")
-}
 
 fn exact(source: &str, expected: &str) {
     let report = parse_sheet(source);
@@ -30,44 +26,15 @@ fn exact(source: &str, expected: &str) {
 
 fn limits(source: &str, expected: &str, inputs: usize, projections: usize) {
     let value = rule(source);
-    let before = value.clone();
-    let adequate = Limits::new(inputs, projections, expected.len());
-    assert_eq!(
-        value.serialize_cssom_with_limits(adequate).unwrap(),
-        expected
-    );
-    for (bound, kind) in [
-        (
-            Limits::new(inputs - 1, projections, expected.len()),
-            Resource::InputNodeLimit,
-        ),
-        (
-            Limits::new(inputs, projections - 1, expected.len()),
-            Resource::ProjectionNodeLimit,
-        ),
-        (
-            Limits::new(inputs, projections, expected.len() - 1),
-            Resource::ByteLimit,
-        ),
-        (
-            Limits::new(0, projections, expected.len()),
-            Resource::InputNodeLimit,
-        ),
-        (
-            Limits::new(inputs, 0, expected.len()),
-            Resource::ProjectionNodeLimit,
-        ),
-        (Limits::new(inputs, projections, 0), Resource::ByteLimit),
-    ] {
-        let failure = value.serialize_cssom_with_limits(bound).unwrap_err();
-        assert_eq!(failure.kind(), RuleError::Resource(kind));
-        assert_eq!(failure.rule_path(), &[] as &[usize]);
-        assert_eq!(value, before);
-        assert_eq!(
-            value.serialize_cssom_with_limits(adequate).unwrap(),
-            expected
+    LimitLadder::new(expected, inputs, projections)
+        .zero_limits()
+        .assert_unchanged_with(
+            &value,
+            CssRule::serialize_cssom_with_limits,
+            |_, _, failure: &CssRuleCssomSerializationError| {
+                assert_eq!(failure.rule_path(), &[] as &[usize]);
+            },
         );
-    }
 }
 
 #[test]
@@ -173,7 +140,12 @@ fn parser_context_and_original_unicode_coordinates_survive_literal_output() {
         ".a { width: 1px; }"
     );
     let standards = parse_rule(".a{width:1}", &CssNamespaceContext::default());
-    assert!(!standards.is_clean());
+    crate::css::support::value_assertions::assert_first_property_diagnostic(
+        standards.diagnostics(),
+        ".a{width:1}",
+        CssKnownProperty::Width,
+        "1",
+    );
     assert_eq!(
         standards
             .syntax()

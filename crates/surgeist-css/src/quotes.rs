@@ -30,12 +30,7 @@ fn append_pairs(
     // One aggregate for the checked list; its strings are charged as leaves.
     writer.context.charge_input(1)?;
     writer.context.charge_projection(1)?;
-    for (index, pair) in pairs.pairs().iter().enumerate() {
-        if index != 0 {
-            writer.append(" ")?;
-        }
-        append_pair_contents(writer, pair)?;
-    }
+    writer.space_separated(pairs.pairs(), append_pair_contents)?;
     Ok(())
 }
 

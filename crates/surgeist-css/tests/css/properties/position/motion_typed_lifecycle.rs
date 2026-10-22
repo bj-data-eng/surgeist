@@ -1,6 +1,18 @@
 //! Functional new-model contracts from Motion WD 2024-11-05, Box 3 coord-box
 //! and the imported full position, angle, URL and complete Shapes owners.
 //! These wholly new typed APIs have no executable preimplementation boundary.
+use crate::css::support::named_property::longhand_contributions as contributions;
+
+fn declaration(name: &str, input: &str) -> CssDeclaration {
+    let css = format!("/*😀*/{name}:{input}!important");
+    let report = parse_style_attribute(&css);
+    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
+    let [source] = report.syntax().as_slice() else {
+        panic!("one occurrence: {css}")
+    };
+    source.clone()
+}
+use crate::css::support::serialization_limits::assert_node_limits as budget;
 use CssSpecifiedValueSerializationErrorKind as K;
 use CssSpecifiedValueSerializationLimits as L;
 use surgeist_css::*;
@@ -12,12 +24,6 @@ fn position() -> CssPosition {
     CssPhysicalPosition::try_new(CssHorizontalPosition::Left, CssVerticalPosition::Top)
         .unwrap()
         .into()
-}
-fn declaration(name: &str, input: &str) -> CssDeclaration {
-    let css = format!("/*😀*/{name}:{input}!important");
-    let report = parse_style_attribute(&css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    report.syntax()[0].clone()
 }
 fn offset_path(source: &CssDeclaration) -> &CssOffsetPath {
     let CssKnownPropertyValueRef::OffsetPath(value) =
@@ -43,39 +49,6 @@ fn offset(source: &CssDeclaration) -> &CssOffset {
     };
     value.value()
 }
-fn contributions(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(value)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("terminal contributions")
-    };
-    value
-}
-fn budget(
-    expected: &str,
-    nodes: usize,
-    operation: impl Fn(L) -> Result<String, CssSpecifiedValueSerializationError>,
-) {
-    assert_eq!(
-        operation(L::new(nodes, nodes, expected.len())).unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (L::new(nodes - 1, nodes, expected.len()), K::InputNodeLimit),
-        (
-            L::new(nodes, nodes - 1, expected.len()),
-            K::ProjectionNodeLimit,
-        ),
-        (L::new(nodes, nodes, expected.len() - 1), K::ByteLimit),
-    ] {
-        assert_eq!(operation(limits).unwrap_err().kind(), kind);
-    }
-    assert_eq!(
-        operation(L::new(nodes, nodes, expected.len())).unwrap(),
-        expected
-    );
-}
-
 #[test]
 fn checked_coord_conversion_admits_six_boxes_and_rejects_margin() {
     for (edge, coord, keyword) in [
@@ -246,7 +219,7 @@ fn rotation_rejects_empty_and_preserves_modifier_angle_omissions() {
 }
 
 #[test]
-fn motion_angle_construction_uses_strict_existing_owner_errors_and_origins() {
+fn motion_angle_construction_uses_strict_angle_owner_errors_and_origins() {
     let component = parse_component_values("0").unwrap().items()[0].clone();
     let origin = component.origin().clone();
     let error = CssAngleLiteral::try_from_component(component).unwrap_err();
@@ -702,7 +675,7 @@ fn typed_checked_construction_preserves_supplied_angle_and_distance_component_id
 }
 
 #[test]
-fn composed_motion_numeric_graphs_share_existing_projection_limits_without_mutation() {
+fn composed_motion_numeric_graphs_share_projection_limits_without_mutation() {
     let source = declaration("offset-path", "ray(calc(cos(1e400deg) * 1deg)) view-box");
     let value = offset_path(&source);
     let before = value.clone();

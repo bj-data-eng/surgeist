@@ -5,31 +5,22 @@
 //! These exercise existing callable boundaries; wrapper RED is not direct
 //! evidence of a defect in the distinct authored Import/CustomMedia serializers.
 
+use crate::css::support::rules::ExpectedRejection;
+use crate::css::support::rules::assert_exact_specified_sheet as exact;
+use crate::css::support::rules::clean_sheet as sheet;
+use crate::css::support::serialization_limits::LimitLadder;
 use std::error::Error;
 use surgeist_css::{
     CssContainerPrelude, CssContainerRule, CssCustomMediaBody, CssCustomMediaSerializationError,
-    CssImportSerializationError, CssMediaCssomSerializationError, CssMediaSerializationError,
-    CssNamespaceContext, CssRecoveryAction, CssRule, CssScopedRule, CssSheet,
-    CssSpecifiedRuleSerializationError, CssSpecifiedRuleSerializationErrorKind as RuleError,
+    CssErrorCode, CssImportSerializationError, CssMediaCssomSerializationError,
+    CssMediaSerializationError, CssNamespaceContext, CssRecoveryAction, CssRule, CssScopedRule,
+    CssSheet, CssSpecifiedRuleSerializationError,
+    CssSpecifiedRuleSerializationErrorKind as RuleError,
     CssSpecifiedValueSerializationError as ValueError,
     CssSpecifiedValueSerializationErrorKind as Kind,
     CssSpecifiedValueSerializationLimits as Limits, CssSupportsCondition, CssSupportsRule,
     parse_component_values, parse_sheet,
 };
-
-fn sheet(source: &str) -> CssSheet {
-    let report = parse_sheet(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    report.syntax().clone()
-}
-
-fn exact(source: &str, expected: &str) {
-    let input = sheet(source);
-    let before = input.clone();
-    assert_eq!(input.to_specified_css().unwrap(), expected);
-    assert_eq!(input, before);
-    assert_eq!(sheet(expected).to_specified_css().unwrap(), expected);
-}
 
 fn resource(error: &CssSpecifiedRuleSerializationError, kind: Kind, index: Option<usize>) {
     assert_eq!(error.kind(), RuleError::Resource(kind));
@@ -49,7 +40,7 @@ fn media_cause(error: &CssSpecifiedRuleSerializationError) -> &CssMediaCssomSeri
 }
 
 #[test]
-fn namespace_and_empty_font_controls_share_existing_sheet_costs() {
+fn namespace_and_empty_font_controls_share_sheet_costs() {
     let input = sheet("@namespace n '日本';@font-face{}");
     let before = input.clone();
     let expected = "@namespace n url(\"日本\");\n@font-face { }";
@@ -119,7 +110,8 @@ fn keyframe_custom_and_pending_occurrences_keep_token_spelling_and_comments() {
 fn keyframe_custom_implicit_function_closure_emits_complete_tokens() {
     let report = parse_sheet("@keyframes k{from{--Case:Future(A/**/B");
     let before = report.clone();
-    assert!(!report.is_clean());
+    // Syntax 3 §5.4.8: EOF inside the open function is a parse error.
+    ExpectedRejection::new(CssErrorCode::UnexpectedEnd).assert_first(&report);
     let [CssRule::Keyframes(rule)] = report.syntax().rules() else {
         panic!("retained keyframes")
     };
@@ -135,7 +127,8 @@ fn keyframe_custom_implicit_function_closure_emits_complete_tokens() {
 fn keyframe_pending_implicit_var_closure_emits_complete_tokens() {
     let report = parse_sheet("@keyframes k{to{opacity:var(--o");
     let before = report.clone();
-    assert!(!report.is_clean());
+    // Syntax 3 §5.4.8: EOF inside the open function is a parse error.
+    ExpectedRejection::new(CssErrorCode::UnexpectedEnd).assert_first(&report);
     let [CssRule::Keyframes(rule)] = report.syntax().rules() else {
         panic!("retained keyframes")
     };
@@ -341,13 +334,6 @@ fn lexical_conditions_keep_opaque_case_comments_and_grouping_inside_scoped_group
 }
 
 fn exact_lexical_region_budget(input: CssSheet, expected: &str, nodes: usize) {
-    let before = input.clone();
-    assert_eq!(
-        input
-            .to_specified_css_with_limits(Limits::new(nodes, nodes, expected.len()))
-            .unwrap(),
-        expected
-    );
     // The same rule fits without the sheet aggregate; the sheet cannot reset
     // its budget before consuming the condition/prelude provider.
     assert_eq!(
@@ -356,28 +342,11 @@ fn exact_lexical_region_budget(input: CssSheet, expected: &str, nodes: usize) {
             .unwrap(),
         expected
     );
-    for (limits, kind) in [
-        (
-            Limits::new(nodes - 1, nodes, expected.len()),
-            Kind::InputNodeLimit,
-        ),
-        (
-            Limits::new(nodes, nodes - 1, expected.len()),
-            Kind::ProjectionNodeLimit,
-        ),
-        (
-            Limits::new(nodes, nodes, expected.len() - 1),
-            Kind::ByteLimit,
-        ),
-    ] {
-        resource(
-            &input.to_specified_css_with_limits(limits).unwrap_err(),
-            kind,
-            Some(0),
-        );
-        assert_eq!(input, before);
-    }
-    assert_eq!(input, before);
+    LimitLadder::new(expected, nodes, nodes).assert_unchanged_with(
+        &input,
+        CssSheet::to_specified_css_with_limits,
+        |_, kind, error| resource(error, kind, Some(0)),
+    );
 }
 
 #[test]

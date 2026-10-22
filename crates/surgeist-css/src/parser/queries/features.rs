@@ -23,6 +23,8 @@ pub(super) enum AdmittedMediaFeature {
 /// A selected feature shape before its enclosing component is retained.
 pub(super) struct ParsedMediaFeature {
     pub(super) name: CssComponentValue,
+    /// Where the feature name starts, for diagnostics naming that name.
+    pub(super) name_location: cssparser::SourceLocation,
     pub(super) name_text: String,
     pub(super) shape: MediaFeatureShape,
     separators: Vec<Vec<CssValueOrigin>>,
@@ -168,6 +170,7 @@ fn generic_feature_first<'i, 't>(
 ) -> Result<ParsedMediaFeature, ParseError<'i, Error>> {
     input.skip_whitespace();
     let name_start = input.state();
+    let name_location = name_start.source_location();
     let name_text = input.expect_ident_cloned().map_err(basic)?.to_string();
     input.reset(&name_start);
     let name = numeric
@@ -195,6 +198,7 @@ fn generic_feature_first<'i, 't>(
     input.expect_exhausted()?;
     Ok(ParsedMediaFeature {
         name: name.into_owned(),
+        name_location,
         name_text,
         shape,
         separators,
@@ -210,6 +214,7 @@ fn generic_value_first<'i, 't>(
     let mut separators = vec![origins];
     input.skip_whitespace();
     let name_start = input.state();
+    let name_location = name_start.source_location();
     let name_text = input.expect_ident_cloned().map_err(basic)?.to_string();
     input.reset(&name_start);
     let name = numeric
@@ -250,6 +255,7 @@ fn generic_value_first<'i, 't>(
     input.expect_exhausted()?;
     Ok(ParsedMediaFeature {
         name: name.into_owned(),
+        name_location,
         name_text,
         shape: MediaFeatureShape::Range(CssMediaRange::new(state)),
         separators,
@@ -323,9 +329,9 @@ fn parse_media_feature_query<'i, 't>(
                 .map_err(|error| media_numeric_error(source, input, numeric, error))?;
         }
         parse_media_comparison(input)?;
+        let keyword_location = input.current_source_location();
         let ident = input.expect_ident_cloned().map_err(basic)?;
-        MediaFeatureName::parse(&ident)
-            .ok_or_else(|| unexpected_at(input.current_source_location()))?
+        MediaFeatureName::parse(&ident).ok_or_else(|| unexpected_at(keyword_location))?
     };
     input.reset(&initial);
     match name.id.family() {

@@ -249,7 +249,11 @@ fn literal_identifier_star_and_universal_remain_distinct() {
     );
     assert_eq!(universal.serialize_with_limit(10).unwrap().as_css(), "*|*");
     for invalid in ["", "\0", "a\0b"] {
-        assert!(CssIdent::try_new(invalid).is_err());
+        assert_eq!(
+            CssIdent::try_new(invalid).unwrap_err().kind(),
+            CssComponentValueErrorKind::InvalidIdentifier,
+            "{invalid:?}"
+        );
         assert!(CssAttributeName::try_new(invalid).is_none());
     }
 }

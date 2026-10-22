@@ -10,8 +10,9 @@ use cssparser::match_ignore_ascii_case;
 macro_rules! keyword {
     ($parser:ident, $ty:ident, $($text:literal => $variant:ident),+ $(,)?) => {
         pub(super) fn $parser<'i, 't>(input: &mut Parser<'i, 't>) -> std::result::Result<$ty, ParseError<'i, Error>> {
+            let keyword_location = input.current_source_location();
             let ident = input.expect_ident_cloned().map_err(basic)?;
-            match_ignore_ascii_case! { &ident, $($text => Ok($ty::$variant),)+ _ => Err(unexpected_at(input.current_source_location())) }
+            match_ignore_ascii_case! { &ident, $($text => Ok($ty::$variant),)+ _ => Err(unexpected_at(keyword_location)) }
         }
     };
 }
@@ -69,6 +70,7 @@ pub(super) fn parse_text_underline_offset<'i, 't>(
 pub(super) fn parse_text_decoration_skip_spaces<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTextDecorationSkipSpaces, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     if ident.eq_ignore_ascii_case("none") {
         return Ok(CssTextDecorationSkipSpaces::None);
@@ -79,7 +81,7 @@ pub(super) fn parse_text_decoration_skip_spaces<'i, 't>(
     let start = ident.eq_ignore_ascii_case("start");
     let end = ident.eq_ignore_ascii_case("end");
     if !start && !end {
-        return Err(unexpected_at(input.current_source_location()));
+        return Err(unexpected_at(keyword_location));
     }
     if input.is_exhausted() {
         return Ok(if start {

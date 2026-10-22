@@ -4,14 +4,18 @@
 use crate::css::support::descriptor_phases;
 use descriptor_phases::*;
 
+use crate::css::support::authored_syntax::{
+    assert_origin_region as origin, assert_position as position, assert_strict_rejection,
+    parsed_origin,
+};
 use surgeist_css::{
-    CssComponentValue, CssComponentValueRef, CssComponentValues,
-    CssCounterStyleDescriptorKind as CounterKind, CssCounterStyleDescriptorValue as CounterValue,
+    CssComponentValueRef, CssComponentValues, CssCounterStyleDescriptorKind as CounterKind,
+    CssCounterStyleDescriptorValue as CounterValue,
     CssCounterStyleDescriptorValueRef as CounterRef, CssCounterStyleRange,
     CssCounterStyleRangeBound, CssCounterStyleSpeakAs, CssCounterStyleSystem, CssCounterSymbol,
     CssErrorCode, CssEscapeError, CssFontDisplay, CssFontFeatureValueKind as FeatureKind,
     CssFontFeatureValuesItem, CssImageValue, CssNumericTokenKind, CssParseReport, CssParsedOrigin,
-    CssRecoveryAction, CssRule, CssSourcePosition, CssValueOrigin, CssValueTokenRef, ErrorKind,
+    CssRecoveryAction, CssRule, CssValueOrigin, CssValueTokenRef, ErrorKind,
     parse_counter_style_descriptor_value, parse_font_feature_display_value,
     parse_font_feature_value, parse_sheet,
 };
@@ -161,36 +165,12 @@ fn counter_semantics(actual: &CounterValue, expected: &Expected) {
     }
 }
 
-fn position(actual: CssSourcePosition, byte: usize, line: u32, column: u32) {
-    assert_eq!(actual.byte_offset().value(), byte);
-    assert_eq!(actual.line().value(), line);
-    assert_eq!(actual.column().value(), column);
-}
-
-fn origin(
-    actual: &CssParsedOrigin,
-    source: &str,
-    start: (usize, u32, u32),
-    end: (usize, u32, u32),
-) {
-    assert_eq!(actual.source().as_str(), source);
-    position(actual.span().start(), start.0, start.1, start.2);
-    position(actual.span().end(), end.0, end.1, end.2);
-}
-
-fn parsed(component: &CssComponentValue) -> &CssParsedOrigin {
-    let CssValueOrigin::Parsed(origin) = component.origin() else {
-        panic!("actual source token")
-    };
-    origin
-}
-
 fn complete_components(values: &CssComponentValues, carrier: &CssParsedOrigin, source: &str) {
     // These success cases contain root leaves only. Check raw source coverage,
     // including trivia, without serializing/relexing or predicting token counts.
     let mut next = 0;
     for component in values.items() {
-        let component_origin = parsed(component);
+        let component_origin = parsed_origin(component.origin());
         assert!(carrier.source().same_snapshot(component_origin.source()));
         assert_eq!(component_origin.source().as_str(), source);
         assert_eq!(component_origin.span().start().byte_offset().value(), next);
@@ -647,7 +627,7 @@ fn index_normalization_preserves_exact_integer_token_spellings_for_every_kind() 
             assert_eq!(number.representation(), source);
             assert_eq!(number.kind(), CssNumericTokenKind::Integer);
             assert_eq!(number.has_sign(), source.starts_with(['+', '-']));
-            assert_eq!(index.origin().unwrap(), parsed(component));
+            assert_eq!(index.origin().unwrap(), parsed_origin(component.origin()));
             assert!(
                 actual
                     .origin()
@@ -711,7 +691,7 @@ fn original_unicode_trivia_belongs_to_full_carriers_and_precise_semantic_tokens(
             )
         })
         .unwrap();
-    origin(parsed(ident), source, (9, 1, 0), (13, 1, 4));
+    origin(parsed_origin(ident.origin()), source, (9, 1, 0), (13, 1, 4));
     assert_eq!(
         actual
             .components()
@@ -747,7 +727,7 @@ fn original_unicode_trivia_belongs_to_full_carriers_and_precise_semantic_tokens(
             )
         })
         .unwrap();
-    assert_eq!(parsed(number), index.origin().unwrap());
+    assert_eq!(parsed_origin(number.origin()), index.origin().unwrap());
 
     let source = "\"💡\"";
     let report = parse_counter_style_descriptor_value(source, CounterKind::Prefix);
@@ -759,7 +739,12 @@ fn original_unicode_trivia_belongs_to_full_carriers_and_precise_semantic_tokens(
     let [component] = actual.components().items() else {
         panic!("one string")
     };
-    origin(parsed(component), source, (0, 0, 0), (6, 0, 4));
+    origin(
+        parsed_origin(component.origin()),
+        source,
+        (0, 0, 0),
+        (6, 0, 4),
+    );
 
     let source = " /*é*/\r\ncyclic /*💡*/ ";
     let report = parse_counter_style_descriptor_value(source, CounterKind::System);
@@ -779,7 +764,7 @@ fn original_unicode_trivia_belongs_to_full_carriers_and_precise_semantic_tokens(
             )
         })
         .unwrap();
-    origin(parsed(ident), source, (9, 1, 0), (15, 1, 6));
+    origin(parsed_origin(ident.origin()), source, (9, 1, 0), (15, 1, 6));
 }
 
 #[test]
@@ -825,7 +810,12 @@ fn punctuation_inside_an_admitted_url_is_data_with_original_group_origins() {
     let [component] = actual.components().items() else {
         panic!("one original function")
     };
-    origin(parsed(component), source, (0, 0, 0), (4, 0, 4));
+    origin(
+        parsed_origin(component.origin()),
+        source,
+        (0, 0, 0),
+        (4, 0, 4),
+    );
     let CssComponentValueRef::Function(function) = component.view() else {
         panic!("URL function")
     };
@@ -837,7 +827,12 @@ fn punctuation_inside_an_admitted_url_is_data_with_original_group_origins() {
         quoted.view(),
         CssComponentValueRef::Token(CssValueTokenRef::String("x;y!z"))
     ));
-    origin(parsed(quoted), source, (4, 0, 4), (11, 0, 11));
+    origin(
+        parsed_origin(quoted.origin()),
+        source,
+        (4, 0, 4),
+        (11, 0, 11),
+    );
     let CssValueOrigin::Parsed(closing) = function.closing_origin() else {
         panic!("actual closing delimiter")
     };
@@ -847,7 +842,7 @@ fn punctuation_inside_an_admitted_url_is_data_with_original_group_origins() {
             .origin()
             .unwrap()
             .source()
-            .same_snapshot(parsed(quoted).source())
+            .same_snapshot(parsed_origin(quoted.origin()).source())
     );
     assert!(
         actual
@@ -1045,7 +1040,10 @@ fn lexical_eof_recovery_retains_values_and_fails_clean_only_validation() {
         (0, 0, 0),
         (2, 0, 2),
     );
-    assert!(report.into_validation_result().is_err());
+    assert_strict_rejection(
+        report.clone().into_validation_result(),
+        report.diagnostics(),
+    );
 
     let source = "swap/*x";
     let report = parse_font_feature_display_value(source);

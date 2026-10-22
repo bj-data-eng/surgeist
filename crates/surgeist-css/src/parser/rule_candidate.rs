@@ -401,14 +401,15 @@ pub(super) fn admit_inner(
     let (result, mut diagnostics) = match context {
         CssRuleAdmissionContext::Stylesheet | CssRuleAdmissionContext::Group => {
             let mut parser = if context == CssRuleAdmissionContext::Stylesheet {
-                StrictRuleParser::top_level(source, state.clone())
+                RuleParser::top_level(source, state.clone())
             } else {
-                StrictRuleParser::nested(source, state.clone())
+                RuleParser::group(source, state.clone())
             };
             let result =
                 syntax_bridge::admit_envelope(source, &mut input, &mut parser, &state, envelope)
-                    .map(|rules| {
-                        let [rule]: [CssRule; 1] = rules.try_into().expect("one ordinary rule");
+                    .map(|item| {
+                        let [rule]: [CssRule; 1] =
+                            item.into_rules().try_into().expect("one ordinary rule");
                         CssAdmittedRule::Ordinary(rule)
                     });
             (result, parser.diagnostics)
@@ -418,20 +419,16 @@ pub(super) fn admit_inner(
         }
         CssRuleAdmissionContext::Scope(ancestor)
         | CssRuleAdmissionContext::ScopedGroup(ancestor) => {
-            let mut parser = ScopedRuleParser {
+            let mut parser = ScopedRuleParser::new(
                 source,
-                diagnostics: Vec::new(),
-                recovery: state.clone(),
-                has_style_ancestor: ancestor == CssStyleAncestor::Present,
-                body: if matches!(context, CssRuleAdmissionContext::Scope(_)) {
+                state.clone(),
+                ancestor == CssStyleAncestor::Present,
+                if matches!(context, CssRuleAdmissionContext::Scope(_)) {
                     ScopedBodyKind::Scope
                 } else {
                     ScopedBodyKind::OrdinaryGroup
                 },
-                boundary: nesting::StyleRuleBoundary::None,
-                qualified_resource_error: None,
-                rejected_at_rule_start: None,
-            };
+            );
             if ancestor == CssStyleAncestor::Present {
                 state.record_style_context(0);
             }

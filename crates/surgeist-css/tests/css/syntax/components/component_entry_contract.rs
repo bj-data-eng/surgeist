@@ -1,23 +1,16 @@
 //! Authored component construction through public source fronts.
 //! Syntax 3 CRD20261001 §§5.4.8–10, 5.5.7–10 and source-entry contracts.
+use crate::css::support::authored_syntax::{
+    assert_span_bytes as span, assert_strict_rejection, parsed_origin as parsed,
+};
 use surgeist_css::{
     CssBlockKind, CssComponentValue, CssComponentValueErrorKind, CssComponentValueLimits,
-    CssComponentValueRef, CssErrorCode, CssParsedOrigin, CssRecoveryAction, CssRecoveryDiagnostic,
-    CssSourceSpan, CssValueOrigin, CssValueTokenRef, ErrorKind,
-    parse_comma_separated_component_values, parse_comma_separated_component_values_with_limits,
-    parse_component_value, parse_component_value_with_limits,
+    CssComponentValueRef, CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssValueOrigin,
+    CssValueTokenRef, ErrorKind, parse_comma_separated_component_values,
+    parse_comma_separated_component_values_with_limits, parse_component_value,
+    parse_component_value_with_limits,
 };
 
-fn parsed(origin: &CssValueOrigin) -> &CssParsedOrigin {
-    let CssValueOrigin::Parsed(origin) = origin else {
-        panic!("original parsed occurrence")
-    };
-    origin
-}
-fn span(span: CssSourceSpan, expected: std::ops::Range<usize>) {
-    assert_eq!(span.start().byte_offset().value(), expected.start);
-    assert_eq!(span.end().byte_offset().value(), expected.end);
-}
 fn origin(origin: &CssValueOrigin, source: &str, range: std::ops::Range<usize>) {
     let occurrence = parsed(origin);
     assert_eq!(occurrence.source().as_str(), source);
@@ -60,7 +53,10 @@ fn singular_entry_selects_complete_token_after_outer_trivia_with_original_occurr
     let component = report.syntax().as_ref().unwrap();
     ident(component, "a");
     origin(component.origin(), source, 7..11);
-    assert!(report.into_validation_result().is_ok());
+    assert_eq!(
+        report.clone().into_validation_result().unwrap(),
+        *report.syntax()
+    );
 }
 
 #[test]
@@ -219,7 +215,10 @@ fn singular_implicit_function_and_all_block_ends_retain_syntax_but_reject_clean_
             source.len()
         );
         span(diagnostic.span(), source.len()..source.len());
-        assert!(report.into_validation_result().is_err());
+        assert_strict_rejection(
+            report.clone().into_validation_result(),
+            report.diagnostics(),
+        );
     }
 }
 
@@ -241,7 +240,10 @@ fn raw_comma_entry_preserves_empty_leading_double_and_final_slots() {
                 .collect::<Vec<_>>(),
             lengths
         );
-        assert!(report.into_validation_result().is_ok());
+        assert_eq!(
+            report.clone().into_validation_result().unwrap(),
+            *report.syntax()
+        );
     }
 }
 
@@ -448,7 +450,10 @@ fn explicit_limits_charge_whole_original_input_and_fail_atomically_before_slot_p
             }
         );
         span(diagnostic.span(), 0..source.len());
-        assert!(report.into_validation_result().is_err());
+        assert_strict_rejection(
+            report.clone().into_validation_result(),
+            report.diagnostics(),
+        );
     }
     for (source, limits, expected) in [
         (

@@ -2,10 +2,12 @@
 //! the complete graph. Parts come from the real parser; compound conversion uses
 //! the existing checked Shadow argument boundary, without private-field access.
 
+use crate::css::support::color_and_selector_fixtures::assert_specified_construction_cause;
 use crate::css::support::validated_selector as parsed;
 use surgeist_css::{
     CssComplexSelector, CssComplexSelectorPart, CssCompoundSelector, CssCompoundSelectorArgument,
-    CssSelector, CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits,
+    CssSelector, CssSelectorConstructionErrorKind, CssSpecifiedValueSerializationErrorKind,
+    CssSpecifiedValueSerializationLimits,
 };
 
 fn complex(source: &str) -> CssComplexSelector {
@@ -44,15 +46,31 @@ fn complex_assembly_preserves_order_and_legal_terminal_pseudo_element() {
 #[test]
 fn complex_assembly_rejects_empty_rest_and_nonterminal_pseudo_element() {
     let ordinary = complex(".One > .Two");
-    assert!(CssComplexSelector::try_new(ordinary.first().clone(), Vec::new()).is_err());
+    assert_eq!(
+        CssComplexSelector::try_new(ordinary.first().clone(), Vec::new())
+            .unwrap_err()
+            .kind(),
+        &CssSelectorConstructionErrorKind::EmptyComplexRest
+    );
 
     let terminal = complex(".One > .Two::before");
     let first = terminal.rest()[0].selector().clone();
-    assert!(CssComplexSelector::try_new(first, ordinary.rest().to_vec()).is_err());
+    // Selectors 4 §3.6: a pseudo-element belongs only to the last compound.
+    assert_eq!(
+        CssComplexSelector::try_new(first, ordinary.rest().to_vec())
+            .unwrap_err()
+            .kind(),
+        &CssSelectorConstructionErrorKind::NonTerminalPseudoElement { compound_index: 0 }
+    );
 
     let mut rest = terminal.rest().to_vec();
     rest.extend_from_slice(ordinary.rest());
-    assert!(CssComplexSelector::try_new(ordinary.first().clone(), rest).is_err());
+    assert_eq!(
+        CssComplexSelector::try_new(ordinary.first().clone(), rest)
+            .unwrap_err()
+            .kind(),
+        &CssSelectorConstructionErrorKind::NonTerminalPseudoElement { compound_index: 1 }
+    );
 }
 
 #[test]
@@ -122,9 +140,9 @@ fn complex_assembly_rejects_one_node_above_default_cumulative_budget() {
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit
         );
     }
-    assert!(
-        actual.is_err(),
-        "complex assembly admitted 65,537 cumulative input nodes"
+    assert_specified_construction_cause(
+        &actual.expect_err("complex assembly admitted 65,537 cumulative input nodes"),
+        CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
     );
 }
 
@@ -174,8 +192,8 @@ fn complex_assembly_rejects_utf8_bytes_above_default_cumulative_budget() {
             CssSpecifiedValueSerializationErrorKind::ByteLimit
         );
     }
-    assert!(
-        actual.is_err(),
-        "complex assembly admitted 1,048,577 cumulative UTF-8 bytes"
+    assert_specified_construction_cause(
+        &actual.expect_err("complex assembly admitted 1,048,577 cumulative UTF-8 bytes"),
+        CssSpecifiedValueSerializationErrorKind::ByteLimit,
     );
 }

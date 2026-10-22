@@ -1,6 +1,6 @@
 use super::property_input::Parser;
 use crate::error::property::{Error, ParseError, basic, unexpected_at};
-use cssparser::match_ignore_ascii_case;
+use cssparser::{Token, match_ignore_ascii_case};
 
 use crate::syntax::*;
 
@@ -60,9 +60,13 @@ pub(super) fn parse_counter_changes<'i, 't>(
     let mut changes = Vec::new();
     while !input.is_exhausted() {
         let name = super::content_values::parse_counter_name(input)?;
-        let value = input
-            .try_parse(|input| super::values::parse_integer_value(input, numeric))
-            .ok();
+        // An integer or math function commits the optional value, so a
+        // malformed one is responsible itself.
+        let value = if starts_integer(input) {
+            Some(super::values::parse_integer_value(input, numeric)?)
+        } else {
+            None
+        };
         changes.push(crate::CssCounterChangeValue::new(name, value));
     }
 
@@ -131,10 +135,22 @@ pub(super) fn parse_bookmark_label<'i, 't>(
 pub(super) fn parse_bookmark_state<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<crate::CssBookmarkState, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "open" => Ok(crate::CssBookmarkState::Open),
         "closed" => Ok(crate::CssBookmarkState::Closed),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
+}
+
+fn starts_integer(input: &mut Parser<'_, '_>) -> bool {
+    let state = input.state();
+    let starts = match input.next() {
+        Ok(Token::Number { .. }) => true,
+        Ok(Token::Function(name)) => crate::numeric::is_math_function(name),
+        _ => false,
+    };
+    input.reset(&state);
+    starts
 }

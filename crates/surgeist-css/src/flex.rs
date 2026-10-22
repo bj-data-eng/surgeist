@@ -462,11 +462,11 @@ fn inverse_default_basis(value: &CssFlexBasisValue) -> bool {
     };
     match component.view() {
         crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Number(number)) => {
-            crate::exact_decimal::LexicalDecimal::new(number.representation()).len == 0
+            crate::exact_decimal::LexicalDecimal::new(number.representation()).is_zero()
         }
         crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Dimension { number, unit }) => {
             unit.eq_ignore_ascii_case("px")
-                && crate::exact_decimal::LexicalDecimal::new(number.representation()).len == 0
+                && crate::exact_decimal::LexicalDecimal::new(number.representation()).is_zero()
         }
         _ => false,
     }

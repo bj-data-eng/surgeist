@@ -2,6 +2,9 @@
 //! §§10.12–10.13 defer math range checks and integer rounding beyond specified values.
 //! https://www.w3.org/TR/2023/CRD-css-easing-1-20230213/#serialization
 
+use crate::css::support::property_admission::Responsible::At;
+use crate::css::support::property_admission::{assert_invalid_value, assert_numeric_rejected};
+use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::*;
 
 fn parsed_for(property: CssKnownProperty, source: &str) -> CssEasingList {
@@ -254,25 +257,25 @@ fn checked_composition_retains_original_components_and_origins() {
 
 #[test]
 fn invalid_grammar_drops_only_easing_and_strict_validation_agrees() {
-    for invalid in [
-        "linear(0)",
-        "spring(1,1,1,1)",
-        "cubic-bezier(0,1,1)",
-        "cubic-bezier(0 1 1 1)",
-        "cubic-bezier(0,1,1,1,0)",
-        "cubic-bezier(-0.0000000001,0,1,1)",
-        "cubic-bezier(0,0,1.0000000001,1)",
-        "steps(0)",
-        "steps(-1)",
-        "steps(1.0)",
-        "steps(1e0)",
-        "steps(1,jump-none)",
-        "steps(2 start)",
-        "steps(2,unknown)",
-        "steps(2,start,end)",
-        "ease,",
-        "cubic-bezier(calc((1px + 1%) / 1px),0,1,1)",
-        "steps(calc((1px + 1%) / 1px))",
+    for (invalid, token) in [
+        ("linear(0)", At(")")),
+        ("spring(1,1,1,1)", At("spring(")),
+        ("cubic-bezier(0,1,1)", At(")")),
+        ("cubic-bezier(0 1 1 1)", At("1")),
+        ("cubic-bezier(0,1,1,1,0)", At(",")),
+        ("cubic-bezier(-0.0000000001,0,1,1)", At("-0.0000000001")),
+        ("cubic-bezier(0,0,1.0000000001,1)", At("1.0000000001")),
+        ("steps(0)", At("0")),
+        ("steps(-1)", At("-1")),
+        ("steps(1.0)", At("1.0")),
+        ("steps(1e0)", At("1e0")),
+        ("steps(1,jump-none)", At("jump-none")),
+        ("steps(2 start)", At("start")),
+        ("steps(2,unknown)", At("unknown")),
+        ("steps(2,start,end)", At(",")),
+        ("ease,", At(",")),
+        ("cubic-bezier(calc((1px + 1%) / 1px),0,1,1)", At("calc(")),
+        ("steps(calc((1px + 1%) / 1px))", At("calc(")),
     ] {
         let source = format!("transition-timing-function:{invalid};color:red");
         let report = parse_style_attribute(&source);
@@ -286,6 +289,11 @@ fn invalid_grammar_drops_only_easing_and_strict_validation_agrees() {
         assert_eq!(
             report.diagnostics()[0].action(),
             CssRecoveryAction::DropDeclaration
+        );
+        assert_invalid_value(
+            report.diagnostics()[0].error().kind(),
+            CssKnownProperty::TransitionTimingFunction,
+            token,
         );
         assert_eq!(
             validate_style_attribute(&source).unwrap_err().diagnostics(),
@@ -309,8 +317,14 @@ fn checked_ranges_and_pure_roots_share_admission_with_parsing() {
         assert!(CssPositiveIntegerLiteral::try_new(integer).is_none());
     }
     let contextual = parse_component_values("calc((1px + 1%) / 1px)").unwrap();
-    assert!(CssNumberCalculation::try_from_components(contextual.clone()).is_err());
-    assert!(CssIntegerCalculation::try_from_components(contextual).is_err());
+    assert_numeric_rejected(
+        CssNumberCalculation::try_from_components(contextual.clone()),
+        CssNumericConstructionErrorKind::RootDomainMismatch,
+    );
+    assert_numeric_rejected(
+        CssIntegerCalculation::try_from_components(contextual),
+        CssNumericConstructionErrorKind::RootDomainMismatch,
+    );
     let fraction =
         CssIntegerCalculation::try_from_components(parse_component_values("calc(1.5)").unwrap())
             .unwrap();
@@ -319,41 +333,11 @@ fn checked_ranges_and_pure_roots_share_admission_with_parsing() {
 }
 
 fn assert_limits(value: &CssEasingList, expected: &str, input: usize, projection: usize) {
-    let before = value.clone();
-    assert_eq!(
-        value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                input,
-                projection,
-                expected.len()
-            ))
-            .unwrap(),
-        expected
+    LimitLadder::new(expected, input, projection).assert_unchanged_with(
+        value,
+        CssEasingList::serialize_specified_with_limits,
+        |_, _, _| assert_eq!(value.serialize_specified().unwrap(), expected),
     );
-    for (limits, kind) in [
-        (
-            CssSpecifiedValueSerializationLimits::new(input - 1, projection, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
-        (
-            CssSpecifiedValueSerializationLimits::new(input, projection - 1, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
-        ),
-        (
-            CssSpecifiedValueSerializationLimits::new(input, projection, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
-        ),
-    ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
-        assert_eq!(value, &before);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
-    }
 }
 
 #[test]

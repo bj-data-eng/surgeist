@@ -38,16 +38,18 @@ fn unicode_ranges_preserve_token_text_between_surrounding_comments() {
 }
 
 // Diagnostic origins follow Surgeist's responsible-token contract: spelling
-// failures identify their original token; genuine missing input identifies EOF.
+// failures identify their original token; missing input names the last
+// authored token.
 #[test]
 fn invalid_unicode_ranges_point_to_the_responsible_original_token() {
     for (value, responsible, spelling) in [
-        // A comment ends the unicode-range token, like whitespace (2026 §4.3.1).
-        ("u+0/**/-ff", "/**/-ff", "/**/"),
-        ("u+1/**/-/**/2", "/**/-/**/2", "/**/"),
-        ("u/**/+0", "/**/+0", "/**/"),
-        ("u+1/**/2", "/**/2", "/**/"),
-        ("u+ /**/?", " /**/?", " "),
+        // A comment ends the unicode-range token, like whitespace (2026
+        // §4.3.1); the next token cannot continue it and is responsible.
+        ("u+0/**/-ff", "-ff", "-ff"),
+        ("u+1/**/-/**/2", "-/**/2", "-"),
+        ("u/**/+0", "+0", "+0"),
+        ("u+1/**/2", "2", "2"),
+        ("u+ /**/?", "?", "?"),
         (r"u+\61", r"\61", r"\61"), // Preserve original escaped representation.
         (r"\75+0", r"\75+0", r"\75"), // Only a literal U or u starts a range.
         ("u+😀", "😀", "😀"),
@@ -126,8 +128,15 @@ fn incomplete_unicode_range_lists_drop_the_whole_descriptor() {
 }
 
 #[test]
-fn incomplete_unicode_ranges_keep_their_genuine_end_position() {
-    for value in ["u+", "u+ab-", "u+/**/", "u+ab-/**/"] {
+fn incomplete_unicode_ranges_name_their_last_authored_token() {
+    // The descriptor value ends before its range is complete, so the last
+    // authored token of the value is responsible.
+    for (value, last) in [
+        ("u+", "+"),
+        ("u+ab-", "ab-"),
+        ("u+/**/", "+"),
+        ("u+ab-/**/", "ab-"),
+    ] {
         let source = format!("@font-face{{unicode-range:{value};font-display:swap}}");
         let report = parse_sheet(&source);
         let [diagnostic] = report.diagnostics() else {
@@ -135,7 +144,7 @@ fn incomplete_unicode_ranges_keep_their_genuine_end_position() {
         };
         assert_eq!(
             diagnostic.error().position().byte_offset().value(),
-            source.find(';').unwrap(),
+            "@font-face{unicode-range:".len() + value.rfind(last).unwrap(),
             "{value:?}"
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDescriptor);

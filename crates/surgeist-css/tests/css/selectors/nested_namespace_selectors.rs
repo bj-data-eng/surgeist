@@ -3,8 +3,8 @@
 //! A single namespace bar is distinct from the two-bar column combinator.
 
 use surgeist_css::{
-    CssCompoundSelector, CssNamespaceConstraint, CssPseudoClass, CssRecoveryAction, CssRule,
-    CssSelector, parse_sheet,
+    CssCompoundSelector, CssErrorCode, CssNamespaceConstraint, CssPseudoClass, CssRecoveryAction,
+    CssRecoveryDiagnostic, CssRule, CssSelector, CssSelectorError, ErrorKind, parse_sheet,
 };
 
 fn compound(selector: &CssSelector) -> &CssCompoundSelector {
@@ -75,7 +75,7 @@ fn relational_selectors_preserve_single_bar_namespace_prefixes() {
 }
 
 #[test]
-fn incomplete_namespace_names_still_discard_only_the_child_rule() {
+fn incomplete_namespace_names_discard_only_the_child_rule() {
     for selector in ["|&", "|.class&", "| div&"] {
         let source = format!(".parent {{ {selector} {{color:green}} color:red }}");
         let report = parse_sheet(&source);
@@ -108,5 +108,75 @@ fn incomplete_namespace_names_still_discard_only_the_child_rule() {
             declarations, 1,
             "following declaration must survive: {source}"
         );
+    }
+}
+
+// Selectors 4 §16 (WD 2026-01-22): "a simple selector containing an undeclared
+// namespace prefix is invalid", so its rule is an invalid selector at every
+// level. Syntax 3 (2026 CRD) §5.5.5 "consume a block's contents" reparses a
+// failed ident-started declaration as a nested qualified rule; that rule's
+// prelude is the selector, so its failure is the one reported.
+// https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
+fn selector_failure(source: &str, unit: &str) -> (usize, CssRecoveryDiagnostic) {
+    let report = parse_sheet(source);
+    let failures = report
+        .diagnostics()
+        .iter()
+        .filter(|diagnostic| diagnostic.action() == CssRecoveryAction::DropQualifiedRule)
+        .collect::<Vec<_>>();
+    let [diagnostic] = failures.as_slice() else {
+        panic!("{source}: one dropped rule: {:?}", report.diagnostics());
+    };
+    let start = source.find(unit).unwrap();
+    assert_eq!(
+        diagnostic.span().start().byte_offset().value(),
+        start,
+        "{source}"
+    );
+    assert_eq!(
+        diagnostic.span().end().byte_offset().value(),
+        start + unit.len(),
+        "{source}"
+    );
+    (start, (*diagnostic).clone())
+}
+
+fn selector_detail(diagnostic: &CssRecoveryDiagnostic) -> &CssSelectorError {
+    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
+        panic!("an invalid selector: {diagnostic:?}");
+    };
+    detail
+}
+
+#[test]
+fn undeclared_namespace_prefix_is_the_same_invalid_selector_at_every_level() {
+    for unit in ["zz|a {}", "zz|* {}", "[zz|href] {}", "a[zz|href] {}"] {
+        let (top_start, top) = selector_failure(unit, unit);
+        assert_eq!(top_start, 0);
+        assert_eq!(top.error().code(), CssErrorCode::InvalidSelector, "{unit}");
+        let top_detail = selector_detail(&top).clone();
+        let relative = top.error().position().byte_offset().value();
+        for context in [
+            ".card { UNIT }",
+            ".card { color: red; UNIT color: blue; }",
+            ".card { @media screen { UNIT } }",
+            ".card { @scope (.x) { UNIT } }",
+            "@media screen { UNIT }",
+            "@scope (.x) { UNIT }",
+        ] {
+            let source = context.replace("UNIT", unit);
+            let (start, nested) = selector_failure(&source, unit);
+            assert_eq!(
+                nested.error().code(),
+                CssErrorCode::InvalidSelector,
+                "{source}: {nested:?}"
+            );
+            assert_eq!(selector_detail(&nested), &top_detail, "{source}");
+            assert_eq!(
+                nested.error().position().byte_offset().value(),
+                start + relative,
+                "{source}"
+            );
+        }
     }
 }

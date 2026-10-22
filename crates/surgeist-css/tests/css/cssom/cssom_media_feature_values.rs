@@ -2,20 +2,18 @@
 //! authored-value policy. MQ5 supplies the domains; Values4 supplies both ratio
 //! operands; numeric lexemes and slash spacing remain the selected media policy.
 
+use crate::css::support::serialization_limits::LimitLadder;
+use crate::css::support::value_assertions::assert_parsed_span as parsed_span;
+use crate::css::support::value_assertions::clean_media_query as query;
+use crate::css::support::value_assertions::media_resource_kind as resource_kind;
 use surgeist_css::{
-    CssCalculationExpressionRef, CssMediaConditionKind, CssMediaCssomSerializationError,
-    CssMediaFeatureQuery, CssMediaGridRef, CssMediaQuery, CssMediaRangeRef, CssMediaResolutionRef,
-    CssMediaSerializationError, CssQueryComparison, CssRecoveryAction, CssSerializedOrigin,
+    CssCalculationExpressionRef, CssMediaConditionKind, CssMediaFeatureQuery, CssMediaGridRef,
+    CssMediaQuery, CssMediaRangeRef, CssMediaResolutionRef, CssMediaSerializationError,
+    CssQueryComparison, CssRecoveryAction, CssSerializedOrigin,
     CssSpecifiedValueSerializationErrorKind as ResourceKind,
     CssSpecifiedValueSerializationLimits as Limits, CssUnknownMediaFeatureReason, CssValueOrigin,
     parse_cssom_media_query, parse_media_query_list,
 };
-
-fn query(source: &str) -> CssMediaQuery {
-    let report = parse_cssom_media_query(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    report.into_parts().0.expect("one clean media query")
-}
 
 fn feature(query: &CssMediaQuery) -> &CssMediaFeatureQuery {
     let CssMediaQuery::Condition(condition) = query else {
@@ -27,69 +25,17 @@ fn feature(query: &CssMediaQuery) -> &CssMediaFeatureQuery {
     feature
 }
 
-fn resource_kind(error: &CssMediaCssomSerializationError) -> ResourceKind {
-    let CssMediaCssomSerializationError::Resource { error, .. } = error else {
-        panic!("expected resource failure: {error:?}");
-    };
-    error.kind()
-}
-
-fn parsed_span(origin: &CssValueOrigin, source: &str, start: usize, end: usize) {
-    let CssValueOrigin::Parsed(origin) = origin else {
-        panic!("expected the original parsed source");
-    };
-    assert_eq!(origin.source().as_str(), source);
-    assert_eq!(origin.span().start().byte_offset().value(), start);
-    assert_eq!(origin.span().end().byte_offset().value(), end);
-}
-
 fn exact_projection(source: &str, expected: &str, nodes: usize) {
     let authored = query(source);
-    let original = authored.clone();
-    let bytes = expected.len();
-    let adequate = Limits::new(nodes, nodes, bytes);
-    assert_eq!(
-        authored
-            .serialize_cssom_with_limits(adequate)
-            .unwrap()
-            .as_css(),
-        expected,
-        "{source}"
-    );
     assert_eq!(authored.serialize_cssom().unwrap().as_css(), expected);
-    for (limits, kind) in [
-        (
-            Limits::new(nodes - 1, nodes, bytes),
-            ResourceKind::InputNodeLimit,
-        ),
-        (
-            Limits::new(nodes, nodes - 1, bytes),
-            ResourceKind::ProjectionNodeLimit,
-        ),
-        (
-            Limits::new(nodes, nodes, bytes - 1),
-            ResourceKind::ByteLimit,
-        ),
-        (Limits::new(0, nodes, bytes), ResourceKind::InputNodeLimit),
-        (
-            Limits::new(nodes, 0, bytes),
-            ResourceKind::ProjectionNodeLimit,
-        ),
-        (Limits::new(nodes, nodes, 0), ResourceKind::ByteLimit),
-    ] {
-        let error = authored.serialize_cssom_with_limits(limits).unwrap_err();
-        assert_eq!(resource_kind(&error), kind, "{source}: {limits:?}");
-        assert_eq!(authored, original, "failed projection must be atomic");
-        assert_eq!(
+    // A failed projection is atomic and an adequate retry keeps the query.
+    LimitLadder::new(expected, nodes, nodes)
+        .zero_limits()
+        .assert_unchanged(&authored, |authored, limits| {
             authored
-                .serialize_cssom_with_limits(adequate)
-                .unwrap()
-                .as_css(),
-            expected,
-            "an adequate retry must retain the authored query"
-        );
-    }
-    assert_eq!(authored, original);
+                .serialize_cssom_with_limits(limits)
+                .map(|css| css.as_css().to_owned())
+        });
 }
 
 #[test]

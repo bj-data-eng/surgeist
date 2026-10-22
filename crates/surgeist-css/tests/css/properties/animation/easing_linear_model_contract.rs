@@ -2,6 +2,12 @@
 //! unordered Number/contiguous Percentage-group grammar. These new API tests
 //! preserve authored inputs before contextual creation or computed serialization.
 
+use crate::css::support::property_admission::{
+    assert_checked_closure_rejected, assert_component_rejected, assert_implicit_closure,
+    assert_numeric_rejected,
+};
+use crate::css::support::serialization_limits::LimitLadder;
+use surgeist_css::CssNumericConstructionErrorKind::{RecoveredComponent, RootDomainMismatch};
 use surgeist_css::*;
 
 fn number(source: &str) -> CssSpecifiedNumber {
@@ -66,41 +72,47 @@ fn checked_cardinality_preserves_omitted_single_and_paired_authored_inputs() {
 
 #[test]
 fn checked_numeric_domains_and_original_recovered_math_are_rejected_before_composition() {
-    for source in [
-        "1px",
-        "10%",
-        "calc(1px)",
-        "calc((1px + 1%) / 1px)",
-        "calc(1",
+    for (source, kind) in [
+        ("1px", RootDomainMismatch),
+        ("10%", RootDomainMismatch),
+        ("calc(1px)", RootDomainMismatch),
+        ("calc((1px + 1%) / 1px)", RootDomainMismatch),
+        ("calc(1", RecoveredComponent),
     ] {
-        assert!(
-            CssNumberCalculation::try_from_components(parse_component_values(source).unwrap())
-                .is_err(),
-            "{source}"
+        assert_numeric_rejected(
+            CssNumberCalculation::try_from_components(parse_component_values(source).unwrap()),
+            kind,
         );
     }
-    for source in ["1", "1px", "calc(1)", "calc(1%"] {
-        assert!(
-            CssPercentageCalculation::try_from_components(parse_component_values(source).unwrap())
-                .is_err(),
-            "{source}"
+    for (source, kind) in [
+        ("1", RootDomainMismatch),
+        ("1px", RootDomainMismatch),
+        ("calc(1)", RootDomainMismatch),
+        ("calc(1%", RecoveredComponent),
+    ] {
+        assert_numeric_rejected(
+            CssPercentageCalculation::try_from_components(parse_component_values(source).unwrap()),
+            kind,
         );
     }
-    assert!(
-        CssSpecifiedNumber::try_from_component(CssComponentValue::try_token("1%").unwrap())
-            .is_err()
+    assert_component_rejected(
+        CssSpecifiedNumber::try_from_component,
+        CssComponentValue::try_token("1%").unwrap(),
+        RootDomainMismatch,
     );
-    assert!(
-        CssSpecifiedPercentage::try_from_component(CssComponentValue::try_number("1").unwrap())
-            .is_err()
+    assert_component_rejected(
+        CssSpecifiedPercentage::try_from_component,
+        CssComponentValue::try_number("1").unwrap(),
+        RootDomainMismatch,
     );
 }
 
 #[test]
 fn browser_retains_recovered_numeric_math_but_public_linear_constructors_reject_it() {
     for source in ["linear(0, calc(1", "linear(0, 1 calc(20%"] {
-        let report = parse_style_attribute(&format!("transition-timing-function:{source}"));
-        assert!(!report.is_clean());
+        let css = format!("transition-timing-function:{source}");
+        let report = parse_style_attribute(&css);
+        assert_implicit_closure(&css, &report);
         let [declaration] = report.syntax().as_slice() else {
             panic!("browser retains recovered numeric graph")
         };
@@ -115,14 +127,11 @@ fn browser_retains_recovered_numeric_math_but_public_linear_constructors_reject_
         let last = &value.stops()[1];
         assert!(CssLinearStop::try_new(last.output().clone(), last.inputs().to_vec()).is_none());
         assert!(CssLinearEasing::try_new(value.stops().to_vec()).is_none());
-        assert!(
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::TransitionTimingFunction),
-                parse_component_values(source).unwrap(),
-                CssImportance::Normal
-            )
-            .is_err()
-        );
+        assert_checked_closure_rejected(parse_property_value(
+            CssPropertyNameRef::Known(CssKnownProperty::TransitionTimingFunction),
+            parse_component_values(source).unwrap(),
+            CssImportance::Normal,
+        ));
         assert_eq!(value.stops().len(), 2);
         assert!(value.serialize_specified().is_ok());
     }
@@ -187,41 +196,11 @@ fn equality_ignores_origins_but_retains_stop_order_omissions_pairs_and_math_stru
 }
 
 fn assert_limits(value: &CssLinearEasing, expected: &str, input: usize, projection: usize) {
-    let before = value.clone();
-    assert_eq!(
-        value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                input,
-                projection,
-                expected.len()
-            ))
-            .unwrap(),
-        expected
+    LimitLadder::new(expected, input, projection).assert_unchanged_with(
+        value,
+        CssLinearEasing::serialize_specified_with_limits,
+        |_, _, _| assert_eq!(value.serialize_specified().unwrap(), expected),
     );
-    for (limits, kind) in [
-        (
-            CssSpecifiedValueSerializationLimits::new(input - 1, projection, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
-        (
-            CssSpecifiedValueSerializationLimits::new(input, projection - 1, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
-        ),
-        (
-            CssSpecifiedValueSerializationLimits::new(input, projection, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
-        ),
-    ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
-        assert_eq!(value, &before);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
-    }
 }
 
 #[test]

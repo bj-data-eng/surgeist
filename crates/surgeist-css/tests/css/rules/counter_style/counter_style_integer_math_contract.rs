@@ -4,10 +4,10 @@
 //! and numeric range clamping to computed/used values, preserving specified math.
 
 use surgeist_css::{
-    CssComponentValueLimits, CssCounterStyleDescriptorKind as Kind,
+    CssComponentValueErrorKind, CssComponentValueLimits, CssCounterStyleDescriptorKind as Kind,
     CssCounterStyleDescriptorValue as Value, CssCounterStyleDescriptorValueRef as View,
-    CssCounterStyleRule, CssErrorCode, CssRecoveryAction, CssRule,
-    CssSpecifiedValueSerializationErrorKind as SerializationError,
+    CssCounterStyleRule, CssCounterStyleValueErrorKind as Failure, CssErrorCode, CssRecoveryAction,
+    CssRule, CssSpecifiedValueSerializationErrorKind as SerializationError,
     CssSpecifiedValueSerializationLimits as SerializationLimits, parse_component_values,
     parse_counter_style_descriptor_value, parse_sheet, validate_sheet,
 };
@@ -126,8 +126,7 @@ fn exact_literals_omitted_fixed_start_and_infinite_bounds_keep_their_contracts()
 }
 
 #[test]
-fn ordinary_negative_lengths_reversed_ranges_and_nondescending_weights_still_drop_whole_descriptors()
- {
+fn ordinary_negative_lengths_reversed_ranges_and_nondescending_weights_drop_whole_descriptors() {
     for (kind, input) in [
         (Kind::Pad, "-1 '0'"),
         (Kind::Range, "0 1, 3 2"),
@@ -265,24 +264,37 @@ fn strict_checked_math_rejects_recovered_closures_and_residual_substitution() {
     let pending =
         Value::try_from_components(Kind::System, parse_component_values("env(choice)").unwrap())
             .unwrap();
-    for input in [
-        "fixed calc(1 + 1",
-        "fixed calc(env(choice) + 1)",
-        "fixed calc(1px)",
-    ] {
-        assert!(
-            pending
-                .reparse_after_substitution(parse_component_values(input).unwrap())
-                .is_err(),
-            "{input}"
-        );
+    for input in ["fixed calc(1 + 1", "fixed calc(env(choice) + 1)"] {
+        let error = pending
+            .reparse_after_substitution(parse_component_values(input).unwrap())
+            .unwrap_err();
+        let expected = if input.ends_with(')') {
+            Failure::ResidualSubstitution
+        } else {
+            Failure::RecoveredComponent
+        };
+        assert_eq!(error.kind(), &expected, "{input}");
     }
-    assert!(
+    // Counter Styles 3 §3.1.5: fixed takes an <integer>; calc(1px) is a
+    // <length>, and a math function of the wrong type is responsible as a
+    // whole (Values 4 §10.9).
+    let error = pending
+        .reparse_after_substitution(parse_component_values("fixed calc(1px)").unwrap())
+        .unwrap_err();
+    let Failure::Grammar(detail) = error.kind() else {
+        panic!("grammar failure: {error:?}")
+    };
+    crate::css::support::rules::invalid_descriptor("counter-style", "system")
+        .at("calc(")
+        .assert_kind(detail);
+    assert_eq!(
         Value::try_from_components(
             Kind::System,
             parse_component_values("fixed calc(1 + 1").unwrap()
         )
-        .is_err()
+        .unwrap_err()
+        .kind(),
+        &Failure::RecoveredComponent
     );
 }
 
@@ -312,24 +324,28 @@ fn math_projection_byte_failures_are_atomic_and_checked_graph_limits_are_cumulat
     );
     assert_eq!(value, retained);
     let input = parse_component_values("fixed calc(1 + 1)").unwrap();
-    assert!(
+    assert_eq!(
         Value::try_from_components_with_limits(
             Kind::System,
             input.clone(),
             CssComponentValueLimits::try_new(256, 2, 65536).unwrap()
         )
-        .is_err()
+        .unwrap_err()
+        .kind(),
+        &Failure::Component(CssComponentValueErrorKind::ComponentLimit)
     );
     let pending =
         Value::try_from_components(Kind::System, parse_component_values("env(choice)").unwrap())
             .unwrap();
-    assert!(
+    assert_eq!(
         pending
             .reparse_after_substitution_with_limits(
                 input,
                 CssComponentValueLimits::try_new(256, 65536, 1).unwrap()
             )
-            .is_err()
+            .unwrap_err()
+            .kind(),
+        &Failure::Component(CssComponentValueErrorKind::ByteLimit)
     );
     assert!(matches!(pending.view(), View::Pending(_)));
 }

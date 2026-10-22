@@ -4,8 +4,9 @@
 //! CSS-wide values to reset-only members. Provenance, typed borrowed payloads
 //! and cumulative atomic limits are Surgeist authored-layer contracts.
 
+use crate::css::support::property_admission::eof_closure_origin;
 use crate::css::support::{
-    checked_property_grammar_declaration as checked, style_declaration as parsed,
+    checked_property_grammar_declaration as checked, sole_declaration as parsed,
 };
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
@@ -112,26 +113,6 @@ fn output(
         CssLonghandValueRef::MixBlendMode(v) => v.serialize_specified_with_limits(limits),
         other => panic!("compositing payload: {other:?}"),
     }
-}
-fn implicit_origin(components: &CssComponentValues, original: &str) -> CssValueOrigin {
-    // Actual emitted mappings retain original EOF; repaired comment text does
-    // not establish an origin by its length or require a closing suffix.
-    let serialized = components.serialize().unwrap();
-    let origin = (0..serialized.as_css().len())
-        .find_map(|offset| match serialized.origin_at(offset) {
-            Some(CssSerializedOrigin::Token(origin @ CssValueOrigin::ImplicitClosure { .. })) => {
-                Some(origin.clone())
-            }
-            _ => None,
-        })
-        .expect("original implicit closure");
-    let CssValueOrigin::ImplicitClosure { at, .. } = &origin else {
-        unreachable!()
-    };
-    assert_eq!(at.source().as_str(), original);
-    assert_eq!(at.span().start().byte_offset().value(), original.len());
-    assert_eq!(at.span().start(), at.span().end());
-    origin
 }
 fn reset(values: &CssLonghandContributions) -> &CssBlendModeList {
     assert_eq!(
@@ -413,7 +394,7 @@ fn pending_family_handles_retry_strict_original_eof_grammar_residual_and_provide
             };
             let recovered_text = format!("{good}/*");
             let recovered = parse_component_values(&recovered_text).unwrap();
-            let origin = implicit_origin(&recovered, &recovered_text);
+            let origin = eof_closure_origin(&recovered, &recovered_text);
             let before = recovered.clone();
             let error = handle.reenter(recovered.clone()).unwrap_err();
             let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
@@ -774,7 +755,7 @@ fn browser_recovered_comments_preserve_typed_payloads_and_unclean_report_normali
         );
         context(&values.items()[0], declaration.source(), None);
         let components = declaration.source().value_components().clone();
-        let origin = implicit_origin(&components, &source);
+        let origin = eof_closure_origin(&components, &source);
         for result in [
             parse_property_value(
                 CssPropertyNameRef::Known(property),

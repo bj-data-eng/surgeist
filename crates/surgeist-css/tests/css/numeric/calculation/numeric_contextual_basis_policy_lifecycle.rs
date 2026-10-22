@@ -9,17 +9,11 @@
 //! The projection policy conservatively retains glyph-metric and flex bases;
 //! these tests characterize that boundary rather than assuming metric signs.
 
+use crate::css::support::value_assertions::calculated_length as length;
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-
-fn length(source: &str) -> CssSpecifiedLength {
-    CssSpecifiedLength::try_from_calculation(
-        CssLengthCalculation::try_from_components(parse_component_values(source).unwrap()).unwrap(),
-    )
-    .unwrap()
-}
 
 fn length_percentage(source: &str) -> CssSpecifiedLengthPercentage {
     CssSpecifiedLengthPercentage::try_from_calculation(
@@ -146,7 +140,7 @@ fn different_size_bases_and_hinted_percentages_remain_symbolic() {
 }
 
 #[test]
-fn newly_folded_siblings_share_one_cumulative_enclosing_budget() {
+fn folded_siblings_share_one_cumulative_enclosing_budget() {
     let shape = CssInsetShape::new(
         CssInsetShapeOffsets::try_new(vec![
             length_percentage("abs(-2lh)"),

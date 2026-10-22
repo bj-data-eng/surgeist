@@ -1,5 +1,5 @@
 //! Property grammar errors retain input bookmarks until the public boundary.
-use super::source_resolution::{is_boundary_token, is_bounded_end_token};
+use super::source_resolution::{ends_input, precedes_input};
 use super::*;
 pub(crate) use super::{CssFeatureId, ErrorKind};
 use crate::parser::property_input::Site;
@@ -69,15 +69,18 @@ impl<'i> ParseError<'i, Error> {
                 location = site;
             }
         } else if let Some(slot) = optional_encountered_mut(&mut error.kind) {
+            // The crate's location rule: the next token, including an
+            // explicit closing `)`, is responsible; at the end of the value or
+            // of an implicitly closed group, the last authored token is.
             let candidate = next
                 .and_then(|site| {
                     let token = site.token()?;
-                    (!is_bounded_end_token(token_kind(&token))).then_some((site, token))
+                    (!ends_input(token_kind(&token))).then_some((site, token))
                 })
                 .or_else(|| {
                     previous.and_then(|site| {
                         let token = site.token()?;
-                        (!is_boundary_token(token_kind(&token))).then_some((site, token))
+                        (!precedes_input(token_kind(&token))).then_some((site, token))
                     })
                 });
             if let Some((site, token)) = candidate {
@@ -158,13 +161,15 @@ impl<'i> ParseError<'i, Error> {
                 location = site;
             }
         } else if let Some(slot) = optional_encountered_mut(&mut error.kind) {
+            // See the uncontrolled path for the location rule.
             let candidate = next
                 .filter(|site| {
-                    checked_kind_at(*site).is_some_and(|kind| !is_bounded_end_token(kind))
+                    site.token().is_some()
+                        && checked_kind_at(*site).is_some_and(|kind| !ends_input(kind))
                 })
                 .or_else(|| {
                     previous.filter(|site| {
-                        checked_kind_at(*site).is_some_and(|kind| !is_boundary_token(kind))
+                        checked_kind_at(*site).is_some_and(|kind| !precedes_input(kind))
                     })
                 });
             if let Some(site) = candidate {

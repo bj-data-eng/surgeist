@@ -291,8 +291,8 @@ fn tree_query_output_byte_limit_is_cumulative_across_rules_and_atomic_on_failure
     let short =
         CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1);
     // Both individual rules fit; the second rule exhausts the shared byte budget.
-    for rule in report.syntax().rules() {
-        assert!(rule.to_specified_css_with_limits(short).is_ok());
+    for (rule, text) in report.syntax().rules().iter().zip(expected.split('\n')) {
+        assert_eq!(rule.to_specified_css_with_limits(short).unwrap(), text);
     }
     let error = report
         .syntax()

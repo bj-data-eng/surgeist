@@ -4,7 +4,7 @@
 //! These tests accompany new APIs; public-boundary preimplementation RED is in
 //! speech_pause_rest_lifecycle.rs.
 
-use crate::css::support::first_important_declaration as parsed;
+use crate::css::support::important_declaration as parsed;
 use surgeist_css::*;
 
 fn time(number: &str, unit: CssTimeUnit) -> CssSpeechBreak {

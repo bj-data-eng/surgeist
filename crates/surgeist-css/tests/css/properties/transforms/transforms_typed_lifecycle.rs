@@ -2,10 +2,9 @@
 //! Transforms 1 §§4–6/9, Transforms 2 §§5/7–10/12, and Values 4 §10.13
 //! select these operands and canonical defaults. Generic inventories remain in
 //! common/property_expectations/records.rs. No contextual matrix is evaluated.
-use crate::css::support::counted_style_declaration as declaration;
+use crate::css::support::serialization_limits::assert_limits as budget;
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
-type L = CssSpecifiedValueSerializationLimits;
-type K = CssSpecifiedValueSerializationErrorKind;
 
 fn number(text: &str) -> CssTransformScaleComponent {
     CssTransformScaleComponent::Number(
@@ -48,34 +47,6 @@ fn scale(values: Vec<CssTransformScaleComponent>) -> CssScale {
 }
 fn transform(value: CssTransformFunction) -> CssTransform {
     CssTransform::Functions(CssTransformFunctionList::try_new(vec![value]).unwrap())
-}
-fn budget(
-    expected: &str,
-    input: usize,
-    projection: usize,
-    emit: impl Fn(L) -> Result<String, CssSpecifiedValueSerializationError>,
-) {
-    assert_eq!(
-        emit(L::new(input, projection, expected.len())).unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (
-            L::new(input - 1, projection, expected.len()),
-            K::InputNodeLimit,
-        ),
-        (
-            L::new(input, projection - 1, expected.len()),
-            K::ProjectionNodeLimit,
-        ),
-        (L::new(input, projection, expected.len() - 1), K::ByteLimit),
-    ] {
-        assert_eq!(emit(limits).unwrap_err().kind(), kind);
-    }
-    assert_eq!(
-        emit(L::new(input, projection, expected.len())).unwrap(),
-        expected
-    );
 }
 fn snapshot<T: Clone>(value: &T) -> T {
     value.clone()
@@ -155,7 +126,7 @@ fn new_3d_types_have_closed_domains_and_public_cumulative_providers() {
 }
 
 #[test]
-fn perspective_origin_uses_the_existing_physical_position_owner_and_origin_fields() {
+fn perspective_origin_uses_the_physical_position_owner_and_origin_fields() {
     let h = CssSpecifiedLengthPercentage::try_from_component(
         CssComponentValue::try_token("2px").unwrap(),
     )

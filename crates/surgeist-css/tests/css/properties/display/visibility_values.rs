@@ -1,4 +1,5 @@
 //! Display3 visibility is inherited, initially visible, with three keywords.
+use crate::css::support::property_admission::assert_invalid_value;
 use surgeist_css::*;
 
 #[test]
@@ -137,7 +138,15 @@ fn recovered_visibility_normalization_preserves_occurrences_and_exact_budgets() 
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropDeclaration
     );
-    assert!(validate_sheet(text).is_err());
+    assert_invalid_value(
+        report.diagnostics()[0].error().kind(),
+        CssKnownProperty::Visibility,
+        Some("auto"),
+    );
+    assert_eq!(
+        validate_sheet(text).unwrap_err().diagnostics(),
+        report.diagnostics()
+    );
     for (limits, resource, limit) in [
         (
             CssNormalizationLimits::try_new(0, 0, 2, 2).unwrap(),

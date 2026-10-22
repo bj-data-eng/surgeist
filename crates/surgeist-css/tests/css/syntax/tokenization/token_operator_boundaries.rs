@@ -7,12 +7,13 @@
 
 use std::ops::Range;
 
+use crate::css::support::authored_syntax::parsed_origin as parsed;
 use surgeist_css::{
     CssAttributeCaseSensitivity, CssAttributeMatcher, CssBlockKind, CssComponentValue,
     CssComponentValueErrorKind, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
-    CssErrorCode, CssNamespaceContext, CssParsedOrigin, CssRecoveryAction, CssSelector,
-    CssSerializedOrigin, CssTokenKind, CssValueOrigin, CssValueTokenRef, ErrorKind,
-    parse_component_values, parse_component_values_with_limits, parse_selector,
+    CssErrorCode, CssNamespaceContext, CssRecoveryAction, CssSelector, CssSerializedOrigin,
+    CssTokenKind, CssValueOrigin, CssValueTokenRef, ErrorKind, parse_component_values,
+    parse_component_values_with_limits, parse_selector,
 };
 
 const OPERATORS: [(char, &str); 5] = [
@@ -22,13 +23,6 @@ const OPERATORS: [(char, &str); 5] = [
     ('$', "$="),
     ('*', "*="),
 ];
-
-fn parsed(origin: &CssValueOrigin) -> &CssParsedOrigin {
-    let CssValueOrigin::Parsed(origin) = origin else {
-        panic!("authored token keeps its actual parsed origin")
-    };
-    origin
-}
 
 fn assert_span(origin: &CssValueOrigin, source: &str, range: Range<usize>) {
     let origin = parsed(origin);
@@ -249,7 +243,7 @@ fn source_delimiter_pairs_serialize_two_bytes_with_their_original_per_item_origi
 }
 
 #[test]
-fn genuine_identifier_number_and_comment_opening_hazards_still_insert_separators() {
+fn genuine_identifier_number_and_comment_opening_hazards_insert_separators() {
     for (first, second, expected) in [
         (
             CssComponentValue::try_ident("a").unwrap(),

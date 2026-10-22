@@ -9,16 +9,10 @@
 //! tokenizer difference (docs/reference.md#css-syntax-3-edition-differences).
 //! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#non-ascii-code-point
 
+use crate::css::support::authored_syntax::assert_position;
 use surgeist_css::{
-    CssErrorCode, CssRecoveryAction, CssRule, CssSelector, CssSourcePosition, parse_sheet,
-    validate_sheet,
+    CssErrorCode, CssRecoveryAction, CssRule, CssSelector, parse_sheet, validate_sheet,
 };
-
-fn assert_position(position: CssSourcePosition, byte: usize, line: u32, column: u32) {
-    assert_eq!(position.byte_offset().value(), byte);
-    assert_eq!(position.line().value(), line);
-    assert_eq!(position.column().value(), column);
-}
 
 fn assert_incomplete_unicode_rule(source: &str, start: (usize, u32, u32), end: (usize, u32, u32)) {
     let report = parse_sheet(source);
@@ -72,7 +66,11 @@ fn unicode_feff_is_retained_in_complete_type_selector_names() {
     ] {
         let report = parse_sheet(source);
         assert!(report.is_clean(), "{source:?}: {:?}", report.diagnostics());
-        assert!(validate_sheet(source).is_ok(), "{source:?}");
+        assert_eq!(
+            validate_sheet(source).unwrap(),
+            *report.syntax(),
+            "{source:?}"
+        );
         assert_eq!(report.syntax().rules().len(), 2, "{source:?}");
         for (rule, name, byte, column) in [
             (&report.syntax().rules()[0], expected_name, 0, 0),

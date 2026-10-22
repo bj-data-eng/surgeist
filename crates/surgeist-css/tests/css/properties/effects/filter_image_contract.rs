@@ -5,6 +5,10 @@
 //! functional tests with implementation, described in filter-image-source-basis.md.
 //! No missing symbols, stubs, browser execution or acceptance verdict is intended.
 
+use crate::css::support::check_property_components as checked;
+use crate::css::support::property_admission::assert_checked_matches_diagnostic;
+use crate::css::support::property_admission::implicit_closure_origin as implicit_origin;
+use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::{
     CssKnownProperty as P, CssSpecifiedValueSerializationErrorKind as K,
     CssSpecifiedValueSerializationLimits as L, *,
@@ -17,22 +21,6 @@ const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
     ("revert", CssGlobalKeyword::Revert),
     ("revert-layer", CssGlobalKeyword::RevertLayer),
 ];
-
-fn checked(
-    p: P,
-    values: CssComponentValues,
-    grammar: bool,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
-    if grammar {
-        parse_property_value_for_grammar(p.grammar(), values, CssImportance::Important)
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(p),
-            values,
-            CssImportance::Important,
-        )
-    }
-}
 
 fn fronts(p: P, text: &str) -> Vec<CssDeclaration> {
     let css = format!(
@@ -133,11 +121,13 @@ fn invalid(p: P, text: &str) {
     );
     let values = parse_component_values(text).unwrap();
     let before = values.clone();
+    assert_checked_matches_diagnostic(p, text, diagnostic);
     for grammar in [false, true] {
-        assert!(matches!(
+        assert_eq!(
             checked(p, values.clone(), grammar).unwrap_err().kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
+            &CssPropertyValueErrorKind::Grammar(diagnostic.error().kind().clone()),
+            "{text}"
+        );
     }
     for report in [
         parse_property_value_text(text, CssPropertyNameRef::Known(p), CssImportance::Normal),
@@ -496,18 +486,6 @@ fn pending_reentry_is_strict_reusable_and_keeps_occurrence_and_replacement() {
     }
 }
 
-fn implicit_origin(values: &CssComponentValues) -> CssValueOrigin {
-    let serialized = values.serialize().unwrap();
-    (0..serialized.as_css().len())
-        .find_map(|offset| match serialized.origin_at(offset) {
-            Some(CssSerializedOrigin::Token(origin @ CssValueOrigin::ImplicitClosure { .. })) => {
-                Some(origin.clone())
-            }
-            _ => None,
-        })
-        .expect("fixture retains implicit closure")
-}
-
 #[test]
 fn checked_original_image_and_pending_closures_are_not_repaired() {
     for text in [
@@ -642,42 +620,11 @@ fn normalization_keeps_duplicate_order_context_importance_and_pending_values() {
 fn budget(text: &str, expected_value: &str, input: usize, projection: usize) {
     let expected = format!("background-image: {expected_value} !important;");
     for source in fronts(P::BackgroundImage, text) {
-        let before = source.clone();
-        let exact = L::new(input, projection, expected.len());
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
-        for _ in 0..2 {
-            for (limits, kind) in [
-                (
-                    L::new(input - 1, projection, expected.len()),
-                    K::InputNodeLimit,
-                ),
-                (
-                    L::new(input, projection - 1, expected.len()),
-                    K::ProjectionNodeLimit,
-                ),
-                (L::new(input, projection, expected.len() - 1), K::ByteLimit),
-                (L::new(0, projection, expected.len()), K::InputNodeLimit),
-                (L::new(input, 0, expected.len()), K::ProjectionNodeLimit),
-                (L::new(input, projection, 0), K::ByteLimit),
-            ] {
-                assert_eq!(
-                    source
-                        .to_specified_css_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
-                    kind,
-                    "{text}"
-                );
-                assert_eq!(source, before);
-            }
-            assert_eq!(
-                source.to_specified_css_with_limits(exact).unwrap(),
-                expected
-            );
-        }
+        LimitLadder::new(&expected, input, projection)
+            .zero_limits()
+            .assert_unchanged(&source, |source, limits| {
+                source.to_specified_css_with_limits(limits)
+            });
     }
 }
 
@@ -770,7 +717,10 @@ fn nested_filter_parser_boundary_counts_actual_retained_function_depth() {
     );
     assert!(!report.is_clean());
     assert!(report.syntax().is_none());
-    assert!(parse_component_values(&invalid).is_err());
+    assert_eq!(
+        parse_component_values(&invalid).unwrap_err().kind(),
+        CssComponentValueErrorKind::NestingLimit
+    );
 }
 
 #[test]

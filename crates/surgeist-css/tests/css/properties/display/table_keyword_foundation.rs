@@ -5,6 +5,7 @@
 //! unselected left/right caption values. Their rejection below is specific to
 //! this selected profile, not a judgment that they are invalid in every CSS UA.
 
+use crate::css::support::property_admission::assert_checked_matches_diagnostic;
 use surgeist_css::*;
 
 type Property = CssKnownProperty;
@@ -494,15 +495,11 @@ fn table_keyword_invalid_values_and_unselected_caption_extension_recover_atomica
             report.syntax()[1].known().unwrap().property(),
             Property::Color
         );
-        assert!(validate_style_attribute(&source).is_err(), "{source}");
-        assert!(
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
-                parse_component_values(invalid).unwrap(),
-                CssImportance::Normal,
-            )
-            .is_err(),
-            "checked construction must reject {source}"
+        assert_eq!(
+            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            report.diagnostics(),
+            "{source}"
         );
+        assert_checked_matches_diagnostic(property, invalid, diagnostic);
     }
 }

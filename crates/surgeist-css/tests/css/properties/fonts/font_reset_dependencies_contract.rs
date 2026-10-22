@@ -2,6 +2,7 @@
 //! §§2.6, 4.6, 6.3, 6.12, 6.13, 8.1 and 8.2.
 
 use crate::css::support::important_declaration as declaration;
+use crate::css::support::selected_grammar as grammar;
 use surgeist_css::*;
 
 const PROPERTIES: [(&str, &str); 6] = [
@@ -12,10 +13,6 @@ const PROPERTIES: [(&str, &str); 6] = [
     ("font-optical-sizing", "auto"),
     ("font-variation-settings", "normal"),
 ];
-
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("known grammar: {name}"))
-}
 
 fn one_contribution(source: &CssDeclaration) -> CssLonghandValue {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
@@ -109,12 +106,22 @@ fn feature_index_keeps_exact_integer_token_beyond_i32_and_rejects_wrong_roots() 
     assert_eq!(small.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(small.serialize_specified().unwrap(), "7");
     assert!(CssFontFeatureIndex::try_new(-1).is_none());
-    for text in ["-1", "-1e-999", "1.5", "1e2", "2%"] {
+    // Fonts 4 §6.12: <integer [0,inf]>; `-1` is out of range and the other
+    // tokens are not integers.
+    for (text, kind) in [
+        ("-1", CssNumericConstructionErrorKind::OutOfRange),
+        (
+            "-1e-999",
+            CssNumericConstructionErrorKind::RootDomainMismatch,
+        ),
+        ("1.5", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("1e2", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("2%", CssNumericConstructionErrorKind::RootDomainMismatch),
+    ] {
         let component = parse_component_values(text).unwrap().items()[0].clone();
-        assert!(
-            CssFontFeatureIndex::try_from_component(component).is_err(),
-            "{text}"
-        );
+        let error = CssFontFeatureIndex::try_from_component(component.clone()).unwrap_err();
+        assert_eq!(error.kind(), &kind, "{text}");
+        assert_eq!(error.origin(), Some(component.origin()), "{text}");
     }
     let math =
         CssIntegerCalculation::try_from_components(parse_component_values("calc(2 + 3)").unwrap())
@@ -286,11 +293,13 @@ fn scalar_number_and_size_adjust_keep_exact_sign_digits_origin_and_symbolic_math
         "0.000000000000000000000000000000000000001"
     );
     for negative in ["-1e-999", "-0.000000000000000000000000000000000000001"] {
-        assert!(
+        assert_eq!(
             CssSpecifiedNonNegativeNumber::try_from_component(
                 CssComponentValue::try_number(negative).unwrap()
             )
-            .is_err(),
+            .unwrap_err()
+            .kind(),
+            &CssNumericConstructionErrorKind::OutOfRange,
             "{negative}"
         );
     }

@@ -8,9 +8,11 @@
 //! These tests use the existing public lookup and parser APIs, so the missing
 //! canonical property is an executed assertion failure, not a compiler error.
 
+use crate::css::support::property_admission::Responsible::At;
+use crate::css::support::property_admission::{assert_checked_rejected, assert_invalid_value};
 use surgeist_css::{
     CssErrorCode, CssGlobalKeyword, CssImportance, CssKnownProperty, CssPropertyNameRef,
-    CssRecoveryAction, ErrorKind, parse_component_values, parse_property_value, parse_sheet,
+    CssRecoveryAction, parse_component_values, parse_property_value, parse_sheet,
     parse_style_attribute, validate_sheet, validate_style_attribute,
 };
 
@@ -154,7 +156,7 @@ fn property_and_keyword_escapes_keep_canonical_identity_and_authored_spelling() 
 }
 
 #[test]
-fn existing_property_components_preserve_authored_boundary_whitespace() {
+fn property_components_preserve_authored_boundary_whitespace() {
     // CssComponentValues::serialize preserves actual whitespace. Exercise an
     // existing property independently of the new flow-tolerance grammar.
     let source = "MARGIN:  AuTo !ImPoRtAnT;";
@@ -177,32 +179,32 @@ fn existing_property_components_preserve_authored_boundary_whitespace() {
 #[test]
 fn invalid_keywords_dimensions_and_combinations_drop_only_the_offending_declaration() {
     let property = flow_tolerance();
-    for invalid in [
-        "auto",
-        "min-content",
-        "max-content",
-        "fit-content",
-        "thin",
-        "medium",
-        "thick",
-        "none",
-        "infinity",
-        "-infinite",
-        "1",
-        "-1",
-        "1fr",
-        "1deg",
-        "1s",
-        "normal infinite",
-        "normal 1px",
-        "1px 2px",
-        "1px, 2px",
-        "1px / 2px",
-        "calc()",
-        "calc(1px +)",
-        "calc(1px + 1s)",
-        "calc(1px * 1px)",
-        "calc(1 + 2)",
+    for (invalid, token) in [
+        ("auto", At("auto")),
+        ("min-content", At("min-content")),
+        ("max-content", At("max-content")),
+        ("fit-content", At("fit-content")),
+        ("thin", At("thin")),
+        ("medium", At("medium")),
+        ("thick", At("thick")),
+        ("none", At("none")),
+        ("infinity", At("infinity")),
+        ("-infinite", At("-infinite")),
+        ("1", At("1")),
+        ("-1", At("-1")),
+        ("1fr", At("1fr")),
+        ("1deg", At("1deg")),
+        ("1s", At("1s")),
+        ("normal infinite", At("infinite")),
+        ("normal 1px", At("1px")),
+        ("1px 2px", At("2px")),
+        ("1px, 2px", At(",")),
+        ("1px / 2px", At("/")),
+        ("calc()", At(")")),
+        ("calc(1px +)", At(")")),
+        ("calc(1px + 1s)", At("1s")),
+        ("calc(1px * 1px)", At("calc(")),
+        ("calc(1 + 2)", At("calc(")),
     ] {
         let dropped = format!("flow-tolerance:{invalid};");
         let source = format!("color:red;{dropped}width:3px");
@@ -226,10 +228,7 @@ fn invalid_keywords_dimensions_and_combinations_drop_only_the_offending_declarat
             "{source}"
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        assert!(matches!(
-            diagnostic.error().kind(),
-            ErrorKind::InvalidPropertyValue(detail) if detail.property() == property
-        ));
+        assert_invalid_value(diagnostic.error().kind(), property, token);
         let start = "color:red;".len();
         assert_eq!(diagnostic.span().start().byte_offset().value(), start);
         assert_eq!(
@@ -240,14 +239,14 @@ fn invalid_keywords_dimensions_and_combinations_drop_only_the_offending_declarat
             validate_style_attribute(&source).unwrap_err().diagnostics(),
             report.diagnostics(),
         );
-        assert!(
+        assert_checked_rejected(
             parse_property_value(
                 CssPropertyNameRef::Known(property),
                 parse_component_values(invalid).unwrap(),
                 CssImportance::Normal,
-            )
-            .is_err(),
-            "checked components reject the same invalid grammar: {invalid}"
+            ),
+            property,
+            token,
         );
     }
 }

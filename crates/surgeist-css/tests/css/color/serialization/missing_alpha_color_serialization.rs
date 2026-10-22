@@ -4,6 +4,7 @@
 //! Color 5 WD 2026-09-08 keeps direct origins in their authored domains, while
 //! ordinary mix children still use ordinary specified serialization.
 
+use crate::css::support::color_and_selector_fixtures::assert_color_limit_error as assert_error;
 use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
@@ -370,7 +371,7 @@ fn nonmissing_ordinary_colors_keep_legacy_conversion_and_alpha_policy() {
 }
 
 #[test]
-fn existing_missing_nonalpha_forms_keep_none_and_percentage_domains() {
+fn missing_nonalpha_forms_keep_none_and_percentage_domains() {
     for (source, expected) in [
         ("rgb(none 0 255)", "color(srgb none 0 1)"),
         ("rgb(none 0 255 / none)", "color(srgb none 0 1 / none)"),
@@ -428,14 +429,6 @@ fn serialized_missing_alpha_reenters_real_property_grammar() {
         );
         assert!(result.is_ok(), "{source} serialized as {text}: {result:?}");
     }
-}
-
-fn assert_error(value: &CssColor, limits: Limits, kind: Kind) {
-    let before = value.clone();
-    let result = value.to_specified_css_with_limits(limits);
-    assert_eq!(result, value.to_specified_css_with_limits(limits));
-    assert_eq!(value, &before);
-    assert_eq!(result.unwrap_err().kind(), kind);
 }
 
 #[test]

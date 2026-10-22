@@ -4,7 +4,8 @@
 //! CSS Values 4 §10.13 defines canonical calculation serialization:
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-serialize
 
-use crate::css::support::style_declaration_reporting_source as parsed;
+use crate::css::support::property_admission::assert_component_rejected;
+use crate::css::support::sole_declaration as parsed;
 use surgeist_css::*;
 
 fn edge(value: CssSpecifiedLength) -> CssClipEdge {
@@ -30,10 +31,22 @@ fn checked_edge_construction_accepts_signed_pure_lengths_and_rejects_other_domai
             css
         );
     }
-    for css in ["1%", "auto", "min-content", "max-content"] {
-        assert!(
-            CssSpecifiedLength::try_from_component(CssComponentValue::try_token(css).unwrap())
-                .is_err()
+    for (css, kind) in [
+        ("1%", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("auto", CssNumericConstructionErrorKind::RootDomainMismatch),
+        (
+            "min-content",
+            CssNumericConstructionErrorKind::RootDomainMismatch,
+        ),
+        (
+            "max-content",
+            CssNumericConstructionErrorKind::RootDomainMismatch,
+        ),
+    ] {
+        assert_component_rejected(
+            CssSpecifiedLength::try_from_component,
+            CssComponentValue::try_token(css).unwrap(),
+            kind,
         );
     }
     assert!(matches!(

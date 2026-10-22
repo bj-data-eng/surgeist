@@ -1,7 +1,8 @@
 //! Public-only Animations 1 and selected CSSOM detached keyframe contracts.
 
+use crate::css::support::rules::ExpectedRejection;
 use surgeist_css::{
-    CssDeclarationBlockErrorKind, CssImportance, CssInvalidKeyframeSourceReason,
+    CssDeclarationBlockErrorKind, CssErrorCode, CssImportance, CssInvalidKeyframeSourceReason,
     CssKeyframePercent, CssKeyframeRuleView, CssKeyframeRuleViewError, CssKeyframeSelector,
     CssKeyframeSelectorList, CssKnownProperty, CssParserContext, CssParserMode, CssPropertyNameRef,
     CssRecoveryAction, CssSpecifiedDeclarationBlock,
@@ -9,6 +10,19 @@ use surgeist_css::{
     CssSpecifiedValueSerializationLimits as Limits, expand_declaration, parse_component_values,
     parse_keyframe_rule, parse_keyframe_selector_list, parse_property_value, parse_style_attribute,
 };
+
+/// The serialization resource whose budget a detached keyframe exhausted,
+/// whether in its selectors or in its declaration block.
+fn exhausted(error: &CssKeyframeRuleViewError) -> Resource {
+    match error {
+        CssKeyframeRuleViewError::Serialization(error) => error.kind(),
+        CssKeyframeRuleViewError::Declaration(error) => match error.kind() {
+            CssDeclarationBlockErrorKind::Serialization(error) => error.kind(),
+            other => panic!("declaration resource failure: {other:?}"),
+        },
+        other => panic!("serialization resource failure: {other:?}"),
+    }
+}
 
 fn selectors(source: &str) -> CssKeyframeSelectorList {
     let report = parse_keyframe_selector_list(source);
@@ -486,12 +500,16 @@ fn detached_formatting_budget_is_cumulative_across_keytext_braces_and_declaratio
         view.serialize_cssom_with_limits(adequate).unwrap(),
         expected
     );
-    for limits in [
-        Limits::new(8, 9, expected.len()),
-        Limits::new(9, 8, expected.len()),
-        Limits::new(9, 9, expected.len() - 1),
+    for (limits, resource) in [
+        (Limits::new(8, 9, expected.len()), Resource::InputNodeLimit),
+        (
+            Limits::new(9, 8, expected.len()),
+            Resource::ProjectionNodeLimit,
+        ),
+        (Limits::new(9, 9, expected.len() - 1), Resource::ByteLimit),
     ] {
-        assert!(view.serialize_cssom_with_limits(limits).is_err());
+        let error = view.serialize_cssom_with_limits(limits).unwrap_err();
+        assert_eq!(exhausted(&error), resource, "{error:?}");
         assert_eq!(report, before);
         assert_eq!(
             view.serialize_cssom_with_limits(adequate).unwrap(),
@@ -515,7 +533,11 @@ fn detached_formatting_budget_is_cumulative_across_keytext_braces_and_declaratio
 #[test]
 fn parser_context_preserves_owning_keyframe_declaration_admission() {
     let source = "from{width:1}";
-    assert!(!parse_keyframe_rule(source).is_clean());
+    // Values 4 #lengths: outside quirks mode only zero may omit its unit.
+    ExpectedRejection::new(CssErrorCode::InvalidPropertyValue)
+        .named("width")
+        .at("1")
+        .assert_first(&parse_keyframe_rule(source));
     let context = CssParserContext::new(CssParserMode::Quirks);
     let report = context.parse_keyframe_rule(source);
     assert!(report.is_clean(), "{report:?}");

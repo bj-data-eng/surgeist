@@ -15,14 +15,10 @@ use super::protocol::{
     CssColorBank, CssColorOperationOwner, CssColorProtocolError, CssColorSlot, Data, LexicalTable,
 };
 use super::syntax_pass::{SyntaxAction, SyntaxPass};
-#[cfg(test)]
-use crate::error::Error;
 use crate::error::ErrorKind;
 use crate::numeric::{CalculationRoot, NumericInputContext};
-use crate::tokenization::color_tokens::{NameKind, NumberKind, Span, Token, TokenKind};
+use crate::tokenization::tokenizer::{NameKind, NumberKind, Span, Token, TokenKind};
 use crate::*;
-#[cfg(test)]
-use cssparser::{ParseError, Parser, SourceLocation};
 
 type Result<T> = std::result::Result<T, ColorInputFailure>;
 
@@ -77,45 +73,6 @@ fn event_failure(
         kind,
         path: path.into_boxed_slice(),
         closing: events.closing.get(site).copied().unwrap_or(false),
-    }
-}
-
-#[cfg(test)]
-pub(crate) fn parse_color<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssColor, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let offset = input.position().byte_index();
-    let location = input.current_source_location();
-    let root = numeric
-        .collect(input)
-        .map_err(|error| numeric_error(numeric, error, location, offset))?;
-    construct_component(&root, numeric).map_err(|failure| {
-        let at = input_location(
-            &root,
-            &failure.path,
-            failure.closing,
-            numeric,
-            location,
-            offset,
-        );
-        crate::error::error_at(at, failure.kind)
-    })
-}
-
-#[cfg(test)]
-fn numeric_error<'i>(
-    numeric: &NumericInputContext<'_>,
-    error: CssNumericConstructionError,
-    fallback: SourceLocation,
-    offset: usize,
-) -> ParseError<'i, Error> {
-    let at = numeric.error_location(&error, fallback, offset);
-    if let Some(component) = error.component_error() {
-        crate::error::invalid_component_value(at, component.clone())
-    } else {
-        crate::error::with_color_context(crate::error::unexpected_at(at), None)
     }
 }
 
@@ -567,77 +524,6 @@ pub(crate) fn construct_component(
     native[checked.table.root]
         .take()
         .ok_or_else(|| invalid_color(None))
-}
-
-#[cfg(test)]
-fn input_location(
-    root: &CssComponentValue,
-    relative: &[usize],
-    closing: bool,
-    numeric: &NumericInputContext<'_>,
-    fallback: SourceLocation,
-    offset: usize,
-) -> SourceLocation {
-    let mut component = root;
-    for index in relative {
-        let items = match component.view() {
-            CssComponentValueRef::Function(function) => function.values().items(),
-            CssComponentValueRef::Block(block) => block.values().items(),
-            _ => return fallback,
-        };
-        let Some(child) = items.get(*index) else {
-            return fallback;
-        };
-        component = child;
-    }
-    let position = match numeric.ordinary() {
-        NumericInputContext::Checked => {
-            unreachable!("the property cursor maps color failures at its actual component site")
-        }
-        NumericInputContext::Parsed(source) => {
-            let origin = if closing {
-                match component.view() {
-                    CssComponentValueRef::Function(function) => function.closing_origin(),
-                    CssComponentValueRef::Block(block) => block.closing_origin(),
-                    _ => return fallback,
-                }
-            } else {
-                component.origin()
-            };
-            let parsed = match origin {
-                CssValueOrigin::Parsed(parsed)
-                | CssValueOrigin::ImplicitClosure { at: parsed, .. } => parsed,
-                _ => return fallback,
-            };
-            if !source.same_snapshot(parsed.source()) {
-                return fallback;
-            }
-            parsed.span().start()
-        }
-        NumericInputContext::Components(_, serialized) => {
-            let Some(base) = serialized.component_path_at(offset) else {
-                return fallback;
-            };
-            let mut path = base.to_vec();
-            path.extend_from_slice(relative);
-            let at = if closing {
-                serialized
-                    .component_end_for_path(&path)
-                    .and_then(|end| end.checked_sub(1))
-            } else {
-                serialized.component_offset_for_path(&path)
-            };
-            let Some(at) = at else {
-                return fallback;
-            };
-            crate::source::CssSourcePosition::from_byte_offset_in(serialized.as_css(), at)
-        }
-        NumericInputContext::QuirkyLengths(_) => unreachable!("ordinary context"),
-    };
-    SourceLocation {
-        line: position.line().value(),
-        column: position.column().value() + 1,
-    }
 }
 
 struct Builder<'a, 'owner, 'context> {
@@ -1222,276 +1108,61 @@ impl Builder<'_, '_, '_> {
     }
 }
 
+/// Closure state is crate-private, so these tests stay here; they reach the
+/// production `color` property parser through its public text and component
+/// fronts. Other source-mode behavior is tested in
+/// `tests/css/color/color_authored_source_modes.rs`.
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
+
+    fn color_of(declaration: &CssDeclaration) -> CssColor {
+        let Some(CssKnownPropertyValueRef::Color(value)) =
+            declaration.known().and_then(|known| known.property_value())
+        else {
+            panic!("typed color: {declaration:?}");
+        };
+        value.value().clone()
+    }
+
+    fn checked(
+        values: CssComponentValues,
+    ) -> std::result::Result<CssDeclaration, CssPropertyValueParseError> {
+        parse_property_value(
+            CssPropertyNameRef::Known(CssKnownProperty::Color),
+            values,
+            CssImportance::Normal,
+        )
+    }
+
     fn parsed(text: &str) -> std::result::Result<CssColor, String> {
-        let source = CssSourceSnapshot::new(text);
-        let mut input = cssparser::ParserInput::new(text);
-        let mut parser = Parser::new(&mut input);
-        parse_color(&mut parser, &NumericInputContext::Parsed(&source))
+        let report = parse_property_value_text(
+            text,
+            CssPropertyNameRef::Known(CssKnownProperty::Color),
+            CssImportance::Normal,
+        );
+        // CSS Syntax 3 (CRD 2026-10-01) §5.5.10 closes an unclosed function at
+        // EOF as a parse error that retains the value; any other diagnostic
+        // rejects it.
+        let (declaration, diagnostics) = report.into_parts();
+        match (declaration, diagnostics.as_slice()) {
+            (Some(declaration), diagnostics)
+                if diagnostics.iter().all(|diagnostic| {
+                    diagnostic.action() == CssRecoveryAction::RetainWithImplicitClosure
+                }) =>
+            {
+                Ok(color_of(&declaration))
+            }
+            (_, diagnostics) => Err(format!("{diagnostics:?}")),
+        }
+    }
+
+    fn components(text: &str) -> std::result::Result<CssColor, String> {
+        checked(parse_component_values(text).unwrap())
+            .map(|declaration| color_of(&declaration))
             .map_err(|error| format!("{error:?}"))
     }
-    fn components(text: &str) -> std::result::Result<CssColor, String> {
-        let values = parse_component_values(text).unwrap();
-        let serialized = values.serialize().unwrap();
-        let mut input = cssparser::ParserInput::new(serialized.as_css());
-        let mut parser = Parser::new(&mut input);
-        parse_color(
-            &mut parser,
-            &NumericInputContext::Components(&values, &serialized),
-        )
-        .map_err(|error| format!("{error:?}"))
-    }
-    #[test]
-    fn literal_rgb_uses_real_parsed_and_component_entries() {
-        for value in [parsed("rgb(1 2 3)"), components("rgb(1 2 3)")] {
-            let value = value.unwrap();
-            let rgb = value.rgb_value().unwrap();
-            assert_eq!(rgb.syntax(), CssColorSyntax::Modern);
-            for (channel, expected) in rgb.channels().iter().zip(["1", "2", "3"]) {
-                let CssColorComponent::Number(value) = channel else {
-                    panic!("number");
-                };
-                assert_eq!(value.numeric().representation(), expected);
-            }
-        }
-    }
-    fn branch(value: &CssColor) -> usize {
-        if value.is_current_color() {
-            0
-        } else if value.is_transparent() {
-            1
-        } else if value.named().is_some() {
-            2
-        } else if value.hex_value().is_some() {
-            3
-        } else if value.system().is_some() {
-            4
-        } else if value.rgb_value().is_some() {
-            5
-        } else if value.hsl_value().is_some() {
-            6
-        } else if value.hwb_value().is_some() {
-            7
-        } else if value.lab_value().is_some() {
-            8
-        } else if value.lch_value().is_some() {
-            9
-        } else if value.oklab_value().is_some() {
-            10
-        } else if value.oklch_value().is_some() {
-            11
-        } else if value.predefined_value().is_some() {
-            12
-        } else if value.custom_value().is_some() {
-            13
-        } else if value.relative_value().is_some() {
-            14
-        } else if value.relative_custom_value().is_some() {
-            15
-        } else if value.alpha_value().is_some() {
-            16
-        } else if value.color_mix_value().is_some() {
-            17
-        } else if value.light_dark_value().is_some() {
-            18
-        } else if value.contrast_color_value().is_some() {
-            19
-        } else if value.device_cmyk_value().is_some() {
-            20
-        } else {
-            panic!("native branch")
-        }
-    }
-    #[test]
-    fn all_twenty_one_native_branches_are_symbolic_in_both_source_modes() {
-        for (text, expected) in [
-            ("currentcolor", 0),
-            ("transparent", 1),
-            ("ReBeccAPurPle", 2),
-            ("#F08c", 3),
-            ("CanvasText", 4),
-            ("rgb(1 2 3)", 5),
-            ("hsl(10 20% 30%)", 6),
-            ("hwb(10 20% 30%)", 7),
-            ("lab(50 1 2)", 8),
-            ("lch(50 1 2)", 9),
-            ("oklab(.5 .1 .2)", 10),
-            ("oklch(.5 .1 2)", 11),
-            ("color(display-p3 1 0 .5)", 12),
-            ("color(--Exact 1 2 3 4)", 13),
-            ("rgb(from red r g b)", 14),
-            ("color(from red --Exact foo bar baz quux)", 15),
-            ("alpha(from red / alpha)", 16),
-            ("color-mix(in srgb, red, blue)", 17),
-            ("light-dark(red, blue)", 18),
-            ("contrast-color(red)", 19),
-            ("device-cmyk(0 1 1 0)", 20),
-        ] {
-            for value in [parsed(text), components(text)] {
-                assert_eq!(
-                    branch(&value.unwrap_or_else(|error| panic!("{text}: {error}"))),
-                    expected,
-                    "{text}"
-                );
-            }
-        }
-    }
-    #[test]
-    fn aliases_escapes_comments_and_exact_numeric_origins_survive() {
-        for text in ["rgba(1, 2, 3, .5)", "\\72 GB(1/**/ 2 3 / .5)"] {
-            let value = parsed(text).unwrap();
-            let rgb = value.rgb_value().unwrap();
-            assert!(rgb.alpha().is_some());
-            let CssColorComponent::Number(first) = &rgb.channels()[0] else {
-                panic!("number");
-            };
-            let CssValueOrigin::Parsed(origin) = first.origin() else {
-                panic!("parsed origin");
-            };
-            assert_eq!(origin.source().as_str(), text);
-            assert_eq!(
-                origin.span().start().byte_offset().value(),
-                text.find('1').unwrap()
-            );
-        }
-        let text = "rgb(+0001.2500e-02 -0 1e999 / none)";
-        for value in [parsed(text), components(text)] {
-            let value = value.unwrap();
-            let rgb = value.rgb_value().unwrap();
-            for (channel, expected) in rgb.channels().iter().zip(["+0001.2500e-02", "-0", "1e999"])
-            {
-                let CssColorComponent::Number(value) = channel else {
-                    panic!("number");
-                };
-                assert_eq!(value.numeric().representation(), expected);
-            }
-            assert!(matches!(rgb.alpha(), Some(CssColorComponent::None)));
-        }
-        let color = parsed("hsl(1.25TuRn 20% 30%)").unwrap();
-        let CssColorHue::Angle(angle) = color.hsl_value().unwrap().hue() else {
-            panic!("angle");
-        };
-        assert_eq!(angle.numeric().representation(), "1.25");
-        assert_eq!(angle.unit(), CssAngleUnit::Turns);
-        assert_eq!(
-            parsed("hsla(10, 20%, 30%, .5)")
-                .unwrap()
-                .hsl_value()
-                .unwrap()
-                .syntax(),
-            CssColorSyntax::Legacy
-        );
-        assert_eq!(parsed("aqua").unwrap().named().unwrap().name(), "aqua");
-        assert_eq!(parsed("cyan").unwrap().named().unwrap().name(), "cyan");
-    }
-    #[test]
-    fn shared_numeric_admission_retains_calculations_and_relative_environments() {
-        for parse in [parsed, components] {
-            let value = parse("rgb(calc(1 + 2) calc(20%) none / calc(.5))").unwrap();
-            let rgb = value.rgb_value().unwrap();
-            assert!(matches!(
-                rgb.channels()[0],
-                CssColorComponent::NumberCalculation(_)
-            ));
-            assert!(matches!(
-                rgb.channels()[1],
-                CssColorComponent::PercentageCalculation(_)
-            ));
-            assert!(matches!(rgb.channels()[2], CssColorComponent::None));
-            let value = parse("lch(from red l c calc(h + 1) / alpha)").unwrap();
-            let relative = value.relative_value().unwrap();
-            assert_eq!(*relative.function(), CssRelativeColorFunction::Lch);
-            assert_eq!(
-                relative.channels()[2].result_domain(),
-                CssRelativeColorResultDomain::Hue
-            );
-            assert!(matches!(
-                relative.channels()[2].value(),
-                CssRelativeColorExpressionValue::Calculation(_)
-            ));
-            assert!(relative.alpha().is_some());
-            for text in [
-                "hsl(from red h s l)",
-                "hwb(from red h w b)",
-                "lab(from red l a b)",
-                "oklab(from red l a b)",
-                "oklch(from red l c h)",
-                "color(from red display-p3 r g b)",
-            ] {
-                assert!(parse(text).unwrap().relative_value().is_some(), "{text}");
-            }
-        }
-    }
-    #[test]
-    fn custom_names_weights_order_and_nested_branches_are_not_resolved() {
-        for parse in [parsed, components] {
-            let value =
-                parse("color-mix(in --Exact, 20% red, blue calc(30%), currentcolor)").unwrap();
-            let mix = value.color_mix_value().unwrap();
-            assert_eq!(
-                mix.interpolation()
-                    .unwrap()
-                    .custom_profile()
-                    .unwrap()
-                    .as_str(),
-                "--Exact"
-            );
-            assert_eq!(mix.components().len(), 3);
-            assert_eq!(mix.components()[0].color().named().unwrap().name(), "red");
-            assert!(
-                mix.components()[0]
-                    .weight()
-                    .unwrap()
-                    .literal_value()
-                    .is_some()
-            );
-            assert!(
-                mix.components()[1]
-                    .weight()
-                    .unwrap()
-                    .calculation()
-                    .is_some()
-            );
-            assert!(mix.components()[2].color().is_current_color());
-            assert!(mix.components()[2].weight().is_none());
-            let value =
-                parse("light-dark(contrast-color(currentcolor), device-cmyk(1%, none, 0, 1))");
-            assert!(value.is_err(), "legacy CMYK percentages/none forbidden");
-            let value =
-                parse("light-dark(contrast-color(currentcolor), device-cmyk(1% none 0 1 / .5))")
-                    .unwrap();
-            assert!(
-                value
-                    .light_dark_value()
-                    .unwrap()
-                    .light()
-                    .contrast_color_value()
-                    .unwrap()
-                    .color()
-                    .is_current_color()
-            );
-            assert!(
-                value
-                    .light_dark_value()
-                    .unwrap()
-                    .dark()
-                    .device_cmyk_value()
-                    .unwrap()
-                    .alpha()
-                    .is_some()
-            );
-            let value = parse("color(from red --Exact foo calc(bar + 1) none / baz)").unwrap();
-            let custom = value.relative_custom_value().unwrap();
-            assert_eq!(custom.profile().as_str(), "--Exact");
-            assert_eq!(custom.channels().len(), 3);
-            assert!(matches!(
-                custom.channels()[1].view(),
-                CssProfileColorExpressionRef::Calculation(_)
-            ));
-        }
-    }
+
     #[test]
     fn omission_and_implicit_closure_remain_distinct_from_explicit_values() {
         assert!(
@@ -1530,66 +1201,7 @@ mod tests {
         assert!(!parsed("rgb(0 0 calc(1 + 2").unwrap().is_closed());
         assert!(parsed("rgb(calc(1 + 2) 0 0)").unwrap().is_closed());
     }
-    #[test]
-    fn grammar_failures_and_prefix_consumption_use_actual_boundaries() {
-        for text in [
-            "rgb(1, 2%, 3)",
-            "rgb(none, 2, 3)",
-            "rgb(1 2 3, .5)",
-            "hsl(1, 2, 3)",
-            "rgb(1 2)",
-            "color(--Exact)",
-            "rgb(1 x 3)",
-            "color-mix(in srgb, 101% red, blue)",
-            "light-dark(red, blue, green)",
-        ] {
-            assert!(parsed(text).is_err(), "{text}");
-            assert!(components(text).is_err(), "{text}");
-        }
-        let text = "rgb(1 2 3) blue";
-        let source = CssSourceSnapshot::new(text);
-        let mut input = cssparser::ParserInput::new(text);
-        let mut parser = Parser::new(&mut input);
-        let color = parse_color(&mut parser, &NumericInputContext::Parsed(&source)).unwrap();
-        assert!(color.rgb_value().is_some());
-        assert_eq!(parser.expect_ident().unwrap().as_ref(), "blue");
-        let text = "light-dark(red, rgb(1 x 3))";
-        let values = parse_component_values(text).unwrap();
-        let serialized = values.serialize().unwrap();
-        let mut input = cssparser::ParserInput::new(serialized.as_css());
-        let mut parser = Parser::new(&mut input);
-        let error = parse_color(
-            &mut parser,
-            &NumericInputContext::Components(&values, &serialized),
-        )
-        .unwrap_err();
-        assert_eq!(
-            error.location.column as usize,
-            serialized.as_css().find('x').unwrap() + 1
-        );
-        let text = "color-mix(in srgb, red 101%, blue)";
-        let source = CssSourceSnapshot::new(text);
-        let mut input = cssparser::ParserInput::new(text);
-        let mut parser = Parser::new(&mut input);
-        let error = parse_color(&mut parser, &NumericInputContext::Parsed(&source)).unwrap_err();
-        assert_eq!(
-            error.location.column as usize,
-            text.find("101").unwrap() + 1
-        );
-        let values = parse_component_values(text).unwrap();
-        let serialized = values.serialize().unwrap();
-        let mut input = cssparser::ParserInput::new(serialized.as_css());
-        let mut parser = Parser::new(&mut input);
-        let error = parse_color(
-            &mut parser,
-            &NumericInputContext::Components(&values, &serialized),
-        )
-        .unwrap_err();
-        assert_eq!(
-            error.location.column as usize,
-            serialized.as_css().find("101").unwrap() + 1
-        );
-    }
+
     #[test]
     fn genuine_programmatic_components_keep_exact_tokens_without_reparse() {
         let supplied = CssComponentValue::try_number("+000000001.250e-01").unwrap();
@@ -1601,14 +1213,7 @@ mod tests {
         .unwrap();
         let root = CssComponentValue::try_function("RGB", arguments).unwrap();
         let values = CssComponentValues::try_new(vec![root]).unwrap();
-        let serialized = values.serialize().unwrap();
-        let mut input = cssparser::ParserInput::new(serialized.as_css());
-        let mut parser = Parser::new(&mut input);
-        let value = parse_color(
-            &mut parser,
-            &NumericInputContext::Components(&values, &serialized),
-        )
-        .unwrap();
+        let value = color_of(&checked(values).unwrap());
         let CssColorComponent::Number(number) = &value.rgb_value().unwrap().channels()[0] else {
             panic!("number");
         };
@@ -1616,73 +1221,5 @@ mod tests {
         assert_eq!(number.origin(), &CssValueOrigin::Programmatic);
         assert_eq!(number.numeric().representation(), "+000000001.250e-01");
         assert!(value.is_closed());
-    }
-    #[test]
-    fn source_positions_keep_utf16_columns_and_constructor_limits_stay_typed() {
-        let text = "/*😀*/light-dark(red, rgb(1 x 3))";
-        let source = CssSourceSnapshot::new(text);
-        let mut input = cssparser::ParserInput::new(text);
-        let mut parser = Parser::new(&mut input);
-        let error = parse_color(&mut parser, &NumericInputContext::Parsed(&source)).unwrap_err();
-        assert_eq!(
-            error.location.column as usize,
-            text[..text.find('x').unwrap()].encode_utf16().count() + 1
-        );
-        let too_deep = format!("{}red{}", "contrast-color(".repeat(257), ")".repeat(257));
-        let source = CssSourceSnapshot::new(&too_deep);
-        let mut input = cssparser::ParserInput::new(&too_deep);
-        let mut parser = Parser::new(&mut input);
-        let error = parse_color(&mut parser, &NumericInputContext::Parsed(&source)).unwrap_err();
-        let cssparser::ParseErrorKind::Custom(error) = error.kind else {
-            panic!("typed limit");
-        };
-        assert_eq!(error.code(), CssErrorCode::InvalidComponentValue);
-        let crate::error::ErrorKind::InvalidComponentValue(detail) = error.kind() else {
-            panic!("component limit detail");
-        };
-        assert_eq!(detail.kind(), CssComponentValueErrorKind::NestingLimit);
-    }
-
-    #[test]
-    fn closing_and_eof_failures_use_actual_end_sites_in_both_source_modes() {
-        let mut observed = Vec::new();
-        for (text, serialized_text, expected) in [
-            ("rgb(1 2)", "rgb(1 2)", 8),
-            ("rgb(1 2", "rgb(1 2)", 8),
-            (
-                "/*😀*/light-dark(red, rgb(1 2))",
-                "/*😀*/light-dark(red, rgb(1 2))",
-                30,
-            ),
-            (
-                "/*😀*/light-dark(red, rgb(1 2",
-                "/*😀*/light-dark(red, rgb(1 2))",
-                30,
-            ),
-        ] {
-            let source = CssSourceSnapshot::new(text);
-            let mut input = cssparser::ParserInput::new(text);
-            let mut parser = Parser::new(&mut input);
-            let error =
-                parse_color(&mut parser, &NumericInputContext::Parsed(&source)).unwrap_err();
-            observed.push((text, "Parsed", error.location.column, expected));
-            let values = parse_component_values(text).unwrap();
-            let serialized = values.serialize().unwrap();
-            assert_eq!(serialized.as_css(), serialized_text);
-            let mut input = cssparser::ParserInput::new(serialized.as_css());
-            let mut parser = Parser::new(&mut input);
-            let error = parse_color(
-                &mut parser,
-                &NumericInputContext::Components(&values, &serialized),
-            )
-            .unwrap_err();
-            observed.push((text, "Components", error.location.column, expected));
-        }
-        for (text, mode, actual, expected) in &observed {
-            assert_eq!(
-                actual, expected,
-                "{text:?} {mode}; all observed: {observed:?}"
-            );
-        }
     }
 }

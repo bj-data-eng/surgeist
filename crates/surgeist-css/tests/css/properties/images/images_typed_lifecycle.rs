@@ -5,6 +5,8 @@
 
 use crate::css::support::property_expectations;
 
+use crate::css::support::authored_property;
+use crate::css::support::authored_property::parsed;
 use surgeist_css::{
     CssKnownProperty as P, CssSpecifiedValueSerializationErrorKind as K,
     CssSpecifiedValueSerializationLimits as L, *,
@@ -21,26 +23,9 @@ const RENDERING: [(CssImageRendering, &str); 7] = [
     (CssImageRendering::OptimizeSpeed, "optimizespeed"),
     (CssImageRendering::OptimizeQuality, "optimizequality"),
 ];
-fn parsed(property: P, value: &str) -> CssDeclaration {
-    let text = format!("/*😀*/{}:{value}!important", property.canonical_name());
-    let report = parse_style_attribute(&text);
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one typed Images occurrence")
-    };
-    source.clone()
-}
 fn checked(property: P, components: CssComponentValues, grammar: bool) -> CssDeclaration {
-    if grammar {
-        parse_property_value_for_grammar(property.grammar(), components, CssImportance::Important)
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
-            components,
-            CssImportance::Important,
-        )
-    }
-    .unwrap()
+    authored_property::checked_components(property, components, grammar, CssImportance::Important)
+        .unwrap()
 }
 fn ordinary(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(items)) =

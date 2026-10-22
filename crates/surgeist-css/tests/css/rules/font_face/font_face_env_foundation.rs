@@ -16,7 +16,7 @@ fn one_font_face(source: &str) -> surgeist_css::CssParseReport<surgeist_css::Css
 }
 
 #[test]
-fn ordinary_descriptors_still_parse_and_plain_var_does_not_defer_them() {
+fn ordinary_descriptors_parse_and_plain_var_does_not_defer_them() {
     for (kind, ordinary) in [
         (Kind::FontFamily, "Demo"),
         (Kind::Src, "url(face)"),

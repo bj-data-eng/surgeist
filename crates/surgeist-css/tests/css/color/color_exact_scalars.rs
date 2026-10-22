@@ -1,4 +1,5 @@
 //! Exact authored color scalars under the selected Color4/Color5 grammars.
+use crate::css::support::color_and_selector_fixtures::assert_color_grammar_failure;
 use crate::css::support::declaration_color as color;
 use surgeist_color::PredefinedColorSpace;
 use surgeist_css::*;
@@ -183,13 +184,13 @@ fn exact_mix_weight_range_rejects_nonzero_negative_and_over_100() {
             report.syntax()[0].known().unwrap().property(),
             CssKnownProperty::Opacity
         );
-        assert!(
+        assert_color_grammar_failure(
             parse_property_value(
                 CssPropertyNameRef::Known(CssKnownProperty::Color),
                 parse_component_values(text).unwrap(),
-                CssImportance::Normal
-            )
-            .is_err()
+                CssImportance::Normal,
+            ),
+            text,
         );
     }
 }

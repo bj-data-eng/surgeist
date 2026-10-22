@@ -465,8 +465,13 @@ impl<'i, 's: 'i> DeclarationParser<'i> for PageBodyParser<'s> {
             )
             .expect("real descriptor name");
             input.reset(&value_start);
-            let (value, importance) = input
-                .parse_until_before(cssparser::Delimiter::Bang, |input| {
+            // Page descriptors admit importance; a malformed annotation
+            // reports its own first unexpected token.
+            let (value, importance) = super::parse_importance_boundary(
+                input,
+                true,
+                |_, malformed| basic(malformed.expect("an admitted annotation fails on a token")),
+                |input| {
                     super::collect_declaration_value(
                         input,
                         self.recovery.source_snapshot(),
@@ -474,24 +479,17 @@ impl<'i, 's: 'i> DeclarationParser<'i> for PageBodyParser<'s> {
                             parse_descriptor_value(input, kind, self.recovery.source_snapshot())
                         },
                     )
-                })
-                .and_then(|(data, components, origin)| {
-                    let importance = if input.is_exhausted() {
-                        crate::CssImportance::Normal
-                    } else {
-                        input.expect_delim('!').map_err(basic)?;
-                        input.expect_ident_matching("important").map_err(basic)?;
-                        input.expect_exhausted().map_err(basic)?;
-                        crate::CssImportance::Important
-                    };
-                    Ok((
-                        CssPageDescriptorValue::from_parsed(kind, data, components, origin),
-                        importance,
-                    ))
-                })
-                .map_err(|error| {
-                    crate::error::with_descriptor_context(error, "page", kind.css_name())
-                })?;
+                },
+            )
+            .map(|((data, components, origin), importance)| {
+                (
+                    CssPageDescriptorValue::from_parsed(kind, data, components, origin),
+                    importance,
+                )
+            })
+            .map_err(|error| {
+                crate::error::with_descriptor_context(error, "page", kind.css_name())
+            })?;
             self.recovery.retain_component_closures(implicit_closures);
             return Ok(PageBodyItem::Declaration(CssPageDeclaration::Descriptor(
                 CssPageDescriptor::from_parsed(value, importance, name_origin),
@@ -690,7 +688,7 @@ fn nonzero_unitless_page_length(value: &CssMarginValue) -> Option<&crate::CssCom
     };
     let component = value.literal_component()?;
     if matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number))
-        if crate::exact_decimal::LexicalDecimal::new(number.representation()).len != 0)
+        if !crate::exact_decimal::LexicalDecimal::new(number.representation()).is_zero())
     {
         Some(component)
     } else {
@@ -721,9 +719,10 @@ pub(super) fn parse_descriptor_value<'i>(
         )));
     }
     if let Ok(global) = input.try_parse(|input| {
+        let keyword_location = input.current_source_location();
         let ident = input.expect_ident_cloned().map_err(basic)?;
         let global = crate::validation::parse_global_keyword(&ident)
-            .ok_or_else(|| unexpected_at(input.current_source_location()))?;
+            .ok_or_else(|| unexpected_at(keyword_location))?;
         input.expect_exhausted().map_err(basic)?;
         Ok::<_, ParseError<'i, Error>>(global)
     }) {

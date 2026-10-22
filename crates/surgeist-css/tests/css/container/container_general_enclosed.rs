@@ -1,9 +1,10 @@
 //! Conditional 5 section 5.4 admits general-enclosed query operands. MQ4
 //! section 3 permits empty any-value contents; unknown syntax stays symbolic.
+use crate::css::support::authored_syntax::assert_diagnostics;
 use surgeist_css::{
     CssComponentValue, CssComponentValueRef, CssComponentValues,
     CssContainerCondition as Condition, CssContainerConditionKind as Kind,
-    CssContainerGeneralEnclosed, CssGeneralEnclosed, CssRecoveryAction, CssRule,
+    CssContainerGeneralEnclosed, CssErrorCode, CssGeneralEnclosed, CssRecoveryAction, CssRule,
     CssSerializedOrigin, CssValueOrigin, parse_component_values, parse_sheet, validate_sheet,
 };
 
@@ -214,23 +215,36 @@ fn a_recovered_lexical_operand_retains_its_eof_closure_origin() {
 
 #[test]
 fn lexical_errors_and_malformed_outer_boolean_grammar_are_not_hidden_by_fallback() {
-    for query in [
-        "Future(url(a b))",
-        "Future(])",
-        "Future() ]",
-        "Future() junk",
-        "Future() and",
-        "not not Future()",
-        "Future() and Other() or Third()",
+    // Each prelude first fails at a lexical fault (a bad URL or an
+    // unmatched closer), or by its grammar at trailing input, the last
+    // authored token when the block ends the prelude before an operand, a
+    // doubled `not`, or an `or` mixed into an `and` chain.
+    let lexical = CssErrorCode::InvalidComponentValue;
+    let grammar = CssErrorCode::InvalidAtRulePrelude;
+    for (query, code, responsible) in [
+        ("Future(url(a b))", lexical, 7),
+        ("Future(])", lexical, 7),
+        ("Future() ]", lexical, 9),
+        ("Future() junk", grammar, 9),
+        ("Future() and", grammar, 9),
+        ("not not Future()", grammar, 4),
+        ("Future() and Other() or Third()", grammar, 21),
     ] {
         let report = parse_sheet(&format!("@container {query} {{ .x {{ color:red }} }}"));
-        assert!(!report.is_clean(), "{query}");
+        assert_diagnostics(
+            report.diagnostics(),
+            &[(
+                code,
+                CssRecoveryAction::DropAtRule,
+                "@container ".len() + responsible,
+            )],
+        );
         assert!(report.syntax().rules().is_empty(), "{query}");
     }
 }
 
 #[test]
-fn component_depth_limit_still_rejects_an_oversized_opaque_query() {
+fn component_depth_limit_rejects_an_oversized_opaque_query() {
     let query = format!("{}x{}", "Future(".repeat(257), ")".repeat(257));
     let report = parse_sheet(&format!("@container {query} {{}}"));
     assert!(report.syntax().rules().is_empty());

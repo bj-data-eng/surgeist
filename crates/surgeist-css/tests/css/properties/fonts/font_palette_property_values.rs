@@ -3,17 +3,13 @@
 //! The shared accepted Color 5 omitted-weight reconciliation also applies.
 //! Functional tests for new APIs, separate from the executable lifecycle RED.
 
+use crate::css::support::important_declaration;
+use crate::css::support::named_property::assert_implicit_closure_rejection;
 use surgeist_color::ColorSpace;
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-
-fn declaration(text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("font-palette:{text}!important"));
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    report.syntax()[0].clone()
-}
 
 fn palette(source: &CssDeclaration) -> &CssFontPalette {
     let CssKnownPropertyValueRef::FontPalette(value) =
@@ -39,7 +35,7 @@ fn literal(text: &str) -> CssColorMixWeight {
 }
 
 fn assert_text(authored: &str, expected: &str) {
-    let parsed = declaration(authored);
+    let parsed = important_declaration("font-palette", authored);
     let components = parse_component_values(authored).unwrap();
     let checked = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::FontPalette),
@@ -62,7 +58,7 @@ fn assert_text(authored: &str, expected: &str) {
     }
     // Canonical output is admitted and stable without comparing source origins.
     assert_eq!(
-        palette(&declaration(expected))
+        palette(&important_declaration("font-palette", expected))
             .serialize_specified()
             .unwrap(),
         expected
@@ -71,15 +67,24 @@ fn assert_text(authored: &str, expected: &str) {
 
 #[test]
 fn typed_keywords_and_names_retain_their_distinct_authored_meanings() {
-    assert_eq!(palette(&declaration("NORMAL")), &CssFontPalette::Normal);
-    assert_eq!(palette(&declaration("light")), &CssFontPalette::Light);
-    assert_eq!(palette(&declaration("dark")), &CssFontPalette::Dark);
+    assert_eq!(
+        palette(&important_declaration("font-palette", "NORMAL")),
+        &CssFontPalette::Normal
+    );
+    assert_eq!(
+        palette(&important_declaration("font-palette", "light")),
+        &CssFontPalette::Light
+    );
+    assert_eq!(
+        palette(&important_declaration("font-palette", "dark")),
+        &CssFontPalette::Dark
+    );
     for (text, name) in [
         ("--Theme", "--Theme"),
         (r"--\54 heme", "--Theme"),
         ("--", "--"),
     ] {
-        let source = declaration(text);
+        let source = important_declaration("font-palette", text);
         let CssFontPalette::Named(value) = palette(&source) else {
             panic!("named palette")
         };
@@ -87,8 +92,8 @@ fn typed_keywords_and_names_retain_their_distinct_authored_meanings() {
         assert_text(text, name);
     }
     assert_ne!(
-        palette(&declaration("--Theme")),
-        palette(&declaration("--theme"))
+        palette(&important_declaration("font-palette", "--Theme")),
+        palette(&important_declaration("font-palette", "--theme"))
     );
     for (value, expected) in [
         (CssFontPalette::Normal, "normal"),
@@ -176,9 +181,9 @@ fn parsed_components_expose_ordered_palettes_and_original_weight_origins() {
 
 #[test]
 fn explicit_default_and_nondefault_interpolation_keep_authored_method_identity() {
-    let omitted = declaration("palette-mix(light,dark)");
+    let omitted = important_declaration("font-palette", "palette-mix(light,dark)");
     assert!(mix(palette(&omitted)).interpolation().is_none());
-    let explicit = declaration("palette-mix(in oklab,light,dark)");
+    let explicit = important_declaration("font-palette", "palette-mix(in oklab,light,dark)");
     assert_eq!(
         mix(palette(&explicit))
             .interpolation()
@@ -326,7 +331,7 @@ fn nested_and_singleton_functions_are_serialized_without_computed_simplification
         "palette-mix(light 30%, light)",
         "palette-mix(light 30%, light 70%)",
     );
-    let source = declaration("palette-mix(palette-mix(dark), --x)");
+    let source = important_declaration("font-palette", "palette-mix(palette-mix(dark), --x)");
     assert!(matches!(
         mix(palette(&source)).components()[0].palette(),
         CssFontPalette::Mix(_)
@@ -404,8 +409,10 @@ fn specified_limits_are_cumulative_atomic_and_exact_for_simple_palette_leaves() 
             assert_eq!(value.serialize_specified().unwrap(), expected);
         }
     }
-    let source =
-        declaration("palette-mix(in oklch longer hue, palette-mix(light 30%, dark), --Theme)");
+    let source = important_declaration(
+        "font-palette",
+        "palette-mix(in oklch longer hue, palette-mix(light 30%, dark), --Theme)",
+    );
     let value = palette(&source);
     let before = source.clone();
     let expected = "palette-mix(in oklch longer hue, palette-mix(light 30%, dark 70%), --Theme)";
@@ -444,15 +451,16 @@ fn specified_limits_are_cumulative_atomic_and_exact_for_simple_palette_leaves() 
 #[test]
 fn strict_checked_admission_and_reentry_reject_implicit_closures() {
     let recovered = parse_component_values("palette-mix(dark").unwrap();
-    assert!(
-        parse_property_value(
+    assert_implicit_closure_rejection(
+        &parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::FontPalette),
             recovered.clone(),
-            CssImportance::Normal
+            CssImportance::Normal,
         )
-        .is_err()
+        .unwrap_err(),
+        "palette-mix(dark",
     );
-    let source = declaration("var(--palette)");
+    let source = important_declaration("font-palette", "var(--palette)");
     let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
         panic!("pending")
     };

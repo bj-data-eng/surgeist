@@ -1,6 +1,10 @@
 //! Literal authored expectations from Selectors 4, 2026-01-22, sections 3.5,
 //! 5.4, 8.1, 10, 11.1, 11.5, 12.2.1 and 12.3.4. Matching is downstream.
 //! Existing public boundaries keep these tests executable before new enum arms.
+use crate::css::support::color_and_selector_fixtures::{
+    assert_selector_input_rejected, assert_strict_validation_rejects,
+};
+use crate::css::support::validated_selector as parsed;
 use surgeist_css::*;
 
 const NAMES: [&str; 14] = [
@@ -19,15 +23,6 @@ const NAMES: [&str; 14] = [
     "user-valid",
     "user-invalid",
 ];
-
-fn parsed(source: &str) -> CssSelector {
-    let report = parse_selector(source, &CssNamespaceContext::default());
-    assert!(report.is_clean(), "{source:?}: {report:?}");
-    report
-        .into_validation_result()
-        .unwrap()
-        .expect("one selector")
-}
 
 fn exact(source: &str, expected: &str) -> CssSelector {
     let selector = parsed(source);
@@ -317,16 +312,10 @@ fn every_named_state_preserves_strict_atomic_and_forgiving_member_recovery() {
             format!(".Before,:has(:{name},:future),.After"),
             format!(".Before,:nth-child(2n of :{name},:future),.After"),
         ] {
-            let report = parse_selector_list(&source, &CssNamespaceContext::default());
-            assert!(
-                report.syntax().is_none(),
-                "atomic rejection: {source}: {report:?}"
+            assert_selector_input_rejected(
+                &source,
+                parse_selector_list(&source, &CssNamespaceContext::default()),
             );
-            assert_eq!(
-                report.diagnostics().last().unwrap().action(),
-                CssRecoveryAction::RejectInput
-            );
-            assert!(report.into_validation_result().is_err());
         }
         for function in ["is", "where"] {
             let source = format!("/*😀*/\r\n:{function}(:{name},:future,.After)");
@@ -678,7 +667,7 @@ fn checked_named_graphs_preserve_each_function_attachment_and_complex_relation()
 }
 
 #[test]
-fn named_leaves_preserve_eof_recovery_and_the_existing_function_depth_boundary() {
+fn named_leaves_preserve_eof_recovery_and_the_function_depth_boundary() {
     for name in NAMES {
         let source = format!(":is(:{name}");
         let report = parse_selector(&source, &CssNamespaceContext::default());
@@ -707,7 +696,7 @@ fn named_leaves_preserve_eof_recovery_and_the_existing_function_depth_boundary()
             source.len()
         );
         assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
-        assert!(report.into_validation_result().is_err());
+        assert_strict_validation_rejects(report);
         let source = format!("{}:{name}{}", ":is(".repeat(256), ")".repeat(256));
         exact(&source, &source);
         let source = format!("{}:{name}{}", ":is(".repeat(257), ")".repeat(257));
@@ -718,12 +707,12 @@ fn named_leaves_preserve_eof_recovery_and_the_existing_function_depth_boundary()
         };
         assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
         assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-        assert!(report.into_validation_result().is_err());
+        assert_strict_validation_rejects(report);
     }
 }
 
 #[test]
-fn existing_named_state_controls_keep_checked_identity_and_canonical_output() {
+fn named_state_controls_keep_checked_identity_and_canonical_output() {
     for (source, expected, pseudo) in [
         (r":\48 OVER", ":hover", CssPseudoClass::Hover),
         (":CHECKED", ":checked", CssPseudoClass::Checked),

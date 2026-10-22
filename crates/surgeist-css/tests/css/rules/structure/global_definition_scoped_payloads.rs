@@ -48,7 +48,7 @@ fn assert_leaves(rules: &[CssScopedRule]) {
 }
 
 #[test]
-fn scoped_variants_reuse_existing_owned_payloads_and_preserve_detached_values() {
+fn scoped_variants_reuse_owned_payloads_and_preserve_detached_values() {
     let source = format!("@scope(.host){{{DEFINITIONS}}}");
     let report = parse_sheet(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());

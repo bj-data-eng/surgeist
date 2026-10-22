@@ -2,6 +2,9 @@
 //! 7c38d773117aa1e6bfa13754afe77483f40c908f §5.1 names the nonfunctional
 //! :fullscreen pseudo-class; tree/top-layer matching is downstream.
 
+use crate::css::support::color_and_selector_fixtures::{
+    assert_selector_input_rejected, assert_selector_item_dropped,
+};
 use surgeist_css::{
     CssNamespaceContext, CssPseudoClass, CssRecoveryAction, CssRule, CssSelector, CssSelectorList,
     parse_selector, parse_sheet,
@@ -73,10 +76,10 @@ fn invalid_fullscreen_forms_drop_their_rule_and_preserve_the_following_sibling()
         ": fullscreen",
         ":full-screen",
     ] {
-        let direct = parse_selector(source, &CssNamespaceContext::default());
-        assert!(direct.syntax().is_none(), "{source}: {direct:?}");
-        assert!(!direct.is_clean());
-        assert!(direct.into_validation_result().is_err());
+        assert_selector_input_rejected(
+            source,
+            parse_selector(source, &CssNamespaceContext::default()),
+        );
         let sheet = parse_sheet(&format!("{source}{{}}.after{{color:red}}"));
         let [CssRule::Style(after)] = sheet.syntax().rules() else {
             panic!("retain only the valid sibling: {source}: {sheet:?}");
@@ -97,14 +100,13 @@ fn invalid_fullscreen_forms_drop_their_rule_and_preserve_the_following_sibling()
 
 #[test]
 fn fullscreen_exact_front_rejects_a_second_selector_and_forgiving_recovery_stays_unclean() {
-    let extra = parse_selector(":fullscreen,.viewer", &CssNamespaceContext::default());
-    assert!(extra.syntax().is_none());
-    assert!(extra.into_validation_result().is_err());
-    let forgiving = parse_selector(
-        ":is(:fullscreen,:fullscreen())",
-        &CssNamespaceContext::default(),
+    let extra = ":fullscreen,.viewer";
+    assert_selector_input_rejected(
+        extra,
+        parse_selector(extra, &CssNamespaceContext::default()),
     );
-    assert!(!forgiving.is_clean());
+    let source = ":is(:fullscreen,:fullscreen())";
+    let forgiving = parse_selector(source, &CssNamespaceContext::default());
     assert_eq!(
         forgiving
             .syntax()
@@ -114,5 +116,5 @@ fn fullscreen_exact_front_rejects_a_second_selector_and_forgiving_recovery_stays
             .unwrap(),
         ":is(:fullscreen)"
     );
-    assert!(forgiving.into_validation_result().is_err());
+    assert_selector_item_dropped(source, forgiving, ":fullscreen()");
 }

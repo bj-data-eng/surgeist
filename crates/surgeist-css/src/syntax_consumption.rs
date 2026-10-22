@@ -429,6 +429,25 @@ impl<'a> SyntaxDocument<'a> {
             (range.start + node.token().spelling.as_ref()?.len() == offset).then_some(children)
         })
     }
+    /// A cursor at the root-list node that starts at `offset`. Root nodes are
+    /// in source order, so this is a binary search.
+    pub(crate) fn root_cursor_at_source(&self, offset: usize) -> Option<SyntaxCursor<'_>> {
+        let nodes = &self.lists[self.root];
+        let next = nodes
+            .partition_point(|node| self.range(*node).is_some_and(|range| range.start < offset));
+        nodes
+            .get(next)
+            .and_then(|node| self.range(*node))
+            .is_some_and(|range| range.start == offset)
+            .then_some(SyntaxCursor {
+                document: self,
+                list: self.root,
+                next,
+                end: nodes.len(),
+                current: None,
+                reconsume: false,
+            })
+    }
     pub(crate) fn cursor_at_source(&self, offset: usize) -> Option<SyntaxCursor<'_>> {
         self.lists.iter().enumerate().find_map(|(list, nodes)| {
             let next = nodes

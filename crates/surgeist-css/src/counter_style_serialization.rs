@@ -28,25 +28,15 @@ impl CssCounterStyleDescriptorKind {
     }
 }
 
-fn node(writer: &mut SpecifiedRuleWriter) -> Result<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)
-}
-
-fn keyword(writer: &mut SpecifiedRuleWriter, value: &str) -> Result<()> {
-    node(writer)?;
-    writer.append(value)
-}
-
 fn name(writer: &mut SpecifiedRuleWriter, value: &str) -> Result<()> {
-    node(writer)?;
+    writer.node()?;
     writer.append_identifier(value)
 }
 
 fn symbol(writer: &mut SpecifiedRuleWriter, value: &CssCounterSymbol) -> Result<()> {
     match value {
         CssCounterSymbol::String(value) => {
-            node(writer)?;
+            writer.node()?;
             writer.append_string(value.as_str())
         }
         CssCounterSymbol::Ident(value) => name(writer, value.as_str()),
@@ -56,7 +46,7 @@ fn symbol(writer: &mut SpecifiedRuleWriter, value: &CssCounterSymbol) -> Result<
 
 fn bound(writer: &mut SpecifiedRuleWriter, value: &CssCounterStyleRangeBound) -> Result<()> {
     match value {
-        CssCounterStyleRangeBound::Infinite => keyword(writer, "infinite"),
+        CssCounterStyleRangeBound::Infinite => writer.keyword("infinite"),
         CssCounterStyleRangeBound::Integer(value) => {
             value.append_specified(&mut writer.context, &mut writer.css)
         }
@@ -88,13 +78,13 @@ impl CssCounterStyleDescriptorValue {
     pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
         match self.view() {
             Value::System(value) => match value {
-                CssCounterStyleSystem::Cyclic => keyword(writer, "cyclic"),
-                CssCounterStyleSystem::Numeric => keyword(writer, "numeric"),
-                CssCounterStyleSystem::Alphabetic => keyword(writer, "alphabetic"),
-                CssCounterStyleSystem::Symbolic => keyword(writer, "symbolic"),
-                CssCounterStyleSystem::Additive => keyword(writer, "additive"),
+                CssCounterStyleSystem::Cyclic => writer.keyword("cyclic"),
+                CssCounterStyleSystem::Numeric => writer.keyword("numeric"),
+                CssCounterStyleSystem::Alphabetic => writer.keyword("alphabetic"),
+                CssCounterStyleSystem::Symbolic => writer.keyword("symbolic"),
+                CssCounterStyleSystem::Additive => writer.keyword("additive"),
                 CssCounterStyleSystem::Fixed(value) => {
-                    keyword(writer, "fixed")?;
+                    writer.keyword("fixed")?;
                     if let Some(first) = value.first_symbol_value() {
                         // §3.1.2's omitted starting value is exactly 1. CSSOM §6.7.2
                         // omits optional components when their meaning is unchanged.
@@ -112,13 +102,13 @@ impl CssCounterStyleDescriptorValue {
                     Ok(())
                 }
                 CssCounterStyleSystem::Extends(value) => {
-                    keyword(writer, "extends")?;
+                    writer.keyword("extends")?;
                     writer.append(" ")?;
                     name(writer, value.as_str())
                 }
             },
             Value::Negative(value) => {
-                node(writer)?;
+                writer.node()?;
                 symbol(writer, value.prefix())?;
                 if let Some(suffix) = value.suffix() {
                     // §3.2's optional suffix adds nothing when it is the empty
@@ -135,11 +125,11 @@ impl CssCounterStyleDescriptorValue {
             }
             Value::Prefix(value) | Value::Suffix(value) => symbol(writer, value),
             Value::Range(value) => match value {
-                CssCounterStyleRange::Auto => keyword(writer, "auto"),
+                CssCounterStyleRange::Auto => writer.keyword("auto"),
                 CssCounterStyleRange::Ranges(value) => {
-                    node(writer)?;
+                    writer.node()?;
                     for (index, interval) in value.ranges().iter().enumerate() {
-                        node(writer)?;
+                        writer.node()?;
                         if index != 0 {
                             writer.append(", ")?;
                         }
@@ -152,7 +142,7 @@ impl CssCounterStyleDescriptorValue {
                 }
             },
             Value::Pad(value) => {
-                node(writer)?;
+                writer.node()?;
                 value
                     .minimum_length()
                     .append_specified(&mut writer.context, &mut writer.css)?;
@@ -161,19 +151,14 @@ impl CssCounterStyleDescriptorValue {
             }
             Value::Fallback(value) => name(writer, value.as_str()),
             Value::Symbols(value) => {
-                node(writer)?;
-                for (index, value) in value.symbols().iter().enumerate() {
-                    if index != 0 {
-                        writer.append(" ")?;
-                    }
-                    symbol(writer, value)?;
-                }
+                writer.node()?;
+                writer.space_separated(value.symbols(), symbol)?;
                 Ok(())
             }
             Value::AdditiveSymbols(value) => {
-                node(writer)?;
+                writer.node()?;
                 for (index, tuple) in value.tuples().iter().enumerate() {
-                    node(writer)?;
+                    writer.node()?;
                     if index != 0 {
                         writer.append(", ")?;
                     }
@@ -187,11 +172,11 @@ impl CssCounterStyleDescriptorValue {
                 Ok(())
             }
             Value::SpeakAs(value) => match value {
-                CssCounterStyleSpeakAs::Auto => keyword(writer, "auto"),
-                CssCounterStyleSpeakAs::Bullets => keyword(writer, "bullets"),
-                CssCounterStyleSpeakAs::Numbers => keyword(writer, "numbers"),
-                CssCounterStyleSpeakAs::Words => keyword(writer, "words"),
-                CssCounterStyleSpeakAs::SpellOut => keyword(writer, "spell-out"),
+                CssCounterStyleSpeakAs::Auto => writer.keyword("auto"),
+                CssCounterStyleSpeakAs::Bullets => writer.keyword("bullets"),
+                CssCounterStyleSpeakAs::Numbers => writer.keyword("numbers"),
+                CssCounterStyleSpeakAs::Words => writer.keyword("words"),
+                CssCounterStyleSpeakAs::SpellOut => writer.keyword("spell-out"),
                 CssCounterStyleSpeakAs::CounterStyle(value) => name(writer, value.as_str()),
             },
             Value::Pending(_) => crate::pending_serialization::append_pending_specified(
@@ -261,7 +246,7 @@ impl CssCounterStyleRule {
         let mut effective = None;
         for value in self.descriptors().occurrences() {
             if slot(value).0 == kind.index() {
-                node(&mut writer)?;
+                writer.node()?;
                 if let Some(previous) = effective {
                     writer.without_output(|writer| descriptor(writer, previous))?;
                 }
@@ -296,10 +281,10 @@ impl CssCounterStyleRule {
     }
 
     pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
-        node(writer)?;
+        writer.node()?;
         let mut effective = [None; 10];
         for (index, value) in self.descriptors().occurrences().enumerate() {
-            node(writer)?;
+            writer.node()?;
             effective[slot(value).0] = Some((index, value));
         }
         for (index, value) in self.descriptors().occurrences().enumerate() {

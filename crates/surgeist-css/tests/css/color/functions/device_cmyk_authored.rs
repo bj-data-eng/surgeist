@@ -7,41 +7,17 @@
 //! Resource oracles use the shared cumulative specified-value contract. Missing
 //! components need one input and projection each, without scalar arithmetic.
 
-use crate::css::support::style_declaration_reporting_source as declaration;
+use crate::css::support::color_and_selector_fixtures::{
+    assert_color_limits, background_images as images, expanded_longhands as expanded,
+};
+use crate::css::support::{
+    color_property::color_property_value, parsed_color as color, sole_declaration as declaration,
+};
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
-fn color(css: &str) -> CssColor {
-    let source = declaration(&format!("color:{css}"));
-    let CssKnownPropertyValueRef::Color(value) = source.known().unwrap().property_value().unwrap()
-    else {
-        panic!("typed color")
-    };
-    value.value().clone()
-}
-fn images(css: &str) -> CssImageValueList {
-    let source = declaration(&format!("background-image:{css}"));
-    let CssKnownPropertyValueRef::BackgroundImage(value) =
-        source.known().unwrap().property_value().unwrap()
-    else {
-        panic!("typed images")
-    };
-    value.images().clone()
-}
-fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("completed expansion")
-    };
-    for value in values.items() {
-        assert!(value.source().same_occurrence(source));
-        assert_eq!(value.source().importance(), source.importance());
-    }
-    values
-}
 fn assert_text(source: &str, expected: &str) {
     let supplied = parse_component_values(source).unwrap();
     let checked = parse_property_value(
@@ -74,11 +50,7 @@ fn assert_text(source: &str, expected: &str) {
     );
     for value in [&checked, parsed] {
         let before = value.clone();
-        let CssKnownPropertyValueRef::Color(payload) =
-            value.known().unwrap().property_value().unwrap()
-        else {
-            panic!("typed color")
-        };
+        let payload = color_property_value(value);
         for _ in 0..3 {
             assert_eq!(
                 payload.value().to_specified_css().unwrap(),
@@ -299,19 +271,21 @@ fn malformed_grammar_drops_only_its_declaration_and_validation_rejects_it() {
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
         assert!(validate_style_attribute(&source).is_err());
-        assert!(
+        assert!(matches!(
             parse_property_value(
                 CssPropertyNameRef::Known(CssKnownProperty::Color),
                 parse_component_values(invalid).unwrap(),
                 CssImportance::Normal
             )
-            .is_err()
-        );
+            .unwrap_err()
+            .kind(),
+            CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidColorSyntax(_))
+        ));
     }
 }
 
 #[test]
-fn unrelated_existing_color_controls_remain_clean_and_typed() {
+fn unrelated_color_controls_remain_clean_and_typed() {
     for (source, expected) in [
         (
             "color(display-p3 -20% 120% 50%)",
@@ -644,32 +618,7 @@ fn all_four_missing_channels_and_alpha_share_exact_logical_budgets_with_wrappers
             13,
         ),
     ] {
-        let value = color(source);
-        let before = value.clone();
-        for _ in 0..3 {
-            assert_eq!(
-                value
-                    .to_specified_css_with_limits(Limits::new(nodes, nodes, expected.len()))
-                    .unwrap(),
-                expected
-            );
-            assert_eq!(value, before);
-        }
-        assert_limit_error(
-            &value,
-            Limits::new(nodes - 1, nodes, expected.len()),
-            Kind::InputNodeLimit,
-        );
-        assert_limit_error(
-            &value,
-            Limits::new(nodes, nodes - 1, expected.len()),
-            Kind::ProjectionNodeLimit,
-        );
-        assert_limit_error(
-            &value,
-            Limits::new(nodes, nodes, expected.len() - 1),
-            Kind::ByteLimit,
-        );
+        assert_color_limits(&color(source), expected, nodes, nodes);
     }
 }
 

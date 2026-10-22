@@ -1,6 +1,7 @@
 //! Public authored-color construction contracts from CSS Color 4 and the
 //! 2026-09-08 CSS Color 5 relative-color and color-mix definitions.
 
+use crate::css::support::color_and_selector_fixtures::named_color as named;
 use crate::css::support::color_components::token;
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 use surgeist_css::*;
@@ -17,10 +18,6 @@ fn percentage(text: &str) -> CssColorComponent {
 
 fn hue(text: &str) -> CssColorHue {
     CssColorHue::Number(CssColorNumberLiteral::try_from_component(token(text)).unwrap())
-}
-
-fn named(name: &str) -> CssColor {
-    CssColor::from_named(CssNamedColor::try_new(name).unwrap())
 }
 
 fn relative_expression(

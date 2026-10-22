@@ -9,6 +9,7 @@ mod forgiving_selector_syntax_gate;
 mod nested_namespace_selectors;
 mod relative_selector_list_fragments;
 mod selector_attribute_matcher_comments;
+mod selector_authored_structure;
 mod selector_checked_parts_construction;
 mod selector_column_diagnostic_provenance;
 mod selector_column_lifecycle;

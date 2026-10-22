@@ -7,17 +7,8 @@
 //! https://www.w3.org/TR/2026/WD-css-transitions-1-20260108/#transition-property-property
 //! https://www.w3.org/TR/2026/WD-css-transitions-1-20260108/#transition-shorthand-property
 
+use crate::css::support::value_assertions::validated_sole_declaration as declaration;
 use surgeist_css::*;
-
-fn declaration(source: &str) -> CssDeclaration {
-    let report = parse_style_attribute(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [value] = report.syntax().as_slice() else {
-        panic!("one retained declaration: {source}");
-    };
-    assert!(report.clone().into_validation_result().is_ok());
-    value.clone()
-}
 
 fn transition_properties(value: &str) -> CssTransitionPropertyList {
     let declaration = declaration(&format!("transition-property:{value}"));

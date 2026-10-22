@@ -53,7 +53,7 @@ macro_rules! list_provider {
             pub(crate) fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
                 // The shorthand list names its actual admitted item-count owner.
                 // Terminal lists keep the ordinary node and separator path.
-                list_source_visit!(writer, |writer| node(writer) $(, $source)?)?;
+                list_source_visit!(writer, SpecifiedRuleWriter::node $(, $source)?)?;
                 let values = self.$getter();
                 for (index, value) in values.iter().enumerate() {
                     if index != 0 {
@@ -103,11 +103,6 @@ list_provider!(
 );
 list_provider!(CssAnimationList, values, animation, source = AnimationName);
 
-fn node(writer: &mut SpecifiedRuleWriter) -> Result<()> {
-    writer.context.charge_input(1)?;
-    writer.context.charge_projection(1)
-}
-
 fn unrepresentable() -> CssSpecifiedValueSerializationError {
     CssSpecifiedValueSerializationError::new(
         CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
@@ -118,7 +113,7 @@ fn transition_property(
     writer: &mut SpecifiedRuleWriter,
     value: &CssTransitionProperty,
 ) -> Result<()> {
-    node(writer)?;
+    writer.node()?;
     match value {
         CssTransitionProperty::All => writer.append("all"),
         CssTransitionProperty::None => writer.append("none"),
@@ -127,7 +122,7 @@ fn transition_property(
 }
 
 fn animation_name(writer: &mut SpecifiedRuleWriter, value: &CssAnimationName) -> Result<()> {
-    node(writer)?;
+    writer.node()?;
     match value {
         CssAnimationName::None => writer.append("none"),
         CssAnimationName::Custom(name) => writer.append_identifier(name.as_str()),
@@ -144,7 +139,7 @@ fn iteration_count(
     writer: &mut SpecifiedRuleWriter,
     value: &CssAnimationIterationCount,
 ) -> Result<()> {
-    node(writer)?;
+    writer.node()?;
     match value {
         CssAnimationIterationCount::Infinite => writer.append("infinite"),
         CssAnimationIterationCount::Number(number) => number.append_to_rule_writer(writer),
@@ -152,7 +147,7 @@ fn iteration_count(
 }
 
 fn direction(writer: &mut SpecifiedRuleWriter, value: CssAnimationDirection) -> Result<()> {
-    node(writer)?;
+    writer.node()?;
     writer.append(match value {
         CssAnimationDirection::Normal => "normal",
         CssAnimationDirection::Reverse => "reverse",
@@ -162,7 +157,7 @@ fn direction(writer: &mut SpecifiedRuleWriter, value: CssAnimationDirection) -> 
 }
 
 fn fill_mode(writer: &mut SpecifiedRuleWriter, value: CssAnimationFillMode) -> Result<()> {
-    node(writer)?;
+    writer.node()?;
     writer.append(match value {
         CssAnimationFillMode::None => "none",
         CssAnimationFillMode::Forwards => "forwards",
@@ -172,7 +167,7 @@ fn fill_mode(writer: &mut SpecifiedRuleWriter, value: CssAnimationFillMode) -> R
 }
 
 fn play_state(writer: &mut SpecifiedRuleWriter, value: CssAnimationPlayState) -> Result<()> {
-    node(writer)?;
+    writer.node()?;
     writer.append(match value {
         CssAnimationPlayState::Running => "running",
         CssAnimationPlayState::Paused => "paused",
@@ -200,16 +195,8 @@ fn easing_name(name: &str) -> bool {
     )
 }
 
-fn separator(writer: &mut SpecifiedRuleWriter, started: &mut bool) -> Result<()> {
-    if *started {
-        writer.append(" ")?;
-    }
-    *started = true;
-    Ok(())
-}
-
 fn default_slot(writer: &mut SpecifiedRuleWriter, started: &mut bool, text: &str) -> Result<()> {
-    separator(writer, started)?;
+    writer.space_before_item(started)?;
     writer.context.charge_projection(1)?;
     writer.append(text)
 }
@@ -245,7 +232,10 @@ fn omitted(
 /// and a property spelled like an easing keyword keeps an easing before it.
 /// An item whose components are all initial keeps its first present component.
 fn transition(writer: &mut SpecifiedRuleWriter, value: &CssTransition) -> Result<()> {
-    writer.source_property(crate::CssKnownProperty::TransitionProperty, node)?;
+    writer.source_property(
+        crate::CssKnownProperty::TransitionProperty,
+        SpecifiedRuleWriter::node,
+    )?;
     let mut started = false;
     let collision = matches!(value.property(), Some(CssTransitionProperty::Custom(name)) if easing_name(name.as_str()));
     let delay_initial = match value.delay() {
@@ -289,7 +279,7 @@ fn transition(writer: &mut SpecifiedRuleWriter, value: &CssTransition) -> Result
             if !emit_property {
                 return omitted(writer, |writer| transition_property(writer, property));
             }
-            separator(writer, &mut started)?;
+            writer.space_before_item(&mut started)?;
             transition_property(writer, property)
         })?;
     }
@@ -298,7 +288,7 @@ fn transition(writer: &mut SpecifiedRuleWriter, value: &CssTransition) -> Result
             if !emit_duration {
                 return omitted(writer, |writer| duration.append_to_rule_writer(writer));
             }
-            separator(writer, &mut started)?;
+            writer.space_before_item(&mut started)?;
             duration.append_to_rule_writer(writer)
         })?;
     } else if emit_delay {
@@ -313,7 +303,7 @@ fn transition(writer: &mut SpecifiedRuleWriter, value: &CssTransition) -> Result
                 if !emit_easing {
                     return omitted(writer, |writer| easing.append_to_rule_writer(writer));
                 }
-                separator(writer, &mut started)?;
+                writer.space_before_item(&mut started)?;
                 easing.append_to_rule_writer(writer)
             },
         )?;
@@ -328,13 +318,13 @@ fn transition(writer: &mut SpecifiedRuleWriter, value: &CssTransition) -> Result
             if !emit_delay {
                 return omitted(writer, |writer| delay.append_to_rule_writer(writer));
             }
-            separator(writer, &mut started)?;
+            writer.space_before_item(&mut started)?;
             delay.append_to_rule_writer(writer)
         })?;
     }
     if collision && let Some(property) = value.property() {
         writer.source_property(crate::CssKnownProperty::TransitionProperty, |writer| {
-            separator(writer, &mut started)?;
+            writer.space_before_item(&mut started)?;
             transition_property(writer, property)
         })?;
     }
@@ -342,7 +332,10 @@ fn transition(writer: &mut SpecifiedRuleWriter, value: &CssTransition) -> Result
 }
 
 fn animation(writer: &mut SpecifiedRuleWriter, value: &CssAnimation) -> Result<()> {
-    writer.source_property(crate::CssKnownProperty::AnimationName, node)?;
+    writer.source_property(
+        crate::CssKnownProperty::AnimationName,
+        SpecifiedRuleWriter::node,
+    )?;
     let mut started = false;
     let name = match value.name() {
         Some(CssAnimationName::Custom(name)) => Some(name.as_str()),
@@ -351,7 +344,7 @@ fn animation(writer: &mut SpecifiedRuleWriter, value: &CssAnimation) -> Result<(
     };
     if let Some(duration) = value.duration() {
         writer.source_property(crate::CssKnownProperty::AnimationDuration, |writer| {
-            separator(writer, &mut started)?;
+            writer.space_before_item(&mut started)?;
             duration.append_to_rule_writer(writer)?;
             Ok(())
         })?;
@@ -362,7 +355,7 @@ fn animation(writer: &mut SpecifiedRuleWriter, value: &CssAnimation) -> Result<(
     }
     if let Some(easing) = value.timing_function() {
         writer.source_property(crate::CssKnownProperty::AnimationTimingFunction, |writer| {
-            separator(writer, &mut started)?;
+            writer.space_before_item(&mut started)?;
             easing.append_to_rule_writer(writer)?;
             Ok(())
         })?;
@@ -373,14 +366,14 @@ fn animation(writer: &mut SpecifiedRuleWriter, value: &CssAnimation) -> Result<(
     }
     if let Some(delay) = value.delay() {
         writer.source_property(crate::CssKnownProperty::AnimationDelay, |writer| {
-            separator(writer, &mut started)?;
+            writer.space_before_item(&mut started)?;
             delay.append_to_rule_writer(writer)?;
             Ok(())
         })?;
     }
     if let Some(count) = value.iteration_count() {
         writer.source_property(crate::CssKnownProperty::AnimationIterationCount, |writer| {
-            separator(writer, &mut started)?;
+            writer.space_before_item(&mut started)?;
             iteration_count(writer, count)?;
             Ok(())
         })?;
@@ -391,7 +384,7 @@ fn animation(writer: &mut SpecifiedRuleWriter, value: &CssAnimation) -> Result<(
     }
     if let Some(value) = value.direction() {
         writer.source_property(crate::CssKnownProperty::AnimationDirection, |writer| {
-            separator(writer, &mut started)?;
+            writer.space_before_item(&mut started)?;
             direction(writer, value)?;
             Ok(())
         })?;
@@ -407,7 +400,7 @@ fn animation(writer: &mut SpecifiedRuleWriter, value: &CssAnimation) -> Result<(
     }
     if let Some(value) = value.fill_mode() {
         writer.source_property(crate::CssKnownProperty::AnimationFillMode, |writer| {
-            separator(writer, &mut started)?;
+            writer.space_before_item(&mut started)?;
             fill_mode(writer, value)?;
             Ok(())
         })?;
@@ -418,7 +411,7 @@ fn animation(writer: &mut SpecifiedRuleWriter, value: &CssAnimation) -> Result<(
     }
     if let Some(value) = value.play_state() {
         writer.source_property(crate::CssKnownProperty::AnimationPlayState, |writer| {
-            separator(writer, &mut started)?;
+            writer.space_before_item(&mut started)?;
             play_state(writer, value)?;
             Ok(())
         })?;
@@ -429,7 +422,7 @@ fn animation(writer: &mut SpecifiedRuleWriter, value: &CssAnimation) -> Result<(
     }
     if let Some(name) = value.name() {
         writer.source_property(crate::CssKnownProperty::AnimationName, |writer| {
-            separator(writer, &mut started)?;
+            writer.space_before_item(&mut started)?;
             animation_name(writer, name)?;
             Ok(())
         })?;

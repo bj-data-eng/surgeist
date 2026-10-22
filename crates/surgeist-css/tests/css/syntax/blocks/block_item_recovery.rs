@@ -1,19 +1,8 @@
+use crate::css::support::authored_syntax::property_names;
 use surgeist_css::{
-    CssDeclarationContextRef, CssErrorCode, CssPropertyNameRef, CssRecoveryAction, CssRule,
-    CssScopedRule, CssSelector, CssSelectorCombinator, CssStyleSelector, CssTokenKind, ErrorKind,
-    parse_sheet,
+    CssDeclarationContextRef, CssErrorCode, CssRecoveryAction, CssRule, CssScopedRule, CssSelector,
+    CssSelectorCombinator, CssStyleSelector, CssTokenKind, ErrorKind, parse_sheet,
 };
-
-fn property_names(declarations: &surgeist_css::CssDeclarationList) -> Vec<&str> {
-    declarations
-        .iter()
-        .map(|declaration| match declaration.property_name() {
-            CssPropertyNameRef::Known(property) => property.canonical_name(),
-            CssPropertyNameRef::Custom(name) => name.as_str(),
-            _ => panic!("unexpected future property-name kind"),
-        })
-        .collect()
-}
 
 fn assert_drop(
     source: &str,
@@ -498,8 +487,10 @@ fn block_item_recovery_each_font_face_descriptor_value_failure_has_exact_scope()
         );
         let report = parse_sheet(&source);
         let child = &report.diagnostics()[0];
+        // A value without any authored token is located at the `;` that
+        // ends it, as an empty property value is.
         let responsible = if unit.ends_with(": ;") {
-            source.find(unit).unwrap() + unit.find(' ').unwrap()
+            source.find(unit).unwrap() + unit.find(';').unwrap()
         } else {
             source.find("nope").unwrap()
         };

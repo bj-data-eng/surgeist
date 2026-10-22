@@ -1,4 +1,4 @@
-use super::combinators::{Combinator, Tail, fill, parse_group};
+use super::combinators::{Combinator, Operand, Tail, commit, fill, parse_group};
 use super::property_input::Parser;
 use crate::error::property::{CssFeatureId, Error, ParseError, basic, unexpected_at};
 use cssparser::{Token, match_ignore_ascii_case};
@@ -82,6 +82,7 @@ pub(super) fn parse_easing<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssEasing, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
         let keyword = match_ignore_ascii_case! { &ident,
             "ease" => CssEasingKeyword::Ease,
@@ -91,7 +92,7 @@ pub(super) fn parse_easing<'i, 't>(
             "ease-in-out" => CssEasingKeyword::EaseInOut,
             "step-start" => CssEasingKeyword::StepStart,
             "step-end" => CssEasingKeyword::StepEnd,
-            _ => Err(unexpected_at(input.current_source_location()))?,
+            _ => Err(unexpected_at(keyword_location))?,
         };
         return Ok(CssEasing::Keyword(keyword));
     }
@@ -100,13 +101,9 @@ pub(super) fn parse_easing<'i, 't>(
         Token::Function(name) => name.clone(),
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
     };
-    let kind = match name.to_ascii_lowercase().as_str() {
-        "cubic-bezier" => CssEasingFunctionKind::CubicBezier,
-        "steps" => CssEasingFunctionKind::Steps,
-        "linear" => CssEasingFunctionKind::Linear,
-        _ => {
-            return Err(unexpected_at(input.current_source_location()));
-        }
+    let Some(kind) = easing_function_kind(&name) else {
+        // Easing 2 §2: an unknown function is itself responsible.
+        return Err(location.new_unexpected_token_error::<Error>(Token::Function(name)));
     };
     input.parse_nested_block(|input| match kind {
         CssEasingFunctionKind::CubicBezier => {
@@ -122,6 +119,39 @@ enum CssEasingFunctionKind {
     CubicBezier,
     Linear,
     Steps,
+}
+
+fn easing_function_kind(name: &str) -> Option<CssEasingFunctionKind> {
+    Some(match name.to_ascii_lowercase().as_str() {
+        "cubic-bezier" => CssEasingFunctionKind::CubicBezier,
+        "steps" => CssEasingFunctionKind::Steps,
+        "linear" => CssEasingFunctionKind::Linear,
+        _ => return None,
+    })
+}
+
+/// The `<easing-function>` operand of a `||` group. An easing function token
+/// commits the operand (Values 4 §2.2), so a failure inside it is the
+/// value's failure rather than a component no operand admits; keywords stay
+/// recoverable.
+fn easing_operand<'i, 't>(
+    slot: &mut Option<CssEasing>,
+    input: &mut Parser<'i, 't>,
+    numeric: &crate::numeric::NumericInputContext<'_>,
+) -> Operand<'i> {
+    let starts = |input: &mut Parser<'i, 't>| {
+        let state = input.state();
+        let starts = matches!(
+            input.next(),
+            Ok(Token::Function(name)) if easing_function_kind(name).is_some()
+        );
+        input.reset(&state);
+        starts
+    };
+    if commit(slot, input, starts, |input| parse_easing(input, numeric))? {
+        return Ok(true);
+    }
+    fill(slot, input, |input| parse_easing(input, numeric))
 }
 
 fn parse_linear<'i, 't>(
@@ -199,10 +229,14 @@ fn parse_steps<'i, 't>(
         CssIntegerValue::Calculation(value) => CssPositiveIntegerValue::Calculation(value),
     };
 
+    let mut position_location = None;
     let position = if input.is_exhausted() {
         None
     } else {
         input.expect_comma().map_err(basic)?;
+        input.skip_whitespace();
+        let location = input.current_source_location();
+        position_location = Some(location);
         let ident = input.expect_ident_cloned().map_err(basic)?;
         let position = match_ignore_ascii_case! { &ident,
             "jump-start" => CssStepPosition::JumpStart,
@@ -211,25 +245,41 @@ fn parse_steps<'i, 't>(
             "jump-both" => CssStepPosition::JumpBoth,
             "start" => CssStepPosition::Start,
             "end" => CssStepPosition::End,
-            _ => return Err(unexpected_at(input.current_source_location())),
+            // The unknown keyword itself cannot continue steps().
+            _ => return Err(unexpected_at(location)),
         };
         Some(position)
     };
     input.expect_exhausted().map_err(basic)?;
-    CssSteps::try_new(count, position).ok_or_else(|| unexpected_at(count_location))
+    // Easing 2 §2.3: a count valid by itself makes the position, which needs
+    // more steps (jump-none), responsible.
+    let location = match position_location {
+        Some(location) if CssSteps::try_new(count.clone(), None).is_some() => location,
+        _ => count_location,
+    };
+    CssSteps::try_new(count, position).ok_or_else(|| unexpected_at(location))
 }
 
 pub(super) fn parse_transition_property_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTransitionPropertyList, ParseError<'i, Error>> {
-    // List post-condition: `none` is admitted only alone.
+    // List post-condition: `none` is admitted only alone (Transitions 1
+    // §2.1). A leading `none` is a valid prefix, so the comma after it is
+    // responsible; a later `none` is itself responsible.
     let mut none_location = None;
+    let mut index = 0_usize;
     let properties = input.parse_comma_separated(|input| {
         let location = input.current_source_location();
         let property = parse_transition_property(input)?;
         if matches!(property, CssTransitionProperty::None) {
-            none_location.get_or_insert(location);
+            let responsible = if index == 0 {
+                input.current_source_location()
+            } else {
+                location
+            };
+            none_location.get_or_insert(responsible);
         }
+        index += 1;
         Ok(property)
     })?;
     CssTransitionPropertyList::try_new(properties).ok_or_else(|| {
@@ -259,13 +309,21 @@ pub(super) fn parse_transition_value_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssTransitionList, ParseError<'i, Error>> {
-    // List post-condition: a `none` transition property is admitted only alone.
+    // List post-condition: a `none` transition property is admitted only
+    // alone (Transitions 1 §2.5). A leading item with `none` is a valid
+    // prefix, so the comma after it is responsible.
     let mut none_location = None;
+    let mut index = 0_usize;
     let items = input.parse_comma_separated(|input| {
         let (item, location) = parse_single_transition_value(input, numeric)?;
-        if none_location.is_none() {
-            none_location = location;
+        if none_location.is_none() && location.is_some() {
+            none_location = if index == 0 {
+                Some(input.current_source_location())
+            } else {
+                location
+            };
         }
+        index += 1;
         Ok(item)
     })?;
     CssTransitionList::from_parser(items).ok_or_else(|| {
@@ -293,9 +351,7 @@ pub(super) fn parse_single_transition_value<'i, 't>(
             0 => fill(&mut duration, input, |input| parse_duration(input, numeric)),
             1 if duration.is_none() => Ok(false),
             1 => fill(&mut delay, input, |input| parse_delay(input, numeric)),
-            2 => fill(&mut timing_function, input, |input| {
-                parse_easing(input, numeric)
-            }),
+            2 => easing_operand(&mut timing_function, input, numeric),
             3 => {
                 let location = input.current_source_location();
                 let matched = fill(&mut property, input, parse_transition_property)?;
@@ -376,13 +432,14 @@ pub(super) fn parse_animation_direction_list<'i, 't>(
 pub(super) fn parse_animation_direction<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssAnimationDirection, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "normal" => Ok(CssAnimationDirection::Normal),
         "reverse" => Ok(CssAnimationDirection::Reverse),
         "alternate" => Ok(CssAnimationDirection::Alternate),
         "alternate-reverse" => Ok(CssAnimationDirection::AlternateReverse),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
@@ -397,13 +454,14 @@ pub(super) fn parse_animation_fill_mode_list<'i, 't>(
 pub(super) fn parse_animation_fill_mode<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssAnimationFillMode, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "none" => Ok(CssAnimationFillMode::None),
         "forwards" => Ok(CssAnimationFillMode::Forwards),
         "backwards" => Ok(CssAnimationFillMode::Backwards),
         "both" => Ok(CssAnimationFillMode::Both),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
@@ -418,11 +476,12 @@ pub(super) fn parse_animation_play_state_list<'i, 't>(
 pub(super) fn parse_animation_play_state<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssAnimationPlayState, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "running" => Ok(CssAnimationPlayState::Running),
         "paused" => Ok(CssAnimationPlayState::Paused),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
@@ -454,9 +513,7 @@ pub(super) fn parse_single_animation_value<'i, 't>(
             0 => fill(&mut duration, input, |input| parse_duration(input, numeric)),
             1 if duration.is_none() => Ok(false),
             1 => fill(&mut delay, input, |input| parse_delay(input, numeric)),
-            2 => fill(&mut timing_function, input, |input| {
-                parse_easing(input, numeric)
-            }),
+            2 => easing_operand(&mut timing_function, input, numeric),
             3 => fill(&mut iteration_count, input, |input| {
                 parse_animation_iteration_value(input, numeric)
             }),

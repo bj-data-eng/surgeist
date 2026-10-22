@@ -1,3 +1,4 @@
+use crate::css::support::math_depth::MathDepthBoundary;
 use surgeist_css::{
     CssErrorCode, CssGridAutoRepeatKind, CssGridAutoTrackComponent, CssGridGeneralTrackComponent,
     CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction, CssTokenKind, ErrorKind,
@@ -297,23 +298,11 @@ fn grid_repeat_failures_report_the_first_responsible_token_and_recover_progressi
 
 #[test]
 fn grid_repeat_calculations_preserve_the_exact_depth_boundary() {
-    for depth in [254_usize, 255] {
-        let value = format!("{}10px{}", "calc(".repeat(depth), ")".repeat(depth));
-        let source = format!("grid-template-columns: repeat(auto-fill, {value}); color: red");
-        let report = parse_style_attribute(&source);
-        assert!(
-            report.is_clean(),
-            "depth {depth}: {:?}",
-            report.diagnostics()
-        );
-        assert_eq!(report.syntax().len(), 2, "depth {depth}");
+    MathDepthBoundary {
+        template: "grid-template-columns: repeat(auto-fill, {}10px{}); color: red",
+        accepted: &[254, 255],
+        rejected: &[256, 257],
+        sibling_retained: true,
     }
-
-    for depth in [256_usize, 257] {
-        let value = format!("{}10px{}", "calc(".repeat(depth), ")".repeat(depth));
-        let source = format!("grid-template-columns: repeat(auto-fill, {value}); color: red");
-        let report = parse_style_attribute(&source);
-        assert_eq!(report.syntax().len(), 1, "depth {depth}");
-        assert_eq!(report.diagnostics().len(), 1, "depth {depth}");
-    }
+    .assert();
 }

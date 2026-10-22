@@ -3,8 +3,10 @@
 //! https://www.w3.org/TR/2024/WD-css-values-5-20241111/#component-function-commas
 //! https://www.w3.org/TR/2024/WD-css-values-5-20241111/#typedef-syntax
 
+use crate::css::support::value_assertions::assert_first_code;
+use crate::css::support::value_assertions::property_rejection;
 use crate::css::support::{
-    important_pair_declaration as parsed, retained_checked_declaration as checked,
+    important_declaration as parsed, retained_checked_declaration as checked,
 };
 use surgeist_css::*;
 
@@ -74,14 +76,13 @@ fn malformed_attr_does_not_defer_or_survive_recovery() {
         "attr(foo) attr()",
         "attr(foo, attr())",
     ] {
-        assert!(
+        property_rejection(
             parse_property_value(
                 CssPropertyNameRef::Known(CssKnownProperty::Display),
                 parse_component_values(text).unwrap(),
                 CssImportance::Normal,
-            )
-            .is_err(),
-            "{text}"
+            ),
+            CssKnownProperty::Display,
         );
         let report = parse_style_attribute(&format!("display:{text};display:block"));
         assert!(!report.is_clean(), "{text}");
@@ -114,7 +115,7 @@ fn independent_valid_variable_or_environment_can_defer_malformed_attr() {
 }
 
 #[test]
-fn custom_property_tokens_keep_their_existing_permissive_policy() {
+fn custom_property_tokens_keep_their_permissive_policy() {
     let name = CssCustomPropertyName::try_new("--x").unwrap();
     for text in ["attr()", "attr(foo,)", "attr(foo <number px>)"] {
         let components = parse_component_values(text).unwrap();
@@ -245,7 +246,10 @@ fn pending_attr_normalization_retains_recovered_order_and_importance() {
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropDeclaration
     );
-    assert!(validate_sheet(source).is_err());
+    assert_eq!(
+        validate_sheet(source).unwrap_err().diagnostics(),
+        report.diagnostics()
+    );
     let sheet = normalize_sheet_with_limits(
         report.syntax(),
         CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap(),
@@ -305,11 +309,14 @@ fn property_attr_deferral_does_not_admit_query_or_descriptor_operands() {
     let descriptor =
         parse_font_face_descriptor_value("attr(foo)", CssFontFaceDescriptorKind::FontStyle);
     assert!(descriptor.syntax().is_none());
-    assert!(!descriptor.is_clean());
+    assert_first_code(
+        descriptor.diagnostics(),
+        CssErrorCode::InvalidDescriptorValue,
+    );
 }
 
 #[test]
-fn ordinary_and_existing_variable_values_remain_controls() {
+fn ordinary_and_variable_values_remain_controls() {
     assert!(
         parsed("display", "block")
             .known()

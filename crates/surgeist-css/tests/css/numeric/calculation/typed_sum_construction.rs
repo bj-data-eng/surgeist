@@ -165,7 +165,10 @@ fn root_only_unitless_zero_is_rechecked_as_an_arithmetic_operand() {
 fn trusted_parsed_recovery_remains_in_the_child_while_strict_component_admission_rejects_it() {
     use surgeist_css::*;
     let report = parse_style_attribute("flow-tolerance:calc(1px");
-    assert!(!report.is_clean());
+    crate::css::support::value_assertions::assert_first_code(
+        report.diagnostics(),
+        CssErrorCode::UnexpectedEnd,
+    );
     let CssKnownPropertyValueRef::FlowTolerance(value) = report.syntax()[0]
         .known()
         .unwrap()

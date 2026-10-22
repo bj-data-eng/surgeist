@@ -6,6 +6,7 @@
 //! roots admit them only with an enclosing style or scope context.
 //! https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-syntax
 //! https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-bounds
+use crate::css::support::rules::sole_scope_selector as single;
 use surgeist_css::*;
 
 fn anchor(selector: &CssSelector, nesting: usize, scope: bool) {
@@ -18,13 +19,6 @@ fn anchor(selector: &CssSelector, nesting: usize, scope: bool) {
     assert!(compound.type_selector().is_none());
     assert!(compound.classes().is_empty());
     assert!(compound.ids().is_empty());
-}
-
-fn single(list: &CssScopeSelectorList) -> &CssSelector {
-    let [CssScopeSelector::Selector(selector)] = list.selectors() else {
-        panic!("one boundary selector")
-    };
-    selector
 }
 
 fn simple_bounds(scope: &CssScopeRule, root_nesting: usize, root_scope: bool) {
@@ -412,7 +406,7 @@ fn omitted_bounds_explicit_scope_and_escaped_identifier_remain_distinct_controls
 }
 
 #[test]
-fn invalid_boundary_lists_still_drop_scope_and_preserve_later_neighbor() {
+fn invalid_boundary_lists_drop_scope_and_preserve_later_neighbor() {
     for prelude in [
         "()",
         "(.root,)",

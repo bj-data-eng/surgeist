@@ -6,7 +6,7 @@
 //! https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#funcdef-filter-drop-shadow
 //! && reorders complete groups, not individual tokens inside a group.
 
-use crate::css::support::style_declaration as declaration;
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
 
 fn reject_interrupted(property: &str, value: &str) {
@@ -48,7 +48,10 @@ fn reject_interrupted(property: &str, value: &str) {
         error_position.column().value() as usize,
         source[..byte].encode_utf16().count()
     );
-    assert!(validate_style_attribute(&source).is_err());
+    assert_eq!(
+        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        report.diagnostics()
+    );
 }
 
 #[test]
@@ -169,31 +172,6 @@ fn ordinary_box_shadow_expands_once_without_losing_source_or_importance() {
         assert!(value.ordinary_value().is_some());
         assert!(value.source().same_occurrence(&source));
         assert_eq!(value.source().importance(), source.importance());
-    }
-}
-
-#[test]
-fn css_wide_box_shadow_expansion_stays_symbolic() {
-    for (text, keyword) in [
-        ("initial", CssGlobalKeyword::Initial),
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        let source = declaration(&format!("box-shadow:{text}!important"));
-        let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
-        else {
-            panic!("completed global")
-        };
-        let [value] = values.items() else {
-            panic!("one contribution")
-        };
-        assert_eq!(value.property(), CssKnownProperty::BoxShadow);
-        assert_eq!(value.value(), CssContributionValueRef::Global(keyword));
-        assert!(value.source().same_occurrence(&source));
-        assert_eq!(value.source().importance(), CssImportance::Important);
     }
 }
 

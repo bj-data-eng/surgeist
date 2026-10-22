@@ -119,7 +119,7 @@ fn nested_custom_bad_string_preserves_lexical_category_and_neighbor_recovery() {
 }
 
 #[test]
-fn nonempty_custom_variable_mismatches_keep_their_existing_categories() {
+fn nonempty_custom_variable_mismatches_keep_their_categories() {
     let name = CssCustomPropertyName::try_new("--x").unwrap();
     for (text, code, offset) in [
         ("var(x)", CssErrorCode::InvalidQualifiedRule, 4),

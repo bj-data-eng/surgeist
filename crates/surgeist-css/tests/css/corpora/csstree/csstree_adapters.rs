@@ -6,9 +6,7 @@ use adapters::{
     EntryPoint, Extractor, FontFaceDescriptorKind, OptionsProfile, PropertyOrDescriptor,
     TopLevelRuleKind, UnsupportedPolicy, UnsupportedReason,
 };
-use surgeist_css::{
-    CssDeclarationList, CssNamespaceContext, CssRule, CssSheet, parse_rule, parse_sheet,
-};
+use surgeist_css::{CssNamespaceContext, CssRule, parse_rule, parse_sheet};
 
 // Registry metadata and the closed extractor discriminator are corpus contracts.
 #[test]
@@ -36,7 +34,6 @@ fn full_at_rule_adapters_preserve_raw_input_and_single_rule_presence() {
             assert_eq!(complete.payload_span(), 0..source.len());
         }
     }
-    assert_eq!(Extractor::AtRule.name(), "at_rule");
 }
 
 #[test]
@@ -107,7 +104,6 @@ fn style_block_adapter_preserves_raw_input_and_names_block_presence() {
         .unwrap();
     assert_eq!(entry.entry_point(), EntryPoint::StyleBlock);
     assert_eq!(entry.extractor(), Extractor::StyleBlock);
-    assert_eq!(entry.extractor_name(), "style_block");
     for source in ["{}", "{color:red};", " /*😀*/\r\n{color:red}", "{"] {
         let complete = entry.adapter().wrap(source, None).unwrap();
         assert_eq!(complete.source(), source);
@@ -146,12 +142,9 @@ fn registry_covers_every_fixture_path() {
             entry.has_legal_context_combination()
                 && !entry.context().is_empty()
                 && entry.accepts_options(OptionsProfile::Empty)
-                && !entry.adapter_name().is_empty()
-                && !entry.entry_point_name().is_empty()
-                && !entry.extractor_name().is_empty()
-                && entry.unsupported_policy_name().is_some()
+                && entry.unsupported_policy().is_some()
         }),
-        "every fixture path must explicitly name its adapter, entry point, extractor, and unsupported policy"
+        "every fixture path must bind a legal context and declare its unsupported policy"
     );
 }
 
@@ -241,66 +234,11 @@ fn fixed_wrappers_preserve_one_contiguous_payload_and_exact_span() {
     }
 }
 
+// `adapters::validate_closed_model` (asserted with the registry census above)
+// owns the extractor inventory over an empty sheet; these are the font-face
+// descriptor bindings it does not state.
 #[test]
-fn extractor_inventory_uses_only_public_accessors() {
-    let sheet = CssSheet::new();
-    let rule_kinds = [
-        TopLevelRuleKind::Import,
-        TopLevelRuleKind::Namespace,
-        TopLevelRuleKind::CounterStyle,
-        TopLevelRuleKind::Page,
-        TopLevelRuleKind::LayerStatement,
-        TopLevelRuleKind::LayerBlock,
-        TopLevelRuleKind::FontFace,
-        TopLevelRuleKind::Keyframes,
-        TopLevelRuleKind::Style,
-        TopLevelRuleKind::Media,
-        TopLevelRuleKind::Supports,
-        TopLevelRuleKind::Container,
-        TopLevelRuleKind::Scope,
-    ];
-    let descriptors = [
-        FontFaceDescriptorKind::FontFamily,
-        FontFaceDescriptorKind::Src,
-        FontFaceDescriptorKind::FontWeight,
-        FontFaceDescriptorKind::FontStyle,
-        FontFaceDescriptorKind::FontStretch,
-        FontFaceDescriptorKind::FontDisplay,
-        FontFaceDescriptorKind::UnicodeRange,
-        FontFaceDescriptorKind::FontFeatureSettings,
-    ];
-    let extractors = [
-        Extractor::SheetRules,
-        Extractor::StyleDeclarations,
-        Extractor::StyleSelector,
-        Extractor::MediaQueries,
-        Extractor::MediaChildren,
-        Extractor::SupportsChildren,
-        Extractor::ContainerChildren,
-        Extractor::ScopeChildren,
-        Extractor::LayerBlockChildren,
-    ];
-
-    for extractor in extractors
-        .into_iter()
-        .chain(rule_kinds.map(Extractor::TopLevelRuleKind))
-        .chain(descriptors.map(Extractor::FontFaceDescriptor))
-    {
-        assert_eq!(extractor.extract_sheet(&sheet), Ok(0));
-    }
-    assert!(rule_kinds.iter().all(|kind| !kind.name().is_empty()));
-    assert!(
-        descriptors
-            .iter()
-            .all(|descriptor| !descriptor.name().is_empty())
-    );
-    let _: fn(Extractor, &CssDeclarationList) -> Result<usize, adapters::Mismatch> =
-        Extractor::extract_declaration_list;
-    assert_eq!(
-        UnsupportedPolicy::FullObservation.name(),
-        "full_observation"
-    );
-
+fn font_face_descriptors_bind_only_descriptor_value_entries() {
     assert!(adapters::REGISTRY.iter().all(|entry| {
         !matches!(
             (entry.adapter(), entry.extractor()),
@@ -309,15 +247,6 @@ fn extractor_inventory_uses_only_public_accessors() {
                 Extractor::TopLevelRuleKind(TopLevelRuleKind::FontFace)
             )
         )
-    }));
-    assert!(adapters::REGISTRY.iter().all(|entry| {
-        entry
-            .property_or_descriptor()
-            .is_none_or(|owner| !owner.name().is_empty())
-            && entry.unsupported_policy().is_some()
-            && entry
-                .unsupported_reason()
-                .is_none_or(|reason| !reason.name().is_empty())
     }));
     assert!(adapters::REGISTRY.iter().all(|entry| {
         entry.property_or_descriptor()
@@ -622,13 +551,13 @@ fn raw_selector_and_media_adapters_preserve_the_complete_authored_input() {
     }) {
         visited += 1;
         let expected_entry = match entry.context() {
-            "selector" => "selector",
-            "selectorList" => "selector_list",
-            "mediaQuery" => "media_query",
+            "selector" => EntryPoint::Selector,
+            "selectorList" => EntryPoint::SelectorList,
+            "mediaQuery" => EntryPoint::MediaQuery,
             _ => unreachable!(),
         };
         assert_eq!(
-            entry.entry_point_name(),
+            entry.entry_point(),
             expected_entry,
             "{}",
             entry.fixture_path()

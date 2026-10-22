@@ -343,34 +343,6 @@ fn trim_none_and_edge_auto_initials_remain_ordinary_with_only_edge_inheriting() 
 }
 
 #[test]
-fn every_css_wide_keyword_expands_to_all_members_with_original_importance() {
-    for name in FAMILY {
-        let p = property(name);
-        for (text, keyword) in GLOBALS {
-            for front in FRONTS {
-                let declaration = front.valid(p, text, text);
-                assert_eq!(declaration.known().unwrap().global(), Some(keyword));
-                assert!(declaration.known().unwrap().property_value().is_none());
-                let values = contributions(&declaration);
-                assert_eq!(
-                    values
-                        .items()
-                        .iter()
-                        .map(CssLonghandContribution::property)
-                        .collect::<Vec<_>>(),
-                    expected_members(name)
-                );
-                for item in values.items() {
-                    assert!(
-                        matches!(item.value(), CssContributionValueRef::Global(actual) if actual == keyword)
-                    );
-                }
-            }
-        }
-    }
-}
-
-#[test]
 fn var_env_whole_value_reentry_preserves_source_replacement_and_every_ordinary_expansion() {
     for name in FAMILY {
         let p = property(name);
@@ -874,7 +846,7 @@ fn sheet_siblings_share_final_byte_limit_and_failed_output_keeps_input_reusable(
 }
 
 #[test]
-fn existing_shared_keyword_global_pending_and_shorthand_controls_execute() {
+fn shared_keyword_global_pending_and_shorthand_controls_execute() {
     for (name, text, expected, count) in [
         ("text-wrap-mode", "nowrap", "nowrap", 1),
         ("flex-flow", "wrap row-reverse", "row-reverse wrap", 2),

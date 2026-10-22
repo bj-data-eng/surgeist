@@ -1,5 +1,7 @@
 //! Specified value serialization and normalization.
 
+mod all_initial_line_shorthands;
+mod component_boundary_error_kinds;
 mod declaration_value_serialization;
 mod misc_property_serialization;
 mod normalization_contract;

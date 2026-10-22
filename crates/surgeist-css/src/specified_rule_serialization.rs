@@ -266,6 +266,68 @@ impl SpecifiedRuleWriter {
         self.context.append(&mut self.css, text)
     }
 
+    /// Charges one semantic node: one input visit and one projection node.
+    /// This is the shared node tariff for specified value providers.
+    pub(crate) fn node(&mut self) -> Result<(), CssSpecifiedValueSerializationError> {
+        self.context.charge_input(1)?;
+        self.context.charge_projection(1)
+    }
+
+    /// Emits one keyword as one charged node followed by its bytes.
+    pub(crate) fn keyword(
+        &mut self,
+        text: &str,
+    ) -> Result<(), CssSpecifiedValueSerializationError> {
+        self.node()?;
+        self.append(text)
+    }
+
+    /// CSSOM "serialize a CSS value" step 5: writes the space that separates
+    /// an item from an earlier emitted item, then records that one was emitted.
+    pub(crate) fn space_before_item(
+        &mut self,
+        emitted: &mut bool,
+    ) -> Result<(), CssSpecifiedValueSerializationError> {
+        if *emitted {
+            self.append(" ")?;
+        }
+        *emitted = true;
+        Ok(())
+    }
+
+    /// CSSOM "serialize a comma-separated list": items joined by `", "`.
+    pub(crate) fn comma_separated<T>(
+        &mut self,
+        items: &[T],
+        mut item: impl FnMut(&mut Self, &T) -> Result<(), CssSpecifiedValueSerializationError>,
+    ) -> Result<(), CssSpecifiedValueSerializationError> {
+        self.separated(items, ", ", &mut item)
+    }
+
+    /// CSSOM "serialize a CSS value" step 5: items joined by one space.
+    pub(crate) fn space_separated<T>(
+        &mut self,
+        items: &[T],
+        mut item: impl FnMut(&mut Self, &T) -> Result<(), CssSpecifiedValueSerializationError>,
+    ) -> Result<(), CssSpecifiedValueSerializationError> {
+        self.separated(items, " ", &mut item)
+    }
+
+    fn separated<T>(
+        &mut self,
+        items: &[T],
+        separator: &str,
+        item: &mut impl FnMut(&mut Self, &T) -> Result<(), CssSpecifiedValueSerializationError>,
+    ) -> Result<(), CssSpecifiedValueSerializationError> {
+        for (index, value) in items.iter().enumerate() {
+            if index != 0 {
+                self.append(separator)?;
+            }
+            item(self, value)?;
+        }
+        Ok(())
+    }
+
     /// Uses the owning value visitor to inspect semantic nodes, charging the
     /// CSSOM probe tariff rather than rendering/canonicalizing another value.
     pub(crate) fn visit_semantic<T>(

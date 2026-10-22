@@ -1288,16 +1288,6 @@ pub(crate) fn escape_parse_error(
     }
 }
 
-pub(crate) fn unexpected_token_at(source: &str, byte_offset: usize, token: &Token<'_>) -> Error {
-    Error {
-        kind: ErrorKind::UnexpectedToken(CssUnexpectedTokenError {
-            expectation: EXPECT_CSS_SYNTAX,
-            encountered: CssTokenSummary::from_token(token),
-        }),
-        position: CssSourcePosition::from_byte_offset_in(source, byte_offset),
-    }
-}
-
 /// A name-free grammar failure from an actual retained source token or opener.
 pub(crate) fn unexpected_component_value<'i>(
     component: &crate::CssComponentValue,
@@ -1738,32 +1728,6 @@ pub(crate) fn color_syntax_kind(component: Option<&str>) -> ErrorKind {
     })
 }
 
-#[cfg(test)]
-pub(crate) fn with_color_context<'i>(
-    mut error: ParseError<'i, Error>,
-    component: Option<&str>,
-) -> ParseError<'i, Error> {
-    if matches!(
-        error.kind,
-        ParseErrorKind::Custom(Error {
-            kind: ErrorKind::InvalidColorSyntax(_),
-            ..
-        })
-    ) {
-        return error;
-    }
-    let encountered = take_encountered(&mut error.kind);
-    error.kind = ParseErrorKind::Custom(Error::at(
-        error.location,
-        ErrorKind::InvalidColorSyntax(CssColorSyntaxError {
-            component: component.map(CssColorComponentName::new),
-            expectation: EXPECT_COLOR,
-            encountered,
-        }),
-    ));
-    error
-}
-
 pub(crate) fn with_media_query_context<'i>(
     mut error: ParseError<'i, Error>,
     feature: Option<&str>,
@@ -1859,6 +1823,29 @@ pub(crate) fn is_resource_parse_error(error: &ParseError<'_, Error>) -> bool {
             ParseErrorKind::Custom(Error { kind: ErrorKind::InvalidComponentValue(detail), .. })
                 if is_component_resource_error(detail)
         )
+}
+
+/// Names the owning at-rule and descriptor on a standalone descriptor-value
+/// grammar failure, as the enclosing rule body does. Resource and component
+/// failures keep their own kinds.
+pub(crate) fn with_descriptor_value_context<'i>(
+    error: ParseError<'i, Error>,
+    at_rule: &str,
+    descriptor: &str,
+) -> ParseError<'i, Error> {
+    if is_resource_parse_error(&error)
+        || matches!(
+            &error.kind,
+            ParseErrorKind::Custom(Error {
+                kind: ErrorKind::InvalidComponentValue(_),
+                ..
+            })
+        )
+    {
+        error
+    } else {
+        with_descriptor_context(error, at_rule, descriptor)
+    }
 }
 
 pub(crate) fn with_descriptor_context<'i>(
@@ -2136,6 +2123,8 @@ fn production_for_at_rule(name: &str) -> CssProductionId {
         CssProductionId::new("baseline.rule.font-face")
     } else if name.eq_ignore_ascii_case("font-palette-values") {
         CssProductionId::new("later.rule.font-palette-values")
+    } else if name.eq_ignore_ascii_case("font-feature-values") {
+        CssProductionId::new("later.rule.font-feature-values")
     } else if name.eq_ignore_ascii_case("keyframes") {
         CssProductionId::new("baseline.rule.keyframes")
     } else if name.eq_ignore_ascii_case("media") {
@@ -2191,6 +2180,7 @@ fn is_page_margin_box_name(name: &str) -> bool {
 
 fn at_rule_requires_block(name: &str) -> bool {
     name.eq_ignore_ascii_case("font-face")
+        || name.eq_ignore_ascii_case("font-feature-values")
         || name.eq_ignore_ascii_case("font-palette-values")
         || name.eq_ignore_ascii_case("keyframes")
         || name.eq_ignore_ascii_case("media")

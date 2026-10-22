@@ -2,34 +2,16 @@
 //! diagnostic contracts. Expected values never come from the runtime or registry.
 
 use serde_json::{Value, json};
-use std::{collections::BTreeSet, fs, path::Path};
-use surgeist_css::{
-    CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssPseudoClass, CssSelector,
-    parse_selector,
+use surgeist_css::{CssPseudoClass, CssSelector, parse_selector};
+
+use crate::css::support::csstree::adapters::{EntryPoint, Extractor};
+use crate::css::support::csstree::reconciliation::{
+    ObservationRoute, PredictedObservation, Reconciliation, RowPaths, catalog, catalog_module,
+    language_range_token_kind, namespace_context, text,
 };
 
-use crate::css::support::digest;
-
-fn expectations() -> Value {
-    serde_json::from_str(include_str!(
-        "../../../csstree/remaining-pseudo-reconciliation.json"
-    ))
-    .unwrap()
-}
-
-fn text<'a>(row: &'a Value, key: &str) -> &'a str {
-    row[key].as_str().unwrap()
-}
-
-fn snake_name(value: impl std::fmt::Debug) -> String {
-    let mut result = String::new();
-    for character in format!("{value:?}").chars() {
-        if character.is_ascii_uppercase() && !result.is_empty() {
-            result.push('_');
-        }
-        result.push(character.to_ascii_lowercase());
-    }
-    result
+fn reconciliation() -> Reconciliation {
+    Reconciliation::load("remaining-pseudo-reconciliation.json", RowPaths::Crate)
 }
 
 fn compound_argument(argument: &surgeist_css::CssCompoundSelectorArgument) -> Value {
@@ -56,7 +38,7 @@ fn typed_meaning(selector: &CssSelector) -> Value {
         }
         CssSelector::PseudoClass(CssPseudoClass::Lang(languages)) => {
             let ranges: Vec<_> = languages.ranges().iter().map(|range| {
-                json!({"token_kind": snake_name(range.kind()), "value": range.as_str()})
+                json!({"token_kind": language_range_token_kind(range.kind()), "value": range.as_str()})
             }).collect();
             json!({"pseudo_class": "Lang", "ranges": ranges})
         }
@@ -105,101 +87,49 @@ fn typed_meaning(selector: &CssSelector) -> Value {
     }
 }
 
+/// Public selector presence and typed meaning for one row.
+fn typed_pseudo_reconciles(row: &Value) -> Result<(), String> {
+    let report = parse_selector(text(row, "input"), &namespace_context());
+    let expected = &row["expected"];
+    let actual = json!({"present": report.syntax().is_some(),
+        "typed_expectation": report.syntax().as_ref().map(typed_meaning)});
+    let predicted = json!({"present": expected["semantic_acceptance"],
+        "typed_expectation": expected["typed_expectation"]});
+    if actual == predicted {
+        Ok(())
+    } else {
+        Err(format!("expected meaning {predicted}, actual {actual}"))
+    }
+}
+
 #[test]
 fn original_remaining_pseudos_preserve_typed_meaning_and_exact_recovery() {
-    let context = CssNamespaceContext::from_bindings([(
-        Some(CssNamespacePrefix::try_new("ns").unwrap()),
-        CssNamespaceName::new("surgeist-corpus-probe"),
-    )]);
-    let mut failures = Vec::new();
-    for row in expectations()["rows"].as_array().unwrap() {
-        let input = text(row, "input");
-        let report = parse_selector(input, &context);
-        let diagnostics: Vec<_> = report
-            .diagnostics()
-            .iter()
-            .map(|diagnostic| {
-                let byte_offset = diagnostic.error().position().byte_offset().value();
-                let span_start = diagnostic.span().start().byte_offset().value();
-                let span_end = diagnostic.span().end().byte_offset().value();
-                let relation = if byte_offset < input.len() {
-                    "intersects"
-                } else if span_start == input.len() && span_end == input.len() {
-                    "ends_at"
-                } else {
-                    "recovery_ends_at"
-                };
-                json!({"code": snake_name(diagnostic.error().code()),
-                "action": snake_name(diagnostic.action()), "byte_offset": byte_offset,
-                "span_start": span_start, "span_end": span_end,
-                "multiplicity": 1, "payload_relation": relation})
-            })
-            .collect();
-        let actual = json!({"present": report.syntax().is_some(), "clean": report.is_clean(),
-            "diagnostics": diagnostics});
-        let expected = json!({"present": row["expected"]["semantic_acceptance"],
-            "clean": row["expected"]["is_clean"], "diagnostics": row["expected_raw_diagnostics"]});
-        if actual != expected {
-            failures.push(format!(
-                "{}\nexpected: {expected}\nactual: {actual}",
-                row["id"]
-            ));
-        }
-        if let Some(selector) = report.syntax() {
-            let actual = typed_meaning(selector);
-            if actual != row["expected"]["typed_expectation"] {
-                failures.push(format!(
-                    "{}: expected meaning {}, actual {actual}",
-                    row["id"], row["expected"]["typed_expectation"]
-                ));
-            }
-        }
-    }
-    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    let seen = reconciliation().reconcile_observations(
+        ObservationRoute {
+            entry_point: EntryPoint::Selector,
+            extractor: Some(Extractor::Selector),
+        },
+        |_| true,
+        |row| PredictedObservation {
+            syntax_count: row["expected"]["outer_count"].as_u64().unwrap(),
+            is_clean: row["expected"]["is_clean"].as_bool().unwrap(),
+            diagnostics: row["expected_raw_diagnostics"].as_array().unwrap().clone(),
+        },
+        Some(&typed_pseudo_reconciles),
+    );
+    assert_eq!(seen, 75);
 }
 
 #[test]
 fn remaining_registry_matches_independent_complete_original_classes() {
-    let registry: Value =
-        serde_json::from_str(include_str!("../../../csstree/expected-classes.json")).unwrap();
-    let mut failures = Vec::new();
-    for row in expectations()["rows"].as_array().unwrap() {
-        let record = registry["records"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|record| record["id"] == row["id"])
-            .unwrap();
-        assert_eq!(record["expectation_sha256"], row["expectation_sha256"]);
-        if record["class"] != row["expected_class"] {
-            failures.push(format!(
-                "{}\nexpected: {}\nactual: {}",
-                row["id"], row["expected_class"], record["class"]
-            ));
-        }
-    }
-    assert!(
-        failures.is_empty(),
-        "{} full registry classes differ:\n{}",
-        failures.len(),
-        failures.join("\n")
-    );
+    reconciliation().assert_registry_classes();
 }
 
 #[test]
 fn original_remaining_identity_options_and_selected_publication_remain_bound() {
-    let data = expectations();
-    let rows = data["rows"].as_array().unwrap();
-    assert_eq!(rows.len(), 75);
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let catalog: Value =
-        serde_json::from_slice(&fs::read(root.join("specs/catalog.json")).unwrap()).unwrap();
-    let publication = &catalog["modules"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|module| module["id"] == "selectors-4")
-        .unwrap()["publication"];
+    let reconciliation = reconciliation();
+    let data = reconciliation.data();
+    let publication = &catalog_module(&json!("selectors-4"))["publication"];
     // The saved whole-catalog digest is historical provenance. Bind this test
     // to its actual normative edition, allowing unrelated catalog maintenance.
     for key in ["url", "sha256", "bytes", "date", "kind"] {
@@ -208,6 +138,7 @@ fn original_remaining_identity_options_and_selected_publication_remain_bound() {
             "selected publication {key}"
         );
     }
+    let catalog = catalog();
     for (name, source) in data["diagnostic_audits"]["shadow"]["normative_sources"]
         .as_object()
         .unwrap()
@@ -228,56 +159,10 @@ fn original_remaining_identity_options_and_selected_publication_remain_bound() {
             }
         }
     }
-    let mut ids = BTreeSet::new();
-    for row in rows {
-        let id = text(row, "id");
-        assert!(ids.insert(id), "duplicate original {id}");
-        assert_eq!(
-            digest::sha256_hex(text(row, "input").as_bytes()),
-            text(row, "input_sha256"),
-            "{id}"
-        );
-        assert_eq!(
-            digest::sha256_hex(&serde_json::to_vec(&row["effective_options"]).unwrap()),
-            text(row, "options_sha256"),
-            "{id}"
-        );
-        for (path, hash) in [
-            ("source_path", "source_sha256"),
-            ("expectation_path", "expectation_sha256"),
-        ] {
-            assert_eq!(
-                digest::sha256_hex(&fs::read(root.join(text(row, path))).unwrap()),
-                text(row, hash),
-                "{id}"
-            );
-        }
-        let neutral: Value =
-            serde_json::from_slice(&fs::read(root.join(text(row, "expectation_path"))).unwrap())
-                .unwrap();
-        let original = neutral["cases"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|case| case["id"] == id)
-            .unwrap();
-        assert_eq!(original, &row["original_expectation"], "{id}");
-        for key in ["input", "context", "status"] {
-            assert_eq!(original[key], row[key], "{id}: {key}");
-        }
-        assert_eq!(
-            original.get("options").is_some(),
-            row["options_present"].as_bool().unwrap(),
-            "{id}"
-        );
-        assert_eq!(original["options"], row["options"], "{id}");
-        assert_eq!(
-            original
-                .get("options")
-                .cloned()
-                .unwrap_or_else(|| json!({})),
-            row["effective_options"],
-            "{id}"
-        );
-    }
+    let rows = reconciliation.rows();
+    assert_eq!(rows.len(), 75);
+    assert_eq!(
+        reconciliation.assert_original_bindings(rows, "selector"),
+        75
+    );
 }

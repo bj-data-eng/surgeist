@@ -3,6 +3,7 @@
 //! selected frozen WebKit FIXED policy: nearest, ties away from zero.
 //! Goldens below count decimal places directly; no host float is an oracle.
 
+use crate::css::support::value_assertions::assert_numeric_kind;
 use surgeist_css::*;
 
 fn component(source: &str) -> CssComponentValue {
@@ -320,11 +321,11 @@ fn exact_admission_precedes_lossy_text_and_huge_positive_output_fails_atomically
         assert_eq!(error.origin(), Some(raw.origin()));
         assert_eq!(raw, before);
     }
-    assert!(
+    assert_numeric_kind(
         CssDuration::try_new(CssTimeValue::from_literal(
-            CssTimeLiteral::try_new("-1e-999", CssTimeUnit::Seconds).unwrap()
-        ))
-        .is_err()
+            CssTimeLiteral::try_new("-1e-999", CssTimeUnit::Seconds).unwrap(),
+        )),
+        surgeist_css::CssNumericConstructionErrorKind::OutOfRange,
     );
     for source in ["1e999", "1e999999999999999999999999999999999999999999"] {
         let value = number(source);
@@ -341,7 +342,7 @@ fn exact_admission_precedes_lossy_text_and_huge_positive_output_fails_atomically
 }
 
 #[test]
-fn calculation_text_and_node_and_byte_budgets_keep_the_existing_contract() {
+fn calculation_text_keeps_its_node_and_byte_budgets() {
     use CssSpecifiedValueSerializationErrorKind as K;
     use CssSpecifiedValueSerializationLimits as L;
     let calculation = CssFrequencyCalculation::try_from_components(
@@ -543,7 +544,7 @@ mod composed_ordinary_values {
     }
 
     #[test]
-    fn ratio_and_filter_count_existing_child_visits_and_actual_rounded_bytes() {
+    fn ratio_and_filter_count_present_child_visits_and_actual_rounded_bytes() {
         let ratio = CssSpecifiedRatio::new(
             CssRatioOperand::try_from_component(component(".12345649")).unwrap(),
             Some(CssRatioOperand::try_from_component(component(".1234565")).unwrap()),
@@ -607,7 +608,7 @@ mod composed_ordinary_values {
     }
 
     #[test]
-    fn timing_and_easing_preserve_list_identity_while_existing_children_round() {
+    fn timing_and_easing_preserve_list_identity_while_their_children_round() {
         let report = parse_style_attribute(
             "transition-duration:0.0001ms,1.1234565s;transition-delay:-0.0001ms;transition-timing-function:cubic-bezier(.12345649,-.1234565,.9999996,.1234565)",
         );

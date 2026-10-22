@@ -1,34 +1,12 @@
 //! Public-boundary regression contracts from CSS Box Alignment 3 (2026-01-30)
 //! §§8.1, 8.2, and 8.4. This RED slice uses only pre-existing APIs.
 
+use crate::css::support::property_admission::assert_declaration_rejected as rejected;
+use crate::css::support::{
+    checked_grammar_declaration as checked, important_declaration as declaration,
+    selected_grammar as grammar,
+};
 use surgeist_css::*;
-
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("known grammar: {name}"))
-}
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(
-        report.is_clean(),
-        "{source}: {} diagnostic(s)",
-        report.diagnostics().len()
-    );
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("expected one declaration: {source}")
-    };
-    declaration.clone()
-}
-
-fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|_| panic!("checked construction rejected {name}:{value}"))
-}
 
 #[test]
 fn gap_accepts_one_or_two_values_with_row_then_column_assignment() {
@@ -73,24 +51,7 @@ fn gap_accepts_one_or_two_values_with_row_then_column_assignment() {
 fn negative_gap_literals_are_rejected_without_losing_neighboring_declarations() {
     for name in ["gap", "row-gap", "column-gap"] {
         for value in ["-1px", "-2%"] {
-            let source = format!("color:red;{name}:{value};color:blue");
-            let report = parse_style_attribute(&source);
-            assert_eq!(report.syntax().len(), 2, "neighbors: {source}");
-            assert_eq!(report.diagnostics().len(), 1, "invalid value: {source}");
-            assert_eq!(
-                report.diagnostics()[0].action(),
-                CssRecoveryAction::DropDeclaration
-            );
-            assert!(validate_style_attribute(&source).is_err());
-            assert!(
-                parse_property_value_for_grammar(
-                    grammar(name),
-                    parse_component_values(value).unwrap(),
-                    CssImportance::Normal,
-                )
-                .is_err(),
-                "checked construction accepted {name}:{value}"
-            );
+            rejected(name, value, Some(value));
         }
     }
 }

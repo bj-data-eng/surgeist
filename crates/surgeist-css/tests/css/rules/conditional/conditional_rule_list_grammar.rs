@@ -11,6 +11,7 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#syntax
+use crate::css::support::rules::page_pseudo;
 use surgeist_css::{
     CssComponentValue, CssComponentValueRef, CssErrorCode, CssImportance, CssKnownProperty,
     CssKnownPropertyValueRef, CssMarginValue, CssPagePseudo, CssRecoveryAction, CssRule,
@@ -552,11 +553,4 @@ fn layer_and_container_block_contents_retain_pages_and_discard_semicolons() {
         assert_eq!(page_pseudo(page), Some(CssPagePseudo::First));
         assert!(report.into_validation_result().is_ok());
     }
-}
-
-fn page_pseudo(page: &surgeist_css::CssPageRule) -> Option<surgeist_css::CssPagePseudo> {
-    page.selectors()
-        .selectors()
-        .first()
-        .and_then(|s| s.pseudos().first().copied())
 }

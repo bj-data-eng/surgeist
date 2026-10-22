@@ -101,3 +101,63 @@ fn serialize_list(
     }
     Ok(writer.css)
 }
+
+/// The shortest member count for a `<T>{1,4}` box-side value in
+/// top/right/bottom/left order (or its logical equivalent).
+///
+/// Box 3 and Backgrounds 3 copy an omitted left from right, an omitted
+/// bottom from top and an omitted right from top; CSSOM "serialize a CSS
+/// value" step 2 then omits every member the copy reproduces. The comparisons
+/// run in that dependency order, left/right first, and stop at the first
+/// difference, so a fallible or charged `equal` sees one fixed sequence.
+pub(crate) fn shortest_four_side_count<E>(
+    mut equal: impl FnMut(usize, usize) -> std::result::Result<bool, E>,
+) -> std::result::Result<usize, E> {
+    Ok(if !equal(1, 3)? {
+        4
+    } else if !equal(0, 2)? {
+        3
+    } else if !equal(0, 1)? {
+        2
+    } else {
+        1
+    })
+}
+
+#[cfg(test)]
+mod four_side_tests {
+    use super::shortest_four_side_count;
+
+    fn count(values: [&str; 4]) -> (usize, Vec<(usize, usize)>) {
+        let mut calls = Vec::new();
+        let count = shortest_four_side_count(|left, right| {
+            calls.push((left, right));
+            Ok::<_, ()>(values[left] == values[right])
+        })
+        .unwrap();
+        (count, calls)
+    }
+
+    #[test]
+    fn omits_each_member_its_copy_rule_reproduces() {
+        // Expected counts follow the Box 3 margin copy rules directly.
+        assert_eq!(count(["a", "a", "a", "a"]).0, 1);
+        assert_eq!(count(["a", "b", "a", "b"]).0, 2);
+        assert_eq!(count(["a", "b", "c", "b"]).0, 3);
+        assert_eq!(count(["a", "b", "a", "c"]).0, 4);
+        // Top equal to right and bottom does not shorten past a distinct left.
+        assert_eq!(count(["a", "a", "a", "b"]).0, 4);
+        assert_eq!(count(["a", "a", "b", "a"]).0, 3);
+    }
+
+    #[test]
+    fn comparisons_run_left_right_first_and_stop_at_the_first_difference() {
+        assert_eq!(count(["a", "b", "a", "c"]).1, [(1, 3)]);
+        assert_eq!(count(["a", "b", "c", "b"]).1, [(1, 3), (0, 2)]);
+        assert_eq!(count(["a", "a", "a", "a"]).1, [(1, 3), (0, 2), (0, 1)]);
+        assert_eq!(
+            shortest_four_side_count(|_, _| Err::<bool, _>("first")),
+            Err("first")
+        );
+    }
+}

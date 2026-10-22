@@ -1,4 +1,9 @@
 //! Values4 Appendix C: retained Number tokens have a distinct pixel interpretation.
+use crate::css::support::known_property;
+use crate::css::support::value_assertions::{
+    assert_component_rejected, assert_first_property_diagnostic, assert_property_rejected,
+    property_rejection,
+};
 use surgeist_css::*;
 
 const QUIRKS: CssParserContext = CssParserContext::new(CssParserMode::Quirks);
@@ -30,7 +35,11 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
             assert_eq!(margin.origin(), original.origin());
             assert_eq!(margin.calculation(), None);
             assert_eq!(margin.serialize_specified().unwrap(), expected);
-            assert!(CssSpecifiedLengthPercentage::try_from_component(original.clone()).is_err());
+            assert_component_rejected(
+                CssSpecifiedLengthPercentage::try_from_component,
+                original.clone(),
+                CssNumericConstructionErrorKind::RootDomainMismatch,
+            );
 
             let padding = declaration(CssKnownProperty::PaddingTop, values.clone());
             let CssKnownPropertyValueRef::PaddingTop(padding) =
@@ -44,9 +53,10 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
             assert_eq!(padding.origin(), original.origin());
             assert_eq!(padding.calculation(), None);
             assert_eq!(padding.serialize_specified().unwrap(), expected);
-            assert!(
-                CssSpecifiedNonNegativeLengthPercentage::try_from_component(original.clone())
-                    .is_err()
+            assert_component_rejected(
+                CssSpecifiedNonNegativeLengthPercentage::try_from_component,
+                original.clone(),
+                CssNumericConstructionErrorKind::RootDomainMismatch,
             );
 
             let border = declaration(CssKnownProperty::BorderTopWidth, values.clone());
@@ -63,7 +73,11 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
             assert_eq!(border.origin(), original.origin());
             assert_eq!(border.calculation(), None);
             assert_eq!(border.serialize_specified().unwrap(), expected);
-            assert!(CssSpecifiedNonNegativeLength::try_from_component(original.clone()).is_err());
+            assert_component_rejected(
+                CssSpecifiedNonNegativeLength::try_from_component,
+                original.clone(),
+                CssNumericConstructionErrorKind::RootDomainMismatch,
+            );
 
             // The sole function exception retains the same inner Number, even
             // for programmatic origins that carry no source position.
@@ -101,7 +115,11 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
             assert_eq!(clip.origin(), original.origin());
             assert_eq!(clip.calculation(), None);
             assert_eq!(clip.serialize_specified().unwrap(), expected);
-            assert!(CssSpecifiedLength::try_from_component(original.clone()).is_err());
+            assert_component_rejected(
+                CssSpecifiedLength::try_from_component,
+                original.clone(),
+                CssNumericConstructionErrorKind::RootDomainMismatch,
+            );
         }
     }
 }
@@ -141,14 +159,14 @@ fn negative_nonzero_coefficients_retain_exact_sign_beyond_tokenizer_float_range(
         CssKnownProperty::BorderTopWidth,
         CssKnownProperty::Width,
     ] {
-        assert!(
-            QUIRKS
-                .parse_property_value_for_grammar(
-                    property.grammar(),
-                    values.clone(),
-                    CssImportance::Normal
-                )
-                .is_err()
+        assert_property_rejected(
+            QUIRKS.parse_property_value_for_grammar(
+                property.grammar(),
+                values.clone(),
+                CssImportance::Normal,
+            ),
+            property,
+            Some("-1e-1000"),
         );
     }
 }
@@ -166,14 +184,13 @@ fn fit_content_function_arguments_do_not_inherit_the_named_property_permission()
             "calc-size(7, size)",
         ] {
             let values = parse_component_values(text).unwrap();
-            assert!(
-                QUIRKS
-                    .parse_property_value_for_grammar(
-                        property.grammar(),
-                        values,
-                        CssImportance::Normal
-                    )
-                    .is_err()
+            property_rejection(
+                QUIRKS.parse_property_value_for_grammar(
+                    property.grammar(),
+                    values,
+                    CssImportance::Normal,
+                ),
+                property,
             );
         }
         assert!(
@@ -321,13 +338,33 @@ fn checked_pixel_lengths_compose_without_granting_number_syntax_to_composite_pro
             "text-underline-offset:10",
             "border-top-left-radius:10",
         ] {
-            assert!(!QUIRKS.parse_declaration(source).is_clean());
+            let (name, _) = source.split_once(':').unwrap();
+            assert_first_property_diagnostic(
+                QUIRKS.parse_declaration(source).diagnostics(),
+                source,
+                known_property(name),
+                "10",
+            );
         }
-        assert!(CssSpecifiedLength::try_from_component(original.clone()).is_err());
-        assert!(CssSpecifiedNonNegativeLength::try_from_component(original.clone()).is_err());
-        assert!(CssSpecifiedLengthPercentage::try_from_component(original.clone()).is_err());
-        assert!(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(original.clone()).is_err()
+        assert_component_rejected(
+            CssSpecifiedLength::try_from_component,
+            original.clone(),
+            CssNumericConstructionErrorKind::RootDomainMismatch,
+        );
+        assert_component_rejected(
+            CssSpecifiedNonNegativeLength::try_from_component,
+            original.clone(),
+            CssNumericConstructionErrorKind::RootDomainMismatch,
+        );
+        assert_component_rejected(
+            CssSpecifiedLengthPercentage::try_from_component,
+            original.clone(),
+            CssNumericConstructionErrorKind::RootDomainMismatch,
+        );
+        assert_component_rejected(
+            CssSpecifiedNonNegativeLengthPercentage::try_from_component,
+            original.clone(),
+            CssNumericConstructionErrorKind::RootDomainMismatch,
         );
     }
 }

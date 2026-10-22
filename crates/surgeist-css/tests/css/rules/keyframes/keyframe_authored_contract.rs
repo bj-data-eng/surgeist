@@ -5,14 +5,8 @@
 //! within Values 4's implementation-defined numeric precision allowance.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types
 
+use crate::css::support::rules::sole_keyframes as only_keyframes;
 use surgeist_css::*;
-
-fn only_keyframes(sheet: &CssSheet) -> &CssKeyframesRule {
-    let [CssRule::Keyframes(rule)] = sheet.rules() else {
-        panic!("one retained keyframes rule");
-    };
-    rule
-}
 
 fn assert_canonical(source: &str, expected: &str) {
     let report = parse_sheet(source);

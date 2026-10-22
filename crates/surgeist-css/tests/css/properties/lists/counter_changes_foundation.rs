@@ -4,6 +4,11 @@
 //! https://www.w3.org/TR/2020/WD-css-lists-3-20201117/#counter-set
 //! Names follow Values 4 custom-ident exclusions; integer math remains symbolic.
 
+use crate::css::support::named_property::longhand_contributions;
+use crate::css::support::named_property::validated_important_property_declaration as declaration;
+use crate::css::support::named_property::{
+    assert_checked_value_rejected_at, assert_programmatic_rejection, assert_value_diagnostic_at,
+};
 use surgeist_css::*;
 
 const PROPERTIES: [CssKnownProperty; 3] = [
@@ -12,32 +17,12 @@ const PROPERTIES: [CssKnownProperty; 3] = [
     CssKnownProperty::CounterSet,
 ];
 
-fn declaration(property: CssKnownProperty, value: &str) -> CssDeclaration {
-    let source = format!("{}:{value}!important", property.canonical_name());
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one retained declaration: {source}")
-    };
-    assert_eq!(declaration.known().unwrap().property(), property);
-    assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
-        value
-    );
-    assert!(validate_style_attribute(&source).is_ok(), "{source}");
-    declaration.clone()
-}
-
 fn ordinary(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("counter longhand contributes one ordinary value")
-    };
-    values.items().to_vec()
+    longhand_contributions(source).items().to_vec()
 }
 
-fn rejected(property: CssKnownProperty, value: &str) {
+fn rejected<'a>(property: CssKnownProperty, value: &str, rest: impl Into<Option<&'a str>>) {
+    let rest = rest.into();
     let source = format!("color:red;{}:{value};height:2px", property.canonical_name());
     let report = parse_style_attribute(&source);
     assert_eq!(
@@ -56,7 +41,15 @@ fn rejected(property: CssKnownProperty, value: &str) {
         )
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
+    assert_value_diagnostic_at(
+        diagnostic.error(),
+        property,
+        format!("color:red;{}:", property.canonical_name()).len(),
+        value,
+        rest,
+    );
     assert!(validate_style_attribute(&source).is_err(), "{source}");
+    assert_checked_value_rejected_at(property, value, rest);
 }
 
 #[test]
@@ -151,27 +144,28 @@ fn small_integer_values_keep_omitted_operands_and_duplicates_distinct() {
 #[test]
 fn invalid_names_operands_and_reversed_function_drop_only_their_declaration() {
     for property in PROPERTIES {
-        for value in [
-            "",
-            "1",
-            "none chapter",
-            "chapter none",
-            "chapter, section",
-            "inherit chapter",
-            "chapter default",
-            "default",
-            "DEFAULT",
-            r"\64 efault",
-            r"\69 nherit 1",
-            "chapter 1.5",
-            "chapter 1e2",
-            "chapter 1px",
-            "chapter 2%",
-            "chapter calc(2px)",
-            "chapter calc(1 +)",
-            "reversed(chapter)",
+        // The `)` cannot continue the sum, so it is responsible.
+        rejected(property, "chapter calc(1 +)", ")");
+        for (value, rest) in [
+            ("", ""),
+            ("1", "1"),
+            ("none chapter", "chapter"),
+            ("chapter none", "none"),
+            ("chapter, section", ", section"),
+            ("inherit chapter", "chapter"),
+            ("chapter default", "default"),
+            ("default", "default"),
+            ("DEFAULT", "DEFAULT"),
+            (r"\64 efault", r#"\64 efault"#),
+            (r"\69 nherit 1", "1"),
+            ("chapter 1.5", "1.5"),
+            ("chapter 1e2", "1e2"),
+            ("chapter 1px", "1px"),
+            ("chapter 2%", "2%"),
+            ("chapter calc(2px)", "calc(2px)"),
+            ("reversed(chapter)", "reversed(chapter)"),
         ] {
-            rejected(property, value);
+            rejected(property, value, rest);
         }
     }
 }
@@ -203,13 +197,13 @@ fn programmatic_components_share_grammar_and_have_programmatic_origins() {
             CssComponentValue::try_token("1px").unwrap(),
         ])
         .unwrap();
-        assert!(
+        assert_programmatic_rejection(
             parse_property_value(
                 CssPropertyNameRef::Known(property),
                 invalid,
                 CssImportance::Normal,
-            )
-            .is_err()
+            ),
+            property,
         );
     }
 }

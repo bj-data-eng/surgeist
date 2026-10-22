@@ -4,8 +4,13 @@
 //! propagation. Exact child provenance, ordered intrinsic contributions and
 //! bounded atomic failures are Surgeist contracts, before contextual execution.
 
+use crate::css::support::property_admission::Responsible::{At, End};
+use crate::css::support::property_admission::eof_closure_origin as implicit_origin;
+use crate::css::support::property_admission::{
+    assert_checked_rejected, assert_implicit_closure, assert_style_attribute_rejected,
+};
 use crate::css::support::{
-    checked_property_grammar_declaration as checked, style_declaration as parsed,
+    checked_property_grammar_declaration as checked, sole_declaration as parsed,
 };
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
@@ -145,26 +150,6 @@ fn origin_clone(actual: &CssValueOrigin, expected: &CssValueOrigin) {
         assert!(actual.source().same_snapshot(expected.source()));
         assert_eq!(actual.span(), expected.span());
     }
-}
-fn implicit_origin(components: &CssComponentValues, original: &str) -> CssValueOrigin {
-    // Inspect emitted origin mappings, as in the strict closure contract. A
-    // repaired comment ending need not occupy the serialized CSS's suffix.
-    let serialized = components.serialize().unwrap();
-    let origin = (0..serialized.as_css().len())
-        .find_map(|offset| match serialized.origin_at(offset) {
-            Some(CssSerializedOrigin::Token(origin @ CssValueOrigin::ImplicitClosure { .. })) => {
-                Some(origin.clone())
-            }
-            _ => None,
-        })
-        .expect("original implicit closure is retained");
-    let CssValueOrigin::ImplicitClosure { at, .. } = &origin else {
-        unreachable!()
-    };
-    assert_eq!(at.source().as_str(), original);
-    assert_eq!(at.span().start().byte_offset().value(), original.len());
-    assert_eq!(at.span().start(), at.span().end());
-    origin
 }
 fn time_clone(actual: &CssTimeValue, expected: &CssTimeValue) {
     assert_eq!(actual, expected); // Raw equality includes every component origin.
@@ -688,7 +673,7 @@ fn late_recovered_time_projections_keep_implicit_graphs_through_output_and_norma
         (".a{animation:fade 1s,slide 2s calc((-250ms", false),
     ] {
         let report = parse_sheet(css);
-        assert!(!report.is_clean());
+        assert_implicit_closure(css, &report);
         let limits = CssNormalizationLimits::try_new(0, 1, 1, 8).unwrap();
         let normalized = normalize_report_with_limits(&report, limits).unwrap();
         assert!(!normalized.is_clean());
@@ -737,7 +722,10 @@ fn late_recovered_time_projections_keep_implicit_graphs_through_output_and_norma
             if duration { "calc(2s)" } else { "calc(-0.25s)" }
         );
         assert_eq!(time.calculation().unwrap().components(), &raw);
-        assert!(validate_sheet(css).is_err());
+        assert_eq!(
+            validate_sheet(css).unwrap_err().diagnostics(),
+            report.diagnostics()
+        );
         let before = report.clone();
         assert_eq!(
             normalize_report_with_limits(
@@ -887,124 +875,123 @@ fn each_animation_role_rejects_intrinsic_grammar_negatives_through_all_fronts() 
         (
             P::AnimationName,
             vec![
-                "",
-                "1s",
-                "fade slide",
-                "fade,",
-                "fade,,slide",
-                "initial, fade",
-                "default",
+                ("", End),
+                ("1s", At("1s")),
+                ("fade slide", At("slide")),
+                ("fade,", At(",")),
+                ("fade,,slide", At(",")),
+                ("initial, fade", At(",")),
+                ("default", At("default")),
             ],
         ),
         (
             P::AnimationDuration,
             vec![
-                "",
-                "-1s",
-                "-1e-999s",
-                "0",
-                "1px",
-                "1s,",
-                "inherit, 1s",
-                "calc(1px)",
-                "1s 2s",
+                ("", End),
+                ("-1s", At("-1s")),
+                ("-1e-999s", At("-1e-999s")),
+                ("0", At("0")),
+                ("1px", At("1px")),
+                ("1s,", At(",")),
+                ("inherit, 1s", At(",")),
+                ("calc(1px)", At("calc(")),
+                ("1s 2s", At("2s")),
             ],
         ),
         (
             P::AnimationDelay,
             vec![
-                "",
-                "0",
-                "1px",
-                "1s,",
-                "1s,,2s",
-                "unset, 1s",
-                "calc(1px)",
-                "1s 2s",
+                ("", End),
+                ("0", At("0")),
+                ("1px", At("1px")),
+                ("1s,", At(",")),
+                ("1s,,2s", At(",")),
+                ("unset, 1s", At(",")),
+                ("calc(1px)", At("calc(")),
+                ("1s 2s", At("2s")),
             ],
         ),
         (
             P::AnimationTimingFunction,
             vec![
-                "",
-                "1s",
-                "ease,",
-                "ease ease-in",
-                "cubic-bezier(-1,0,1,1)",
-                "steps(1,jump-none)",
-                "revert, ease",
+                ("", End),
+                ("1s", At("1s")),
+                ("ease,", At(",")),
+                ("ease ease-in", At("ease-in")),
+                ("cubic-bezier(-1,0,1,1)", At("-1")),
+                ("steps(1,jump-none)", At("jump-none")),
+                ("revert, ease", At(",")),
             ],
         ),
         (
             P::AnimationIterationCount,
             vec![
-                "",
-                "-1",
-                "-1e-999",
-                "1px",
-                "1 2",
-                "1,",
-                "infinite,,2",
-                "initial, 1",
-                "calc(1s)",
+                ("", End),
+                ("-1", At("-1")),
+                ("-1e-999", At("-1e-999")),
+                ("1px", At("1px")),
+                ("1 2", At("2")),
+                ("1,", At(",")),
+                ("infinite,,2", At(",")),
+                ("initial, 1", At(",")),
+                ("calc(1s)", At("calc(")),
             ],
         ),
         (
             P::AnimationDirection,
             vec![
-                "",
-                "sideways",
-                "normal reverse",
-                "normal,",
-                "normal,,reverse",
-                "inherit, normal",
+                ("", End),
+                ("sideways", At("sideways")),
+                ("normal reverse", At("reverse")),
+                ("normal,", At(",")),
+                ("normal,,reverse", At(",")),
+                ("inherit, normal", At(",")),
             ],
         ),
         (
             P::AnimationFillMode,
             vec![
-                "",
-                "filled",
-                "none both",
-                "both,",
-                "both,,none",
-                "unset, none",
+                ("", End),
+                ("filled", At("filled")),
+                ("none both", At("both")),
+                ("both,", At(",")),
+                ("both,,none", At(",")),
+                ("unset, none", At(",")),
             ],
         ),
         (
             P::AnimationPlayState,
             vec![
-                "",
-                "stopped",
-                "paused running",
-                "paused,",
-                "running,,paused",
-                "revert-layer, running",
+                ("", End),
+                ("stopped", At("stopped")),
+                ("paused running", At("running")),
+                ("paused,", At(",")),
+                ("running,,paused", At(",")),
+                ("revert-layer, running", At(",")),
             ],
         ),
         (
             P::Animation,
             vec![
-                "",
-                "fade -1s",
-                "fade 1s 2s 3s",
-                "fade slide 1s",
-                "fade 1s ease linear",
-                "fade 1s 2 3",
-                "fade normal reverse",
-                "fade both forwards",
-                "fade running paused",
-                "fade 1s,",
-                "fade 1s,,slide 2s",
-                "inherit, fade 1s",
-                "fade calc(1px)",
+                ("", End),
+                ("fade -1s", At("-1s")),
+                ("fade 1s 2s 3s", At("3s")),
+                ("fade slide 1s", At("slide")),
+                ("fade 1s ease linear", At("linear")),
+                ("fade 1s 2 3", At("3")),
+                ("fade normal reverse", At("reverse")),
+                ("fade both forwards", At("forwards")),
+                ("fade running paused", At("paused")),
+                ("fade 1s,", At(",")),
+                ("fade 1s,,slide 2s", At(",")),
+                ("inherit, fade 1s", At(",")),
+                ("fade calc(1px)", At("calc(")),
             ],
         ),
     ] {
-        for body in invalid {
+        for (body, token) in invalid {
             let css = format!("{}:{body}", property.canonical_name());
-            let report = parse_style_attribute(&css);
-            assert!(!report.is_clean(), "{css}");
+            let report = assert_style_attribute_rejected(&css, property, token);
             assert!(
                 report.syntax().is_empty(),
                 "invalid declaration dropped: {css}"
@@ -1027,6 +1014,7 @@ fn each_animation_role_rejects_intrinsic_grammar_negatives_through_all_fronts() 
             )
             .unwrap_err();
             assert_eq!(grammar, named, "same original grammar: {css}");
+            assert_checked_rejected(Err(grammar), property, token);
         }
     }
 }

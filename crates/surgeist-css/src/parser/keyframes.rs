@@ -13,7 +13,9 @@ use super::{
     DeclarationMode, consume_failed_rule_block, is_declaration_recovery_unit,
     parse_declaration_core, structural_recovery_production, structural_rule_diagnostic,
 };
-use crate::error::{CssFeatureId, Error, basic, invalid_at_rule_placement, unexpected_at};
+use crate::error::{
+    CssFeatureId, Error, basic, invalid_at_rule_placement, invalid_syntax, unexpected_at,
+};
 use crate::syntax::*;
 
 pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] =
@@ -68,7 +70,6 @@ pub(super) fn parse_body<'i>(
         recovery: recovery.clone(),
     };
     let mut blocks = Vec::new();
-    let mut previous_end = input.position().byte_index();
     let (document, selected) = super::syntax_bridge::rules(
         source,
         input,
@@ -80,7 +81,7 @@ pub(super) fn parse_body<'i>(
     })?;
     for selected in &selected {
         let progress = RecoveryProgress::record(input);
-        let item = super::syntax_bridge::parse_selected(
+        let (unit_start, item) = super::syntax_bridge::parse_selected(
             source,
             input,
             &mut parser,
@@ -109,7 +110,7 @@ pub(super) fn parse_body<'i>(
                     source,
                     error,
                     failed_unit,
-                    previous_end,
+                    unit_start,
                     unit_end,
                     crate::CssRecoveryAction::DropKeyframeBlock,
                 ) {
@@ -117,7 +118,6 @@ pub(super) fn parse_body<'i>(
                 }
             }
         }
-        previous_end = unit_end;
         if progress_outcome == RecoveryLoopOutcome::Terminated {
             break;
         }
@@ -137,9 +137,9 @@ pub(super) fn parse_declarations<'i>(
     let mut declarations = Vec::new();
     let mut declaration_parser = KeyframeDeclarationParser { source, recovery };
     let mut items = RuleBodyParser::new(input, &mut declaration_parser);
-    let mut previous_end = items.input.position().byte_index();
     loop {
         let progress = RecoveryProgress::record(items.input);
+        let unit_start = super::rule_list::skip_block_contents_trivia(items.input);
         let Some(item) = items.next() else {
             break;
         };
@@ -175,7 +175,7 @@ pub(super) fn parse_declarations<'i>(
                     source,
                     failed_block_error.unwrap_or(error),
                     failed_unit,
-                    previous_end,
+                    unit_start,
                     unit_end,
                     action,
                 ) {
@@ -183,7 +183,6 @@ pub(super) fn parse_declarations<'i>(
                 }
             }
         }
-        previous_end = unit_end;
         if progress_outcome == RecoveryLoopOutcome::Terminated {
             break;
         }
@@ -286,15 +285,15 @@ fn parse_keyframe_selector<'i, 't>(
         Token::Ident(ident) => match_ignore_ascii_case! { ident,
             "from" => Ok(CssKeyframeSelector::From),
             "to" => Ok(CssKeyframeSelector::To),
-            _ => Err(unexpected_at(location)),
+            _ => Err(invalid_syntax(location)),
         },
         Token::Percentage { .. } => {
             let value = checked_percentage_value(location, input.slice_from(token_start))?;
             CssKeyframePercent::try_new(value)
                 .map(CssKeyframeSelector::Percent)
-                .ok_or_else(|| unexpected_at(location))
+                .ok_or_else(|| invalid_syntax(location))
         }
-        Token::Number { .. } => Err(unexpected_at(location)),
+        Token::Number { .. } => Err(invalid_syntax(location)),
         Token::Function(name) if crate::numeric::is_math_function(name) => {
             input.reset(&start);
             let expression = super::property_input::adapt_native(
@@ -310,7 +309,7 @@ fn parse_keyframe_selector<'i, 't>(
                 expression,
             ))
             .map(CssKeyframeSelector::Percent)
-            .ok_or_else(|| unexpected_at(location))
+            .ok_or_else(|| invalid_syntax(location))
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }

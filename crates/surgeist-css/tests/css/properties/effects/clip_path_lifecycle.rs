@@ -7,6 +7,7 @@
 //! Positions here cover the physical subset, not unfinished logical positions.
 //! Reference-box resolution, used geometry and clipping are downstream concerns.
 
+use crate::css::support::property_admission::validated_declaration;
 use surgeist_css::*;
 
 const BOXES: [&str; 7] = [
@@ -18,25 +19,6 @@ const BOXES: [&str; 7] = [
     "stroke-box",
     "view-box",
 ];
-
-fn declaration(value: &str, importance: CssImportance) -> CssDeclaration {
-    let suffix = if importance == CssImportance::Important {
-        "!important"
-    } else {
-        ""
-    };
-    let source = format!("clip-path:{value}{suffix}");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert_eq!(
-        validate_style_attribute(&source),
-        Ok(report.syntax().clone())
-    );
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
-}
 
 fn clip_value(source: &CssDeclaration) -> &CssClipPath {
     let CssKnownPropertyValueRef::ClipPath(value) =
@@ -105,7 +87,7 @@ fn assert_rejected(value: &str) {
 #[test]
 fn every_geometry_box_is_a_clean_standalone_clip_path() {
     for keyword in BOXES {
-        let source = declaration(keyword, CssImportance::Normal);
+        let source = validated_declaration("clip-path", keyword, CssImportance::Normal);
         let CssKnownPropertyValueRef::ClipPath(value) =
             source.known().unwrap().property_value().unwrap()
         else {
@@ -120,7 +102,7 @@ fn one_geometry_box_combines_with_each_shape_in_either_authored_order() {
     for keyword in BOXES {
         for shape in ["inset(1px)", "circle()", "ellipse()", "polygon(0 0)"] {
             for text in [format!("{shape} {keyword}"), format!("{keyword} {shape}")] {
-                let source = declaration(&text, CssImportance::Important);
+                let source = validated_declaration("clip-path", &text, CssImportance::Important);
                 let CssKnownPropertyValueRef::ClipPath(value) =
                     source.known().unwrap().property_value().unwrap()
                 else {
@@ -170,7 +152,7 @@ fn ellipse_accepts_two_independent_numeric_or_extent_components() {
         "ellipse(calc(10% + 2px) farthest-side at left top)",
         "ellipse(closest-corner calc(20px + 1%) at right 5% bottom 2px)",
     ] {
-        declaration(value, CssImportance::Normal);
+        validated_declaration("clip-path", value, CssImportance::Normal);
     }
 }
 
@@ -207,7 +189,7 @@ fn omitted_radii_and_physical_positions_remain_valid() {
         "ellipse(at left top)",
         "ellipse(at right 5% bottom 2px)",
     ] {
-        declaration(value, CssImportance::Normal);
+        validated_declaration("clip-path", value, CssImportance::Normal);
     }
 }
 
@@ -221,7 +203,7 @@ fn polygon_rounding_accepts_signed_pure_lengths_after_optional_fill() {
         "polygon(round calc(1px - 2px), 0 0)",
         "polygon(nonzero, 0 0)",
     ] {
-        declaration(value, CssImportance::Normal);
+        validated_declaration("clip-path", value, CssImportance::Normal);
     }
 }
 
@@ -266,7 +248,7 @@ fn clip_path_is_noninherited_with_an_intrinsic_none_initial() {
         initial_value.view(),
         CssLonghandValueRef::ClipPath(CssClipPath::None)
     ));
-    let none = declaration("none", CssImportance::Normal);
+    let none = validated_declaration("clip-path", "none", CssImportance::Normal);
     assert_eq!(clip_value(&none), &CssClipPath::None);
     let values = terminals(&none);
     let [value] = values.items() else {
@@ -285,7 +267,7 @@ fn parsed_and_checked_ordinary_values_expand_with_their_occurrence_and_importanc
             "border-box",
             "ellipse() fill-box",
         ] {
-            let parsed = declaration(text, importance);
+            let parsed = validated_declaration("clip-path", text, importance);
             let components = if matches!(text, "none" | "border-box") {
                 CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()])
                     .unwrap()
@@ -340,31 +322,9 @@ fn parsed_and_checked_ordinary_values_expand_with_their_occurrence_and_importanc
 }
 
 #[test]
-fn css_wide_keywords_remain_symbolic_single_terminal_contributions() {
-    for (text, keyword) in [
-        ("initial", CssGlobalKeyword::Initial),
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        let source = declaration(text, CssImportance::Important);
-        let values = terminals(&source);
-        let [value] = values.items() else {
-            panic!("one symbolic terminal")
-        };
-        assert_eq!(value.property(), CssKnownProperty::ClipPath);
-        assert_eq!(value.value(), CssContributionValueRef::Global(keyword));
-        assert!(value.source().same_occurrence(&source));
-        assert_eq!(value.source().importance(), CssImportance::Important);
-        assert!(value.replacement_components().is_none());
-    }
-}
-
-#[test]
 fn substitution_reentry_rejects_invalid_or_residual_values_and_remains_reusable() {
     for text in ["var(--clip)", "env(clip)"] {
-        let source = declaration(text, CssImportance::Important);
+        let source = validated_declaration("clip-path", text, CssImportance::Important);
         let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
             panic!("pending substitution")
         };
@@ -429,7 +389,7 @@ fn substitution_reentry_rejects_invalid_or_residual_values_and_remains_reusable(
                     else {
                         panic!("typed replacement")
                     };
-                    let expected = declaration(valid, CssImportance::Normal);
+                    let expected = validated_declaration("clip-path", valid, CssImportance::Normal);
                     assert_eq!(actual, clip_value(&expected));
                 }
             }

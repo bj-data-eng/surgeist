@@ -1,3 +1,4 @@
+use crate::css::support::property_admission::assert_component_rejected;
 use surgeist_css::*;
 
 #[test]
@@ -313,9 +314,10 @@ fn checked_public_containment_transform_and_list_construction_rejects_invalid_st
     );
 
     for css in ["auto", "10%"] {
-        assert!(
-            CssSpecifiedLength::try_from_component(CssComponentValue::try_token(css).unwrap())
-                .is_err()
+        assert_component_rejected(
+            CssSpecifiedLength::try_from_component,
+            CssComponentValue::try_token(css).unwrap(),
+            CssNumericConstructionErrorKind::RootDomainMismatch,
         );
     }
     assert!(

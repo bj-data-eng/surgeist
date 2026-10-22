@@ -1,4 +1,5 @@
 use crate::css::support::descriptor_phases;
+use crate::css::support::rules::page_pseudo;
 use descriptor_phases::*;
 
 use surgeist_css::{
@@ -521,7 +522,7 @@ fn counter_style_block_recovery_handles_reserved_names_eof_and_depth_boundaries(
 }
 
 #[test]
-fn c11_rule_recovery_preserves_siblings_and_boundaries() {
+fn counter_style_rule_recovery_preserves_siblings_and_boundaries() {
     let source = concat!(
         "/* 😀 */\n",
         "@counter-style root { system: cyclic; ",
@@ -765,11 +766,4 @@ fn later_counter_style_rule_metadata_matches_retained_public_behavior() {
         report.syntax().rules(),
         [CssRule::CounterStyle(_)]
     ));
-}
-
-fn page_pseudo(page: &surgeist_css::CssPageRule) -> Option<surgeist_css::CssPagePseudo> {
-    page.selectors()
-        .selectors()
-        .first()
-        .and_then(|s| s.pseudos().first().copied())
 }

@@ -4,6 +4,7 @@
 //! policies; shared CSS retains pending syntax and valid recovery separately.
 //! Initial-value resolution, system font selection and loading stay downstream.
 
+use crate::css::support::rules::{invalid_descriptor, rejected_bang};
 use surgeist_css::*;
 
 fn query(source: &str) -> CssParseReport<Option<CssDeclaration>> {
@@ -30,7 +31,7 @@ fn raw_queries_preserve_relative_values_and_the_original_unwrapped_source() {
             "/*😀*/ bolder 120%/1.25 Demo",
             CssFontWeight::Bolder,
             "120%",
-            "bolder 120%/1.25 Demo",
+            "bolder 120% / 1.25 Demo",
         ),
         (
             "lighter 2em Demo",
@@ -195,13 +196,19 @@ fn source_descriptor_recovery_and_strict_components_have_separate_admission() {
     let offset = diagnostic.error().position().byte_offset().value();
     assert_eq!(offset, source.find("bad").unwrap());
     assert!(report.into_validation_result().is_err());
-    assert!(
-        CssAuthoredFontFaceDescriptorValue::try_from_components(
-            CssFontFaceDescriptorKind::Src,
-            parse_component_values(source).unwrap()
-        )
-        .is_err()
-    );
+    // Strict component admission has no per-member recovery: Fonts 4 §4.3
+    // <font-src-list> rejects the `bad` member.
+    let error = CssAuthoredFontFaceDescriptorValue::try_from_components(
+        CssFontFaceDescriptorKind::Src,
+        parse_component_values(source).unwrap(),
+    )
+    .unwrap_err();
+    let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
+        panic!("grammar failure: {error:?}")
+    };
+    invalid_descriptor("font-face", "src")
+        .at("bad")
+        .assert_kind(detail);
     for valid in [
         "url(font.woff2)",
         "local(Demo)",
@@ -216,9 +223,19 @@ fn source_descriptor_recovery_and_strict_components_have_separate_admission() {
             CssAuthoredFontFaceDescriptorValue::Ordinary(_)
         ));
     }
-    for invalid in ["font.woff2", "url(font.woff2)!important", "local(Demo);"] {
+    // A bare name is no <font-src>; <declaration-value> excludes a
+    // top-level `!` or `;`.
+    let rejected = invalid_descriptor("font-face", "src");
+    for (invalid, expected) in [
+        ("font.woff2", rejected.clone()),
+        (
+            "url(font.woff2)!important",
+            rejected_bang("font-face", "src"),
+        ),
+        ("local(Demo);", rejected.clone().at(";")),
+    ] {
         let report = parse_font_face_descriptor_value(invalid, CssFontFaceDescriptorKind::Src);
         assert!(report.syntax().is_none(), "{invalid}: {report:?}");
-        assert!(report.into_validation_result().is_err());
+        expected.assert_first(&report);
     }
 }

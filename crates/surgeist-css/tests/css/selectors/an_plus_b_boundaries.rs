@@ -5,6 +5,9 @@
 //! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/>
 
 use crate::css::support::admitted_selector as parsed;
+use crate::css::support::color_and_selector_fixtures::{
+    assert_selector_input_rejected, nth_coefficients as coefficients,
+};
 use surgeist_css::{
     CssComponentValueRef, CssNamespaceContext, CssNthAnPlusB, CssNthPattern, CssNumericTokenKind,
     CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction, CssRule, CssSelector,
@@ -18,16 +21,6 @@ fn pattern(selector: &CssSelector) -> CssNthPattern {
         CssSelector::PseudoClass(CssPseudoClass::NthOfType(value))
         | CssSelector::PseudoClass(CssPseudoClass::NthLastOfType(value)) => *value,
         _ => panic!("one typed nth pseudo-class: {selector:?}"),
-    }
-}
-
-fn coefficients(pattern: CssNthPattern) -> (i32, i32) {
-    match pattern {
-        CssNthPattern::Odd => (2, 1),
-        CssNthPattern::Even => (2, 0),
-        CssNthPattern::Integer(b) => (0, b),
-        CssNthPattern::AnPlusB(value) => (value.a(), value.b()),
-        _ => panic!("unexpected nth pattern: {pattern:?}"),
     }
 }
 
@@ -50,15 +43,9 @@ fn assert_pattern(argument: &str, expected: (i32, i32), canonical: &str) {
 }
 
 fn assert_rejected(source: &str) {
-    let report = parse_selector(source, &CssNamespaceContext::default());
-    assert!(report.syntax().is_none(), "{source}: {report:?}");
-    assert!(!report.is_clean(), "{source}: {report:?}");
-    assert!(
-        report
-            .diagnostics()
-            .iter()
-            .any(|diagnostic| { diagnostic.action() == CssRecoveryAction::RejectInput }),
-        "{source}: {report:?}"
+    assert_selector_input_rejected(
+        source,
+        parse_selector(source, &CssNamespaceContext::default()),
     );
 }
 

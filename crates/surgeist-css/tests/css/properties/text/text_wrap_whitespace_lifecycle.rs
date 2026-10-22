@@ -3,6 +3,19 @@
 //! preserves the contiguous quoted trim group. Selected product output visits
 //! each emitted keyword once and retains authored absence/alias identity.
 
+use crate::css::support::authored_property::checked;
+
+fn parsed(p: P, value: &str) -> CssDeclaration {
+    let css = format!("/*😀*/{}:{value}!important", p.canonical_name());
+    let report = parse_style_attribute(&css);
+    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
+    let [source] = report.syntax().as_slice() else {
+        panic!("one occurrence")
+    };
+    source.clone()
+}
+use crate::css::support::named_property::longhand_contributions as completed;
+use crate::css::support::serialization_limits::assert_node_limits as provider;
 use surgeist_css::CssKnownProperty as P;
 use surgeist_css::*;
 
@@ -46,31 +59,6 @@ const TRIM: [(bool, bool, bool, &str, usize); 8] = [
 ];
 const SPACE: [P; 3] = [P::WhiteSpaceCollapse, P::TextWrapMode, P::WhiteSpaceTrim];
 
-fn parsed(p: P, value: &str) -> CssDeclaration {
-    let css = format!("/*😀*/{}:{value}!important", p.canonical_name());
-    let report = parse_style_attribute(&css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one occurrence")
-    };
-    source.clone()
-}
-fn checked(p: P, value: &str, grammar: bool) -> CssDeclaration {
-    let components = parse_component_values(value).unwrap();
-    let result = if grammar {
-        parse_property_value_for_grammar(p.grammar(), components.clone(), CssImportance::Important)
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(p),
-            components.clone(),
-            CssImportance::Important,
-        )
-    }
-    .unwrap();
-    assert_eq!(result.value_components(), &components);
-    assert!(result.position().is_none());
-    result
-}
 fn fronts(p: P, value: &str) -> [CssDeclaration; 3] {
     [
         parsed(p, value),
@@ -93,14 +81,6 @@ fn space(source: &CssDeclaration) -> &CssWhiteSpace {
         panic!("space model")
     };
     value.value()
-}
-fn completed(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("ordinary terminals")
-    };
-    values
 }
 fn assert_source(
     values: &CssLonghandContributions,
@@ -169,35 +149,6 @@ fn assert_space(
     };
     assert_eq!(*actual, trim);
 }
-fn provider(
-    expected: &str,
-    work: usize,
-    emit: impl Fn(
-        CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError>,
-) {
-    use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
-    let exact = Limits::new(work, work, expected.len());
-    assert_eq!(emit(exact).unwrap(), expected);
-    for (limits, kind) in [
-        (
-            Limits::new(work - 1, work, expected.len()),
-            Kind::InputNodeLimit,
-        ),
-        (
-            Limits::new(work, work - 1, expected.len()),
-            Kind::ProjectionNodeLimit,
-        ),
-        (Limits::new(work, work, expected.len() - 1), Kind::ByteLimit),
-    ] {
-        for _ in 0..2 {
-            assert_eq!(emit(limits).unwrap_err().kind(), kind);
-        }
-        assert_eq!(emit(exact).unwrap(), expected);
-    }
-}
-
 #[test]
 fn constructors_reject_only_empty_aggregates_and_preserve_authored_presence() {
     assert!(CssTextWrap::try_new(None, None).is_none());

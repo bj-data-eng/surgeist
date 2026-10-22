@@ -6,9 +6,10 @@
 //! against their hex column; the 139 distinct triples preserve keyword aliases.
 //! Expected values are independent of the parser, serializer, and cssparser table.
 
+use crate::css::support::parsed_color;
 use surgeist_css::{
-    CssColor, CssHexColor, CssKnownProperty, CssKnownPropertyValueRef, CssNamedColor,
-    CssRecoveryAction, CssSystemColor, parse_style_attribute, validate_style_attribute,
+    CssColor, CssHexColor, CssKnownProperty, CssNamedColor, CssRecoveryAction, CssSystemColor,
+    parse_style_attribute, validate_style_attribute,
 };
 
 const NAMED_COLORS: [(&str, [u8; 3]); 148] = [
@@ -162,24 +163,6 @@ const NAMED_COLORS: [(&str, [u8; 3]); 148] = [
     ("yellowgreen", [154, 205, 50]),
 ];
 
-fn parsed_color(value: &str) -> CssColor {
-    let source = format!("color: {value}");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 1, "{source}");
-    let CssKnownPropertyValueRef::Color(color) = report.syntax()[0]
-        .known()
-        .unwrap()
-        .property_value()
-        .unwrap()
-    else {
-        panic!("expected a typed color: {source}");
-    };
-    let color = color.value().clone();
-    assert_eq!(validate_style_attribute(&source).unwrap(), *report.syntax());
-    color
-}
-
 fn assert_named(color: &CssColor, name: &str, [red, green, blue]: [u8; 3]) {
     // Observe intrinsic bytes before serialization or any round trip.
     assert_eq!(
@@ -309,7 +292,11 @@ fn unknown_keyword_recovery_keeps_valid_siblings_without_a_numeric_keyword_value
             report.syntax()[0].known().unwrap().property(),
             CssKnownProperty::Opacity
         );
-        assert!(validate_style_attribute(&source).is_err(), "{source}");
+        assert_eq!(
+            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            report.diagnostics(),
+            "{source}"
+        );
     }
     for symbolic in ["currentcolor", "Canvas", "ActiveBorder", "transparent"] {
         assert!(CssNamedColor::try_new(symbolic).is_none(), "{symbolic}");

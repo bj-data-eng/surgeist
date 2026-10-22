@@ -3,9 +3,8 @@
 //! CRD 2025-06-12 §§4, 6.1–6.3 and the selected authored omission/range contracts.
 
 use crate::css::support::important_checked_components as checked;
-use surgeist_css::{
-    CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
-};
+use crate::css::support::serialization_limits::assert_limits as budget;
+use surgeist_css::*;
 
 fn parsed(property: CssKnownProperty, text: &str) -> CssDeclaration {
     let report = parse_property_value_text(
@@ -42,32 +41,6 @@ fn margin(source: &CssDeclaration) -> &CssSpecifiedNonNegativeLengthPercentage {
         panic!("margin wrapper")
     };
     value.value()
-}
-
-fn budget(
-    expected: &str,
-    input: usize,
-    projection: usize,
-    serialize: impl Fn(L) -> Result<String, CssSpecifiedValueSerializationError>,
-) {
-    assert_eq!(
-        serialize(L::new(input, projection, expected.len())).unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (
-            L::new(input - 1, projection, expected.len()),
-            K::InputNodeLimit,
-        ),
-        (
-            L::new(input, projection - 1, expected.len()),
-            K::ProjectionNodeLimit,
-        ),
-        (L::new(input, projection, expected.len() - 1), K::ByteLimit),
-    ] {
-        assert_eq!(serialize(limits).unwrap_err().kind(), kind);
-    }
-    assert_eq!(serialize(L::default()).unwrap(), expected);
 }
 
 #[test]

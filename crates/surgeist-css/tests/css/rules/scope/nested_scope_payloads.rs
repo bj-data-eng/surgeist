@@ -1,6 +1,7 @@
 //! Authored scoped runs preserve declarations and nearest-style identity without
 //! retargeting that style's selectors to newly entered scopes.
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nested-declarations-rule
+use crate::css::support::rules::ExpectedRejection;
 use surgeist_css::*;
 
 fn run(rule: &CssScopedRule) -> &CssNestedDeclarationsRule {
@@ -81,10 +82,29 @@ fn public_fragments_retain_ordered_typed_runs_and_original_value_origins() {
 fn rejected_rule_boundaries_preserve_distinct_scoped_runs_and_eof_retention() {
     // Completed rules transfer the list; a no-rule result does not. These are
     // the same Syntax 3 block-contents boundaries as an ordinary nested group.
-    for rejected in ["bad,{}", "@unknown;", "@layer a,b{}"] {
+    // Selectors 4 forbids an empty list member, @unknown is not a CSS
+    // at-rule, and a @layer block names exactly one <layer-name>.
+    for (rejected, expected) in [
+        // The empty last member ends at the end of the selector list.
+        (
+            "bad,{}",
+            ExpectedRejection::new(CssErrorCode::InvalidSelector).at(","),
+        ),
+        (
+            "@unknown;",
+            ExpectedRejection::new(CssErrorCode::UnknownAtRule).in_rule("unknown"),
+        ),
+        // A name list makes the statement form, which takes no block.
+        (
+            "@layer a,b{}",
+            ExpectedRejection::new(CssErrorCode::InvalidAtRuleBody)
+                .in_rule("layer")
+                .at("{"),
+        ),
+    ] {
         let source = format!(".p{{@scope{{color:red;{rejected}color:green");
         let report = parse_sheet(&source);
-        assert!(!report.is_clean());
+        expected.assert_first(&report);
         let [CssRule::Style(style)] = report.syntax().rules() else {
             panic!("style")
         };

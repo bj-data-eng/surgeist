@@ -134,7 +134,7 @@ impl CssTextDecorationLine {
                 .zip(["underline", "overline", "line-through", "blink"])
         {
             if present {
-                separator(writer, &mut started)?;
+                writer.space_before_item(&mut started)?;
                 writer.context.charge_projection(1)?;
                 writer.append(keyword)?;
             }
@@ -158,14 +158,6 @@ impl CssTextDecorationThickness {
     }
 }
 
-fn separator(writer: &mut SpecifiedRuleWriter, started: &mut bool) -> Result<()> {
-    if *started {
-        writer.append(" ")?;
-    }
-    *started = true;
-    Ok(())
-}
-
 impl CssTextDecoration {
     specified_methods!();
 
@@ -175,25 +167,25 @@ impl CssTextDecoration {
         // Selected Text Decoration 4 §2.6: line || thickness || style || color.
         if let Some(line) = self.line() {
             writer.source_property(crate::CssKnownProperty::TextDecorationLine, |writer| {
-                separator(writer, &mut started)?;
+                writer.space_before_item(&mut started)?;
                 line.append_to_rule_writer(writer)
             })?;
         }
         if let Some(thickness) = self.thickness() {
             writer.source_property(crate::CssKnownProperty::TextDecorationThickness, |writer| {
-                separator(writer, &mut started)?;
+                writer.space_before_item(&mut started)?;
                 thickness.append_to_rule_writer(writer)
             })?;
         }
         if let Some(style) = self.style() {
             writer.source_property(crate::CssKnownProperty::TextDecorationStyle, |writer| {
-                separator(writer, &mut started)?;
+                writer.space_before_item(&mut started)?;
                 style.append_to_rule_writer(writer)
             })?;
         }
         if let Some(color) = self.color() {
             writer.source_property(crate::CssKnownProperty::TextDecorationColor, |writer| {
-                separator(writer, &mut started)?;
+                writer.space_before_item(&mut started)?;
                 color.append_specified(&mut writer.context, &mut writer.css)
             })?;
         }

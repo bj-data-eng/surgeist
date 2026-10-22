@@ -10,12 +10,13 @@ use crate::{
 pub(super) fn parse_font_kerning<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssFontKerning, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssFontKerning::Auto),
         "normal" => Ok(CssFontKerning::Normal),
         "none" => Ok(CssFontKerning::None),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
@@ -55,10 +56,11 @@ pub(super) fn parse_font_language_override<'i, 't>(
 pub(super) fn parse_font_optical_sizing<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssFontOpticalSizing, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssFontOpticalSizing::Auto),
         "none" => Ok(CssFontOpticalSizing::None),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }

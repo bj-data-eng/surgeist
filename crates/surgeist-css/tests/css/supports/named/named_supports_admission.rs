@@ -1,7 +1,10 @@
 //! Conditional Rules 5 §8 definition placement and Syntax block-context admission.
 
+use crate::css::support::authored_syntax::{
+    assert_diagnostics, assert_strict_rejection, offset_of,
+};
 use surgeist_css::{
-    CssNamespaceContext, CssNormalizationErrorKind, CssNormalizationLimits,
+    CssErrorCode, CssNamespaceContext, CssNormalizationErrorKind, CssNormalizationLimits,
     CssNormalizationResource, CssNormalizedItem, CssRecoveryAction, CssRule, CssRuleContextKindRef,
     normalize_sheet_with_limits, parse_rule, parse_sheet, parse_style_block, validate_sheet,
 };
@@ -29,8 +32,16 @@ fn invalid_outer_definitions_drop_without_promoting_their_test_bodies() {
     let missing_block = "@supports-condition --x";
     let report = parse_sheet(missing_block);
     assert!(report.syntax().rules().is_empty());
-    assert!(!report.is_clean());
-    assert!(validate_sheet(missing_block).is_err());
+    // The definition requires a block, but EOF follows its name.
+    assert_diagnostics(
+        report.diagnostics(),
+        &[(
+            CssErrorCode::UnexpectedEnd,
+            CssRecoveryAction::DropAtRule,
+            missing_block.len(),
+        )],
+    );
+    assert_strict_rejection(validate_sheet(missing_block), report.diagnostics());
 }
 
 #[test]
@@ -74,8 +85,17 @@ fn named_definition_preserves_import_namespace_phase_without_admitting_late_char
         report.syntax().rules(),
         [CssRule::SupportsCondition(_), CssRule::Style(_)]
     ));
-    assert!(!report.is_clean());
-    assert!(validate_sheet(late_charset).is_err());
+    // Syntax 3 §8.4: `@charset` is no at-rule; later in the sheet it is an
+    // unrecognized at-rule.
+    assert_diagnostics(
+        report.diagnostics(),
+        &[(
+            CssErrorCode::UnknownAtRule,
+            CssRecoveryAction::DropAtRule,
+            offset_of(late_charset, "@charset"),
+        )],
+    );
+    assert_strict_rejection(validate_sheet(late_charset), report.diagnostics());
 
     let closed = concat!(
         "@import 'early.css'; .ordinary {} @supports-condition --x {}",
@@ -116,7 +136,22 @@ fn descriptor_and_keyframe_only_blocks_do_not_admit_named_definitions_or_style_t
         ),
     ] {
         let report = parse_sheet(source);
-        assert!(!report.is_clean(), "{source:?}");
+        // Descriptor and keyframe block grammars admit no conditional
+        // definition, so that known at-rule alone is dropped as misplaced.
+        let [diagnostic] = report.diagnostics() else {
+            panic!("{source:?}: {report:?}")
+        };
+        crate::css::support::rules::ExpectedRejection::new(
+            surgeist_css::CssErrorCode::InvalidAtRulePlacement,
+        )
+        .in_rule("supports-condition")
+        .assert_first(&report);
+        assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
+        assert_eq!(
+            diagnostic.error().position().byte_offset().value(),
+            offset_of(source, "@supports-condition"),
+            "{source:?}"
+        );
         assert!(matches!(
             report.syntax().rules().last(),
             Some(CssRule::Style(_))

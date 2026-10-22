@@ -1,7 +1,7 @@
 //! Functional tests for Backgrounds 3 §2.6 and §2.6.1 and Values 4 §8.3.2.
 //! https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#bg-position-serialization
 
-use crate::css::support::style_declaration as declaration;
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::{
     CssHorizontalPosition as H, CssSpecifiedValueSerializationErrorKind as E,
     CssSpecifiedValueSerializationLimits as L, CssVerticalPosition as V, *,
@@ -231,7 +231,10 @@ fn checked_list_serialization_retains_domain_distinctions_and_comma_order() {
         "right 10px top, left bottom -20%"
     );
     assert_eq!(three.serialize_specified().unwrap(), "right 10px top");
-    assert!(CssPhysicalPosition::try_new(H::RightOffset(offset("10px")), V::Top).is_err());
+    assert_eq!(
+        CssPhysicalPosition::try_new(H::RightOffset(offset("10px")), V::Top),
+        Err(CssPositionConstructionError::UnpairedEdgeOffsets)
+    );
     assert!(
         CssBackgroundPosition::try_new(H::RightOffset(offset("10px")), V::Offset(offset("2px")))
             .is_none()
@@ -365,38 +368,4 @@ fn calculation_projection_work_is_cumulative_across_axes_and_layers() {
         );
     }
     assert_eq!(list.serialize_specified().unwrap(), expected);
-}
-
-#[test]
-fn universal_reset_keeps_background_position_with_the_existing_explicit_exclusions() {
-    for (css, keyword) in [
-        ("initial", CssGlobalKeyword::Initial),
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        let source = declaration(&format!("all:{css}!important"));
-        let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-            expand_declaration(&source).unwrap()
-        else {
-            panic!("one symbolic universal reset")
-        };
-        assert_eq!(reset.keyword(), keyword);
-        assert!(reset.source().same_occurrence(&source));
-        assert_eq!(reset.source().importance(), CssImportance::Important);
-        assert!(reset.replacement_components().is_none());
-        for property in [
-            CssKnownProperty::BackgroundPosition,
-            CssKnownProperty::BackgroundImage,
-            CssKnownProperty::Color,
-        ] {
-            assert!(!reset.excludes(CssPropertyNameRef::Known(property)));
-        }
-        for property in [CssKnownProperty::Direction, CssKnownProperty::UnicodeBidi] {
-            assert!(reset.excludes(CssPropertyNameRef::Known(property)));
-        }
-        let name = CssCustomPropertyName::try_new("--position").unwrap();
-        assert!(reset.excludes(CssPropertyNameRef::Custom(&name)));
-    }
 }

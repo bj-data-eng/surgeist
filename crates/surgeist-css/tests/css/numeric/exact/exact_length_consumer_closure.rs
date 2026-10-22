@@ -4,16 +4,8 @@
 //! Effects 1 and Shapes property contracts in `specs/catalog.json`.
 //! Symbolic math is admitted by its root domain, before contextual range checks.
 
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
-
-fn declaration(source: &str) -> CssDeclaration {
-    let report = parse_style_attribute(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one retained declaration: {source}");
-    };
-    declaration.clone()
-}
 
 macro_rules! value {
     ($source:expr, $variant:ident, $accessor:ident) => {{

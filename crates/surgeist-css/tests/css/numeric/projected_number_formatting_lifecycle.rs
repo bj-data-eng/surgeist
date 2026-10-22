@@ -8,14 +8,13 @@
 //! Standalone color captures preserve their separately owned text and scratch
 //! contracts; origin and declared relative calculations use generic coefficient text.
 
+use crate::css::support::authored_property;
+use crate::css::support::component_values as components;
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
 
-fn components(source: &str) -> CssComponentValues {
-    parse_component_values(source).unwrap()
-}
 fn component(source: &str) -> CssComponentValue {
     let values = components(source);
     assert_eq!(values.items().len(), 1, "{source}");
@@ -59,16 +58,8 @@ fn slice(sources: &[&str]) -> CssBorderImageSlice {
     )
     .unwrap()
 }
-fn declaration(property: CssKnownProperty, source: &str) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(property),
-        components(source),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("{property:?}: {source}: {error:?}"))
-}
 fn color(source: &str) -> CssColor {
-    let value = declaration(CssKnownProperty::Color, source);
+    let value = authored_property::checked(CssKnownProperty::Color, source, false);
     let CssKnownPropertyValueRef::Color(value) = value.known().unwrap().property_value().unwrap()
     else {
         panic!("color")
@@ -336,8 +327,11 @@ fn dimensional_calculation_providers_convert_units_before_rounding_text() {
         CssAngleCalculation::try_from_components(components("calc(0.0078125turn)")).unwrap(),
     )
     .unwrap();
-    let angle_declaration =
-        declaration(CssKnownProperty::Filter, "hue-rotate(calc(0.0078125turn))");
+    let angle_declaration = authored_property::checked(
+        CssKnownProperty::Filter,
+        "hue-rotate(calc(0.0078125turn))",
+        false,
+    );
     assert_eq!(
         composed_text(&angle_declaration),
         "hue-rotate(calc(2.8125deg))"
@@ -370,7 +364,7 @@ fn opacity_calculations_use_generic_emission_without_computed_clamping() {
         ("calc(-1 / 128)", "calc(-0.007813)"),
         ("calc(2)", "calc(2)"),
     ] {
-        let declaration = declaration(CssKnownProperty::Opacity, source);
+        let declaration = authored_property::checked(CssKnownProperty::Opacity, source, false);
         let CssKnownPropertyValueRef::Opacity(value) =
             declaration.known().unwrap().property_value().unwrap()
         else {
@@ -787,7 +781,7 @@ fn representative_composed_writers_use_generic_projected_children() {
             "digits calc(2.123456)",
         ),
     ] {
-        let value = declaration(property, source);
+        let value = authored_property::checked(property, source, false);
         let before = value.clone();
         assert_eq!(
             value.value_components().serialize().unwrap().as_css(),
@@ -799,10 +793,11 @@ fn representative_composed_writers_use_generic_projected_children() {
 }
 
 #[test]
-fn existing_timing_children_round_without_inventing_an_aggregate_writer() {
-    let source = declaration(
+fn timing_children_round_without_inventing_an_aggregate_writer() {
+    let source = authored_property::checked(
         CssKnownProperty::TransitionDuration,
         "calc(123.45641ms),calc(1 / 128 * 1s)",
+        false,
     );
     let CssKnownPropertyValueRef::TransitionDuration(value) =
         source.known().unwrap().property_value().unwrap()
@@ -817,9 +812,10 @@ fn existing_timing_children_round_without_inventing_an_aggregate_writer() {
         value.durations().values()[1].serialize_specified().unwrap(),
         "calc(0.007813s)"
     );
-    let source = declaration(
+    let source = authored_property::checked(
         CssKnownProperty::TransitionTimingFunction,
         "cubic-bezier(calc(1 / 128),calc(-1 / 128),calc(0.9999996),calc(1 / 3))",
+        false,
     );
     let CssKnownPropertyValueRef::TransitionTimingFunction(value) =
         source.known().unwrap().property_value().unwrap()

@@ -119,11 +119,12 @@ pub(super) fn parse_blend_mode_list<'i, 't>(
 pub(super) fn parse_isolation<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssIsolation, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssIsolation::Auto),
         "isolate" => Ok(CssIsolation::Isolate),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
@@ -493,13 +494,14 @@ fn parse_transform_length<'i, 't>(
 fn parse_radial_extent<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssRadialExtent, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "closest-side" => Ok(CssRadialExtent::ClosestSide),
         "farthest-side" => Ok(CssRadialExtent::FarthestSide),
         "closest-corner" => Ok(CssRadialExtent::ClosestCorner),
         "farthest-corner" => Ok(CssRadialExtent::FarthestCorner),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
@@ -721,11 +723,12 @@ fn parse_path_shape<'i, 't>(
 fn parse_fill_rule<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFillRule, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "nonzero" => Ok(CssFillRule::Nonzero),
         "evenodd" => Ok(CssFillRule::Evenodd),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
@@ -871,10 +874,10 @@ pub(super) fn parse_filter_function<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssFilterFunction, ParseError<'i, Error>> {
-    match input.try_parse(|input| parse_url(input, numeric)) {
-        Ok(url) => return Ok(CssFilterFunction::Url(url)),
-        Err(error) if crate::error::property::is_resource_parse_error(&error) => return Err(error),
-        Err(_) => {}
+    // A URL commits the filter function (Values 5 request URL modifiers
+    // report inside it).
+    if super::ui::starts_url(input) {
+        return parse_url(input, numeric).map(CssFilterFunction::Url);
     }
     let location = input.current_source_location();
     let name = match input.next().map_err(basic)? {
@@ -954,8 +957,10 @@ pub(super) fn parse_clip_path<'i, 't>(
     {
         return Ok(CssClipPath::None);
     }
-    if let Ok(url) = input.try_parse(|input| parse_url(input, numeric)) {
-        return Ok(CssClipPath::Url(url));
+    // A URL commits the clip path (Values 5 request URL modifiers report
+    // inside it).
+    if super::ui::starts_url(input) {
+        return parse_url(input, numeric).map(CssClipPath::Url);
     }
     let mut reference_box = input.try_parse(parse_geometry_box).ok();
     if input.is_exhausted() {

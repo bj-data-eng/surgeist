@@ -1,5 +1,6 @@
 //! Consumer oracles for exact unbraced CSSOM replacement inputs (#1084).
 //! These are new public boundaries; no preimplementation RED is claimed.
+use crate::css::support::authored_syntax::{assert_diagnostics, offset_of};
 use surgeist_css::*;
 
 fn page_names(block: &CssPageDeclarationBlock) -> Vec<&str> {
@@ -30,9 +31,8 @@ fn resource(diagnostics: &[CssRecoveryDiagnostic], kind: CssComponentValueErrorK
 
 #[test]
 fn page_recovers_mixed_domains_and_preserves_duplicate_occurrences_before_selection() {
-    let report = parse_page_declaration_block_contents(
-        "size:A4; margin:1px; --Theme: RAW; size:bogus; color:red; size:A3 !important; --theme: lower",
-    );
+    let source = "size:A4; margin:1px; --Theme: RAW; size:bogus; color:red; size:A3 !important; --theme: lower";
+    let report = parse_page_declaration_block_contents(source);
     let block = report.syntax().as_ref().unwrap();
     assert!(!report.is_clean());
     assert_eq!(
@@ -87,9 +87,8 @@ fn page_drops_nested_rules_as_units_without_creating_margin_children() {
 
 #[test]
 fn page_uses_domain_applicability_and_selected_syntax_fallback() {
-    let report = parse_page_declaration_block_contents(
-        "margin-top:-1px; margin-left:7; display:block; size:var(--x){}margin-bottom:3px; --x:{ a:b }; marks:cross",
-    );
+    let source = "margin-top:-1px; margin-left:7; display:block; size:var(--x){}margin-bottom:3px; --x:{ a:b }; marks:cross";
+    let report = parse_page_declaration_block_contents(source);
     let block = report.syntax().as_ref().unwrap();
     assert_eq!(
         page_names(block),
@@ -101,9 +100,8 @@ fn page_uses_domain_applicability_and_selected_syntax_fallback() {
 #[test]
 fn font_face_recovers_invalid_neighbors_priority_and_duplicate_order() {
     use CssFontFaceDescriptorKind as K;
-    let report = parse_font_face_declaration_block_contents(
-        "font-family:Example; font-display:swap; bad:value; font-weight:0; src:local(Example); font-display:optional; font-style:italic !important; --x:raw; font-weight:400",
-    );
+    let source = "font-family:Example; font-display:swap; bad:value; font-weight:0; src:local(Example); font-display:optional; font-style:italic !important; --x:raw; font-weight:400";
+    let report = parse_font_face_declaration_block_contents(source);
     let block = report.syntax().as_ref().unwrap();
     assert_eq!(
         face_kinds(block),
@@ -139,7 +137,23 @@ fn font_face_raw_and_braced_structural_recovery_drop_only_the_child() {
         face_kinds(report.syntax().as_ref().unwrap()),
         [K::FontFamily, K::Src, K::FontDisplay]
     );
-    assert!(!report.is_clean());
+    // Neither an at-rule nor a qualified rule is a `<declaration-list>` item,
+    // so each is an unexpected token there.
+    assert_diagnostics(
+        report.diagnostics(),
+        &[
+            (
+                CssErrorCode::UnexpectedToken,
+                CssRecoveryAction::DropAtRule,
+                offset_of(raw, "@unknown"),
+            ),
+            (
+                CssErrorCode::UnexpectedToken,
+                CssRecoveryAction::DropQualifiedRule,
+                offset_of(raw, ".x"),
+            ),
+        ],
+    );
     // Syntax 3 (2026-10-01) §5.5.5 consumes every block as block contents;
     // the at-rule is invalid in the `<declaration-list>` and dropped alone.
     let braced =
@@ -421,7 +435,8 @@ fn page_context_and_original_eof_component_recovery_are_retained() {
             CssComponentValueLimits::default()
         )
     );
-    let face = parse_font_face_declaration_block_contents("font-display:swap; src:local(Example");
+    let face_source = "font-display:swap; src:local(Example";
+    let face = parse_font_face_declaration_block_contents(face_source);
     assert_eq!(
         face_kinds(face.syntax().as_ref().unwrap()),
         [
@@ -429,5 +444,13 @@ fn page_context_and_original_eof_component_recovery_are_retained() {
             CssFontFaceDescriptorKind::Src
         ]
     );
-    assert!(!face.is_clean());
+    // The `local(` function is closed implicitly at EOF.
+    assert_diagnostics(
+        face.diagnostics(),
+        &[(
+            CssErrorCode::UnexpectedEnd,
+            CssRecoveryAction::RetainWithImplicitClosure,
+            face_source.len(),
+        )],
+    );
 }

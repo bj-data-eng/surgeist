@@ -46,7 +46,7 @@ pub(super) fn parse_families_observed<'i>(
             })?;
             input.expect_exhausted().map_err(basic)?;
             let family = CssFontFaceFamily::try_new(name.as_str())
-                .ok_or_else(|| invalid_syntax(input.current_source_location()))?;
+                .ok_or_else(|| invalid_syntax(location))?;
             observe(start..input.position().byte_index(), location)?;
             Ok(family)
         })
@@ -238,14 +238,7 @@ impl<'i> DeclarationParser<'i> for BodyParser<'i> {
                 let (data, components, origin) = super::collect_declaration_value(
                     input,
                     self.recovery.source_snapshot(),
-                    |input| {
-                        parse_feature_value_with_name(
-                            input,
-                            kind,
-                            self.recovery.source_snapshot(),
-                            Some(start.source_location()),
-                        )
-                    },
+                    |input| parse_feature_value(input, kind, self.recovery.source_snapshot()),
                 )?;
                 let value = CssFontFeatureValue::from_parsed(kind, data, components, origin);
                 Ok(Member::Definition(
@@ -276,8 +269,8 @@ impl<'i> DeclarationParser<'i> for BodyParser<'i> {
     }
 }
 
-// The rule owner keeps its actual friendly-name error position; value fragments
-// select the responsible component origin. Both use this exact token grammar.
+// The rule owner and value fragments both report the responsible component
+// (reference "Source coordinates and diagnostics") with this exact token grammar.
 pub(super) fn indexes_from_components<'i>(
     values: &CssComponentValues,
     error_for_component: impl Fn(&CssComponentValue) -> ParseError<'i, Error>,
@@ -368,14 +361,6 @@ pub(super) fn parse_feature_value<'i>(
     kind: CssFontFeatureValueKind,
     snapshot: &CssSourceSnapshot,
 ) -> Result<FontFeatureValueData, ParseError<'i, Error>> {
-    parse_feature_value_with_name(input, kind, snapshot, None)
-}
-fn parse_feature_value_with_name<'i>(
-    input: &mut Parser<'i, '_>,
-    kind: CssFontFeatureValueKind,
-    snapshot: &CssSourceSnapshot,
-    name_location: Option<cssparser::SourceLocation>,
-) -> Result<FontFeatureValueData, ParseError<'i, Error>> {
     let start = input.state();
     let components = CssComponentValues::collect_from_parser(input, snapshot).map_err(|error| {
         crate::error::invalid_component_value(input.current_source_location(), error)
@@ -386,7 +371,6 @@ fn parse_feature_value_with_name<'i>(
         kind,
         &components,
         &NumericInputContext::parsed(snapshot),
-        name_location,
         crate::error::unexpected_component_value,
     )
 }
@@ -395,7 +379,6 @@ fn feature_data<'i>(
     kind: CssFontFeatureValueKind,
     components: &CssComponentValues,
     numeric: &NumericInputContext<'_>,
-    name_location: Option<cssparser::SourceLocation>,
     error: impl Fn(&CssComponentValue, &'static str) -> ParseError<'i, Error>,
 ) -> Result<FontFeatureValueData, ParseError<'i, Error>> {
     // Annotation/boundary tokens are disallowed before whole-value qualification.
@@ -411,17 +394,10 @@ fn feature_data<'i>(
         return Ok(FontFeatureValueData::Pending(pending(input)?));
     }
     let indexes = indexes_from_components(components, |component| {
-        if let Some(location) = name_location {
-            invalid_syntax(location)
-        } else {
-            error(component, "nonnegative integer tokens")
-        }
+        error(component, "nonnegative integer tokens")
     })?;
     super::descriptor_values::consume_remaining_components(input)?;
     kind.validate_index_count(indexes.len()).map_err(|_| {
-        if let Some(location) = name_location {
-            return invalid_syntax(location);
-        }
         let surplus = components
             .items()
             .iter()
@@ -458,7 +434,6 @@ pub(crate) fn construct_feature_value(
         kind,
         components,
         &numeric,
-        None,
         |component, expectation| {
             let index = components
                 .items()

@@ -2,9 +2,10 @@
 //! compounds and functional selectors without multiplying the parent list.
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/
 
+use crate::css::support::rules::ExpectedRejection;
 use surgeist_css::{
-    CssCompoundSelector, CssPseudoClass, CssPseudoSelectorListItem, CssRule, CssSelector,
-    CssSelectorCombinator, CssStyleSelector, parse_sheet,
+    CssCompoundSelector, CssErrorCode, CssPseudoClass, CssPseudoSelectorListItem, CssRule,
+    CssSelector, CssSelectorCombinator, CssStyleSelector, parse_sheet,
 };
 
 fn compound_anchors(compound: &CssCompoundSelector) -> usize {
@@ -136,13 +137,20 @@ fn leading_relative_combinators_preserve_their_explicit_inner_anchors() {
 
 #[test]
 fn nesting_type_order_and_nested_has_restrictions_recover_the_inner_rule() {
-    for authored in ["&div", "&&div", "&:has(:has(.child))"] {
+    // Selectors 4 §3.1 starts a compound with its type selector; §4.5
+    // forbids :has() inside :has().
+    let invalid = ExpectedRejection::new(CssErrorCode::InvalidSelector);
+    for (authored, expected) in [
+        ("&div", invalid.clone().at("div")),
+        ("&&div", invalid.clone().at("div")),
+        ("&:has(:has(.child))", invalid.clone()),
+    ] {
         let source = format!(".parent {{ {authored} {{ color: green }} color: red }}");
         let report = parse_sheet(&source);
         let [CssRule::Style(parent)] = report.syntax().rules() else {
             panic!("one retained parent")
         };
-        assert!(!report.is_clean(), "{authored}");
+        expected.assert_first(&report);
         assert!(
             parent
                 .rules()

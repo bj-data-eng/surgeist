@@ -32,7 +32,10 @@ fn specified_spacing(authored: &str) -> String {
 fn assert_spacing_rejected(authored: &str) {
     let source = format!("border-spacing:{authored}");
     let report = parse_style_attribute(&source);
-    assert!(!report.is_clean(), "invalid length was accepted: {source}");
+    crate::css::support::value_assertions::assert_first_property_rejection(
+        report.diagnostics(),
+        surgeist_css::CssKnownProperty::BorderSpacing,
+    );
     assert!(
         report.syntax().is_empty(),
         "invalid border-spacing was retained: {source}"

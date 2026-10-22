@@ -6,7 +6,7 @@
 //! Exact typed initials/new contribution variants/serializers are supplementary
 //! functional tests once those APIs exist, rather than compile-failure RED.
 
-use crate::css::support::style_declaration as declaration;
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
 
 struct Case {
@@ -121,31 +121,6 @@ fn ordinary_authored_lists_expand_once_with_original_occurrence_and_importance()
         assert_ordinary(&item, &source, case.property);
         assert_eq!(item.source().importance(), CssImportance::Important);
         assert!(item.replacement_components().is_none());
-    }
-}
-
-#[test]
-fn css_wide_keywords_remain_symbolic_on_each_selected_longhand() {
-    for case in CASES {
-        for (css, keyword) in [
-            ("inherit", CssGlobalKeyword::Inherit),
-            ("initial", CssGlobalKeyword::Initial),
-            ("unset", CssGlobalKeyword::Unset),
-            ("revert", CssGlobalKeyword::Revert),
-            ("revert-layer", CssGlobalKeyword::RevertLayer),
-        ] {
-            let source = declaration(&format!(
-                "{}:{css}!important",
-                case.property.canonical_name()
-            ));
-            let item = completed(&source);
-            assert_eq!(item.property(), case.property);
-            assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-            assert!(item.ordinary_value().is_none());
-            assert!(item.source().same_occurrence(&source));
-            assert_eq!(item.source().importance(), CssImportance::Important);
-            assert!(item.replacement_components().is_none());
-        }
     }
 }
 

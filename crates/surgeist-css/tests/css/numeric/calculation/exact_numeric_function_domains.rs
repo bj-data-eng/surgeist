@@ -1,5 +1,6 @@
 //! Domain and arity expectations from CSS Values 4 §10. Type checking does not
 //! evaluate the real-number result or reject deferred arithmetic singularities.
+use crate::css::support::value_assertions::assert_calculation_rejected;
 use surgeist_css::{
     CssAngleCalculation, CssLengthCalculation, CssLengthPercentageCalculation,
     CssNumberCalculation, CssPercentageCalculation, parse_component_values,
@@ -60,10 +61,22 @@ fn numeric_functions_enforce_argument_domains_and_arity() {
         "calc(1 + 1%)",
         "calc(min(1px * 1px) / 1px / 1px)",
     ] {
-        assert!(
-            CssNumberCalculation::try_from_components(parse_component_values(source).unwrap())
-                .is_err(),
-            "{source}"
+        // Values 4 §10: a wrong argument count is an arity failure, an
+        // argument outside the function's accepted types an argument-type
+        // failure, and arguments whose types cannot be made consistent are
+        // incompatible. The remaining cases admit more than one reading.
+        use surgeist_css::CssNumericConstructionErrorKind as N;
+        let kind = match source {
+            "min()" | "max()" | "clamp(1, 2)" | "round()" | "mod(1)" | "rem(1, 2, 3)"
+            | "abs(1, 2)" | "sign()" | "log(1, 2, 3)" => Some(N::Arity),
+            "sin(1px)" | "cos(1s)" | "tan(1%)" | "pow(1px, 2)" | "sqrt(1px)" | "log(1px)"
+            | "exp(1px)" => Some(N::InvalidArgumentType),
+            "hypot(1, 1px)" => Some(N::IncompatibleTypes),
+            _ => None,
+        };
+        assert_calculation_rejected(
+            CssNumberCalculation::try_from_components(parse_component_values(source).unwrap()),
+            kind,
         );
     }
 }
@@ -90,10 +103,17 @@ fn inverse_trigonometry_returns_angles_and_checks_argument_types() {
         "atan2(1px, 1s)",
         "atan2(1)",
     ] {
-        assert!(
-            CssAngleCalculation::try_from_components(parse_component_values(source).unwrap())
-                .is_err(),
-            "{source}"
+        // Values 4 §10.5: asin/acos/atan take a <number>; atan2 takes two
+        // consistent arguments.
+        use surgeist_css::CssNumericConstructionErrorKind as N;
+        let kind = match source {
+            "atan2(1px, 1s)" => N::IncompatibleTypes,
+            "atan2(1)" => N::Arity,
+            _ => N::InvalidArgumentType,
+        };
+        assert_calculation_rejected(
+            CssAngleCalculation::try_from_components(parse_component_values(source).unwrap()),
+            Some(kind),
         );
     }
 }
@@ -102,9 +122,9 @@ fn inverse_trigonometry_returns_angles_and_checks_argument_types() {
 fn percentage_resolution_depends_on_the_explicit_root_context() {
     for source in ["min(1px, 2%)", "clamp(none, 2%, 3px)", "hypot(3px, 4%)"] {
         let values = parse_component_values(source).unwrap();
-        assert!(
-            CssLengthCalculation::try_from_components(values.clone()).is_err(),
-            "{source}"
+        assert_calculation_rejected(
+            CssLengthCalculation::try_from_components(values.clone()),
+            Some(surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch),
         );
         assert!(
             CssLengthPercentageCalculation::try_from_components(values).is_ok(),
@@ -135,10 +155,9 @@ fn only_actual_whitespace_satisfies_binary_sum_separators() {
         "calc(1/**/+ 2)",
         "calc(-(1))",
     ] {
-        assert!(
-            CssNumberCalculation::try_from_components(parse_component_values(source).unwrap())
-                .is_err(),
-            "{source}"
+        assert_calculation_rejected(
+            CssNumberCalculation::try_from_components(parse_component_values(source).unwrap()),
+            Some(surgeist_css::CssNumericConstructionErrorKind::MalformedExpression),
         );
     }
     for source in ["calc(1\t+\n2)", "calc(1 /*a*/+ /*b*/2)", "calc(-1 + +2)"] {

@@ -8,7 +8,7 @@
 //! No future Style variant or generated Contain longhand variant is named.
 
 use crate::css::support::authored_property;
-use authored_property::{ParserFront, assert_source, checked_components, invalid};
+use authored_property::{ParserFront, assert_source, checked_components};
 use surgeist_css::*;
 
 const PROPERTY: CssKnownProperty = CssKnownProperty::Contain;
@@ -18,13 +18,6 @@ const FRONTS: [ParserFront; 5] = [
     ParserFront::CheckedGrammar,
     ParserFront::TextName,
     ParserFront::TextGrammar,
-];
-const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
-    ("initial", CssGlobalKeyword::Initial),
-    ("inherit", CssGlobalKeyword::Inherit),
-    ("unset", CssGlobalKeyword::Unset),
-    ("revert", CssGlobalKeyword::Revert),
-    ("revert-layer", CssGlobalKeyword::RevertLayer),
 ];
 const STATES: [&str; 18] = [
     "none",
@@ -90,27 +83,6 @@ fn assert_terminals(values: &CssLonghandContributions, source: &CssDeclaration) 
     };
     assert_eq!(item.property(), PROPERTY);
     assert_source(item, source);
-}
-fn closure_origin(values: &CssComponentValues) -> CssValueOrigin {
-    for component in values.items() {
-        let origin = match component.view() {
-            CssComponentValueRef::Function(v) => Some(v.closing_origin()),
-            CssComponentValueRef::Block(v) => Some(v.closing_origin()),
-            _ => None,
-        };
-        if let Some(origin @ CssValueOrigin::ImplicitClosure { .. }) = origin {
-            return origin.clone();
-        }
-    }
-    let serialized = values.serialize().unwrap();
-    (0..serialized.as_css().len())
-        .find_map(|offset| match serialized.origin_at(offset) {
-            Some(CssSerializedOrigin::Token(origin @ CssValueOrigin::ImplicitClosure { .. })) => {
-                Some(origin.clone())
-            }
-            _ => None,
-        })
-        .expect("original implicit EOF mapping")
 }
 macro_rules! style_case {
     ($name:ident,$canonical:literal) => {
@@ -201,32 +173,6 @@ fn represented_keyword_and_component_controls_preserve_authored_order_and_alias_
 }
 
 #[test]
-fn grammar_rejects_duplicates_exclusive_mixtures_and_values_outside_the_selected_pin() {
-    for input in [
-        "",
-        "none size",
-        "strict paint",
-        "content style",
-        "none none",
-        "size size",
-        "style style",
-        "size layout style paint size",
-        "size, paint",
-        "inline-size",
-        "inline-size style",
-        "auto",
-        "normal",
-        "inherit paint",
-        "style initial",
-        "1",
-        "\"style\"",
-        "var()",
-    ] {
-        invalid(PROPERTY, input);
-    }
-}
-
-#[test]
 fn escaped_style_tokens_preserve_original_components_source_coordinates_and_importance() {
     for (input, canonical) in [
         (r"\73 tyle", "style"),
@@ -282,200 +228,6 @@ fn intrinsic_metadata_is_noninherited_with_an_ordinary_initial_and_one_terminal(
     // variant and belongs to functional implementation-time evidence.
     for input in STATES {
         contributions(&ParserFront::StyleAttribute.valid(PROPERTY, input, input));
-    }
-}
-
-#[test]
-fn whole_globals_expand_once_and_reject_ordinary_value_mixtures() {
-    for (text, keyword) in GLOBALS {
-        for front in FRONTS {
-            let source = front.valid(PROPERTY, text, text);
-            let values = contributions(&source);
-            assert!(
-                matches!(values.items()[0].value(),CssContributionValueRef::Global(value) if value==keyword)
-            );
-        }
-        invalid(PROPERTY, &format!("{text} style"));
-        invalid(PROPERTY, &format!("paint {text}"));
-    }
-}
-
-#[test]
-fn checked_fronts_reject_original_implicit_closures_for_ordinary_global_and_pending_values() {
-    let mut inputs: Vec<_> = STATES
-        .into_iter()
-        .chain(GLOBALS.map(|(text, _)| text))
-        .chain(["var(--contain)", "env(contain)", "attr(data-contain *)"])
-        .map(|input| format!("{input}/*"))
-        .collect();
-    inputs.extend(["var(--contain", "env(contain", "attr(data-contain *"].map(str::to_owned));
-    for text in inputs {
-        let components = parse_component_values(&text).unwrap();
-        let before = components.clone();
-        let origin = closure_origin(&components);
-        for grammar in [false, true] {
-            let error = checked_components(
-                PROPERTY,
-                components.clone(),
-                grammar,
-                CssImportance::Important,
-            )
-            .unwrap_err();
-            assert!(matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-            ));
-            assert_eq!(
-                error.origin(),
-                &CssSerializedOrigin::End(Some(origin.clone()))
-            );
-        }
-        assert_eq!(components, before);
-        let CssValueOrigin::ImplicitClosure { opening, at } = origin else {
-            panic!("original EOF")
-        };
-        assert!(opening.source().same_snapshot(at.source()));
-        assert_eq!(at.source().as_str(), text);
-        assert_eq!(at.span().start().byte_offset().value(), text.len());
-        assert_eq!(at.span().start(), at.span().end());
-    }
-}
-
-#[test]
-fn browser_recovery_retains_original_occurrence_and_diagnostics_without_cleaning_source() {
-    for input in ["paint size/*", "style/*", "initial/*", "var(--contain"] {
-        let css = format!(".a{{contain:{input}");
-        let report = parse_sheet(&css);
-        assert!(!report.is_clean());
-        assert!(validate_sheet(&css).is_err());
-        assert!(
-            report
-                .diagnostics()
-                .iter()
-                .any(|d| d.action() == CssRecoveryAction::RetainWithImplicitClosure)
-        );
-        let before = report.clone();
-        let normalized = normalize_report_with_limits(
-            &report,
-            CssNormalizationLimits::try_new(0, 1, 1, 1).unwrap(),
-        )
-        .unwrap();
-        assert_eq!(normalized.diagnostics(), report.diagnostics());
-        let declarations: Vec<_> = normalized
-            .syntax()
-            .items()
-            .iter()
-            .filter_map(|item| match item {
-                CssNormalizedItem::Declaration(v) => Some(v),
-                _ => None,
-            })
-            .collect();
-        let [item] = declarations.as_slice() else {
-            panic!("one recovered declaration")
-        };
-        assert_eq!(item.source().parsed_value().unwrap().source().as_str(), css);
-        assert_eq!(item.source().known().unwrap().property(), PROPERTY);
-        assert_eq!(item.order(), 0);
-        match item.expansion() {
-            CssExpansion::Pending(handle) => {
-                assert!(handle.source().same_occurrence(item.source()))
-            }
-            CssExpansion::Contributions(CssContributions::Longhands(values)) => {
-                assert_terminals(values, item.source())
-            }
-            _ => panic!("contain lifecycle"),
-        }
-        assert_eq!(report, before);
-    }
-}
-
-#[test]
-fn pending_reentry_is_residual_first_retryable_and_preserves_replacement_and_occurrence_origins() {
-    for input in [
-        "var(--contain)",
-        "env(contain)",
-        "attr(data-contain *)",
-        "style var(--contain)",
-    ] {
-        let source = ParserFront::StyleAttribute.parse(PROPERTY, input);
-        let before = source.clone();
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
-            panic!("whole pending occurrence")
-        };
-        for bad in [
-            "var(--again)",
-            "env(again)",
-            "attr(data-again *)",
-            "style var(--again",
-        ] {
-            let error = handle
-                .reenter(parse_component_values(bad).unwrap())
-                .unwrap_err();
-            assert_eq!(error.kind(), &CssExpansionErrorKind::ResidualSubstitution);
-        }
-        for bad in ["style style", "none paint", "inline-size", "size/*"] {
-            let replacement = parse_component_values(bad).unwrap();
-            let expected = checked_components(
-                PROPERTY,
-                replacement.clone(),
-                true,
-                CssImportance::Important,
-            )
-            .unwrap_err();
-            for _ in 0..2 {
-                let error = handle.reenter(replacement.clone()).unwrap_err();
-                assert!(
-                    matches!(error.kind(),CssExpansionErrorKind::InvalidReplacement(value) if value==&expected)
-                );
-            }
-        }
-        for text in STATES {
-            let replacement = parse_component_values(text).unwrap();
-            let before_replacement = replacement.clone();
-            let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
-            else {
-                panic!("completed ordinary replacement")
-            };
-            assert_terminals(&values, &source);
-            assert!(values.items()[0].ordinary_value().is_some());
-            assert_eq!(
-                values.items()[0].replacement_components(),
-                Some(&replacement)
-            );
-            for (actual, original) in values.items()[0]
-                .replacement_components()
-                .unwrap()
-                .items()
-                .iter()
-                .zip(replacement.items())
-            {
-                let (CssValueOrigin::Parsed(actual), CssValueOrigin::Parsed(original)) =
-                    (actual.origin(), original.origin())
-                else {
-                    panic!("parsed replacement token")
-                };
-                assert!(actual.source().same_snapshot(original.source()));
-                assert_eq!(actual.span(), original.span());
-            }
-            assert_eq!(replacement, before_replacement);
-        }
-        for (text, keyword) in GLOBALS {
-            let replacement = parse_component_values(text).unwrap();
-            let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
-            else {
-                panic!("global replacement")
-            };
-            assert_terminals(&values, &source);
-            assert!(
-                matches!(values.items()[0].value(),CssContributionValueRef::Global(value) if value==keyword)
-            );
-            assert_eq!(
-                values.items()[0].replacement_components(),
-                Some(&replacement)
-            );
-        }
-        assert!(handle.source().same_occurrence(&source));
-        assert_eq!(source, before);
     }
 }
 

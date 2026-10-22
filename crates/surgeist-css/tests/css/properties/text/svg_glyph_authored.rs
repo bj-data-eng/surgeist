@@ -452,47 +452,61 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
         assert_eq!(values.serialize().unwrap().as_css(), text);
         assert_eq!(mixed.serialize().unwrap().as_css(), text);
     }
-    // Missing bounded arguments retain provider diagnostics. In particular,
-    // the numeric cursor falls back to '+' when there is no right operand;
-    // that origin is not evidence that a rejected operand was present.
-    for (text, path, offset, native_kind) in [
+    // Missing bounded arguments retain provider diagnostics. The native
+    // calculation names the component where its expression stops, while a
+    // property rejection follows the crate's location rule: the `)` that
+    // cannot supply a missing operand or argument is responsible.
+    for (text, path, offset, closing, native_kind) in [
         (
             "calc(90deg +)",
             &[0, 2][..],
-            11,
+            12,
+            true,
             CssNumericConstructionErrorKind::MalformedExpression,
         ),
         (
             "calc()",
             &[0][..],
-            0,
+            5,
+            true,
             CssNumericConstructionErrorKind::Arity,
         ),
         (
             "calc(90deg +abs(1deg))",
             &[0, 3][..],
             12,
+            false,
             CssNumericConstructionErrorKind::MalformedExpression,
         ),
         (
             "calc(90deg+ abs(1deg))",
             &[0, 1][..],
             10,
+            false,
             CssNumericConstructionErrorKind::MalformedExpression,
         ),
         (
             "calc(abs(90deg +abs(1deg)))",
             &[0, 0, 3][..],
             16,
+            false,
             CssNumericConstructionErrorKind::MalformedExpression,
         ),
     ] {
         let values = parse_component_values(text).unwrap();
-        let responsible = responsible_component(&values, path);
+        let native_responsible = responsible_component(&values, path);
         let native = CssAngleCalculation::try_from_components(values.clone()).unwrap_err();
         assert_eq!(native.kind(), &native_kind);
         assert_eq!(native.path(), Some(path));
-        assert_eq!(native.origin(), Some(responsible.origin()));
+        assert_eq!(native.origin(), Some(native_responsible.origin()));
+        let responsible = if closing {
+            let CssComponentValueRef::Function(function) = values.items()[0].view() else {
+                panic!("calc function")
+            };
+            function.closing_origin().clone()
+        } else {
+            native_responsible.origin().clone()
+        };
         for context in [SVG, QUIRKS] {
             let error = context
                 .parse_property_value(NAME, values.clone(), CssImportance::Normal)
@@ -506,7 +520,8 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
             );
             assert_eq!(
                 error.origin(),
-                &CssSerializedOrigin::Token(responsible.origin().clone())
+                &CssSerializedOrigin::Token(responsible.clone()),
+                "{text}"
             );
             for report in [
                 context.parse_property_value_text(text, NAME, CssImportance::Normal),

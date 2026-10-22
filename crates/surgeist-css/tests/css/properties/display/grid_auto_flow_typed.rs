@@ -2,6 +2,7 @@
 //! axis/dense ordering; Grid 3 (2026-01-21) §2.3 and the recorded WebKit choice
 //! supply symbolic normal and bare dense without choosing a layout direction.
 
+use crate::css::support::property_admission::assert_checked_value_rejected;
 use surgeist_css::*;
 
 fn parsed(value: &str) -> CssDeclaration {
@@ -155,25 +156,17 @@ fn canonical_serializer_charges_each_keyword_and_exact_output_bytes() {
 
 #[test]
 fn invalid_keyword_combinations_are_rejected_by_the_public_grammar() {
-    let grammar = CssPropertyGrammar::from_name("grid-auto-flow").unwrap();
-    for value in [
-        "normal dense",
-        "dense normal",
-        "row column",
-        "column row",
-        "row row",
-        "dense dense",
-        "dense row column",
+    // Grid 3 §2.3: normal stands alone; one axis and one dense, each once.
+    for (value, token) in [
+        ("normal dense", "dense"),
+        ("dense normal", "normal"),
+        ("row column", "column"),
+        ("column row", "row"),
+        ("row row", "row"),
+        ("dense dense", "dense"),
+        ("dense row column", "column"),
     ] {
-        assert!(
-            parse_property_value_for_grammar(
-                grammar,
-                parse_component_values(value).unwrap(),
-                CssImportance::Normal,
-            )
-            .is_err(),
-            "{value}"
-        );
+        assert_checked_value_rejected(CssKnownProperty::GridAutoFlow, value, Some(token));
     }
 }
 

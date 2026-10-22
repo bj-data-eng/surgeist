@@ -5,10 +5,9 @@
 //! they do not perform CSSOM declaration-block selection or shorthand coalescing.
 
 use crate::{
-    CssBreakBetween, CssComponentValueErrorKind, CssComponentValueRef, CssComponentValues,
-    CssDeclaration, CssDeclarationBody, CssDeclarationList, CssGlobalKeyword, CssImportance,
-    CssKnownDeclaredValueRef, CssKnownPropertyValueRef, CssPropertyGrammar,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind,
+    CssBreakBetween, CssComponentValueRef, CssComponentValues, CssDeclaration, CssDeclarationBody,
+    CssDeclarationList, CssGlobalKeyword, CssImportance, CssKnownDeclaredValueRef,
+    CssKnownPropertyValueRef, CssPropertyGrammar, CssSpecifiedValueSerializationError,
     CssSpecifiedValueSerializationLimits, CssTextOrientation, CssValueTokenRef,
     component_values::CssCanonicalBuilder,
     pending_serialization::append_pending_specified,
@@ -178,17 +177,7 @@ pub(crate) fn append_retained_value(
     let serialized = builder
         .push_components(&items[start..end])
         .and_then(|()| builder.finish())
-        .map_err(|error| {
-            CssSpecifiedValueSerializationError::new(match error.kind() {
-                CssComponentValueErrorKind::ByteLimit => {
-                    CssSpecifiedValueSerializationErrorKind::ByteLimit
-                }
-                CssComponentValueErrorKind::UnserializableBoundary => {
-                    CssSpecifiedValueSerializationErrorKind::UnserializableBoundary
-                }
-                _ => CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
-            })
-        })?;
+        .map_err(crate::component_values::specified_component_error)?;
     writer.append(serialized.as_css())
 }
 

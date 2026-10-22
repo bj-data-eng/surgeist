@@ -214,7 +214,7 @@ fn authored_order_custom_case_importance_and_symbolic_values_are_preserved() {
 }
 
 #[test]
-fn actual_parser_mode_and_independent_svg_choice_select_the_existing_grammar() {
+fn actual_parser_mode_and_independent_svg_choice_select_the_owning_grammar() {
     let raw: Arc<Vec<u16>> = Arc::new("color:ABC; width:2px".encode_utf16().collect());
     let standards = parse_units(CssParserContext::default(), raw.clone());
     assert_eq!(names(&standards), ["width"]);

@@ -4,18 +4,8 @@
 //! context, while rule ancestry independently retains active scope boundaries.
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nested-declarations-rule
 //! https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-nesting
+use crate::css::support::rules::normalized_declarations as declarations;
 use surgeist_css::*;
-
-fn declarations(sheet: &CssNormalizedSheet) -> Vec<&CssNormalizedDeclaration> {
-    sheet
-        .items()
-        .iter()
-        .filter_map(|item| match item {
-            CssNormalizedItem::Declaration(value) => Some(value),
-            _ => None,
-        })
-        .collect()
-}
 
 fn rules(sheet: &CssNormalizedSheet) -> Vec<&CssRuleContext> {
     sheet

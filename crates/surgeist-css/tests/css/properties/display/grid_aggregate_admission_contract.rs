@@ -3,6 +3,10 @@
 //! slash), §7.8 (both auto-flow orientations and unordered dense), and §7.2
 //! (auto/min-content track breadths). Grid3 2026-01-21 §3.1 retains these track
 //! properties/shorthands. No area-string or none-as-track-child model assumption.
+use crate::css::support::authored_property;
+use crate::css::support::property_admission::{
+    assert_checked_rejected, assert_invalid_value, assert_style_attribute_rejected,
+};
 use surgeist_css::*;
 
 fn name(property: CssKnownProperty) -> &'static str {
@@ -25,33 +29,6 @@ fn occurrence(declaration: &CssDeclaration, property: CssKnownProperty) {
         | (CssKnownProperty::Grid, Some(CssKnownPropertyValueRef::Grid(_))) => {}
         _ => panic!("ordinary typed aggregate"),
     }
-}
-
-fn parsed(property: CssKnownProperty, value: &str) -> CssDeclaration {
-    let source = format!("{}:{value}!important", name(property));
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 1, "{source}");
-    let declaration = report.syntax()[0].clone();
-    occurrence(&declaration, property);
-    declaration
-}
-
-fn checked(property: CssKnownProperty, value: &str, by_grammar: bool) -> CssDeclaration {
-    let components = parse_component_values(value).expect("clean components");
-    let result = if by_grammar {
-        parse_property_value_for_grammar(property.grammar(), components, CssImportance::Important)
-    } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
-            components,
-            CssImportance::Important,
-        )
-    };
-    let declaration =
-        result.unwrap_or_else(|error| panic!("{}:{value}: {error:?}", name(property)));
-    occurrence(&declaration, property);
-    declaration
 }
 
 fn grid(declaration: &CssDeclaration) -> &CssGrid {
@@ -101,6 +78,18 @@ fn assert_flow(
     );
 }
 
+fn parsed(property: CssKnownProperty, value: &str) -> CssDeclaration {
+    let declaration = authored_property::parsed(property, value);
+    occurrence(&declaration, property);
+    declaration
+}
+
+fn checked(property: CssKnownProperty, value: &str, by_grammar: bool) -> CssDeclaration {
+    let declaration = authored_property::checked(property, value, by_grammar);
+    occurrence(&declaration, property);
+    declaration
+}
+
 fn reject_rows_style(property: CssKnownProperty) {
     let source = format!("{}:10px;color:red", name(property));
     let report = parse_style_attribute(&source);
@@ -119,14 +108,15 @@ fn reject_rows_style(property: CssKnownProperty) {
         CssErrorCode::InvalidPropertyValue
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
+    // The rows-only prefix is viable until the value ends without the
+    // required column slash, so its last token is responsible.
+    assert_invalid_value(diagnostic.error().kind(), property, Some("10px"));
 }
 
 fn reject_rows_validator(property: CssKnownProperty) {
     let source = format!("{}:10px", name(property));
-    assert!(
-        validate_style_attribute(&source).is_err(),
-        "{source}: required column slash missing"
-    );
+    // The value ends after its last token without the required column slash.
+    assert_style_attribute_rejected(&source, property, Some("10px"));
 }
 
 fn reject_rows_checked(property: CssKnownProperty, by_grammar: bool) {
@@ -140,11 +130,8 @@ fn reject_rows_checked(property: CssKnownProperty, by_grammar: bool) {
             CssImportance::Important,
         )
     };
-    assert!(
-        result.is_err(),
-        "{}:10px is not the rows/columns shorthand form",
-        name(property)
-    );
+    // 10px is not the rows/columns shorthand form: its column slash is missing.
+    assert_checked_rejected(result, property, Some("10px"));
 }
 
 macro_rules! rows_only_contract {
@@ -301,7 +288,7 @@ keyword_contract!(
 );
 
 #[test]
-fn none_and_explicit_rows_columns_controls_pass_all_existing_front_doors() {
+fn none_and_explicit_rows_columns_controls_pass_all_front_doors() {
     for property in [CssKnownProperty::GridTemplate, CssKnownProperty::Grid] {
         for value in ["none", "10px / 20px"] {
             for declaration in [
@@ -331,7 +318,7 @@ fn none_and_explicit_rows_columns_controls_pass_all_existing_front_doors() {
 }
 
 #[test]
-fn row_flow_with_and_without_auto_sizes_controls_pass_all_existing_front_doors() {
+fn row_flow_with_and_without_auto_sizes_controls_pass_all_front_doors() {
     for (input, dense, auto) in [
         ("auto-flow / 10px", false, None),
         ("auto-flow dense / 10px", true, None),
@@ -350,19 +337,18 @@ fn row_flow_with_and_without_auto_sizes_controls_pass_all_existing_front_doors()
 
 #[test]
 fn malformed_duplicate_prefixes_and_slashes_are_rejected_wholly() {
-    for input in [
-        "auto-flow auto-flow / 10px",
-        "10px / auto-flow auto-flow",
-        "auto-flow dense dense / 10px",
-        "10px / auto-flow dense dense",
-        "auto-flow / / 10px",
-        "10px // auto-flow",
-        "10px / auto-flow / 20px",
-        "10px / auto-flow dense 20px extra",
+    for (input, token) in [
+        ("auto-flow auto-flow / 10px", Some("auto-flow")),
+        ("10px / auto-flow auto-flow", Some("auto-flow")),
+        ("auto-flow dense dense / 10px", Some("dense")),
+        ("10px / auto-flow dense dense", Some("dense")),
+        ("auto-flow / / 10px", Some("/")),
+        ("10px // auto-flow", Some("/")),
+        ("10px / auto-flow / 20px", Some("/")),
+        ("10px / auto-flow dense 20px extra", Some("extra")),
     ] {
         let source = format!("grid:{input};color:red");
-        let report = parse_style_attribute(&source);
-        assert!(!report.is_clean(), "{input}");
+        let report = assert_style_attribute_rejected(&source, CssKnownProperty::Grid, token);
         let [retained] = report.syntax().as_slice() else {
             panic!("invalid grid is wholly dropped: {input}");
         };
@@ -385,7 +371,7 @@ fn malformed_duplicate_prefixes_and_slashes_are_rejected_wholly() {
                     CssImportance::Important,
                 )
             };
-            assert!(result.is_err(), "{input}");
+            assert_checked_rejected(result, CssKnownProperty::Grid, token);
         }
     }
 }

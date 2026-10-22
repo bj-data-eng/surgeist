@@ -2,6 +2,7 @@
 //! compound and part front doors, plus complete complex admission. Expectations
 //! use the selected authored grammar and independently computed output tariffs.
 
+use crate::css::support::color_and_selector_fixtures::assert_specified_construction_cause as specified_cause;
 use crate::css::support::validated_selector_in as parsed;
 use surgeist_css::{
     CssAttributeCaseSensitivity as Case, CssAttributeMatcher as Matcher, CssAttributeName,
@@ -11,9 +12,8 @@ use surgeist_css::{
     CssNthChildPattern, CssNthPattern, CssPseudoClass, CssPseudoSelectorList,
     CssQualifiedAttributeName, CssQualifiedNameError, CssQualifiedNamePrefix as Prefix,
     CssQualifiedSelectorName, CssRelativeSelector, CssRelativeSelectorList, CssSelector,
-    CssSelectorCombinator as Combinator, CssSelectorConstructionError,
-    CssSelectorConstructionErrorKind as ConstructionKind, CssSimpleSelector as Simple,
-    CssSpecifiedValueSerializationError, CssSpecifiedValueSerializationErrorKind as Kind,
+    CssSelectorCombinator as Combinator, CssSelectorConstructionErrorKind as ConstructionKind,
+    CssSimpleSelector as Simple, CssSpecifiedValueSerializationErrorKind as Kind,
     CssSpecifiedValueSerializationLimits as Limits, CssValueOrigin,
 };
 
@@ -36,19 +36,6 @@ fn name() -> CssQualifiedAttributeName {
         &CssNamespaceContext::default(),
     )
     .unwrap()
-}
-
-fn specified_cause(error: &CssSelectorConstructionError, expected: Kind) {
-    let ConstructionKind::Specified(cause) = error.kind() else {
-        panic!("specified construction cause: {error:?}");
-    };
-    assert_eq!(cause.kind(), expected);
-    assert_eq!(
-        std::error::Error::source(error)
-            .unwrap()
-            .downcast_ref::<CssSpecifiedValueSerializationError>(),
-        Some(cause)
-    );
 }
 
 #[test]
@@ -334,7 +321,8 @@ fn compound_keeps_repeated_ids_classes_and_decoded_whitespace_inside_identifiers
     assert_eq!(value.scope_anchors(), 0);
     assert_eq!(value.nesting_selectors(), 0);
     let selector = CssSelector::Compound(value);
-    let literal = "#X#X.One.One.a\\ b:hover";
+    // CSSOM "serialize a selector": members serialize in their given order.
+    let literal = ".One#X.One#X.a\\ b:hover";
     assert_eq!(selector.to_specified_css().unwrap(), literal);
     assert_eq!(parsed(literal, &CssNamespaceContext::default()), selector);
     assert_ne!(

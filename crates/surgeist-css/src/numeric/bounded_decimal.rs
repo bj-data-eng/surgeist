@@ -694,8 +694,11 @@ mod tests {
                 "999999999999999999999999999999999999999999",
                 0,
             ),
-            // An authored zero mantissa is the unsigned zero whatever its sign;
-            // a nonzero mantissa that underflows keeps its sign.
+            // Values 4 §10.9.1 (WD 2024-03-12, #css-signed-zero): a zero
+            // spelling (0, +0, -0) produces the unsigned zero whatever its
+            // sign. A negative nonzero mantissa that underflows is not a zero
+            // spelling; under the section's IEEE-754 semantics its nearest
+            // representable binary64 value is 0⁻ (decided in #1274).
             (
                 true,
                 "000",

@@ -136,23 +136,22 @@ fn raw_unicode_range_corpus_preserves_values_and_original_diagnostics() {
             let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
                 panic!("descriptor grammar error for {id}");
             };
+            // Input ending before the range is complete names its last
+            // authored token; any other failure names a token inside it.
+            let encountered = detail.encountered().expect("responsible authored token");
+            let position = diagnostic.error().position().byte_offset().value();
             if *eof {
                 assert_eq!(
-                    diagnostic.error().position().byte_offset().value(),
-                    input.len(),
+                    position + encountered.authored().len(),
+                    input.trim_end().len(),
                     "{id}"
                 );
-                assert!(detail.encountered().is_none(), "{id}");
             } else {
-                assert!(
-                    diagnostic.error().position().byte_offset().value() < input.len(),
-                    "{id}"
-                );
-                assert!(detail.encountered().is_some(), "{id}");
+                assert!(position < input.len(), "{id}");
             }
             expected_class["diagnostics"] = serde_json::json!([{
                 "code": "invalid_descriptor_value", "action": "reject_input",
-                "payload_relation": if *eof {"recovery_ends_at"} else {"intersects"}
+                "payload_relation": "intersects"
             }]);
         }
         let matching: Vec<_> = classes["records"]

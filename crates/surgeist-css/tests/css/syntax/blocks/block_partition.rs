@@ -8,12 +8,14 @@
 //! Rejected complete qualified rules and at-keywords partition nonempty runs;
 //! no-rule outcomes do not. An empty run never creates a placeholder.
 
+use crate::css::support::authored_syntax::assert_diagnostics;
 use surgeist_css::{
-    CssDeclaration, CssKnownProperty, CssNormalizedItem, CssParseReport, CssRecoveryAction,
-    CssRule, CssRuleContextKindRef, CssScopedRule, CssSheet, normalize_sheet, parse_sheet,
+    CssDeclaration, CssErrorCode, CssKnownProperty, CssNormalizedItem, CssParseReport,
+    CssRecoveryAction, CssRule, CssRuleContextKindRef, CssScopedRule, CssSheet, normalize_sheet,
+    parse_sheet,
 };
 
-fn declaration(value: &CssDeclaration, property: CssKnownProperty, css: &str) {
+fn assert_declaration(value: &CssDeclaration, property: CssKnownProperty, css: &str) {
     assert_eq!(value.known().unwrap().property(), property);
     assert_eq!(
         value
@@ -27,7 +29,7 @@ fn declaration(value: &CssDeclaration, property: CssKnownProperty, css: &str) {
 }
 
 fn color(value: &CssDeclaration, css: &str) {
-    declaration(value, CssKnownProperty::Color, css);
+    assert_declaration(value, CssKnownProperty::Color, css);
 }
 
 fn recovery(
@@ -154,9 +156,28 @@ fn rejected_at_rule_partitions_for_statement_and_block() {
 
 #[test]
 fn rejected_first_rule_without_pending_declarations_leaves_leading_slot_available() {
-    for source in [".p{.bad,{}color:green}", ".p{@unknown; color:green}"] {
+    // `.bad,` ends in an empty complex selector at the block, and `@unknown`
+    // names no known at-rule.
+    for (source, expected) in [
+        (
+            ".p{.bad,{}color:green}",
+            (
+                CssErrorCode::InvalidSelector,
+                CssRecoveryAction::DropQualifiedRule,
+                7,
+            ),
+        ),
+        (
+            ".p{@unknown; color:green}",
+            (
+                CssErrorCode::UnknownAtRule,
+                CssRecoveryAction::DropAtRule,
+                3,
+            ),
+        ),
+    ] {
         let report = parse_sheet(source);
-        assert!(!report.is_clean());
+        assert_diagnostics(report.diagnostics(), &[expected]);
         let [CssRule::Style(parent)] = report.syntax().rules() else {
             panic!("parent")
         };
@@ -185,13 +206,45 @@ fn no_rule_semicolon_and_custom_property_lookalike_preserve_one_run() {
     // Malformed var() rejects the custom declaration. Its fallback prelude starts
     // with a decoded custom ident and colon; bad-declaration remnants through the
     // semicolon return nothing, even with blocks in those remnants.
-    for source in [
-        ".p{color:red;.bad; color:green}",
-        ".p{color:red;.bad; color:green",
-        ".p{color:red;--bad:var() {opacity:0} .leak{};color:green}",
+    // A nested qualified rule reaching `;` before any block returns nothing
+    // at that semicolon; `var()` ends at its `)` where a custom property name
+    // is required.
+    for (source, expected) in [
+        (
+            ".p{color:red;.bad; color:green}",
+            (
+                CssErrorCode::InvalidQualifiedRule,
+                CssRecoveryAction::DropQualifiedRule,
+                17,
+            ),
+        ),
+        (
+            ".p{color:red;.bad; color:green",
+            (
+                CssErrorCode::InvalidQualifiedRule,
+                CssRecoveryAction::DropQualifiedRule,
+                17,
+            ),
+        ),
+        (
+            ".p{color:red;--bad:var() {opacity:0} .leak{};color:green}",
+            (
+                CssErrorCode::UnexpectedEnd,
+                CssRecoveryAction::DropDeclaration,
+                23,
+            ),
+        ),
     ] {
         let report = parse_sheet(source);
-        assert!(!report.is_clean());
+        let mut expected = vec![expected];
+        if !source.ends_with('}') {
+            expected.push((
+                CssErrorCode::UnexpectedEnd,
+                CssRecoveryAction::RetainWithImplicitClosure,
+                source.len(),
+            ));
+        }
+        assert_diagnostics(report.diagnostics(), &expected);
         let [CssRule::Style(parent)] = report.syntax().rules() else {
             panic!("parent")
         };
@@ -311,7 +364,7 @@ fn malformed_neighbor_preserves_exact_original_parse_payload_and_partition() {
     );
     color(&parent.declarations()[0], "red");
     color(&green.declarations()[0], "green");
-    declaration(&child.declarations()[0], CssKnownProperty::Opacity, "1");
+    assert_declaration(&child.declarations()[0], CssKnownProperty::Opacity, "1");
     color(&black.declarations()[0], "black");
 }
 

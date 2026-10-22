@@ -9,6 +9,8 @@
 //! never geometry, computed defaults or unfinished exact math projection.
 //! All tests use callable public APIs that predate shape() support.
 
+use crate::css::support::property_admission::assert_checked_matches_diagnostic;
+use crate::css::support::property_admission::validated_sole_declaration;
 use surgeist_css::{
     CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
 };
@@ -22,14 +24,9 @@ fn clip(source: &CssDeclaration) -> &CssClipPath {
     value.value()
 }
 
-fn declaration(value: &str) -> CssDeclaration {
+fn clip_path_declaration(value: &str) -> CssDeclaration {
     let css = format!("clip-path:{value}!important");
-    let report = parse_style_attribute(&css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    assert_eq!(validate_style_attribute(&css), Ok(report.syntax().clone()));
-    let [source] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
+    let source = validated_sole_declaration(&css);
     if let Some(CssKnownPropertyValueRef::ClipPath(parsed)) =
         source.known().unwrap().property_value()
     {
@@ -39,11 +36,11 @@ fn declaration(value: &str) -> CssDeclaration {
     let report = parse_sheet(&sheet);
     assert!(report.is_clean(), "{sheet}: {:?}", report.diagnostics());
     assert_eq!(validate_sheet(&sheet), Ok(report.syntax().clone()));
-    source.clone()
+    source
 }
 
 fn accept(authored: &str, expected: &str) {
-    let source = declaration(authored);
+    let source = clip_path_declaration(authored);
     assert_eq!(clip(&source).serialize_specified().unwrap(), expected);
     let components = parse_component_values(authored).unwrap();
     let checked = parse_property_value(
@@ -279,7 +276,7 @@ fn literal_coefficients_retain_raw_precision_and_units_while_output_rounds() {
 fn symbolic_position_pair_radius_and_angle_graphs_remain_authored() {
     // No exact numerical projection oracle is claimed for unfinished math work.
     let authored = "shape(from calc(1px + 2%) 0px, curve by min(-1px, 2%) 3px with calc(4px + 5%) 6px from end, arc to 7px 8% of calc(-9px) min(10px, 11%) rotate calc(12deg + 13deg))";
-    let source = declaration(authored);
+    let source = clip_path_declaration(authored);
     let components = parse_component_values(authored).unwrap();
     let checked = parse_property_value(
         CssPropertyNameRef::Known(CssKnownProperty::ClipPath),
@@ -299,12 +296,12 @@ fn symbolic_position_pair_radius_and_angle_graphs_remain_authored() {
 
 #[test]
 fn fill_omission_and_both_reference_box_orders_retain_authored_identity() {
-    let omitted = declaration("shape(from 0px 0px, close)");
+    let omitted = clip_path_declaration("shape(from 0px 0px, close)");
     for fill in ["", "nonzero ", "evenodd "] {
         let shape = format!("shape({fill}from 0px 0px, close)");
         accept(&shape, &shape);
         if !fill.is_empty() {
-            assert_ne!(clip(&declaration(&shape)), clip(&omitted));
+            assert_ne!(clip(&clip_path_declaration(&shape)), clip(&omitted));
         }
         for edge in [
             "content-box",
@@ -376,14 +373,7 @@ fn reject(value: &str) {
         validate_style_attribute(&css).unwrap_err().diagnostics(),
         report.diagnostics()
     );
-    assert!(
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ClipPath),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal
-        )
-        .is_err()
-    );
+    assert_checked_matches_diagnostic(CssKnownProperty::ClipPath, value, diagnostic);
     let sheet = format!(".a{{{css}}}");
     let report = parse_sheet(&sheet);
     assert_eq!(report.diagnostics().len(), 1, "{sheet}");
@@ -573,7 +563,7 @@ fn original_function_command_keyword_scalar_and_punctuation_origins_survive() {
 #[test]
 fn aggregate_equality_ignores_raw_origins_but_retains_order_affinity_and_omissions() {
     let text = "shape(from 0px 0px, curve to 1px 2px with 3px 4px, arc by 5px 6px of 7px)";
-    let a = declaration(text);
+    let a = clip_path_declaration(text);
     let b = parse_style_attribute(&format!("/*different source*/ clip-path:{text}!important"));
     assert!(b.is_clean());
     assert_ne!(a.value_components(), b.syntax()[0].value_components());
@@ -587,10 +577,12 @@ fn aggregate_equality_ignores_raw_origins_but_retains_order_affinity_and_omissio
         "shape(from 0px 0px, curve to 1px 2px with 3px 4px, arc by 5px 6px of 7px ccw small rotate 0deg)",
         "shape(from 0px 0px, arc by 5px 6px of 7px, curve to 1px 2px with 3px 4px)",
     ] {
-        assert_ne!(clip(&a), clip(&declaration(other)), "{other}");
+        assert_ne!(clip(&a), clip(&clip_path_declaration(other)), "{other}");
     }
-    let a = declaration("shape(from 0px 0px, arc to 1px 2px of 3px cw large rotate 4deg)");
-    let b = declaration("shape(from 0px 0px, arc to 1px 2px rotate 4deg large cw of 3px)");
+    let a =
+        clip_path_declaration("shape(from 0px 0px, arc to 1px 2px of 3px cw large rotate 4deg)");
+    let b =
+        clip_path_declaration("shape(from 0px 0px, arc to 1px 2px rotate 4deg large cw of 3px)");
     assert_ne!(a.value_components(), b.value_components());
     assert_eq!(clip(&a), clip(&b));
 }
@@ -608,7 +600,10 @@ fn diagnosed_implicit_closure_is_retained_but_original_components_remain_strict(
             .iter()
             .any(|d| d.action() == CssRecoveryAction::RetainWithImplicitClosure)
     );
-    assert!(validate_style_attribute(&css).is_err());
+    assert_eq!(
+        validate_style_attribute(&css).unwrap_err().diagnostics(),
+        report.diagnostics()
+    );
     assert_eq!(
         clip(&report.syntax()[0]).serialize_specified().unwrap(),
         "shape(from 0px 0px, close)"
@@ -630,7 +625,7 @@ fn diagnosed_implicit_closure_is_retained_but_original_components_remain_strict(
     assert_eq!(at.source().as_str(), value);
     assert_eq!(at.span().start().byte_offset().value(), value.len());
     assert_eq!(at.span().end().byte_offset().value(), value.len());
-    let source = declaration("var(--shape)");
+    let source = clip_path_declaration("var(--shape)");
     let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
         panic!("pending clip")
     };
@@ -671,7 +666,7 @@ fn checked_property_construction_accepts_programmatic_original_component_graphs(
 
 #[test]
 fn pending_reentry_is_reusable_and_returns_only_validated_terminal_replacements() {
-    let source = declaration("var(--shape)");
+    let source = clip_path_declaration("var(--shape)");
     let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
         panic!("pending shape")
     };
@@ -803,7 +798,7 @@ fn normalization_preserves_surviving_occurrences_importance_and_pending_state() 
 fn close_fixture_obeys_atomic_cumulative_limits_without_mutating_values_or_origins() {
     // Independent contract: function + from + position/2 axes/2 scalars + list
     // + close = 9 visits. ClipPathShape adds 1, an explicit reference box adds 1.
-    let source = declaration("shape(from 0px 0px, close)");
+    let source = clip_path_declaration("shape(from 0px 0px, close)");
     let before = source.clone();
     let CssClipPath::BasicShape(composition) = clip(&source) else {
         panic!("basic shape")
@@ -1146,10 +1141,12 @@ mod construction {
     }
     #[test]
     fn rotation_accepts_exact_dimensions_without_zero_number_or_float_bounds() {
-        assert!(
-            CssAngleLiteral::try_from_component(CssComponentValue::try_number("0").unwrap())
-                .is_err()
-        );
+        // A zero number is not the required angle dimension token.
+        let component = CssComponentValue::try_number("0").unwrap();
+        let origin = component.origin().clone();
+        let error = CssAngleLiteral::try_from_component(component).unwrap_err();
+        assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+        assert_eq!(error.origin(), &origin);
         for text in [
             "-1e-999deg",
             "1e400turn",
@@ -1172,30 +1169,8 @@ mod construction {
         }
     }
     fn budget(value: &CssShapeFunction, expected: &str, nodes: usize) {
-        let before = value.clone();
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(L::new(nodes, nodes, expected.len()))
-                .unwrap(),
-            expected
-        );
-        for (limits, kind) in [
-            (L::new(nodes - 1, nodes, expected.len()), K::InputNodeLimit),
-            (
-                L::new(nodes, nodes - 1, expected.len()),
-                K::ProjectionNodeLimit,
-            ),
-            (L::new(nodes, nodes, expected.len() - 1), K::ByteLimit),
-        ] {
-            assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                kind
-            );
-            assert_eq!(value, &before);
-        }
+        crate::css::support::serialization_limits::LimitLadder::new(expected, nodes, nodes)
+            .assert_unchanged(value, CssShapeFunction::serialize_specified_with_limits);
     }
     #[test]
     fn literal_commands_controls_radii_and_options_accumulate_independent_counts() {

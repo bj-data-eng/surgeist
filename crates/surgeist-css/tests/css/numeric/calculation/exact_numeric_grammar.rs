@@ -145,7 +145,7 @@ fn each_function_boundary_must_have_a_valid_numeric_type() {
 }
 
 #[test]
-fn existing_literal_and_basic_calculation_forms_remain_accepted() {
+fn literal_and_basic_calculation_forms_are_accepted() {
     for declaration in [
         "width: 10px",
         "width: calc(1px + 2px)",

@@ -198,12 +198,9 @@ impl CssImageValueList {
         writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> std::result::Result<(), crate::CssSpecifiedValueSerializationError> {
         charge(writer, 1)?;
-        for (index, image) in self.images().iter().enumerate() {
-            if index != 0 {
-                writer.append(", ")?;
-            }
-            image.append_specified(writer)?;
-        }
+        writer.comma_separated(self.images(), |writer, image| {
+            image.append_specified(writer)
+        })?;
         Ok(())
     }
 }
@@ -615,7 +612,7 @@ fn angular_endpoint_is(value: &crate::CssAngularColorStopPosition, end: bool) ->
             let decimal =
                 crate::exact_decimal::LexicalDecimal::new(literal.numeric().representation());
             if !end {
-                return decimal.len == 0;
+                return decimal.is_zero();
             }
             let (digits, exponent) = match literal.unit() {
                 U::Degrees => ("36", 1),
@@ -633,7 +630,7 @@ fn angular_endpoint_is(value: &crate::CssAngularColorStopPosition, end: bool) ->
             };
             let decimal = crate::exact_decimal::LexicalDecimal::new(number.representation());
             if !end {
-                return decimal.len == 0;
+                return decimal.is_zero();
             }
             decimal.is_positive("1", 2)
         }),
@@ -678,7 +675,7 @@ fn is_direct_zero(value: &CssSpecifiedLengthPercentage) -> bool {
                 crate::CssValueTokenRef::Number(number)
                 | crate::CssValueTokenRef::Percentage(number)
                 | crate::CssValueTokenRef::Dimension { number, .. },
-            ) => crate::exact_decimal::LexicalDecimal::new(number.representation()).len == 0,
+            ) => crate::exact_decimal::LexicalDecimal::new(number.representation()).is_zero(),
             _ => false,
         })
 }

@@ -1,23 +1,17 @@
 //! Additive API functional draft; run only after the selected identities exist.
 //! Pseudo4 WD20250627 §§2.2/3.1/4/5/7.1, referenced Values4 custom-ident and
 //! Selectors4 suffix restrictions own these symbolic authored expectations.
+use crate::css::support::admitted_selector as parsed;
+use crate::css::support::color_and_selector_fixtures::assert_strict_validation_rejects;
+use crate::css::support::color_and_selector_fixtures::{
+    assert_selector_item_dropped, assert_selector_rejected as rejected,
+    assert_specified_construction_cause, assert_unrepresentable_construction,
+    originating_compound as compound,
+};
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type LimitKind = CssSpecifiedValueSerializationErrorKind;
-
-fn parsed(source: &str) -> CssSelector {
-    let report = parse_selector(source, &CssNamespaceContext::default());
-    assert!(report.is_clean(), "{source}: {report:?}");
-    report.syntax().clone().unwrap()
-}
-
-fn compound(value: &CssSelector) -> &CssCompoundSelector {
-    let CssSelector::Compound(value) = value else {
-        panic!("originating compound")
-    };
-    value
-}
 
 fn segments(value: &CssSelector) -> &[CssPseudoElementSegment] {
     compound(value).pseudo_elements().unwrap().segments()
@@ -33,12 +27,6 @@ fn exact(source: &str, expected: &str) -> CssSelector {
     assert_eq!(reused.selectors(), std::slice::from_ref(&value));
     assert_eq!(reused.to_specified_css().unwrap(), expected);
     value
-}
-
-fn rejected(source: &str) {
-    let report = parse_selector(source, &CssNamespaceContext::default());
-    assert!(report.syntax().is_none(), "{source}: {report:?}");
-    assert!(!report.is_clean());
 }
 
 fn suffix_list(value: &CssSelector) -> &CssPseudoSelectorList {
@@ -156,7 +144,7 @@ fn every_new_identity_has_its_selected_typed_model_and_canonical_name() {
 }
 
 #[test]
-fn highlight_payload_uses_the_existing_case_sensitive_custom_identifier_contract() {
+fn highlight_payload_uses_the_case_sensitive_custom_identifier_contract() {
     for (source, decoded, expected) in [
         ("::highlight(MyName)", "MyName", "::highlight(MyName)"),
         (r"::HIGHLIGHT(\4d yName)", "MyName", "::highlight(MyName)"),
@@ -265,14 +253,11 @@ fn current_is_a_search_text_or_element_backed_suffix_and_resets_with_the_receive
         detached.to_specified_css().unwrap_err().kind(),
         LimitKind::UnrepresentableValue
     );
-    assert!(CssSelectorList::try_new(vec![detached.clone()]).is_err());
-    assert!(CssPseudoSelectorList::try_new(vec![detached]).is_err());
+    assert_unrepresentable_construction(CssSelectorList::try_new(vec![detached.clone()]));
+    assert_unrepresentable_construction(CssPseudoSelectorList::try_new(vec![detached]));
 
-    let report = parse_selector(
-        "::search-text:is(:first-child,:current,:hover)",
-        &CssNamespaceContext::default(),
-    );
-    assert!(!report.is_clean());
+    let source = "::search-text:is(:first-child,:current,:hover)";
+    let report = parse_selector(source, &CssNamespaceContext::default());
     assert_eq!(
         report
             .syntax()
@@ -282,12 +267,7 @@ fn current_is_a_search_text_or_element_backed_suffix_and_resets_with_the_receive
             .unwrap(),
         "::search-text:is(:current, :hover)"
     );
-    assert!(
-        report
-            .diagnostics()
-            .iter()
-            .any(|diagnostic| diagnostic.action() == CssRecoveryAction::DropSelectorListItem)
-    );
+    assert_selector_item_dropped(source, report, ":first-child");
 }
 
 #[test]
@@ -336,7 +316,7 @@ fn new_receiver_classes_share_checked_child_and_logical_attachment_permissions()
     let token = detail.encountered().unwrap();
     assert_eq!(token.kind(), CssTokenKind::Ident);
     assert_eq!(token.authored(), "first-child");
-    assert!(report.into_validation_result().is_err());
+    assert_strict_validation_rejects(report);
     for parent in [
         CssPseudoElement::FileSelectorButton,
         CssPseudoElement::DetailsContent,
@@ -444,7 +424,7 @@ fn retained_invalid_items_require_true_permission_set_inclusion_for_checked_reus
             detached.to_specified_css().unwrap_err().kind(),
             LimitKind::UnrepresentableValue
         );
-        assert!(CssSelectorList::try_new(vec![detached]).is_err());
+        assert_unrepresentable_construction(CssSelectorList::try_new(vec![detached]));
     }
     let before = search.clone();
     assert!(attach(CssPseudoElement::SearchText, suffix_list(&search).clone()).is_some());
@@ -495,8 +475,10 @@ fn retained_invalid_items_require_true_permission_set_inclusion_for_checked_reus
 #[test]
 fn strict_forgiving_scope_and_supports_consumers_apply_their_actual_pseudo_boundaries() {
     let highlight = parsed("::highlight(Name)");
-    assert!(CssPseudoSelectorList::try_new(vec![highlight.clone()]).is_err());
-    assert!(CssPseudoSelectorList::try_new_forgiving(vec![highlight.clone()]).is_err());
+    assert_unrepresentable_construction(CssPseudoSelectorList::try_new(vec![highlight.clone()]));
+    assert_unrepresentable_construction(CssPseudoSelectorList::try_new_forgiving(vec![
+        highlight.clone(),
+    ]));
     assert!(CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(highlight)]).is_none());
     for source in [
         ":not(.keep,::highlight(Name))",
@@ -509,7 +491,6 @@ fn strict_forgiving_scope_and_supports_consumers_apply_their_actual_pseudo_bound
     for function in ["is", "where"] {
         let source = format!(":{function}(::highlight(Name),.keep)");
         let report = parse_selector(&source, &CssNamespaceContext::default());
-        assert!(!report.is_clean());
         assert_eq!(
             report
                 .syntax()
@@ -519,12 +500,7 @@ fn strict_forgiving_scope_and_supports_consumers_apply_their_actual_pseudo_bound
                 .unwrap(),
             format!(":{function}(.keep)")
         );
-        assert!(
-            report
-                .diagnostics()
-                .iter()
-                .any(|diagnostic| diagnostic.action() == CssRecoveryAction::DropSelectorListItem)
-        );
+        assert_selector_item_dropped(&source, report, "::highlight(Name)");
     }
     let scope = parse_sheet("@scope(::highlight(Name)){.lost{color:red}}.after{color:blue}");
     assert!(matches!(scope.syntax().rules(), [CssRule::Style(_)]));
@@ -781,7 +757,10 @@ fn cumulative_node_and_escaped_byte_limits_fail_atomically_and_allow_retry() {
         assert!(member.to_specified_css_with_limits(short).is_ok());
     }
     assert_eq!(checked.to_specified_css_with_limits(fit).unwrap(), expected);
-    assert!(CssSelectorList::try_new_with_limits(escaped, short).is_err());
+    assert_specified_construction_cause(
+        &CssSelectorList::try_new_with_limits(escaped, short).unwrap_err(),
+        LimitKind::ByteLimit,
+    );
     assert_eq!(
         checked
             .to_specified_css_with_limits(short)
@@ -867,7 +846,7 @@ fn highlight_function_and_checked_rule_composition_respect_the_structural_ceilin
         rules = group.rules();
     }
     assert!(rules.is_empty());
-    assert!(rejected.into_validation_result().is_err());
+    assert_strict_validation_rejects(rejected);
 
     // Checked rule assembly documents a separate block-bearing rule ceiling.
     // Existing parsed descendants keep their genuine source position; new

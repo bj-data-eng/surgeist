@@ -218,14 +218,20 @@ fn placement_rejects_zero_noninteger_and_duplicate_components_without_losing_nei
                 report.diagnostics()[0].action(),
                 CssRecoveryAction::DropDeclaration
             );
-            assert!(validate_style_attribute(&source).is_err(), "{source}");
-            assert!(
+            assert_eq!(
+                validate_style_attribute(&source).unwrap_err().diagnostics(),
+                report.diagnostics(),
+                "{source}"
+            );
+            assert_eq!(
                 parse_property_value_for_grammar(
                     grammar(name),
                     parse_component_values(value).unwrap(),
-                    CssImportance::Normal,
+                    CssImportance::Normal
                 )
-                .is_err(),
+                .unwrap_err()
+                .kind(),
+                &CssPropertyValueErrorKind::Grammar(report.diagnostics()[0].error().kind().clone()),
                 "checked accepted {name}: {value}"
             );
         }
@@ -249,14 +255,24 @@ fn default_and_reserved_keywords_cannot_serve_as_grid_line_names() {
             "unset 2",
         ] {
             let source = format!("{name}: {value}");
-            assert!(!parse_style_attribute(&source).is_clean(), "{source}");
-            assert!(
+            let report = parse_style_attribute(&source);
+            let [diagnostic] = report.diagnostics() else {
+                panic!("one dropped declaration: {source}")
+            };
+            assert_eq!(
+                diagnostic.action(),
+                CssRecoveryAction::DropDeclaration,
+                "{source}"
+            );
+            assert_eq!(
                 parse_property_value_for_grammar(
                     grammar(name),
                     parse_component_values(value).unwrap(),
-                    CssImportance::Normal,
+                    CssImportance::Normal
                 )
-                .is_err(),
+                .unwrap_err()
+                .kind(),
+                &CssPropertyValueErrorKind::Grammar(report.diagnostics()[0].error().kind().clone()),
                 "checked accepted {source}"
             );
         }
@@ -331,14 +347,24 @@ fn placement_shorthands_reject_extra_or_empty_slash_members() {
     ] {
         for &value in values {
             let source = format!("{name}: {value}");
-            assert!(!parse_style_attribute(&source).is_clean(), "{source}");
-            assert!(
+            let report = parse_style_attribute(&source);
+            let [diagnostic] = report.diagnostics() else {
+                panic!("one dropped declaration: {source}")
+            };
+            assert_eq!(
+                diagnostic.action(),
+                CssRecoveryAction::DropDeclaration,
+                "{source}"
+            );
+            assert_eq!(
                 parse_property_value_for_grammar(
                     grammar(name),
                     parse_component_values(value).unwrap(),
-                    CssImportance::Normal,
+                    CssImportance::Normal
                 )
-                .is_err(),
+                .unwrap_err()
+                .kind(),
+                &CssPropertyValueErrorKind::Grammar(report.diagnostics()[0].error().kind().clone()),
                 "checked accepted {source}"
             );
         }

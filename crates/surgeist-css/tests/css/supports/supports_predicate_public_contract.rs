@@ -2,15 +2,8 @@
 //! the existing-callable classification regression checkpoint. Independent
 //! oracles: Conditional 5 WD20251030 §2 and Fonts 4 WD20260907 §4.3 vocabularies.
 //! Support truth, font loading and actual at-rule admission remain downstream.
+use crate::css::support::authored_syntax::checked_supports_condition as checked;
 use surgeist_css::*;
-
-fn checked(source: &str) -> CssSupportsCondition {
-    CssSupportsCondition::try_from_components(
-        parse_component_values(source).unwrap(),
-        &CssNamespaceContext::default(),
-    )
-    .unwrap()
-}
 
 fn both(source: &str, inspect: impl Fn(&CssSupportsCondition)) {
     let condition = checked(source);
@@ -40,7 +33,7 @@ fn both(source: &str, inspect: impl Fn(&CssSupportsCondition)) {
     assert_eq!(replay.syntax().to_specified_css().unwrap(), expected);
 }
 
-fn parsed_origin(origin: &CssValueOrigin, source: &str, token: &str) {
+fn assert_token_origin(origin: &CssValueOrigin, source: &str, token: &str) {
     let CssValueOrigin::Parsed(origin) = origin else {
         panic!("original token origin")
     };
@@ -155,7 +148,7 @@ fn arbitrary_at_keywords_keep_original_tokens_decoded_names_and_function_delimit
                 panic!("argument origin")
             };
             let original = origin.source().as_str();
-            parsed_origin(value.origin(), original, argument);
+            assert_token_origin(value.origin(), original, argument);
             assert_eq!(value.position(), Some(origin.span().start()));
             assert_eq!(
                 serialized.origin_at(lexical.find(argument).unwrap()),
@@ -181,7 +174,7 @@ fn arbitrary_at_keywords_keep_original_tokens_decoded_names_and_function_delimit
                 })
                 .unwrap();
             assert_eq!(value.component(), actual_argument);
-            parsed_origin(component.origin(), original, r"aT-\72 ule(");
+            assert_token_origin(component.origin(), original, r"aT-\72 ule(");
             let CssValueOrigin::Parsed(close) = full.closing_origin() else {
                 panic!("original closing delimiter")
             };
@@ -278,7 +271,7 @@ fn inspect_composed(condition: &CssSupportsCondition) {
 }
 
 #[test]
-fn predicates_compose_with_existing_booleans_names_and_selectors_across_group_consumers() {
+fn predicates_compose_with_booleans_names_and_selectors_across_group_consumers() {
     inspect_composed(&checked(COMPOSED));
     both(
         "not (font-tech(palettes) or at-rule(@unknown))",
@@ -451,7 +444,7 @@ fn balanced_invalid_predicate_arguments_remain_opaque_but_invalid_outer_algebra_
 }
 
 #[test]
-fn lexical_failures_in_new_predicates_are_terminal_and_recover_to_the_later_sibling() {
+fn lexical_failures_in_function_predicates_are_terminal_and_recover_to_the_later_sibling() {
     for (predicate, bad, kind) in [
         (
             "font-tech(url(a b))",

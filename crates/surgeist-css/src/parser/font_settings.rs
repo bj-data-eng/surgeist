@@ -21,8 +21,13 @@ pub(super) fn parse_font_feature_settings<'i, 't>(
 ) -> Result<CssAuthoredFontFeatureSettings, ParseError<'i, Error>> {
     let state = input.state();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        if ident.eq_ignore_ascii_case("normal") && input.is_exhausted() {
-            return Ok(CssAuthoredFontFeatureSettings::Normal);
+        if ident.eq_ignore_ascii_case("normal") {
+            if input.is_exhausted() {
+                return Ok(CssAuthoredFontFeatureSettings::Normal);
+            }
+            // Fonts 4: `normal` is a whole value, so the token after it is
+            // responsible.
+            return Err(unexpected_at(input.current_source_location()));
         }
         input.reset(&state);
     }
@@ -88,8 +93,13 @@ pub(super) fn parse_font_variation_settings<'i, 't>(
 ) -> Result<CssFontVariationSettings, ParseError<'i, Error>> {
     let state = input.state();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        if ident.eq_ignore_ascii_case("normal") && input.is_exhausted() {
-            return Ok(CssFontVariationSettings::Normal);
+        if ident.eq_ignore_ascii_case("normal") {
+            if input.is_exhausted() {
+                return Ok(CssFontVariationSettings::Normal);
+            }
+            // Fonts 4: `normal` is a whole value, so the token after it is
+            // responsible.
+            return Err(unexpected_at(input.current_source_location()));
         }
         input.reset(&state);
     }

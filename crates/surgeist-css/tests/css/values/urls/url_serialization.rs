@@ -265,9 +265,18 @@ fn malformed_checked_components_fail_before_url_construction() {
         CssIdent::try_new("").unwrap_err().kind(),
         CssComponentValueErrorKind::InvalidIdentifier
     );
-    assert!(CssIdent::try_new("a\0b").is_err());
-    assert!(CssComponentValue::try_token("a b").is_err());
-    assert!(CssComponentValue::try_string("a\0b").is_err());
+    assert_eq!(
+        CssIdent::try_new("a\0b").unwrap_err().kind(),
+        CssComponentValueErrorKind::InvalidIdentifier
+    );
+    assert_eq!(
+        CssComponentValue::try_token("a b").unwrap_err().kind(),
+        CssComponentValueErrorKind::InvalidToken
+    );
+    assert_eq!(
+        CssComponentValue::try_string("a\0b").unwrap_err().kind(),
+        CssComponentValueErrorKind::InvalidString
+    );
     let valid = CssUrl::from_parts(CssUrlFunction::Url, "x", Vec::new());
     assert_eq!(
         valid

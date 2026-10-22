@@ -5,7 +5,10 @@
 //! CSS-wide values select physical sides. Frozen WebKit 73aa6c89 corroborates
 //! physical membership, CSS-wide dispatch and quad repetition, not logical mode.
 
+use crate::css::support::checked_grammar_declaration as checked;
 use crate::css::support::important_declaration as declaration;
+use crate::css::support::named_property::longhand_contributions as terminals;
+use crate::css::support::selected_grammar as grammar;
 use surgeist_css::*;
 
 struct Family {
@@ -154,30 +157,6 @@ const FAMILIES: [Family; 8] = [
     },
 ];
 
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).unwrap()
-}
-fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap()
-}
-fn terminals(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap_or_else(|error| {
-            panic!(
-                "{} expansion: {error:?}",
-                source.known().unwrap().property().canonical_name()
-            )
-        })
-    else {
-        panic!("ordinary longhands")
-    };
-    values
-}
 fn one_value(name: &str, value: &str) -> CssLonghandValue {
     let values = terminals(&declaration(name, value));
     assert_eq!(values.items().len(), 1);
@@ -437,33 +416,6 @@ fn all_selected_longhands_keep_exact_intrinsic_initial_and_noninheritance() {
 }
 
 #[test]
-fn all_css_wide_keywords_target_physical_sides_without_complementary_resets() {
-    for family in &FAMILIES {
-        for (text, keyword) in [
-            ("initial", CssGlobalKeyword::Initial),
-            ("inherit", CssGlobalKeyword::Inherit),
-            ("unset", CssGlobalKeyword::Unset),
-            ("revert", CssGlobalKeyword::Revert),
-            ("revert-layer", CssGlobalKeyword::RevertLayer),
-        ] {
-            for source in [declaration(family.name, text), checked(family.name, text)] {
-                let values = terminals(&source);
-                assert_eq!(values.items().len(), 4);
-                for (item, name) in values.items().iter().zip(family.physical) {
-                    assert_eq!(item.property(), grammar(name).target_property());
-                    assert!(
-                        matches!(item.value(), CssContributionValueRef::Global(actual) if actual == keyword)
-                    );
-                    assert!(item.source().same_occurrence(&source));
-                    assert_eq!(item.source().importance(), CssImportance::Important);
-                    assert!(item.replacement_components().is_none());
-                }
-            }
-        }
-    }
-}
-
-#[test]
 fn reusable_pending_handle_selects_replacement_mode_and_retains_both_origins() {
     for family in &FAMILIES {
         let source = declaration(family.name, "var(--edges)");
@@ -694,7 +646,7 @@ fn normalization_preserves_mode_interleaving_importance_sources_and_cumulative_l
 }
 
 #[test]
-fn existing_standalone_quad_writers_keep_mode_output_and_atomic_byte_limits() {
+fn standalone_quad_writers_keep_mode_output_and_atomic_byte_limits() {
     // Distinct components keep the same spelling in either retaining or
     // coalescing writers. Existing scroll writers also expose quad coalescing.
     for family in &FAMILIES {
@@ -712,12 +664,14 @@ fn existing_standalone_quad_writers_keep_mode_output_and_atomic_byte_limits() {
                     .unwrap(),
                     text
                 );
-                assert!(
+                assert_eq!(
                     canonical_with_limits(
                         &source,
                         CssSpecifiedValueSerializationLimits::new(256, usize::MAX, text.len() - 1)
                     )
-                    .is_err()
+                    .unwrap_err()
+                    .kind(),
+                    CssSpecifiedValueSerializationErrorKind::ByteLimit
                 );
                 assert_eq!(source.value_components(), &preserved);
             }

@@ -49,7 +49,7 @@ pub enum CssFeatureKind {
 
 /// The bounded implementation state of one exact catalog production.
 ///
-/// The three states are closed for I01: callers can distinguish a complete
+/// The three states are closed: callers can distinguish a complete
 /// production, a documented supported subset, and a recognized spelling that
 /// is never retained as that production. A partial remainder describes scope
 /// not claimed as supported; it does not establish that every remainder form
@@ -345,12 +345,11 @@ impl CssExclusionMetadata {
     }
 }
 
-/// Immutable support metadata for one CSS production or preserved baseline alias.
+/// Immutable support metadata for one atomic CSS production.
 ///
 /// Records describe authored syntax only. They do not dispatch the parser,
 /// validate source, perform selector/query matching, or resolve authored values.
-/// The four aggregate aliases expose immutable atomic targets and do not own
-/// parser dispatch. Fields and construction are catalog-owned so stable identity
+/// Fields and construction are catalog-owned so stable identity
 /// and status invariants cannot be forged by downstream callers.
 ///
 /// ```compile_fail
@@ -370,15 +369,18 @@ pub struct CssFeatureMetadata {
     supported_subset: Option<&'static str>,
     unsupported_remainder: Option<&'static str>,
     recognized_unsupported_code: Option<CssErrorCode>,
-    disposition: CssConformanceDisposition,
     property: Option<CssKnownProperty>,
     property_aliases: &'static [&'static str],
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-enum CssConformanceDisposition {
-    Atomic,
-    BaselineAlias(&'static [CssFeatureId]),
+/// The implementation state of one schema-backed property row.
+#[derive(Clone, Copy)]
+enum PropertyRowStatus {
+    Complete,
+    Partial {
+        supported_subset: &'static str,
+        unsupported_remainder: &'static str,
+    },
 }
 
 impl CssFeatureMetadata {
@@ -399,7 +401,6 @@ impl CssFeatureMetadata {
             supported_subset: None,
             unsupported_remainder: None,
             recognized_unsupported_code: None,
-            disposition: CssConformanceDisposition::Atomic,
             property: None,
             property_aliases: &[],
         }
@@ -424,105 +425,46 @@ impl CssFeatureMetadata {
             supported_subset: Some(supported_subset),
             unsupported_remainder: Some(unsupported_remainder),
             recognized_unsupported_code: None,
-            disposition: CssConformanceDisposition::Atomic,
             property: None,
             property_aliases: &[],
         }
     }
 
-    const fn baseline_alias(
-        id: &'static str,
-        kind: CssFeatureKind,
-        spelling: &'static str,
+    /// Builds a property row whose spelling, stable ID and aliases come from the
+    /// property schema; only provenance, status and an exceptional production
+    /// anchor are row data.
+    const fn property(
+        property: CssKnownProperty,
         source: CssSpecificationSource,
-        production: &'static str,
-        boundary: (&'static str, &'static str),
-        targets: &'static [CssFeatureId],
+        status: PropertyRowStatus,
+        production: Option<&'static str>,
     ) -> Self {
+        let (status, supported_subset, unsupported_remainder) = match status {
+            PropertyRowStatus::Complete => (CssSupportStatus::Complete, None, None),
+            PropertyRowStatus::Partial {
+                supported_subset,
+                unsupported_remainder,
+            } => (
+                CssSupportStatus::Partial,
+                Some(supported_subset),
+                Some(unsupported_remainder),
+            ),
+        };
         Self {
-            id: CssFeatureId::new(id),
-            kind,
-            spelling,
+            id: CssFeatureId::new(property.stable_id()),
+            kind: CssFeatureKind::Property,
+            spelling: property.canonical_name(),
             source,
-            production,
-            status: CssSupportStatus::Partial,
-            supported_subset: Some(boundary.0),
-            unsupported_remainder: Some(boundary.1),
+            production: match production {
+                Some(production) => production,
+                None => property_definition_anchor(property),
+            },
+            status,
+            supported_subset,
+            unsupported_remainder,
             recognized_unsupported_code: None,
-            disposition: CssConformanceDisposition::BaselineAlias(targets),
-            property: None,
-            property_aliases: &[],
-        }
-    }
-
-    const fn partial_property(
-        id: &'static str,
-        property: CssKnownProperty,
-        canonical_name: &'static str,
-        production: &'static str,
-        aliases: &'static [&'static str],
-    ) -> Self {
-        Self {
-            id: CssFeatureId::new(id),
-            kind: CssFeatureKind::Property,
-            spelling: canonical_name,
-            source: property_source(property),
-            production: property_production(property, production),
-            status: CssSupportStatus::Partial,
-            supported_subset: Some(PROPERTY_SUBSET),
-            unsupported_remainder: Some(PROPERTY_REMAINDER),
-            recognized_unsupported_code: None,
-            disposition: CssConformanceDisposition::Atomic,
             property: Some(property),
-            property_aliases: aliases,
-        }
-    }
-
-    const fn complete_property(
-        id: &'static str,
-        property: CssKnownProperty,
-        canonical_name: &'static str,
-        production: &'static str,
-        aliases: &'static [&'static str],
-    ) -> Self {
-        Self {
-            id: CssFeatureId::new(id),
-            kind: CssFeatureKind::Property,
-            spelling: canonical_name,
-            source: property_source(property),
-            production: property_production(property, production),
-            status: CssSupportStatus::Complete,
-            supported_subset: None,
-            unsupported_remainder: None,
-            recognized_unsupported_code: None,
-            disposition: CssConformanceDisposition::Atomic,
-            property: Some(property),
-            property_aliases: aliases,
-        }
-    }
-
-    const fn partial_property_with_boundary(
-        id: &'static str,
-        property: CssKnownProperty,
-        canonical_name: &'static str,
-        production: &'static str,
-        aliases: &'static [&'static str],
-        supported_subset: &'static str,
-        unsupported_remainder: &'static str,
-    ) -> Self {
-        Self {
-            id: CssFeatureId::new(id),
-            kind: CssFeatureKind::Property,
-            spelling: canonical_name,
-            source: property_source(property),
-            production: property_production(property, production),
-            status: CssSupportStatus::Partial,
-            supported_subset: Some(supported_subset),
-            unsupported_remainder: Some(unsupported_remainder),
-            recognized_unsupported_code: None,
-            disposition: CssConformanceDisposition::Atomic,
-            property: Some(property),
-            property_aliases: aliases,
+            property_aliases: property.aliases(),
         }
     }
 
@@ -583,17 +525,6 @@ impl CssFeatureMetadata {
     #[must_use]
     pub const fn recognized_unsupported_code(&self) -> Option<CssErrorCode> {
         self.recognized_unsupported_code
-    }
-
-    /// Returns the immutable atomic targets of a preserved I01 aggregate alias.
-    ///
-    /// Atomic parser-facing records return an empty slice.
-    #[must_use]
-    pub const fn baseline_alias_targets(&self) -> &'static [CssFeatureId] {
-        match self.disposition {
-            CssConformanceDisposition::Atomic => &[],
-            CssConformanceDisposition::BaselineAlias(targets) => targets,
-        }
     }
 }
 
@@ -1194,6 +1125,15 @@ profile_source!(
     CssSpecificationTier::SurgeistExtension,
     "https://www.w3.org/TR/2025/WD-css-pseudo-4-20250627/"
 );
+// Position 4 §3.2 defines ::backdrop; only that definition is imported.
+profile_source!(
+    X_POSITION4,
+    "X-POSITION4",
+    "CSS Positioned Layout",
+    "4",
+    CssSpecificationTier::SurgeistExtension,
+    "https://www.w3.org/TR/2025/WD-css-position-4-20251007/"
+);
 const X_VALUES4: CssSpecificationSource = CssSpecificationSource::from_repository(
     "X-VALUES4",
     "CSS Values and Units",
@@ -1349,18 +1289,6 @@ profile_source!(
 
 const CSS_STYLE_ATTRIBUTES: CssSpecificationSource = O_STYLE_ATTR;
 const CSS_CASCADE_4: CssSpecificationSource = O_CASCADE4;
-const BASELINE_SELECTORS: CssSpecificationSource = CssSpecificationSource::from_repository(
-    "I01-BASE-SELECTORS",
-    "Surgeist CSS selectors parser",
-    "I01 baseline",
-    "bc5394f:src/parser/selectors.rs",
-);
-const BASELINE_QUERIES: CssSpecificationSource = CssSpecificationSource::from_repository(
-    "I01-BASE-QUERIES",
-    "Surgeist CSS query parser",
-    "I01 baseline",
-    "bc5394f:src/parser/queries.rs",
-);
 
 profile_source!(
     I_WEBKIT_SVG_GLYPH,
@@ -1443,6 +1371,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     X_CONDITIONAL5,
     X_CASCADE6,
     X_PSEUDO4,
+    X_POSITION4,
     X_VALUES4,
     I_VALUES4_20240312,
     X_MEDIA5,
@@ -1462,8 +1391,6 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     X_DISPLAY_MODE_BASE,
     X_GRID_TOLERANCE_BASE,
     X_GRID3_20260121,
-    BASELINE_SELECTORS,
-    BASELINE_QUERIES,
     I_WEBKIT_SVG_GLYPH,
 ];
 
@@ -2422,18 +2349,18 @@ static OFFICIAL_EXCLUDED_COVERAGE: &[CssOfficialCoverageRecord] = excluded_cover
 );
 
 const BASELINE_RULE_SUBSET: &str =
-    "The baseline parser spelling and the I01 recovery extensions are supported.";
+    "The baseline parser spelling and the selected recovery extensions are supported.";
 const BASELINE_RULE_REMAINDER: &str =
-    "Other valid forms of the cited rule production are outside the I01 subset.";
+    "Other valid forms of the cited rule production are outside the supported subset.";
 const SELECTOR_REMAINDER: &str =
-    "Other valid forms of the cited Selectors production are outside the I01 subset.";
-const SUPPORTS_SELECTOR_SUBSET: &str = "selector() accepts complete Selectors 3 plus the selected I01 extensions: the || column combinator; i and s attribute modifiers; :scope, :focus-visible, :focus-within, :required, :optional, :valid, :invalid, :placeholder-shown, :modal, :fullscreen, :popover-open, :default, :indeterminate, :read-only, :read-write, :in-range, and :out-of-range; :is(), :where(), :has(), selector-list :not(), and nth-child of lists; and ::marker, ::selection, ::backdrop, and generated-marker sequences. The selected named states :defined, :any-link, :playing, :paused, :seeking, :buffering, :stalled, :muted, :volume-locked, :open, :picture-in-picture, :unchecked, :user-valid and :user-invalid retain distinct symbolic identities, with decoded ASCII-insensitive admission and canonical lowercase specified output; functional forms remain invalid and :any-link is not lowered. Directionality accepts one identifier and language accepts nonempty comma-separated identifier or string ranges. Required shadow definitions add :host, compound-argument :host() and :host-context(), ::slotted(), and identifier-list ::part(). Autofill and its required -webkit-autofill alias share the standard identity; unknown nonfunctional -webkit- pseudo-elements retain symbolic match-nothing identities with ASCII-lowercase output. Pseudo 4 adds Prefix, Suffix, SearchText, TargetText, SpellingError, GrammarError, Highlight with one checked custom identifier, Placeholder, FileSelectorButton and DetailsContent. Nonfunctional Current is limited to SearchText and element-backed suffix contexts and inherited logical arguments; ordinary Current and functional Current remain unsupported. View Transitions 1 adds its tree-abiding root and Group, ImagePair, Old and New functional pseudos with wildcard or custom-ident arguments, named-descendant OnlyChild suffixes and exact root-to-group-to-image-pair-to-old/new compounds. Ordered pseudo-element suffixes retain contextual pseudo-classes and defined child transitions, resetting permissions at each new segment. All typed selector tests remain symbolic, including optional UA pseudo implementation and matching prohibitions.";
+    "Other valid forms of the cited Selectors production are outside the supported subset.";
+const SUPPORTS_SELECTOR_SUBSET: &str = "selector() accepts complete Selectors 3 plus the selected extensions: the || column combinator; i and s attribute modifiers; :scope, :focus-visible, :focus-within, :required, :optional, :valid, :invalid, :placeholder-shown, :modal, :fullscreen, :popover-open, :default, :indeterminate, :read-only, :read-write, :in-range, and :out-of-range; :is(), :where(), :has(), selector-list :not(), and nth-child of lists; and ::marker, ::selection, ::backdrop, and generated-marker sequences. The selected named states :defined, :any-link, :playing, :paused, :seeking, :buffering, :stalled, :muted, :volume-locked, :open, :picture-in-picture, :unchecked, :user-valid and :user-invalid retain distinct symbolic identities, with decoded ASCII-insensitive admission and canonical lowercase specified output; functional forms remain invalid and :any-link is not lowered. Directionality accepts one identifier and language accepts nonempty comma-separated identifier or string ranges. Required shadow definitions add :host, compound-argument :host() and :host-context(), ::slotted(), and identifier-list ::part(). Autofill and its required -webkit-autofill alias share the standard identity; unknown nonfunctional -webkit- pseudo-elements retain symbolic match-nothing identities with ASCII-lowercase output. Pseudo 4 adds Prefix, Suffix, SearchText, TargetText, SpellingError, GrammarError, Highlight with one checked custom identifier, Placeholder, FileSelectorButton and DetailsContent. Nonfunctional Current is limited to SearchText and element-backed suffix contexts and inherited logical arguments; ordinary Current and functional Current remain unsupported. View Transitions 1 adds its tree-abiding root and Group, ImagePair, Old and New functional pseudos with wildcard or custom-ident arguments, named-descendant OnlyChild suffixes and exact root-to-group-to-image-pair-to-old/new compounds. Ordered pseudo-element suffixes retain contextual pseudo-classes and defined child transitions, resetting permissions at each new segment. All typed selector tests remain symbolic, including optional UA pseudo implementation and matching prohibitions.";
 const SUPPORTS_SELECTOR_REMAINDER: &str = "Unselected Selectors 4 pseudo-classes and pseudo-elements, and syntax outside those atomic extension rows remain outside the typed subset; balanced content is preserved as general-enclosed authored syntax.";
 const QUERY_REMAINDER: &str =
-    "Other valid forms of the cited query production are outside the I01 subset.";
+    "Other valid forms of the cited query production are outside the supported subset.";
 const PROPERTY_SUBSET: &str = "The property-specific parser behavior at 4b288d6:src/parser/mod.rs, plus whole-value CSS-wide keywords and syntactically admissible substitution-dependent authored values, is supported.";
 const PROPERTY_REMAINDER: &str =
-    "Other valid forms of the cited property production are outside the I01 subset.";
+    "Other valid forms of the cited property production are outside the supported subset.";
 const COLOR5_RELATIVE_SUBSET: &str = "Relative rgb()/rgba(), hsl()/hsla(), hwb(), lab(), lch(), oklab(), oklch(), predefined and custom-profile color(), and alpha() preserve authored channels and symbolic calculations.";
 const COLOR5_RELATIVE_REMAINDER: &str = "Unselected CSS Color 5 source-color functions remain unsupported; profile binding and color evaluation belong to downstream resolution.";
 const COLOR5_MIX_SUBSET: &str = "Authored color-mix() supports an optional interpolation method, ordered nonempty color lists, literal or calculated percentage weights before or after colors, and predefined, polar or symbolic custom spaces.";
@@ -2441,592 +2368,61 @@ const COLOR5_MIX_REMAINDER: &str = "Unselected contextual Color 5 alternatives a
 const GRID_AUTO_FLOW_SUBSET: &str = "The authored grid-auto-flow grammar accepts exactly normal, dense, row, row dense, column, and column dense; axis and dense may appear in either order. Normal and bare dense remain symbolic; intrinsic longhand expansion and canonical specified serialization preserve the six states.";
 const GRID_AUTO_FLOW_REMAINDER: &str = "Grid 3 §2.3 issue #12803 has not settled whether its context-dependent orientation extends grid-auto-flow or belongs to a separate grid-lanes-direction property. The normal initial and implicit-direction dense choice follow the recorded WebKit behavior; runtime orientation and placement belong downstream.";
 
-const fn property_source(property: CssKnownProperty) -> CssSpecificationSource {
-    match property {
-        CssKnownProperty::Container
-        | CssKnownProperty::ContainerName
-        | CssKnownProperty::ContainerType => X_CONDITIONAL5,
-        CssKnownProperty::All => O_CASCADE4,
-        CssKnownProperty::Display | CssKnownProperty::Visibility => S_DISPLAY3,
-        CssKnownProperty::Speak
-        | CssKnownProperty::SpeakAs
-        | CssKnownProperty::PauseBefore
-        | CssKnownProperty::PauseAfter
-        | CssKnownProperty::Pause
-        | CssKnownProperty::RestBefore
-        | CssKnownProperty::RestAfter
-        | CssKnownProperty::Rest
-        | CssKnownProperty::CueBefore
-        | CssKnownProperty::CueAfter
-        | CssKnownProperty::Cue
-        | CssKnownProperty::VoiceFamily
-        | CssKnownProperty::VoiceStress
-        | CssKnownProperty::VoiceDuration
-        | CssKnownProperty::VoicePitch
-        | CssKnownProperty::VoiceRange
-        | CssKnownProperty::VoiceRate
-        | CssKnownProperty::VoiceBalance
-        | CssKnownProperty::VoiceVolume => S_SPEECH1,
-        CssKnownProperty::Quotes
-        | CssKnownProperty::Content
-        | CssKnownProperty::StringSet
-        | CssKnownProperty::BookmarkLevel
-        | CssKnownProperty::BookmarkLabel
-        | CssKnownProperty::BookmarkState => X_CONTENT3,
-        CssKnownProperty::BorderCollapse
-        | CssKnownProperty::BorderSpacing
-        | CssKnownProperty::CaptionSide
-        | CssKnownProperty::EmptyCells
-        | CssKnownProperty::TableLayout
-        | CssKnownProperty::LineHeight
-        | CssKnownProperty::VerticalAlign
-        | CssKnownProperty::ZIndex => O_CSS2,
-        CssKnownProperty::BreakBefore
-        | CssKnownProperty::BreakAfter
-        | CssKnownProperty::BreakInside
-        | CssKnownProperty::Orphans
-        | CssKnownProperty::Widows => S_BREAK3,
-        CssKnownProperty::BoxSizing
-        | CssKnownProperty::Width
-        | CssKnownProperty::Height
-        | CssKnownProperty::InlineSize
-        | CssKnownProperty::BlockSize
-        | CssKnownProperty::MinWidth
-        | CssKnownProperty::MinHeight
-        | CssKnownProperty::MinInlineSize
-        | CssKnownProperty::MinBlockSize
-        | CssKnownProperty::MaxWidth
-        | CssKnownProperty::MaxHeight
-        | CssKnownProperty::MaxInlineSize
-        | CssKnownProperty::MaxBlockSize => I_SIZING3_20260904,
-        CssKnownProperty::ContainIntrinsicWidth
-        | CssKnownProperty::ContainIntrinsicHeight
-        | CssKnownProperty::ContainIntrinsicInlineSize
-        | CssKnownProperty::ContainIntrinsicBlockSize
-        | CssKnownProperty::ContainIntrinsicSize
-        | CssKnownProperty::Size
-        | CssKnownProperty::MinSize
-        | CssKnownProperty::MaxSize
-        | CssKnownProperty::FrameSizing
-        | CssKnownProperty::MinIntrinsicSizing => X_SIZING4_20260904,
-        CssKnownProperty::OutlineOffset
-        | CssKnownProperty::Outline
-        | CssKnownProperty::OutlineColor
-        | CssKnownProperty::OutlineStyle
-        | CssKnownProperty::OutlineWidth => X_UI4,
-        CssKnownProperty::Contain => I_CONTAIN2,
-        CssKnownProperty::Direction
-        | CssKnownProperty::TextOrientation
-        | CssKnownProperty::UnicodeBidi => O_WRITING3,
-        CssKnownProperty::WritingMode | CssKnownProperty::TextCombineUpright => S_WRITING4,
-        CssKnownProperty::ColumnCount
-        | CssKnownProperty::ColumnFill
-        | CssKnownProperty::ColumnRule
-        | CssKnownProperty::ColumnRuleColor
-        | CssKnownProperty::ColumnRuleStyle
-        | CssKnownProperty::ColumnRuleWidth
-        | CssKnownProperty::ColumnSpan
-        | CssKnownProperty::ColumnWidth
-        | CssKnownProperty::Columns => O_MULTICOL1,
-        CssKnownProperty::FlexDirection
-        | CssKnownProperty::FlexFlow
-        | CssKnownProperty::FlexWrap
-        | CssKnownProperty::FlexBasis
-        | CssKnownProperty::FlexGrow
-        | CssKnownProperty::FlexShrink
-        | CssKnownProperty::Flex => O_FLEXBOX1,
-        CssKnownProperty::Margin
-        | CssKnownProperty::MarginTop
-        | CssKnownProperty::MarginRight
-        | CssKnownProperty::MarginBottom
-        | CssKnownProperty::MarginLeft
-        | CssKnownProperty::Padding
-        | CssKnownProperty::PaddingTop
-        | CssKnownProperty::PaddingRight
-        | CssKnownProperty::PaddingBottom
-        | CssKnownProperty::PaddingLeft => O_BOX3,
-        CssKnownProperty::MarginBlockStart
-        | CssKnownProperty::MarginBlockEnd
-        | CssKnownProperty::MarginInlineStart
-        | CssKnownProperty::MarginInlineEnd
-        | CssKnownProperty::MarginBlock
-        | CssKnownProperty::MarginInline
-        | CssKnownProperty::PaddingBlockStart
-        | CssKnownProperty::PaddingBlockEnd
-        | CssKnownProperty::PaddingInlineStart
-        | CssKnownProperty::PaddingInlineEnd
-        | CssKnownProperty::PaddingBlock
-        | CssKnownProperty::PaddingInline
-        | CssKnownProperty::Float
-        | CssKnownProperty::Clear => I_LOGICAL1_20251204,
-        CssKnownProperty::BorderBlockStart
-        | CssKnownProperty::BorderBlockEnd
-        | CssKnownProperty::BorderInlineStart
-        | CssKnownProperty::BorderInlineEnd
-        | CssKnownProperty::BorderBlock
-        | CssKnownProperty::BorderInline
-        | CssKnownProperty::BorderBlockStartWidth
-        | CssKnownProperty::BorderBlockEndWidth
-        | CssKnownProperty::BorderInlineStartWidth
-        | CssKnownProperty::BorderInlineEndWidth
-        | CssKnownProperty::BorderBlockWidth
-        | CssKnownProperty::BorderInlineWidth => I_LOGICAL1_20251204,
-        CssKnownProperty::BorderBlockStartStyle
-        | CssKnownProperty::BorderBlockEndStyle
-        | CssKnownProperty::BorderInlineStartStyle
-        | CssKnownProperty::BorderInlineEndStyle
-        | CssKnownProperty::BorderBlockStyle
-        | CssKnownProperty::BorderInlineStyle => I_LOGICAL1_20251204,
-        CssKnownProperty::BorderBlockStartColor
-        | CssKnownProperty::BorderBlockEndColor
-        | CssKnownProperty::BorderInlineStartColor
-        | CssKnownProperty::BorderInlineEndColor
-        | CssKnownProperty::BorderBlockColor
-        | CssKnownProperty::BorderInlineColor => I_LOGICAL1_20251204,
-        CssKnownProperty::BorderStartStartRadius
-        | CssKnownProperty::BorderStartEndRadius
-        | CssKnownProperty::BorderEndStartRadius
-        | CssKnownProperty::BorderEndEndRadius => I_LOGICAL1_20251204,
-        CssKnownProperty::Color | CssKnownProperty::Opacity => O_COLOR4,
-        CssKnownProperty::Border
-        | CssKnownProperty::BorderTop
-        | CssKnownProperty::BorderRight
-        | CssKnownProperty::BorderBottom
-        | CssKnownProperty::BorderLeft
-        | CssKnownProperty::BorderWidth
-        | CssKnownProperty::BorderTopWidth
-        | CssKnownProperty::BorderRightWidth
-        | CssKnownProperty::BorderBottomWidth
-        | CssKnownProperty::BorderLeftWidth
-        | CssKnownProperty::Background
-        | CssKnownProperty::BackgroundColor
-        | CssKnownProperty::BorderColor
-        | CssKnownProperty::BorderTopColor
-        | CssKnownProperty::BorderRightColor
-        | CssKnownProperty::BorderBottomColor
-        | CssKnownProperty::BorderLeftColor
-        | CssKnownProperty::BackgroundImage
-        | CssKnownProperty::BackgroundPosition
-        | CssKnownProperty::BackgroundSize
-        | CssKnownProperty::BackgroundRepeat
-        | CssKnownProperty::BackgroundOrigin
-        | CssKnownProperty::BackgroundClip
-        | CssKnownProperty::BackgroundAttachment
-        | CssKnownProperty::BorderImage
-        | CssKnownProperty::BorderImageOutset
-        | CssKnownProperty::BorderImageRepeat
-        | CssKnownProperty::BorderImageSlice
-        | CssKnownProperty::BorderImageSource
-        | CssKnownProperty::BorderImageWidth
-        | CssKnownProperty::BorderStyle
-        | CssKnownProperty::BorderTopStyle
-        | CssKnownProperty::BorderRightStyle
-        | CssKnownProperty::BorderBottomStyle
-        | CssKnownProperty::BorderLeftStyle
-        | CssKnownProperty::BorderRadius
-        | CssKnownProperty::BorderTopLeftRadius
-        | CssKnownProperty::BorderTopRightRadius
-        | CssKnownProperty::BorderBottomRightRadius
-        | CssKnownProperty::BorderBottomLeftRadius
-        | CssKnownProperty::BoxShadow => O_BACKGROUNDS3,
-        CssKnownProperty::ImageOrientation
-        | CssKnownProperty::ImageRendering
-        | CssKnownProperty::ObjectFit
-        | CssKnownProperty::ObjectPosition => O_IMAGES3,
-        CssKnownProperty::FontFamily
-        | CssKnownProperty::Font
-        | CssKnownProperty::FontWeight
-        | CssKnownProperty::FontStyle
-        | CssKnownProperty::FontSize
-        | CssKnownProperty::FontWidth => I_FONTS4_20260907,
-        CssKnownProperty::FontVariant
-        | CssKnownProperty::FontVariantAlternates
-        | CssKnownProperty::FontVariantCaps
-        | CssKnownProperty::FontVariantEastAsian
-        | CssKnownProperty::FontVariantEmoji
-        | CssKnownProperty::FontVariantLigatures
-        | CssKnownProperty::FontVariantNumeric
-        | CssKnownProperty::FontVariantPosition => I_FONTS4_20260907,
-        CssKnownProperty::FontPalette
-        | CssKnownProperty::FontSynthesis
-        | CssKnownProperty::FontSynthesisWeight
-        | CssKnownProperty::FontSynthesisStyle
-        | CssKnownProperty::FontSynthesisSmallCaps
-        | CssKnownProperty::FontSynthesisPosition => I_FONTS4_20260907,
-        CssKnownProperty::FontFeatureSettings
-        | CssKnownProperty::FontKerning
-        | CssKnownProperty::FontSizeAdjust
-        | CssKnownProperty::FontLanguageOverride
-        | CssKnownProperty::FontOpticalSizing
-        | CssKnownProperty::FontVariationSettings => I_FONTS4_20260907,
-        CssKnownProperty::Overflow
-        | CssKnownProperty::OverflowX
-        | CssKnownProperty::OverflowY
-        | CssKnownProperty::OverflowBlock
-        | CssKnownProperty::OverflowInline
-        | CssKnownProperty::OverflowClipMargin
-        | CssKnownProperty::ScrollBehavior
-        | CssKnownProperty::ScrollbarGutter
-        | CssKnownProperty::TextOverflow => X_OVERFLOW3,
-        CssKnownProperty::AlignContent
-        | CssKnownProperty::JustifyContent
-        | CssKnownProperty::AlignItems
-        | CssKnownProperty::AlignSelf
-        | CssKnownProperty::JustifyItems
-        | CssKnownProperty::JustifySelf
-        | CssKnownProperty::PlaceContent
-        | CssKnownProperty::PlaceItems
-        | CssKnownProperty::PlaceSelf
-        | CssKnownProperty::Gap
-        | CssKnownProperty::RowGap
-        | CssKnownProperty::ColumnGap => S_ALIGN3,
-        CssKnownProperty::ContentVisibility => I_CONTAIN2,
-        CssKnownProperty::CounterReset
-        | CssKnownProperty::CounterIncrement
-        | CssKnownProperty::CounterSet
-        | CssKnownProperty::ListStyleType
-        | CssKnownProperty::ListStylePosition
-        | CssKnownProperty::ListStyleImage
-        | CssKnownProperty::ListStyle
-        | CssKnownProperty::MarkerSide => I_LISTS3,
-        CssKnownProperty::FlowTolerance
-        | CssKnownProperty::ItemDirection
-        | CssKnownProperty::ItemWrap
-        | CssKnownProperty::ItemPack
-        | CssKnownProperty::ItemFlow => X_GRID3_20260121,
-        CssKnownProperty::GridTemplateRows
-        | CssKnownProperty::GridTemplateColumns
-        | CssKnownProperty::GridTemplateAreas
-        | CssKnownProperty::GridTemplate
-        | CssKnownProperty::GridAutoRows
-        | CssKnownProperty::GridAutoColumns
-        | CssKnownProperty::GridAutoFlow
-        | CssKnownProperty::GridRowStart
-        | CssKnownProperty::GridRowEnd
-        | CssKnownProperty::GridColumnStart
-        | CssKnownProperty::GridColumnEnd
-        | CssKnownProperty::GridRow
-        | CssKnownProperty::GridColumn
-        | CssKnownProperty::GridArea
-        | CssKnownProperty::Grid => R_GRID2,
-        CssKnownProperty::OverflowWrap => S_TEXT3,
-        CssKnownProperty::TextAlign
-        | CssKnownProperty::TextAlignAll
-        | CssKnownProperty::TextAlignLast
-        | CssKnownProperty::TextWrap
-        | CssKnownProperty::TextWrapMode
-        | CssKnownProperty::TextWrapStyle
-        | CssKnownProperty::WhiteSpace
-        | CssKnownProperty::WhiteSpaceCollapse
-        | CssKnownProperty::WhiteSpaceTrim
-        | CssKnownProperty::WordBreak
-        | CssKnownProperty::WordSpacing
-        | CssKnownProperty::LetterSpacing
-        | CssKnownProperty::TextIndent
-        | CssKnownProperty::TextTransform
-        | CssKnownProperty::WrapInside
-        | CssKnownProperty::WrapBefore
-        | CssKnownProperty::WrapAfter
-        | CssKnownProperty::LineBreak
-        | CssKnownProperty::WordSpaceTransform
-        | CssKnownProperty::TabSize
-        | CssKnownProperty::Hyphens
-        | CssKnownProperty::HyphenateCharacter
-        | CssKnownProperty::HyphenateLimitZone
-        | CssKnownProperty::HyphenateLimitChars
-        | CssKnownProperty::HyphenateLimitLines
-        | CssKnownProperty::HyphenateLimitLast
-        | CssKnownProperty::TextJustify
-        | CssKnownProperty::TextGroupAlign
-        | CssKnownProperty::LinePadding
-        | CssKnownProperty::TextAutospace
-        | CssKnownProperty::TextSpacingTrim
-        | CssKnownProperty::TextSpacing
-        | CssKnownProperty::HangingPunctuation => X_TEXT4,
-        // §6.3's normative inheritance table/index prevails over its note;
-        // §6.1 omitted trim follows editorial correction 97441f74 / PR12765.
-        CssKnownProperty::TextBox
-        | CssKnownProperty::TextBoxTrim
-        | CssKnownProperty::TextBoxEdge => F_INLINE3_20241218,
-        CssKnownProperty::TextDecoration
-        | CssKnownProperty::TextDecorationLine
-        | CssKnownProperty::TextDecorationColor
-        | CssKnownProperty::TextDecorationStyle
-        | CssKnownProperty::TextDecorationThickness
-        | CssKnownProperty::TextUnderlinePosition
-        | CssKnownProperty::TextUnderlineOffset
-        | CssKnownProperty::TextDecorationSkip
-        | CssKnownProperty::TextDecorationSkipSelf
-        | CssKnownProperty::TextDecorationSkipBox
-        | CssKnownProperty::TextDecorationSkipInset
-        | CssKnownProperty::TextDecorationSkipSpaces
-        | CssKnownProperty::TextDecorationSkipInk
-        | CssKnownProperty::TextEmphasis
-        | CssKnownProperty::TextEmphasisStyle
-        | CssKnownProperty::TextEmphasisColor
-        | CssKnownProperty::TextEmphasisPosition
-        | CssKnownProperty::TextEmphasisSkip
-        | CssKnownProperty::TextShadow => X_TEXTDECOR4,
-        CssKnownProperty::Position
-        | CssKnownProperty::Inset
-        | CssKnownProperty::Top
-        | CssKnownProperty::Right
-        | CssKnownProperty::Bottom
-        | CssKnownProperty::Left
-        | CssKnownProperty::InsetBlockStart
-        | CssKnownProperty::InsetBlockEnd
-        | CssKnownProperty::InsetInlineStart
-        | CssKnownProperty::InsetInlineEnd
-        | CssKnownProperty::InsetBlock
-        | CssKnownProperty::InsetInline => I_POSITION3,
-        CssKnownProperty::ViewTransitionName => S_VIEWTRANSITIONS1,
-        CssKnownProperty::WillChange => I_WILLCHANGE1,
-        CssKnownProperty::OverflowAnchor => I_SCROLLANCHORING1,
-        CssKnownProperty::BoxDecorationBreak => S_BREAK3,
-        CssKnownProperty::Order => S_DISPLAY3,
-        CssKnownProperty::AspectRatio => X_SIZING4_20260904,
-        CssKnownProperty::ScrollbarWidth | CssKnownProperty::ScrollbarColor => R_SCROLLBARS1,
-        CssKnownProperty::ColorScheme
-        | CssKnownProperty::ForcedColorAdjust
-        | CssKnownProperty::PrintColorAdjust
-        | CssKnownProperty::ColorAdjust => R_COLORADJUST1,
-        CssKnownProperty::ScrollSnapType
-        | CssKnownProperty::ScrollSnapAlign
-        | CssKnownProperty::ScrollSnapStop
-        | CssKnownProperty::ScrollPaddingTop
-        | CssKnownProperty::ScrollPaddingRight
-        | CssKnownProperty::ScrollPaddingBottom
-        | CssKnownProperty::ScrollPaddingLeft
-        | CssKnownProperty::ScrollPaddingBlockStart
-        | CssKnownProperty::ScrollPaddingBlockEnd
-        | CssKnownProperty::ScrollPaddingInlineStart
-        | CssKnownProperty::ScrollPaddingInlineEnd
-        | CssKnownProperty::ScrollPaddingBlock
-        | CssKnownProperty::ScrollPaddingInline
-        | CssKnownProperty::ScrollPadding
-        | CssKnownProperty::ScrollMarginTop
-        | CssKnownProperty::ScrollMarginRight
-        | CssKnownProperty::ScrollMarginBottom
-        | CssKnownProperty::ScrollMarginLeft
-        | CssKnownProperty::ScrollMarginBlockStart
-        | CssKnownProperty::ScrollMarginBlockEnd
-        | CssKnownProperty::ScrollMarginInlineStart
-        | CssKnownProperty::ScrollMarginInlineEnd
-        | CssKnownProperty::ScrollMarginBlock
-        | CssKnownProperty::ScrollMarginInline
-        | CssKnownProperty::ScrollMargin => R_SCROLLSNAP1,
-        CssKnownProperty::CaretColor
-        | CssKnownProperty::Cursor
-        | CssKnownProperty::PointerEvents
-        | CssKnownProperty::UserSelect
-        | CssKnownProperty::Resize
-        | CssKnownProperty::NavUp
-        | CssKnownProperty::NavRight
-        | CssKnownProperty::NavDown
-        | CssKnownProperty::NavLeft
-        | CssKnownProperty::CaretAnimation
-        | CssKnownProperty::CaretShape
-        | CssKnownProperty::Caret
-        | CssKnownProperty::Interactivity
-        | CssKnownProperty::InterestDelayStart
-        | CssKnownProperty::InterestDelayEnd
-        | CssKnownProperty::InterestDelay
-        | CssKnownProperty::AccentColor
-        | CssKnownProperty::Appearance => X_UI4,
-        CssKnownProperty::Transform
-        | CssKnownProperty::TransformBox
-        | CssKnownProperty::TransformOrigin => O_TRANSFORMS1,
-        CssKnownProperty::BackgroundBlendMode
-        | CssKnownProperty::Isolation
-        | CssKnownProperty::MixBlendMode => O_COMPOSITING1,
-        CssKnownProperty::Translate
-        | CssKnownProperty::Rotate
-        | CssKnownProperty::Scale
-        | CssKnownProperty::Perspective
-        | CssKnownProperty::PerspectiveOrigin
-        | CssKnownProperty::TransformStyle
-        | CssKnownProperty::BackfaceVisibility => I_TRANSFORMS2,
-        CssKnownProperty::Filter
-        | CssKnownProperty::FloodColor
-        | CssKnownProperty::FloodOpacity
-        | CssKnownProperty::LightingColor
-        | CssKnownProperty::ColorInterpolationFilters => I_FILTER1,
-        CssKnownProperty::ShapeOutside
-        | CssKnownProperty::ShapeImageThreshold
-        | CssKnownProperty::ShapeMargin => S_SHAPES1,
-        CssKnownProperty::OffsetPosition
-        | CssKnownProperty::OffsetPath
-        | CssKnownProperty::OffsetDistance
-        | CssKnownProperty::OffsetRotate
-        | CssKnownProperty::OffsetAnchor
-        | CssKnownProperty::Offset => I_MOTION1,
-        CssKnownProperty::BackdropFilter => X_BACKDROP_FILTER,
-        CssKnownProperty::Clip
-        | CssKnownProperty::ClipPath
-        | CssKnownProperty::Mask
-        | CssKnownProperty::MaskImage
-        | CssKnownProperty::MaskSize
-        | CssKnownProperty::MaskPosition
-        | CssKnownProperty::MaskRepeat
-        | CssKnownProperty::MaskMode
-        | CssKnownProperty::MaskOrigin
-        | CssKnownProperty::MaskClip
-        | CssKnownProperty::MaskComposite
-        | CssKnownProperty::MaskBorder
-        | CssKnownProperty::MaskBorderSource
-        | CssKnownProperty::MaskBorderSlice
-        | CssKnownProperty::MaskBorderWidth
-        | CssKnownProperty::MaskBorderOutset
-        | CssKnownProperty::MaskBorderRepeat
-        | CssKnownProperty::MaskBorderMode
-        | CssKnownProperty::ClipRule
-        | CssKnownProperty::MaskType => S_MASKING1,
-        CssKnownProperty::TransitionProperty
-        | CssKnownProperty::TransitionDuration
-        | CssKnownProperty::TransitionDelay
-        | CssKnownProperty::TransitionTimingFunction
-        | CssKnownProperty::Transition => I_TRANSITIONS1,
-        CssKnownProperty::AnimationName
-        | CssKnownProperty::AnimationDuration
-        | CssKnownProperty::AnimationDelay
-        | CssKnownProperty::AnimationTimingFunction
-        | CssKnownProperty::AnimationIterationCount
-        | CssKnownProperty::AnimationDirection
-        | CssKnownProperty::AnimationFillMode
-        | CssKnownProperty::AnimationPlayState
-        | CssKnownProperty::Animation => I_ANIMATIONS1,
-    }
+macro_rules! define_property_definition_anchors {
+    ($input:ident, $numeric:ident;
+        All, $all_canonical:literal, [$($all_alias:literal),*], $all_stable_id:literal,
+        $all_value:ty, $all_parser:ident, $all_dispatch:block $(, expansion = $all_kind:ident { $($all_metadata:tt)* })?;
+        $(
+        $variant:ident, $canonical:literal, [$($alias:literal),*], $stable_id:literal,
+        $value:ty, $wrapper:ident, $accessor:ident, $parser:ident, $dispatch:block
+        $(, expansion = $expansion:ident { $($metadata:tt)* })?;
+    )*) => {
+        /// Returns the `#propdef-` anchor that names a schema property's definition.
+        const fn property_definition_anchor(property: CssKnownProperty) -> &'static str {
+            match property {
+                CssKnownProperty::All => concat!("#propdef-", $all_canonical),
+                $(CssKnownProperty::$variant => concat!("#propdef-", $canonical),)*
+            }
+        }
+    };
 }
 
-const fn property_production(property: CssKnownProperty, default: &'static str) -> &'static str {
-    match property {
-        CssKnownProperty::Float | CssKnownProperty::Clear => "#float-clear",
-        CssKnownProperty::BorderCollapse
-        | CssKnownProperty::BorderSpacing
-        | CssKnownProperty::CaptionSide
-        | CssKnownProperty::EmptyCells
-        | CssKnownProperty::TableLayout => match property {
-            CssKnownProperty::BorderCollapse => "tables.html#propdef-border-collapse",
-            CssKnownProperty::BorderSpacing => "tables.html#propdef-border-spacing",
-            CssKnownProperty::CaptionSide => "tables.html#propdef-caption-side",
-            CssKnownProperty::EmptyCells => "tables.html#propdef-empty-cells",
-            CssKnownProperty::TableLayout => "tables.html#propdef-table-layout",
-            _ => default,
-        },
-        CssKnownProperty::Clip => "#propdef-clip",
-        CssKnownProperty::Orphans | CssKnownProperty::Widows => match property {
-            CssKnownProperty::Orphans => "#propdef-orphans",
-            CssKnownProperty::Widows => "#propdef-widows",
-            _ => default,
-        },
-        CssKnownProperty::Quotes => "#propdef-quotes",
-        CssKnownProperty::Content => "#propdef-content",
-        CssKnownProperty::StringSet => "#propdef-string-set",
-        CssKnownProperty::BookmarkLevel => "#propdef-bookmark-level",
-        CssKnownProperty::BookmarkLabel => "#propdef-bookmark-label",
-        CssKnownProperty::BookmarkState => "#propdef-bookmark-state",
-        CssKnownProperty::WordSpacing => "#propdef-word-spacing",
-        CssKnownProperty::LetterSpacing => "#propdef-letter-spacing",
-        CssKnownProperty::ZIndex => "visuren.html#propdef-z-index",
-        CssKnownProperty::CounterIncrement => "#propdef-counter-increment",
-        CssKnownProperty::CounterReset => "#propdef-counter-reset",
-        CssKnownProperty::CounterSet => "#propdef-counter-set",
-        CssKnownProperty::ListStyle => "#propdef-list-style",
-        CssKnownProperty::ListStyleImage => "#propdef-list-style-image",
-        CssKnownProperty::ListStylePosition => "#propdef-list-style-position",
-        CssKnownProperty::ListStyleType => "#propdef-list-style-type",
-        CssKnownProperty::MarkerSide => "#propdef-marker-side",
-        CssKnownProperty::LineHeight | CssKnownProperty::VerticalAlign => match property {
-            CssKnownProperty::LineHeight => "visudet.html#propdef-line-height",
-            CssKnownProperty::VerticalAlign => "visudet.html#propdef-vertical-align",
-            _ => default,
-        },
-        _ => default,
-    }
-}
+crate::properties::property_schema!(define_property_definition_anchors, input, numeric);
 
-macro_rules! property_feature {
-    ($property:path, $canonical_name:literal, $stable_id:literal) => {
-        CssFeatureMetadata::partial_property(
-            $stable_id,
-            $property,
-            $canonical_name,
-            concat!("#propdef-", $canonical_name),
-            &[],
+/// One schema-backed property row: the variant, its provenance, its status and,
+/// when the cited definition is not at `#propdef-<name>`, its production anchor.
+macro_rules! property_row {
+    (@production) => {
+        None
+    };
+    (@production $production:literal) => {
+        Some($production)
+    };
+    ($variant:ident, $source:expr, complete $(, $production:literal)?) => {
+        CssFeatureMetadata::property(
+            CssKnownProperty::$variant,
+            $source,
+            PropertyRowStatus::Complete,
+            property_row!(@production $($production)?),
+        )
+    };
+    ($variant:ident, $source:expr, partial $(, $production:literal)?) => {
+        property_row!($variant, $source, partial(PROPERTY_SUBSET, PROPERTY_REMAINDER) $(, $production)?)
+    };
+    ($variant:ident, $source:expr, partial($subset:expr, $remainder:expr) $(, $production:literal)?) => {
+        CssFeatureMetadata::property(
+            CssKnownProperty::$variant,
+            $source,
+            PropertyRowStatus::Partial {
+                supported_subset: $subset,
+                unsupported_remainder: $remainder,
+            },
+            property_row!(@production $($production)?),
         )
     };
 }
 
-macro_rules! complete_property_feature {
-    ($property:path, $canonical_name:literal, $stable_id:literal) => {
-        complete_property_feature!($property, $canonical_name, $stable_id, &[])
-    };
-    ($property:path, $canonical_name:literal, $stable_id:literal, $aliases:expr) => {
-        CssFeatureMetadata::complete_property(
-            $stable_id,
-            $property,
-            $canonical_name,
-            concat!("#propdef-", $canonical_name),
-            $aliases,
-        )
-    };
-}
-
-const PSEUDO_ELEMENT_ALIAS_TARGETS: &[CssFeatureId] = &[
-    CssFeatureId::new("official.selector.generated"),
-    CssFeatureId::new("ext.pseudo-element.marker"),
-    CssFeatureId::new("ext.pseudo-element.selection"),
-    CssFeatureId::new("ext.pseudo-element.prefix"),
-    CssFeatureId::new("ext.pseudo-element.suffix"),
-    CssFeatureId::new("ext.pseudo-element.search-text"),
-    CssFeatureId::new("ext.pseudo-element.target-text"),
-    CssFeatureId::new("ext.pseudo-element.spelling-error"),
-    CssFeatureId::new("ext.pseudo-element.grammar-error"),
-    CssFeatureId::new("ext.pseudo-element.highlight"),
-    CssFeatureId::new("ext.pseudo-element.placeholder"),
-    CssFeatureId::new("ext.pseudo-element.file-selector-button"),
-    CssFeatureId::new("ext.pseudo-element.details-content"),
-    CssFeatureId::new("ext.pseudo-element.search-text-current"),
-    CssFeatureId::new("ext.pseudo-element.backdrop"),
-    CssFeatureId::new("ext.pseudo-element.generated-marker"),
-    CssFeatureId::new("ext.pseudo-element.unknown-webkit"),
-];
-
-const MEDIA_QUERY_LIST_ALIAS_TARGETS: &[CssFeatureId] = &[
-    CssFeatureId::new("official.media.query-list-core"),
-    CssFeatureId::new("ext.media.condition-syntax"),
-    CssFeatureId::new("ext.media.malformed-member-never"),
-];
-
-const MEDIA_RANGE_ALIAS_TARGETS: &[CssFeatureId] = &[
-    CssFeatureId::new("official.media.feature.width"),
-    CssFeatureId::new("official.media.feature.height"),
-    CssFeatureId::new("official.media.feature.resolution"),
-    CssFeatureId::new("official.media.feature.color"),
-    CssFeatureId::new("official.media.feature.monochrome"),
-    CssFeatureId::new("ext.media.resolution.dppx"),
-    CssFeatureId::new("ext.media.range.width"),
-    CssFeatureId::new("ext.media.range.height"),
-    CssFeatureId::new("ext.media.range.resolution"),
-    CssFeatureId::new("ext.media.range.color"),
-    CssFeatureId::new("ext.media.range.monochrome"),
-];
-
-const MEDIA_DISCRETE_ALIAS_TARGETS: &[CssFeatureId] = &[
-    CssFeatureId::new("official.media.feature.orientation"),
-    CssFeatureId::new("ext.media.hover"),
-    CssFeatureId::new("ext.media.any-hover"),
-    CssFeatureId::new("ext.media.pointer"),
-    CssFeatureId::new("ext.media.any-pointer"),
-    CssFeatureId::new("ext.media.prefers-color-scheme"),
-    CssFeatureId::new("ext.media.prefers-reduced-motion"),
-    CssFeatureId::new("ext.media.prefers-reduced-transparency"),
-    CssFeatureId::new("ext.media.prefers-contrast"),
-    CssFeatureId::new("ext.media.forced-colors"),
-    CssFeatureId::new("ext.media.display-mode"),
-];
-
-static FEATURE_CATALOG: [CssFeatureMetadata; 798] = [
+static FEATURE_CATALOG: [CssFeatureMetadata; 794] = [
     CssFeatureMetadata::complete(
         "baseline.rule.import",
         CssFeatureKind::Rule,
@@ -3115,7 +2511,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 798] = [
         CssFeatureKind::Rule,
         "conditional group rule contents and placement",
         O_CONDITIONAL3,
-        "#contents,#placement",
+        "#contents-of,#placement",
     ),
     CssFeatureMetadata::partial(
         "baseline.rule.container",
@@ -3246,8 +2642,8 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 798] = [
         "custom-property names and authored token streams",
         O_VARIABLES1,
         "#defining-variables,#syntax",
-        "Baseline custom-property names and authored token streams, including I01 recovery behavior, are supported.",
-        "Other valid CSS Variables custom-property declaration forms are outside the I01 subset.",
+        "Baseline custom-property names and authored token streams, including their recovery behavior, are supported.",
+        "Other valid CSS Variables custom-property declaration forms are outside the supported subset.",
     ),
     CssFeatureMetadata::partial(
         "baseline.value.substitution-dependent",
@@ -4644,7 +4040,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 798] = [
         ":scope, :focus-visible, :focus-within, :required, :optional, :valid, :invalid, :placeholder-shown, :default, :indeterminate, :read-only, :read-write, :in-range, :out-of-range, :modal, :fullscreen, :popover-open, :defined, :any-link, :playing, :paused, :seeking, :buffering, :stalled, :muted, :volume-locked, :open, :picture-in-picture, :unchecked, :user-valid, :user-invalid",
         I_SELECTORS4,
         "#useraction-pseudos,#input-pseudos,#resource-pseudos,#display-state-pseudos,#the-defined-pseudo,#the-any-link-pseudo,#video-state,#media-loading-state,#sound-state,#open-state,#pip-state,#checked,#user-pseudos",
-        "The exact I01 extension-state pseudo-class spelling group is supported.",
+        "The exact extension-state pseudo-class spelling group is supported.",
         SELECTOR_REMAINDER,
     ),
     CssFeatureMetadata::partial(
@@ -4653,7 +4049,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 798] = [
         ":is(), :where(), complex :not(), :has(), and nth-child of lists",
         I_SELECTORS4,
         "#matches,#zero-matches,#relational,#negation,#the-nth-child-pseudo",
-        "The exact I01 extension-functional pseudo-class spelling group is supported.",
+        "The exact extension-functional pseudo-class spelling group is supported.",
         SELECTOR_REMAINDER,
     ),
     CssFeatureMetadata::partial(
@@ -4665,18 +4061,6 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 798] = [
         "The i and s attribute-selector case modifiers are supported.",
         SELECTOR_REMAINDER,
     ),
-    CssFeatureMetadata::baseline_alias(
-        "baseline.selector.pseudo-element",
-        CssFeatureKind::Selector,
-        "authored pseudo-element identities, ordered contextual suffixes and defined child sequences",
-        BASELINE_SELECTORS,
-        "pseudo-element selector",
-        (
-            "The referenced atomic pseudo-element identities and contextual attachment grammar are supported.",
-            SELECTOR_REMAINDER,
-        ),
-        PSEUDO_ELEMENT_ALIAS_TARGETS,
-    ),
     CssFeatureMetadata::partial(
         "baseline.selector.nesting",
         CssFeatureKind::Selector,
@@ -4686,48 +4070,12 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 798] = [
         "Nesting &, counted scope anchors, scoped relative selectors, and contextual relative scope boundaries are supported.",
         SELECTOR_REMAINDER,
     ),
-    CssFeatureMetadata::baseline_alias(
-        "baseline.media.query-list",
-        CssFeatureKind::MediaQuery,
-        "typed/condition query lists, not/only, and/or/not, range and colon forms, and malformed-member Never recovery",
-        BASELINE_QUERIES,
-        "media query list",
-        (
-            "The exact baseline-recognized media query-list spelling group and malformed-member Never recovery are supported.",
-            QUERY_REMAINDER,
-        ),
-        MEDIA_QUERY_LIST_ALIAS_TARGETS,
-    ),
     CssFeatureMetadata::complete(
         "baseline.media.type",
         CssFeatureKind::MediaQuery,
         "all, aural, braille, embossed, handheld, print, projection, screen, speech, tty, tv",
         X_MEDIA5,
         "#media-types",
-    ),
-    CssFeatureMetadata::baseline_alias(
-        "baseline.media.range-feature",
-        CssFeatureKind::MediaQuery,
-        "width, height, resolution, color, monochrome and their min-/max- names",
-        BASELINE_QUERIES,
-        "media range feature",
-        (
-            "The exact baseline-recognized media range-feature spelling group is supported.",
-            QUERY_REMAINDER,
-        ),
-        MEDIA_RANGE_ALIAS_TARGETS,
-    ),
-    CssFeatureMetadata::baseline_alias(
-        "baseline.media.discrete-feature",
-        CssFeatureKind::MediaQuery,
-        "orientation, prefers-color-scheme, prefers-reduced-motion, prefers-reduced-transparency, prefers-contrast, forced-colors, hover, any-hover, pointer, any-pointer, display-mode",
-        BASELINE_QUERIES,
-        "media discrete feature",
-        (
-            "The exact baseline-recognized media discrete-feature spelling group is supported.",
-            QUERY_REMAINDER,
-        ),
-        MEDIA_DISCRETE_ALIAS_TARGETS,
     ),
     CssFeatureMetadata::partial(
         "baseline.container.condition",
@@ -4747,808 +4095,175 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 798] = [
         "The six authored size features retain boolean, plain, prefixed and directional range forms, exact symbolic numeric values, checked var() operands and the scoped tree-counting functions; orientation remains discrete.",
         QUERY_REMAINDER,
     ),
-    property_feature!(CssKnownProperty::All, "all", "baseline.property.all"),
-    complete_property_feature!(
-        CssKnownProperty::Display,
-        "display",
-        "baseline.property.display"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BoxSizing,
-        "box-sizing",
-        "baseline.property.box-sizing"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::Position,
-        "position",
-        "baseline.property.position"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::Direction,
-        "direction",
-        "baseline.property.direction"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::Overflow,
-        "overflow",
-        "baseline.property.overflow"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::OverflowX,
-        "overflow-x",
-        "baseline.property.overflow-x"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::OverflowY,
-        "overflow-y",
-        "baseline.property.overflow-y"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::OverflowBlock,
-        "overflow-block",
-        "ext.property.overflow-block"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::OverflowInline,
-        "overflow-inline",
-        "ext.property.overflow-inline"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::OverflowClipMargin,
-        "overflow-clip-margin",
-        "ext.property.overflow-clip-margin"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ViewTransitionName,
-        "view-transition-name",
-        "official.property.view-transition-name"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::WillChange,
-        "will-change",
-        "ext.property.will-change"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::OverflowAnchor,
-        "overflow-anchor",
-        "ext.property.overflow-anchor"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollBehavior,
-        "scroll-behavior",
-        "ext.property.scroll-behavior"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollbarGutter,
-        "scrollbar-gutter",
-        "ext.property.scrollbar-gutter"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::FlexDirection,
-        "flex-direction",
-        "baseline.property.flex-direction",
-        CssKnownProperty::FlexDirection.aliases()
-    ),
-    complete_property_feature!(
-        CssKnownProperty::FlexFlow,
-        "flex-flow",
-        "official.property.flex-flow",
-        CssKnownProperty::FlexFlow.aliases()
-    ),
-    complete_property_feature!(
-        CssKnownProperty::FlexWrap,
-        "flex-wrap",
-        "baseline.property.flex-wrap",
-        CssKnownProperty::FlexWrap.aliases()
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ContainerName,
-        "container-name",
-        "official.property.container-name"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ContainerType,
-        "container-type",
-        "official.property.container-type"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::Container,
-        "container",
-        "official.property.container"
-    ),
-    complete_property_feature!(CssKnownProperty::Float, "float", "baseline.property.float"),
-    complete_property_feature!(CssKnownProperty::Clear, "clear", "baseline.property.clear"),
-    complete_property_feature!(
-        CssKnownProperty::AlignContent,
-        "align-content",
-        "baseline.property.align-content",
-        CssKnownProperty::AlignContent.aliases()
-    ),
-    complete_property_feature!(
-        CssKnownProperty::JustifyContent,
-        "justify-content",
-        "baseline.property.justify-content",
-        CssKnownProperty::JustifyContent.aliases()
-    ),
-    complete_property_feature!(
-        CssKnownProperty::AlignItems,
-        "align-items",
-        "baseline.property.align-items",
-        CssKnownProperty::AlignItems.aliases()
-    ),
-    complete_property_feature!(
-        CssKnownProperty::AlignSelf,
-        "align-self",
-        "baseline.property.align-self",
-        CssKnownProperty::AlignSelf.aliases()
-    ),
-    complete_property_feature!(
-        CssKnownProperty::JustifyItems,
-        "justify-items",
-        "baseline.property.justify-items"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::JustifySelf,
-        "justify-self",
-        "baseline.property.justify-self"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::PlaceContent,
-        "place-content",
-        "baseline.property.place-content"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::PlaceItems,
-        "place-items",
-        "baseline.property.place-items"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::PlaceSelf,
-        "place-self",
-        "baseline.property.place-self"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::Visibility,
-        "visibility",
-        "baseline.property.visibility"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::VoiceDuration,
-        "voice-duration",
-        "official.property.voice-duration"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::VoiceBalance,
-        "voice-balance",
-        "official.property.voice-balance"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::VoiceVolume,
-        "voice-volume",
-        "official.property.voice-volume"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::VoicePitch,
-        "voice-pitch",
-        "official.property.voice-pitch"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::VoiceRange,
-        "voice-range",
-        "official.property.voice-range"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::VoiceRate,
-        "voice-rate",
-        "official.property.voice-rate"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::VoiceFamily,
-        "voice-family",
-        "official.property.voice-family"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::VoiceStress,
-        "voice-stress",
-        "official.property.voice-stress"
-    ),
-    complete_property_feature!(CssKnownProperty::Speak, "speak", "official.property.speak"),
-    complete_property_feature!(
-        CssKnownProperty::SpeakAs,
-        "speak-as",
-        "official.property.speak-as"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::PauseBefore,
-        "pause-before",
-        "official.property.pause-before"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::PauseAfter,
-        "pause-after",
-        "official.property.pause-after"
-    ),
-    complete_property_feature!(CssKnownProperty::Pause, "pause", "official.property.pause"),
-    complete_property_feature!(
-        CssKnownProperty::RestBefore,
-        "rest-before",
-        "official.property.rest-before"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::RestAfter,
-        "rest-after",
-        "official.property.rest-after"
-    ),
-    complete_property_feature!(CssKnownProperty::Rest, "rest", "official.property.rest"),
-    complete_property_feature!(
-        CssKnownProperty::CueBefore,
-        "cue-before",
-        "official.property.cue-before"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::CueAfter,
-        "cue-after",
-        "official.property.cue-after"
-    ),
-    complete_property_feature!(CssKnownProperty::Cue, "cue", "official.property.cue"),
-    complete_property_feature!(
-        CssKnownProperty::Content,
-        "content",
-        "baseline.property.content"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::StringSet,
-        "string-set",
-        "official.property.string-set"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BookmarkLevel,
-        "bookmark-level",
-        "official.property.bookmark-level"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BookmarkLabel,
-        "bookmark-label",
-        "official.property.bookmark-label"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BookmarkState,
-        "bookmark-state",
-        "official.property.bookmark-state"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ContentVisibility,
-        "content-visibility",
-        "baseline.property.content-visibility"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ListStyleType,
-        "list-style-type",
-        "baseline.property.list-style-type"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ListStylePosition,
-        "list-style-position",
-        "baseline.property.list-style-position"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ListStyleImage,
-        "list-style-image",
-        "baseline.property.list-style-image"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ListStyle,
-        "list-style",
-        "baseline.property.list-style"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MarkerSide,
-        "marker-side",
-        "official.property.marker-side"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::CounterReset,
-        "counter-reset",
-        "baseline.property.counter-reset"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::CounterIncrement,
-        "counter-increment",
-        "baseline.property.counter-increment"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::CounterSet,
-        "counter-set",
-        "baseline.property.counter-set"
-    ),
-    complete_property_feature!(CssKnownProperty::Width, "width", "baseline.property.width"),
-    complete_property_feature!(
-        CssKnownProperty::Height,
-        "height",
-        "baseline.property.height"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::InlineSize,
-        "inline-size",
-        "official.property.inline-size"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BlockSize,
-        "block-size",
-        "official.property.block-size"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MinWidth,
-        "min-width",
-        "baseline.property.min-width"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MinHeight,
-        "min-height",
-        "baseline.property.min-height"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MinInlineSize,
-        "min-inline-size",
-        "official.property.min-inline-size"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MinBlockSize,
-        "min-block-size",
-        "official.property.min-block-size"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MaxWidth,
-        "max-width",
-        "baseline.property.max-width"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MaxHeight,
-        "max-height",
-        "baseline.property.max-height"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MaxInlineSize,
-        "max-inline-size",
-        "official.property.max-inline-size"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MaxBlockSize,
-        "max-block-size",
-        "official.property.max-block-size"
-    ),
-    complete_property_feature!(CssKnownProperty::Size, "size", "ext.property.size"),
-    complete_property_feature!(
-        CssKnownProperty::MinSize,
-        "min-size",
-        "ext.property.min-size"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MaxSize,
-        "max-size",
-        "ext.property.max-size"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::FrameSizing,
-        "frame-sizing",
-        "ext.property.frame-sizing"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MinIntrinsicSizing,
-        "min-intrinsic-sizing",
-        "ext.property.min-intrinsic-sizing"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ContainIntrinsicWidth,
-        "contain-intrinsic-width",
-        "ext.property.contain-intrinsic-width"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ContainIntrinsicHeight,
-        "contain-intrinsic-height",
-        "ext.property.contain-intrinsic-height"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ContainIntrinsicInlineSize,
-        "contain-intrinsic-inline-size",
-        "ext.property.contain-intrinsic-inline-size"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ContainIntrinsicBlockSize,
-        "contain-intrinsic-block-size",
-        "ext.property.contain-intrinsic-block-size"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ContainIntrinsicSize,
-        "contain-intrinsic-size",
-        "ext.property.contain-intrinsic-size"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::FlexBasis,
-        "flex-basis",
-        "baseline.property.flex-basis",
-        CssKnownProperty::FlexBasis.aliases()
-    ),
-    complete_property_feature!(
-        CssKnownProperty::Gap,
-        "gap",
-        "baseline.property.gap",
-        CssKnownProperty::Gap.aliases()
-    ),
-    complete_property_feature!(
-        CssKnownProperty::RowGap,
-        "row-gap",
-        "baseline.property.row-gap",
-        CssKnownProperty::RowGap.aliases()
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ColumnGap,
-        "column-gap",
-        "baseline.property.column-gap",
-        CssKnownProperty::ColumnGap.aliases()
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ColumnCount,
-        "column-count",
-        "official.property.column-count"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ColumnFill,
-        "column-fill",
-        "official.property.column-fill"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ColumnRule,
-        "column-rule",
-        "official.property.column-rule"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ColumnRuleColor,
-        "column-rule-color",
-        "official.property.column-rule-color"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ColumnRuleStyle,
-        "column-rule-style",
-        "official.property.column-rule-style"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ColumnRuleWidth,
-        "column-rule-width",
-        "official.property.column-rule-width"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ColumnSpan,
-        "column-span",
-        "official.property.column-span"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ColumnWidth,
-        "column-width",
-        "official.property.column-width"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::Columns,
-        "columns",
-        "official.property.columns"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ItemDirection,
-        "item-direction",
-        "ext.property.item-direction"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ItemWrap,
-        "item-wrap",
-        "ext.property.item-wrap"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ItemPack,
-        "item-pack",
-        "ext.property.item-pack"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ItemFlow,
-        "item-flow",
-        "ext.property.item-flow"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::FlowTolerance,
-        "flow-tolerance",
-        "ext.property.flow-tolerance"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::GridTemplateRows,
-        "grid-template-rows",
-        "baseline.property.grid-template-rows"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::GridTemplateColumns,
-        "grid-template-columns",
-        "baseline.property.grid-template-columns"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::GridTemplateAreas,
-        "grid-template-areas",
-        "baseline.property.grid-template-areas"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::GridTemplate,
-        "grid-template",
-        "baseline.property.grid-template"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::GridAutoRows,
-        "grid-auto-rows",
-        "baseline.property.grid-auto-rows"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::GridAutoColumns,
-        "grid-auto-columns",
-        "baseline.property.grid-auto-columns"
-    ),
-    CssFeatureMetadata::partial_property_with_boundary(
-        "baseline.property.grid-auto-flow",
-        CssKnownProperty::GridAutoFlow,
-        "grid-auto-flow",
-        "#propdef-grid-auto-flow",
-        &[],
-        GRID_AUTO_FLOW_SUBSET,
-        GRID_AUTO_FLOW_REMAINDER,
-    ),
-    complete_property_feature!(
-        CssKnownProperty::GridRowStart,
-        "grid-row-start",
-        "baseline.property.grid-row-start"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::GridRowEnd,
-        "grid-row-end",
-        "baseline.property.grid-row-end"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::GridColumnStart,
-        "grid-column-start",
-        "baseline.property.grid-column-start"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::GridColumnEnd,
-        "grid-column-end",
-        "baseline.property.grid-column-end"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::GridRow,
-        "grid-row",
-        "baseline.property.grid-row"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::GridColumn,
-        "grid-column",
-        "baseline.property.grid-column"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::GridArea,
-        "grid-area",
-        "baseline.property.grid-area"
-    ),
-    complete_property_feature!(CssKnownProperty::Grid, "grid", "baseline.property.grid"),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.font-size",
-        CssKnownProperty::FontSize,
-        "font-size",
-        "#propdef-font-size",
-        &[],
-    ),
-    complete_property_feature!(
-        CssKnownProperty::LineHeight,
-        "line-height",
-        "baseline.property.line-height"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::WritingMode,
-        "writing-mode",
-        "baseline.property.writing-mode"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextAlign,
-        "text-align",
-        "baseline.property.text-align"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextAlignAll,
-        "text-align-all",
-        "official.property.text-align-all"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextAlignLast,
-        "text-align-last",
-        "baseline.property.text-align-last"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextIndent,
-        "text-indent",
-        "baseline.property.text-indent"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::VerticalAlign,
-        "vertical-align",
-        "baseline.property.vertical-align"
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.font-family",
-        CssKnownProperty::FontFamily,
-        "font-family",
-        "#propdef-font-family",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.font",
-        CssKnownProperty::Font,
-        "font",
-        "#propdef-font",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.font-weight",
-        CssKnownProperty::FontWeight,
-        "font-weight",
-        "#propdef-font-weight",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.font-style",
-        CssKnownProperty::FontStyle,
-        "font-style",
-        "#propdef-font-style",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.font-stretch",
-        CssKnownProperty::FontWidth,
-        "font-width",
-        "#propdef-font-width",
-        CssKnownProperty::FontWidth.aliases(),
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.font-variant",
-        CssKnownProperty::FontVariant,
-        "font-variant",
-        "#propdef-font-variant",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.font-variant-alternates",
-        CssKnownProperty::FontVariantAlternates,
-        "font-variant-alternates",
-        "#propdef-font-variant-alternates",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.font-variant-caps",
-        CssKnownProperty::FontVariantCaps,
-        "font-variant-caps",
-        "#propdef-font-variant-caps",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.font-variant-east-asian",
-        CssKnownProperty::FontVariantEastAsian,
-        "font-variant-east-asian",
-        "#propdef-font-variant-east-asian",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.font-variant-emoji",
-        CssKnownProperty::FontVariantEmoji,
-        "font-variant-emoji",
-        "#propdef-font-variant-emoji",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.font-variant-ligatures",
-        CssKnownProperty::FontVariantLigatures,
-        "font-variant-ligatures",
-        "#propdef-font-variant-ligatures",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.font-variant-numeric",
-        CssKnownProperty::FontVariantNumeric,
-        "font-variant-numeric",
-        "#propdef-font-variant-numeric",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.font-variant-position",
-        CssKnownProperty::FontVariantPosition,
-        "font-variant-position",
-        "#propdef-font-variant-position",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.font-feature-settings",
-        CssKnownProperty::FontFeatureSettings,
-        "font-feature-settings",
-        "#propdef-font-feature-settings",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.font-kerning",
-        CssKnownProperty::FontKerning,
-        "font-kerning",
-        "#propdef-font-kerning",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.font-language-override",
-        CssKnownProperty::FontLanguageOverride,
-        "font-language-override",
-        "#propdef-font-language-override",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.font-optical-sizing",
-        CssKnownProperty::FontOpticalSizing,
-        "font-optical-sizing",
-        "#propdef-font-optical-sizing",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.font-size-adjust",
-        CssKnownProperty::FontSizeAdjust,
-        "font-size-adjust",
-        "#propdef-font-size-adjust",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.font-variation-settings",
-        CssKnownProperty::FontVariationSettings,
-        "font-variation-settings",
-        "#propdef-font-variation-settings",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.font-synthesis",
-        CssKnownProperty::FontSynthesis,
-        "font-synthesis",
-        "#propdef-font-synthesis",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.font-synthesis-weight",
-        CssKnownProperty::FontSynthesisWeight,
-        "font-synthesis-weight",
-        "#propdef-font-synthesis-weight",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.font-synthesis-style",
-        CssKnownProperty::FontSynthesisStyle,
-        "font-synthesis-style",
-        "#propdef-font-synthesis-style",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.font-synthesis-small-caps",
-        CssKnownProperty::FontSynthesisSmallCaps,
-        "font-synthesis-small-caps",
-        "#propdef-font-synthesis-small-caps",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.font-synthesis-position",
-        CssKnownProperty::FontSynthesisPosition,
-        "font-synthesis-position",
-        "#propdef-font-synthesis-position",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.font-palette",
-        CssKnownProperty::FontPalette,
-        "font-palette",
-        "#propdef-font-palette",
-        &[],
-    ),
+    property_row!(All, O_CASCADE4, partial),
+    property_row!(Display, S_DISPLAY3, complete),
+    property_row!(BoxSizing, I_SIZING3_20260904, complete),
+    property_row!(Position, I_POSITION3, complete),
+    property_row!(Direction, O_WRITING3, complete),
+    property_row!(Overflow, X_OVERFLOW3, complete),
+    property_row!(OverflowX, X_OVERFLOW3, complete),
+    property_row!(OverflowY, X_OVERFLOW3, complete),
+    property_row!(OverflowBlock, X_OVERFLOW3, complete),
+    property_row!(OverflowInline, X_OVERFLOW3, complete),
+    property_row!(OverflowClipMargin, X_OVERFLOW3, complete),
+    property_row!(ViewTransitionName, S_VIEWTRANSITIONS1, complete),
+    property_row!(WillChange, I_WILLCHANGE1, complete),
+    property_row!(OverflowAnchor, I_SCROLLANCHORING1, complete),
+    property_row!(ScrollBehavior, X_OVERFLOW3, complete),
+    property_row!(ScrollbarGutter, X_OVERFLOW3, complete),
+    property_row!(FlexDirection, O_FLEXBOX1, complete),
+    property_row!(FlexFlow, O_FLEXBOX1, complete),
+    property_row!(FlexWrap, O_FLEXBOX1, complete),
+    property_row!(ContainerName, X_CONDITIONAL5, complete),
+    property_row!(ContainerType, X_CONDITIONAL5, complete),
+    property_row!(Container, X_CONDITIONAL5, complete),
+    property_row!(Float, I_LOGICAL1_20251204, complete, "#float-clear"),
+    property_row!(Clear, I_LOGICAL1_20251204, complete, "#float-clear"),
+    property_row!(AlignContent, S_ALIGN3, complete),
+    property_row!(JustifyContent, S_ALIGN3, complete),
+    property_row!(AlignItems, S_ALIGN3, complete),
+    property_row!(AlignSelf, S_ALIGN3, complete),
+    property_row!(JustifyItems, S_ALIGN3, complete),
+    property_row!(JustifySelf, S_ALIGN3, complete),
+    property_row!(PlaceContent, S_ALIGN3, complete),
+    property_row!(PlaceItems, S_ALIGN3, complete),
+    property_row!(PlaceSelf, S_ALIGN3, complete),
+    property_row!(Visibility, S_DISPLAY3, complete),
+    property_row!(VoiceDuration, S_SPEECH1, complete),
+    property_row!(VoiceBalance, S_SPEECH1, complete),
+    property_row!(VoiceVolume, S_SPEECH1, complete),
+    property_row!(VoicePitch, S_SPEECH1, complete),
+    property_row!(VoiceRange, S_SPEECH1, complete),
+    property_row!(VoiceRate, S_SPEECH1, complete),
+    property_row!(VoiceFamily, S_SPEECH1, complete),
+    property_row!(VoiceStress, S_SPEECH1, complete),
+    property_row!(Speak, S_SPEECH1, complete),
+    property_row!(SpeakAs, S_SPEECH1, complete),
+    property_row!(PauseBefore, S_SPEECH1, complete),
+    property_row!(PauseAfter, S_SPEECH1, complete),
+    property_row!(Pause, S_SPEECH1, complete),
+    property_row!(RestBefore, S_SPEECH1, complete),
+    property_row!(RestAfter, S_SPEECH1, complete),
+    property_row!(Rest, S_SPEECH1, complete),
+    property_row!(CueBefore, S_SPEECH1, complete),
+    property_row!(CueAfter, S_SPEECH1, complete),
+    property_row!(Cue, S_SPEECH1, complete),
+    property_row!(Content, X_CONTENT3, complete),
+    property_row!(StringSet, X_CONTENT3, complete),
+    property_row!(BookmarkLevel, X_CONTENT3, complete),
+    property_row!(BookmarkLabel, X_CONTENT3, complete),
+    property_row!(BookmarkState, X_CONTENT3, complete),
+    property_row!(ContentVisibility, I_CONTAIN2, complete),
+    property_row!(ListStyleType, I_LISTS3, complete),
+    property_row!(ListStylePosition, I_LISTS3, complete),
+    property_row!(ListStyleImage, I_LISTS3, complete),
+    property_row!(ListStyle, I_LISTS3, complete),
+    property_row!(MarkerSide, I_LISTS3, complete),
+    property_row!(CounterReset, I_LISTS3, complete),
+    property_row!(CounterIncrement, I_LISTS3, complete),
+    property_row!(CounterSet, I_LISTS3, complete),
+    property_row!(Width, I_SIZING3_20260904, complete),
+    property_row!(Height, I_SIZING3_20260904, complete),
+    property_row!(InlineSize, I_SIZING3_20260904, complete),
+    property_row!(BlockSize, I_SIZING3_20260904, complete),
+    property_row!(MinWidth, I_SIZING3_20260904, complete),
+    property_row!(MinHeight, I_SIZING3_20260904, complete),
+    property_row!(MinInlineSize, I_SIZING3_20260904, complete),
+    property_row!(MinBlockSize, I_SIZING3_20260904, complete),
+    property_row!(MaxWidth, I_SIZING3_20260904, complete),
+    property_row!(MaxHeight, I_SIZING3_20260904, complete),
+    property_row!(MaxInlineSize, I_SIZING3_20260904, complete),
+    property_row!(MaxBlockSize, I_SIZING3_20260904, complete),
+    property_row!(Size, X_SIZING4_20260904, complete),
+    property_row!(MinSize, X_SIZING4_20260904, complete),
+    property_row!(MaxSize, X_SIZING4_20260904, complete),
+    property_row!(FrameSizing, X_SIZING4_20260904, complete),
+    property_row!(MinIntrinsicSizing, X_SIZING4_20260904, complete),
+    property_row!(ContainIntrinsicWidth, X_SIZING4_20260904, complete),
+    property_row!(ContainIntrinsicHeight, X_SIZING4_20260904, complete),
+    property_row!(ContainIntrinsicInlineSize, X_SIZING4_20260904, complete),
+    property_row!(ContainIntrinsicBlockSize, X_SIZING4_20260904, complete),
+    property_row!(ContainIntrinsicSize, X_SIZING4_20260904, complete),
+    property_row!(FlexBasis, O_FLEXBOX1, complete),
+    property_row!(Gap, S_ALIGN3, complete),
+    property_row!(RowGap, S_ALIGN3, complete),
+    property_row!(ColumnGap, S_ALIGN3, complete),
+    property_row!(ColumnCount, O_MULTICOL1, complete),
+    property_row!(ColumnFill, O_MULTICOL1, complete),
+    property_row!(ColumnRule, O_MULTICOL1, complete),
+    property_row!(ColumnRuleColor, O_MULTICOL1, complete),
+    property_row!(ColumnRuleStyle, O_MULTICOL1, complete),
+    property_row!(ColumnRuleWidth, O_MULTICOL1, complete),
+    property_row!(ColumnSpan, O_MULTICOL1, complete),
+    property_row!(ColumnWidth, O_MULTICOL1, complete),
+    property_row!(Columns, O_MULTICOL1, complete),
+    property_row!(ItemDirection, X_GRID3_20260121, complete),
+    property_row!(ItemWrap, X_GRID3_20260121, complete),
+    property_row!(ItemPack, X_GRID3_20260121, complete),
+    property_row!(ItemFlow, X_GRID3_20260121, complete),
+    property_row!(FlowTolerance, X_GRID3_20260121, complete),
+    property_row!(GridTemplateRows, R_GRID2, complete),
+    property_row!(GridTemplateColumns, R_GRID2, complete),
+    property_row!(GridTemplateAreas, R_GRID2, complete),
+    property_row!(GridTemplate, R_GRID2, complete),
+    property_row!(GridAutoRows, R_GRID2, complete),
+    property_row!(GridAutoColumns, R_GRID2, complete),
+    property_row!(
+        GridAutoFlow,
+        R_GRID2,
+        partial(GRID_AUTO_FLOW_SUBSET, GRID_AUTO_FLOW_REMAINDER)
+    ),
+    property_row!(GridRowStart, R_GRID2, complete),
+    property_row!(GridRowEnd, R_GRID2, complete),
+    property_row!(GridColumnStart, R_GRID2, complete),
+    property_row!(GridColumnEnd, R_GRID2, complete),
+    property_row!(GridRow, R_GRID2, complete),
+    property_row!(GridColumn, R_GRID2, complete),
+    property_row!(GridArea, R_GRID2, complete),
+    property_row!(Grid, R_GRID2, complete),
+    property_row!(FontSize, I_FONTS4_20260907, complete),
+    property_row!(
+        LineHeight,
+        O_CSS2,
+        complete,
+        "visudet.html#propdef-line-height"
+    ),
+    property_row!(WritingMode, S_WRITING4, complete),
+    property_row!(TextAlign, X_TEXT4, complete),
+    property_row!(TextAlignAll, X_TEXT4, complete),
+    property_row!(TextAlignLast, X_TEXT4, complete),
+    property_row!(TextIndent, X_TEXT4, complete),
+    property_row!(
+        VerticalAlign,
+        O_CSS2,
+        complete,
+        "visudet.html#propdef-vertical-align"
+    ),
+    property_row!(FontFamily, I_FONTS4_20260907, complete),
+    property_row!(Font, I_FONTS4_20260907, complete),
+    property_row!(FontWeight, I_FONTS4_20260907, complete),
+    property_row!(FontStyle, I_FONTS4_20260907, complete),
+    property_row!(FontWidth, I_FONTS4_20260907, complete),
+    property_row!(FontVariant, I_FONTS4_20260907, complete),
+    property_row!(FontVariantAlternates, I_FONTS4_20260907, complete),
+    property_row!(FontVariantCaps, I_FONTS4_20260907, complete),
+    property_row!(FontVariantEastAsian, I_FONTS4_20260907, complete),
+    property_row!(FontVariantEmoji, I_FONTS4_20260907, complete),
+    property_row!(FontVariantLigatures, I_FONTS4_20260907, complete),
+    property_row!(FontVariantNumeric, I_FONTS4_20260907, complete),
+    property_row!(FontVariantPosition, I_FONTS4_20260907, complete),
+    property_row!(FontFeatureSettings, I_FONTS4_20260907, complete),
+    property_row!(FontKerning, I_FONTS4_20260907, complete),
+    property_row!(FontLanguageOverride, I_FONTS4_20260907, complete),
+    property_row!(FontOpticalSizing, I_FONTS4_20260907, complete),
+    property_row!(FontSizeAdjust, I_FONTS4_20260907, complete),
+    property_row!(FontVariationSettings, I_FONTS4_20260907, complete),
+    property_row!(FontSynthesis, I_FONTS4_20260907, complete),
+    property_row!(FontSynthesisWeight, I_FONTS4_20260907, complete),
+    property_row!(FontSynthesisStyle, I_FONTS4_20260907, complete),
+    property_row!(FontSynthesisSmallCaps, I_FONTS4_20260907, complete),
+    property_row!(FontSynthesisPosition, I_FONTS4_20260907, complete),
+    property_row!(FontPalette, I_FONTS4_20260907, complete),
     CssFeatureMetadata::complete(
         "ext.property.font-weight-range",
         CssFeatureKind::Property,
@@ -5556,532 +4271,115 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 798] = [
         I_FONTS4_20260907,
         "#font-weight-absolute-values",
     ),
-    complete_property_feature!(
-        CssKnownProperty::LetterSpacing,
-        "letter-spacing",
-        "baseline.property.letter-spacing"
-    ),
-    complete_property_feature!(CssKnownProperty::Hyphens, "hyphens", "ext.property.hyphens"),
-    complete_property_feature!(
-        CssKnownProperty::HyphenateCharacter,
-        "hyphenate-character",
-        "ext.property.hyphenate-character"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::HyphenateLimitZone,
-        "hyphenate-limit-zone",
-        "ext.property.hyphenate-limit-zone"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::HyphenateLimitChars,
-        "hyphenate-limit-chars",
-        "ext.property.hyphenate-limit-chars"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::HyphenateLimitLines,
-        "hyphenate-limit-lines",
-        "ext.property.hyphenate-limit-lines"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::HyphenateLimitLast,
-        "hyphenate-limit-last",
-        "ext.property.hyphenate-limit-last"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextJustify,
-        "text-justify",
-        "ext.property.text-justify"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextGroupAlign,
-        "text-group-align",
-        "ext.property.text-group-align"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::LinePadding,
-        "line-padding",
-        "ext.property.line-padding"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextAutospace,
-        "text-autospace",
-        "ext.property.text-autospace"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextSpacingTrim,
-        "text-spacing-trim",
-        "ext.property.text-spacing-trim"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextBoxTrim,
-        "text-box-trim",
-        "official.property.text-box-trim"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextBoxEdge,
-        "text-box-edge",
-        "official.property.text-box-edge"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextBox,
-        "text-box",
-        "official.property.text-box"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextSpacing,
-        "text-spacing",
-        "ext.property.text-spacing"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::HangingPunctuation,
-        "hanging-punctuation",
-        "ext.property.hanging-punctuation"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::WrapInside,
-        "wrap-inside",
-        "ext.property.wrap-inside"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::WrapBefore,
-        "wrap-before",
-        "ext.property.wrap-before"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::WrapAfter,
-        "wrap-after",
-        "ext.property.wrap-after"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::LineBreak,
-        "line-break",
-        "ext.property.line-break"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::WordSpaceTransform,
-        "word-space-transform",
-        "ext.property.word-space-transform"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TabSize,
-        "tab-size",
-        "ext.property.tab-size"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextWrapMode,
-        "text-wrap-mode",
-        "ext.property.text-wrap-mode"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextWrapStyle,
-        "text-wrap-style",
-        "ext.property.text-wrap-style"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::WhiteSpaceCollapse,
-        "white-space-collapse",
-        "ext.property.white-space-collapse"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::WhiteSpaceTrim,
-        "white-space-trim",
-        "ext.property.white-space-trim"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextWrap,
-        "text-wrap",
-        "baseline.property.text-wrap"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::WhiteSpace,
-        "white-space",
-        "baseline.property.white-space"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::WordBreak,
-        "word-break",
-        "baseline.property.word-break"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::OverflowWrap,
-        "overflow-wrap",
-        "baseline.property.overflow-wrap",
-        CssKnownProperty::OverflowWrap.aliases()
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextOverflow,
-        "text-overflow",
-        "baseline.property.text-overflow"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextDecoration,
-        "text-decoration",
-        "baseline.property.text-decoration"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextDecorationLine,
-        "text-decoration-line",
-        "baseline.property.text-decoration-line"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextDecorationColor,
-        "text-decoration-color",
-        "baseline.property.text-decoration-color"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextDecorationStyle,
-        "text-decoration-style",
-        "baseline.property.text-decoration-style"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextDecorationThickness,
-        "text-decoration-thickness",
-        "baseline.property.text-decoration-thickness"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextUnderlinePosition,
-        "text-underline-position",
-        "ext.property.text-underline-position"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextUnderlineOffset,
-        "text-underline-offset",
-        "ext.property.text-underline-offset"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextDecorationSkip,
-        "text-decoration-skip",
-        "ext.property.text-decoration-skip"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextDecorationSkipSelf,
-        "text-decoration-skip-self",
-        "ext.property.text-decoration-skip-self"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextDecorationSkipBox,
-        "text-decoration-skip-box",
-        "ext.property.text-decoration-skip-box"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextDecorationSkipInset,
-        "text-decoration-skip-inset",
-        "ext.property.text-decoration-skip-inset"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextDecorationSkipSpaces,
-        "text-decoration-skip-spaces",
-        "ext.property.text-decoration-skip-spaces"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextDecorationSkipInk,
-        "text-decoration-skip-ink",
-        "ext.property.text-decoration-skip-ink"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextEmphasis,
-        "text-emphasis",
-        "ext.property.text-emphasis"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextEmphasisStyle,
-        "text-emphasis-style",
-        "ext.property.text-emphasis-style"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextEmphasisColor,
-        "text-emphasis-color",
-        "ext.property.text-emphasis-color"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextEmphasisPosition,
-        "text-emphasis-position",
-        "ext.property.text-emphasis-position"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextEmphasisSkip,
-        "text-emphasis-skip",
-        "ext.property.text-emphasis-skip"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextShadow,
-        "text-shadow",
-        "ext.property.text-shadow"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TextTransform,
-        "text-transform",
-        "baseline.property.text-transform"
-    ),
-    complete_property_feature!(CssKnownProperty::Inset, "inset", "baseline.property.inset"),
-    complete_property_feature!(CssKnownProperty::Top, "top", "baseline.property.top"),
-    complete_property_feature!(CssKnownProperty::Right, "right", "baseline.property.right"),
-    complete_property_feature!(
-        CssKnownProperty::Bottom,
-        "bottom",
-        "baseline.property.bottom"
-    ),
-    complete_property_feature!(CssKnownProperty::Left, "left", "baseline.property.left"),
-    complete_property_feature!(
-        CssKnownProperty::InsetBlockStart,
-        "inset-block-start",
-        "official.property.inset-block-start"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::InsetBlockEnd,
-        "inset-block-end",
-        "official.property.inset-block-end"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::InsetInlineStart,
-        "inset-inline-start",
-        "official.property.inset-inline-start"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::InsetInlineEnd,
-        "inset-inline-end",
-        "official.property.inset-inline-end"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::InsetBlock,
-        "inset-block",
-        "official.property.inset-block"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::InsetInline,
-        "inset-inline",
-        "official.property.inset-inline"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ZIndex,
-        "z-index",
-        "baseline.property.z-index"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BoxDecorationBreak,
-        "box-decoration-break",
-        "baseline.property.box-decoration-break"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::Margin,
-        "margin",
-        "baseline.property.margin"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MarginTop,
-        "margin-top",
-        "baseline.property.margin-top"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MarginRight,
-        "margin-right",
-        "baseline.property.margin-right"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MarginBottom,
-        "margin-bottom",
-        "baseline.property.margin-bottom"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MarginLeft,
-        "margin-left",
-        "baseline.property.margin-left"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MarginBlockStart,
-        "margin-block-start",
-        "official.property.margin-block-start"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MarginBlockEnd,
-        "margin-block-end",
-        "official.property.margin-block-end"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MarginInlineStart,
-        "margin-inline-start",
-        "official.property.margin-inline-start"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MarginInlineEnd,
-        "margin-inline-end",
-        "official.property.margin-inline-end"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MarginBlock,
-        "margin-block",
-        "official.property.margin-block"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MarginInline,
-        "margin-inline",
-        "official.property.margin-inline"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::Padding,
-        "padding",
-        "baseline.property.padding"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::PaddingTop,
-        "padding-top",
-        "baseline.property.padding-top"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::PaddingRight,
-        "padding-right",
-        "baseline.property.padding-right"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::PaddingBottom,
-        "padding-bottom",
-        "baseline.property.padding-bottom"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::PaddingLeft,
-        "padding-left",
-        "baseline.property.padding-left"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::PaddingBlockStart,
-        "padding-block-start",
-        "official.property.padding-block-start"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::PaddingBlockEnd,
-        "padding-block-end",
-        "official.property.padding-block-end"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::PaddingInlineStart,
-        "padding-inline-start",
-        "official.property.padding-inline-start"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::PaddingInlineEnd,
-        "padding-inline-end",
-        "official.property.padding-inline-end"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::PaddingBlock,
-        "padding-block",
-        "official.property.padding-block"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::PaddingInline,
-        "padding-inline",
-        "official.property.padding-inline"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::Border,
-        "border",
-        "baseline.property.border"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderTop,
-        "border-top",
-        "baseline.property.border-top"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderRight,
-        "border-right",
-        "baseline.property.border-right"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderBottom,
-        "border-bottom",
-        "baseline.property.border-bottom"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderLeft,
-        "border-left",
-        "baseline.property.border-left"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderBlockStart,
-        "border-block-start",
-        "official.property.border-block-start"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderBlockEnd,
-        "border-block-end",
-        "official.property.border-block-end"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderInlineStart,
-        "border-inline-start",
-        "official.property.border-inline-start"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderInlineEnd,
-        "border-inline-end",
-        "official.property.border-inline-end"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderBlock,
-        "border-block",
-        "official.property.border-block"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderInline,
-        "border-inline",
-        "official.property.border-inline"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderWidth,
-        "border-width",
-        "baseline.property.border-width"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderTopWidth,
-        "border-top-width",
-        "baseline.property.border-top-width"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderRightWidth,
-        "border-right-width",
-        "baseline.property.border-right-width"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderBottomWidth,
-        "border-bottom-width",
-        "baseline.property.border-bottom-width"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderLeftWidth,
-        "border-left-width",
-        "baseline.property.border-left-width"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderBlockStartWidth,
-        "border-block-start-width",
-        "official.property.border-block-start-width"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderBlockEndWidth,
-        "border-block-end-width",
-        "official.property.border-block-end-width"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderInlineStartWidth,
-        "border-inline-start-width",
-        "official.property.border-inline-start-width"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderInlineEndWidth,
-        "border-inline-end-width",
-        "official.property.border-inline-end-width"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderBlockWidth,
-        "border-block-width",
-        "official.property.border-block-width"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderInlineWidth,
-        "border-inline-width",
-        "official.property.border-inline-width"
-    ),
+    property_row!(LetterSpacing, X_TEXT4, complete),
+    property_row!(Hyphens, X_TEXT4, complete),
+    property_row!(HyphenateCharacter, X_TEXT4, complete),
+    property_row!(HyphenateLimitZone, X_TEXT4, complete),
+    property_row!(HyphenateLimitChars, X_TEXT4, complete),
+    property_row!(HyphenateLimitLines, X_TEXT4, complete),
+    property_row!(HyphenateLimitLast, X_TEXT4, complete),
+    property_row!(TextJustify, X_TEXT4, complete),
+    property_row!(TextGroupAlign, X_TEXT4, complete),
+    property_row!(LinePadding, X_TEXT4, complete),
+    property_row!(TextAutospace, X_TEXT4, complete),
+    property_row!(TextSpacingTrim, X_TEXT4, complete),
+    property_row!(TextBoxTrim, F_INLINE3_20241218, complete),
+    property_row!(TextBoxEdge, F_INLINE3_20241218, complete),
+    property_row!(TextBox, F_INLINE3_20241218, complete),
+    property_row!(TextSpacing, X_TEXT4, complete),
+    property_row!(HangingPunctuation, X_TEXT4, complete),
+    property_row!(WrapInside, X_TEXT4, complete),
+    property_row!(WrapBefore, X_TEXT4, complete),
+    property_row!(WrapAfter, X_TEXT4, complete),
+    property_row!(LineBreak, X_TEXT4, complete),
+    property_row!(WordSpaceTransform, X_TEXT4, complete),
+    property_row!(TabSize, X_TEXT4, complete),
+    property_row!(TextWrapMode, X_TEXT4, complete),
+    property_row!(TextWrapStyle, X_TEXT4, complete),
+    property_row!(WhiteSpaceCollapse, X_TEXT4, complete),
+    property_row!(WhiteSpaceTrim, X_TEXT4, complete),
+    property_row!(TextWrap, X_TEXT4, complete),
+    property_row!(WhiteSpace, X_TEXT4, complete),
+    property_row!(WordBreak, X_TEXT4, complete),
+    property_row!(OverflowWrap, S_TEXT3, complete),
+    property_row!(TextOverflow, X_OVERFLOW3, complete),
+    property_row!(TextDecoration, X_TEXTDECOR4, complete),
+    property_row!(TextDecorationLine, X_TEXTDECOR4, complete),
+    property_row!(TextDecorationColor, X_TEXTDECOR4, complete),
+    property_row!(TextDecorationStyle, X_TEXTDECOR4, complete),
+    property_row!(TextDecorationThickness, X_TEXTDECOR4, complete),
+    property_row!(TextUnderlinePosition, X_TEXTDECOR4, complete),
+    property_row!(TextUnderlineOffset, X_TEXTDECOR4, complete),
+    property_row!(TextDecorationSkip, X_TEXTDECOR4, complete),
+    property_row!(TextDecorationSkipSelf, X_TEXTDECOR4, complete),
+    property_row!(TextDecorationSkipBox, X_TEXTDECOR4, complete),
+    property_row!(TextDecorationSkipInset, X_TEXTDECOR4, complete),
+    property_row!(TextDecorationSkipSpaces, X_TEXTDECOR4, complete),
+    property_row!(TextDecorationSkipInk, X_TEXTDECOR4, complete),
+    property_row!(TextEmphasis, X_TEXTDECOR4, complete),
+    property_row!(TextEmphasisStyle, X_TEXTDECOR4, complete),
+    property_row!(TextEmphasisColor, X_TEXTDECOR4, complete),
+    property_row!(TextEmphasisPosition, X_TEXTDECOR4, complete),
+    property_row!(TextEmphasisSkip, X_TEXTDECOR4, complete),
+    property_row!(TextShadow, X_TEXTDECOR4, complete),
+    property_row!(TextTransform, X_TEXT4, complete),
+    property_row!(Inset, I_POSITION3, complete),
+    property_row!(Top, I_POSITION3, complete),
+    property_row!(Right, I_POSITION3, complete),
+    property_row!(Bottom, I_POSITION3, complete),
+    property_row!(Left, I_POSITION3, complete),
+    property_row!(InsetBlockStart, I_POSITION3, complete),
+    property_row!(InsetBlockEnd, I_POSITION3, complete),
+    property_row!(InsetInlineStart, I_POSITION3, complete),
+    property_row!(InsetInlineEnd, I_POSITION3, complete),
+    property_row!(InsetBlock, I_POSITION3, complete),
+    property_row!(InsetInline, I_POSITION3, complete),
+    property_row!(ZIndex, O_CSS2, complete, "visuren.html#propdef-z-index"),
+    property_row!(BoxDecorationBreak, S_BREAK3, complete),
+    property_row!(Margin, O_BOX3, complete),
+    property_row!(MarginTop, O_BOX3, complete),
+    property_row!(MarginRight, O_BOX3, complete),
+    property_row!(MarginBottom, O_BOX3, complete),
+    property_row!(MarginLeft, O_BOX3, complete),
+    property_row!(MarginBlockStart, I_LOGICAL1_20251204, complete),
+    property_row!(MarginBlockEnd, I_LOGICAL1_20251204, complete),
+    property_row!(MarginInlineStart, I_LOGICAL1_20251204, complete),
+    property_row!(MarginInlineEnd, I_LOGICAL1_20251204, complete),
+    property_row!(MarginBlock, I_LOGICAL1_20251204, complete),
+    property_row!(MarginInline, I_LOGICAL1_20251204, complete),
+    property_row!(Padding, O_BOX3, complete),
+    property_row!(PaddingTop, O_BOX3, complete),
+    property_row!(PaddingRight, O_BOX3, complete),
+    property_row!(PaddingBottom, O_BOX3, complete),
+    property_row!(PaddingLeft, O_BOX3, complete),
+    property_row!(PaddingBlockStart, I_LOGICAL1_20251204, complete),
+    property_row!(PaddingBlockEnd, I_LOGICAL1_20251204, complete),
+    property_row!(PaddingInlineStart, I_LOGICAL1_20251204, complete),
+    property_row!(PaddingInlineEnd, I_LOGICAL1_20251204, complete),
+    property_row!(PaddingBlock, I_LOGICAL1_20251204, complete),
+    property_row!(PaddingInline, I_LOGICAL1_20251204, complete),
+    property_row!(Border, O_BACKGROUNDS3, complete),
+    property_row!(BorderTop, O_BACKGROUNDS3, complete),
+    property_row!(BorderRight, O_BACKGROUNDS3, complete),
+    property_row!(BorderBottom, O_BACKGROUNDS3, complete),
+    property_row!(BorderLeft, O_BACKGROUNDS3, complete),
+    property_row!(BorderBlockStart, I_LOGICAL1_20251204, complete),
+    property_row!(BorderBlockEnd, I_LOGICAL1_20251204, complete),
+    property_row!(BorderInlineStart, I_LOGICAL1_20251204, complete),
+    property_row!(BorderInlineEnd, I_LOGICAL1_20251204, complete),
+    property_row!(BorderBlock, I_LOGICAL1_20251204, complete),
+    property_row!(BorderInline, I_LOGICAL1_20251204, complete),
+    property_row!(BorderWidth, O_BACKGROUNDS3, complete),
+    property_row!(BorderTopWidth, O_BACKGROUNDS3, complete),
+    property_row!(BorderRightWidth, O_BACKGROUNDS3, complete),
+    property_row!(BorderBottomWidth, O_BACKGROUNDS3, complete),
+    property_row!(BorderLeftWidth, O_BACKGROUNDS3, complete),
+    property_row!(BorderBlockStartWidth, I_LOGICAL1_20251204, complete),
+    property_row!(BorderBlockEndWidth, I_LOGICAL1_20251204, complete),
+    property_row!(BorderInlineStartWidth, I_LOGICAL1_20251204, complete),
+    property_row!(BorderInlineEndWidth, I_LOGICAL1_20251204, complete),
+    property_row!(BorderBlockWidth, I_LOGICAL1_20251204, complete),
+    property_row!(BorderInlineWidth, I_LOGICAL1_20251204, complete),
     CssFeatureMetadata::complete(
         "official.value.border-width-logical-values",
         CssFeatureKind::Value,
@@ -6089,222 +4387,48 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 798] = [
         I_LOGICAL1_20251204,
         "#logical-shorthand-keyword",
     ),
-    complete_property_feature!(
-        CssKnownProperty::BorderImage,
-        "border-image",
-        "official.property.border-image"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderImageOutset,
-        "border-image-outset",
-        "official.property.border-image-outset"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderImageRepeat,
-        "border-image-repeat",
-        "official.property.border-image-repeat"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderImageSlice,
-        "border-image-slice",
-        "official.property.border-image-slice"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderImageSource,
-        "border-image-source",
-        "official.property.border-image-source"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderImageWidth,
-        "border-image-width",
-        "official.property.border-image-width"
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.color",
-        CssKnownProperty::Color,
-        "color",
-        "#propdef-color",
-        &[],
-    ),
-    complete_property_feature!(
-        CssKnownProperty::Background,
-        "background",
-        "baseline.property.background"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BackgroundColor,
-        "background-color",
-        "baseline.property.background-color"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderColor,
-        "border-color",
-        "baseline.property.border-color"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderTopColor,
-        "border-top-color",
-        "baseline.property.border-top-color"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderRightColor,
-        "border-right-color",
-        "baseline.property.border-right-color"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderBottomColor,
-        "border-bottom-color",
-        "baseline.property.border-bottom-color"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderLeftColor,
-        "border-left-color",
-        "baseline.property.border-left-color"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderBlockStartColor,
-        "border-block-start-color",
-        "official.property.border-block-start-color"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderBlockEndColor,
-        "border-block-end-color",
-        "official.property.border-block-end-color"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderInlineStartColor,
-        "border-inline-start-color",
-        "official.property.border-inline-start-color"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderInlineEndColor,
-        "border-inline-end-color",
-        "official.property.border-inline-end-color"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderBlockColor,
-        "border-block-color",
-        "official.property.border-block-color"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderInlineColor,
-        "border-inline-color",
-        "official.property.border-inline-color"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BackgroundImage,
-        "background-image",
-        "baseline.property.background-image"
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.background-position",
-        CssKnownProperty::BackgroundPosition,
-        "background-position",
-        "#propdef-background-position",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.object-position",
-        CssKnownProperty::ObjectPosition,
-        "object-position",
-        "#propdef-object-position",
-        &[],
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ImageOrientation,
-        "image-orientation",
-        "official.property.image-orientation"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ImageRendering,
-        "image-rendering",
-        "official.property.image-rendering"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ObjectFit,
-        "object-fit",
-        "official.property.object-fit"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BackgroundSize,
-        "background-size",
-        "baseline.property.background-size"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BackgroundRepeat,
-        "background-repeat",
-        "baseline.property.background-repeat"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BackgroundOrigin,
-        "background-origin",
-        "baseline.property.background-origin"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BackgroundClip,
-        "background-clip",
-        "baseline.property.background-clip"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BackgroundAttachment,
-        "background-attachment",
-        "baseline.property.background-attachment"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderStyle,
-        "border-style",
-        "baseline.property.border-style"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderTopStyle,
-        "border-top-style",
-        "baseline.property.border-top-style"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderRightStyle,
-        "border-right-style",
-        "baseline.property.border-right-style"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderBottomStyle,
-        "border-bottom-style",
-        "baseline.property.border-bottom-style"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderLeftStyle,
-        "border-left-style",
-        "baseline.property.border-left-style"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderBlockStartStyle,
-        "border-block-start-style",
-        "official.property.border-block-start-style"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderBlockEndStyle,
-        "border-block-end-style",
-        "official.property.border-block-end-style"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderInlineStartStyle,
-        "border-inline-start-style",
-        "official.property.border-inline-start-style"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderInlineEndStyle,
-        "border-inline-end-style",
-        "official.property.border-inline-end-style"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderBlockStyle,
-        "border-block-style",
-        "official.property.border-block-style"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderInlineStyle,
-        "border-inline-style",
-        "official.property.border-inline-style"
-    ),
+    property_row!(BorderImage, O_BACKGROUNDS3, complete),
+    property_row!(BorderImageOutset, O_BACKGROUNDS3, complete),
+    property_row!(BorderImageRepeat, O_BACKGROUNDS3, complete),
+    property_row!(BorderImageSlice, O_BACKGROUNDS3, complete),
+    property_row!(BorderImageSource, O_BACKGROUNDS3, complete),
+    property_row!(BorderImageWidth, O_BACKGROUNDS3, complete),
+    property_row!(Color, O_COLOR4, complete),
+    property_row!(Background, O_BACKGROUNDS3, complete),
+    property_row!(BackgroundColor, O_BACKGROUNDS3, complete),
+    property_row!(BorderColor, O_BACKGROUNDS3, complete),
+    property_row!(BorderTopColor, O_BACKGROUNDS3, complete),
+    property_row!(BorderRightColor, O_BACKGROUNDS3, complete),
+    property_row!(BorderBottomColor, O_BACKGROUNDS3, complete),
+    property_row!(BorderLeftColor, O_BACKGROUNDS3, complete),
+    property_row!(BorderBlockStartColor, I_LOGICAL1_20251204, complete),
+    property_row!(BorderBlockEndColor, I_LOGICAL1_20251204, complete),
+    property_row!(BorderInlineStartColor, I_LOGICAL1_20251204, complete),
+    property_row!(BorderInlineEndColor, I_LOGICAL1_20251204, complete),
+    property_row!(BorderBlockColor, I_LOGICAL1_20251204, complete),
+    property_row!(BorderInlineColor, I_LOGICAL1_20251204, complete),
+    property_row!(BackgroundImage, O_BACKGROUNDS3, complete),
+    property_row!(BackgroundPosition, O_BACKGROUNDS3, complete),
+    property_row!(ObjectPosition, O_IMAGES3, complete),
+    property_row!(ImageOrientation, O_IMAGES3, complete),
+    property_row!(ImageRendering, O_IMAGES3, complete),
+    property_row!(ObjectFit, O_IMAGES3, complete),
+    property_row!(BackgroundSize, O_BACKGROUNDS3, complete),
+    property_row!(BackgroundRepeat, O_BACKGROUNDS3, complete),
+    property_row!(BackgroundOrigin, O_BACKGROUNDS3, complete),
+    property_row!(BackgroundClip, O_BACKGROUNDS3, complete),
+    property_row!(BackgroundAttachment, O_BACKGROUNDS3, complete),
+    property_row!(BorderStyle, O_BACKGROUNDS3, complete),
+    property_row!(BorderTopStyle, O_BACKGROUNDS3, complete),
+    property_row!(BorderRightStyle, O_BACKGROUNDS3, complete),
+    property_row!(BorderBottomStyle, O_BACKGROUNDS3, complete),
+    property_row!(BorderLeftStyle, O_BACKGROUNDS3, complete),
+    property_row!(BorderBlockStartStyle, I_LOGICAL1_20251204, complete),
+    property_row!(BorderBlockEndStyle, I_LOGICAL1_20251204, complete),
+    property_row!(BorderInlineStartStyle, I_LOGICAL1_20251204, complete),
+    property_row!(BorderInlineEndStyle, I_LOGICAL1_20251204, complete),
+    property_row!(BorderBlockStyle, I_LOGICAL1_20251204, complete),
+    property_row!(BorderInlineStyle, I_LOGICAL1_20251204, complete),
     CssFeatureMetadata::complete(
         "official.value.border-style-logical-values",
         CssFeatureKind::Value,
@@ -6319,836 +4443,189 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 798] = [
         I_LOGICAL1_20251204,
         "#logical-shorthand-keyword",
     ),
-    complete_property_feature!(
-        CssKnownProperty::BorderRadius,
-        "border-radius",
-        "baseline.property.border-radius"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderTopLeftRadius,
-        "border-top-left-radius",
-        "baseline.property.border-top-left-radius"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderTopRightRadius,
-        "border-top-right-radius",
-        "baseline.property.border-top-right-radius"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderBottomRightRadius,
-        "border-bottom-right-radius",
-        "baseline.property.border-bottom-right-radius"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderBottomLeftRadius,
-        "border-bottom-left-radius",
-        "baseline.property.border-bottom-left-radius"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderStartStartRadius,
-        "border-start-start-radius",
-        "official.property.border-start-start-radius"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderStartEndRadius,
-        "border-start-end-radius",
-        "official.property.border-start-end-radius"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderEndStartRadius,
-        "border-end-start-radius",
-        "official.property.border-end-start-radius"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::BorderEndEndRadius,
-        "border-end-end-radius",
-        "official.property.border-end-end-radius"
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.box-shadow",
-        CssKnownProperty::BoxShadow,
-        "box-shadow",
-        "#propdef-box-shadow",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.opacity",
-        CssKnownProperty::Opacity,
-        "opacity",
-        "#propdef-opacity",
-        &[],
-    ),
-    complete_property_feature!(
-        CssKnownProperty::FlexGrow,
-        "flex-grow",
-        "baseline.property.flex-grow",
-        CssKnownProperty::FlexGrow.aliases()
-    ),
-    complete_property_feature!(
-        CssKnownProperty::FlexShrink,
-        "flex-shrink",
-        "baseline.property.flex-shrink",
-        CssKnownProperty::FlexShrink.aliases()
-    ),
-    complete_property_feature!(
-        CssKnownProperty::Order,
-        "order",
-        "baseline.property.order",
-        CssKnownProperty::Order.aliases()
-    ),
-    complete_property_feature!(
-        CssKnownProperty::Flex,
-        "flex",
-        "baseline.property.flex",
-        CssKnownProperty::Flex.aliases()
-    ),
-    complete_property_feature!(
-        CssKnownProperty::AspectRatio,
-        "aspect-ratio",
-        "baseline.property.aspect-ratio"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollbarWidth,
-        "scrollbar-width",
-        "baseline.property.scrollbar-width"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollbarColor,
-        "scrollbar-color",
-        "official.property.scrollbar-color"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ColorScheme,
-        "color-scheme",
-        "official.property.color-scheme"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ForcedColorAdjust,
-        "forced-color-adjust",
-        "official.property.forced-color-adjust"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::PrintColorAdjust,
-        "print-color-adjust",
-        "official.property.print-color-adjust"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ColorAdjust,
-        "color-adjust",
-        "official.property.color-adjust"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::Cursor,
-        "cursor",
-        "baseline.property.cursor"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::PointerEvents,
-        "pointer-events",
-        "baseline.property.pointer-events"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::UserSelect,
-        "user-select",
-        "baseline.property.user-select",
-        CssKnownProperty::UserSelect.aliases()
-    ),
-    complete_property_feature!(
-        CssKnownProperty::Outline,
-        "outline",
-        "baseline.property.outline"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::OutlineColor,
-        "outline-color",
-        "baseline.property.outline-color"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::OutlineStyle,
-        "outline-style",
-        "baseline.property.outline-style"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::OutlineWidth,
-        "outline-width",
-        "baseline.property.outline-width"
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.transform",
-        CssKnownProperty::Transform,
-        "transform",
-        "#propdef-transform",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.transform-origin",
-        CssKnownProperty::TransformOrigin,
-        "transform-origin",
-        "#propdef-transform-origin",
-        &[],
-    ),
-    property_feature!(
-        CssKnownProperty::Translate,
-        "translate",
-        "baseline.property.translate"
-    ),
-    property_feature!(
-        CssKnownProperty::Rotate,
-        "rotate",
-        "baseline.property.rotate"
-    ),
-    property_feature!(CssKnownProperty::Scale, "scale", "baseline.property.scale"),
-    property_feature!(
-        CssKnownProperty::Perspective,
-        "perspective",
-        "official.property.perspective"
-    ),
-    property_feature!(
-        CssKnownProperty::PerspectiveOrigin,
-        "perspective-origin",
-        "official.property.perspective-origin"
-    ),
-    property_feature!(
-        CssKnownProperty::TransformStyle,
-        "transform-style",
-        "official.property.transform-style"
-    ),
-    property_feature!(
-        CssKnownProperty::BackfaceVisibility,
-        "backface-visibility",
-        "official.property.backface-visibility"
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.filter",
-        CssKnownProperty::Filter,
-        "filter",
-        "#propdef-filter",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.flood-color",
-        CssKnownProperty::FloodColor,
-        "flood-color",
-        "#FloodColorProperty",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.flood-opacity",
-        CssKnownProperty::FloodOpacity,
-        "flood-opacity",
-        "#FloodOpacityProperty",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.lighting-color",
-        CssKnownProperty::LightingColor,
-        "lighting-color",
-        "#LightingColorProperty",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.color-interpolation-filters",
-        CssKnownProperty::ColorInterpolationFilters,
-        "color-interpolation-filters",
-        "#ColorInterpolationFiltersProperty",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.backdrop-filter",
-        CssKnownProperty::BackdropFilter,
-        "backdrop-filter",
-        "#BackdropFilterProperty",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.clip-path",
-        CssKnownProperty::ClipPath,
-        "clip-path",
-        "#propdef-clip-path",
-        &[],
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ShapeOutside,
-        "shape-outside",
-        "official.property.shape-outside"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::OffsetPosition,
-        "offset-position",
-        "official.property.offset-position"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::OffsetPath,
-        "offset-path",
-        "official.property.offset-path"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::OffsetDistance,
-        "offset-distance",
-        "official.property.offset-distance"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::OffsetRotate,
-        "offset-rotate",
-        "official.property.offset-rotate"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::OffsetAnchor,
-        "offset-anchor",
-        "official.property.offset-anchor"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::Offset,
-        "offset",
-        "official.property.offset"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ShapeImageThreshold,
-        "shape-image-threshold",
-        "official.property.shape-image-threshold"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ShapeMargin,
-        "shape-margin",
-        "official.property.shape-margin"
-    ),
-    complete_property_feature!(CssKnownProperty::Mask, "mask", "baseline.property.mask"),
-    complete_property_feature!(
-        CssKnownProperty::MaskImage,
-        "mask-image",
-        "baseline.property.mask-image"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MaskSize,
-        "mask-size",
-        "baseline.property.mask-size"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MaskPosition,
-        "mask-position",
-        "baseline.property.mask-position"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MaskRepeat,
-        "mask-repeat",
-        "baseline.property.mask-repeat"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MaskMode,
-        "mask-mode",
-        "official.property.mask-mode"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MaskOrigin,
-        "mask-origin",
-        "official.property.mask-origin"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MaskClip,
-        "mask-clip",
-        "official.property.mask-clip"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MaskComposite,
-        "mask-composite",
-        "official.property.mask-composite"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MaskBorder,
-        "mask-border",
-        "official.property.mask-border"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MaskBorderSource,
-        "mask-border-source",
-        "official.property.mask-border-source"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MaskBorderSlice,
-        "mask-border-slice",
-        "official.property.mask-border-slice"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MaskBorderWidth,
-        "mask-border-width",
-        "official.property.mask-border-width"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MaskBorderOutset,
-        "mask-border-outset",
-        "official.property.mask-border-outset"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MaskBorderRepeat,
-        "mask-border-repeat",
-        "official.property.mask-border-repeat"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MaskBorderMode,
-        "mask-border-mode",
-        "official.property.mask-border-mode"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ClipRule,
-        "clip-rule",
-        "official.property.clip-rule"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::MaskType,
-        "mask-type",
-        "official.property.mask-type"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::TransitionProperty,
-        "transition-property",
-        "baseline.property.transition-property"
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.transition-duration",
-        CssKnownProperty::TransitionDuration,
-        "transition-duration",
-        "#propdef-transition-duration",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.transition-delay",
-        CssKnownProperty::TransitionDelay,
-        "transition-delay",
-        "#propdef-transition-delay",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.transition-timing-function",
-        CssKnownProperty::TransitionTimingFunction,
-        "transition-timing-function",
-        "#propdef-transition-timing-function",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.transition",
-        CssKnownProperty::Transition,
-        "transition",
-        "#propdef-transition",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.animation-name",
-        CssKnownProperty::AnimationName,
-        "animation-name",
-        "#propdef-animation-name",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.animation-duration",
-        CssKnownProperty::AnimationDuration,
-        "animation-duration",
-        "#propdef-animation-duration",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.animation-delay",
-        CssKnownProperty::AnimationDelay,
-        "animation-delay",
-        "#propdef-animation-delay",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.animation-timing-function",
-        CssKnownProperty::AnimationTimingFunction,
-        "animation-timing-function",
-        "#propdef-animation-timing-function",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.animation-iteration-count",
-        CssKnownProperty::AnimationIterationCount,
-        "animation-iteration-count",
-        "#propdef-animation-iteration-count",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.animation-direction",
-        CssKnownProperty::AnimationDirection,
-        "animation-direction",
-        "#propdef-animation-direction",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.animation-fill-mode",
-        CssKnownProperty::AnimationFillMode,
-        "animation-fill-mode",
-        "#propdef-animation-fill-mode",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.animation-play-state",
-        CssKnownProperty::AnimationPlayState,
-        "animation-play-state",
-        "#propdef-animation-play-state",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "baseline.property.animation",
-        CssKnownProperty::Animation,
-        "animation",
-        "#propdef-animation",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.border-collapse",
-        CssKnownProperty::BorderCollapse,
-        "border-collapse",
-        "tables.html#propdef-border-collapse",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.border-spacing",
-        CssKnownProperty::BorderSpacing,
-        "border-spacing",
-        "tables.html#propdef-border-spacing",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.caption-side",
-        CssKnownProperty::CaptionSide,
-        "caption-side",
-        "tables.html#propdef-caption-side",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.clip",
-        CssKnownProperty::Clip,
-        "clip",
-        "visufx.html#propdef-clip",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.empty-cells",
-        CssKnownProperty::EmptyCells,
-        "empty-cells",
-        "tables.html#propdef-empty-cells",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.orphans",
-        CssKnownProperty::Orphans,
-        "orphans",
-        "#propdef-orphans",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.break-after",
-        CssKnownProperty::BreakAfter,
-        "break-after",
-        "#propdef-break-after",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.break-before",
-        CssKnownProperty::BreakBefore,
-        "break-before",
-        "#propdef-break-before",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.break-inside",
-        CssKnownProperty::BreakInside,
-        "break-inside",
-        "#propdef-break-inside",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.quotes",
-        CssKnownProperty::Quotes,
-        "quotes",
-        "#propdef-quotes",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.table-layout",
-        CssKnownProperty::TableLayout,
-        "table-layout",
-        "tables.html#propdef-table-layout",
-        &[],
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollSnapType,
-        "scroll-snap-type",
-        "official.property.scroll-snap-type"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollSnapAlign,
-        "scroll-snap-align",
-        "official.property.scroll-snap-align"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollSnapStop,
-        "scroll-snap-stop",
-        "official.property.scroll-snap-stop"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollPaddingTop,
-        "scroll-padding-top",
-        "official.property.scroll-padding-top"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollPaddingRight,
-        "scroll-padding-right",
-        "official.property.scroll-padding-right"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollPaddingBottom,
-        "scroll-padding-bottom",
-        "official.property.scroll-padding-bottom"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollPaddingLeft,
-        "scroll-padding-left",
-        "official.property.scroll-padding-left"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollPaddingBlockStart,
-        "scroll-padding-block-start",
-        "official.property.scroll-padding-block-start"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollPaddingBlockEnd,
-        "scroll-padding-block-end",
-        "official.property.scroll-padding-block-end"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollPaddingInlineStart,
-        "scroll-padding-inline-start",
-        "official.property.scroll-padding-inline-start"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollPaddingInlineEnd,
-        "scroll-padding-inline-end",
-        "official.property.scroll-padding-inline-end"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollMarginTop,
-        "scroll-margin-top",
-        "official.property.scroll-margin-top"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollMarginRight,
-        "scroll-margin-right",
-        "official.property.scroll-margin-right"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollMarginBottom,
-        "scroll-margin-bottom",
-        "official.property.scroll-margin-bottom"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollMarginLeft,
-        "scroll-margin-left",
-        "official.property.scroll-margin-left"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollMarginBlockStart,
-        "scroll-margin-block-start",
-        "official.property.scroll-margin-block-start"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollMarginBlockEnd,
-        "scroll-margin-block-end",
-        "official.property.scroll-margin-block-end"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollMarginInlineStart,
-        "scroll-margin-inline-start",
-        "official.property.scroll-margin-inline-start"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollMarginInlineEnd,
-        "scroll-margin-inline-end",
-        "official.property.scroll-margin-inline-end"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollPaddingBlock,
-        "scroll-padding-block",
-        "official.property.scroll-padding-block"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollPaddingInline,
-        "scroll-padding-inline",
-        "official.property.scroll-padding-inline"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollMarginBlock,
-        "scroll-margin-block",
-        "official.property.scroll-margin-block"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollMarginInline,
-        "scroll-margin-inline",
-        "official.property.scroll-margin-inline"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollPadding,
-        "scroll-padding",
-        "official.property.scroll-padding"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::ScrollMargin,
-        "scroll-margin",
-        "official.property.scroll-margin"
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.widows",
-        CssKnownProperty::Widows,
-        "widows",
-        "#propdef-widows",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.word-spacing",
-        CssKnownProperty::WordSpacing,
-        "word-spacing",
-        "#propdef-word-spacing",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.text-combine-upright",
-        CssKnownProperty::TextCombineUpright,
-        "text-combine-upright",
-        "#propdef-text-combine-upright",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.text-orientation",
-        CssKnownProperty::TextOrientation,
-        "text-orientation",
-        "#propdef-text-orientation",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.unicode-bidi",
-        CssKnownProperty::UnicodeBidi,
-        "unicode-bidi",
-        "#propdef-unicode-bidi",
-        &[],
-    ),
-    complete_property_feature!(
-        CssKnownProperty::NavUp,
-        "nav-up",
-        "official.property.nav-up"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::NavRight,
-        "nav-right",
-        "official.property.nav-right"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::NavDown,
-        "nav-down",
-        "official.property.nav-down"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::NavLeft,
-        "nav-left",
-        "official.property.nav-left"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::CaretAnimation,
-        "caret-animation",
-        "official.property.caret-animation"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::CaretShape,
-        "caret-shape",
-        "official.property.caret-shape"
-    ),
-    complete_property_feature!(CssKnownProperty::Caret, "caret", "official.property.caret"),
-    complete_property_feature!(
-        CssKnownProperty::Interactivity,
-        "interactivity",
-        "official.property.interactivity"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::InterestDelayStart,
-        "interest-delay-start",
-        "official.property.interest-delay-start"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::InterestDelayEnd,
-        "interest-delay-end",
-        "official.property.interest-delay-end"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::InterestDelay,
-        "interest-delay",
-        "official.property.interest-delay"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::AccentColor,
-        "accent-color",
-        "official.property.accent-color"
-    ),
-    complete_property_feature!(
-        CssKnownProperty::Appearance,
-        "appearance",
-        "official.property.appearance",
-        CssKnownProperty::Appearance.aliases()
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.caret-color",
-        CssKnownProperty::CaretColor,
-        "caret-color",
-        "#propdef-caret-color",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.outline-offset",
-        CssKnownProperty::OutlineOffset,
-        "outline-offset",
-        "#propdef-outline-offset",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.resize",
-        CssKnownProperty::Resize,
-        "resize",
-        "#propdef-resize",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.contain",
-        CssKnownProperty::Contain,
-        "contain",
-        "#propdef-contain",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.transform-box",
-        CssKnownProperty::TransformBox,
-        "transform-box",
-        "#propdef-transform-box",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.background-blend-mode",
-        CssKnownProperty::BackgroundBlendMode,
-        "background-blend-mode",
-        "#propdef-background-blend-mode",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.isolation",
-        CssKnownProperty::Isolation,
-        "isolation",
-        "#propdef-isolation",
-        &[],
-    ),
-    CssFeatureMetadata::complete_property(
-        "official.property.mix-blend-mode",
-        CssKnownProperty::MixBlendMode,
-        "mix-blend-mode",
-        "#propdef-mix-blend-mode",
-        &[],
-    ),
+    property_row!(BorderRadius, O_BACKGROUNDS3, complete),
+    property_row!(BorderTopLeftRadius, O_BACKGROUNDS3, complete),
+    property_row!(BorderTopRightRadius, O_BACKGROUNDS3, complete),
+    property_row!(BorderBottomRightRadius, O_BACKGROUNDS3, complete),
+    property_row!(BorderBottomLeftRadius, O_BACKGROUNDS3, complete),
+    property_row!(BorderStartStartRadius, I_LOGICAL1_20251204, complete),
+    property_row!(BorderStartEndRadius, I_LOGICAL1_20251204, complete),
+    property_row!(BorderEndStartRadius, I_LOGICAL1_20251204, complete),
+    property_row!(BorderEndEndRadius, I_LOGICAL1_20251204, complete),
+    property_row!(BoxShadow, O_BACKGROUNDS3, complete),
+    property_row!(Opacity, O_COLOR4, complete),
+    property_row!(FlexGrow, O_FLEXBOX1, complete),
+    property_row!(FlexShrink, O_FLEXBOX1, complete),
+    property_row!(Order, S_DISPLAY3, complete),
+    property_row!(Flex, O_FLEXBOX1, complete),
+    property_row!(AspectRatio, X_SIZING4_20260904, complete),
+    property_row!(ScrollbarWidth, R_SCROLLBARS1, complete),
+    property_row!(ScrollbarColor, R_SCROLLBARS1, complete),
+    property_row!(ColorScheme, R_COLORADJUST1, complete),
+    property_row!(ForcedColorAdjust, R_COLORADJUST1, complete),
+    property_row!(PrintColorAdjust, R_COLORADJUST1, complete),
+    property_row!(ColorAdjust, R_COLORADJUST1, complete),
+    property_row!(Cursor, X_UI4, complete),
+    property_row!(PointerEvents, X_UI4, complete),
+    property_row!(UserSelect, X_UI4, complete),
+    property_row!(Outline, X_UI4, complete),
+    property_row!(OutlineColor, X_UI4, complete),
+    property_row!(OutlineStyle, X_UI4, complete),
+    property_row!(OutlineWidth, X_UI4, complete),
+    property_row!(Transform, O_TRANSFORMS1, complete),
+    property_row!(TransformOrigin, O_TRANSFORMS1, complete),
+    property_row!(Translate, I_TRANSFORMS2, partial),
+    property_row!(Rotate, I_TRANSFORMS2, partial),
+    property_row!(Scale, I_TRANSFORMS2, partial),
+    property_row!(Perspective, I_TRANSFORMS2, partial),
+    property_row!(PerspectiveOrigin, I_TRANSFORMS2, partial),
+    property_row!(TransformStyle, I_TRANSFORMS2, partial),
+    property_row!(BackfaceVisibility, I_TRANSFORMS2, partial),
+    property_row!(Filter, I_FILTER1, complete),
+    property_row!(FloodColor, I_FILTER1, complete, "#FloodColorProperty"),
+    property_row!(FloodOpacity, I_FILTER1, complete, "#FloodOpacityProperty"),
+    property_row!(LightingColor, I_FILTER1, complete, "#LightingColorProperty"),
+    property_row!(
+        ColorInterpolationFilters,
+        I_FILTER1,
+        complete,
+        "#ColorInterpolationFiltersProperty"
+    ),
+    property_row!(
+        BackdropFilter,
+        X_BACKDROP_FILTER,
+        complete,
+        "#BackdropFilterProperty"
+    ),
+    property_row!(ClipPath, S_MASKING1, complete),
+    property_row!(ShapeOutside, S_SHAPES1, complete),
+    property_row!(OffsetPosition, I_MOTION1, complete),
+    property_row!(OffsetPath, I_MOTION1, complete),
+    property_row!(OffsetDistance, I_MOTION1, complete),
+    property_row!(OffsetRotate, I_MOTION1, complete),
+    property_row!(OffsetAnchor, I_MOTION1, complete),
+    property_row!(Offset, I_MOTION1, complete),
+    property_row!(ShapeImageThreshold, S_SHAPES1, complete),
+    property_row!(ShapeMargin, S_SHAPES1, complete),
+    property_row!(Mask, S_MASKING1, complete),
+    property_row!(MaskImage, S_MASKING1, complete),
+    property_row!(MaskSize, S_MASKING1, complete),
+    property_row!(MaskPosition, S_MASKING1, complete),
+    property_row!(MaskRepeat, S_MASKING1, complete),
+    property_row!(MaskMode, S_MASKING1, complete),
+    property_row!(MaskOrigin, S_MASKING1, complete),
+    property_row!(MaskClip, S_MASKING1, complete),
+    property_row!(MaskComposite, S_MASKING1, complete),
+    property_row!(MaskBorder, S_MASKING1, complete),
+    property_row!(MaskBorderSource, S_MASKING1, complete),
+    property_row!(MaskBorderSlice, S_MASKING1, complete),
+    property_row!(MaskBorderWidth, S_MASKING1, complete),
+    property_row!(MaskBorderOutset, S_MASKING1, complete),
+    property_row!(MaskBorderRepeat, S_MASKING1, complete),
+    property_row!(MaskBorderMode, S_MASKING1, complete),
+    property_row!(ClipRule, S_MASKING1, complete),
+    property_row!(MaskType, S_MASKING1, complete),
+    property_row!(TransitionProperty, I_TRANSITIONS1, complete),
+    property_row!(TransitionDuration, I_TRANSITIONS1, complete),
+    property_row!(TransitionDelay, I_TRANSITIONS1, complete),
+    property_row!(TransitionTimingFunction, I_TRANSITIONS1, complete),
+    property_row!(Transition, I_TRANSITIONS1, complete),
+    property_row!(AnimationName, I_ANIMATIONS1, complete),
+    property_row!(AnimationDuration, I_ANIMATIONS1, complete),
+    property_row!(AnimationDelay, I_ANIMATIONS1, complete),
+    property_row!(AnimationTimingFunction, I_ANIMATIONS1, complete),
+    property_row!(AnimationIterationCount, I_ANIMATIONS1, complete),
+    property_row!(AnimationDirection, I_ANIMATIONS1, complete),
+    property_row!(AnimationFillMode, I_ANIMATIONS1, complete),
+    property_row!(AnimationPlayState, I_ANIMATIONS1, complete),
+    property_row!(Animation, I_ANIMATIONS1, complete),
+    property_row!(
+        BorderCollapse,
+        O_CSS2,
+        complete,
+        "tables.html#propdef-border-collapse"
+    ),
+    property_row!(
+        BorderSpacing,
+        O_CSS2,
+        complete,
+        "tables.html#propdef-border-spacing"
+    ),
+    property_row!(
+        CaptionSide,
+        O_CSS2,
+        complete,
+        "tables.html#propdef-caption-side"
+    ),
+    property_row!(Clip, S_MASKING1, complete),
+    property_row!(
+        EmptyCells,
+        O_CSS2,
+        complete,
+        "tables.html#propdef-empty-cells"
+    ),
+    property_row!(Orphans, S_BREAK3, complete),
+    property_row!(BreakAfter, S_BREAK3, complete),
+    property_row!(BreakBefore, S_BREAK3, complete),
+    property_row!(BreakInside, S_BREAK3, complete),
+    property_row!(Quotes, X_CONTENT3, complete),
+    property_row!(
+        TableLayout,
+        O_CSS2,
+        complete,
+        "tables.html#propdef-table-layout"
+    ),
+    property_row!(ScrollSnapType, R_SCROLLSNAP1, complete),
+    property_row!(ScrollSnapAlign, R_SCROLLSNAP1, complete),
+    property_row!(ScrollSnapStop, R_SCROLLSNAP1, complete),
+    property_row!(ScrollPaddingTop, R_SCROLLSNAP1, complete),
+    property_row!(ScrollPaddingRight, R_SCROLLSNAP1, complete),
+    property_row!(ScrollPaddingBottom, R_SCROLLSNAP1, complete),
+    property_row!(ScrollPaddingLeft, R_SCROLLSNAP1, complete),
+    property_row!(ScrollPaddingBlockStart, R_SCROLLSNAP1, complete),
+    property_row!(ScrollPaddingBlockEnd, R_SCROLLSNAP1, complete),
+    property_row!(ScrollPaddingInlineStart, R_SCROLLSNAP1, complete),
+    property_row!(ScrollPaddingInlineEnd, R_SCROLLSNAP1, complete),
+    property_row!(ScrollMarginTop, R_SCROLLSNAP1, complete),
+    property_row!(ScrollMarginRight, R_SCROLLSNAP1, complete),
+    property_row!(ScrollMarginBottom, R_SCROLLSNAP1, complete),
+    property_row!(ScrollMarginLeft, R_SCROLLSNAP1, complete),
+    property_row!(ScrollMarginBlockStart, R_SCROLLSNAP1, complete),
+    property_row!(ScrollMarginBlockEnd, R_SCROLLSNAP1, complete),
+    property_row!(ScrollMarginInlineStart, R_SCROLLSNAP1, complete),
+    property_row!(ScrollMarginInlineEnd, R_SCROLLSNAP1, complete),
+    property_row!(ScrollPaddingBlock, R_SCROLLSNAP1, complete),
+    property_row!(ScrollPaddingInline, R_SCROLLSNAP1, complete),
+    property_row!(ScrollMarginBlock, R_SCROLLSNAP1, complete),
+    property_row!(ScrollMarginInline, R_SCROLLSNAP1, complete),
+    property_row!(ScrollPadding, R_SCROLLSNAP1, complete),
+    property_row!(ScrollMargin, R_SCROLLSNAP1, complete),
+    property_row!(Widows, S_BREAK3, complete),
+    property_row!(WordSpacing, X_TEXT4, complete),
+    property_row!(TextCombineUpright, S_WRITING4, complete),
+    property_row!(TextOrientation, O_WRITING3, complete),
+    property_row!(UnicodeBidi, O_WRITING3, complete),
+    property_row!(NavUp, X_UI4, complete),
+    property_row!(NavRight, X_UI4, complete),
+    property_row!(NavDown, X_UI4, complete),
+    property_row!(NavLeft, X_UI4, complete),
+    property_row!(CaretAnimation, X_UI4, complete),
+    property_row!(CaretShape, X_UI4, complete),
+    property_row!(Caret, X_UI4, complete),
+    property_row!(Interactivity, X_UI4, complete),
+    property_row!(InterestDelayStart, X_UI4, complete),
+    property_row!(InterestDelayEnd, X_UI4, complete),
+    property_row!(InterestDelay, X_UI4, complete),
+    property_row!(AccentColor, X_UI4, complete),
+    property_row!(Appearance, X_UI4, complete),
+    property_row!(CaretColor, X_UI4, complete),
+    property_row!(OutlineOffset, X_UI4, complete),
+    property_row!(Resize, X_UI4, complete),
+    property_row!(Contain, I_CONTAIN2, complete),
+    property_row!(TransformBox, O_TRANSFORMS1, complete),
+    property_row!(BackgroundBlendMode, O_COMPOSITING1, complete),
+    property_row!(Isolation, O_COMPOSITING1, complete),
+    property_row!(MixBlendMode, O_COMPOSITING1, complete),
     CssFeatureMetadata::partial(
         "official.property-alias.glyph-orientation-vertical",
         CssFeatureKind::PropertyAlias,
@@ -7477,7 +4954,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 798] = [
         "ext.pseudo-element.backdrop",
         CssFeatureKind::Selector,
         "::backdrop",
-        X_PSEUDO4,
+        X_POSITION4,
         "#selectordef-backdrop",
     ),
     CssFeatureMetadata::complete(
@@ -7625,7 +5102,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 798] = [
         CssFeatureKind::Value,
         "general-enclosed supports condition",
         X_VALUES4,
-        "css-values-4/Overview.bs#general-enclosed",
+        "css-values-4/Overview.bs#typedef-general-enclosed",
     ),
     CssFeatureMetadata::complete(
         "ext.supports.named",
@@ -7660,7 +5137,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 798] = [
         CssFeatureKind::Selector,
         "selector() supports test",
         R_CONDITIONAL4,
-        "#at-supports",
+        "#typedef-supports-selector-fn",
         SUPPORTS_SELECTOR_SUBSET,
         SUPPORTS_SELECTOR_REMAINDER,
     ),
@@ -7885,9 +5362,9 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 798] = [
 
 /// Returns the immutable support catalog in stable inventory order.
 ///
-/// Retained I01 records keep their exact lookup identities, and later atomic
-/// records retain their source-specific identities. Properties removed by the
-/// selected standards are absent, even when historical captures contain them.
+/// Every record is atomic and keeps its exact, source-specific lookup identity.
+/// Properties removed by the selected standards are absent, even when historical
+/// captures contain them.
 #[must_use]
 pub fn feature_catalog() -> &'static [CssFeatureMetadata] {
     &FEATURE_CATALOG

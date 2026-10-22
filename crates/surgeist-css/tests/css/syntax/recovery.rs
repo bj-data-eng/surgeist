@@ -3,6 +3,7 @@
 mod deep_qualified_punctuation;
 mod deep_rule_list_context;
 mod deep_statement_eof;
+mod dropped_unit_spans;
 mod eof_comment_diagnostics;
 mod eof_quoted_string_recovery;
 mod eof_rule_provenance;
@@ -14,3 +15,4 @@ mod specialized_recovery_boundaries;
 mod statement_eof_boundaries;
 mod structural_recovery_adversarial;
 mod stylesheet_recovery;
+mod top_level_semicolon_nesting_limit;

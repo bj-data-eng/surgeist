@@ -1,5 +1,6 @@
 //! Selected basic shapes retain symbolic calculations in the sole authored graph.
 
+use crate::css::support::value_assertions::exact_dimension;
 use surgeist_css::*;
 
 fn parsed_shape(shape: &str) -> CssBasicShape {
@@ -181,12 +182,4 @@ fn literal_blur_keeps_typed_filter_length() {
         matches!(functions.functions(), [surgeist_css::CssFilterFunction::Blur(blur)]
         if exact_dimension(blur.length().literal_component(), "3", "px"))
     );
-}
-
-fn exact_dimension(
-    component: Option<&surgeist_css::CssComponentValue>,
-    representation: &str,
-    expected_unit: &str,
-) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }

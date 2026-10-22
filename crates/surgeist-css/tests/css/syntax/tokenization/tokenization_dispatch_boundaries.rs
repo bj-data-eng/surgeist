@@ -244,7 +244,7 @@ fn recovering_named_test_collector_preserves_split_value_prefixes() {
 }
 
 #[test]
-fn eof_escapes_still_start_at_keywords_and_dimension_units() {
+fn eof_escapes_start_at_keywords_and_dimension_units() {
     for (source, unit) in [("@-\\", "-\u{fffd}"), ("1-\\", "-\u{fffd}")] {
         let values = parse_component_values(source).unwrap();
         let [component] = values.items() else {

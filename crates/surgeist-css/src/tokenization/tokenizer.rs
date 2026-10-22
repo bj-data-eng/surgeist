@@ -1,4 +1,18 @@
-//! Flat CSS token continuation over actual preprocessed scalars.
+//! The crate's bounded CSS Syntax 3 §4 tokenizer over preprocessed scalars.
+//!
+//! The cssparser provider tokenizes `&str` without a work bound. This cursor is
+//! the general tokenizer for input that needs bounded, caller-admitted work or
+//! did not arrive as `&str`. Both [`InputKind`](super::bounded::InputKind)
+//! feeders are live: UTF-16 DOM input (`prepare_utf16` and
+//! `CssColorInputKind::Utf16`) and UTF-8 input (`CssColorInputKind::Utf8` and
+//! decoded `attr()` strings through `CssSourceSnapshot::try_from_decoded_utf8`).
+//! Its consumers are the color protocol and bounded component-value
+//! construction, whose results equal direct cssparser collection over the same
+//! preprocessed text (`component_values::tokenizer_agreement_tests`).
+//!
+//! Every scalar has already been preprocessed (§3.3), so U+0000, CR and FF
+//! never arrive. The shared lexical predicates still name them because the
+//! provider corrections also apply them to authored, unpreprocessed text.
 //!
 //! Each input observation, grammar transition, decoded name/digit append and
 //! token append is distinct. All variable storage belongs to the caller.

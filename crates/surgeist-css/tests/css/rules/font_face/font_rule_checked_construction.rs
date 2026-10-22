@@ -1,11 +1,8 @@
 //! Functional construction contract from selected parser placement and Fonts4 §4.1/13.2.
+use crate::css::support::rules::clean_sheet as sheet;
+use crate::css::support::rules::ordinary_font_face_descriptor as ordinary;
 use surgeist_css::*;
 
-fn sheet(source: &str) -> CssSheet {
-    let report = parse_sheet(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    report.syntax().clone()
-}
 fn rule(source: &str) -> CssRule {
     sheet(source).rules()[0].clone()
 }
@@ -22,14 +19,6 @@ fn context() -> CssNamespaceContext {
 }
 fn query() -> CssMediaQueryList {
     CssMediaQueryList::new(Vec::new())
-}
-fn ordinary(source: &str, kind: CssFontFaceDescriptorKind) -> CssFontFaceDescriptorValue {
-    let report = parse_font_face_descriptor_value(source, kind);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let Some(CssAuthoredFontFaceDescriptorValue::Ordinary(value)) = report.syntax() else {
-        panic!("ordinary descriptor")
-    };
-    value.clone()
 }
 #[test]
 fn source_free_face_and_sheet_preserve_ordered_children_and_empty_rules() {
@@ -466,12 +455,27 @@ fn suppressed_descriptor_occurrences_and_feature_names_charge_work_without_bytes
             .unwrap(),
         expected
     );
-    for limits in [
-        CssSpecifiedValueSerializationLimits::new(9, 10, expected.len()),
-        CssSpecifiedValueSerializationLimits::new(10, 9, expected.len()),
-        CssSpecifiedValueSerializationLimits::new(10, 10, expected.len() - 1),
+    for (limits, resource) in [
+        (
+            CssSpecifiedValueSerializationLimits::new(9, 10, expected.len()),
+            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+        ),
+        (
+            CssSpecifiedValueSerializationLimits::new(10, 9, expected.len()),
+            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+        ),
+        (
+            CssSpecifiedValueSerializationLimits::new(10, 10, expected.len() - 1),
+            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+        ),
     ] {
-        assert!(input.to_specified_css_with_limits(limits).is_err());
+        assert_eq!(
+            input
+                .to_specified_css_with_limits(limits)
+                .unwrap_err()
+                .kind(),
+            CssSpecifiedRuleSerializationErrorKind::Resource(resource)
+        );
     }
 }
 #[test]

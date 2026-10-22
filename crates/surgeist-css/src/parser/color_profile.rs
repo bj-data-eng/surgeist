@@ -181,15 +181,21 @@ pub(crate) fn construct_descriptor_value(
     let working_source = crate::tokenization::prepare(serialized.as_css());
     let mut parser_input = cssparser::ParserInput::new(&working_source);
     let mut input = Parser::new(&mut parser_input);
-    super::descriptor_values::validate_root(&mut input, "color-profile", kind.css_name())
-        .map_err(|error| from_parse_error(serialized.as_css(), error))?;
     let numeric = NumericInputContext::components(components, serialized);
-    parse_descriptor_boundary(&mut input, "color-profile", kind.css_name(), |input| {
-        let data = parse_value_data(input, kind, components, &numeric)?;
-        input.expect_exhausted().map_err(basic)?;
-        Ok(data)
+    let result = (|| {
+        super::descriptor_values::validate_root(&mut input, "color-profile", kind.css_name())?;
+        parse_descriptor_boundary(&mut input, "color-profile", kind.css_name(), |input| {
+            let data = parse_value_data(input, kind, components, &numeric)?;
+            input.expect_exhausted().map_err(basic)?;
+            Ok(data)
+        })
+    })();
+    result.map_err(|error| {
+        from_parse_error(
+            serialized.as_css(),
+            crate::error::with_descriptor_value_context(error, "color-profile", kind.css_name()),
+        )
     })
-    .map_err(|error| from_parse_error(serialized.as_css(), error))
 }
 
 fn parse_value_data<'i>(

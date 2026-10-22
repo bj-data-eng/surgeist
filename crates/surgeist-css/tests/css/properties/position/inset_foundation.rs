@@ -1,6 +1,9 @@
 //! Authored positioning and insets from Position 3 WD (2025-10-07) §§2, 3.1–3.2
 //! and the optional logical four-side switch from Logical 1 WD (2025-12-04) §4.7.
 
+use crate::css::support::named_property::accepted_by_attribute_and_grammar as accepted;
+use crate::css::support::named_property::invalid_named_value_at as invalid;
+use crate::css::support::named_property::sole_longhand_contribution;
 use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
@@ -41,53 +44,11 @@ fn names() -> impl Iterator<Item = &'static str> {
         .chain([FOUR_SIDE])
 }
 
-fn accepted(name: &str, value: &str) {
-    for source in [declaration(name, value), checked(name, value)] {
-        assert_eq!(
-            source.known().unwrap().property(),
-            grammar(name).target_property()
-        );
-        assert_eq!(source.importance(), CssImportance::Important);
-        assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
-            value
-        );
-    }
-}
-
-fn invalid(name: &str, value: &str) {
-    let source = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&source);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one invalid-value diagnostic: {source}")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    assert_eq!(report.syntax().len(), 2, "neighbors survive: {source}");
-    assert!(validate_style_attribute(&source).is_err());
-    assert!(
-        parse_property_value_for_grammar(
-            grammar(name),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "checked construction accepted {name}:{value}"
-    );
-}
-
 fn one_value(source: &CssDeclaration) -> CssLonghandValue {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("one terminal contribution")
-    };
-    let [item] = values.items() else {
-        panic!("one terminal contribution")
-    };
-    assert_eq!(item.property(), source.known().unwrap().property());
-    assert!(item.source().same_occurrence(source));
-    item.ordinary_value().unwrap().clone()
+    sole_longhand_contribution(source)
+        .ordinary_value()
+        .unwrap()
+        .clone()
 }
 
 #[test]
@@ -152,8 +113,14 @@ fn position_accepts_exact_five_keywords_and_has_static_noninherited_initial() {
             one_value(&source).property().known_property() == grammar("position").target_property()
         );
     }
-    for value in ["auto", "center", "1px", "static fixed", "initial fixed"] {
-        invalid("position", value);
+    for (value, rest) in [
+        ("auto", "auto"),
+        ("center", "center"),
+        ("1px", "1px"),
+        ("static fixed", "fixed"),
+        ("initial fixed", "fixed"),
+    ] {
+        invalid("position", value, rest);
     }
     let CssPropertyKindRef::Longhand(longhand) = grammar("position").metadata().unwrap().kind()
     else {
@@ -187,19 +154,19 @@ fn eight_insets_accept_exact_signed_length_percentages_or_auto() {
         ] {
             accepted(name, value);
         }
-        for value in [
-            "1",
-            "-1",
-            "1fr",
-            "min-content",
-            "max-content",
-            "fit-content(1px)",
-            "stretch",
-            "contain",
-            "auto 1px",
-            "calc(1 + 2)",
+        for (value, rest) in [
+            ("1", "1"),
+            ("-1", "-1"),
+            ("1fr", "1fr"),
+            ("min-content", "min-content"),
+            ("max-content", "max-content"),
+            ("fit-content(1px)", "fit-content(1px)"),
+            ("stretch", "stretch"),
+            ("contain", "contain"),
+            ("auto 1px", "1px"),
+            ("calc(1 + 2)", "calc(1 + 2)"),
         ] {
-            invalid(name, value);
+            invalid(name, value, rest);
         }
         let property = grammar(name).target_property();
         let CssPropertyKindRef::Longhand(longhand) = grammar(name).metadata().unwrap().kind()
@@ -275,8 +242,14 @@ fn axis_pairs_repeat_start_at_end_without_physical_mapping() {
                 assert!(item.replacement_components().is_none());
             }
         }
-        for value in ["", "logical 1px", "1px 2px 3px", "1fr", "initial auto"] {
-            invalid(pair, value);
+        for (value, rest) in [
+            ("", ""),
+            ("logical 1px", "logical 1px"),
+            ("1px 2px 3px", "3px"),
+            ("1fr", "1fr"),
+            ("initial auto", "auto"),
+        ] {
+            invalid(pair, value, rest);
         }
     }
 }
@@ -296,16 +269,18 @@ fn inset_grammar_is_complete_while_four_side_reset_membership_selects_only_autho
         let source = declaration(FOUR_SIDE, value);
         assert_four_expansion(expand_declaration(&source));
     }
-    for value in [
-        "",
-        "logical",
-        "1px logical",
-        "logical logical 1px",
-        "1px 2px 3px 4px 5px",
-        "logical 1px 2px 3px 4px 5px",
-        "logical 1fr",
+    // Logical 1: `logical` alone leaves the value ending early, so the last
+    // authored token is responsible.
+    invalid(FOUR_SIDE, "logical", "logical");
+    for (value, rest) in [
+        ("", ""),
+        ("1px logical", "logical"),
+        ("logical logical 1px", "logical 1px"),
+        ("1px 2px 3px 4px 5px", "5px"),
+        ("logical 1px 2px 3px 4px 5px", "5px"),
+        ("logical 1fr", "1fr"),
     ] {
-        invalid(FOUR_SIDE, value);
+        invalid(FOUR_SIDE, value, rest);
     }
     let grammar = grammar(FOUR_SIDE);
     assert!(matches!(
@@ -336,7 +311,7 @@ fn all_css_wide_and_pending_reentry_preserve_members_and_occurrence() {
     };
     for name in names() {
         assert!(!reset.excludes(CssPropertyNameRef::Known(grammar(name).target_property())));
-        invalid(name, "initial 1px");
+        invalid(name, "initial 1px", "1px");
         for (text, keyword) in [
             ("initial", CssGlobalKeyword::Initial),
             ("inherit", CssGlobalKeyword::Inherit),

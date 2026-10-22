@@ -4,18 +4,8 @@
 //! reconciling this historical front is deferred (docs/reference.md#css-syntax-3-edition-differences).
 //! This wholly new front has functional tests alongside implementation;
 //! no executable preimplementation RED is claimed.
+use crate::css::support::authored_syntax::property_names as names;
 use surgeist_css::*;
-
-fn names(declarations: &CssDeclarationList) -> Vec<&str> {
-    declarations
-        .iter()
-        .map(|declaration| match declaration.property_name() {
-            CssPropertyNameRef::Known(property) => property.canonical_name(),
-            CssPropertyNameRef::Custom(name) => name.as_str(),
-            _ => panic!("ordinary test name"),
-        })
-        .collect()
-}
 
 fn dropped(source: &str, expected_names: &[&str], unit: &str, responsible: usize) {
     let report = parse_declaration_list_text(source);
@@ -71,18 +61,11 @@ fn stray_root_closer_consumes_the_following_declaration_in_its_unit() {
             raw.diagnostics()[0].error().code(),
             CssErrorCode::UnexpectedToken
         );
-        // The accepted attribute contract discards only the stray closer.
+        // A style attribute's stray closer starts the same malformed
+        // declaration (Style Attributes §3; Syntax 3 (2026 CRD) §5.5.6).
         let attribute = parse_style_attribute(&source);
-        assert_eq!(names(attribute.syntax()), ["color", "width"]);
-        assert_eq!(attribute.diagnostics().len(), 1);
-        assert_eq!(
-            attribute.diagnostics()[0]
-                .span()
-                .end()
-                .byte_offset()
-                .value(),
-            1
-        );
+        assert_eq!(names(attribute.syntax()), ["width"]);
+        assert_eq!(attribute.diagnostics(), raw.diagnostics());
     }
 }
 
@@ -466,7 +449,7 @@ fn resource_recovery_keeps_its_own_action_and_allows_later_siblings() {
 }
 
 #[test]
-fn contextual_quirks_and_svg_admission_use_the_existing_owning_grammar() {
+fn contextual_quirks_and_svg_admission_use_the_owning_grammar() {
     let source = "color: ABC; width: 2px";
     let standard = CssParserContext::default().parse_declaration_list_text(source);
     assert_eq!(names(standard.syntax()), ["width"]);

@@ -1,3 +1,4 @@
+use crate::css::support::math_depth::MathDepthBoundary;
 use surgeist_css::*;
 
 fn object_position(value: &str) -> CssPhysicalPosition {
@@ -516,49 +517,13 @@ fn position_offset_construction_accepts_only_authored_length_percentages() {
 
 #[test]
 fn generic_position_typed_calculation_preserves_the_exact_depth_boundary() {
-    for depth in [255_usize, 256] {
-        let source = format!(
-            "mask-position: left {}1px{}; color: red",
-            "calc(".repeat(depth),
-            ")".repeat(depth),
-        );
-        let report = parse_style_attribute(&source);
-        assert!(
-            report.is_clean(),
-            "depth {depth}: {:?}",
-            report.diagnostics(),
-        );
-        assert_eq!(report.syntax().len(), 2, "depth {depth}");
+    MathDepthBoundary {
+        template: "mask-position: left {}1px{}; color: red",
+        accepted: &[255, 256],
+        rejected: &[257],
+        sibling_retained: true,
     }
-
-    let depth = 257_usize;
-    let source = format!(
-        "mask-position: left {}1px{}; color: red",
-        "calc(".repeat(depth),
-        ")".repeat(depth),
-    );
-    let first_over_limit = source
-        .match_indices("calc(")
-        .nth(256)
-        .expect("257th authored position calculation")
-        .0;
-    let report = parse_style_attribute(&source);
-    assert_eq!(report.syntax().len(), 1);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("over-limit position calculation must produce one diagnostic");
-    };
-    assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-    assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
-    assert_eq!(
-        diagnostic.error().position().byte_offset().value(),
-        first_over_limit,
-    );
-
-    {
-        let failure = surgeist_css::validate_style_attribute(&source)
-            .expect_err("strict validation rejects over-limit position calculations");
-        assert_eq!(failure.diagnostics(), report.diagnostics());
-    }
+    .assert();
 }
 
 #[test]

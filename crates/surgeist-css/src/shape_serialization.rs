@@ -2,21 +2,17 @@
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::*;
 type Result<T> = std::result::Result<T, CssSpecifiedValueSerializationError>;
-fn charge(w: &mut SpecifiedRuleWriter) -> Result<()> {
-    w.context.charge_input(1)?;
-    w.context.charge_projection(1)
-}
 fn scalar(v: &CssSpecifiedLengthPercentage, w: &mut SpecifiedRuleWriter) -> Result<()> {
     v.append_specified(&mut w.context, &mut w.css)
 }
 fn pair(v: &CssShapeCoordinatePair, w: &mut SpecifiedRuleWriter) -> Result<()> {
-    charge(w)?;
+    w.node()?;
     scalar(v.x(), w)?;
     w.append(" ")?;
     scalar(v.y(), w)
 }
 fn endpoint(v: &CssShapeEndpoint, w: &mut SpecifiedRuleWriter) -> Result<()> {
-    charge(w)?;
+    w.node()?;
     match v {
         CssShapeEndpoint::To(p) => {
             w.append("to ")?;
@@ -29,7 +25,7 @@ fn endpoint(v: &CssShapeEndpoint, w: &mut SpecifiedRuleWriter) -> Result<()> {
     }
 }
 fn anchor(v: CssShapeControlAnchor, w: &mut SpecifiedRuleWriter) -> Result<()> {
-    charge(w)?;
+    w.node()?;
     w.append(" from ")?;
     w.append(match v {
         CssShapeControlAnchor::Start => "start",
@@ -38,7 +34,7 @@ fn anchor(v: CssShapeControlAnchor, w: &mut SpecifiedRuleWriter) -> Result<()> {
     })
 }
 fn absolute(v: &CssShapeAbsoluteControlPoint, w: &mut SpecifiedRuleWriter) -> Result<()> {
-    charge(w)?;
+    w.node()?;
     match v.view() {
         CssShapeAbsoluteControlPointRef::Position(p) => p.append_specified(w),
         CssShapeAbsoluteControlPointRef::Coordinates { offset, anchor: a } => {
@@ -48,7 +44,7 @@ fn absolute(v: &CssShapeAbsoluteControlPoint, w: &mut SpecifiedRuleWriter) -> Re
     }
 }
 fn relative(v: &CssShapeRelativeControlPoint, w: &mut SpecifiedRuleWriter) -> Result<()> {
-    charge(w)?;
+    w.node()?;
     pair(v.offset(), w)?;
     if let Some(a) = v.anchor() {
         anchor(a, w)?;
@@ -70,20 +66,20 @@ impl CssShapeFunction {
         Ok(w.css)
     }
     pub(crate) fn append_specified(&self, w: &mut SpecifiedRuleWriter) -> Result<()> {
-        charge(w)?;
+        w.node()?;
         w.append("shape(")?;
         if let Some(fill) = self.fill_rule() {
-            charge(w)?;
+            w.node()?;
             w.append(match fill {
                 CssFillRule::Nonzero => "nonzero ",
                 CssFillRule::Evenodd => "evenodd ",
             })?;
         }
-        charge(w)?;
+        w.node()?;
         w.append("from ")?;
         self.start().append_specified(w)?;
         w.append(", ")?;
-        charge(w)?;
+        w.node()?;
         for (i, c) in self.commands().commands().iter().enumerate() {
             if i != 0 {
                 w.append(", ")?;
@@ -94,7 +90,7 @@ impl CssShapeFunction {
     }
 }
 fn command(c: &CssShapeCommand, w: &mut SpecifiedRuleWriter) -> Result<()> {
-    charge(w)?;
+    w.node()?;
     match c {
         CssShapeCommand::Close => w.append("close"),
         CssShapeCommand::Move(p) => {
@@ -107,7 +103,7 @@ fn command(c: &CssShapeCommand, w: &mut SpecifiedRuleWriter) -> Result<()> {
         }
         CssShapeCommand::HorizontalLine(v) => {
             w.append("hline ")?;
-            charge(w)?;
+            w.node()?;
             match v {
                 CssShapeHorizontalLine::By(v) => {
                     w.append("by ")?;
@@ -131,7 +127,7 @@ fn command(c: &CssShapeCommand, w: &mut SpecifiedRuleWriter) -> Result<()> {
         }
         CssShapeCommand::VerticalLine(v) => {
             w.append("vline ")?;
-            charge(w)?;
+            w.node()?;
             match v {
                 CssShapeVerticalLine::By(v) => {
                     w.append("by ")?;
@@ -155,12 +151,12 @@ fn command(c: &CssShapeCommand, w: &mut SpecifiedRuleWriter) -> Result<()> {
         }
         CssShapeCommand::Curve(v) => {
             w.append("curve ")?;
-            charge(w)?;
+            w.node()?;
             match v.view() {
                 CssShapeCurveRef::To { end, first, second } => {
                     w.append("to ")?;
                     end.append_specified(w)?;
-                    charge(w)?;
+                    w.node()?;
                     w.append(" with ")?;
                     absolute(first, w)?;
                     if let Some(second) = second {
@@ -171,7 +167,7 @@ fn command(c: &CssShapeCommand, w: &mut SpecifiedRuleWriter) -> Result<()> {
                 CssShapeCurveRef::By { end, first, second } => {
                     w.append("by ")?;
                     pair(end, w)?;
-                    charge(w)?;
+                    w.node()?;
                     w.append(" with ")?;
                     relative(first, w)?;
                     if let Some(second) = second {
@@ -184,13 +180,13 @@ fn command(c: &CssShapeCommand, w: &mut SpecifiedRuleWriter) -> Result<()> {
         }
         CssShapeCommand::Smooth(v) => {
             w.append("smooth ")?;
-            charge(w)?;
+            w.node()?;
             match v.view() {
                 CssShapeSmoothRef::To { end, control } => {
                     w.append("to ")?;
                     end.append_specified(w)?;
                     if let Some(control) = control {
-                        charge(w)?;
+                        w.node()?;
                         w.append(" with ")?;
                         absolute(control, w)?;
                     }
@@ -199,7 +195,7 @@ fn command(c: &CssShapeCommand, w: &mut SpecifiedRuleWriter) -> Result<()> {
                     w.append("by ")?;
                     pair(end, w)?;
                     if let Some(control) = control {
-                        charge(w)?;
+                        w.node()?;
                         w.append(" with ")?;
                         relative(control, w)?;
                     }
@@ -210,7 +206,7 @@ fn command(c: &CssShapeCommand, w: &mut SpecifiedRuleWriter) -> Result<()> {
         CssShapeCommand::Arc(v) => {
             w.append("arc ")?;
             endpoint(v.endpoint(), w)?;
-            charge(w)?;
+            w.node()?;
             w.append(" of ")?;
             match v.radii() {
                 CssShapeArcRadii::One(v) => scalar(v, w)?,
@@ -224,21 +220,21 @@ fn command(c: &CssShapeCommand, w: &mut SpecifiedRuleWriter) -> Result<()> {
                 }
             };
             if let Some(sweep) = v.sweep() {
-                charge(w)?;
+                w.node()?;
                 w.append(match sweep {
                     CssShapeArcSweep::Cw => " cw",
                     CssShapeArcSweep::Ccw => " ccw",
                 })?;
             }
             if let Some(size) = v.size() {
-                charge(w)?;
+                w.node()?;
                 w.append(match size {
                     CssShapeArcSize::Large => " large",
                     CssShapeArcSize::Small => " small",
                 })?;
             }
             if let Some(rotation) = v.rotation() {
-                charge(w)?;
+                w.node()?;
                 w.append(" rotate ")?;
                 rotation.append_specified(&mut w.context, &mut w.css)?;
             }

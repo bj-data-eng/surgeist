@@ -5,6 +5,7 @@
 //! follow #272 and existing public front doors. Values4 math remains unresolved.
 //! New z-index longhand payload and canonical Auto writer APIs require functional
 //! implementation alongside independent tests; this file does not call absent APIs.
+use crate::css::support::named_property::sole_longhand_contribution as contribution;
 use surgeist_css::*;
 
 const VALID: &[&str] = &[
@@ -48,21 +49,6 @@ fn value(source: &CssDeclaration) -> &CssZIndexPropertyValue {
         panic!("z-index wrapper")
     };
     value
-}
-
-fn contribution(source: &CssDeclaration) -> CssLonghandContribution {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).expect("z-index intrinsic expansion")
-    else {
-        panic!("completed longhand")
-    };
-    let [item] = values.items() else {
-        panic!("one longhand")
-    };
-    assert_eq!(item.property(), CssKnownProperty::ZIndex);
-    assert!(item.source().same_occurrence(source));
-    assert_eq!(item.source().importance(), source.importance());
-    item.clone()
 }
 
 #[test]

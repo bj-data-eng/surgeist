@@ -7,23 +7,15 @@
 //! Component serialization witnesses authored spelling. Canonical typed payload
 //! serialization requires the new cue API and belongs in its functional tests.
 
+use crate::css::support::named_property::longhand_contributions as expanded;
 use crate::css::support::{
     important_speech_components as checked, important_speech_declaration as declaration,
-    speech_property as property,
+    known_property as property,
 };
 use surgeist_css::*;
 
 const LONGHANDS: [&str; 2] = ["cue-before", "cue-after"];
 const ALL: [&str; 3] = ["cue-before", "cue-after", "cue"];
-
-fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("ordinary/global cue must complete")
-    };
-    values
-}
 
 fn assert_admitted(name: &str, text: &str) {
     let source = declaration(name, text);
@@ -158,36 +150,6 @@ fn cue_schema_has_noninherited_none_initials_and_ordered_pair_members() {
     );
     assert!(pair.reset_only_members().is_empty());
     assert!(!pair.is_legacy());
-}
-
-#[test]
-fn cue_globals_apply_at_the_whole_property_boundary() {
-    for name in ALL {
-        for (text, keyword) in [
-            ("initial", CssGlobalKeyword::Initial),
-            ("inherit", CssGlobalKeyword::Inherit),
-            ("unset", CssGlobalKeyword::Unset),
-            ("revert", CssGlobalKeyword::Revert),
-            ("revert-layer", CssGlobalKeyword::RevertLayer),
-        ] {
-            let source = declaration(name, text);
-            assert_eq!(source.known().unwrap().global(), Some(keyword));
-            assert!(source.known().unwrap().property_value().is_none());
-            let values = expanded(&source);
-            assert_eq!(values.items().len(), if name == "cue" { 2 } else { 1 });
-            for item in values.items() {
-                assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-                assert!(item.source().same_occurrence(&source));
-            }
-            assert_eq!(
-                checked(name, parse_component_values(text).unwrap())
-                    .known()
-                    .unwrap()
-                    .global(),
-                Some(keyword)
-            );
-        }
-    }
 }
 
 #[test]
@@ -343,7 +305,13 @@ fn cue_authored_spelling_and_exact_coefficients_survive_bounded_component_serial
                 .as_css(),
             text
         );
-        assert!(components.serialize_with_limit(text.len() - 1).is_err());
+        assert_eq!(
+            components
+                .serialize_with_limit(text.len() - 1)
+                .unwrap_err()
+                .kind(),
+            CssComponentValueErrorKind::ByteLimit
+        );
         assert_eq!(components.serialize().unwrap().as_css(), text);
     }
 }

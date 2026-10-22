@@ -1,6 +1,8 @@
 use crate::css::support::property_expectations;
 
-use property_expectations::{BoundaryOutcome, CASES, CatalogExpectation};
+use property_expectations::{
+    BoundaryOutcome, CASES, CatalogExpectation, KNOWN_SERIALIZATION_DEFECTS,
+};
 use surgeist_css::{
     CssErrorCode, CssFeatureKind, CssSupportStatus, ErrorKind, feature_metadata,
     parse_style_attribute, property_support_metadata,
@@ -142,45 +144,6 @@ fn public_feature_catalog_exposes_declared_metadata_and_lookup() {
         }
     }
 }
-
-/// Positive vectors whose current specified serialization keeps a component
-/// that CSSOM 1 (WD 2021-08-26) §6.7.2 omits because omitting it does not
-/// change the meaning, with that current serialization. Each record states
-/// the spec form and its basis:
-///
-/// - `place-items`: Box Alignment 3 (WD 2026-01-30) §7.3 copies an omitted
-///   `<'justify-items'>` from `<'align-items'>`, giving `stretch`.
-/// - `background-size`: Backgrounds 3 §2.9, omitted second size is `auto`.
-/// - `counter-increment`: Lists 3 §4.2, omitted integer is 1.
-/// - `font-feature-settings`: Fonts 4 §6.12, `on` and an omitted value are 1.
-/// - `shape-outside`: Shapes 1 §6.1, omitted box is margin-box.
-/// - `mask-border`: Masking 1 §8.7, initial `auto` width and `alpha` mode.
-const KNOWN_SERIALIZATION_DEFECTS: &[(&str, &str)] = &[
-    (
-        "baseline.property.place-items",
-        "place-items: stretch stretch;",
-    ),
-    (
-        "baseline.property.background-size",
-        "background-size: cover, 10px auto;",
-    ),
-    (
-        "baseline.property.counter-increment",
-        "counter-increment: section 1;",
-    ),
-    (
-        "baseline.property.font-feature-settings",
-        "font-feature-settings: \"kern\" on, \"liga\" 0;",
-    ),
-    (
-        "official.property.shape-outside",
-        "shape-outside: circle(50%) margin-box;",
-    ),
-    (
-        "official.property.mask-border",
-        "mask-border: url(\"a\") 1 2 fill / auto / 2 round alpha;",
-    ),
-];
 
 #[test]
 fn authored_property_cases_exercise_public_parser_behavior() {

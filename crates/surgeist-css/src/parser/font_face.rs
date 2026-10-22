@@ -88,9 +88,9 @@ pub(super) fn parse_body<'i>(
     };
 
     let mut items = RuleBodyParser::new(input, &mut descriptor_parser);
-    let mut previous_end = items.input.position().byte_index();
     loop {
         let progress = RecoveryProgress::record(items.input);
+        let unit_start = super::rule_list::skip_block_contents_trivia(items.input);
         let Some(item) = items.next() else {
             break;
         };
@@ -127,7 +127,7 @@ pub(super) fn parse_body<'i>(
                     source,
                     failed_block_error.unwrap_or(error),
                     failed_unit,
-                    previous_end,
+                    unit_start,
                     unit_end,
                     action,
                 ) {
@@ -135,7 +135,6 @@ pub(super) fn parse_body<'i>(
                 }
             }
         }
-        previous_end = unit_end;
         if progress_outcome == RecoveryLoopOutcome::Terminated {
             break;
         }
@@ -207,6 +206,24 @@ impl<'i> AtRuleParser<'i> for FontFaceDescriptorParser<'i> {
     type Prelude = ();
     type AtRule = CssFontFaceDescriptor;
     type Error = Error;
+
+    // Fonts 4 §4.1: the body is a descriptor list, so a recognized at-rule
+    // is misplaced here; an unrecognized one stays unknown.
+    fn parse_prelude<'t>(
+        &mut self,
+        name: CowRcStr<'i>,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self::Prelude, ParseError<'i, Self::Error>> {
+        let location = input.current_source_location();
+        if super::rule_list::at_rule_production(&name).is_some() {
+            return Err(crate::error::invalid_at_rule_placement(
+                location,
+                name.as_ref(),
+                "a font-face descriptor list",
+            ));
+        }
+        Err(location.new_error(cssparser::BasicParseErrorKind::AtRuleInvalid(name)))
+    }
 }
 
 impl<'i> QualifiedRuleParser<'i> for FontFaceDescriptorParser<'i> {
@@ -754,6 +771,7 @@ fn parse_font_face_style<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssFontFaceStyle, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     if ident.eq_ignore_ascii_case("auto") {
         return Ok(CssFontFaceStyle::Auto);
@@ -784,7 +802,7 @@ fn parse_font_face_style<'i, 't>(
     }
     common_font_style_keyword(&ident)
         .map(CssFontFaceStyle::Keyword)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(keyword_location))
 }
 
 fn parse_font_face_width<'i, 't>(

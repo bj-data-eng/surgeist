@@ -1,17 +1,14 @@
-#[cfg(test)]
-use cssparser::ParserInput;
 use cssparser::{ParseError, Parser};
-use std::ops::Range;
 
+use super::boolean_condition::{
+    BooleanModel, BooleanNode, BooleanNodeKind, ComponentOperands, ConditionFailure,
+    first_significant, parse_component_condition,
+};
 use super::query_components::{
     ComponentCursor as ContainerCursor, RangePrefix, component_query_comparisons,
     media_literal_number, negative_literal, query_plain_range, query_range_chain,
 };
 use super::recovery::RecoveryState;
-#[cfg(test)]
-use super::recovery::StyleContextCaptures;
-#[cfg(test)]
-use crate::error::from_parse_error;
 use crate::error::{Error, invalid_syntax};
 use crate::media_features::MediaRangeState;
 use crate::numeric::CalculationRoot;
@@ -49,78 +46,130 @@ pub(crate) fn construct_container_condition(
 
 // Probes own only semantic leaves and relative sibling regions. The selected
 // tree shares one lexical root, including opaque leaves and redundant groups.
-struct ContainerNode {
-    kind: ContainerNodeKind,
-    range: Range<usize>,
-}
-enum ContainerNodeKind {
+type ContainerNode = BooleanNode<ContainerLeaf>;
+
+enum ContainerLeaf {
     Opaque,
     Feature(CssContainerFeatureQuery),
     Style(super::container_style::StyleNode),
     Scroll(super::container_scroll::ScrollNode),
-    Parenthesized(Box<ContainerNode>),
-    Not(Box<ContainerNode>),
-    And(Vec<ContainerNode>),
-    Or(Vec<ContainerNode>),
 }
-impl ContainerNode {
-    fn into_condition(self, parent: SupportsLexical) -> CssContainerCondition {
-        let lexical = parent.select(self.range);
-        let kind = match self.kind {
-            ContainerNodeKind::Opaque => CssContainerConditionKind::GeneralEnclosed(
+
+struct ContainerModel;
+
+impl BooleanModel<ContainerLeaf> for ContainerModel {
+    type Condition = CssContainerCondition;
+    type Kind = CssContainerConditionKind;
+
+    fn leaf(leaf: ContainerLeaf, lexical: &SupportsLexical) -> Self::Kind {
+        match leaf {
+            ContainerLeaf::Opaque => CssContainerConditionKind::GeneralEnclosed(
                 CssContainerGeneralEnclosed::new(lexical.clone()),
             ),
-            ContainerNodeKind::Feature(feature) => CssContainerConditionKind::Feature(feature),
-            ContainerNodeKind::Style(style) => {
-                let opener = lexical
-                    .items()
-                    .iter()
-                    .position(|value| !container_trivia(value))
-                    .expect("style function");
-                CssContainerConditionKind::Style(style.into_query(lexical.children(opener)))
-            }
-            ContainerNodeKind::Scroll(scroll) => {
-                let opener = lexical
-                    .items()
-                    .iter()
-                    .position(|value| !container_trivia(value))
-                    .expect("scroll-state function");
-                CssContainerConditionKind::ScrollState(scroll.into_query(lexical.children(opener)))
-            }
-            ContainerNodeKind::Parenthesized(child) => {
-                let opener = lexical
-                    .items()
-                    .iter()
-                    .position(|value| !container_trivia(value))
-                    .expect("one grouped operand");
-                CssContainerConditionKind::Parenthesized(Box::new(
-                    child.into_condition(lexical.children(opener)),
-                ))
-            }
-            ContainerNodeKind::Not(child) => {
-                CssContainerConditionKind::Not(Box::new(child.into_condition(lexical.clone())))
-            }
-            ContainerNodeKind::And(children) => {
-                CssContainerConditionKind::And(CssContainerConditionList::new(
-                    children
-                        .into_iter()
-                        .map(|child| child.into_condition(lexical.clone()))
-                        .collect(),
-                ))
-            }
-            ContainerNodeKind::Or(children) => {
-                CssContainerConditionKind::Or(CssContainerConditionList::new(
-                    children
-                        .into_iter()
-                        .map(|child| child.into_condition(lexical.clone()))
-                        .collect(),
-                ))
-            }
-        };
+            ContainerLeaf::Feature(feature) => CssContainerConditionKind::Feature(feature),
+            ContainerLeaf::Style(style) => CssContainerConditionKind::Style(
+                style.into_query(lexical.children(first_significant(lexical))),
+            ),
+            ContainerLeaf::Scroll(scroll) => CssContainerConditionKind::ScrollState(
+                scroll.into_query(lexical.children(first_significant(lexical))),
+            ),
+        }
+    }
+    fn parenthesized(group: Box<Self::Condition>) -> Self::Kind {
+        CssContainerConditionKind::Parenthesized(group)
+    }
+    fn not(operand: Box<Self::Condition>) -> Self::Kind {
+        CssContainerConditionKind::Not(operand)
+    }
+    fn and(operands: Vec<Self::Condition>) -> Self::Kind {
+        CssContainerConditionKind::And(CssContainerConditionList::new(operands))
+    }
+    fn or(operands: Vec<Self::Condition>) -> Self::Kind {
+        CssContainerConditionKind::Or(CssContainerConditionList::new(operands))
+    }
+    fn condition(kind: Self::Kind, lexical: SupportsLexical) -> Self::Condition {
         CssContainerCondition::new(kind, lexical)
     }
 }
 
+impl ContainerNode {
+    fn into_condition(self, parent: SupportsLexical) -> CssContainerCondition {
+        self.build::<ContainerModel>(&parent)
+    }
+}
+
+fn container_condition(
+    items: &[CssComponentValue],
+) -> Result<Result<ContainerNode, usize>, crate::CssComponentValueError> {
+    match parse_component_condition(&mut ContainerOperands, items) {
+        Ok(node) => Ok(Ok(node)),
+        Err(ConditionFailure::Mismatch(index)) => Ok(Err(index)),
+        Err(ConditionFailure::Fatal(error)) => Err(error),
+    }
+}
+
+// Contain 3 `<query-in-parens>`: a parenthesized condition or size feature,
+// a `style()` or `scroll-state()` query, or any other enclosure.
+struct ContainerOperands;
+
+impl<'a> ComponentOperands<'a> for ContainerOperands {
+    type Leaf = ContainerLeaf;
+    type Error = crate::CssComponentValueError;
+
+    fn operand(
+        &mut self,
+        cursor: &mut ContainerCursor<'a>,
+    ) -> Result<ContainerNode, ConditionFailure<Self::Error>> {
+        cursor.peek();
+        let index = cursor.index;
+        let Some(component) = cursor.next() else {
+            return Err(ConditionFailure::Mismatch(index));
+        };
+        let enclosed = match component.view() {
+            CssComponentValueRef::Function(_) => true,
+            CssComponentValueRef::Block(block) => block.kind() == crate::CssBlockKind::Parenthesis,
+            _ => false,
+        };
+        if !enclosed {
+            return Err(ConditionFailure::Mismatch(index));
+        }
+        Ok(ContainerNode {
+            kind: container_atom(component)?,
+            range: index..index + 1,
+        })
+    }
+}
+
+fn container_atom(
+    component: &CssComponentValue,
+) -> Result<BooleanNodeKind<ContainerLeaf>, crate::CssComponentValueError> {
+    match component.view() {
+        CssComponentValueRef::Function(function)
+            if function.name().eq_ignore_ascii_case("style") =>
+        {
+            if let Some(style) = super::container_style::parse(function.values().items()) {
+                return Ok(BooleanNodeKind::Leaf(ContainerLeaf::Style(style)));
+            }
+        }
+        CssComponentValueRef::Function(function)
+            if function.name().eq_ignore_ascii_case("scroll-state") =>
+        {
+            if let Some(scroll) = super::container_scroll::parse(function.values().items())? {
+                return Ok(BooleanNodeKind::Leaf(ContainerLeaf::Scroll(scroll)));
+            }
+        }
+        CssComponentValueRef::Block(block) if block.kind() == crate::CssBlockKind::Parenthesis => {
+            if let Ok(condition) = container_condition(block.values().items())? {
+                return Ok(BooleanNodeKind::Parenthesized(Box::new(condition)));
+            }
+            if let Some(feature) = container_feature(block.values().items())? {
+                return Ok(BooleanNodeKind::Leaf(ContainerLeaf::Feature(feature)));
+            }
+        }
+        _ => {}
+    }
+    Ok(BooleanNodeKind::Leaf(ContainerLeaf::Opaque))
+}
 fn container_trivia(value: &CssComponentValue) -> bool {
     matches!(
         value.view(),
@@ -128,116 +177,7 @@ fn container_trivia(value: &CssComponentValue) -> bool {
             | CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
     )
 }
-fn container_condition(
-    items: &[CssComponentValue],
-) -> Result<Result<ContainerNode, usize>, crate::CssComponentValueError> {
-    let mut cursor = ContainerCursor::new(items);
-    if cursor.ident("not") {
-        let atom = match container_cursor_atom(&mut cursor)? {
-            Ok(atom) => atom,
-            Err(index) => return Ok(Err(index)),
-        };
-        return Ok(if cursor.peek().is_none() {
-            Ok(ContainerNode {
-                kind: ContainerNodeKind::Not(Box::new(atom)),
-                range: 0..items.len(),
-            })
-        } else {
-            Err(cursor.index)
-        });
-    }
-    let mut first = match container_cursor_atom(&mut cursor)? {
-        Ok(atom) => atom,
-        Err(index) => return Ok(Err(index)),
-    };
-    let is_and = if cursor.ident("and") {
-        true
-    } else if cursor.ident("or") {
-        false
-    } else {
-        return Ok(if cursor.peek().is_none() {
-            first.range = 0..items.len();
-            Ok(first)
-        } else {
-            Err(cursor.index)
-        });
-    };
-    let mut conditions = vec![first];
-    loop {
-        let atom = match container_cursor_atom(&mut cursor)? {
-            Ok(atom) => atom,
-            Err(index) => return Ok(Err(index)),
-        };
-        conditions.push(atom);
-        if !cursor.ident(if is_and { "and" } else { "or" }) {
-            break;
-        }
-    }
-    if cursor.peek().is_some() {
-        return Ok(Err(cursor.index));
-    }
-    Ok(Ok(ContainerNode {
-        kind: if is_and {
-            ContainerNodeKind::And(conditions)
-        } else {
-            ContainerNodeKind::Or(conditions)
-        },
-        range: 0..items.len(),
-    }))
-}
-fn container_cursor_atom(
-    cursor: &mut ContainerCursor<'_>,
-) -> Result<Result<ContainerNode, usize>, crate::CssComponentValueError> {
-    cursor.peek();
-    let index = cursor.index;
-    let Some(component) = cursor.next() else {
-        return Ok(Err(index));
-    };
-    let enclosed = match component.view() {
-        CssComponentValueRef::Function(_) => true,
-        CssComponentValueRef::Block(block) => block.kind() == crate::CssBlockKind::Parenthesis,
-        _ => false,
-    };
-    if !enclosed {
-        return Ok(Err(index));
-    }
-    container_atom(component).map(|kind| {
-        Ok(ContainerNode {
-            kind,
-            range: index..index + 1,
-        })
-    })
-}
-fn container_atom(
-    component: &CssComponentValue,
-) -> Result<ContainerNodeKind, crate::CssComponentValueError> {
-    match component.view() {
-        CssComponentValueRef::Function(function)
-            if function.name().eq_ignore_ascii_case("style") =>
-        {
-            if let Some(style) = super::container_style::parse(function.values().items()) {
-                return Ok(ContainerNodeKind::Style(style));
-            }
-        }
-        CssComponentValueRef::Function(function)
-            if function.name().eq_ignore_ascii_case("scroll-state") =>
-        {
-            if let Some(scroll) = super::container_scroll::parse(function.values().items())? {
-                return Ok(ContainerNodeKind::Scroll(scroll));
-            }
-        }
-        CssComponentValueRef::Block(block) if block.kind() == crate::CssBlockKind::Parenthesis => {
-            if let Ok(condition) = container_condition(block.values().items())? {
-                return Ok(ContainerNodeKind::Parenthesized(Box::new(condition)));
-            }
-            if let Some(feature) = container_feature(block.values().items())? {
-                return Ok(ContainerNodeKind::Feature(feature));
-            }
-        }
-        _ => {}
-    }
-    Ok(ContainerNodeKind::Opaque)
-}
+
 // Intrinsic grammar failure tries general-enclosed; resource failures do not.
 enum ContainerFeatureError {
     Grammar,
@@ -639,20 +579,6 @@ pub(super) fn container_prelude_from_components<'i>(
     })
 }
 
-#[cfg(test)]
-fn container_failure_location(
-    items: &[CssComponentValue],
-    index: usize,
-    end: cssparser::SourceLocation,
-) -> cssparser::SourceLocation {
-    items
-        .get(index)
-        .and_then(|component| crate::media::parsed_position(component.origin()))
-        .map_or(end, |position| cssparser::SourceLocation {
-            line: position.line().value(),
-            column: position.column().value() + 1,
-        })
-}
 fn container_component_error<'i>(
     fallback: cssparser::SourceLocation,
     error: crate::CssComponentValueError,
@@ -665,32 +591,6 @@ fn container_component_error<'i>(
     });
     crate::error::invalid_component_value(location, error)
 }
-#[cfg(test)]
-pub(crate) fn parse_container_condition_for_test(
-    source: &str,
-) -> Result<CssContainerCondition, Error> {
-    let working_source = crate::tokenization::prepare(source);
-    let mut input = ParserInput::new(&working_source);
-    let mut parser = Parser::new(&mut input);
-    let recovery = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
-    let location = parser.current_source_location();
-    let (values, _) = collect_container_components(source, &mut parser, &recovery)
-        .map_err(|error| from_parse_error(source, error))?;
-    container_condition(values.items())
-        .map_err(|error| from_parse_error(source, container_component_error(location, error)))?
-        .map(|node| node.into_condition(SupportsLexical::root(values.clone())))
-        .map_err(|index| {
-            from_parse_error(
-                source,
-                invalid_syntax(container_failure_location(
-                    values.items(),
-                    index,
-                    parser.current_source_location(),
-                )),
-            )
-        })
-}
-
 #[derive(Clone, Copy)]
 enum ContainerFeatureName {
     Width(Option<RangePrefix>),

@@ -296,7 +296,7 @@ fn invalid_arguments_undefined_chains_and_unsupported_current_forms_are_rejected
 }
 
 #[test]
-fn four_legacy_colon_aliases_and_existing_imported_pseudos_keep_their_identity() {
+fn four_legacy_colon_aliases_and_imported_pseudos_keep_their_identity() {
     let aliases = admitted(&[
         (":before", "::before"),
         ("::before", "::before"),

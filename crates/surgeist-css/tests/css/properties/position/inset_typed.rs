@@ -212,9 +212,12 @@ fn aggregate_serialization_limits_include_each_authored_component() {
         CssSpecifiedValueSerializationErrorKind::InputNodeLimit
     );
     let math = inset("calc(1px + 2%)");
-    assert!(
+    // `calc(1px + 2%)` has more than one authored input node.
+    assert_eq!(
         math.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 100))
-            .is_err()
+            .unwrap_err()
+            .kind(),
+        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
     );
 }
 

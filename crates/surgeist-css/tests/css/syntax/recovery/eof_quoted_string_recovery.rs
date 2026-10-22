@@ -1,6 +1,7 @@
 //! CSS Syntax 3 §4.3.5 returns a string and reports a parse error at EOF.
 //! Retained recovery must not change decoded payloads or consume block depth.
 
+use crate::css::support::authored_syntax::assert_strict_rejection;
 use surgeist_css::*;
 
 fn closures<T>(source: &str, report: &CssParseReport<T>, expected: usize) {
@@ -25,13 +26,16 @@ fn descriptor_and_declaration_strings_report_only_actual_eof_termination() {
             parse_font_face_descriptor_value(value, CssFontFaceDescriptorKind::FontFamily);
         assert!(descriptor.syntax().is_some());
         closures(value, &descriptor, 1);
-        assert!(descriptor.into_validation_result().is_err());
+        assert_strict_rejection(
+            descriptor.clone().into_validation_result(),
+            descriptor.diagnostics(),
+        );
 
         let source = format!("font-family:{value}");
         let declaration = parse_style_attribute(&source);
         assert_eq!(declaration.syntax().len(), 1);
         closures(&source, &declaration, 1);
-        assert!(validate_style_attribute(&source).is_err());
+        assert_strict_rejection(validate_style_attribute(&source), declaration.diagnostics());
     }
     for value in [r#""Demo""#, "'Demo'", r#""Demo\"""#, r#""Demo\\""#] {
         let report = parse_font_face_descriptor_value(value, CssFontFaceDescriptorKind::FontFamily);
@@ -66,5 +70,8 @@ fn an_eof_string_adds_a_diagnostic_without_spending_a_rule_nesting_level() {
     assert_eq!(report.syntax().rules().len(), 1);
     // 255 media blocks, one style block, and one retained EOF-ended string.
     closures(&source, &report, 257);
-    assert!(report.into_validation_result().is_err());
+    assert_strict_rejection(
+        report.clone().into_validation_result(),
+        report.diagnostics(),
+    );
 }

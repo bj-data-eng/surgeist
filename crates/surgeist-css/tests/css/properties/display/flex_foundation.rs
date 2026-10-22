@@ -2,13 +2,18 @@
 //! supplies the referenced width grammar. Values 5 §10 and the pinned WPT
 //! calc-size parsing cases make `content` a flex-basis-only calc-size basis.
 
+use crate::css::support::property_admission::assert_reentry_rejected;
+use crate::css::support::property_admission::{
+    assert_checked_rejected, assert_style_attribute_rejected,
+};
+use crate::css::support::selected_grammar as grammar;
+
+fn declaration(value: &str) -> CssDeclaration {
+    crate::css::support::important_declaration("flex", value)
+}
 use surgeist_css::*;
 
 const MEMBERS: [&str; 3] = ["flex-grow", "flex-shrink", "flex-basis"];
-
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("missing grammar: {name}"))
-}
 
 fn direct(name: &str, value: &str) -> Result<CssDeclaration, CssPropertyValueParseError> {
     parse_property_value_for_grammar(
@@ -16,16 +21,6 @@ fn direct(name: &str, value: &str) -> Result<CssDeclaration, CssPropertyValuePar
         parse_component_values(value).unwrap(),
         CssImportance::Normal,
     )
-}
-
-fn declaration(value: &str) -> CssDeclaration {
-    let source = format!("flex:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one flex declaration: {source}")
-    };
-    declaration.clone()
 }
 
 fn expanded(value: &str) -> Vec<CssLonghandContribution> {
@@ -114,11 +109,17 @@ fn flex_basis_accepts_width_values_plus_content_and_contextual_calc_size() {
             "calc-size(content, size)",
             "calc-size(calc-size(content, size), size + 1px)",
         ] {
-            assert!(direct(name, value).is_err(), "{name}:{value}");
+            // `content` is a calc-size basis only where flex-basis admits it.
+            let property = grammar(name).target_property();
+            assert_checked_rejected(direct(name, value), property, Some("content"));
         }
     }
     for value in ["none", "-1px", "-25%"] {
-        assert!(direct("flex-basis", value).is_err(), "flex-basis:{value}");
+        assert_checked_rejected(
+            direct("flex-basis", value),
+            CssKnownProperty::FlexBasis,
+            Some(value),
+        );
     }
 }
 
@@ -138,7 +139,8 @@ fn flex_factors_admit_nonnegative_numbers_and_symbolic_number_math() {
             assert!(direct(name, value).is_ok(), "{name}:{value}");
         }
         for value in ["-1", "-1e-100", "1%", "1px", "auto"] {
-            assert!(direct(name, value).is_err(), "{name}:{value}");
+            let property = grammar(name).target_property();
+            assert_checked_rejected(direct(name, value), property, Some(value));
         }
     }
 }
@@ -189,20 +191,19 @@ fn flex_shorthand_accepts_each_grammar_form_and_rejects_reordered_factors() {
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert!(direct("flex", value).is_ok(), "{source}");
     }
-    for value in [
-        "2 10px 3",
-        "2 content 3",
-        "0 1 2",
-        "-1 1 0px",
-        "1 2 3",
-        "none 1",
-        "1 -1 0px",
+    for (value, token) in [
+        ("2 10px 3", Some("3")),
+        ("2 content 3", Some("3")),
+        ("0 1 2", Some("2")),
+        ("-1 1 0px", Some("-1")),
+        ("1 2 3", Some("3")),
+        ("none 1", Some("1")),
+        ("1 -1 0px", Some("-1")),
     ] {
         let source = format!("color:red;flex:{value};color:blue");
-        let report = parse_style_attribute(&source);
+        let report = assert_style_attribute_rejected(&source, CssKnownProperty::Flex, token);
         assert_eq!(report.syntax().len(), 2, "{source}");
-        assert_eq!(report.diagnostics().len(), 1, "{source}");
-        assert!(direct("flex", value).is_err(), "flex:{value}");
+        assert_checked_rejected(direct("flex", value), CssKnownProperty::Flex, token);
     }
 }
 
@@ -260,15 +261,18 @@ fn flex_css_wide_and_pending_values_cover_all_three_terminals() {
     let CssExpansion::Pending(pending) = expand_declaration(&pending_source).unwrap() else {
         panic!("flex substitution remains pending")
     };
-    assert!(
+    assert!(matches!(
         pending
             .reenter(parse_component_values("var(--again)").unwrap())
-            .is_err()
-    );
-    assert!(
-        pending
-            .reenter(parse_component_values("2 content 3").unwrap())
-            .is_err()
+            .unwrap_err()
+            .kind(),
+        CssExpansionErrorKind::ResidualSubstitution
+    ));
+    // Flexbox 1 §7.1: grow, optional shrink and one basis; a third number is extra.
+    assert_reentry_rejected(
+        pending.reenter(parse_component_values("2 content 3").unwrap()),
+        CssKnownProperty::Flex,
+        Some("3"),
     );
     let CssContributions::Longhands(values) = pending
         .reenter(parse_component_values("content 2 3").unwrap())

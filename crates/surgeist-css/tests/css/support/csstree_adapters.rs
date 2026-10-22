@@ -22,24 +22,6 @@ pub enum EntryPoint {
     FontFaceDescriptorValue,
 }
 
-impl EntryPoint {
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::Sheet => "sheet",
-            Self::Rule => "rule",
-            Self::StyleBlock => "style_block",
-            Self::StyleAttribute => "style_attribute",
-            Self::Declaration => "declaration",
-            Self::PropertyValueText => "property_value_text",
-            Self::Selector => "selector",
-            Self::SelectorList => "selector_list",
-            Self::MediaQuery => "media_query",
-            Self::MediaQueryList => "media_query_list",
-            Self::FontFaceDescriptorValue => "font_face_descriptor_value",
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Adapter {
@@ -77,37 +59,6 @@ pub enum Adapter {
 }
 
 impl Adapter {
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::Stylesheet => "stylesheet",
-            Self::TopLevelRule => "top_level_rule",
-            Self::TopLevelAtRule => "top_level_at_rule",
-            Self::StyleDeclarationList => "style_declaration_list",
-            Self::StyleDeclaration => "style_declaration",
-            Self::StyleBlock => "style_block",
-            Self::SelectorList => "selector_list",
-            Self::Selector => "selector",
-            Self::NthSelector => "nth_selector",
-            Self::MozAnySelector => "moz_any_selector",
-            Self::WebkitAnySelector => "webkit_any_selector",
-            Self::DirSelector => "dir_selector",
-            Self::HasSelector => "has_selector",
-            Self::HostContextSelector => "host_context_selector",
-            Self::HostSelector => "host_selector",
-            Self::IsSelector => "is_selector",
-            Self::LangSelector => "lang_selector",
-            Self::MatchesSelector => "matches_selector",
-            Self::NotSelector => "not_selector",
-            Self::SlottedSelector => "slotted_selector",
-            Self::WhereSelector => "where_selector",
-            Self::MediaQuery => "media_query",
-            Self::MediaAtRulePrelude => "media_at_rule_prelude",
-            Self::PropertyValue => "property_value",
-            Self::FontFaceDescriptorValue => "font_face_descriptor_value",
-            Self::CustomPropertyContainment => "custom_property_containment",
-        }
-    }
-
     pub fn wrap(
         self,
         input: &str,
@@ -207,19 +158,6 @@ pub enum FontFaceDescriptorKind {
 }
 
 impl FontFaceDescriptorKind {
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::FontFamily => "font_family",
-            Self::Src => "src",
-            Self::FontWeight => "font_weight",
-            Self::FontStyle => "font_style",
-            Self::FontStretch => "font_stretch",
-            Self::FontDisplay => "font_display",
-            Self::UnicodeRange => "unicode_range",
-            Self::FontFeatureSettings => "font_feature_settings",
-        }
-    }
-
     const fn css_name(self) -> &'static str {
         match self {
             Self::FontStretch => "font-stretch",
@@ -286,29 +224,6 @@ pub enum Extractor {
 }
 
 impl Extractor {
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::SheetRules => "sheet_rules",
-            Self::AtRule => "at_rule",
-            Self::TopLevelRuleKind(_) => "top_level_rule_kind",
-            Self::StyleBlock => "style_block",
-            Self::StyleDeclarations => "style_declarations",
-            Self::StyleSelector => "style_selector",
-            Self::Selector => "selector",
-            Self::SelectorList => "selector_list",
-            Self::MediaQuery => "media_query",
-            Self::DeclarationList => "declaration_list",
-            Self::MediaQueries => "media_queries",
-            Self::MediaChildren => "media_children",
-            Self::SupportsChildren => "supports_children",
-            Self::ContainerChildren => "container_children",
-            Self::ScopeChildren => "scope_children",
-            Self::LayerBlockChildren => "layer_block_children",
-            Self::FontFaceDescriptor(_) => "font_face_descriptor",
-            Self::KnownDeclaration { .. } => "known_declaration",
-        }
-    }
-
     pub fn extract_sheet(self, sheet: &CssSheet) -> Result<usize, Mismatch> {
         let rules = sheet.rules();
         let count = match self {
@@ -553,25 +468,6 @@ pub enum UnsupportedReason {
     GenericFragmentWithoutTruthfulSupportedPropertyOrDescriptor,
 }
 
-impl UnsupportedReason {
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::GenericFragmentWithoutTruthfulSupportedPropertyOrDescriptor => {
-                "generic_fragment_without_truthful_supported_property_or_descriptor"
-            }
-        }
-    }
-}
-
-impl UnsupportedPolicy {
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::FullObservation => "full_observation",
-            Self::PanicFreedomOnly => "panic_freedom_only",
-        }
-    }
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Mismatch {
     UnsupportedOptions {
@@ -678,25 +574,6 @@ impl RegistryEntry {
             self.unsupported_policy,
             Some(UnsupportedPolicy::FullObservation)
         ) && self.unsupported_reason.is_none()
-    }
-
-    pub const fn adapter_name(self) -> &'static str {
-        self.adapter.name()
-    }
-
-    pub const fn entry_point_name(self) -> &'static str {
-        self.entry_point.name()
-    }
-
-    pub const fn extractor_name(self) -> &'static str {
-        self.extractor.name()
-    }
-
-    pub const fn unsupported_policy_name(self) -> Option<&'static str> {
-        match self.unsupported_policy {
-            Some(policy) => Some(policy.name()),
-            None => None,
-        }
     }
 
     pub fn has_legal_context_combination(self) -> bool {
@@ -835,28 +712,20 @@ pub fn validate_closed_model() -> bool {
                 extractor: Extractor::DeclarationList,
                 entry_point: EntryPoint::Sheet,
             })
-        && EntryPoint::Sheet.name() == "sheet"
-        && UnsupportedPolicy::FullObservation.name() == "full_observation"
         && REGISTRY.iter().all(|entry| {
             entry.options.iter().all(|&profile| {
                 entry
                     .resolve(profile)
                     .is_ok_and(|resolved| resolved.has_legal_context_combination())
-            }) && !entry.adapter_name().is_empty()
-                && !entry.entry_point_name().is_empty()
-                && !entry.extractor_name().is_empty()
-                && entry.unsupported_policy_name().is_some()
-                && match (
+            }) && matches!(
+                (
                     entry.has_truthful_complete_input(),
                     entry.unsupported_policy(),
                     entry.unsupported_reason(),
-                ) {
-                    (true, Some(UnsupportedPolicy::FullObservation), None) => true,
-                    (false, Some(UnsupportedPolicy::PanicFreedomOnly), Some(reason)) => {
-                        !reason.name().is_empty()
-                    }
-                    _ => false,
-                }
+                ),
+                (true, Some(UnsupportedPolicy::FullObservation), None)
+                    | (false, Some(UnsupportedPolicy::PanicFreedomOnly), Some(_))
+            )
         })
 }
 

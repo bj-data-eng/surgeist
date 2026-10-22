@@ -1,28 +1,15 @@
 //! Conditional 5 §2 and §8 admit symbolic named references in supports tests.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#at-ruledef-supports-condition
 
+use crate::css::support::authored_syntax::{
+    checked_import_rule as checked_import, checked_supports_condition as checked_condition,
+};
 use surgeist_css::{
     CssComponentValue, CssComponentValues, CssImportConstructionError, CssImportRule,
     CssNamespaceContext, CssRule, CssSerializedOrigin, CssSupportsCondition,
     CssSupportsConditionKind, CssSupportsConstructionError, CssValueOrigin, parse_component_values,
     parse_sheet,
 };
-
-fn checked_condition(source: &str) -> CssSupportsCondition {
-    CssSupportsCondition::try_from_components(
-        parse_component_values(source).unwrap(),
-        &CssNamespaceContext::default(),
-    )
-    .unwrap()
-}
-
-fn checked_import(source: &str) -> CssImportRule {
-    CssImportRule::try_from_components(
-        parse_component_values(source).unwrap(),
-        &CssNamespaceContext::default(),
-    )
-    .unwrap()
-}
 
 fn assert_same_parsed_origin(actual: &CssValueOrigin, expected: &CssValueOrigin) {
     let (CssValueOrigin::Parsed(actual), CssValueOrigin::Parsed(expected)) = (actual, expected)
@@ -78,7 +65,7 @@ fn named_operands_keep_decoded_case_escapes_and_unknown_identity() {
 }
 
 #[test]
-fn named_operands_compose_with_existing_boolean_supports_grammar() {
+fn named_operands_compose_with_boolean_supports_grammar() {
     let negated = checked_condition("not (--feature)");
     let CssSupportsConditionKind::Not(child) = negated.kind() else {
         panic!("expected negation");

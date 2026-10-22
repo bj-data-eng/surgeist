@@ -1,17 +1,8 @@
 //! Functional specified-value expectations from CSS Lists 3 (2020-11-17) §3.7.
 //! The keywords are symbolic; element or parent directionality is selected later.
 
+use crate::css::support::normal_declaration;
 use surgeist_css::*;
-
-fn parsed(value: &str) -> CssDeclaration {
-    let source = format!("marker-side:{value}");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one marker-side declaration")
-    };
-    declaration.clone()
-}
 
 fn current(declaration: &CssDeclaration) -> CssMarkerSide {
     let CssKnownPropertyValueRef::MarkerSide(wrapper) =
@@ -30,7 +21,7 @@ fn both_checked_values_and_parsed_wrappers_have_distinct_symbolic_meanings() {
         ("MATCH-PARENT", CssMarkerSide::MatchParent, "match-parent"),
         (r"m\61 tch-self", CssMarkerSide::MatchSelf, "match-self"),
     ] {
-        let declaration = parsed(value);
+        let declaration = normal_declaration("marker-side", value);
         assert_eq!(current(&declaration), expected);
         assert_eq!(expected.serialize_specified().unwrap(), canonical);
         assert_eq!(

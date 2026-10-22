@@ -1,10 +1,7 @@
 //! Checked construction expectations from Color 5 WD20260908 §7 and the
 //! existing complete structural ceiling: function nodes add one; none adds zero.
+use crate::css::support::color_and_selector_fixtures::named_color as named;
 use surgeist_css::*;
-
-fn named(name: &str) -> CssColor {
-    CssColor::from_named(CssNamedColor::try_new(name).unwrap())
-}
 
 fn stops(color: CssColor, position: Option<CssSpecifiedLengthPercentage>) -> CssColorStopList {
     CssColorStopList::try_new(vec![
@@ -305,7 +302,6 @@ fn light_dark_metadata_identifies_complete_authored_productions_and_the_dated_so
         );
         assert!(metadata.supported_subset().is_none());
         assert!(metadata.unsupported_remainder().is_none());
-        assert!(metadata.baseline_alias_targets().is_empty());
         assert!(validate_style_attribute(source).is_ok());
     }
     assert!(specification_source("I-COLOR5-20260908").is_some());

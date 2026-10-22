@@ -232,7 +232,7 @@ fn component_depth_exhaustion_preserves_resource_action() {
 }
 
 #[test]
-fn declaration_lists_still_recover_ordered_siblings_at_authored_positions() {
+fn declaration_lists_recover_ordered_siblings_at_authored_positions() {
     let source = "color:red;unknown:x;width:2px;";
     let report = parse_style_attribute(source);
     let declarations = report.syntax();

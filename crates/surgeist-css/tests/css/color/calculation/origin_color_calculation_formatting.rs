@@ -2,6 +2,7 @@
 //! component numbers: generic six-place text for calculated ordinary origins.
 //! Halfway away from zero is the adopted operational policy on binary64 bits.
 
+use crate::css::support::color_and_selector_fixtures::assert_color_limits;
 use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
@@ -351,42 +352,10 @@ text_case!(
 // wrapper/product/two leaves (4) and projects leaves/inverse/product (4).
 // A single-leaf calculation visits wrapper/leaf (2) and projects one leaf.
 // Identity percentages add no scale nodes. Counts are cumulative across siblings.
-fn assert_limits(source: &str, text: &str, inputs: usize, projections: usize) {
-    let value = color(source);
-    let before = value.clone();
-    for (limits, kind) in [
-        (
-            Limits::new(inputs - 1, usize::MAX, usize::MAX),
-            Kind::InputNodeLimit,
-        ),
-        (
-            Limits::new(usize::MAX, projections - 1, usize::MAX),
-            Kind::ProjectionNodeLimit,
-        ),
-        (
-            Limits::new(inputs, projections, text.len() - 1),
-            Kind::ByteLimit,
-        ),
-    ] {
-        assert_eq!(
-            value
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
-        assert_eq!(value, before);
-    }
-    let limits = Limits::new(inputs, projections, text.len());
-    let first = value.to_specified_css_with_limits(limits);
-    assert_eq!(first, value.to_specified_css_with_limits(limits));
-    assert_eq!(value, before);
-    assert_eq!(first.unwrap(), text);
-}
 #[test]
 fn number_final_bytes_and_counts() {
-    assert_limits(
-        "alpha(from rgb(calc(1 / 128) none none))",
+    assert_color_limits(
+        &color("alpha(from rgb(calc(1 / 128) none none))"),
         "alpha(from rgb(calc(0.007813) none none))",
         8,
         8,
@@ -394,8 +363,8 @@ fn number_final_bytes_and_counts() {
 }
 #[test]
 fn percentage_suffix_final_bytes_and_counts() {
-    assert_limits(
-        "alpha(from rgb(calc(1% / 128) none none))",
+    assert_color_limits(
+        &color("alpha(from rgb(calc(1% / 128) none none))"),
         "alpha(from rgb(calc(0.007813%) none none))",
         8,
         8,
@@ -403,8 +372,8 @@ fn percentage_suffix_final_bytes_and_counts() {
 }
 #[test]
 fn angle_suffix_final_bytes_and_counts() {
-    assert_limits(
-        "alpha(from hsl(calc(1rad) none none))",
+    assert_color_limits(
+        &color("alpha(from hsl(calc(1rad) none none))"),
         "alpha(from hsl(calc(57.29578deg) none none))",
         6,
         5,
@@ -412,8 +381,8 @@ fn angle_suffix_final_bytes_and_counts() {
 }
 #[test]
 fn sibling_work_and_final_bytes_are_cumulative() {
-    assert_limits(
-        "alpha(from color(--P calc(1 / 128) calc(1 / 128)))",
+    assert_color_limits(
+        &color("alpha(from color(--P calc(1 / 128) calc(1 / 128)))"),
         "alpha(from color(--P calc(0.007813) calc(0.007813)))",
         10,
         10,
@@ -421,8 +390,8 @@ fn sibling_work_and_final_bytes_are_cumulative() {
 }
 #[test]
 fn alpha_percentage_identity_counts() {
-    assert_limits(
-        "alpha(from rgb(none none none / calc(.78125%)))",
+    assert_color_limits(
+        &color("alpha(from rgb(none none none / calc(.78125%)))"),
         "alpha(from rgb(none none none / calc(0.78125%)))",
         7,
         6,
@@ -715,8 +684,8 @@ fn checked_percentage_origin_preserves_identity_dimension_and_provenance() {
 // existing color capture requires hundreds of scratch digits.
 #[test]
 fn rounded_tiny_capture_has_final_zero_text_budget() {
-    assert_limits(
-        "alpha(from rgb(calc(5e-324) none none))",
+    assert_color_limits(
+        &color("alpha(from rgb(calc(5e-324) none none))"),
         "alpha(from rgb(calc(0) none none))",
         6,
         5,

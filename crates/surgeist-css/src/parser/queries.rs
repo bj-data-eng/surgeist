@@ -10,14 +10,11 @@ pub(crate) fn construct_when_media_feature(
 ) -> Result<crate::CssWhenMediaFeature, crate::CssWhenConstructionError> {
     features::construct_when_media_feature(component, limits)
 }
-#[cfg(test)]
-use cssparser::ParserInput;
 use cssparser::{
     BasicParseErrorKind, Delimiter, ParseError, Parser, Token, match_ignore_ascii_case,
 };
 
-#[cfg(test)]
-use super::recovery::StyleContextCaptures;
+use super::boolean_condition::{BooleanConditionGrammar, parse_boolean_condition};
 use super::recovery::{
     RecoveryState, comma_member_span, first_non_trivia_position, recovery_action_for_error,
 };
@@ -218,29 +215,6 @@ pub(super) fn parse_media_query_list_with_closures<'i, 't>(
     })
 }
 
-#[cfg(test)]
-pub(crate) fn parse_media_query_list_for_test(
-    source: &str,
-) -> std::result::Result<CssMediaQueryList, Error> {
-    let working_source = crate::tokenization::prepare(source);
-    let mut input = ParserInput::new(&working_source);
-    let mut parser = Parser::new(&mut input);
-    let mut diagnostics = Vec::new();
-    let recovery = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
-    let list = parse_media_query_list(source, &mut parser, &mut diagnostics, &recovery)
-        .map_err(|error| from_parse_error(source, error))?;
-    if let Some(diagnostic) = diagnostics.into_iter().next() {
-        return Err(diagnostic.error().clone());
-    }
-    if !parser.is_exhausted() {
-        return Err(from_parse_error(
-            source,
-            invalid_syntax(parser.current_source_location()),
-        ));
-    }
-    Ok(list)
-}
-
 pub(super) fn parse_media_query<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
@@ -260,12 +234,25 @@ fn parse_media_query_inner<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
 ) -> Result<CssMediaQuery, ParseError<'i, Error>> {
-    match input.try_parse(|p| parse_typed_media_query(source, p, numeric)) {
+    let typed = match input.try_parse(|p| parse_typed_media_query(source, p, numeric)) {
         Ok(query) => return Ok(CssMediaQuery::Typed(query)),
         Err(error) if media_committed_error(&error) => return Err(error),
-        Err(_) => {}
-    }
-    parse_media_condition(source, input, numeric).map(CssMediaQuery::Condition)
+        Err(error) => error,
+    };
+    // Media Queries 4 §3: when neither form matches, the alternative that
+    // reached further names the responsible token (`screen and` fails at its
+    // end as a typed query, not at `screen` as a condition).
+    parse_media_condition(source, input, numeric)
+        .map(CssMediaQuery::Condition)
+        .map_err(|condition| {
+            let reach =
+                |error: &ParseError<'i, Error>| (error.location.line, error.location.column);
+            if reach(&typed) > reach(&condition) {
+                typed
+            } else {
+                condition
+            }
+        })
 }
 fn parse_typed_media_query<'i, 't>(
     source: &str,
@@ -410,43 +397,69 @@ fn parse_media_condition_with_or<'i, 't>(
     allow_or: bool,
     numeric: &MediaInput<'_>,
 ) -> Result<CssMediaCondition, ParseError<'i, Error>> {
-    if let Some(origin) = take_media_keyword(input, numeric, "not")? {
-        return Ok(CssMediaCondition::new(
-            CssMediaConditionKind::Not(Box::new(parse_media_in_parens(source, input, numeric)?)),
-            origin,
+    parse_boolean_condition(
+        &mut MediaConditionGrammar {
+            source,
+            input,
+            numeric,
+        },
+        allow_or,
+    )
+}
+// Media Queries 4 §3 `<media-condition>`: each operator keyword keeps its
+// original origin, and a combined condition starts at its first operand.
+struct MediaConditionGrammar<'s, 'i, 't, 'n> {
+    source: &'s str,
+    input: &'s mut Parser<'i, 't>,
+    numeric: &'s MediaInput<'n>,
+}
+impl<'i> BooleanConditionGrammar for MediaConditionGrammar<'_, 'i, '_, '_> {
+    type Operator = CssValueOrigin;
+    type Node = CssMediaCondition;
+    type Error = ParseError<'i, Error>;
+
+    fn keyword(&mut self, keyword: &'static str) -> Result<Option<CssValueOrigin>, Self::Error> {
+        take_media_keyword(self.input, self.numeric, keyword)
+    }
+    fn operand(&mut self) -> Result<CssMediaCondition, Self::Error> {
+        parse_media_in_parens(self.source, self.input, self.numeric)
+    }
+    // The enclosing query owns what follows a media condition.
+    fn finish(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn negation(
+        &mut self,
+        operator: CssValueOrigin,
+        operand: CssMediaCondition,
+    ) -> CssMediaCondition {
+        CssMediaCondition::new(
+            CssMediaConditionKind::Not(Box::new(operand)),
+            operator,
             MediaConditionSyntax::Not,
-        ));
+        )
     }
-    let first = parse_media_in_parens(source, input, numeric)?;
-    let origin = first.origin().clone();
-    let and = take_media_keyword(input, numeric, "and")?;
-    let (keyword, operator) = if let Some(operator) = and {
-        ("and", Some(operator))
-    } else if allow_or {
-        ("or", take_media_keyword(input, numeric, "or")?)
-    } else {
-        ("and", None)
-    };
-    let Some(operator) = operator else {
-        return Ok(first);
-    };
-    let mut operators = vec![operator];
-    let mut children = vec![first, parse_media_in_parens(source, input, numeric)?];
-    while let Some(operator) = take_media_keyword(input, numeric, keyword)? {
-        operators.push(operator);
-        children.push(parse_media_in_parens(source, input, numeric)?);
+    fn single(&mut self, operand: CssMediaCondition) -> CssMediaCondition {
+        operand
     }
-    let children = CssMediaConditionList::new(children);
-    let kind = if keyword == "and" {
-        CssMediaConditionKind::And(children)
-    } else {
-        CssMediaConditionKind::Or(children)
-    };
-    Ok(CssMediaCondition::new(
-        kind,
-        origin,
-        MediaConditionSyntax::Junction(operators),
-    ))
+    fn junction(
+        &mut self,
+        conjunction: bool,
+        operators: Vec<CssValueOrigin>,
+        operands: Vec<CssMediaCondition>,
+    ) -> CssMediaCondition {
+        let origin = operands[0].origin().clone();
+        let operands = CssMediaConditionList::new(operands);
+        CssMediaCondition::new(
+            if conjunction {
+                CssMediaConditionKind::And(operands)
+            } else {
+                CssMediaConditionKind::Or(operands)
+            },
+            origin,
+            MediaConditionSyntax::Junction(operators),
+        )
+    }
 }
 fn parse_media_in_parens<'i, 't>(
     source: &str,
@@ -501,9 +514,12 @@ fn parse_media_in_parens<'i, 't>(
                 }
             };
             if syntax.name_text.starts_with("--") {
+                // MQ5 §3: a dashed name is only a boolean custom-media
+                // reference, so as a feature name that name is responsible,
+                // wherever the range form places it.
                 if !matches!(syntax.shape, MediaFeatureShape::Boolean) {
                     return Err(crate::error::custom_media_context_error(
-                        initial.source_location(),
+                        syntax.name_location,
                         &syntax.name_text,
                     ));
                 }
@@ -675,7 +691,7 @@ pub(super) fn check_media_member_components<'i>(
     input: &mut Parser<'i, '_>,
     recovery: &RecoveryState,
 ) -> Result<Vec<usize>, ParseError<'i, Error>> {
-    match recovery.check_comma_member_components(source, input, "baseline.media.query-list") {
+    match recovery.check_comma_member_components(source, input, "official.media.query-list-core") {
         Ok(openings) => Ok(openings),
         Err(error) if is_nesting_limit_error(&error) => Err(error),
         Err(error) => {
@@ -702,7 +718,7 @@ pub(super) fn check_media_import_components<'i>(
     input: &mut Parser<'i, '_>,
     recovery: &RecoveryState,
 ) -> Result<(), ParseError<'i, Error>> {
-    match recovery.check_specialized_components(source, input, "baseline.media.query-list") {
+    match recovery.check_specialized_components(source, input, "official.media.query-list-core") {
         Ok(_) => Ok(()),
         Err(error) if is_nesting_limit_error(&error) => Err(error),
         Err(error) => {

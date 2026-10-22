@@ -4,7 +4,8 @@
 //! Orders follow selected Text 4 §9.1, Text Decoration 4 §§2.1/2.4/2.6 and
 //! CSS2 vertical-align. Numeric spelling follows its existing specified policy.
 
-use crate::css::support::style_declaration as declaration;
+use crate::css::support::serialization_limits::assert_limits_with_zero as budget;
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::{
     CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
 };
@@ -32,34 +33,6 @@ macro_rules! parsed {
         };
         value.value().clone()
     }};
-}
-
-fn budget(
-    expected: &str,
-    input: usize,
-    projection: usize,
-    serialize: impl Fn(L) -> Result<String, CssSpecifiedValueSerializationError>,
-) {
-    assert_eq!(
-        serialize(L::new(input, projection, expected.len())).unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (
-            L::new(input - 1, projection, expected.len()),
-            K::InputNodeLimit,
-        ),
-        (
-            L::new(input, projection - 1, expected.len()),
-            K::ProjectionNodeLimit,
-        ),
-        (L::new(input, projection, expected.len() - 1), K::ByteLimit),
-        (L::new(0, projection, expected.len()), K::InputNodeLimit),
-        (L::new(input, 0, expected.len()), K::ProjectionNodeLimit),
-        (L::new(input, projection, 0), K::ByteLimit),
-    ] {
-        assert_eq!(serialize(limits).unwrap_err().kind(), kind);
-    }
 }
 
 macro_rules! check {

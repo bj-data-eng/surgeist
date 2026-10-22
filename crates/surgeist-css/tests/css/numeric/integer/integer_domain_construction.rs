@@ -104,10 +104,14 @@ fn positive_literal_admission_rejects_noninteger_kinds_zero_and_negative_values(
     }
     for text in ["2.0", "2e0", "2px", "2%", "calc(2)"] {
         let component = parse_component_values(text).unwrap().items()[0].clone();
-        assert!(
-            CssIntegerLiteral::try_from_component(component).is_err(),
+        let origin = component.origin().clone();
+        let error = CssIntegerLiteral::try_from_component(component).unwrap_err();
+        assert_eq!(
+            error.kind(),
+            CssComponentValueErrorKind::InvalidToken,
             "{text}"
         );
+        assert_eq!(error.origin(), &origin, "{text}");
     }
     for text in ["+0007", "2147483648", "999999999999999999999999999999"] {
         assert_eq!(positive(text).integer().numeric().representation(), text);

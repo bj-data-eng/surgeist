@@ -7,6 +7,10 @@
 //! Backdrop: https://www.w3.org/TR/2025/WD-css-position-4-20251007/#backdrop
 //! Position 4 calls backdrop fully styleable; Pseudo 4 section 4 makes that a
 //! subset of tree-abiding pseudo-elements, so the slotted suffix permits it.
+use crate::css::support::color_and_selector_fixtures::assert_strict_validation_rejects;
+use crate::css::support::color_and_selector_fixtures::{
+    assert_selector_input_rejected, assert_selector_rejected as assert_rejected,
+};
 use surgeist_css::{
     CssErrorCode, CssNamespaceContext, CssNormalizedItem, CssPseudoClass, CssRecoveryAction,
     CssSelector, CssSelectorBinding, normalize_sheet, parse_selector, parse_selector_list,
@@ -18,35 +22,6 @@ fn assert_clean(source: &str) {
     assert!(report.is_clean(), "{source}: {report:?}");
     assert!(report.syntax().is_some(), "{source}: {report:?}");
     assert!(report.into_validation_result().is_ok(), "{source}");
-}
-
-fn assert_rejected(source: &str) {
-    let report = parse_selector(source, &CssNamespaceContext::default());
-    assert!(report.syntax().is_none(), "{source}: {report:?}");
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one complete rejection: {source}: {report:?}");
-    };
-    assert_eq!(
-        diagnostic.error().code(),
-        CssErrorCode::InvalidSelector,
-        "{source}"
-    );
-    assert_eq!(
-        diagnostic.action(),
-        CssRecoveryAction::RejectInput,
-        "{source}"
-    );
-    assert_eq!(
-        diagnostic.span().start().byte_offset().value(),
-        0,
-        "{source}"
-    );
-    assert_eq!(
-        diagnostic.span().end().byte_offset().value(),
-        source.len(),
-        "{source}"
-    );
-    assert!(report.into_validation_result().is_err(), "{source}");
 }
 
 #[test]
@@ -189,7 +164,7 @@ fn logical_arguments_inherit_the_shadow_functions_compound_restriction() {
                 CssRecoveryAction::DropSelectorListItem,
                 "{source}"
             );
-            assert!(report.into_validation_result().is_err(), "{source}");
+            assert_strict_validation_rejects(report);
         }
         assert_clean(&format!("{function}(:has(> .a .b))"));
     }
@@ -393,7 +368,7 @@ fn forgiving_suffix_lists_inherit_the_current_pseudo_element_restrictions() {
             CssRecoveryAction::DropSelectorListItem,
             "{source}"
         );
-        assert!(report.into_validation_result().is_err(), "{source}");
+        assert_strict_validation_rejects(report);
     }
     // The same structural condition is syntactically valid immediately after
     // an element-backed pseudo-element, although it cannot match there.
@@ -406,14 +381,10 @@ fn shadow_selector_arguments_do_not_consume_outer_list_separators() {
     let report = parse_selector_list(":host(.a), ::slotted(.b), ::part(label)", &context);
     assert!(report.is_clean(), "{report:?}");
     assert_eq!(report.syntax().as_ref().unwrap().selectors().len(), 3);
-    let report = parse_selector_list(":host(.a, .b), .valid", &context);
-    assert!(report.syntax().is_none(), "{report:?}");
-    assert!(
-        report
-            .diagnostics()
-            .iter()
-            .any(|diagnostic| { diagnostic.action() == CssRecoveryAction::RejectInput })
-    );
+    // Shadow 1: :host() takes one <compound-selector>, so its comma
+    // invalidates the whole ordinary list.
+    let source = ":host(.a, .b), .valid";
+    assert_selector_input_rejected(source, parse_selector_list(source, &context));
 }
 
 #[test]

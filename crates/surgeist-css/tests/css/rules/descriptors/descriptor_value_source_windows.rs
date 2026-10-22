@@ -1,4 +1,4 @@
-//! Independent source-entry characterization for existing palette/profile values.
+//! Independent source-entry characterization for palette/profile values.
 //! Fonts4 WD20260907 §9.2 and Color5 WD20260908 §5.3 require their local values;
 //! #504/public source contracts retain original value windows and typed depth256.
 
@@ -338,5 +338,8 @@ fn each_family_retains_its_own_pending_eof_closure_and_fails_clean_validation() 
         CssColorProfileDescriptorKind::Components,
     );
     assert!(invalid_profile.syntax().is_none());
-    assert!(invalid_profile.into_validation_result().is_err());
+    // Variables 1 §3 admits var() only in property values.
+    crate::css::support::rules::invalid_descriptor("color-profile", "components")
+        .at("var(")
+        .assert_first(&invalid_profile);
 }

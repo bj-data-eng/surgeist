@@ -111,7 +111,7 @@ behavior and whether the move changed it.
 | §5.4.10 parse a comma-separated list of component values appends a group only while input remains, so a final comma followed by no token adds no group. | Media query lists, forgiving selector lists and `@font-face` `src` lists no longer report an empty final member; `@media screen,{}` keeps one clean query. Checked import and custom-media construction agree. | Behavior change |
 | §5.4.4 parse a stylesheet's contents and §5.4.5 parse a block's contents replace "parse a list of rules" and "parse a list of declarations". | `parse_declaration_list_text` still implements the removed 2021 list-of-declarations entry point; `parse_declaration_block_contents` already implements block contents. | Deferred: reconciling or removing the historical public front is a public API decision for #1353. |
 | §5.4.6 parse a rule, §5.4.7 parse a declaration (no trailing-input check; value stops at `;`), §5.4.8 and §5.4.9. | `parse_rule`, `parse_declaration`, `parse_component_values` and related fragment fronts keep their whole-input contracts; the conformance registry excludes these entry points (`excluded.O-SYNTAX3.fragment-api`). | Unchanged (outside the claimed boundary) |
-| §5.4.5 is the intended parser for style attributes, where a root `}` ends the block. | `parse_style_attribute` follows the selected CSS Style Attributes recommendation and discards a stray closer; CSSOM declaration-block parsing already uses `parse_declaration_block_contents`. | Deferred: changing the style-attribute front is a public contract decision for #1353. |
+| §5.4.5 is the intended parser for style attributes, where a root `}` ends the block. | `parse_style_attribute` follows the selected CSS Style Attributes recommendation: a root `}` does not end the style data. Like any unit that starts with neither an identifier nor an at-keyword, it starts a malformed declaration whose remnants §5.5.6 consumes through the next root `;` (#1372). The value admits declarations only, so an identifier-started unit that is not a valid declaration, such as `a {} color: red`, is likewise one malformed declaration read through its `;` (CSS 2.1 §4.2, #1396), never a qualified rule ending at its `}`. CSSOM declaration-block parsing already uses `parse_declaration_block_contents`. | Deferred: ending the style attribute at a root `}` is a public contract decision for #1353. |
 | §5.5.2, §5.5.9 and §5.5.10 no longer mark EOF inside an at-rule, block or function as a parse error. | EOF closures keep their `ImplicitClosure` recovery diagnostics, which are this crate's report contract rather than a claim about parse errors. | Unchanged (report contract) |
 | §7.1 no longer states that `!important` is invalid on descriptors; validity is left to the owning rule's prose. | Descriptor grammars still reject an importance annotation. | Unchanged (owning rules define no important descriptors) |
 | §9 reuses preserved comments only when comments were originally between a token pair. | Component serialization already reuses authored comments and inserts `/**/` only where required. | Unchanged |
@@ -140,8 +140,8 @@ unit through the next root semicolon or EOF. Semicolons inside components, strin
 or comments never split the unit.
 
 For example, raw `} color: red; width: 2px;` retains only Width and reports one
-`DropDeclaration` for `} color: red`. The existing style-attribute front retains
-Color and Width after discarding only the closer. Diagnostic spans for raw units
+`DropDeclaration` for `} color: red`; the style-attribute front drops the same
+malformed declaration with the same diagnostic. Diagnostic spans for raw units
 exclude the recovery semicolon; responsible tokens and EOF diagnostics refer to
 the actual input. Tokenizer recovery and structural-limit diagnostics preserve
 the shared policies and actions. No surrounding braces or generated names are used.
@@ -479,11 +479,43 @@ contains concrete semantic, recovery, namespace, coordinate, and depth examples.
 
 Each diagnostic exposes a typed error and stable root code, the first responsible source position, the complete recovery-unit span, and one `CssRecoveryAction`. Source byte offsets index the original UTF-8 input; line and column indices are zero-based, and columns count UTF-16 code units. Display text is for people, not control flow—match typed variants with a wildcard for future non-exhaustive cases.
 
+The responsible position follows one rule for every grammar: values,
+functions, descriptors, at-rule preludes and selector lists.
+
+- When the input contains a token that cannot continue its production, that
+  token is responsible, including a closing `)` or `]`: `rgb(1 2)` names its
+  `)`, as do `linear()` and `linear(0,)`.
+- When the input ends before the value or function is complete (an unclosed
+  function, a value cut short at its end, a prelude ended by its block), the
+  last authored token is responsible: `rgb(1 2` names `2` and
+  `transition-property: opacity,` names the `,`. Only an input without any
+  authored token reports no token. The rule governs grammar rejections;
+  structural end-of-input diagnostics, such as a declaration or qualified
+  rule cut off by the end of the input (`broken`), keep the input-end
+  position with no token.
+- A math function whose contents parse but whose type does not check is
+  responsible as a whole ([Values 4 §10.9](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking)),
+  except that a sum names its incompatible operand: `calc(1px * 1px)` in a
+  length slot names `calc(`, while `calc(1px + 1s)` names `1s`.
+
+Whitespace and comments are never the responsible token; the next authored
+token is. In a prelude, selector list or descriptor value, whitespace after
+a comma is a list member of its own
+([Syntax 3 §5.4.10](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-comma-separated-list-of-component-values)),
+which holds no authored token and so names none; a property value's `#` list
+ignores that whitespace and names the comma. Inside a function the same
+whitespace-only member is followed by the closing `)`, which cannot continue
+it and is responsible (`:is(.valid, )` names `)`); at the end of a prelude
+or selector list it is followed only by the block, so it names no token
+(`.a, {}`). Checked construction admits no implicitly closed group before any
+grammar runs, so it reports such a group at its implicit closure instead.
+
 Property grammars built from [Values 4 §2.2](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#component-combinators)
 `||`/`&&` groups and [§2.3](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#component-multipliers)
 `#` lists share one combinator each. A rejected group reports the first
-component that no remaining operand admits (a repeated or unknown component),
-or the end of the value; nesting and component-resource failures from any
+component that no remaining operand admits (a repeated or unknown component);
+an operand committed by its first token, such as an easing or URL function,
+reports inside itself. Nesting and component-resource failures from any
 operand keep their resource kind. A `#` list bounds each item at its comma.
 Under a producer work control each admitted list item charges two work steps
 (the controlled step and the control's reservation step) and accounts its live
@@ -4982,8 +5014,9 @@ matching under the pinned Fonts 4 §4.1, rather than causing a grammar error.
 the original text, following [Syntax 3 §§4.3.14 and 5.5.11](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-unicode-range-value):
 the token starts with a literal `U` or `u`, and whitespace or a comment ends it.
 So `u+1/**/2`, `u/**/+1` and the escaped `\75+0` are invalid, while
-`/**/u+0/**/` and `u+0 /**/, u+1` are valid. The first whitespace or comment
-inside a range is the responsible token. Checked components, which have no
+`/**/u+0/**/` and `u+0 /**/, u+1` are valid. Following the location rule, the
+first authored token after the whitespace or comment that ends a range is
+responsible: `u+1/**/2` names `2`. Checked components, which have no
 source text, read their own adjacent spellings; an empty comment that their
 serialization inserts is not authored and does not end the token. Numeric spellings are
 interpreted as hexadecimal text, so `u+12e-130` denotes U+012E through U+0130.
@@ -4995,9 +5028,10 @@ with its exact spelling, including escapes and whitespace. A malformed
 representation points to the token containing its first invalid character;
 endpoint order or domain errors identify the token containing the invalid end
 endpoint. Wildcard domain errors identify the first token contributing to that
-endpoint. A genuinely missing token or endpoint retains the bounded input-end
-position with no encountered token. Recovery spans still cover the entire
-dropped descriptor.
+endpoint. A missing token or endpoint names the last authored token (`u+`
+names `+`, `u+0,` names `,`), and the raw fragment, sheet and checked fronts
+name the same token. Recovery spans still cover the entire dropped
+descriptor.
 
 Under the selected Fonts 4 source-list processing rules, each comma-separated
 `src` member is validated independently. Invalid members receive
@@ -5283,7 +5317,7 @@ or aliasing.
 
 ```rust
 use surgeist_css::{
-    CssExclusionReason, CssSpecificationTier, CssSupportStatus,
+    CssExclusionReason, CssFeatureKind, CssSpecificationTier, CssSupportStatus,
     conformance_exclusion, feature_metadata, specification_source,
 };
 
@@ -5294,14 +5328,10 @@ assert!(specification_source("o-color4").is_none());
 let importance = feature_metadata("foundation.declaration.importance")
     .expect("atomic parser-facing record");
 assert_eq!(importance.status(), CssSupportStatus::Complete);
-assert!(importance.baseline_alias_targets().is_empty());
 
-let pseudo_elements = feature_metadata("baseline.selector.pseudo-element")
-    .expect("preserved aggregate alias");
-assert_eq!(
-    pseudo_elements.baseline_alias_targets()[0].as_str(),
-    "official.selector.generated",
-);
+let generated = feature_metadata("official.selector.generated")
+    .expect("atomic pseudo-element record");
+assert_eq!(generated.kind(), CssFeatureKind::Selector);
 
 let processing = conformance_exclusion("excluded.O-IMAGES3.processing")
     .expect("official source exclusion");
@@ -5311,15 +5341,13 @@ assert_eq!(
 );
 ```
 
-An atomic feature record is parser-facing and carries one truthful
-`CssSupportStatus`. The four preserved baseline aggregate aliases remain
-queryable and expose their immutable atomic target slices, but they do not own
-parser dispatch. A private reserved coverage slot identifies a later grammar
+Every feature record is atomic and parser-facing, and carries one truthful
+`CssSupportStatus`. A private reserved coverage slot identifies a later grammar
 boundary only: it is not a feature record, has no support status, and does not
 make its spelling recognized. An exclusion is a public source-audit fact for an
 informative, superseded, or out-of-boundary source item; it likewise carries no
 support status and never changes parser diagnostics. Adding registry metadata,
-aliases, reserved slots, exclusions, or implementation inventories does not
+reserved slots, exclusions, or implementation inventories does not
 change accepted CSS, retained syntax, diagnostics, positions, spans, or
 recovery actions.
 
@@ -6442,8 +6470,8 @@ properties in the selected grammar. The CSSWG
 dropped both names, and neither selected Alignment 3 nor Grid 3 defines them.
 Parsing reports `UnknownProperty` and drops those declarations, including
 CSS-wide and pending values; strict validation rejects the same reports.
-Frozen I01 capture inputs remain unchanged, with explicit current rejection
-witnesses beside their historical observations. Current content alignment
+Spec-cited rows in the public-report characterization record their current
+rejection witnesses. Current content alignment
 properties and custom names such as `--align-tracks` retain their own grammar.
 
 The nine selected Box Alignment 3 properties have checked authored values and
@@ -6497,7 +6525,7 @@ explicitly authored width, style, and color in the shared exact border domains.
 Its intrinsic expansion contributes all three rule longhands in width, style,
 color order, resetting omitted members to `medium`, `none`, and `currentcolor`.
 The shorthand's specified serializer omits initial components and emits
-`medium` when all components are initial; it shares one resource budget across
+`none` when all components are initial, matching `border` and `outline`; it shares one resource budget across
 the complete rule. `column-fill` and `column-span` have noninherited `balance`
 and `none` initials. This authored model does not perform column balancing,
 spanner layout, rule painting, or style-dependent width computation. The
@@ -6614,9 +6642,8 @@ cardinality comes from
 [`feature_catalog()`](../src/conformance.rs). That
 catalog cardinality is distinct from the immutable official inventory of
 exactly 162 property units (161 canonical properties plus the custom-property
-family), one normative legacy shorthand, and 167 non-property units. Historical
-I01 baseline observations remain in the frozen fixtures; the current catalog
-excludes properties removed by the selected standards. The exclusion registry
+family), one normative legacy shorthand, and 167 non-property units. The
+current catalog excludes properties removed by the selected standards. The exclusion registry
 contains exactly 130 rows.
 
 The crate owns authored syntax and canonical serialization. Cascade, substitution,
@@ -6929,9 +6956,8 @@ and normalization remain available through the enclosing authored graph.
 ### Media, supports and imports
 
 Media support metadata cites the selected published MQ5 edition as the effective
-source for query grammar and all 37 feature definitions. Historical feature IDs
-and baseline alias memberships remain stable; they do not select superseded
-semantics. The five existing range rows describe complete signed, symbolic and
+source for query grammar and all 37 feature definitions. Feature IDs remain
+stable; they do not select superseded semantics. The five existing range rows describe complete signed, symbolic and
 source-ordered comparison grammar. Metadata does not claim query evaluation
 or checked import construction.
 
@@ -8384,8 +8410,10 @@ The catalog adds two feature records and two pinned specification sources;
 checked selector grammar without resolving its symbolic ancestry. The provider
 retains authored qualified prefixes, universal selectors, ID/class identity,
 logical-list order, relative combinators in `:has()`, and ordered pseudo-element
-attachment. Nesting and scope anchors remain `&`; explicit `:scope` remains a
-pseudo-class. Identifier and string escaping use the same bounded CSS escaping
+attachment. A compound keeps its simple selectors, including `&`, in authored
+order, so `.class&` emits `.class&`; compound equality includes that order,
+so `.a#b` and `#b.a` are distinct values with the same specificity. Nesting
+and scope anchors remain `&`; explicit `:scope` remains a pseudo-class. Identifier and string escaping use the same bounded CSS escaping
 owner as the existing namespace writer. An unchecked empty or NUL-containing
 scalar name returns `UnrepresentableValue` rather than changing its identity.
 

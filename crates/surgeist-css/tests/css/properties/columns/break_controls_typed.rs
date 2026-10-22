@@ -27,12 +27,27 @@ fn checked_keyword_domains_render_every_canonical_value_with_exact_limits() {
                 .unwrap(),
             expected
         );
-        for limits in [
-            CssSpecifiedValueSerializationLimits::new(0, 1, expected.len()),
-            CssSpecifiedValueSerializationLimits::new(1, 0, expected.len()),
-            CssSpecifiedValueSerializationLimits::new(1, 1, expected.len() - 1),
+        for (limits, kind) in [
+            (
+                CssSpecifiedValueSerializationLimits::new(0, 1, expected.len()),
+                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            ),
+            (
+                CssSpecifiedValueSerializationLimits::new(1, 0, expected.len()),
+                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            ),
+            (
+                CssSpecifiedValueSerializationLimits::new(1, 1, expected.len() - 1),
+                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            ),
         ] {
-            assert!(value.serialize_specified_with_limits(limits).is_err());
+            assert_eq!(
+                value
+                    .serialize_specified_with_limits(limits)
+                    .unwrap_err()
+                    .kind(),
+                kind
+            );
         }
     }
     for (value, expected) in [
@@ -53,12 +68,27 @@ fn checked_keyword_domains_render_every_canonical_value_with_exact_limits() {
                 .unwrap(),
             expected
         );
-        for limits in [
-            CssSpecifiedValueSerializationLimits::new(0, 1, expected.len()),
-            CssSpecifiedValueSerializationLimits::new(1, 0, expected.len()),
-            CssSpecifiedValueSerializationLimits::new(1, 1, expected.len() - 1),
+        for (limits, kind) in [
+            (
+                CssSpecifiedValueSerializationLimits::new(0, 1, expected.len()),
+                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            ),
+            (
+                CssSpecifiedValueSerializationLimits::new(1, 0, expected.len()),
+                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            ),
+            (
+                CssSpecifiedValueSerializationLimits::new(1, 1, expected.len() - 1),
+                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            ),
         ] {
-            assert!(value.serialize_specified_with_limits(limits).is_err());
+            assert_eq!(
+                value
+                    .serialize_specified_with_limits(limits)
+                    .unwrap_err()
+                    .kind(),
+                kind
+            );
         }
     }
 }

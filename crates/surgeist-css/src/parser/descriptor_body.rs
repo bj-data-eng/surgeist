@@ -27,10 +27,10 @@ pub(super) fn parse<'i, Item>(
     production: &'static str,
 ) -> Vec<Item> {
     let mut result = Vec::new();
-    let mut previous_end = input.position().byte_index();
     let mut items = RuleBodyParser::new(input, parser);
     loop {
         let progress = RecoveryProgress::record(items.input);
+        let start = super::rule_list::skip_block_contents_trivia(items.input);
         let Some(item) = items.next() else {
             break;
         };
@@ -61,7 +61,7 @@ pub(super) fn parse<'i, Item>(
                     context.source,
                     failed_error.unwrap_or(error),
                     unit,
-                    previous_end,
+                    start,
                     end,
                     action,
                 ) {
@@ -69,7 +69,6 @@ pub(super) fn parse<'i, Item>(
                 }
             }
         }
-        previous_end = end;
         if outcome == RecoveryLoopOutcome::Terminated {
             break;
         }

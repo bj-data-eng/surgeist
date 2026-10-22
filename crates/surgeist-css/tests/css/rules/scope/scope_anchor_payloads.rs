@@ -3,6 +3,7 @@
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nested-scope-rules
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nest-selector
 //! https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-bounds
+use crate::css::support::rules::sole_scope_selector as single;
 use surgeist_css::*;
 
 fn compound(selector: &CssSelector) -> &CssCompoundSelector {
@@ -17,13 +18,6 @@ fn counts(selector: &CssSelector, nesting: usize, scope: usize, present: bool) {
     assert_eq!(compound.nesting_selectors(), nesting);
     assert_eq!(compound.scope_anchors(), scope);
     assert_eq!(compound.has_scope_anchor(), present);
-}
-
-fn single(list: &CssScopeSelectorList) -> &CssSelector {
-    let [CssScopeSelector::Selector(selector)] = list.selectors() else {
-        panic!("one boundary member")
-    };
-    selector
 }
 
 fn scope_context(normalized: &CssNormalizedSheet, offset: usize) -> &CssRuleContext {

@@ -2,6 +2,7 @@
 //! Values4 2024-03-12 §§5/5.2 define integer spelling; finite implementation
 //! ranges are permitted. Exact ordinary transport and lexical provenance
 //! are adopted Surgeist product contracts, not an arbitrary-precision CSS claim.
+use crate::css::support::value_assertions::property_rejection;
 use surgeist_css::*;
 
 const OUTSIDE_I32: &[&str] = &[
@@ -191,7 +192,7 @@ fn exact_i32_boundaries_signs_and_leading_zeros_retain_tokens() {
 }
 
 #[test]
-fn z_index_auto_and_integer_math_keep_existing_typed_boundaries() {
+fn z_index_auto_and_integer_math_keep_their_typed_boundaries() {
     for text in ["auto", "AUTO", r"a\75 to"] {
         let parsed = parsed(CssKnownProperty::ZIndex, text);
         let components =
@@ -249,7 +250,7 @@ fn order_has_noninherited_longhand_metadata_and_ordinary_initial_shape() {
 }
 
 #[test]
-fn already_admitted_order_literals_and_math_expand_once_with_source_identity() {
+fn admitted_order_literals_and_math_expand_once_with_source_identity() {
     for text in ["0", "-2", "calc(1.5)", "calc(-1.5)"] {
         let declaration = parsed(CssKnownProperty::Order, text);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
@@ -300,18 +301,22 @@ fn noninteger_ordinary_tokens_and_wrong_numeric_roots_remain_invalid() {
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
             assert_eq!(report.syntax().len(), 2);
             let components = parse_component_values(text).unwrap();
-            assert!(
+            property_rejection(
                 parse_property_value(
                     CssPropertyNameRef::Known(property),
                     components,
-                    CssImportance::Normal
-                )
-                .is_err(),
-                "{name}:{text}"
+                    CssImportance::Normal,
+                ),
+                property,
             );
         }
     }
     let report = parse_style_attribute("order:auto");
-    assert!(!report.is_clean());
+    crate::css::support::value_assertions::assert_first_property_diagnostic(
+        report.diagnostics(),
+        "order:auto",
+        CssKnownProperty::Order,
+        "auto",
+    );
     assert!(report.syntax().is_empty());
 }

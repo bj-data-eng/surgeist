@@ -8,21 +8,13 @@
 //! no voice selection, language preservation or acoustic execution occurs here.
 //! Raw component serialization preserves tokens, not canonical model output.
 
+use crate::css::support::named_property::longhand_contributions as expanded;
 use crate::css::support::{
-    important_speech_declaration as declaration, speech_property as property,
+    important_speech_declaration as declaration, known_property as property,
 };
 use surgeist_css::*;
 
 const PROPERTIES: [&str; 2] = ["voice-family", "voice-stress"];
-
-fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("complete terminal expansion")
-    };
-    values
-}
 
 fn assert_admitted(name: &str, value: &str) {
     let source = declaration(name, value);
@@ -179,7 +171,13 @@ fn voice_properties_decode_keyword_case_escapes_and_preserve_authored_tokens() {
                 .as_css(),
             value
         );
-        assert!(components.serialize_with_limit(value.len() - 1).is_err());
+        assert_eq!(
+            components
+                .serialize_with_limit(value.len() - 1)
+                .unwrap_err()
+                .kind(),
+            CssComponentValueErrorKind::ByteLimit
+        );
         assert_eq!(components.serialize().unwrap().as_css(), value);
         let checked = parse_property_value(
             CssPropertyNameRef::Known(property(canonical)),
@@ -218,38 +216,6 @@ fn voice_property_metadata_is_inherited_with_intrinsic_normal_or_user_agent_voic
                     .ordinary_value()
                     .unwrap()
             );
-        }
-    }
-}
-
-#[test]
-fn voice_globals_are_whole_value_keywords_with_one_inherited_terminal_contribution() {
-    for name in PROPERTIES {
-        for (text, keyword) in [
-            ("initial", CssGlobalKeyword::Initial),
-            ("inherit", CssGlobalKeyword::Inherit),
-            ("unset", CssGlobalKeyword::Unset),
-            ("revert", CssGlobalKeyword::Revert),
-            ("revert-layer", CssGlobalKeyword::RevertLayer),
-        ] {
-            let source = declaration(name, text);
-            assert_eq!(source.known().unwrap().global(), Some(keyword));
-            assert!(source.known().unwrap().property_value().is_none());
-            let values = expanded(&source);
-            let [item] = values.items() else {
-                panic!("one global terminal")
-            };
-            assert_eq!(item.property(), property(name));
-            assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-            assert!(item.source().same_occurrence(&source));
-            let checked = parse_property_value(
-                CssPropertyNameRef::Known(property(name)),
-                parse_component_values(text).unwrap(),
-                CssImportance::Important,
-            )
-            .unwrap();
-            assert_eq!(checked.known().unwrap().global(), Some(keyword));
-            assert!(!parse_style_attribute(&format!("{name}:{text} extra")).is_clean());
         }
     }
 }

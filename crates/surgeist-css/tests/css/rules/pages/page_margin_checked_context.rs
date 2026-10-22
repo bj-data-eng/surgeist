@@ -1,5 +1,5 @@
-//! Functional new-API evidence for detached Page declaration construction.
-//! The existing-callable composed Page RED remains unchanged in its own harness.
+//! Detached Page declaration construction through the checked Page front.
+use crate::css::support::rules::ExpectedRejection;
 use surgeist_css::*;
 
 const MARGINS: [CssKnownProperty; 5] = [
@@ -168,19 +168,28 @@ fn checked_page_pending_context_survives_priority_clones_list_assembly_and_retri
                 .same_occurrence(if index == 0 { &source } else { &changed })
         );
         for _ in 0..2 {
-            for invalid in [
-                "7",
-                "1px 2zz",
-                "1px 2px 3yy",
-                "1px 2px 3px calc(0 * 1zz)",
-                "1px 2px 3px 4px 5px",
+            // Box 3 §3.1: margin is <'margin-top'>{1,4}; page context admits
+            // no unitless length and no unknown unit.
+            for (invalid, token) in [
+                ("7", "7"),
+                ("1px 2zz", "2zz"),
+                ("1px 2px 3yy", "3yy"),
+                ("1px 2px 3px calc(0 * 1zz)", "1zz"),
+                ("1px 2px 3px 4px 5px", "5px"),
             ] {
-                assert!(
-                    handle
-                        .reenter(parse_component_values(invalid).unwrap())
-                        .is_err(),
-                    "{invalid}"
-                );
+                let error = handle
+                    .reenter(parse_component_values(invalid).unwrap())
+                    .unwrap_err();
+                let CssExpansionErrorKind::InvalidReplacement(replacement) = error.kind() else {
+                    panic!("{invalid}: invalid replacement: {error:?}")
+                };
+                let CssPropertyValueErrorKind::Grammar(detail) = replacement.kind() else {
+                    panic!("{invalid}: grammar failure: {replacement:?}")
+                };
+                ExpectedRejection::new(CssErrorCode::InvalidPropertyValue)
+                    .named("margin")
+                    .at(token)
+                    .assert_kind(detail);
             }
             let replacement = parse_component_values("1Q 2ch 3rem calc(1cqmin + 2%)").unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()

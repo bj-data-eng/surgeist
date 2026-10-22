@@ -119,8 +119,49 @@ impl<'a> NumericInputContext<'a> {
         fallback: crate::parser::property_input::Site<'i>,
         root: crate::parser::property_input::Site<'i>,
     ) -> crate::parser::property_input::Site<'i> {
+        let truncated = matches!(
+            error.kind(),
+            CssNumericConstructionErrorKind::MalformedExpression
+                | CssNumericConstructionErrorKind::Arity
+        );
         let Some(path) = error.path() else {
+            // A function cut short of its grammar ends after its contents;
+            // the diagnostic rule then names the last authored token there.
+            if truncated && let Some(end) = root.descendant_children_end(&[0]) {
+                return end;
+            }
             return fallback;
+        };
+        // Only a root function cut short is truncated; a path into it names
+        // the component where the expression first stops being valid.
+        if truncated
+            && path.len() == 1
+            && let Some(end) = root.descendant_children_end(path)
+        {
+            return end;
+        }
+        // An operator that ends its function lacks the operand the closing
+        // token cannot supply.
+        if truncated
+            && let Some(end) = root
+                .descendant(path, false)
+                .and_then(|site| site.trailing_operator_end())
+        {
+            return end;
+        }
+        // Values 4 §10.9: a grammatical multi-term calculation whose type
+        // does not check is responsible as a whole, through its enclosing
+        // function; a single operand of the wrong type is itself responsible.
+        let path = match error.kind() {
+            CssNumericConstructionErrorKind::RootDomainMismatch
+                if path.len() > 1
+                    && root
+                        .descendant(path, false)
+                        .is_some_and(|site| site.begins_expression()) =>
+            {
+                &path[..path.len() - 1]
+            }
+            _ => path,
         };
         let closing = matches!(error.origin(), Some(CssValueOrigin::ImplicitClosure { .. }));
         root.descendant(path, closing).unwrap_or(fallback)
@@ -2499,11 +2540,15 @@ fn construct_validated(
         result.ty = CssNumericType::dimension(CssNumericDimension::Length)
     }
     if !root.accepts(result.ty) {
-        return Err(CssNumericConstructionError::at(
-            CssNumericConstructionErrorKind::RootDomainMismatch,
-            Some(c),
-        )
-        .with_path(Some(vec![root_index].into_boxed_slice())));
+        // Values 4 §10.9: where percentages resolve against no other type,
+        // a sum that needed a percent hint fails "add two types" itself.
+        let kind = if root == CalculationRoot::Percentage && result.ty.percent_hint().is_some() {
+            CssNumericConstructionErrorKind::IncompatibleTypes
+        } else {
+            CssNumericConstructionErrorKind::RootDomainMismatch
+        };
+        return Err(CssNumericConstructionError::at(kind, Some(c))
+            .with_path(Some(vec![root_index].into_boxed_slice())));
     }
     let canonical_bytes = result.canonical_len(usize::MAX).ok_or_else(|| {
         CssNumericConstructionError::component(CssComponentValueError::new(

@@ -998,6 +998,29 @@ fn charge_query(
     Ok(())
 }
 
+/// The rejection of a `<media-query-list>` member that holds no media query.
+/// Such a member has no authored token to name (trivia is never responsible),
+/// so the rejection carries the empty member's position: its whitespace (a
+/// member of its own, Syntax 3 §5.4.10), or for a member with no token at all
+/// the comma that ends it, or the one before it. `None` when
+/// `items[start..end]` holds a component.
+pub(crate) fn empty_media_member_error(
+    items: &[CssComponentValue],
+    start: usize,
+    end: usize,
+) -> Option<CssMediaConstructionError> {
+    let member = &items[start..end];
+    if !member.iter().all(crate::supports::trivia) {
+        return None;
+    }
+    let origin = member
+        .first()
+        .or_else(|| items.get(end))
+        .or_else(|| start.checked_sub(1).and_then(|index| items.get(index)))
+        .map_or(CssValueOrigin::Programmatic, |value| value.origin().clone());
+    Some(CssMediaConstructionError::InvalidQueryGrammar { origin })
+}
+
 pub(crate) fn check_canonical_limit(
     query: &CssMediaQuery,
     max_bytes: usize,

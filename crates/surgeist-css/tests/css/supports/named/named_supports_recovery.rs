@@ -103,7 +103,7 @@ fn missing_colon_item_recovers_locally_while_block_form_remains_a_qualified_test
             CssSupportsTestItem::Declarations(_)
         ]
     ));
-    assert!(validate_sheet(clean).is_ok());
+    assert_eq!(validate_sheet(clean).unwrap(), *report.syntax());
 }
 
 #[test]
@@ -140,7 +140,7 @@ fn bad_string_url_and_nested_function_tokens_drop_only_their_declaration() {
             declaration_names(definition(report.syntax()).body()),
             ["head", "bad", "tail"]
         );
-        assert!(validate_sheet(source).is_ok());
+        assert_eq!(validate_sheet(source).unwrap(), *report.syntax());
     }
 }
 

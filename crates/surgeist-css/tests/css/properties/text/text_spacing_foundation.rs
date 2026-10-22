@@ -5,6 +5,7 @@
 //! resolution waits for the used font size of the current element.
 
 use crate::css::support::important_declaration as declaration;
+use crate::css::support::named_property::longhand_contributions;
 use surgeist_css::*;
 
 const PROPERTIES: &[(CssKnownProperty, &str, &str)] = &[
@@ -21,12 +22,7 @@ const PROPERTIES: &[(CssKnownProperty, &str, &str)] = &[
 ];
 
 fn expanded(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).unwrap()
-    else {
-        panic!("one text-spacing terminal")
-    };
-    items.items().to_vec()
+    longhand_contributions(source).items().to_vec()
 }
 
 #[test]
@@ -87,7 +83,7 @@ fn signed_percentages_and_mixed_math_remain_authored_symbolic_values() {
 }
 
 #[test]
-fn exact_large_exponent_authored_tokens_and_existing_signed_lengths_are_retained() {
+fn exact_large_exponent_authored_tokens_and_signed_lengths_are_retained() {
     for &(_, name, _) in PROPERTIES {
         for value in [
             "1e999%",
@@ -132,28 +128,6 @@ fn invalid_dimensions_keywords_and_multiple_values_drop_without_losing_neighbors
             };
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
             assert!(validate_style_attribute(&source).is_err());
-        }
-    }
-}
-
-#[test]
-fn all_css_wide_keywords_remain_symbolic_single_longhand_contributions() {
-    for (spelling, keyword) in [
-        ("initial", CssGlobalKeyword::Initial),
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        for &(property, name, _) in PROPERTIES {
-            let source = declaration(name, spelling);
-            let [item] = expanded(&source)
-                .try_into()
-                .unwrap_or_else(|_| panic!("one global terminal"));
-            assert_eq!(item.property(), property);
-            assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-            assert!(item.source().same_occurrence(&source));
-            assert_eq!(item.source().importance(), CssImportance::Important);
         }
     }
 }

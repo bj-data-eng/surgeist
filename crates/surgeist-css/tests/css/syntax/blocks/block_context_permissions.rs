@@ -7,19 +7,15 @@
 use crate::css::support::descriptor_phases;
 use descriptor_phases::*;
 
+use crate::css::support::authored_syntax::{
+    assert_strict_rejection, known_properties as properties,
+};
 use surgeist_css::{
     CssDeclarationContextRef, CssDeclarationList, CssErrorCode, CssFontDisplay,
     CssFontFaceDescriptorKind, CssFontFeatureValueKind, CssFontFeatureValuesItem, CssImportance,
     CssKeyframeSelector, CssKnownProperty, CssNamespaceContext, CssRecoveryAction, CssRule,
     ErrorKind, parse_declaration_list_text, parse_sheet, parse_style_block,
 };
-
-fn properties(declarations: &CssDeclarationList) -> Vec<CssKnownProperty> {
-    declarations
-        .iter()
-        .map(|declaration| declaration.known().unwrap().property())
-        .collect()
-}
 
 fn ordered_style_contents(declarations: &CssDeclarationList, rules: &[CssRule]) {
     assert_eq!(properties(declarations), [CssKnownProperty::Color]);
@@ -96,9 +92,18 @@ fn same_authored_contents_have_style_permissions_in_real_brace_front_and_sheet_b
             CssRecoveryAction::DropDeclaration
         ]
     );
-    assert!(block_report.into_validation_result().is_err());
-    assert!(sheet_report.into_validation_result().is_err());
-    assert!(raw_report.into_validation_result().is_err());
+    assert_strict_rejection(
+        block_report.clone().into_validation_result(),
+        block_report.diagnostics(),
+    );
+    assert_strict_rejection(
+        sheet_report.clone().into_validation_result(),
+        sheet_report.diagnostics(),
+    );
+    assert_strict_rejection(
+        raw_report.clone().into_validation_result(),
+        raw_report.diagnostics(),
+    );
 }
 
 #[test]

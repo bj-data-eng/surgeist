@@ -6,7 +6,7 @@ use super::protocol::{
 };
 use super::tokens::ClassifiedToken;
 use crate::numeric::bounded_decimal::DecimalOutcome;
-use crate::tokenization::color_tokens::NumberKind;
+use crate::tokenization::tokenizer::NumberKind;
 use crate::{CssAngleUnit, CssNumericType, CssNumericUnit};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -259,7 +259,7 @@ impl<'owner> LiteralConversion<'owner> {
         if actual != token.token {
             return Err(CssColorProtocolError::WrongSlot);
         }
-        let crate::tokenization::color_tokens::TokenKind::Number { kind, .. } = actual.kind else {
+        let crate::tokenization::tokenizer::TokenKind::Number { kind, .. } = actual.kind else {
             return Err(CssColorProtocolError::Input);
         };
         if kind == NumberKind::Dimension && token.unit.is_none() {

@@ -1,15 +1,18 @@
 //! Typed CSS 2.1 line-height and shared font slash contracts.
 
+use crate::css::support::named_property::normal_grammar_components;
+use crate::css::support::named_property::{
+    assert_implicit_closure_rejection, assert_invalid_replacement_at, assert_property_grammar_error,
+};
 use surgeist_css::{
     CssComponentValue, CssComponentValues, CssContributionValueRef, CssContributions, CssExpansion,
     CssExpansionErrorKind, CssFontValue, CssGlobalKeyword, CssImportance, CssInitialValueRef,
     CssKnownProperty, CssKnownPropertyValueRef, CssLengthPercentageCalculation, CssLineHeight,
-    CssLonghandValueRef, CssNumberCalculation, CssNumericConstructionErrorKind, CssPropertyGrammar,
-    CssPropertyKindRef, CssPropertyValueErrorKind, CssSerializedOrigin,
-    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
-    expand_declaration, parse_component_values, parse_property_value_for_grammar,
-    parse_style_attribute,
+    CssLonghandValueRef, CssNumberCalculation, CssNumericConstructionErrorKind, CssPropertyKindRef,
+    CssPropertyValueErrorKind, CssSerializedOrigin, CssSpecifiedNonNegativeLengthPercentage,
+    CssSpecifiedNonNegativeNumber, CssSpecifiedValueSerializationErrorKind,
+    CssSpecifiedValueSerializationLimits, CssValueOrigin, expand_declaration,
+    parse_component_values, parse_style_attribute,
 };
 
 fn property(text: &str) -> CssLineHeight {
@@ -24,16 +27,6 @@ fn property(text: &str) -> CssLineHeight {
         panic!("line height")
     };
     value.line_height().clone()
-}
-
-fn checked(
-    components: CssComponentValues,
-) -> Result<surgeist_css::CssDeclaration, surgeist_css::CssPropertyValueParseError> {
-    parse_property_value_for_grammar(
-        CssPropertyGrammar::from_name("line-height").unwrap(),
-        components,
-        CssImportance::Normal,
-    )
 }
 
 #[test]
@@ -116,14 +109,16 @@ fn parsed_and_programmatic_values_have_distinct_origins_but_semantic_equality() 
     .unwrap();
     assert_ne!(parsed_length, &programmatic_length);
     assert_eq!(length, CssLineHeight::LengthPercentage(programmatic_length));
-    let checked_value = checked(parse_component_values("1.250").unwrap()).unwrap();
+    let checked_value =
+        normal_grammar_components("line-height", parse_component_values("1.250").unwrap()).unwrap();
     let CssKnownPropertyValueRef::LineHeight(value) =
         checked_value.known().unwrap().property_value().unwrap()
     else {
         panic!("checked")
     };
     assert_eq!(value.line_height(), &parsed);
-    let invalid = checked(
+    let invalid = normal_grammar_components(
+        "line-height",
         CssComponentValues::try_new(vec![CssComponentValue::try_number("-1e-999").unwrap()])
             .unwrap(),
     )
@@ -136,7 +131,9 @@ fn parsed_and_programmatic_values_have_distinct_origins_but_semantic_equality() 
         invalid.origin(),
         &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
     );
-    let invalid = checked(parse_component_values("  -1e-999").unwrap()).unwrap_err();
+    let invalid =
+        normal_grammar_components("line-height", parse_component_values("  -1e-999").unwrap())
+            .unwrap_err();
     let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = invalid.origin() else {
         panic!("parsed invalid token origin")
     };
@@ -264,16 +261,48 @@ fn pending_reentry_and_shorthand_share_strict_authored_grammar() {
             CssComponentValue::try_token(tokens.1).unwrap(),
         ])
         .unwrap();
-        assert!(handle.reenter(adjacent).is_err(), "adjacent {tokens:?}");
-    }
-    for invalid in ["-1e-999", "var(--still)", "env(still)", "calc(1 + 2%)"] {
-        assert!(
-            handle
-                .reenter(parse_component_values(invalid).unwrap())
-                .is_err(),
-            "{invalid}"
+        // The second programmatic token cannot follow a complete line-height.
+        let error = handle.reenter(adjacent).unwrap_err();
+        let CssExpansionErrorKind::InvalidReplacement(mapped) = error.kind() else {
+            panic!("adjacent {tokens:?}: {error:?}")
+        };
+        assert_property_grammar_error(mapped, CssKnownProperty::LineHeight);
+        assert_eq!(
+            mapped.origin(),
+            &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
         );
     }
+    // CSS 2.1 line-height: a negative number and a number-plus-percentage
+    // sum are outside its grammar; a residual substitution cannot reenter.
+    for (invalid, rest) in [
+        ("-1e-999", Some("-1e-999")),
+        ("var(--still)", None),
+        ("env(still)", None),
+    ] {
+        let error = handle
+            .reenter(parse_component_values(invalid).unwrap())
+            .unwrap_err();
+        match rest {
+            Some(rest) => {
+                assert_invalid_replacement_at(&error, CssKnownProperty::LineHeight, invalid, rest)
+            }
+            None => assert_eq!(
+                error.kind(),
+                &CssExpansionErrorKind::ResidualSubstitution,
+                "{invalid}"
+            ),
+        }
+    }
+    // Values 4 §10.9: the number-plus-percentage sum stops type checking at
+    // its percentage operand.
+    assert_invalid_replacement_at(
+        &handle
+            .reenter(parse_component_values("calc(1 + 2%)").unwrap())
+            .unwrap_err(),
+        CssKnownProperty::LineHeight,
+        "calc(1 + 2%)",
+        "2%)",
+    );
     assert_eq!(
         handle
             .reenter(parse_component_values("var(--still)").unwrap())
@@ -376,12 +405,13 @@ fn recovered_math_is_retained_by_raw_parse_but_rejected_by_strict_construction_a
         else {
             panic!("pending")
         };
-        assert!(
-            handle
-                .reenter(parse_component_values(text).unwrap())
-                .is_err(),
-            "{text}"
-        );
+        let error = handle
+            .reenter(parse_component_values(text).unwrap())
+            .unwrap_err();
+        let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+            panic!("{text}: {error:?}")
+        };
+        assert_implicit_closure_rejection(error, text);
     }
 }
 

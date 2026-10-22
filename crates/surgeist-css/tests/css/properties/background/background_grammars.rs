@@ -400,7 +400,7 @@ fn background_empty_comma_items_and_eof_report_exact_recovery() {
     for (invalid, responsible) in [
         (
             "background: url(hero.png),;",
-            "background: url(hero.png),".len(),
+            "background: url(hero.png)".len(),
         ),
         (
             "background: url(hero.png),, none;",
@@ -408,9 +408,9 @@ fn background_empty_comma_items_and_eof_report_exact_recovery() {
         ),
         (
             "background-origin: border-box,;",
-            "background-origin: border-box,".len(),
+            "background-origin: border-box".len(),
         ),
-        ("background-image: none,;", "background-image: none,".len()),
+        ("background-image: none,;", "background-image: none".len()),
     ] {
         let source = format!("{invalid} color: red");
         let report = parse_style_attribute(&source);

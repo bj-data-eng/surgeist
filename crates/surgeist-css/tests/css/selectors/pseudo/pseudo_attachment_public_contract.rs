@@ -2,20 +2,13 @@
 //! Selectors4 WD20260122 §§3.6/3.10/Appendix B, Selectors3 legacy colon syntax,
 //! imported Pseudo4 WD20250627 marker/element-backed definitions and the selected
 //! Shadow1 slotted definition. Matching, specificity and live identity are absent.
+use crate::css::support::admitted_selector as selector;
+use crate::css::support::color_and_selector_fixtures::{
+    assert_selector_item_dropped, assert_selector_rejected as reject,
+    assert_selector_report_rejected, assert_unrepresentable_construction,
+    originating_compound as compound,
+};
 use surgeist_css::*;
-
-fn selector(source: &str) -> CssSelector {
-    let report = parse_selector(source, &CssNamespaceContext::default());
-    assert!(report.is_clean(), "{source}: {report:?}");
-    report.syntax().clone().unwrap()
-}
-
-fn compound(value: &CssSelector) -> &CssCompoundSelector {
-    let CssSelector::Compound(value) = value else {
-        panic!("originating compound")
-    };
-    value
-}
 
 fn unknown(value: &CssSelector) -> &CssUnknownWebkitPseudoElement {
     let [CssPseudoElementSegment::PseudoElement(CssPseudoElement::UnknownWebkit(value))] =
@@ -24,12 +17,6 @@ fn unknown(value: &CssSelector) -> &CssUnknownWebkitPseudoElement {
         panic!("one symbolic unknown pseudo-element")
     };
     value
-}
-
-fn reject(source: &str) {
-    let report = parse_selector(source, &CssNamespaceContext::default());
-    assert!(report.syntax().is_none(), "{source}: {report:?}");
-    assert!(!report.is_clean());
 }
 
 fn exact(source: &str, expected: &str) -> CssSelector {
@@ -274,22 +261,14 @@ fn generic_suffixes_are_admitted_and_part_permission_resets_after_unknown_segmen
     }
     reject("::part(label)::-webkit-x:autofill");
     selector("::part(label)::-webkit-x:focus");
-    let report = parse_selector(
-        "::part(label)::-webkit-x:is(:autofill,:hover)",
-        &CssNamespaceContext::default(),
-    );
-    assert!(!report.is_clean());
+    let source = "::part(label)::-webkit-x:is(:autofill,:hover)";
+    let report = parse_selector(source, &CssNamespaceContext::default());
     let value = report.syntax().as_ref().unwrap();
     assert_eq!(
         value.to_specified_css().unwrap(),
         "::part(label)::-webkit-x:is(:hover)"
     );
-    assert!(
-        report
-            .diagnostics()
-            .iter()
-            .any(|diagnostic| diagnostic.action() == CssRecoveryAction::DropSelectorListItem)
-    );
+    assert_selector_item_dropped(source, report, ":autofill");
 }
 
 #[test]
@@ -362,11 +341,11 @@ fn all_current_pseudo_rows_reject_internal_and_sibling_combinators() {
 #[test]
 fn strict_and_forgiving_contexts_preserve_pseudo_exclusion_and_original_function_diagnostics() {
     let vendor = selector("::-webkit-x");
-    assert!(CssPseudoSelectorList::try_new(vec![vendor.clone()]).is_err());
+    assert_unrepresentable_construction(CssPseudoSelectorList::try_new(vec![vendor.clone()]));
     assert!(
         CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(vendor.clone())]).is_none()
     );
-    assert!(CssPseudoSelectorList::try_new_forgiving(vec![vendor]).is_err());
+    assert_unrepresentable_construction(CssPseudoSelectorList::try_new_forgiving(vec![vendor]));
     for strict in [
         ":not(.Keep,::-webkit-x)",
         ":has(> ::-webkit-x)",
@@ -376,11 +355,8 @@ fn strict_and_forgiving_contexts_preserve_pseudo_exclusion_and_original_function
         reject(strict);
     }
     for function in ["is", "where"] {
-        let report = parse_selector(
-            &format!(":{function}(::-webkit-x,.Keep)"),
-            &CssNamespaceContext::default(),
-        );
-        assert!(!report.is_clean());
+        let source = format!(":{function}(::-webkit-x,.Keep)");
+        let report = parse_selector(&source, &CssNamespaceContext::default());
         assert_eq!(
             report
                 .syntax()
@@ -390,20 +366,16 @@ fn strict_and_forgiving_contexts_preserve_pseudo_exclusion_and_original_function
                 .unwrap(),
             format!(":{function}(.Keep)")
         );
-        assert!(
-            report
-                .diagnostics()
-                .iter()
-                .any(|diagnostic| diagnostic.action() == CssRecoveryAction::DropSelectorListItem)
-        );
+        assert_selector_item_dropped(&source, report, "::-webkit-x");
     }
     selector("::slotted(:has(>.child))::before"); // exact adopted Shadow/Has control
     selector("::slotted(:-webkit-autofill)::before");
-    let list = parse_selector_list(
-        ".Keep,::-webkit-jkl(),.Tail",
-        &CssNamespaceContext::default(),
+    // Selectors 4 §4.1: one invalid member invalidates an ordinary list.
+    let list = ".Keep,::-webkit-jkl(),.Tail";
+    assert_selector_report_rejected(
+        list,
+        parse_selector_list(list, &CssNamespaceContext::default()),
     );
-    assert!(list.syntax().is_none());
     let scope = parse_sheet("@scope(::-webkit-x){.lost{color:red}}.after{color:blue}");
     assert!(matches!(scope.syntax().rules(), [CssRule::Style(_)]));
     assert!(
@@ -585,17 +557,29 @@ fn canonical_pseudos_survive_nested_scoped_normalization_and_original_supports_c
     let replay = parse_sheet(expected);
     assert!(replay.is_clean(), "{replay:?}");
     assert_eq!(replay.syntax().to_specified_css().unwrap(), expected);
-    for source in ["selector(:-webkit-autofill)", "selector(::-webkit-x)"] {
+    // Conditional 4 §2.1 (CRD 2025-09-04, #dfn-support-selector) supports a selector
+    // only if it "doesn't contain unknown -webkit- pseudo-elements". CSS owns
+    // the syntax: both conditions are `selector()` functions, and the checked
+    // selector identifies the standard autofill alias and the symbolic unknown
+    // vendor pseudo-element that a supports evaluator must treat as unsupported.
+    let supported = |source: &str| {
         let condition = CssSupportsCondition::try_from_components(
             parse_component_values(source).unwrap(),
             &CssNamespaceContext::default(),
         )
         .unwrap();
-        assert!(matches!(
-            condition.kind(),
-            CssSupportsConditionKind::Selector(_)
-        ));
-    }
+        let CssSupportsConditionKind::Selector(value) = condition.kind() else {
+            panic!("{source}: selector() condition")
+        };
+        value.clone()
+    };
+    let autofill = supported("selector(:-webkit-autofill)");
+    assert_eq!(autofill, CssSelector::PseudoClass(CssPseudoClass::Autofill));
+    assert!(!autofill.has_pseudo_elements());
+    let vendor = supported("selector(::-webkit-x)");
+    assert!(vendor.has_pseudo_elements());
+    assert_eq!(unknown(&vendor).as_str(), "-webkit-x");
+    assert!(compound(&vendor).type_selector().is_none());
     let invalid = CssSupportsCondition::try_from_components(
         parse_component_values("selector(::-webkit-x())").unwrap(),
         &CssNamespaceContext::default(),

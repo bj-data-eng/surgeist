@@ -6,6 +6,7 @@ use crate::css::support::validated_important_declaration as declaration;
 use surgeist_css::*;
 
 use crate::css::support::authored_property;
+use crate::css::support::named_property::sole_longhand_contribution as contribution;
 
 type PropertyCase = (
     &'static str,
@@ -22,39 +23,6 @@ const CASES: &[PropertyCase] = &[(
     &["auto", "none", "AUTO", r"n\6f ne"],
     &["", "normal", "thin", "1", "10%", "auto none", "auto,none"],
 )];
-
-fn contribution(source: &CssDeclaration) -> CssLonghandContribution {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).expect("selected authored longhand expands")
-    else {
-        panic!("one completed longhand")
-    };
-    let [item] = values.items() else {
-        panic!("exactly one terminal contribution")
-    };
-    assert_eq!(item.property(), source.known().unwrap().property());
-    assert!(item.source().same_occurrence(source));
-    assert_eq!(item.source().importance(), source.importance());
-    item.clone()
-}
-
-#[test]
-fn source_derived_valid_values_are_admitted_with_original_components() {
-    for &(name, _, _, valid, _) in CASES {
-        for &text in valid {
-            let source = declaration(name, text);
-            assert!(source.known().unwrap().property_value().is_some());
-            assert!(source.parsed_value().is_some());
-            assert!(
-                source
-                    .value_components()
-                    .items()
-                    .iter()
-                    .all(|item| { !matches!(item.origin(), CssValueOrigin::Programmatic) })
-            );
-        }
-    }
-}
 
 #[test]
 fn checked_construction_admits_the_same_grammar_and_preserves_input_origins() {
@@ -145,56 +113,6 @@ fn intrinsic_longhand_metadata_has_the_pinned_initial_and_inheritance() {
 }
 
 #[test]
-fn ordinary_values_contribute_once_without_losing_occurrence_or_importance() {
-    for &(name, _, _, valid, _) in CASES {
-        for &text in valid {
-            let parsed = declaration(name, text);
-            let property = parsed.known().unwrap().property();
-            let checked = parse_property_value(
-                CssPropertyNameRef::Known(property),
-                parsed.value_components().clone(),
-                CssImportance::Important,
-            )
-            .unwrap();
-            let parsed_item = contribution(&parsed);
-            let checked_item = contribution(&checked);
-            assert!(parsed_item.ordinary_value().is_some());
-            assert_eq!(parsed_item.ordinary_value(), checked_item.ordinary_value());
-            assert!(parsed_item.replacement_components().is_none());
-            assert!(checked_item.replacement_components().is_none());
-        }
-    }
-}
-
-#[test]
-fn css_wide_values_contribute_symbolic_keywords() {
-    for &(name, _, _, _, _) in CASES {
-        for (text, keyword) in [
-            ("initial", CssGlobalKeyword::Initial),
-            ("inherit", CssGlobalKeyword::Inherit),
-            ("unset", CssGlobalKeyword::Unset),
-            ("revert", CssGlobalKeyword::Revert),
-            ("revert-layer", CssGlobalKeyword::RevertLayer),
-        ] {
-            let source = declaration(name, text);
-            assert_eq!(source.known().unwrap().global(), Some(keyword));
-            assert_eq!(
-                contribution(&source).value(),
-                CssContributionValueRef::Global(keyword)
-            );
-        }
-    }
-}
-
-#[test]
-fn pending_reentry_is_strict_repeatable_and_retains_replacement_provenance() {
-    for &(name, _, _, valid, invalid) in CASES {
-        let terminal = name;
-        authored_property::pending_longhand_reentry(name, valid, invalid, terminal, declaration);
-    }
-}
-
-#[test]
 fn normalization_retains_order_and_importance_with_an_exact_contribution_limit() {
     for &(name, _, _, valid, _) in CASES {
         authored_property::normalized_longhand_order_and_limit(name, valid);
@@ -250,7 +168,7 @@ fn invalid_recovery_control_preserves_neighbors_and_the_original_snapshot() {
 }
 
 #[test]
-fn existing_color_lifecycle_control_exercises_the_same_shared_front_doors() {
+fn color_lifecycle_control_exercises_the_same_shared_front_doors() {
     let source = declaration("color", "red");
     let item = contribution(&source);
     assert_eq!(item.property(), CssKnownProperty::Color);

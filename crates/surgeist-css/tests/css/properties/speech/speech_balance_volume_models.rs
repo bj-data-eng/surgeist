@@ -2,7 +2,7 @@
 //! inherited adjustments, user calibration and synthesis stay downstream.
 //! Existing-public RED is preserved in speech_balance_volume_lifecycle.rs.
 
-use crate::css::support::first_important_declaration as declaration;
+use crate::css::support::important_declaration as declaration;
 use surgeist_css::*;
 
 fn balance(source: &CssDeclaration) -> &CssVoiceBalance {

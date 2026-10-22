@@ -3,6 +3,7 @@
 //! has six names. Direct Motion positions import the full Values5 position grammar.
 //! Bearing, paths, anchors, tangent rotation and resource loading stay symbolic.
 
+use crate::css::support::serialization_limits::LimitLadder;
 use crate::css::support::{
     authored_declaration_through_front as declaration, check_property_components as checked,
     discoverable_property as property,
@@ -734,7 +735,7 @@ fn shorthand_metadata_has_five_settable_members_in_source_order_and_no_reset_onl
 }
 
 #[test]
-fn omitted_shorthand_members_still_contribute_all_five_ordinary_terminals_in_source_order() {
+fn omitted_shorthand_members_contribute_all_five_ordinary_terminals_in_source_order() {
     // New Motion payload variants have no preimplementation callable borrowed
     // boundary. Independent normal/none/zero/auto/auto payload and provenance
     // assertions belong to functional new-variant tests with implementation.
@@ -952,32 +953,9 @@ fn budget(name: &str, input: &str, value: &str, nodes: usize) {
     let output = format!("{name}: {value} !important;");
     for front in 0..5 {
         let source = declaration(name, input, front);
-        let before = source.clone();
-        assert_eq!(
-            source
-                .to_specified_css_with_limits(L::new(nodes, nodes, output.len()))
-                .unwrap(),
-            output
-        );
-        for (limits, kind) in [
-            (L::new(nodes - 1, nodes, output.len()), K::InputNodeLimit),
-            (
-                L::new(nodes, nodes - 1, output.len()),
-                K::ProjectionNodeLimit,
-            ),
-            (L::new(nodes, nodes, output.len() - 1), K::ByteLimit),
-        ] {
-            for _ in 0..2 {
-                assert_eq!(
-                    source
-                        .to_specified_css_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
-                    kind
-                );
-                assert_eq!(source, before);
-            }
-        }
+        LimitLadder::new(&output, nodes, nodes).assert_unchanged(&source, |source, limits| {
+            source.to_specified_css_with_limits(limits)
+        });
         assert_eq!(source.to_specified_css().unwrap(), output);
     }
 }

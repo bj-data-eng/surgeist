@@ -1,13 +1,8 @@
 //! CSS2 REC 2011-06-07 §9.9.1 supplies auto and exact signed integers,
 //! initial auto, noninheritance. Values4 specified math and the shared bounded
 //! writer are existing product contracts; computed integer rounding is downstream.
+use crate::css::support::important_declaration;
 use surgeist_css::*;
-
-fn declaration(text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("z-index:{text}!important"));
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    report.syntax()[0].clone()
-}
 
 fn value(source: &CssDeclaration) -> &CssZIndexValue {
     let CssKnownPropertyValueRef::ZIndex(value) = source.known().unwrap().property_value().unwrap()
@@ -52,7 +47,7 @@ fn initial_and_ordinary_longhand_payloads_expose_exact_z_index_values() {
     assert_eq!(initial, &CssZIndexValue::Auto);
     assert_eq!(initial.serialize_specified().unwrap(), "auto");
     for text in ["AUTO", "+0002147483648", "-2147483649", "calc(1.5)"] {
-        let source = declaration(text);
+        let source = important_declaration("z-index", text);
         assert_eq!(&expanded(&source), value(&source));
         let checked = parse_property_value(
             CssPropertyNameRef::Known(CssKnownProperty::ZIndex),
@@ -90,12 +85,12 @@ fn canonical_auto_exact_integers_and_unrounded_math_round_trip_without_mutation(
         ("calc(infinity)", "calc(infinity)"),
         ("calc(NaN)", "calc(NaN)"),
     ] {
-        let source = declaration(input);
+        let source = important_declaration("z-index", input);
         let before = source.clone();
         let value = value(&source);
         assert_eq!(value.serialize_specified().unwrap(), expected, "{input}");
         assert_eq!(
-            self::value(&declaration(expected))
+            self::value(&important_declaration("z-index", expected))
                 .serialize_specified()
                 .unwrap(),
             expected
@@ -130,7 +125,7 @@ fn canonical_auto_exact_integers_and_unrounded_math_round_trip_without_mutation(
 #[test]
 fn each_z_index_branch_obeys_atomic_input_projection_and_byte_limits() {
     for text in ["auto", "+0002", "calc(1 + 2)"] {
-        let source = declaration(text);
+        let source = important_declaration("z-index", text);
         let value = value(&source);
         let before = value.clone();
         for (limits, kind) in [
@@ -181,7 +176,7 @@ fn each_z_index_branch_obeys_atomic_input_projection_and_byte_limits() {
 
 #[test]
 fn reentered_z_index_longhand_retains_parsed_and_programmatic_integer_origins() {
-    let source = declaration("var(--level)");
+    let source = important_declaration("z-index", "var(--level)");
     let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
         panic!("pending")
     };
@@ -259,7 +254,7 @@ fn reentered_z_index_longhand_retains_parsed_and_programmatic_integer_origins() 
 
 #[test]
 fn parsed_symbolic_math_keeps_origins_after_late_projection_and_byte_failure() {
-    let source = declaration("sign(1em - 1px)");
+    let source = important_declaration("z-index", "sign(1em - 1px)");
     let value = value(&source);
     let before = value.clone();
     let CssZIndexValue::Integer(CssIntegerValue::Calculation(math)) = value else {

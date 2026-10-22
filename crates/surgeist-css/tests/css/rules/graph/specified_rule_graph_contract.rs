@@ -1,31 +1,19 @@
 //! Authored rule composition, cumulative resource and immutable graph contracts.
 //! CSS Syntax 3 §8.3/9 and the specified-output provider contracts.
+use crate::css::support::rules::ExpectedRejection;
+use crate::css::support::rules::assert_exact_specified_sheet as exact;
+use crate::css::support::rules::clean_sheet as sheet;
 use std::error::Error;
 use surgeist_css::{
-    CssMediaRule, CssNamespaceContext, CssRecoveryAction, CssRule, CssSheet,
+    CssErrorCode, CssMediaRule, CssNamespaceContext, CssRecoveryAction, CssRule, CssSheet,
     CssSpecifiedRuleSerializationErrorKind as RuleError,
     CssSpecifiedValueSerializationError as ValueError,
     CssSpecifiedValueSerializationErrorKind as Kind,
     CssSpecifiedValueSerializationLimits as Limits, parse_sheet,
 };
 
-fn sheet(source: &str) -> CssSheet {
-    let report = parse_sheet(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    report.syntax().clone()
-}
-
-fn exact(source: &str, expected: &str) {
-    let input = sheet(source);
-    let before = input.clone();
-    assert_eq!(input.to_specified_css().unwrap(), expected);
-    assert_eq!(input, before);
-    // Supplemental semantic stability; the independent text above is the oracle.
-    assert_eq!(sheet(expected).to_specified_css().unwrap(), expected);
-}
-
 #[test]
-fn existing_namespace_and_font_providers_remain_callable_controls() {
+fn namespace_and_font_providers_remain_callable_controls() {
     exact(
         "@namespace n 'u';@font-face{}",
         "@namespace n url(\"u\");\n@font-face { }",
@@ -41,7 +29,7 @@ fn immutable_style_output_preserves_duplicate_importance_and_child_run_order() {
 }
 
 #[test]
-fn groups_compose_existing_typed_providers_without_losing_sibling_order() {
+fn groups_compose_typed_providers_without_losing_sibling_order() {
     exact(
         "@media PRINT,ONLY SCREEN{@supports (display: grid){@layer ink{@font-face{font-weight:500}@color-profile --x{}}}@font-face{font-weight:600}}",
         "@media print, only screen { @supports (display: grid) { @layer ink { @font-face { font-weight: 500; } @color-profile --x { } } } @font-face { font-weight: 600; } }",
@@ -105,7 +93,15 @@ fn valid_symbolic_media_conditions_keep_grouping_case_and_member_order() {
 fn invalid_declaration_recovery_drops_only_the_invalid_occurrence() {
     let report = parse_sheet(".x{opacity:.25;opacity:bad;opacity:.5!important}");
     let before = report.clone();
-    assert!(!report.is_clean());
+    // Color 4 §3.2: opacity takes <opacity-value>; `bad` matches nothing.
+    let [diagnostic] = report.diagnostics() else {
+        panic!("one dropped declaration: {:?}", report.diagnostics())
+    };
+    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
+    ExpectedRejection::new(CssErrorCode::InvalidPropertyValue)
+        .named("opacity")
+        .at("bad")
+        .assert_first(&report);
     assert_eq!(
         report.syntax().to_specified_css().unwrap(),
         ".x { opacity: 0.25; opacity: 0.5 !important; }"

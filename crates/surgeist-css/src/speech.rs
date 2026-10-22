@@ -465,7 +465,7 @@ impl CssDecibelLiteral {
     }
 
     fn is_zero(&self) -> bool {
-        crate::exact_decimal::LexicalDecimal::new(self.numeric().representation()).len == 0
+        crate::exact_decimal::LexicalDecimal::new(self.numeric().representation()).is_zero()
     }
 
     fn equivalent(&self, other: &Self) -> bool {
@@ -1472,7 +1472,7 @@ impl CssVoicePitchRange {
                     let coefficient = writer.css[start..]
                         .strip_suffix(crate::frequency::suffix(literal.unit()))
                         .expect("frequency provider emits its selected canonical unit");
-                    if crate::exact_decimal::LexicalDecimal::new(coefficient).len == 0 {
+                    if crate::exact_decimal::LexicalDecimal::new(coefficient).is_zero() {
                         return Err(CssSpecifiedValueSerializationError::new(
                             crate::CssSpecifiedValueSerializationErrorKind::UnrepresentableValue,
                         ));

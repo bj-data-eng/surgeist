@@ -1,37 +1,7 @@
 //! Display 3 longhand transport through shared expansion and normalization.
-use crate::css::support::first_style_declaration as declaration;
+use crate::css::support::property_admission::assert_invalid_value;
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
-
-#[test]
-fn display_globals_transport_the_same_single_terminal_without_cascade() {
-    for (text, expected) in [
-        ("initial", CssGlobalKeyword::Initial),
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        for (suffix, importance) in [
-            ("", CssImportance::Normal),
-            ("!important", CssImportance::Important),
-        ] {
-            let source = declaration(&format!("display:{text}{suffix}"));
-            let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-                expand_declaration(&source).unwrap()
-            else {
-                panic!("global terminal")
-            };
-            let [item] = items.items() else {
-                panic!("one terminal")
-            };
-            assert_eq!(item.property(), CssKnownProperty::Display);
-            assert_eq!(item.value(), CssContributionValueRef::Global(expected));
-            assert!(item.ordinary_value().is_none());
-            assert!(item.source().same_occurrence(&source));
-            assert_eq!(item.source().importance(), importance);
-        }
-    }
-}
 
 #[test]
 fn display_pending_reentry_is_complete_atomic_and_preserves_both_origins() {
@@ -136,7 +106,15 @@ fn recovered_display_declaration_keeps_order_and_exact_normalization_budgets() {
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropDeclaration
     );
-    assert!(validate_sheet(source).is_err());
+    assert_invalid_value(
+        report.diagnostics()[0].error().kind(),
+        CssKnownProperty::Display,
+        Some("grid-lanes"),
+    );
+    assert_eq!(
+        validate_sheet(source).unwrap_err().diagnostics(),
+        report.diagnostics()
+    );
     for (limits, resource, limit) in [
         (
             CssNormalizationLimits::try_new(0, 0, 2, 2).unwrap(),

@@ -4,9 +4,10 @@
 //! Symbolic output follows the accepted Position owner: Cartesian x/y order,
 //! named and relative flow block/inline order, without writing-mode resolution.
 
-use surgeist_css::{
-    CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
-};
+use crate::css::support::authored_declaration_through_front as declaration;
+use crate::css::support::known_property as property;
+use crate::css::support::serialization_limits::LimitLadder;
+use surgeist_css::*;
 
 const LONGHANDS: [&str; 5] = [
     "offset-position",
@@ -15,70 +16,6 @@ const LONGHANDS: [&str; 5] = [
     "offset-rotate",
     "offset-anchor",
 ];
-
-fn property(name: &str) -> CssKnownProperty {
-    CssKnownProperty::from_name(name).unwrap()
-}
-
-fn declaration(name: &str, value: &str, front: usize) -> CssDeclaration {
-    let p = property(name);
-    let source = match front {
-        0 => {
-            let css = format!("/*😀*/{name}:{value}!important");
-            let report = parse_style_attribute(&css);
-            assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-            assert_eq!(validate_style_attribute(&css), Ok(report.syntax().clone()));
-            assert_eq!(report.syntax().len(), 1);
-            let source = report.syntax()[0].clone();
-            assert_eq!(source.parsed_name().unwrap().source().as_str(), css);
-            source
-        }
-        1 | 2 => {
-            let components = parse_component_values(value).unwrap();
-            let snapshot = components.clone();
-            let result = if front == 1 {
-                parse_property_value(
-                    CssPropertyNameRef::Known(p),
-                    components.clone(),
-                    CssImportance::Important,
-                )
-            } else {
-                parse_property_value_for_grammar(
-                    p.grammar(),
-                    components.clone(),
-                    CssImportance::Important,
-                )
-            };
-            let source = result.unwrap_or_else(|error| panic!("{name}:{value}: {error:?}"));
-            assert_eq!(components, snapshot);
-            assert_eq!(source.value_components(), &components);
-            source
-        }
-        3 | 4 => {
-            let report = if front == 3 {
-                parse_property_value_text(
-                    value,
-                    CssPropertyNameRef::Known(p),
-                    CssImportance::Important,
-                )
-            } else {
-                parse_property_value_text_for_grammar(value, p.grammar(), CssImportance::Important)
-            };
-            assert!(
-                report.is_clean(),
-                "{name}:{value}: {:?}",
-                report.diagnostics()
-            );
-            let source = report.syntax().as_ref().unwrap().clone();
-            assert_eq!(source.parsed_value().unwrap().source().as_str(), value);
-            source
-        }
-        _ => unreachable!(),
-    };
-    assert_eq!(source.known().unwrap().property(), p);
-    assert_eq!(source.importance(), CssImportance::Important);
-    source
-}
 
 fn full_position(position: impl Into<CssPosition>) -> CssPosition {
     position.into()
@@ -340,7 +277,7 @@ fn physical_positions_remain_clean_in_every_motion_consumer() {
 }
 
 #[test]
-fn existing_full_position_owner_supplies_three_symbolic_families() {
+fn full_position_owner_supplies_three_symbolic_families() {
     for (input, expected) in [
         ("y-end x-start", "x-start y-end"),
         (
@@ -770,30 +707,6 @@ fn pending_shorthand_reenters_all_three_families_with_original_source() {
     );
 }
 
-#[test]
-fn css_wide_values_remain_symbolic_across_motion_consumers() {
-    for name in ["offset-position", "offset-anchor", "offset-path", "offset"] {
-        for (text, keyword) in [
-            ("initial", CssGlobalKeyword::Initial),
-            ("inherit", CssGlobalKeyword::Inherit),
-            ("unset", CssGlobalKeyword::Unset),
-            ("revert", CssGlobalKeyword::Revert),
-            ("revert-layer", CssGlobalKeyword::RevertLayer),
-        ] {
-            let source = declaration(name, text, 0);
-            let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-                expand_declaration(&source).unwrap()
-            else {
-                panic!("globals")
-            };
-            assert_eq!(items.items().len(), if name == "offset" { 5 } else { 1 });
-            for item in items.items() {
-                assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-            }
-        }
-    }
-}
-
 fn offset(source: &CssDeclaration) -> &CssOffset {
     let CssKnownPropertyValueRef::Offset(value) = source.known().unwrap().property_value().unwrap()
     else {
@@ -1050,29 +963,9 @@ fn physical_composition_confirms_the_same_cumulative_budget_control() {
 }
 
 fn composed_budget(value: &CssOffset, expected: &str) {
-    let snapshot = value.clone();
     // Offset 1 + three positions (aggregate and two axes each) 9 + path pair 1
     // + ray 1 + literal angle 1 + authored default size 1 + contain 1 = 15.
-    assert_eq!(
-        value
-            .serialize_specified_with_limits(L::new(15, 15, expected.len()))
-            .unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (L::new(14, 15, expected.len()), K::InputNodeLimit),
-        (L::new(15, 14, expected.len()), K::ProjectionNodeLimit),
-        (L::new(15, 15, expected.len() - 1), K::ByteLimit),
-    ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
-        assert_eq!(value, &snapshot);
-    }
+    LimitLadder::new(expected, 15, 15)
+        .assert_unchanged(value, CssOffset::serialize_specified_with_limits);
     assert_eq!(value.serialize_specified().unwrap(), expected);
-    assert_eq!(value, &snapshot);
 }

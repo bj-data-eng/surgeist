@@ -8,18 +8,9 @@
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nesting-other-at-rules
 //! https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/#layer-block
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-rule
+use crate::css::support::rules::normalized_rule_contexts as contexts;
+use crate::css::support::rules::page_pseudo;
 use surgeist_css::*;
-
-fn contexts(sheet: &CssNormalizedSheet) -> Vec<&CssRuleContext> {
-    sheet
-        .items()
-        .iter()
-        .filter_map(|item| match item {
-            CssNormalizedItem::Rule(context) => Some(context),
-            _ => None,
-        })
-        .collect()
-}
 
 fn assert_admitted(group: &str, expected_diagnostics: usize) {
     let bad = if expected_diagnostics == 0 {
@@ -427,11 +418,4 @@ fn isolated_style_block_preserves_style_ancestry() {
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropAtRule
     );
-}
-
-fn page_pseudo(page: &surgeist_css::CssPageRule) -> Option<surgeist_css::CssPagePseudo> {
-    page.selectors()
-        .selectors()
-        .first()
-        .and_then(|s| s.pseudos().first().copied())
 }

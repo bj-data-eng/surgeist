@@ -3,6 +3,9 @@
 //! shortening. CSSOM owns strings; shared specified providers own work/byte
 //! limits. No face lookup, initial-value resolution or resource load is performed.
 
+use crate::css::support::rules::descriptor_rejected_at;
+use crate::css::support::rules::ordinary_font_face_descriptor as ordinary;
+use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::*;
 
 type Kind = CssFontFaceDescriptorKind;
@@ -38,48 +41,10 @@ fn cases() -> [(Kind, &'static str, &'static str); 14] {
     ]
 }
 
-fn ordinary(source: &str, kind: Kind) -> Value {
-    let value = parse_font_face_descriptor_value(source, kind)
-        .into_validation_result()
-        .unwrap()
-        .unwrap();
-    let Authored::Ordinary(value) = value else {
-        panic!("ordinary descriptor: {source}")
-    };
-    value
-}
-
 fn assert_atomic_limits(value: &Value, expected: &str, nodes: usize) {
-    let before = value.clone();
-    assert_eq!(
-        value
-            .serialize_specified_with_limits(Limits::new(nodes, nodes, expected.len()))
-            .unwrap(),
-        expected
-    );
-    for (limits, error) in [
-        (
-            Limits::new(nodes - 1, nodes, expected.len()),
-            ErrorKind::InputNodeLimit,
-        ),
-        (
-            Limits::new(nodes, nodes - 1, expected.len()),
-            ErrorKind::ProjectionNodeLimit,
-        ),
-        (
-            Limits::new(nodes, nodes, expected.len() - 1),
-            ErrorKind::ByteLimit,
-        ),
-    ] {
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            error
-        );
-        assert_eq!(value, &before);
-    }
+    LimitLadder::new(expected, nodes, nodes).assert_unchanged(value, |value, limits| {
+        value.serialize_specified_with_limits(limits)
+    });
     assert_eq!(value.serialize_specified().unwrap(), expected);
 }
 
@@ -145,10 +110,13 @@ fn environment_pending_values_reenter_each_concrete_grammar_without_mutating_aut
             assert_eq!(value.kind(), kind);
             assert_eq!(value.serialize_specified().unwrap(), expected);
             for residual in ["env(face-value)", "var(--face-value)"] {
-                assert!(
+                assert_eq!(
                     pending
                         .reparse_after_substitution(parse_component_values(residual).unwrap())
-                        .is_err()
+                        .unwrap_err()
+                        .kind(),
+                    &CssFontFaceValueErrorKind::ResidualSubstitution,
+                    "{kind:?}: {residual}"
                 );
             }
             assert_eq!(pending.components(), &before);
@@ -173,19 +141,25 @@ fn environment_pending_values_reenter_each_concrete_grammar_without_mutating_aut
 #[test]
 fn descriptor_boundaries_and_stylesheet_only_substitution_do_not_become_ordinary_values() {
     for (kind, source, _) in cases() {
-        for invalid in [
-            "initial".to_owned(),
-            "var(--face-value)".to_owned(),
-            format!("{source}!important"),
-            format!("{source};"),
+        // CSS-wide keywords and var() are property-value forms, and
+        // <declaration-value> excludes a top-level `!` or `;`.
+        for (invalid, token) in [
+            ("initial".to_owned(), "initial"),
+            ("var(--face-value)".to_owned(), "var("),
+            (format!("{source}!important"), "!"),
+            (format!("{source};"), ";"),
         ] {
+            let expected = descriptor_rejected_at("font-face", kind.css_name(), token);
             let report = parse_font_face_descriptor_value(&invalid, kind);
             assert!(report.syntax().is_none(), "{kind:?}: {invalid}: {report:?}");
-            assert!(report.into_validation_result().is_err());
-            assert!(
+            expected.assert_first(&report);
+            let error =
                 Authored::try_from_components(kind, parse_component_values(&invalid).unwrap())
-                    .is_err()
-            );
+                    .unwrap_err();
+            let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
+                panic!("{kind:?}: {invalid}: grammar failure: {error:?}")
+            };
+            expected.assert_kind(detail);
         }
     }
 }
@@ -364,7 +338,13 @@ fn eof_string_recovery_stays_visible_and_checked_descriptor_reentry_rejects_it()
         );
         assert!(report.into_validation_result().is_err());
         let components = parse_component_values(source).unwrap();
-        assert!(Authored::try_from_components(kind, components.clone()).is_err());
+        assert_eq!(
+            Authored::try_from_components(kind, components.clone())
+                .unwrap_err()
+                .kind(),
+            &CssFontFaceValueErrorKind::RecoveredComponent,
+            "{kind:?}: {source}"
+        );
         let Authored::Pending(pending) = parse_font_face_descriptor_value("env(face-value)", kind)
             .into_validation_result()
             .unwrap()
@@ -372,7 +352,14 @@ fn eof_string_recovery_stays_visible_and_checked_descriptor_reentry_rejects_it()
         else {
             panic!("pending descriptor")
         };
-        assert!(pending.reparse_after_substitution(components).is_err());
+        assert_eq!(
+            pending
+                .reparse_after_substitution(components)
+                .unwrap_err()
+                .kind(),
+            &CssFontFaceValueErrorKind::RecoveredComponent,
+            "{kind:?}: {source}"
+        );
     }
 }
 

@@ -5,7 +5,7 @@
 //! Typed initial and new borrowed contribution variants are supplementary
 //! functional tests after implementation, not compilation-failure RED.
 
-use crate::css::support::style_declaration as declaration;
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
 
 fn color(source: &CssDeclaration) -> &CssColor {
@@ -72,26 +72,6 @@ fn ordinary_colors_expand_once_retaining_checked_source_and_importance() {
         let item = completed(&source);
         assert_ordinary(&item, &source);
         assert_eq!(color(item.source()), &expected);
-        assert!(item.replacement_components().is_none());
-    }
-}
-
-#[test]
-fn all_five_css_wide_keywords_remain_symbolic() {
-    for (text, keyword) in [
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("initial", CssGlobalKeyword::Initial),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        let source = declaration(&format!("background-color:{text}!important"));
-        let item = completed(&source);
-        assert_eq!(item.property(), CssKnownProperty::BackgroundColor);
-        assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-        assert!(item.ordinary_value().is_none());
-        assert!(item.source().same_occurrence(&source));
-        assert_eq!(item.source().importance(), CssImportance::Important);
         assert!(item.replacement_components().is_none());
     }
 }

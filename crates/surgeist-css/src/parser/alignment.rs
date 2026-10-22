@@ -42,10 +42,13 @@ fn legacy(name: &str) -> Option<CssLegacyAlignment> {
     })
 }
 
+/// One alignment value and the location of its keyword after any
+/// `<overflow-position>`, which a property's own grammar may reject.
 fn parse_value<'i, 't>(
     input: &mut Parser<'i, 't>,
     justify_items: bool,
-) -> Result<CssAlignmentValue, ParseError<'i, Error>> {
+) -> Result<(CssAlignmentValue, super::property_input::Site<'i>), ParseError<'i, Error>> {
+    let mut word_location = input.current_source_location();
     let first = keyword(input)?;
     let overflow = match first.as_str() {
         "safe" => Some(CssOverflowPosition::Safe),
@@ -53,6 +56,8 @@ fn parse_value<'i, 't>(
         _ => None,
     };
     let word = if overflow.is_some() {
+        input.skip_whitespace();
+        word_location = input.current_source_location();
         keyword(input)?
     } else {
         first
@@ -91,7 +96,7 @@ fn parse_value<'i, 't>(
         }
         word => {
             let Some(position) = position(word) else {
-                return Err(unexpected_at(input.current_source_location()));
+                return Err(unexpected_at(word_location));
             };
             if justify_items
                 && overflow.is_none()
@@ -104,7 +109,7 @@ fn parse_value<'i, 't>(
             }
         }
     };
-    Ok(value)
+    Ok((value, word_location))
 }
 
 macro_rules! longhand {
@@ -112,8 +117,9 @@ macro_rules! longhand {
         pub(super) fn $name<'i, 't>(
             input: &mut Parser<'i, 't>,
         ) -> Result<$type, ParseError<'i, Error>> {
-            let location = input.current_source_location();
-            let value = parse_value(input, $legacy)?;
+            // Align 3: the keyword this property's grammar excludes is
+            // responsible; an admitted `<overflow-position>` is a valid prefix.
+            let (value, location) = parse_value(input, $legacy)?;
             $type::try_new(value).ok_or_else(|| unexpected_at(location))
         }
     };

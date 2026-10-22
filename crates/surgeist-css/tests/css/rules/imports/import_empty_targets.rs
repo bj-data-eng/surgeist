@@ -1,10 +1,12 @@
 //! Cascade 5 #at-import admits string/URL targets independently of loading.
 //! Values 4 (2024-03-12) #urls and #empty-urls recognize empty URL values;
 //! Syntax 3 (2026-10-01) #consume-url-token distinguishes them from bad URLs.
+use crate::css::support::rules::ExpectedRejection;
 use surgeist_css::{
-    CssImportLayer, CssImportRule, CssImportString, CssImportTarget, CssImportUrl, CssMediaQuery,
-    CssMediaType, CssNamespaceContext, CssRecoveryAction, CssRule, CssSerializedOrigin,
-    CssSupportsConditionKind, CssValueOrigin, parse_rule, parse_sheet, validate_sheet,
+    CssErrorCode, CssImportLayer, CssImportRule, CssImportString, CssImportTarget, CssImportUrl,
+    CssMediaQuery, CssMediaType, CssNamespaceContext, CssRecoveryAction, CssRule,
+    CssSerializedOrigin, CssSupportsConditionKind, CssValueOrigin, parse_rule, parse_sheet,
+    validate_sheet,
 };
 
 // Authored spelling, URL-versus-string target, exact decoded value.
@@ -278,19 +280,22 @@ fn eof_unclosed_empty_urls_retain_targets_with_implicit_closure_diagnostics() {
 }
 
 #[test]
-fn missing_numeric_and_lexically_bad_targets_still_reject_without_losing_styles() {
-    for invalid in [
-        "@import;",
-        "@import 1;",
-        "@import url(a b);",
-        "@import \"a\n;",
+fn missing_numeric_and_lexically_bad_targets_reject_without_losing_styles() {
+    // Cascade 5 §2: the prelude starts with [ <url> | <string> ]; bad URL
+    // and bad string tokens are neither.
+    let prelude = ExpectedRejection::new(CssErrorCode::InvalidAtRulePrelude).in_rule("import");
+    for (invalid, expected) in [
+        ("@import;", prelude.clone().at_end()),
+        ("@import 1;", prelude.clone().at("1")),
+        ("@import url(a b);", prelude.clone()),
+        ("@import \"a\n;", prelude.clone()),
     ] {
         let fragment = parse_rule(invalid, &CssNamespaceContext::default());
         assert!(fragment.syntax().is_none(), "{invalid}");
-        assert!(!fragment.is_clean(), "{invalid}");
+        expected.assert_first(&fragment);
         let source = format!("{invalid} .after {{ color: red; }}");
         let report = parse_sheet(&source);
-        assert!(!report.is_clean(), "{invalid}");
+        expected.assert_first(&report);
         assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
     }
 }

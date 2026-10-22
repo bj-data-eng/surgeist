@@ -184,7 +184,7 @@ fn exhausted_alternatives_recover_media_once_after_the_first_valid_clauses() {
 }
 
 #[test]
-fn reserved_bare_media_identifiers_still_recover_after_an_anonymous_layer_clause() {
+fn reserved_bare_media_identifiers_recover_after_an_anonymous_layer_clause() {
     let report = parse_sheet(&source("layer layer"));
     let [CssRule::Import(import), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("import with media recovery");

@@ -6,26 +6,14 @@
 //! these characterizations exercise syntax and context without evaluating matching
 //! or specificity.
 
+use crate::css::support::rules::ExpectedRejection;
+use crate::css::support::rules::declaration_text;
 use surgeist_css::{
-    CssDeclaration, CssErrorCode, CssNamespaceContext, CssNormalizedItem, CssNormalizedSheet,
-    CssPseudoClass, CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSelector,
-    CssSelectorBinding, CssSelectorCombinator, CssStyleSelector, CssTokenKind, ErrorKind,
-    normalize_sheet, parse_selector, parse_sheet,
+    CssErrorCode, CssNamespaceContext, CssNormalizedItem, CssNormalizedSheet, CssPseudoClass,
+    CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSelector, CssSelectorBinding,
+    CssSelectorCombinator, CssStyleSelector, CssTokenKind, ErrorKind, normalize_sheet,
+    parse_selector, parse_sheet,
 };
-
-fn declaration_text(declaration: &CssDeclaration) -> (&str, &str) {
-    let name = declaration
-        .parsed_name()
-        .expect("original parsed declaration name");
-    let value = declaration
-        .parsed_value()
-        .expect("original parsed declaration value");
-    let name_text = &name.source().as_str()
-        [name.span().start().byte_offset().value()..name.span().end().byte_offset().value()];
-    let value_text = &value.source().as_str()
-        [value.span().start().byte_offset().value()..value.span().end().byte_offset().value()];
-    (name_text, value_text.trim())
-}
 
 fn stream(sheet: &CssNormalizedSheet) -> Vec<String> {
     sheet
@@ -343,20 +331,31 @@ fn identifier_led_invalid_child_is_one_recovery_unit_without_descendant_promotio
     );
     assert_eq!(diagnostic.span().start().line().value(), 0);
     assert_eq!(diagnostic.span().start().column().value() as usize, start);
-    // cssparser 0.37's declaration fallback retains expect_colon's original
-    // error after the qualified-rule attempt fails. Unlike the &-led case,
-    // the encountered token is the ampersand following the first identifier.
+    // Syntax 3 (2026 CRD) §5.5.5 reparses the failed declaration as a nested
+    // qualified rule; the dropped rule's own failure is its selector's, at the
+    // same relative position as the same rule at the top level: a type
+    // selector cannot follow `&` within one compound (Selectors 4 §3.1).
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
-    assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedToken);
+    assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);
     assert_eq!(
         diagnostic.error().position().byte_offset().value(),
-        start + 3
+        start + 4
     );
-    let ErrorKind::UnexpectedToken(detail) = diagnostic.error().kind() else {
-        panic!("original declaration fallback error");
+    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
+        panic!("the nested rule's selector failure");
     };
-    assert_eq!(detail.encountered().kind(), CssTokenKind::Delim);
-    assert_eq!(detail.encountered().authored(), "&");
+    let encountered = detail.encountered().expect("responsible selector token");
+    assert_eq!(encountered.kind(), CssTokenKind::Ident);
+    assert_eq!(encountered.authored(), "extra");
+    let top = parse_sheet(failed);
+    let [top_diagnostic] = top.diagnostics() else {
+        panic!("the same rule at the top level");
+    };
+    assert_eq!(top_diagnostic.error().kind(), diagnostic.error().kind());
+    assert_eq!(
+        top_diagnostic.error().position().byte_offset().value() + start,
+        diagnostic.error().position().byte_offset().value()
+    );
     let normalized = normalize_sheet(report.syntax()).unwrap();
     assert_eq!(
         stream(&normalized),
@@ -378,7 +377,8 @@ fn legal_type_first_and_noninitial_repeated_anchors_have_stable_specified_output
     let namespaces = CssNamespaceContext::default();
     for (source, expected, type_name, anchors) in [
         ("div&&.Card", "div&&.Card", Some("div"), 2),
-        (".Card&&", "&&.Card", None, 2),
+        // CSSOM serializes a compound's simple selectors in authored order.
+        (".Card&&", ".Card&&", None, 2),
         ("div&", "div&", Some("div"), 1),
         // CSS Syntax hexadecimal escape 44 decodes to D; it remains a type name.
         (r"\44 iv&&.Card", "Div&&.Card", Some("Div"), 2),
@@ -427,13 +427,15 @@ fn legal_type_first_and_noninitial_repeated_anchors_have_stable_specified_output
             .unwrap()
             .to_specified_css()
             .unwrap(),
-        ".Lead > &&.Card"
+        ".Lead > .Card&&"
     );
-    for source in ["&div", "&-suffix"] {
+    // Selectors 4 §3.1: a type selector must start its compound.
+    for (source, token) in [("&div", "div"), ("&-suffix", "-suffix")] {
         let report = parse_selector(source, &namespaces);
         assert!(report.syntax().is_none(), "{source}");
-        assert!(!report.is_clean());
-        assert!(report.into_validation_result().is_err());
+        ExpectedRejection::new(CssErrorCode::InvalidSelector)
+            .at(token)
+            .assert_first(&report);
     }
 }
 

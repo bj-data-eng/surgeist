@@ -32,10 +32,10 @@ coverage. Expansion of the remaining properties is still unfinished.
 
 Each ordinary property wrapper retains its authored declaration and one checked
 semantic value. Its semantic accessor exposes the owning domain directly;
-`as_css()` preserves the exact authored ordinary slice. The immutable I01
-fixtures record historical parser observations, which tests interpret through
-concrete semantic expectations. They do not define a production compatibility
-API. The `all` property remains global or substitution-dependent only.
+`as_css()` preserves the exact authored ordinary slice. The public-report
+characterization fixture records spec-cited parser observations, which tests
+interpret through concrete semantic expectations. It does not define a
+production compatibility API. The `all` property remains global or substitution-dependent only.
 
 ## Support metadata describes a selected surface
 

@@ -4,6 +4,7 @@
 //! records belong in tests/css/support/property_expectations/records.rs later.
 //! This file names only existing public symbols. New typed model/variant/provider
 //! tests accompany functional implementation; absent symbols/stubs are not RED.
+use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::*;
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
@@ -798,43 +799,12 @@ fn original_repaired_closures_fail_checked_and_reentry_but_closed_retry_succeeds
 }
 
 fn exact_budget(source: &CssDeclaration, expected: &str, input: usize, projection: usize) {
-    let snapshot = source.clone();
-    let exact = Limits::new(input, projection, expected.len());
-    assert_eq!(
-        source.to_specified_css_with_limits(exact).unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (
-            Limits::new(input - 1, projection, expected.len()),
-            Kind::InputNodeLimit,
-        ),
-        (
-            Limits::new(input, projection - 1, expected.len()),
-            Kind::ProjectionNodeLimit,
-        ),
-        (
-            Limits::new(input, projection, expected.len() - 1),
-            Kind::ByteLimit,
-        ),
-    ] {
-        assert_eq!(
-            source
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            kind
-        );
-        assert_eq!(*source, snapshot);
-    }
-    assert_eq!(
-        source.to_specified_css_with_limits(exact).unwrap(),
-        expected
-    );
+    LimitLadder::new(expected, input, projection)
+        .assert_unchanged(source, CssDeclaration::to_specified_css_with_limits);
 }
 
 #[test]
-fn existing_source_graph_tariffs_are_cumulative_exact_and_atomic_at_declaration_boundary() {
+fn source_graph_tariffs_are_cumulative_exact_and_atomic_at_declaration_boundary() {
     for (name, authored, expected, input, projection) in [
         ("mask", "none", "mask: none !important;", 5, 5),
         ("mask", "none, none", "mask: none, none !important;", 7, 7),
@@ -929,25 +899,6 @@ fn checked_component_source_budget_counts_comma_and_both_layers_cumulatively() {
     )
     .unwrap();
     exact_budget(&source, "mask: none, none !important;", 7, 7);
-}
-
-#[test]
-fn all_masking_globals_spend_one_keyword_without_spending_shorthand_member_output() {
-    for name in [
-        "mask",
-        "mask-border",
-        "mask-mode",
-        "mask-clip",
-        "mask-origin",
-        "mask-composite",
-        "clip-rule",
-        "mask-type",
-    ] {
-        for keyword in ["inherit", "initial", "unset", "revert", "revert-layer"] {
-            let source = admitted(name, keyword);
-            exact_budget(&source, &format!("{name}: {keyword} !important;"), 3, 3);
-        }
-    }
 }
 
 #[test]

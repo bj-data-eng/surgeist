@@ -131,12 +131,14 @@ fn every_descriptor_kind_returns_its_source_neutral_typed_value() {
 }
 
 #[test]
-fn incomplete_unicode_range_uses_actual_raw_eof_without_a_responsible_token() {
-    for (source, line, column) in [
-        ("", 0, 0),
-        ("U+", 0, 2),
-        ("u", 0, 1),
-        ("/*😀*/\r\n/*é*/U+", 1, 7),
+fn incomplete_unicode_range_names_the_last_authored_raw_token() {
+    // Input ends before the range is complete: its last authored token is
+    // responsible, and only an empty input reports its end without one.
+    for (source, last, line, column) in [
+        ("", None, 0, 0),
+        ("U+", Some("+"), 0, 1),
+        ("u", Some("u"), 0, 0),
+        ("/*😀*/\r\n/*é*/U+", Some("+"), 1, 6),
     ] {
         let report = parse_font_face_descriptor_value(source, Kind::UnicodeRange);
         assert!(report.syntax().is_none(), "{source}: {report:?}");
@@ -151,7 +153,8 @@ fn incomplete_unicode_range_uses_actual_raw_eof_without_a_responsible_token() {
         );
         assert_eq!(
             diagnostic.error().position().byte_offset().value(),
-            source.len()
+            last.map_or(source.len(), |last| source.rfind(last).unwrap()),
+            "{source:?}"
         );
         assert_eq!(diagnostic.error().position().line().value(), line);
         assert_eq!(diagnostic.error().position().column().value(), column);
@@ -160,7 +163,13 @@ fn incomplete_unicode_range_uses_actual_raw_eof_without_a_responsible_token() {
         let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
             panic!("typed descriptor error");
         };
-        assert!(detail.encountered().is_none());
+        assert_eq!(
+            detail
+                .encountered()
+                .map(surgeist_css::CssTokenSummary::authored),
+            last,
+            "{source:?}"
+        );
     }
 }
 

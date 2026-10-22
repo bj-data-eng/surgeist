@@ -3,7 +3,8 @@
 //! govern order and equivalent defaults. Values 4 §10.13 and the shared numeric
 //! owner govern specified math; parser/model grammar gaps remain separate.
 
-use crate::css::support::style_declaration as declaration;
+use crate::css::support::serialization_limits::assert_limits_with_zero as budget;
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::{
     CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
 };
@@ -42,33 +43,6 @@ macro_rules! parsed {
 }
 fn transform(function: CssTransformFunction) -> CssTransform {
     CssTransform::Functions(CssTransformFunctionList::try_new(vec![function]).unwrap())
-}
-fn budget(
-    expected: &str,
-    input: usize,
-    projection: usize,
-    serialize: impl Fn(L) -> Result<String, CssSpecifiedValueSerializationError>,
-) {
-    assert_eq!(
-        serialize(L::new(input, projection, expected.len())).unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (
-            L::new(input - 1, projection, expected.len()),
-            K::InputNodeLimit,
-        ),
-        (
-            L::new(input, projection - 1, expected.len()),
-            K::ProjectionNodeLimit,
-        ),
-        (L::new(input, projection, expected.len() - 1), K::ByteLimit),
-        (L::new(0, projection, expected.len()), K::InputNodeLimit),
-        (L::new(input, 0, expected.len()), K::ProjectionNodeLimit),
-        (L::new(input, projection, 0), K::ByteLimit),
-    ] {
-        assert_eq!(serialize(limits).unwrap_err().kind(), kind);
-    }
 }
 macro_rules! check {
     ($value:expr, $input:expr, $projection:expr, $expected:expr) => {{
@@ -171,7 +145,7 @@ fn parsed_and_constructed_functions_reenter_with_the_same_semantic_fields() {
 }
 
 #[test]
-fn transform_optional_arguments_are_classified_before_rounding_and_still_visited() {
+fn transform_optional_arguments_are_classified_before_rounding_and_visited() {
     for (source, expected) in [
         ("translate(10px, 0px)", "translate(10px)"),
         ("translate(10px, 0%)", "translate(10px)"),

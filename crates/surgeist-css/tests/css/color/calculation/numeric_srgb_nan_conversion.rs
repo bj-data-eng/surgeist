@@ -2,22 +2,7 @@
 //! At hue zero, normalized whiteness and blackness both zero leave the pure
 //! red vertex: (1, 0, 0) * (1 - 0 - 0) + 0, hence RGB (255, 0, 0).
 
-use surgeist_css::*;
-
-fn checked_color(source: &str) -> CssColor {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        parse_component_values(source).unwrap(),
-        CssImportance::Normal,
-    )
-    .unwrap();
-    let CssKnownPropertyValueRef::Color(value) =
-        declaration.known().unwrap().property_value().unwrap()
-    else {
-        panic!("checked color property");
-    };
-    value.value().clone()
-}
+use crate::css::support::color_property::normal_checked_color as checked_color;
 
 #[test]
 fn zero_whiteness_and_blackness_leave_the_red_vertex() {

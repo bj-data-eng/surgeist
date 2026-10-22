@@ -4,10 +4,10 @@
 //! of the parser and serializer. Host palette selection and deprecated alias
 //! computed-value mappings belong downstream; authored aliases remain distinct.
 
+use crate::css::support::parsed_color;
 use surgeist_css::{
     CssAbsoluteColorEligibility, CssAbsoluteColorExclusion, CssColor, CssKnownProperty,
-    CssKnownPropertyValueRef, CssRecoveryAction, CssSystemColor, parse_style_attribute,
-    validate_style_attribute,
+    CssRecoveryAction, CssSystemColor, parse_style_attribute, validate_style_attribute,
 };
 
 const SYSTEM_COLORS: [(&str, CssSystemColor, &str); 19] = [
@@ -109,25 +109,6 @@ const DEPRECATED_SYSTEM_COLORS: [(&str, CssSystemColor, &str); 23] = [
     ("WindowText", CssSystemColor::WindowText, "windowtext"),
 ];
 
-fn parsed_color(value: &str) -> CssColor {
-    let source = format!("color: {value}");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 1, "{source}");
-    let CssKnownPropertyValueRef::Color(color) = report.syntax()[0]
-        .known()
-        .unwrap()
-        .property_value()
-        .unwrap()
-    else {
-        panic!("expected a typed color: {source}");
-    };
-    let color = color.value().clone();
-    let validated = validate_style_attribute(&source).unwrap();
-    assert_eq!(&validated, report.syntax(), "{source}");
-    color
-}
-
 fn assert_symbolic(color: &CssColor, expected: CssSystemColor, text: &str) {
     assert_eq!(color.system(), Some(expected), "{text}");
     assert!(color.named().is_none(), "{text}");
@@ -222,6 +203,10 @@ fn similar_unknown_keywords_are_recovered_without_losing_the_valid_sibling() {
             CssKnownProperty::Opacity,
             "{source}",
         );
-        assert!(validate_style_attribute(&source).is_err(), "{source}");
+        assert_eq!(
+            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            report.diagnostics(),
+            "{source}"
+        );
     }
 }

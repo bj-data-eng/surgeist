@@ -1,4 +1,5 @@
 //! Selectors 4 (2026-01-22), sections 7.1–7.2: checked authored arguments.
+use crate::css::support::color_and_selector_fixtures::assert_strict_validation_rejects;
 use surgeist_css::{
     CssComponentValueErrorKind, CssDirectionality, CssEmptyLanguageRangeList, CssLanguageRange,
     CssLanguageRangeKind, CssLanguageRangeList, CssNamespaceContext, CssPseudoClass, CssSelector,
@@ -237,7 +238,7 @@ fn retained_linguistic_arguments_keep_the_original_eof_closure_contract() {
                 assert_eq!(closure.error().position().column().value(), 9);
             }
         }
-        assert!(report.into_validation_result().is_err());
+        assert_strict_validation_rejects(report);
     }
 }
 

@@ -4,6 +4,7 @@
 //! Detaching components does not make their retained source coordinates into
 //! coordinates in the shorter serialization used by checked grammar admission.
 
+use crate::css::support::value_assertions::url_consumer_text as property_text;
 use surgeist_css::*;
 
 const PREFIX_BYTES: usize = 128;
@@ -122,12 +123,21 @@ fn assert_retried_url(url: &CssUrl, source: &str, input: &CssComponentValues) {
     original_argument(argument.origin(), input, source, "\"hash\"");
 }
 
-fn property_text(property: CssKnownProperty, url: &str) -> String {
-    if property == CssKnownProperty::Cursor {
-        format!("{url}, auto")
-    } else {
-        url.to_owned()
-    }
+/// A valid control `function("#asset" modifier)` is admitted as written:
+/// Values 5 §4.1.1 keeps the target string and the one recognized functional
+/// request modifier, named by the text before its opening parenthesis.
+fn assert_admitted_url(url: &CssUrl, function: &str, modifier: &str) {
+    let expected = match function {
+        "url" => CssUrlFunction::Url,
+        "src" => CssUrlFunction::Src,
+        other => panic!("URL function {other}"),
+    };
+    assert_eq!(url.function(), expected, "{function}({modifier})");
+    assert_eq!(url.as_str(), "#asset");
+    let [CssUrlModifier::Function(admitted)] = url.modifiers() else {
+        panic!("one functional request modifier: {:?}", url.modifiers());
+    };
+    assert_eq!(admitted.name(), modifier.split_once('(').unwrap().0);
 }
 
 fn checked_property(
@@ -148,20 +158,21 @@ fn valid_detached_property_and_profile_controls_are_admitted() {
             let url = format!("{function}(\"#asset\" {modifier})");
             for property in PROPERTIES {
                 let (_, input) = detached(&property_text(property, &url));
-                assert!(
-                    checked_property(property, input).is_ok(),
-                    "{url}: {property:?}"
-                );
+                let admitted = checked_property(property, input.clone())
+                    .unwrap_or_else(|error| panic!("{url}: {property:?}: {error:?}"));
+                assert_eq!(admitted.known().unwrap().property(), property, "{url}");
+                assert_eq!(admitted.value_components(), &input, "{url}: {property:?}");
+                assert_eq!(admitted.importance(), CssImportance::Normal);
             }
             let (_, input) = detached(&url);
             let profile =
                 CssColorProfileDescriptorValue::try_new(CssColorProfileDescriptorKind::Src, input)
                     .unwrap();
-            let CssColorProfileDescriptorValueRef::Src(url) = profile.view() else {
+            let CssColorProfileDescriptorValueRef::Src(admitted) = profile.view() else {
                 panic!("ordinary profile source")
             };
-            assert!(url.is_local_url());
-            assert_eq!(url.as_str(), "#asset");
+            assert!(admitted.is_local_url());
+            assert_admitted_url(admitted, function, modifier);
         }
     }
 }
@@ -172,24 +183,42 @@ fn valid_detached_font_import_and_counter_controls_are_admitted() {
         for modifier in VALID {
             let url = format!("{function}(\"#asset\" {modifier})");
             let (_, input) = detached(&url);
-            assert!(
-                CssAuthoredFontFaceDescriptorValue::try_from_components(
-                    CssFontFaceDescriptorKind::Src,
-                    input,
-                )
-                .is_ok(),
-                "{url}"
-            );
+            let font = CssAuthoredFontFaceDescriptorValue::try_from_components(
+                CssFontFaceDescriptorKind::Src,
+                input,
+            )
+            .unwrap_or_else(|error| panic!("{url}: {error:?}"));
+            let CssAuthoredFontFaceDescriptorValue::Ordinary(CssFontFaceDescriptorValue::Src(
+                sources,
+            )) = font
+            else {
+                panic!("ordinary font source list: {url}");
+            };
+            let [CssFontFaceSource::Url(font_source)] = sources.sources() else {
+                panic!("one URL font source: {:?}", sources.sources());
+            };
+            assert_admitted_url(font_source.url(), function, modifier);
             let (_, input) = detached(&format!("@import {url} layer(theme);"));
-            assert!(
-                CssImportRule::try_from_components(input, &CssNamespaceContext::default()).is_ok(),
-                "{url}"
-            );
+            let import = CssImportRule::try_from_components(input, &CssNamespaceContext::default())
+                .unwrap_or_else(|error| panic!("{url}: {error:?}"));
+            let CssImportTarget::Url(target) = import.target() else {
+                panic!("URL import target: {url}");
+            };
+            assert_admitted_url(target.url(), function, modifier);
+            assert!(import.layer().is_some(), "{url}: retained layer(theme)");
             for (kind, prefix) in COUNTERS {
                 let (_, input) = detached(&format!("{prefix}{url}"));
+                let counter =
+                    CssCounterStyleDescriptorValue::try_from_components(kind, input.clone())
+                        .unwrap_or_else(|error| panic!("{url}: {kind:?}: {error:?}"));
+                assert_eq!(counter.kind(), kind);
+                assert_eq!(counter.components(), &input, "{url}: {kind:?}");
                 assert!(
-                    CssCounterStyleDescriptorValue::try_from_components(kind, input).is_ok(),
-                    "{url}: {kind:?}"
+                    !matches!(
+                        counter.view(),
+                        CssCounterStyleDescriptorValueRef::Pending(_)
+                    ),
+                    "{url}: {kind:?} is an ordinary descriptor value"
                 );
             }
         }

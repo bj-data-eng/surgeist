@@ -3,24 +3,9 @@
 //! sections 3.1, 7.1 and 7.2. Speech rendering and contextual `auto` resolution
 //! remain downstream. Counter Styles `speak-as` is a separate descriptor.
 
+use crate::css::support::important_speech_declaration as declaration;
+use crate::css::support::known_property as property;
 use surgeist_css::*;
-
-fn property(name: &str) -> CssKnownProperty {
-    CssKnownProperty::from_name(name)
-        .unwrap_or_else(|| panic!("Speech 1 property `{name}` must be admitted"))
-}
-
-fn declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one complete Speech declaration: {source}");
-    };
-    assert_eq!(declaration.known().unwrap().property(), property(name));
-    assert_eq!(declaration.importance(), CssImportance::Important);
-    declaration.clone()
-}
 
 fn assert_ordinary_admission(name: &str, value: &str) {
     let parsed = declaration(name, value);

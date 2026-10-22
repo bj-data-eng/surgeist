@@ -6,7 +6,10 @@
 //! depends on instead of copying a constructor.
 
 pub mod authored_property;
+pub mod authored_syntax;
+pub mod color_and_selector_fixtures;
 pub mod color_components;
+pub mod color_property;
 pub mod csstree;
 pub mod descriptor_phases;
 pub mod digest;
@@ -15,153 +18,84 @@ pub mod external_consumer;
 pub mod font_face;
 pub mod isolated_stack;
 pub mod lab_direct_component_cases;
+pub mod math_depth;
+pub mod named_property;
 pub mod parse_report;
+pub mod property_admission;
 pub mod property_expectations;
+pub mod rules;
+#[macro_use]
+pub mod sheet_cases;
+pub mod serialization_limits;
+pub mod value_assertions;
 
 use surgeist_css::*;
 
-/// The sole clean style-attribute declaration of `name:value!important`.
+/// The sole declaration of the clean style attribute `css`.
+#[track_caller]
+pub fn sole_declaration(css: &str) -> CssDeclaration {
+    let report = parse_style_attribute(css);
+    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
+    let [declaration] = report.syntax().as_slice() else {
+        panic!("one declaration: {css}: {:?}", report.syntax())
+    };
+    declaration.clone()
+}
+
+/// The sole declaration of the clean style attribute `name:value`, written
+/// with `importance`.
+#[track_caller]
+pub fn declaration(name: &str, value: &str, importance: CssImportance) -> CssDeclaration {
+    let priority = match importance {
+        CssImportance::Important => "!important",
+        CssImportance::Normal => "",
+    };
+    sole_declaration(&format!("{name}:{value}{priority}"))
+}
+
+/// [`declaration`] with `!important`.
+#[track_caller]
 pub fn important_declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one declaration: {source}")
-    };
-    declaration.clone()
+    declaration(name, value, CssImportance::Important)
 }
 
-/// The sole clean style-attribute declaration of `name:value!important`;
-/// a count failure names the retained declaration.
-pub fn important_retained_declaration(name: &str, value: &str) -> CssDeclaration {
-    let source = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [declaration] = report.syntax().as_slice() else {
-        panic!("one retained declaration: {source}");
-    };
-    declaration.clone()
+/// [`declaration`] with normal importance.
+#[track_caller]
+pub fn normal_declaration(name: &str, value: &str) -> CssDeclaration {
+    declaration(name, value, CssImportance::Normal)
 }
 
-/// The sole clean style-attribute declaration of `name:text!important`;
-/// failures report the name and value pair.
-pub fn important_pair_declaration(name: &str, text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{name}:{text}!important"));
-    assert!(
-        report.is_clean(),
-        "{name}:{text}: {:?}",
-        report.diagnostics()
-    );
-    let [source] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    source.clone()
-}
-
-/// The first declaration of a clean `name:text!important` style attribute.
-pub fn first_important_declaration(name: &str, text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{name}:{text}!important"));
-    assert!(
-        report.is_clean(),
-        "{name}:{text}: {:?}",
-        report.diagnostics()
-    );
-    report.syntax()[0].clone()
-}
-
-/// The sole declaration of a clean, validated `name:value!important` style
-/// attribute, with its canonical name, importance and value serialization.
+/// [`important_declaration`] that also validates, and checks the canonical
+/// name, importance and value serialization.
+#[track_caller]
 pub fn validated_important_declaration(name: &str, value: &str) -> CssDeclaration {
-    let text = format!("{name}:{value}!important");
-    let report = parse_style_attribute(&text);
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    assert!(validate_style_attribute(&text).is_ok(), "{text}");
-    let [source] = report.syntax().as_slice() else {
-        panic!("one admitted declaration: {text}")
-    };
+    let source = important_declaration(name, value);
+    assert!(
+        validate_style_attribute(&format!("{name}:{value}!important")).is_ok(),
+        "{name}:{value}!important"
+    );
     assert_eq!(source.known().unwrap().property().canonical_name(), name);
     assert_eq!(source.importance(), CssImportance::Important);
     assert_eq!(
         source.value_components().serialize().unwrap().as_css(),
         value
     );
-    source.clone()
+    source
 }
 
-/// The sole clean `name:text!important` declaration of a Speech 1 property.
+/// [`important_declaration`] of the Speech 1 property `name`.
+#[track_caller]
 pub fn important_speech_declaration(name: &str, text: &str) -> CssDeclaration {
-    let source = format!("{name}:{text}!important");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let [value] = report.syntax().as_slice() else {
-        panic!("one complete declaration: {source}")
-    };
-    assert_eq!(value.known().unwrap().property(), speech_property(name));
+    let value = important_declaration(name, text);
+    assert_eq!(value.known().unwrap().property(), known_property(name));
     assert_eq!(value.importance(), CssImportance::Important);
-    value.clone()
+    value
 }
 
-/// The first declaration of a clean `name:value` style attribute.
-pub fn first_declaration(name: &str, value: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{name}:{value}"));
-    assert!(
-        report.is_clean(),
-        "{name}:{value}: {:?}",
-        report.diagnostics()
-    );
-    report.syntax()[0].clone()
-}
-
-/// The first declaration of a clean `name:text` style attribute; failures
-/// report only the diagnostics.
-pub fn first_declaration_reporting_diagnostics(name: &str, text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{name}:{text}"));
-    assert!(report.is_clean(), "{:?}", report.diagnostics());
-    report.syntax()[0].clone()
-}
-
-/// The only declaration of a clean `color:text` style attribute.
+/// [`normal_declaration`] of `color`.
+#[track_caller]
 pub fn color_declaration(text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("color:{text}"));
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 1);
-    report.syntax()[0].clone()
-}
-
-/// The sole declaration of a clean style attribute.
-pub fn style_declaration(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let [source] = report.syntax().as_slice() else {
-        panic!("one declaration")
-    };
-    source.clone()
-}
-
-/// The sole declaration of a clean style attribute; a count failure names
-/// the source.
-pub fn style_declaration_reporting_source(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let [value] = report.syntax().as_slice() else {
-        panic!("one declaration: {css}")
-    };
-    value.clone()
-}
-
-/// The declaration of a clean style attribute that has exactly one.
-pub fn counted_style_declaration(source: &str) -> CssDeclaration {
-    let report = parse_style_attribute(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert_eq!(report.syntax().len(), 1);
-    report.syntax()[0].clone()
-}
-
-/// The first declaration of a clean style attribute.
-pub fn first_style_declaration(source: &str) -> CssDeclaration {
-    let report = parse_style_attribute(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    report.syntax()[0].clone()
+    normal_declaration("color", text)
 }
 
 /// The typed color of a clean, validated `color:text` style attribute whose
@@ -340,20 +274,14 @@ pub fn authored_declaration_through_front(name: &str, input: &str, front: usize)
     source
 }
 
-/// An authored property found by name.
-pub fn authored_property_named(name: &str) -> CssKnownProperty {
-    CssKnownProperty::from_name(name)
-        .unwrap_or_else(|| panic!("authored property unavailable: {name}"))
-}
-
 /// The shared authored-property checked declaration for a property name.
 pub fn authored_checked_declaration(name: &str, value: &str, grammar: bool) -> CssDeclaration {
-    authored_property::checked(authored_property_named(name), value, grammar)
+    authored_property::checked(known_property(name), value, grammar)
 }
 
 /// The shared authored-property parsed declaration for a property name.
 pub fn authored_parsed_declaration(name: &str, value: &str) -> CssDeclaration {
-    authored_property::parsed(authored_property_named(name), value)
+    authored_property::parsed(known_property(name), value)
 }
 
 /// A normal-importance declaration checked by known property name.
@@ -406,8 +334,9 @@ pub fn check_property_text(
 }
 
 /// A known property found by name.
+#[track_caller]
 pub fn known_property(name: &str) -> CssKnownProperty {
-    CssKnownProperty::from_name(name).unwrap()
+    CssKnownProperty::from_name(name).unwrap_or_else(|| panic!("known property: {name}"))
 }
 
 /// An important declaration checked in a parser context by a property's
@@ -426,11 +355,6 @@ pub fn contextual_checked_declaration(
         .unwrap()
 }
 
-/// A property of an authored family found by name.
-pub fn authored_family_property(name: &str) -> CssKnownProperty {
-    CssKnownProperty::from_name(name).unwrap_or_else(|| panic!("missing authored family: {name}"))
-}
-
 /// Checks important component values by property name or, when `grammar`
 /// is set, by the named property's grammar.
 pub fn check_named_components(
@@ -438,7 +362,7 @@ pub fn check_named_components(
     values: CssComponentValues,
     grammar: bool,
 ) -> Result<CssDeclaration, CssPropertyValueParseError> {
-    let p = authored_family_property(name);
+    let p = known_property(name);
     if grammar {
         parse_property_value_for_grammar(p.grammar(), values, CssImportance::Important)
     } else {
@@ -465,16 +389,10 @@ pub fn detached_checked_declaration(name: &str, text: &str, grammar: bool) -> Cs
     source
 }
 
-/// A Speech 1 property found by name.
-pub fn speech_property(name: &str) -> CssKnownProperty {
-    CssKnownProperty::from_name(name)
-        .unwrap_or_else(|| panic!("Speech 1 property `{name}` must be recognized"))
-}
-
 /// An important Speech 1 declaration checked from component values.
 pub fn important_speech_components(name: &str, components: CssComponentValues) -> CssDeclaration {
     parse_property_value(
-        CssPropertyNameRef::Known(speech_property(name)),
+        CssPropertyNameRef::Known(known_property(name)),
         components,
         CssImportance::Important,
     )

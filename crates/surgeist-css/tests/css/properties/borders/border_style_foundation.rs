@@ -2,6 +2,8 @@
 //! §§4.5.2, 4.7. Logical 1 issue 3030 leaves complete four-side reset
 //! membership unsettled, while the authored grammar remains defined.
 
+use crate::css::support::property_admission::Responsible::{At, End};
+use crate::css::support::property_admission::assert_declaration_rejected as rejected;
 use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
@@ -66,27 +68,6 @@ fn accepted(name: &str, value: &str) {
             value
         );
     }
-}
-
-fn invalid(name: &str, value: &str) {
-    let source = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&source);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one invalid-value diagnostic: {source}")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    assert_eq!(report.syntax().len(), 2, "neighbors survive: {source}");
-    assert!(validate_style_attribute(&source).is_err());
-    assert!(
-        parse_property_value_for_grammar(
-            grammar(name),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "checked construction accepted {name}:{value}"
-    );
 }
 
 fn one_value(name: &str, value: &str) -> CssLonghandValue {
@@ -172,16 +153,16 @@ fn eight_style_longhands_accept_exact_ten_keywords_and_initial_none() {
         for keyword in KEYWORDS {
             accepted(name, keyword);
         }
-        for value in [
-            "",
-            "auto",
-            "center",
-            "1px",
-            "red",
-            "solid dashed",
-            "logical solid",
+        for (value, token) in [
+            ("", End),
+            ("auto", At("auto")),
+            ("center", At("center")),
+            ("1px", At("1px")),
+            ("red", At("red")),
+            ("solid dashed", At("dashed")),
+            ("logical solid", At("logical")),
         ] {
-            invalid(name, value);
+            rejected(name, value, token);
         }
         let property = grammar(name).target_property();
         let CssPropertyKindRef::Longhand(longhand) = grammar(name).metadata().unwrap().kind()
@@ -243,8 +224,14 @@ fn logical_style_pairs_assign_start_then_end_and_repeat_omitted_end() {
                 assert!(item.replacement_components().is_none());
             }
         }
-        for value in ["", "logical solid", "solid dashed dotted", "1px", "auto"] {
-            invalid(pair, value);
+        for (value, token) in [
+            ("", End),
+            ("logical solid", At("logical")),
+            ("solid dashed dotted", At("dotted")),
+            ("1px", At("1px")),
+            ("auto", At("auto")),
+        ] {
+            rejected(pair, value, token);
         }
     }
 }
@@ -265,16 +252,16 @@ fn border_style_accepts_physical_or_prefixed_logical_one_to_four_values_and_expa
         accepted(FOUR_SIDE, value);
         assert_four_expansion(expand_declaration(&declaration(FOUR_SIDE, value)));
     }
-    for value in [
-        "",
-        "logical",
-        "logical logical solid",
-        "solid logical",
-        "logical 1px",
-        "solid dashed dotted double groove",
-        "logical solid dashed dotted double groove",
+    for (value, token) in [
+        ("", End),
+        ("logical", At("logical")),
+        ("logical logical solid", At("logical")),
+        ("solid logical", At("logical")),
+        ("logical 1px", At("1px")),
+        ("solid dashed dotted double groove", At("groove")),
+        ("logical solid dashed dotted double groove", At("groove")),
     ] {
-        invalid(FOUR_SIDE, value);
+        rejected(FOUR_SIDE, value, token);
     }
     let grammar = grammar(FOUR_SIDE);
     assert!(matches!(
@@ -356,7 +343,7 @@ fn css_wide_all_and_pending_reentry_keep_style_members_and_original_occurrence()
     assert!(reset.source().same_occurrence(&all_source));
     for name in names() {
         assert!(!reset.excludes(CssPropertyNameRef::Known(grammar(name).target_property())));
-        invalid(name, "initial solid");
+        rejected(name, "initial solid", Some("solid"));
         for (text, keyword) in [
             ("initial", CssGlobalKeyword::Initial),
             ("inherit", CssGlobalKeyword::Inherit),

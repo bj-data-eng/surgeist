@@ -1186,12 +1186,7 @@ fn grid_items<T: GridSpecified>(
     items: &[T],
     writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
 ) -> GridSerializationResult<()> {
-    for (index, item) in items.iter().enumerate() {
-        if index != 0 {
-            writer.append(" ")?;
-        }
-        item.write_grid(writer)?;
-    }
+    writer.space_separated(items, |writer, item| item.write_grid(writer))?;
     Ok(())
 }
 

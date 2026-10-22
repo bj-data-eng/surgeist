@@ -1,6 +1,7 @@
 //! Functional checked-value expectations from Content 3 (2025-12-04), Counter
 //! Styles 3 (2021-07-27), and CSSOM §6.7.2's specified default omissions.
 
+use crate::css::support::normal_declaration;
 use surgeist_css::*;
 
 fn ident(value: &str) -> CssIdent {
@@ -22,10 +23,7 @@ fn item(value: CssContentValueItem) -> CssContentValue {
     CssContentValue::Generated(CssGeneratedContent::try_new(vec![value], None).unwrap())
 }
 fn parsed(value: &str) -> CssDeclaration {
-    let source = format!("content:{value}");
-    let report = parse_style_attribute(&source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    report.syntax()[0].clone()
+    normal_declaration("content", value)
 }
 
 #[test]
@@ -289,7 +287,7 @@ fn canonical_functions_omit_only_defined_defaults_and_retain_symbolic_targets() 
         )))
         .serialize_specified()
         .unwrap(),
-        "target-text(\"#ch\", content)"
+        "target-text(\"#ch\")"
     );
     assert_eq!(
         item(CssContentValueItem::TargetCounter(CssTargetCounter::new(
@@ -299,7 +297,7 @@ fn canonical_functions_omit_only_defined_defaults_and_retain_symbolic_targets() 
         )))
         .serialize_specified()
         .unwrap(),
-        "target-counter(\"#ch\", chapter, decimal)"
+        "target-counter(\"#ch\", chapter)"
     );
     for (leader, expected) in [
         (CssLeaderValue::Dotted, "leader(\".\")"),

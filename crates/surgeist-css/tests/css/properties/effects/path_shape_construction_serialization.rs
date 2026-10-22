@@ -2,10 +2,8 @@
 //! SVG 1.1 §8.3.9, adopted Appendix F.6.2 admission, and the path resource
 //! contract independently define these expectations; geometry stays unresolved.
 
-use surgeist_css::{
-    CssPathDataConstructionErrorKind as E, CssSpecifiedValueSerializationErrorKind as K,
-    CssSpecifiedValueSerializationLimits as L, *,
-};
+use crate::css::support::serialization_limits::assert_node_limits as budget;
+use surgeist_css::{CssPathDataConstructionErrorKind as E, *};
 
 #[test]
 fn decoded_grammar_errors_locate_the_first_failure_or_incomplete_end() {
@@ -105,28 +103,6 @@ fn escaped_component_error_offsets_remain_decoded_and_do_not_shift_source_spans(
     assert_eq!(error.kind(), E::EmptyPath);
     assert_eq!(error.origin(), &origin);
     assert_eq!(error.decoded_byte_offset(), None);
-}
-
-fn budget(
-    expected: &str,
-    nodes: usize,
-    serialize: impl Fn(L) -> Result<String, CssSpecifiedValueSerializationError>,
-) {
-    assert_eq!(
-        serialize(L::new(nodes, nodes, expected.len())).unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (L::new(nodes - 1, nodes, expected.len()), K::InputNodeLimit),
-        (
-            L::new(nodes, nodes - 1, expected.len()),
-            K::ProjectionNodeLimit,
-        ),
-        (L::new(nodes, nodes, expected.len() - 1), K::ByteLimit),
-    ] {
-        assert_eq!(serialize(limits).unwrap_err().kind(), kind);
-    }
-    assert_eq!(serialize(L::default()).unwrap(), expected);
 }
 
 #[test]

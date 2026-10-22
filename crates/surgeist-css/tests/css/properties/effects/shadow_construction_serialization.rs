@@ -4,7 +4,9 @@
 //! and Filter Effects 1 WD 2018-12-18 §6.1; canonical ordering and cumulative
 //! resource charges are Surgeist's specified-value contract, not computed CSS.
 
-use crate::css::support::style_declaration as declaration;
+use crate::css::support::property_admission::assert_component_rejected;
+use crate::css::support::serialization_limits::LimitLadder;
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::{
     CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
 };
@@ -92,29 +94,12 @@ fn assert_budget(
     serialize: impl Fn(L) -> Result<String, CssSpecifiedValueSerializationError>,
 ) {
     assert_eq!(
-        serialize(L::new(input, projection, expected.len())).unwrap(),
-        expected
-    );
-    assert_eq!(
         serialize(L::new(usize::MAX, usize::MAX, usize::MAX)).unwrap(),
         expected
     );
-    for (limits, kind) in [
-        (
-            L::new(input - 1, projection, expected.len()),
-            K::InputNodeLimit,
-        ),
-        (
-            L::new(input, projection - 1, expected.len()),
-            K::ProjectionNodeLimit,
-        ),
-        (L::new(input, projection, expected.len() - 1), K::ByteLimit),
-        (L::new(0, projection, expected.len()), K::InputNodeLimit),
-        (L::new(input, 0, expected.len()), K::ProjectionNodeLimit),
-        (L::new(input, projection, 0), K::ByteLimit),
-    ] {
-        assert_eq!(serialize(limits).unwrap_err().kind(), kind);
-    }
+    LimitLadder::new(expected, input, projection)
+        .zero_limits()
+        .assert(serialize);
 }
 
 #[test]
@@ -138,18 +123,27 @@ fn construction_preserves_omissions_and_rejects_spread_without_blur_and_empty_li
         .is_none()
     );
     assert!(CssBoxShadowList::try_new(vec![]).is_none());
-    for invalid in ["-1px", "-1e-999px", "1%", "auto"] {
-        assert!(
-            CssSpecifiedNonNegativeLength::try_from_component(
-                CssComponentValue::try_token(invalid).unwrap()
-            )
-            .is_err()
+    for (invalid, kind) in [
+        ("-1px", CssNumericConstructionErrorKind::OutOfRange),
+        ("-1e-999px", CssNumericConstructionErrorKind::OutOfRange),
+        ("1%", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("auto", CssNumericConstructionErrorKind::RootDomainMismatch),
+    ] {
+        assert_component_rejected(
+            CssSpecifiedNonNegativeLength::try_from_component,
+            CssComponentValue::try_token(invalid).unwrap(),
+            kind,
         );
     }
-    for invalid in ["1%", "auto", "1"] {
-        assert!(
-            CssSpecifiedLength::try_from_component(CssComponentValue::try_token(invalid).unwrap())
-                .is_err()
+    for (invalid, kind) in [
+        ("1%", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("auto", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("1", CssNumericConstructionErrorKind::RootDomainMismatch),
+    ] {
+        assert_component_rejected(
+            CssSpecifiedLength::try_from_component,
+            CssComponentValue::try_token(invalid).unwrap(),
+            kind,
         );
     }
     let drop = CssDropShadow::new(length("1px"), length("-2px"), None, None);

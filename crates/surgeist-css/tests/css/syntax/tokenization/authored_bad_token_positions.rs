@@ -9,11 +9,12 @@
 
 use std::ops::Range;
 
+use crate::css::support::authored_syntax::assert_position_at as assert_position;
 use surgeist_css::{
     CssComponentValueErrorKind, CssDeclarationList, CssErrorCode, CssKnownProperty,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSourcePosition, CssTokenKind,
-    CssValueOrigin, ErrorKind, parse_component_values, parse_sheet, parse_style_attribute,
-    validate_sheet, validate_style_attribute,
+    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssTokenKind, CssValueOrigin, ErrorKind,
+    parse_component_values, parse_sheet, parse_style_attribute, validate_sheet,
+    validate_style_attribute,
 };
 
 struct ExpectedToken {
@@ -22,20 +23,6 @@ struct ExpectedToken {
     authored: &'static str,
     position: (usize, u32, u32),
     declaration_span: Range<usize>,
-}
-
-fn assert_position(actual: CssSourcePosition, expected: (usize, u32, u32)) {
-    assert_eq!(
-        actual.byte_offset().value(),
-        expected.0,
-        "responsible UTF-8 byte"
-    );
-    assert_eq!(actual.line().value(), expected.1, "zero-based line");
-    assert_eq!(
-        actual.column().value(),
-        expected.2,
-        "zero-based UTF-16 column"
-    );
 }
 
 fn assert_retained_known(declarations: &CssDeclarationList, expected: &[CssKnownProperty]) {

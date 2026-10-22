@@ -2,51 +2,12 @@
 //! Canonical order is width/style/color; ambiguous lone auto sets both slots.
 //! These tests cover the represented Auto/shared-Color subset, not image-1D.
 
+use crate::css::support::retained_checked_declaration as declaration;
+use crate::css::support::serialization_limits::assert_limits;
 use surgeist_css::*;
 
 type Limits = CssSpecifiedValueSerializationLimits;
 type Kind = CssSpecifiedValueSerializationErrorKind;
-
-fn exact_limits(
-    emit: impl Fn(Limits) -> Result<String, CssSpecifiedValueSerializationError>,
-    expected: &str,
-    input: usize,
-    projection: usize,
-) {
-    assert_eq!(
-        emit(Limits::new(input, projection, expected.len())).unwrap(),
-        expected
-    );
-    for (limits, kind) in [
-        (
-            Limits::new(input - 1, projection, expected.len()),
-            Kind::InputNodeLimit,
-        ),
-        (
-            Limits::new(input, projection - 1, expected.len()),
-            Kind::ProjectionNodeLimit,
-        ),
-        (
-            Limits::new(input, projection, expected.len() - 1),
-            Kind::ByteLimit,
-        ),
-    ] {
-        assert_eq!(emit(limits).unwrap_err().kind(), kind);
-        assert_eq!(
-            emit(Limits::new(input, projection, expected.len())).unwrap(),
-            expected
-        );
-    }
-}
-
-fn declaration(property: CssKnownProperty, source: &str) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(property),
-        parse_component_values(source).unwrap(),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("{property:?}:{source}: {error:?}"))
-}
 
 fn outline(source: &str) -> CssOutline {
     let declaration = declaration(CssKnownProperty::Outline, source);
@@ -93,12 +54,9 @@ fn every_semantic_outline_style_emits_one_checked_keyword() {
         (CssOutlineStyle::Outset, "outset"),
     ] {
         assert_eq!(value.serialize_specified().unwrap(), expected);
-        exact_limits(
-            |limits| value.serialize_specified_with_limits(limits),
-            expected,
-            1,
-            1,
-        );
+        assert_limits(expected, 1, 1, |limits| {
+            value.serialize_specified_with_limits(limits)
+        });
         let declaration = declaration(
             CssKnownProperty::OutlineStyle,
             &expected.to_ascii_uppercase(),
@@ -123,12 +81,9 @@ fn outline_width_keywords_and_literal_lengths_share_numeric_limits() {
     ] {
         let before = value.clone();
         assert_eq!(value.serialize_specified().unwrap(), expected);
-        exact_limits(
-            |limits| value.serialize_specified_with_limits(limits),
-            expected,
-            1,
-            1,
-        );
+        assert_limits(expected, 1, 1, |limits| {
+            value.serialize_specified_with_limits(limits)
+        });
         assert_eq!(value, before);
     }
 }
@@ -148,12 +103,9 @@ fn outline_color_auto_is_symbolic_initial_and_shared_color_is_transparent() {
     ] {
         let before = value.clone();
         assert_eq!(value.serialize_specified().unwrap(), expected);
-        exact_limits(
-            |limits| value.serialize_specified_with_limits(limits),
-            expected,
-            1,
-            1,
-        );
+        assert_limits(expected, 1, 1, |limits| {
+            value.serialize_specified_with_limits(limits)
+        });
         assert_eq!(value, before);
     }
 }
@@ -210,12 +162,9 @@ fn all_optional_outline_field_subsets_keep_width_style_color_order() {
     ] {
         let before = value.clone();
         assert_eq!(value.serialize_specified().unwrap(), expected);
-        exact_limits(
-            |limits| value.serialize_specified_with_limits(limits),
-            expected,
-            nodes,
-            nodes,
-        );
+        assert_limits(expected, nodes, nodes, |limits| {
+            value.serialize_specified_with_limits(limits)
+        });
         assert_eq!(value, before);
     }
     assert!(CssOutline::try_new(None, None, None).is_none());
@@ -245,12 +194,9 @@ fn constructed_color_only_auto_synthesizes_initial_none_style() {
         let before = value.clone();
         assert!(value.style().is_none());
         assert_eq!(value.serialize_specified().unwrap(), expected);
-        exact_limits(
-            |limits| value.serialize_specified_with_limits(limits),
-            expected,
-            input,
-            projection,
-        );
+        assert_limits(expected, input, projection, |limits| {
+            value.serialize_specified_with_limits(limits)
+        });
         assert_eq!(value, before);
         let reparsed = outline(expected);
         assert_eq!(reparsed.style(), Some(CssOutlineStyle::None));
@@ -277,12 +223,9 @@ fn ambiguous_parsed_auto_populates_both_semantic_fields_without_computation() {
         assert_eq!(value.style(), Some(CssOutlineStyle::Auto));
         assert_eq!(value.color(), Some(&CssOutlineColor::Auto));
         assert_eq!(value.serialize_specified().unwrap(), expected);
-        exact_limits(
-            |limits| value.serialize_specified_with_limits(limits),
-            expected,
-            nodes,
-            nodes,
-        );
+        assert_limits(expected, nodes, nodes, |limits| {
+            value.serialize_specified_with_limits(limits)
+        });
         assert_eq!(value, before);
     }
 }
@@ -347,12 +290,9 @@ fn explicit_initial_none_with_auto_color_does_not_gain_an_auto_style() {
     )
     .unwrap();
     assert_eq!(value.serialize_specified().unwrap(), "none auto");
-    exact_limits(
-        |limits| value.serialize_specified_with_limits(limits),
-        "none auto",
-        3,
-        3,
-    );
+    assert_limits("none auto", 3, 3, |limits| {
+        value.serialize_specified_with_limits(limits)
+    });
     for source in ["none auto", "auto none"] {
         let parsed = outline(source);
         assert_eq!(parsed, value);

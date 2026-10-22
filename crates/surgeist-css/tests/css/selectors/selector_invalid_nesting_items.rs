@@ -2,6 +2,9 @@
 //! invalid forgiving items containing an actual ampersand delimiter survive
 //! exactly as authored. Their preservation does not make invalid source clean.
 
+use crate::css::support::color_and_selector_fixtures::{
+    assert_selector_input_rejected, assert_strict_validation_rejects,
+};
 use surgeist_css::{
     CssErrorCode, CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem,
     CssRecoveryAction, CssRule, CssSelector, CssSelectorCombinator, CssStyleSelector, CssTokenKind,
@@ -42,7 +45,7 @@ fn retained(source: &str, literal: &str) {
         literal
     );
     assert!(!reparsed.is_clean());
-    assert!(reparsed.into_validation_result().is_err());
+    assert_strict_validation_rejects(reparsed);
 }
 
 fn members(selector: &CssSelector) -> &[CssPseudoSelectorListItem] {
@@ -108,8 +111,8 @@ fn is_and_where_preserve_unknown_ampersand_items_with_exact_spelling_and_order()
         assert!(previous.is_none_or(|previous| previous < offset));
         previous = Some(offset);
     }
-    assert!(reparsed.into_validation_result().is_err());
-    assert!(report.into_validation_result().is_err());
+    assert_strict_validation_rejects(reparsed);
+    assert_strict_validation_rejects(report);
 }
 
 #[test]
@@ -157,7 +160,7 @@ fn nested_logical_and_public_list_fronts_retain_invalid_nesting_items() {
         list.selectors()[2].selector(),
         &CssSelector::Class("After".into())
     );
-    assert!(report.into_validation_result().is_err());
+    assert_strict_validation_rejects(report);
 
     let report = parse_relative_selector_list(
         "> .Before,+ :is(:NoPe(&),.Keep)",
@@ -177,7 +180,7 @@ fn nested_logical_and_public_list_fronts_retain_invalid_nesting_items() {
         list.selectors()[1].combinator(),
         CssSelectorCombinator::NextSibling
     );
-    assert!(report.into_validation_result().is_err());
+    assert_strict_validation_rejects(report);
 }
 
 #[test]
@@ -255,7 +258,7 @@ fn nested_rule_preserves_the_invalid_item_without_losing_parent_or_siblings() {
     );
     assert_eq!(child.declarations().len(), 1);
     assert!(parent.declarations().is_empty());
-    assert!(report.into_validation_result().is_err());
+    assert_strict_validation_rejects(report);
 }
 
 #[test]
@@ -287,7 +290,7 @@ fn strings_comments_and_escaped_identifiers_do_not_turn_invalid_items_into_nesti
             };
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropSelectorListItem);
             assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);
-            assert!(report.into_validation_result().is_err());
+            assert_strict_validation_rejects(report);
         }
     }
 }
@@ -343,7 +346,7 @@ fn empty_forgiving_results_strict_lists_and_enclosing_any_value_gate_keep_their_
             assert_eq!(position.line().value(), 0);
             assert_eq!(position.column().value(), column);
         }
-        assert!(empty.into_validation_result().is_err());
+        assert_strict_validation_rejects(empty);
         let discarded = parse_selector(
             &format!(":{name}(:NoPe(.X))"),
             &CssNamespaceContext::default(),
@@ -362,7 +365,7 @@ fn empty_forgiving_results_strict_lists_and_enclosing_any_value_gate_keep_their_
             discarded.diagnostics()[0].action(),
             CssRecoveryAction::DropSelectorListItem
         );
-        assert!(discarded.into_validation_result().is_err());
+        assert_strict_validation_rejects(discarded);
     }
     for source in [
         ":not(.Keep,:NoPe(&))",
@@ -371,13 +374,10 @@ fn empty_forgiving_results_strict_lists_and_enclosing_any_value_gate_keep_their_
         ":where(:NoPe(&),url(a b))",
         ":is(:NoPe(&),\"bad\n)",
     ] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
-        assert!(report.syntax().is_none(), "{source:?}");
-        assert_eq!(
-            report.diagnostics().last().unwrap().action(),
-            CssRecoveryAction::RejectInput
+        assert_selector_input_rejected(
+            source,
+            parse_selector(source, &CssNamespaceContext::default()),
         );
-        assert!(report.into_validation_result().is_err());
     }
     let report = parse_sheet(
         ".Parent { color:green; .Keep,:not(:NoPe(&)) { color:red; .Never {} } .After {} }",
@@ -397,5 +397,5 @@ fn empty_forgiving_results_strict_lists_and_enclosing_any_value_gate_keep_their_
         panic!("one entire invalid nested rule");
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
-    assert!(report.into_validation_result().is_err());
+    assert_strict_validation_rejects(report);
 }

@@ -9,7 +9,7 @@ use super::protocol::{
     RecordTable,
 };
 use super::tokens::{ClassifiedToken, TokenAction, TokenReader};
-use crate::tokenization::color_tokens::{NameKind, NumberKind, Span, TokenKind};
+use crate::tokenization::tokenizer::{NameKind, NumberKind, Span, TokenKind};
 use crate::{
     ColorSpace as Space, CssColorInterpolationMethod, CssColorSyntax, CssSystemColor,
     HueInterpolation, PredefinedColorSpace,
@@ -166,6 +166,8 @@ pub(crate) struct Frame {
     closed: bool,
     depth: usize,
     relative: bool,
+    /// Whether the first component is `none`, which no legacy syntax admits.
+    leading_none: bool,
     weight: Option<usize>,
     mix_color: Option<usize>,
     mix_space: Option<MixSpace>,
@@ -803,6 +805,7 @@ impl<'owner> ColorGrammar<'owner> {
                         closed: true,
                         depth,
                         relative: false,
+                        leading_none: false,
                         weight: None,
                         mix_color: None,
                         mix_space: None,
@@ -1069,6 +1072,9 @@ impl<'owner> ColorGrammar<'owner> {
                     } else {
                         ComponentRole::Channel
                     };
+                    if frame.recipe.count == 0 {
+                        frame.leading_none = token.is_some_and(|value| value.word == Word::None);
+                    }
                     self.numeric(frame, role, token)?;
                 }
             }
@@ -1102,6 +1108,13 @@ impl<'owner> ColorGrammar<'owner> {
                     && matches!(frame.recipe.function, F::Rgb | F::Hsl | F::DeviceCmyk)
                 {
                     if frame.recipe.count == 1 {
+                        // Color 4 §5.1, §7: legacy syntax admits no `none`, so
+                        // after a leading `none` the modern alternative reaches
+                        // furthest and fails at this comma.
+                        if frame.leading_none {
+                            self.failure(token);
+                            return Ok(());
+                        }
                         frame.recipe.syntax = CssColorSyntax::Legacy;
                     }
                     if frame.recipe.syntax != CssColorSyntax::Legacy {

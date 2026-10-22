@@ -2,25 +2,14 @@
 //! selected one-extended-grapheme-cluster reconciliation of UAX29 revision 47.
 //! Exact current-value payloads require the later functional typed-API tests.
 
-use crate::css::support::important_retained_declaration as parsed;
+use crate::css::support::checked_grammar_declaration as checked;
+use crate::css::support::important_declaration as parsed;
+use crate::css::support::selected_grammar as grammar;
 use surgeist_css::*;
 
 const SHORTHAND: &str = "text-align";
 const ALL: &str = "text-align-all";
 const LAST: &str = "text-align-last";
-
-fn grammar(name: &str) -> CssPropertyGrammar {
-    CssPropertyGrammar::from_name(name).unwrap_or_else(|| panic!("selected property: {name}"))
-}
-
-fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).expect("valid CSS component syntax"),
-        CssImportance::Important,
-    )
-    .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"))
-}
 
 fn accepted(name: &str, value: &str) {
     for declaration in [parsed(name, value), checked(name, value)] {

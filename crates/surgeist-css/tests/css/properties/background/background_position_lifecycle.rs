@@ -5,16 +5,8 @@
 //! boundaries. Exact typed initial/payload and new serialization APIs are tested
 //! separately when their functional implementation exists.
 
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
-
-fn declaration(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let [source] = report.syntax().as_slice() else {
-        panic!("expected one clean declaration");
-    };
-    source.clone()
-}
 
 fn positions(source: &CssDeclaration) -> &CssBackgroundPositionList {
     let CssKnownPropertyValueRef::BackgroundPosition(value) =
@@ -87,26 +79,6 @@ fn ordinary_layer_list_expands_to_its_terminal_with_original_importance() {
     assert_ordinary(&item, &source);
     assert_eq!(item.source().importance(), CssImportance::Important);
     assert!(item.replacement_components().is_none());
-}
-
-#[test]
-fn css_wide_keywords_remain_exact_symbolic_longhand_contributions() {
-    for (css, keyword) in [
-        ("inherit", CssGlobalKeyword::Inherit),
-        ("initial", CssGlobalKeyword::Initial),
-        ("unset", CssGlobalKeyword::Unset),
-        ("revert", CssGlobalKeyword::Revert),
-        ("revert-layer", CssGlobalKeyword::RevertLayer),
-    ] {
-        let source = declaration(&format!("background-position:{css}!important"));
-        let item = completed(&source);
-        assert_eq!(item.property(), CssKnownProperty::BackgroundPosition);
-        assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
-        assert!(item.ordinary_value().is_none());
-        assert!(item.source().same_occurrence(&source));
-        assert_eq!(item.source().importance(), CssImportance::Important);
-        assert!(item.replacement_components().is_none());
-    }
 }
 
 #[test]

@@ -1,3 +1,5 @@
+use crate::css::support::math_depth::MathDepthBoundary;
+use crate::css::support::property_admission::{assert_component_rejected, assert_numeric_rejected};
 use surgeist_css::{
     CssAnimationDirection, CssAnimationFillMode, CssAnimationIterationCount,
     CssAnimationIterationCountList, CssAnimationName, CssAnimationPlayState,
@@ -6,6 +8,7 @@ use surgeist_css::{
     CssPositiveIntegerValue, CssRecoveryAction, CssSourcePosition, CssStepPosition, CssTimeUnit,
     CssTokenKind, CssTransitionProperty, ErrorKind, parse_style_attribute,
 };
+use surgeist_css::{CssComponentValueErrorKind, CssNumericConstructionErrorKind};
 use surgeist_css::{CssTimeLiteral, CssTimeValue};
 
 fn for_each_permutation(
@@ -117,11 +120,11 @@ fn duration_and_delay_literals_enforce_distinct_exact_sign_domains() {
         CssTimeLiteral::try_new("1.5", CssTimeUnit::Seconds).expect("finite non-negative duration");
     assert_eq!(duration.numeric().representation(), "1.5");
     assert_eq!(duration.unit(), CssTimeUnit::Seconds);
-    assert!(
+    assert_numeric_rejected(
         CssDuration::try_new(CssTimeValue::from_literal(
-            CssTimeLiteral::try_new("-0.25", CssTimeUnit::Seconds).unwrap()
-        ))
-        .is_err()
+            CssTimeLiteral::try_new("-0.25", CssTimeUnit::Seconds).unwrap(),
+        )),
+        CssNumericConstructionErrorKind::OutOfRange,
     );
 
     let delay =
@@ -130,7 +133,12 @@ fn duration_and_delay_literals_enforce_distinct_exact_sign_domains() {
     assert_eq!(delay.unit(), CssTimeUnit::Milliseconds);
 
     for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-        assert!(CssTimeLiteral::try_new(&value.to_string(), CssTimeUnit::Seconds).is_err());
+        let error = CssTimeLiteral::try_new(&value.to_string(), CssTimeUnit::Seconds).unwrap_err();
+        assert_eq!(
+            error.kind(),
+            CssComponentValueErrorKind::InvalidDimension,
+            "{value}"
+        );
     }
 
     assert!(CssDurationList::try_new(Vec::new()).is_none());
@@ -156,11 +164,10 @@ fn duration_and_delay_literals_enforce_distinct_exact_sign_domains() {
 #[test]
 fn iteration_values_check_literals_and_keep_infinite_and_calculation_branches() {
     for text in ["-0.25", "-1e-999"] {
-        assert!(
-            surgeist_css::CssSpecifiedNonNegativeNumber::try_from_component(
-                surgeist_css::CssComponentValue::try_number(text).unwrap()
-            )
-            .is_err()
+        assert_component_rejected(
+            surgeist_css::CssSpecifiedNonNegativeNumber::try_from_component,
+            surgeist_css::CssComponentValue::try_number(text).unwrap(),
+            CssNumericConstructionErrorKind::OutOfRange,
         );
     }
     let number = surgeist_css::CssSpecifiedNonNegativeNumber::try_from_component(
@@ -711,9 +718,9 @@ fn every_invalid_timing_category_has_exact_public_diagnostics_and_strict_parity(
         InvalidTimingCase {
             source: "transition-duration: 1s,; color: red",
             property: CssKnownProperty::TransitionDuration,
-            position: 24,
+            position: 23,
             span_end: 25,
-            encountered: None,
+            encountered: Some((CssTokenKind::Comma, ",")),
         },
         InvalidTimingCase {
             source: "animation-delay: -1s,,2s; color: red",
@@ -752,73 +759,49 @@ fn repeated_timing_failures_and_depth_255_256_257_have_exact_recovery_behavior()
     assert_eq!(report.syntax().len(), 1);
     assert_eq!(report.diagnostics().len(), 128);
 
-    for depth in [255_usize, 256] {
-        let source = format!(
-            "transition-duration: {}1s{}; color: red",
-            "calc(".repeat(depth),
-            ")".repeat(depth)
-        );
-        let report = parse_style_attribute(&source);
-        assert!(
-            report.is_clean(),
-            "depth {depth}: {:?}",
-            report.diagnostics()
-        );
-        let [duration, color] = report.syntax().as_slice() else {
-            panic!("depth {depth}: duration and color must both be retained");
-        };
-        let CssKnownPropertyValueRef::TransitionDuration(duration) = duration
-            .known()
-            .expect("known duration")
-            .property_value()
-            .expect("ordinary duration")
-        else {
-            panic!("depth {depth}: expected transition-duration wrapper");
-        };
-        assert!(
-            matches!({ let values = duration.durations().values(); if values.len() == 1 { values[0].time().calculation() } else { None } }, Some(calculation)
-                if calculation.result_type() == CssCalculationType::Time)
-        );
-        assert_eq!(
-            color.known().expect("known color sibling").property(),
-            CssKnownProperty::Color,
-        );
-
-        assert_eq!(
-            surgeist_css::validate_style_attribute(&source)
-                .expect("strict validation accepts supported calculation depth"),
-            *report.syntax(),
-            "depth {depth}",
-        );
+    MathDepthBoundary {
+        template: "transition-duration: {}1s{}; color: red",
+        accepted: &[255, 256],
+        rejected: &[257],
+        sibling_retained: true,
     }
-
-    let depth = 257_usize;
-    let source = format!(
-        "transition-duration: {}1s{}; color: red",
-        "calc(".repeat(depth),
-        ")".repeat(depth)
+    .assert_with(
+        |depth, _, report| {
+            let [duration, color] = report.syntax().as_slice() else {
+                panic!("depth {depth}: duration and color must both be retained");
+            };
+            let CssKnownPropertyValueRef::TransitionDuration(duration) = duration
+                .known()
+                .expect("known duration")
+                .property_value()
+                .expect("ordinary duration")
+            else {
+                panic!("depth {depth}: expected transition-duration wrapper");
+            };
+            assert!(
+                matches!({ let values = duration.durations().values(); if values.len() == 1 { values[0].time().calculation() } else { None } }, Some(calculation)
+                    if calculation.result_type() == CssCalculationType::Time)
+            );
+            assert_eq!(
+                color.known().expect("known color sibling").property(),
+                CssKnownProperty::Color,
+            );
+        },
+        |_, source, report| {
+            assert_retained_color_sibling(source, report);
+            let [diagnostic] = report.diagnostics() else {
+                panic!("over-limit timing calculation must produce one diagnostic");
+            };
+            assert_ascii_position(diagnostic.error().position(), 1_301);
+            assert_ascii_position(diagnostic.span().start(), 0);
+            assert_ascii_position(diagnostic.span().end(), 1_566);
+            let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
+                panic!("depth 257 must expose typed nesting-limit detail");
+            };
+            assert_eq!(detail.limit(), 256);
+            assert_eq!(detail.enclosing_production().as_str(), "css.declaration");
+        },
     );
-    let report = parse_style_attribute(&source);
-    assert_retained_color_sibling(&source, &report);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("over-limit timing calculation must produce one diagnostic");
-    };
-    assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-    assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
-    assert_ascii_position(diagnostic.error().position(), 1_301);
-    assert_ascii_position(diagnostic.span().start(), 0);
-    assert_ascii_position(diagnostic.span().end(), 1_566);
-    let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-        panic!("depth 257 must expose typed nesting-limit detail");
-    };
-    assert_eq!(detail.limit(), 256);
-    assert_eq!(detail.enclosing_production().as_str(), "css.declaration");
-
-    {
-        let failure = surgeist_css::validate_style_attribute(&source)
-            .expect_err("strict validation rejects depth 257");
-        assert_eq!(failure.diagnostics(), report.diagnostics());
-    }
 }
 
 #[test]

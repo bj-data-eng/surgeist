@@ -1,7 +1,7 @@
-//! Independent existing-front draft: Env1 WD20250923 §3; Syntax3 CRD20261001
-//! §§5.5, 8.2; selected Fonts4 WD20260907 §6.9.1 and Counter Styles3 §3.
-//! This file deliberately uses existing names so admission RED can precede a
-//! functional phase extension. New phase views/reentry are separate tests.
+//! Admission through the string and component fronts: Env1 WD20250923 §3;
+//! Syntax3 CRD20261001 §§5.5, 8.2; selected Fonts4 WD20260907 §6.9.1 and
+//! Counter Styles3 §3.
+//! Phase views and strict reentry are covered by descriptor_env_phase_contract.
 
 use surgeist_css::{
     CssComponentValueRef, CssComponentValues, CssCounterStyleDescriptorKind as Counter,

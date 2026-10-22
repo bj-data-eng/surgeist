@@ -14,10 +14,11 @@ use crate::syntax::*;
 macro_rules! keyword_parser {
     ($function:ident, $ty:ident, $($keyword:literal => $variant:ident),+ $(,)?) => {
         pub(super) fn $function<'i, 't>(input: &mut Parser<'i, 't>) -> Result<$ty, ParseError<'i, Error>> {
+            let keyword_location = input.current_source_location();
             let ident = input.expect_ident_cloned().map_err(basic)?;
             match ident.to_ascii_lowercase().as_str() {
                 $($keyword => Ok($ty::$variant),)+
-                _ => Err(unexpected_at(input.current_source_location())),
+                _ => Err(unexpected_at(keyword_location)),
             }
         }
     };
@@ -30,10 +31,11 @@ keyword_parser!(parse_clip_rule, CssClipRule, "nonzero" => Nonzero, "evenodd" =>
 pub(super) fn parse_mask_box<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssMaskBox, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     CssBoxEdgeKeyword::from_keyword(&ident)
         .and_then(CssMaskBox::try_new)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(keyword_location))
 }
 pub(super) fn parse_mask_clip<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -160,6 +162,14 @@ pub(super) fn parse_mask_layer<'i, 't>(
         Tail::Reject,
         |_| false,
         |operand, input| match operand {
+            // A URL commits the image operand (Values 4 §2.2), so a request
+            // URL modifier failure is reported inside it.
+            0 if super::ui::starts_url(input) => commit(
+                &mut image,
+                input,
+                |_| true,
+                |input| parse_image_value(input, numeric),
+            ),
             0 => fill(&mut image, input, |input| parse_image_value(input, numeric)),
             1 => fill(&mut repeat, input, parse_background_repeat),
             2 => {

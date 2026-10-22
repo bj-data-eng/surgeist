@@ -1,6 +1,7 @@
 //! Authored columns from Multicol 1 CR (2024-05-16) §§3.1–3.3, with the
 //! `column-width` box-size extension from Sizing 4 WD (2026-09-04) §5.6.
 
+use crate::css::support::property_admission::assert_declaration_rejected as rejected;
 use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
@@ -21,27 +22,6 @@ fn accepted(name: &str, value: &str) {
             value
         );
     }
-}
-
-fn invalid(name: &str, value: &str) {
-    let source = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&source);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one invalid-value diagnostic: {source}")
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    assert_eq!(report.syntax().len(), 2, "neighbors survive: {source}");
-    assert!(validate_style_attribute(&source).is_err());
-    assert!(
-        parse_property_value_for_grammar(
-            grammar(name),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "checked construction accepted {name}:{value}"
-    );
 }
 
 fn one_value(source: &CssDeclaration) -> CssLonghandValue {
@@ -124,8 +104,18 @@ fn count_accepts_positive_integers_without_saturating_distinct_authored_values()
     ] {
         accepted("column-count", value);
     }
-    for value in ["0", "-0", "-1", "1.0", "1e0", "1px", "1%", "none", "auto 2"] {
-        invalid("column-count", value);
+    for (value, token) in [
+        ("0", Some("0")),
+        ("-0", Some("-0")),
+        ("-1", Some("-1")),
+        ("1.0", Some("1.0")),
+        ("1e0", Some("1e0")),
+        ("1px", Some("1px")),
+        ("1%", Some("1%")),
+        ("none", Some("none")),
+        ("auto 2", Some("2")),
+    ] {
+        rejected("column-count", value, token);
     }
     let at_limit = typed_count("2147483647");
     let just_above = typed_count("2147483648");
@@ -161,17 +151,17 @@ fn width_uses_nonnegative_box_size_values_without_early_math_resolution() {
     ] {
         accepted("column-width", value);
     }
-    for value in [
-        "-1px",
-        "-1e-999%",
-        "1",
-        "1fr",
-        "none",
-        "fit-content(-1px)",
-        "calc(1 + 2)",
-        "auto 1px",
+    for (value, token) in [
+        ("-1px", Some("-1px")),
+        ("-1e-999%", Some("-1e-999%")),
+        ("1", Some("1")),
+        ("1fr", Some("1fr")),
+        ("none", Some("none")),
+        ("fit-content(-1px)", Some("-1px")),
+        ("calc(1 + 2)", Some("calc(")),
+        ("auto 1px", Some("1px")),
     ] {
-        invalid("column-width", value);
+        rejected("column-width", value, token);
     }
     assert_ne!(
         one_value(&declaration("column-width", "1%")),
@@ -203,20 +193,20 @@ fn columns_accepts_unordered_width_and_count_with_auto_for_omissions() {
     ] {
         accepted("columns", value);
     }
-    for value in [
-        "",
-        "0 0",
-        "1.0",
-        "-1px 2",
-        "2 3",
-        "10px 20px",
-        "auto auto auto",
-        "2 10px auto",
-        "1fr 2",
-        "none 2",
-        "initial 2",
+    for (value, token) in [
+        ("", None),
+        ("0 0", Some("0")),
+        ("1.0", Some("1.0")),
+        ("-1px 2", Some("-1px")),
+        ("2 3", Some("3")),
+        ("10px 20px", Some("20px")),
+        ("auto auto auto", Some("auto")),
+        ("2 10px auto", Some("auto")),
+        ("1fr 2", Some("1fr")),
+        ("none 2", Some("none")),
+        ("initial 2", Some("2")),
     ] {
-        invalid("columns", value);
+        rejected("columns", value, token);
     }
     let metadata = grammar("columns").metadata().unwrap();
     let CssPropertyKindRef::Shorthand(shorthand) = metadata.kind() else {

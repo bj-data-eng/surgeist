@@ -9,6 +9,7 @@
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#multi-value-features
 
 use crate::css::support::descriptor_phases;
+use crate::css::support::rules::{invalid_descriptor, rejected_bang};
 use descriptor_phases::*;
 
 use surgeist_css::*;
@@ -275,15 +276,15 @@ fn rejected_integer_syntax_and_index_counts_remain_intrinsic_errors() {
             CssFontFeatureValueErrorKind::Grammar(ErrorKind::UnexpectedToken(_))
         ));
     }
-    for (kind, invalid) in [
-        ("character-variant", "1 2 3"),
-        ("character-variant", "-1 2"),
-        ("character-variant", "1.0 2"),
-        ("styleset", ""),
-        ("styleset", "1,2"),
-        ("styleset", "1e0"),
-        ("styleset", "1 !important"),
-        ("styleset", "calc(1)"),
+    for (kind, invalid, token) in [
+        ("character-variant", "1 2 3", Some("3")),
+        ("character-variant", "-1 2", Some("-1")),
+        ("character-variant", "1.0 2", Some("1.0")),
+        ("styleset", "", None),
+        ("styleset", "1,2", Some(",")),
+        ("styleset", "1e0", Some("1e0")),
+        ("styleset", "1 !important", Some("!")),
+        ("styleset", "calc(1)", Some("calc(")),
     ] {
         let source = format!(
             "@font-feature-values Demo {{ @{kind} {{ bad: {invalid}; keep: {}; }} }}",
@@ -294,8 +295,17 @@ fn rejected_integer_syntax_and_index_counts_remain_intrinsic_errors() {
             }
         );
         let report = parse_sheet(&source);
-        assert!(!report.is_clean(), "{source}");
-        assert!(validate_sheet(&source).is_err());
+        // Fonts 4 §6.9.1: <integer [0,∞]>{1,2} for character-variant and
+        // <integer [0,∞]>+ for styleset; calc() is the selected policy. The
+        // first violating index token, or the end of the value, is
+        // responsible.
+        let expected = match token {
+            Some("!") => rejected_bang(kind, "bad"),
+            Some(token) => invalid_descriptor(kind, "bad").at(token),
+            None => invalid_descriptor(kind, "bad").at_end(),
+        };
+        expected.assert_first(&report);
+        expected.assert_sheet(&source);
         let [CssRule::FontFeatureValues(rule)] = report.syntax().rules() else {
             panic!("rule survives invalid definition")
         };

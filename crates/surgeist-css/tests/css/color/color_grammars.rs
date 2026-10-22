@@ -1,3 +1,5 @@
+use crate::css::support::color_property::color_property_value;
+use crate::css::support::math_depth::MathDepthBoundary;
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 use surgeist_css::{
     CssColorComponent, CssColorHue, CssColorSyntax, CssKnownDeclaredValueRef, CssKnownProperty,
@@ -8,15 +10,7 @@ use surgeist_css::{
 fn color_value(source: &str) -> surgeist_css::CssColorPropertyValue {
     let report = parse_style_attribute(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let CssKnownPropertyValueRef::Color(value) = report.syntax()[0]
-        .known()
-        .expect("known color declaration")
-        .property_value()
-        .expect("ordinary color value")
-    else {
-        panic!("expected color wrapper");
-    };
-    value.clone()
+    color_property_value(&report.syntax()[0]).clone()
 }
 
 #[test]
@@ -255,7 +249,7 @@ fn color_mix_nesting_preserves_the_exact_parser_boundary() {
 }
 
 #[test]
-fn relative_color_families_expose_their_closed_current_environments_and_i01_projection() {
+fn relative_color_families_expose_their_function_closed_environment_and_three_channels() {
     for (source, expected_function, expected_environment) in [
         (
             "color: rgb(from red r g b / alpha)",
@@ -798,49 +792,13 @@ fn invalid_perceptual_and_predefined_color_forms_drop_only_the_declaration() {
 
 #[test]
 fn perceptual_color_calculations_preserve_the_exact_depth_boundary() {
-    for depth in [254_usize, 255] {
-        let source = format!(
-            "color: oklab({}1{} 2 3); opacity: 0.5",
-            "calc(".repeat(depth),
-            ")".repeat(depth),
-        );
-        let report = parse_style_attribute(&source);
-        assert!(
-            report.is_clean(),
-            "depth {depth}: {:?}",
-            report.diagnostics()
-        );
-        assert_eq!(report.syntax().len(), 2);
+    MathDepthBoundary {
+        template: "color: oklab({}1{} 2 3); opacity: 0.5",
+        accepted: &[254, 255],
+        rejected: &[256, 257],
+        sibling_retained: true,
     }
-
-    for depth in [256_usize, 257] {
-        let source = format!(
-            "color: oklab({}1{} 2 3); opacity: 0.5",
-            "calc(".repeat(depth),
-            ")".repeat(depth),
-        );
-        let first_over_limit = source.match_indices("calc(").nth(255).unwrap().0;
-        let report = parse_style_attribute(&source);
-        assert_eq!(report.syntax().len(), 1, "depth {depth}");
-        let [diagnostic] = report.diagnostics() else {
-            panic!("depth {depth}: expected one diagnostic");
-        };
-        assert_eq!(
-            diagnostic.error().code(),
-            surgeist_css::CssErrorCode::NestingLimit,
-            "depth {depth}",
-        );
-        assert_eq!(
-            diagnostic.action(),
-            surgeist_css::CssRecoveryAction::StopAtNestingLimit,
-            "depth {depth}",
-        );
-        assert_eq!(
-            diagnostic.error().position().byte_offset().value(),
-            first_over_limit,
-            "depth {depth}",
-        );
-    }
+    .assert();
 }
 
 #[test]
@@ -868,49 +826,13 @@ fn invalid_color_separators_units_and_arities_drop_only_the_declaration() {
 
 #[test]
 fn authored_color_calculations_preserve_the_exact_depth_boundary() {
-    for depth in [254_usize, 255] {
-        let source = format!(
-            "color: rgb({}1{} 2 3); opacity: 0.5",
-            "calc(".repeat(depth),
-            ")".repeat(depth),
-        );
-        let report = parse_style_attribute(&source);
-        assert!(
-            report.is_clean(),
-            "depth {depth}: {:?}",
-            report.diagnostics()
-        );
-        assert_eq!(report.syntax().len(), 2);
+    MathDepthBoundary {
+        template: "color: rgb({}1{} 2 3); opacity: 0.5",
+        accepted: &[254, 255],
+        rejected: &[256, 257],
+        sibling_retained: true,
     }
-
-    for depth in [256_usize, 257] {
-        let source = format!(
-            "color: rgb({}1{} 2 3); opacity: 0.5",
-            "calc(".repeat(depth),
-            ")".repeat(depth),
-        );
-        let first_over_limit = source.match_indices("calc(").nth(255).unwrap().0;
-        let report = parse_style_attribute(&source);
-        assert_eq!(report.syntax().len(), 1, "depth {depth}");
-        let [diagnostic] = report.diagnostics() else {
-            panic!("depth {depth}: expected one diagnostic");
-        };
-        assert_eq!(
-            diagnostic.error().code(),
-            surgeist_css::CssErrorCode::NestingLimit,
-            "depth {depth}",
-        );
-        assert_eq!(
-            diagnostic.action(),
-            surgeist_css::CssRecoveryAction::StopAtNestingLimit,
-            "depth {depth}",
-        );
-        assert_eq!(
-            diagnostic.error().position().byte_offset().value(),
-            first_over_limit,
-            "depth {depth}",
-        );
-    }
+    .assert();
 }
 
 #[test]

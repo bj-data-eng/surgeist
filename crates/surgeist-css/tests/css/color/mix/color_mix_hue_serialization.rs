@@ -1,23 +1,10 @@
 //! Color5 WD 2026-09-08 §11.1 omits the default shorter hue method.
 //! Expectations come from that serialization clause, independently of the writer.
 
+use crate::css::support::color_property::normal_checked_color as parsed;
+use crate::css::support::declaration_color;
 use surgeist_color::{ColorSpace, HueInterpolation};
 use surgeist_css::*;
-
-fn parsed(source: &str) -> CssColor {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        parse_component_values(source).unwrap(),
-        CssImportance::Normal,
-    )
-    .unwrap();
-    let CssKnownPropertyValueRef::Color(value) =
-        declaration.known().unwrap().property_value().unwrap()
-    else {
-        panic!("color")
-    };
-    value.value().clone()
-}
 
 fn constructed(space: ColorSpace, hue: HueInterpolation) -> CssColor {
     CssColor::from_color_mix(
@@ -180,12 +167,10 @@ fn shorter_omission_preserves_style_importance_and_authored_tokens() {
         declaration.value_components().serialize().unwrap().as_css(),
         authored
     );
-    let CssKnownPropertyValueRef::Color(value) =
-        declaration.known().unwrap().property_value().unwrap()
-    else {
-        panic!("color")
-    };
-    assert_text(value.value(), "color-mix(in lch, red, blue)");
+    assert_text(
+        declaration_color(declaration),
+        "color-mix(in lch, red, blue)",
+    );
     assert_eq!(
         declaration.value_components().serialize().unwrap().as_css(),
         authored

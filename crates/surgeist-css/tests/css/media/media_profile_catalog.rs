@@ -30,7 +30,7 @@ fn effective(id: &str) {
 }
 
 #[test]
-fn existing_feature_identities_resolve_to_the_effective_published_grammar() {
+fn media_queries_four_feature_identities_resolve_to_the_effective_published_grammar() {
     for name in [
         "width",
         "height",

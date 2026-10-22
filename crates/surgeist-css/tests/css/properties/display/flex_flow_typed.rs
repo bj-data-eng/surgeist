@@ -1,7 +1,7 @@
 //! Public construction and bounded specified serialization for Flexbox 1
 //! §§5.1–5.3. The direction and wrap keywords stay symbolic until layout.
 
-use crate::css::support::style_declaration_reporting_source as declaration;
+use crate::css::support::sole_declaration as declaration;
 use surgeist_css::*;
 
 const PROGRAMMATIC_FLOW: CssFlexFlow =

@@ -1,7 +1,8 @@
 //! A rejected `||`/`&&` group or `#` list names the responsible authored
 //! component: `CssPropertyValueError::encountered()` is the first component
-//! the grammar cannot admit while one is present, and `None` when a list
-//! ended after its separator (the documented end-of-value contract).
+//! the grammar cannot admit while one is present, and the separator itself
+//! when a list ends after it (the last authored token, reference "Source
+//! coordinates and diagnostics").
 
 use surgeist_css::*;
 
@@ -109,8 +110,8 @@ fn rejected_groups_name_the_unadmitted_or_repeated_component() {
 }
 
 #[test]
-fn a_list_ending_after_its_comma_has_no_token() {
+fn a_list_ending_after_its_comma_names_that_comma() {
     for (name, value) in [("transition-duration", "1s,"), ("font-family", "serif,")] {
-        assert_encountered(name, value, None);
+        assert_encountered(name, value, Some(","));
     }
 }

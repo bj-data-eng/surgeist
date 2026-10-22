@@ -1,9 +1,10 @@
 //! Functional evidence for new APIs, without preimplementation executable API RED.
 //! Independent expectations follow pinned Shapes 1 §§3.1–3.3 and the adopted
 //! authored serialization resource contract. No contextual geometry is inferred.
-use surgeist_css::{
-    CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
-};
+use crate::css::support::normal_declaration;
+use crate::css::support::property_admission::assert_component_rejected;
+use crate::css::support::serialization_limits::assert_limits as budget;
+use surgeist_css::{CssSpecifiedValueSerializationLimits as L, *};
 
 fn lp(css: &str) -> CssSpecifiedLengthPercentage {
     CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(css).unwrap())
@@ -18,14 +19,10 @@ fn nn(css: &str) -> CssSpecifiedNonNegativeLengthPercentage {
 fn edge(css: &str) -> CssRectShapeEdge {
     CssRectShapeEdge::LengthPercentage(lp(css))
 }
-fn parsed(css: &str) -> CssBasicShape {
-    let report = parse_style_attribute(&format!("clip-path:{css}"));
-    assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    let CssKnownPropertyValueRef::ClipPath(value) = report.syntax()[0]
-        .known()
-        .unwrap()
-        .property_value()
-        .unwrap()
+fn basic_shape(css: &str) -> CssBasicShape {
+    let declaration = normal_declaration("clip-path", css);
+    let CssKnownPropertyValueRef::ClipPath(value) =
+        declaration.known().unwrap().property_value().unwrap()
     else {
         panic!("clip path")
     };
@@ -34,32 +31,6 @@ fn parsed(css: &str) -> CssBasicShape {
     };
     composition.shape().clone()
 }
-fn budget(
-    expected: &str,
-    input: usize,
-    projection: usize,
-    serialize: impl Fn(L) -> Result<String, CssSpecifiedValueSerializationError>,
-) {
-    assert_eq!(
-        serialize(L::new(input, projection, expected.len())).unwrap(),
-        expected
-    );
-    for (limit, kind) in [
-        (
-            L::new(input - 1, projection, expected.len()),
-            K::InputNodeLimit,
-        ),
-        (
-            L::new(input, projection - 1, expected.len()),
-            K::ProjectionNodeLimit,
-        ),
-        (L::new(input, projection, expected.len() - 1), K::ByteLimit),
-    ] {
-        assert_eq!(serialize(limit).unwrap_err().kind(), kind, "{expected}");
-    }
-    assert_eq!(serialize(L::default()).unwrap(), expected);
-}
-
 #[test]
 fn checked_rect_composition_retains_each_named_edge_and_omitted_rounding() {
     let top = edge("-1px");
@@ -83,7 +54,7 @@ fn checked_rect_composition_retains_each_named_edge_and_omitted_rounding() {
         "rect(-1px auto 2% -3em)"
     );
     assert_eq!(
-        parsed("rect(-1px auto 2% -3em)"),
+        basic_shape("rect(-1px auto 2% -3em)"),
         CssBasicShape::Rect(rect.clone())
     );
     assert_ne!(rect, CssRectShape::new(left, right, bottom, top, None));
@@ -120,26 +91,34 @@ fn checked_xywh_composition_retains_signed_offsets_and_nonnegative_sizes() {
     assert!(xywh.round().is_none());
     assert_eq!(xywh.serialize_specified().unwrap(), "xywh(-1px -2% 3em 0)");
     assert_eq!(
-        parsed("xywh(-1px -2% 3em 0)"),
+        basic_shape("xywh(-1px -2% 3em 0)"),
         CssBasicShape::Xywh(xywh.clone())
     );
     assert_ne!(xywh, CssXywhShape::new(y, x, height, width, None));
-    for invalid in ["-1px", "-1%", "-1e-999px", "-1e-999%", "auto", "1", "1deg"] {
-        assert!(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(
-                CssComponentValue::try_token(invalid).unwrap()
-            )
-            .is_err(),
-            "{invalid}"
+    for (invalid, kind) in [
+        ("-1px", CssNumericConstructionErrorKind::OutOfRange),
+        ("-1%", CssNumericConstructionErrorKind::OutOfRange),
+        ("-1e-999px", CssNumericConstructionErrorKind::OutOfRange),
+        ("-1e-999%", CssNumericConstructionErrorKind::OutOfRange),
+        ("auto", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("1", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("1deg", CssNumericConstructionErrorKind::RootDomainMismatch),
+    ] {
+        assert_component_rejected(
+            CssSpecifiedNonNegativeLengthPercentage::try_from_component,
+            CssComponentValue::try_token(invalid).unwrap(),
+            kind,
         );
     }
-    for invalid in ["auto", "1", "1deg"] {
-        assert!(
-            CssSpecifiedLengthPercentage::try_from_component(
-                CssComponentValue::try_token(invalid).unwrap()
-            )
-            .is_err(),
-            "{invalid}"
+    for (invalid, kind) in [
+        ("auto", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("1", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("1deg", CssNumericConstructionErrorKind::RootDomainMismatch),
+    ] {
+        assert_component_rejected(
+            CssSpecifiedLengthPercentage::try_from_component,
+            CssComponentValue::try_token(invalid).unwrap(),
+            kind,
         );
     }
     assert_eq!(lp("-1e-999px").origin(), &CssValueOrigin::Programmatic);
@@ -169,7 +148,7 @@ fn semantic_equality_preserves_separately_observable_numeric_origins() {
             )),
         ),
     ] {
-        let value = parsed(text);
+        let value = basic_shape(text);
         assert_eq!(value, constructed);
         let (parsed_scalar, constructed_scalar) = match (&value, &constructed) {
             (CssBasicShape::Rect(a), CssBasicShape::Rect(b)) => {
@@ -195,12 +174,12 @@ fn semantic_equality_preserves_separately_observable_numeric_origins() {
     }
     // Structural equality ignores provenance only, retaining exact lexical structure.
     assert_ne!(
-        parsed("rect(auto 1px 2% 0)"),
-        parsed("rect(auto 1.00px 2% 0)")
+        basic_shape("rect(auto 1px 2% 0)"),
+        basic_shape("rect(auto 1.00px 2% 0)")
     );
     assert_ne!(
-        parsed("xywh(-1px 2% 3em 4vh)"),
-        parsed("xywh(-1.00px 2% 3em 4vh)")
+        basic_shape("xywh(-1px 2% 3em 4vh)"),
+        basic_shape("xywh(-1.00px 2% 3em 4vh)")
     );
 }
 
@@ -261,11 +240,11 @@ fn round_arity_slash_and_omission_remain_authored_distinctions() {
             );
         }
     }
-    let omitted = parsed("rect(0 0 1px 2%)");
-    assert_ne!(omitted, parsed("rect(0 0 1px 2% round 0)"));
+    let omitted = basic_shape("rect(0 0 1px 2%)");
+    assert_ne!(omitted, basic_shape("rect(0 0 1px 2% round 0)"));
     assert_ne!(
-        parsed("xywh(0 0 1px 2% round 0)"),
-        parsed("xywh(0 0 1px 2% round 0 / 0)")
+        basic_shape("xywh(0 0 1px 2% round 0)"),
+        basic_shape("xywh(0 0 1px 2% round 0 / 0)")
     );
 }
 
@@ -315,7 +294,7 @@ fn four_math_children_and_rounding_share_one_cumulative_provider_budget() {
     // Each mixed LP calculation costs four input/five projection nodes.
     // The shape adds one; round adds one and its two children add eight/ten.
     for name in ["rect", "xywh"] {
-        let value = parsed(&format!(
+        let value = basic_shape(&format!(
             "{name}(calc(1px + 2%) calc(3em + 4%) calc(5px + 6%) calc(7px + 8%) round calc(9px + 10%) / calc(11px + 12%))"
         ));
         let before = value.clone();
@@ -385,7 +364,7 @@ fn exact_magnitudes_retain_identity_while_ordinary_text_rounds_and_math_is_prese
         "1e-999px",
     );
     assert_eq!(
-        parsed("xywh(0 0 calc(1px - 2px) calc(-1%))")
+        basic_shape("xywh(0 0 calc(1px - 2px) calc(-1%))")
             .serialize_specified()
             .unwrap(),
         "xywh(0 0 calc(-1px) calc(-1%))"
@@ -393,7 +372,7 @@ fn exact_magnitudes_retain_identity_while_ordinary_text_rounds_and_math_is_prese
 }
 
 #[test]
-fn relocated_shape_front_doors_preserve_existing_construction_and_budgets() {
+fn shape_front_doors_preserve_construction_and_budgets() {
     let circle = CssCircleShape::new(CssCircleRadius::Default, None);
     budget("circle()", 1, 1, |l| {
         circle.serialize_specified_with_limits(l)
@@ -424,5 +403,8 @@ fn relocated_shape_front_doors_preserve_existing_construction_and_budgets() {
     budget("polygon(0 1%)", 5, 5, |l| {
         polygon.serialize_specified_with_limits(l)
     });
-    assert_eq!(parsed("inset(1px)"), CssBasicShape::Inset(Box::new(inset)));
+    assert_eq!(
+        basic_shape("inset(1px)"),
+        CssBasicShape::Inset(Box::new(inset))
+    );
 }

@@ -90,7 +90,7 @@
     "clean": 6,
     "strict_rejected": 10,
     "recovered": 3,
-    "raw_diagnostics": 18,
+    "raw_diagnostics": 17,
     "unsettled": 0
   },
   "rows": [
@@ -1059,12 +1059,7 @@
         },
         "diagnostics": [
           {
-            "code": "invalid_qualified_rule",
-            "action": "drop_declaration",
-            "payload_relation": "intersects"
-          },
-          {
-            "code": "unknown_at_rule",
+            "code": "unexpected_token",
             "action": "drop_declaration",
             "payload_relation": "intersects"
           }
@@ -1072,28 +1067,19 @@
       },
       "expected_raw_diagnostics": [
         {
-          "code": "invalid_qualified_rule",
+          "code": "unexpected_token",
           "action": "drop_declaration",
           "payload_relation": "intersects",
           "byte_offset": 14,
           "span_start": 14,
-          "span_end": 39,
-          "multiplicity": 1
-        },
-        {
-          "code": "unknown_at_rule",
-          "action": "drop_declaration",
-          "payload_relation": "intersects",
-          "byte_offset": 40,
-          "span_start": 40,
-          "span_end": 69,
+          "span_end": 70,
           "multiplicity": 1
         }
       ],
-      "diagnostic_count": 2,
+      "diagnostic_count": 1,
       "rationale": [
-        "A raw style attribute/declaration list contains declarations, not nested style or conditional rules. Retain only the leading color:blue if present. Discard all nested blocks as non-declaration units; do not import enclosed green/red into the outer list. @nest is not required nesting syntax, and valid @media stylesheet grammar does not make an at-rule a declaration.",
-        "Static diagnostic trace: StrictDeclarationParser default QualifiedRuleParser rejects a non-identifier prelude with QualifiedRuleInvalid; default AtRuleParser rejects at-rules with AtRuleInvalid, mapped to UnknownAtRule for media/nest. Identifier-led div:hover first fails ordinary property resolution, and RuleBodyParser deliberately preserves that UnknownProperty when qualified fallback also fails. consume_failed_rule_block consumes each whole balanced curly body; spans exclude surrounding whitespace/semicolons unless the semicolon is part of the failed declaration unit."
+        "A raw style attribute/declaration list contains declarations, not nested style or conditional rules. Retain only the leading color:blue. The `&`-led unit is a malformed declaration whose remnants run to EOF: the nested blocks and the following @nest rule are inside it, and neither enclosed green nor red is imported into the outer list.",
+        "Malformed declaration starts (#1372): CSS Style Attributes REC 2013-11-07 \u00a73 parses the value as declaration block contents in which a `}` is merely an invalid token, and CSS 2.1 \u00a74.2 reads a malformed declaration until its end while observing matching pairs. Syntax 3 (2026 CRD) \u00a75.5.6: a declaration whose first token is not an <ident-token> consumes the remnants of a bad declaration (not nested), whole blocks included, through the next root `;` or EOF. The unit starts at the responsible first token and excludes that `;`; it is one UnexpectedToken DropDeclaration."
       ],
       "uncertainties": [],
       "source_predicted_retention_matches_normative": true
@@ -1139,7 +1125,7 @@
         },
         "diagnostics": [
           {
-            "code": "invalid_qualified_rule",
+            "code": "unexpected_token",
             "action": "drop_declaration",
             "payload_relation": "intersects"
           },
@@ -1152,7 +1138,7 @@
       },
       "expected_raw_diagnostics": [
         {
-          "code": "invalid_qualified_rule",
+          "code": "unexpected_token",
           "action": "drop_declaration",
           "payload_relation": "intersects",
           "byte_offset": 0,
@@ -1172,8 +1158,8 @@
       ],
       "diagnostic_count": 2,
       "rationale": [
-        "A raw style attribute/declaration list contains declarations, not nested style or conditional rules. Retain only the leading color:blue if present. Discard all nested blocks as non-declaration units; do not import enclosed green/red into the outer list. @nest is not required nesting syntax, and valid @media stylesheet grammar does not make an at-rule a declaration.",
-        "Static diagnostic trace: StrictDeclarationParser default QualifiedRuleParser rejects a non-identifier prelude with QualifiedRuleInvalid; default AtRuleParser rejects at-rules with AtRuleInvalid, mapped to UnknownAtRule for media/nest. Identifier-led div:hover first fails ordinary property resolution, and RuleBodyParser deliberately preserves that UnknownProperty when qualified fallback also fails. consume_failed_rule_block consumes each whole balanced curly body; spans exclude surrounding whitespace/semicolons unless the semicolon is part of the failed declaration unit."
+        "A raw style attribute/declaration list contains declarations, not nested style rules. The `.`-led unit is a malformed declaration whose remnants, its block included, end before the first root `;`. Identifier-led div:hover first fails ordinary property resolution, and RuleBodyParser preserves that UnknownProperty when qualified fallback also fails; consume_failed_rule_block consumes its whole balanced curly body.",
+        "Malformed declaration starts (#1372): CSS Style Attributes REC 2013-11-07 \u00a73 parses the value as declaration block contents in which a `}` is merely an invalid token, and CSS 2.1 \u00a74.2 reads a malformed declaration until its end while observing matching pairs. Syntax 3 (2026 CRD) \u00a75.5.6: a declaration whose first token is not an <ident-token> consumes the remnants of a bad declaration (not nested), whole blocks included, through the next root `;` or EOF. The unit starts at the responsible first token and excludes that `;`; it is one UnexpectedToken DropDeclaration."
       ],
       "uncertainties": [],
       "source_predicted_retention_matches_normative": true

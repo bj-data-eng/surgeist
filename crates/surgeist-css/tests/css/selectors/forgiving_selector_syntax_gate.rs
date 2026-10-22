@@ -4,6 +4,7 @@
 //! excluded from any-value. A missing EOF closure alone is recoverable.
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#parse-as-a-forgiving-selector-list
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value
+use crate::css::support::color_and_selector_fixtures::assert_strict_validation_rejects;
 use surgeist_css::{
     CssErrorCode, CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem,
     CssRecoveryAction, CssSelector, CssTokenKind, ErrorKind, parse_selector,
@@ -30,7 +31,7 @@ fn assert_rejected(source: &str) {
             .any(|diagnostic| diagnostic.action() == CssRecoveryAction::RetainWithImplicitClosure),
         "rejected syntax cannot claim retained EOF closures"
     );
-    assert!(report.clone().into_validation_result().is_err());
+    assert_strict_validation_rejects(report.clone());
 }
 
 #[test]
@@ -85,10 +86,7 @@ fn lexical_validity_does_not_prevent_forgiving_removal_of_invalid_selector_membe
                 .iter()
                 .any(|diagnostic| diagnostic.action() == CssRecoveryAction::RejectInput)
         );
-        assert!(
-            report.into_validation_result().is_err(),
-            "strict validation rejects recovered reports"
-        );
+        assert_strict_validation_rejects(report);
     }
 }
 
@@ -122,7 +120,7 @@ fn missing_eof_closure_retains_a_lexically_valid_forgiving_selector() {
             diagnostic.error().position().byte_offset().value(),
             source.len()
         );
-        assert!(report.into_validation_result().is_err());
+        assert_strict_validation_rejects(report);
     }
 }
 
@@ -174,7 +172,7 @@ fn bad_tokens_are_not_forgiven_and_the_responsible_unicode_source_position_is_re
             diagnostic.error().position().column().value(),
             u32::try_from(source[line_start..expected_offset].encode_utf16().count()).unwrap()
         );
-        assert!(report.into_validation_result().is_err());
+        assert_strict_validation_rejects(report);
     }
 }
 
@@ -186,7 +184,7 @@ fn an_outer_forgiving_list_cannot_swallow_a_lexically_invalid_inner_envelope() {
 }
 
 #[test]
-fn a_lexically_valid_nested_invalid_selector_still_allows_the_outer_valid_sibling() {
+fn a_lexically_valid_nested_invalid_selector_allows_the_outer_valid_sibling() {
     // :not() is unforgiving, so its invalid :unknown() member invalidates that
     // whole outer-list member. The lexical envelope itself remains well formed.
     for source in [

@@ -1,4 +1,5 @@
 //! Selected Writing Modes keyword values and intrinsic, context-free transport.
+use crate::css::support::named_property::important_property_declaration as declaration;
 use surgeist_css::*;
 
 #[derive(Clone, Copy, Debug)]
@@ -87,12 +88,6 @@ const VALUES: &[(Expected, &str)] = &[
         "sideways",
     ),
 ];
-
-fn declaration(property: CssKnownProperty, text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{}:{text}!important", property.canonical_name()));
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    report.syntax()[0].clone()
-}
 
 #[test]
 fn writing_modes_initials_are_direct_typed_values_with_distinct_inheritance() {

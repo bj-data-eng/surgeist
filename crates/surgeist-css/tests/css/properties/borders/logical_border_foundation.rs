@@ -2,6 +2,7 @@
 //! triple sets one flow-relative side or both sides of a flow-relative axis.
 //! Source: https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#border-shorthands
 
+use crate::css::support::property_admission::assert_declaration_rejected as rejected;
 use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
@@ -35,27 +36,6 @@ fn accepted(name: &str, value: &str) {
             value
         );
     }
-}
-
-fn invalid(name: &str, value: &str) {
-    let source = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&source);
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one invalid-value diagnostic: {source}");
-    };
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    assert_eq!(report.syntax().len(), 2, "neighbors survive: {source}");
-    assert!(validate_style_attribute(&source).is_err());
-    assert!(
-        parse_property_value_for_grammar(
-            grammar(name),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal,
-        )
-        .is_err(),
-        "checked construction accepted {name}:{value}"
-    );
 }
 
 fn one_value(name: &str, value: &str) -> CssLonghandValue {
@@ -181,16 +161,16 @@ fn triples_accept_unordered_partial_and_exact_authored_components() {
             accepted(name, value);
             expanded(name, value);
         }
-        for value in [
-            "",
-            "solid dashed",
-            "thin thick solid",
-            "red blue",
-            "-1e-100px solid",
-            "1% solid",
-            "logical solid",
+        for (value, token) in [
+            ("", None),
+            ("solid dashed", Some("dashed")),
+            ("thin thick solid", Some("thick")),
+            ("red blue", Some("blue")),
+            ("-1e-100px solid", Some("-1e-100px")),
+            ("1% solid", Some("1%")),
+            ("logical solid", Some("logical")),
         ] {
-            invalid(name, value);
+            rejected(name, value, token);
         }
     }
 }
@@ -303,7 +283,7 @@ fn globals_and_all_cover_every_logical_member_without_image_resets() {
     };
     for name in NAMES {
         assert!(!reset.excludes(CssPropertyNameRef::Known(grammar(name).target_property())));
-        invalid(name, "initial 1px");
+        rejected(name, "initial 1px", Some("1px"));
         for (text, keyword) in [
             ("initial", CssGlobalKeyword::Initial),
             ("inherit", CssGlobalKeyword::Inherit),

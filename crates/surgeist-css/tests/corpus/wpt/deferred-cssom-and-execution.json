@@ -11,7 +11,7 @@
         "line": 43,
         "case": "testNestedSelector(\"&\");"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "&"
@@ -19,7 +19,7 @@
       "expectation": {
         "selector_text": "&"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-002-cssom",
@@ -29,7 +29,7 @@
         "line": 44,
         "case": "testNestedSelector(\"&.bar\");"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "&.bar"
@@ -37,7 +37,7 @@
       "expectation": {
         "selector_text": "&.bar"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-003-cssom",
@@ -47,7 +47,7 @@
         "line": 45,
         "case": "testNestedSelector(\"& .bar\");"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "& .bar"
@@ -55,7 +55,7 @@
       "expectation": {
         "selector_text": "& .bar"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-004-cssom",
@@ -65,7 +65,7 @@
         "line": 46,
         "case": "testNestedSelector(\"& > .bar\");"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "& > .bar"
@@ -73,7 +73,7 @@
       "expectation": {
         "selector_text": "& > .bar"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-005-cssom",
@@ -83,7 +83,7 @@
         "line": 49,
         "case": "testNestedSelector(\"> .bar\", {expected:\"& > .bar\"});"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "> .bar"
@@ -91,7 +91,7 @@
       "expectation": {
         "selector_text": "& > .bar"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-006-cssom",
@@ -101,7 +101,7 @@
         "line": 50,
         "case": "testNestedSelector(\"> & .bar\", {expected:\"& > & .bar\"});"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "> & .bar"
@@ -109,7 +109,7 @@
       "expectation": {
         "selector_text": "& > & .bar"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-007-cssom",
@@ -119,7 +119,7 @@
         "line": 51,
         "case": "testNestedSelector(\"+ .bar &\", {expected:\"& + .bar &\"});"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "+ .bar &"
@@ -127,7 +127,7 @@
       "expectation": {
         "selector_text": "& + .bar &"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-008-cssom",
@@ -137,7 +137,7 @@
         "line": 52,
         "case": "testNestedSelector(\"+ .bar, .foo, > .baz\", {expected:\"& + .bar, & .foo, & > .baz\"});"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "+ .bar, .foo, > .baz"
@@ -145,7 +145,7 @@
       "expectation": {
         "selector_text": "& + .bar, & .foo, & > .baz"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-009-cssom",
@@ -155,7 +155,7 @@
         "line": 55,
         "case": "testNestedSelector(\".foo\", {expected:\"& .foo\"});"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": ".foo"
@@ -163,7 +163,7 @@
       "expectation": {
         "selector_text": "& .foo"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-010-cssom",
@@ -173,7 +173,7 @@
         "line": 56,
         "case": "testNestedSelector(\".test > & .bar\");"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": ".test > & .bar"
@@ -181,7 +181,7 @@
       "expectation": {
         "selector_text": ".test > & .bar"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-011-cssom",
@@ -191,7 +191,7 @@
         "line": 57,
         "case": "testNestedSelector(\".foo, .foo &\", {expected:\"& .foo, .foo &\"});"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": ".foo, .foo &"
@@ -199,7 +199,7 @@
       "expectation": {
         "selector_text": "& .foo, .foo &"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-012-cssom",
@@ -209,7 +209,7 @@
         "line": 58,
         "case": "testNestedSelector(\".foo, .bar\", {expected:\"& .foo, & .bar\"});"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": ".foo, .bar"
@@ -217,7 +217,7 @@
       "expectation": {
         "selector_text": "& .foo, & .bar"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-013-cssom",
@@ -227,7 +227,7 @@
         "line": 59,
         "case": "testNestedSelector(\":is(.bar, .baz)\", {expected:\"& :is(.bar, .baz)\"});"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": ":is(.bar, .baz)"
@@ -235,7 +235,7 @@
       "expectation": {
         "selector_text": "& :is(.bar, .baz)"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-014-cssom",
@@ -245,7 +245,7 @@
         "line": 60,
         "case": "testNestedSelector(\"&:is(.bar, .baz)\");"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "&:is(.bar, .baz)"
@@ -253,7 +253,7 @@
       "expectation": {
         "selector_text": "&:is(.bar, .baz)"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-015-cssom",
@@ -263,7 +263,7 @@
         "line": 61,
         "case": "testNestedSelector(\":is(.bar, &.baz)\");"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": ":is(.bar, &.baz)"
@@ -271,7 +271,7 @@
       "expectation": {
         "selector_text": ":is(.bar, &.baz)"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-016-cssom",
@@ -281,7 +281,7 @@
         "line": 62,
         "case": "testNestedSelector(\"&:is(.bar, &.baz)\");"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "&:is(.bar, &.baz)"
@@ -289,7 +289,7 @@
       "expectation": {
         "selector_text": "&:is(.bar, &.baz)"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-017-cssom",
@@ -299,7 +299,7 @@
         "line": 65,
         "case": "testNestedSelector(\"div&\");"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "div&"
@@ -307,7 +307,7 @@
       "expectation": {
         "selector_text": "div&"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-019-cssom",
@@ -317,7 +317,7 @@
         "line": 67,
         "case": "testNestedSelector(\".class&\");"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": ".class&"
@@ -325,7 +325,7 @@
       "expectation": {
         "selector_text": ".class&"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "CSSOM serialize a selector appends a compound's simple selectors in authored order, including the nesting selector; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-020-cssom",
@@ -335,7 +335,7 @@
         "line": 68,
         "case": "testNestedSelector(\"&.class\");"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "&.class"
@@ -343,7 +343,7 @@
       "expectation": {
         "selector_text": "&.class"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-021-cssom",
@@ -353,7 +353,7 @@
         "line": 69,
         "case": "testNestedSelector(\"[attr]&\");"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "[attr]&"
@@ -361,7 +361,7 @@
       "expectation": {
         "selector_text": "[attr]&"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "CSSOM serialize a selector appends a compound's simple selectors in authored order, including the nesting selector; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-022-cssom",
@@ -371,7 +371,7 @@
         "line": 70,
         "case": "testNestedSelector(\"&[attr]\");"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "&[attr]"
@@ -379,7 +379,7 @@
       "expectation": {
         "selector_text": "&[attr]"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-023-cssom",
@@ -389,7 +389,7 @@
         "line": 71,
         "case": "testNestedSelector(\"#id&\");"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "#id&"
@@ -397,7 +397,7 @@
       "expectation": {
         "selector_text": "#id&"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "CSSOM serialize a selector appends a compound's simple selectors in authored order, including the nesting selector; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-024-cssom",
@@ -407,7 +407,7 @@
         "line": 72,
         "case": "testNestedSelector(\"&#id\");"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "&#id"
@@ -415,7 +415,7 @@
       "expectation": {
         "selector_text": "&#id"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-025-cssom",
@@ -425,7 +425,7 @@
         "line": 73,
         "case": "testNestedSelector(\":hover&\");"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": ":hover&"
@@ -433,7 +433,7 @@
       "expectation": {
         "selector_text": ":hover&"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "CSSOM serialize a selector appends a compound's simple selectors in authored order, including the nesting selector; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-026-cssom",
@@ -443,7 +443,7 @@
         "line": 74,
         "case": "testNestedSelector(\"&:hover\");"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "&:hover"
@@ -451,7 +451,7 @@
       "expectation": {
         "selector_text": "&:hover"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-027-cssom",
@@ -461,7 +461,7 @@
         "line": 75,
         "case": "testNestedSelector(\":is(div)&\");"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": ":is(div)&"
@@ -469,7 +469,7 @@
       "expectation": {
         "selector_text": ":is(div)&"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "CSSOM serialize a selector appends a compound's simple selectors in authored order, including the nesting selector; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-028-cssom",
@@ -479,7 +479,7 @@
         "line": 76,
         "case": "testNestedSelector(\"&:is(div)\");"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "&:is(div)"
@@ -487,7 +487,7 @@
       "expectation": {
         "selector_text": "&:is(div)"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-029-cssom",
@@ -497,7 +497,7 @@
         "line": 79,
         "case": "testNestedSelector(\"& .bar & .baz & .qux\");"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "& .bar & .baz & .qux"
@@ -505,7 +505,7 @@
       "expectation": {
         "selector_text": "& .bar & .baz & .qux"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-030-cssom",
@@ -515,7 +515,7 @@
         "line": 80,
         "case": "testNestedSelector(\"&&\");"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "&&"
@@ -523,7 +523,7 @@
       "expectation": {
         "selector_text": "&&"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-031-cssom",
@@ -533,7 +533,7 @@
         "line": 83,
         "case": "testNestedSelector(\"& > section, & > article\");"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "& > section, & > article"
@@ -541,7 +541,7 @@
       "expectation": {
         "selector_text": "& > section, & > article"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-032-cssom",
@@ -551,7 +551,7 @@
         "line": 86,
         "case": "testNestedSelector(\"& + .baz, &.qux\", {parent:\".foo, .bar\"});"
       },
-      "disposition": "deferred-contextual-cssom-serialization",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo, .bar",
         "selector": "& + .baz, &.qux"
@@ -559,7 +559,7 @@
       "expectation": {
         "selector_text": "& + .baz, &.qux"
       },
-      "reason": "The authored selector model preserves symbolic nesting; this source asserts CSSOM selectorText."
+      "reason": "Nesting 1 §6 absolutizes a relative nested selector when serializing it; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-cssom-001",
@@ -2407,7 +2407,7 @@
         "line": 77,
         "case": "assert_equals(serialized_techs, specified_techs.toLowerCase(), \"expected matching tech() lists\");"
       },
-      "disposition": "deferred-cssom-font-src-serialization",
+      "disposition": "replayed-font-src-tech-keyword-set",
       "input": {
         "scope": "accepted source rows without dontcomparetech"
       },
@@ -2415,7 +2415,7 @@
         "technology_set": "ASCII-lowercase input keywords",
         "order": "not constrained"
       },
-      "reason": "The helper compares sets, not exact whole-value text; six source rows explicitly skip technology-set comparison."
+      "reason": "The helper compares sets, not exact whole-value text; six source rows explicitly skip technology-set comparison. Replayed through the specified src serializer over the accepted rows of the bound table."
     }
   ]
 }

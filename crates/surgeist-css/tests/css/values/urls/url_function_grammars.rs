@@ -2,6 +2,7 @@
 //! (with optional modifiers), or an unquoted URL token.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#urls
 
+use crate::css::support::value_assertions::assert_first_diagnostic;
 use surgeist_css::{
     CssClipPath, CssContentValue, CssContentValueItem, CssCursor, CssCursorImageSource,
     CssCursorKeyword, CssFilter, CssFilterFunction, CssFontFaceSource, CssFontFormatHint,
@@ -265,9 +266,19 @@ fn namespace_keeps_literal_uri_grammar_without_src_function() {
     assert_eq!(namespace.name().as_str(), "urn:svg");
 
     let rejected = parse_sheet("@namespace svg src(\"urn:svg\"); .after { color: red; }");
-    assert!(!rejected.is_clean());
+    assert_first_diagnostic(
+        rejected.diagnostics(),
+        "@namespace svg src(\"urn:svg\"); .after { color: red; }",
+        surgeist_css::CssErrorCode::InvalidAtRulePrelude,
+        "src(",
+    );
     assert!(matches!(rejected.syntax().rules(), [CssRule::Style(_)]));
-    assert!(validate_sheet("@namespace svg src(\"urn:svg\"); .after { color: red; }").is_err());
+    assert_eq!(
+        validate_sheet("@namespace svg src(\"urn:svg\"); .after { color: red; }")
+            .unwrap_err()
+            .diagnostics(),
+        rejected.diagnostics()
+    );
 }
 
 #[test]
@@ -295,7 +306,11 @@ fn malformed_src_and_unquoted_url_functions_recover_atomically() {
             report.syntax()[1].known().unwrap().property(),
             CssKnownProperty::Width
         );
-        assert!(validate_style_attribute(&source).is_err(), "{source}");
+        assert_eq!(
+            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            report.diagnostics(),
+            "{source}"
+        );
     }
 }
 

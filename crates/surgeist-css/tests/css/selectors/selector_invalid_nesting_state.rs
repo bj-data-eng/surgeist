@@ -1,5 +1,10 @@
 //! Functional contracts for parser-owned invalid nesting items. Selected Nesting
 //! 1 §3.1, Selectors §16.1 and Syntax §5.4.10 own retention and token detection.
+use crate::css::support::color_and_selector_fixtures::{
+    assert_selector_input_rejected, assert_strict_validation_rejects,
+    assert_unrepresentable_construction,
+};
+use crate::css::support::serialization_limits::LimitFailure;
 use surgeist_css::*;
 
 fn parsed(source: &str) -> CssSelector {
@@ -74,7 +79,7 @@ fn mixed_items_keep_source_order_complete_trivia_and_truthful_recovery() {
         selector.to_specified_css().unwrap(),
         ":is(.A,\t/*L*/:NoPe(inner(&)) /*T*/ , .B)"
     );
-    assert!(report.into_validation_result().is_err());
+    assert_strict_validation_rejects(report);
 }
 
 #[test]
@@ -96,9 +101,9 @@ fn invalid_only_and_empty_and_valid_factories_are_distinct_states() {
             "A".into()
         ))]
     );
-    assert!(
-        CssPseudoSelectorList::try_new_forgiving(vec![CssSelector::Class(String::new())]).is_err()
-    );
+    assert_unrepresentable_construction(CssPseudoSelectorList::try_new_forgiving(vec![
+        CssSelector::Class(String::new()),
+    ]));
 }
 
 #[test]
@@ -116,7 +121,7 @@ fn strict_not_and_nth_reject_cloned_invalid_state_atomically() {
         ))),
     ] {
         unrepresentable(&selector);
-        assert!(CssSelectorList::try_new(vec![selector]).is_err());
+        assert_unrepresentable_construction(CssSelectorList::try_new(vec![selector]));
     }
     assert_eq!(
         CssSelector::PseudoClass(CssPseudoClass::Where(list))
@@ -143,7 +148,7 @@ fn unchanged_and_stronger_receiving_contexts_preserve_the_original_invalid_state
     let inner = relative.selectors()[0].selector();
     assert_eq!(invalid(&logical(inner).items()[0]).authored(), ":has(&)");
     unrepresentable(inner); // Removing outer Has would re-enable the raw Has.
-    assert!(CssPseudoSelectorList::try_new(vec![inner.clone()]).is_err());
+    assert_unrepresentable_construction(CssPseudoSelectorList::try_new(vec![inner.clone()]));
     assert_eq!(outer.to_specified_css().unwrap(), source);
 }
 
@@ -167,13 +172,9 @@ fn compound_context_cannot_be_weakened_and_can_be_restored_at_its_owner() {
     };
     // No mutation of checked relative members is available; receiving a compound
     // raw state through the ordinary relative factory already rejects weakening.
-    assert!(
-        CssRelativeSelectorList::try_new(vec![CssRelativeSelector::new(
-            CssSelectorCombinator::Descendant,
-            detached.clone()
-        )])
-        .is_err()
-    );
+    assert_unrepresentable_construction(CssRelativeSelectorList::try_new(vec![
+        CssRelativeSelector::new(CssSelectorCombinator::Descendant, detached.clone()),
+    ]));
     assert_eq!(relative.to_specified_css().unwrap(), ".A");
     assert!(CssCompoundSelectorArgument::try_new(detached).is_some()); // Compound receiving context restores the proof.
     assert_eq!(
@@ -203,17 +204,16 @@ fn raw_context_invalid_pseudo_elements_and_nested_has_are_not_admitted_children(
                 .any(|diagnostic| diagnostic.action()
                     == CssRecoveryAction::PreserveInvalidSelectorListItem)
         );
-        assert!(report.into_validation_result().is_err());
+        assert_strict_validation_rejects(report);
     }
     for source in [
         ":has(:has(&))",
         ":not(&::before)",
         ":nth-child(odd of &::before)",
     ] {
-        assert!(
-            parse_selector(source, &CssNamespaceContext::default())
-                .syntax()
-                .is_none()
+        assert_selector_input_rejected(
+            source,
+            parse_selector(source, &CssNamespaceContext::default()),
         );
     }
 }
@@ -319,7 +319,7 @@ fn implicit_eof_terminations_preserve_authored_chunks_and_emit_stable_complete_s
         );
         let reparsed = parsed(literal);
         assert_eq!(reparsed.to_specified_css().unwrap(), literal);
-        assert!(report.into_validation_result().is_err());
+        assert_strict_validation_rejects(report);
     }
 }
 
@@ -544,14 +544,16 @@ fn trivia_unicode_bytes_and_real_rule_retry_are_cumulative() {
     let sheet = report.syntax();
     let css = sheet.to_specified_css().unwrap();
     let before = sheet.clone();
-    assert!(
+    assert_eq!(
         sheet
             .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
                 usize::MAX,
                 usize::MAX,
                 css.len() - 1
             ))
-            .is_err()
+            .unwrap_err()
+            .limit_kind(),
+        Some(CssSpecifiedValueSerializationErrorKind::ByteLimit)
     );
     assert_eq!(*sheet, before);
     assert_eq!(sheet.to_specified_css().unwrap(), css);

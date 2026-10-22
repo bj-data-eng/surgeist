@@ -1,14 +1,15 @@
 //! Independent public draft: Animations 1 (2023-03-02) §3, CSS2 page/box
 //! contexts, Values4 (2024-03-12) Appendix C, original-source Syntax recovery.
 
+use crate::css::support::authored_syntax::{
+    assert_fragment_implicitly_closed as implicit, assert_fragment_rejected as rejected,
+    assert_origin_bytes as origin, assert_position as point, fragment_body as body,
+    fragment_recovery as recovered, known_properties as page_keys,
+};
 use surgeist_css::*;
 
 const STANDARDS: CssParserContext = CssParserContext::new(CssParserMode::Standards);
 const QUIRKS: CssParserContext = CssParserContext::new(CssParserMode::Quirks);
-
-fn body<T>(report: &CssParseReport<Option<CssBlockFragment<T>>>) -> &CssBlockFragment<T> {
-    report.syntax().as_ref().expect("retained genuine body")
-}
 
 fn clean<T: Clone + std::fmt::Debug + PartialEq>(
     report: &CssParseReport<Option<CssBlockFragment<T>>>,
@@ -20,55 +21,10 @@ fn clean<T: Clone + std::fmt::Debug + PartialEq>(
     );
 }
 
-fn recovered<T: Clone + std::fmt::Debug>(
-    report: &CssParseReport<Option<CssBlockFragment<T>>>,
-    action: CssRecoveryAction,
-) -> &CssRecoveryDiagnostic {
-    assert!(!report.is_clean());
-    assert!(report.clone().into_validation_result().is_err());
-    report
-        .diagnostics()
-        .iter()
-        .find(|diagnostic| diagnostic.action() == action)
-        .expect("the provider's owned recovery action")
-}
-
-fn rejected<T: Clone + std::fmt::Debug>(
-    report: &CssParseReport<Option<CssBlockFragment<T>>>,
-    source: &str,
-) {
-    assert!(
-        report.syntax().is_none(),
-        "complete fragment rejected: {source}"
-    );
-    let diagnostic = recovered(report, CssRecoveryAction::RejectInput);
-    assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
-    assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
-}
-
-fn origin(actual: &CssParsedOrigin, source: &str, start: usize, end: usize) {
-    assert_eq!(actual.source().as_str(), source);
-    assert_eq!(actual.span().start().byte_offset().value(), start);
-    assert_eq!(actual.span().end().byte_offset().value(), end);
-}
-
-fn point(actual: CssSourcePosition, byte: usize, line: u32, column: u32) {
-    assert_eq!(actual.byte_offset().value(), byte);
-    assert_eq!(actual.line().value(), line);
-    assert_eq!(actual.column().value(), column);
-}
-
 fn keys(declarations: &CssKeyframeDeclarationList) -> Vec<CssPropertyNameRef<'_>> {
     declarations
         .iter()
         .map(CssKeyframeDeclaration::property_name)
-        .collect()
-}
-
-fn page_keys(declarations: &CssDeclarationList) -> Vec<CssKnownProperty> {
-    declarations
-        .iter()
-        .map(|declaration| declaration.known().unwrap().property())
         .collect()
 }
 
@@ -537,19 +493,6 @@ fn recovery_coordinates_after_a_supplementary_name_use_original_utf16_columns() 
     point(diagnostic.span().end(), 27, 1, 16);
     point(body(&report).body()[1].position(), 27, 1, 16);
     opacity(&body(&report).body()[1], ".5");
-}
-
-fn implicit<T: Clone + std::fmt::Debug>(
-    report: &CssParseReport<Option<CssBlockFragment<T>>>,
-    source: &str,
-) {
-    origin(body(report).origin(), source, 0, source.len());
-    let diagnostic = recovered(report, CssRecoveryAction::RetainWithImplicitClosure);
-    assert_eq!(
-        diagnostic.error().position().byte_offset().value(),
-        source.len()
-    );
-    assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
 }
 
 #[test]

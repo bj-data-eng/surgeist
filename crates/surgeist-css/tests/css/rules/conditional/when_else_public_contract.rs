@@ -1,48 +1,10 @@
 //! Functional new-API evidence for #642 and the adopted #647 grammar profile.
 //! Diagnostics and compact output follow the adopted CSS-owned model contract;
 //! matching, truth and literal browser when/else output are not inferred.
+use crate::css::support::rules::declaration_text;
+use crate::css::support::rules::normalized_declarations as declarations;
+use crate::css::support::rules::rule_at;
 use surgeist_css::*;
-
-fn declaration_text(declaration: &CssDeclaration) -> (&str, &str) {
-    let name = declaration.parsed_name().unwrap();
-    let value = declaration.parsed_value().unwrap();
-    (
-        &name.source().as_str()
-            [name.span().start().byte_offset().value()..name.span().end().byte_offset().value()],
-        value.source().as_str()
-            [value.span().start().byte_offset().value()..value.span().end().byte_offset().value()]
-            .trim(),
-    )
-}
-
-fn declarations(sheet: &CssNormalizedSheet) -> Vec<&CssNormalizedDeclaration> {
-    sheet
-        .items()
-        .iter()
-        .filter_map(|item| match item {
-            CssNormalizedItem::Declaration(value) => Some(value),
-            _ => None,
-        })
-        .collect()
-}
-
-fn rule_at<'a>(sheet: &'a CssNormalizedSheet, source: &str, text: &str) -> &'a CssRuleContext {
-    let offset = source.find(text).unwrap();
-    sheet
-        .items()
-        .iter()
-        .find_map(|item| match item {
-            CssNormalizedItem::Rule(rule)
-                if rule
-                    .position()
-                    .is_some_and(|position| position.byte_offset().value() == offset) =>
-            {
-                Some(rule)
-            }
-            _ => None,
-        })
-        .expect("retained original rule header")
-}
 
 fn assert_original_declarations(
     source: &str,
@@ -856,7 +818,7 @@ fn literal_when_else_cssom_is_source_undefined_at_real_ordinary_paths() {
 }
 
 #[test]
-fn scoped_literal_cssom_reports_the_existing_scope_front_before_descendants() {
+fn scoped_literal_cssom_reports_the_unavailable_scope_format_before_descendants() {
     for (source, path) in [
         ("@scope{@when media(width){}@else{}}", vec![0]),
         (

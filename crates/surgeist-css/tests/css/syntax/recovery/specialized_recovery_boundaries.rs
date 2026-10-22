@@ -425,7 +425,7 @@ fn specialized_boundary_media_depth_is_exact_at_255_256_and_257() {
     assert_eq!(detail.limit(), 256);
     assert_eq!(
         detail.enclosing_production().as_str(),
-        "baseline.media.query-list"
+        "official.media.query-list-core"
     );
 }
 

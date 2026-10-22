@@ -3,27 +3,12 @@
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-face-src-parsing
 //! Diagnostic and validation expectations are Surgeist's recovery contract.
 
+use crate::css::support::rules::invalid_descriptor;
+use crate::css::support::rules::retained_demo_font_face as font_face;
 use surgeist_css::{
-    CssErrorCode, CssFontDisplay, CssFontFaceRule, CssFontFaceSource, CssParseReport,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSheet, parse_sheet, validate_sheet,
+    CssErrorCode, CssFontFaceRule, CssFontFaceSource, CssParseReport, CssRecoveryAction,
+    CssRecoveryDiagnostic, CssRule, CssSheet, parse_sheet, validate_sheet,
 };
-
-fn font_face(report: &CssParseReport<CssSheet>) -> &CssFontFaceRule {
-    let [CssRule::FontFace(rule), CssRule::Style(_)] = report.syntax().rules() else {
-        panic!("expected retained font-face and following style rule");
-    };
-    assert_eq!(
-        ordinary_face!(rule.descriptors(), FontFamily)
-            .unwrap()
-            .as_str(),
-        "Demo"
-    );
-    assert_eq!(
-        ordinary_face!(rule.descriptors(), FontDisplay).unwrap(),
-        &CssFontDisplay::Swap
-    );
-    rule
-}
 
 fn assert_sources(rule: &CssFontFaceRule, expected: &[(&str, &str)]) {
     let actual = ordinary_face!(rule.descriptors(), Src)
@@ -186,7 +171,9 @@ fn bad_url_cannot_use_later_env_to_bypass_source_recovery() {
             .effective(surgeist_css::CssFontFaceDescriptorKind::FontDisplay)
             .is_some()
     );
-    assert!(!report.is_clean());
+    // Syntax 3 <declaration-value> excludes <bad-url-token>, so env() cannot
+    // defer the src descriptor.
+    invalid_descriptor("font-face", "src").assert_first(&report);
 }
 
 #[test]

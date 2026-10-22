@@ -1,16 +1,10 @@
 //! New checked construction uses pinned Conditional Rules 5 sections 5.4 and
 //! 9.1: grouping and operators are retained without boolean simplification.
+use crate::css::support::authored_syntax::{
+    checked_container_condition as construct, component_list as values, component_token as token,
+};
 use surgeist_css::*;
 
-fn construct(source: &str) -> CssContainerCondition {
-    CssContainerCondition::try_from_components(parse_component_values(source).unwrap()).unwrap()
-}
-fn token(source: &str) -> CssComponentValue {
-    CssComponentValue::try_token(source).unwrap()
-}
-fn values(items: Vec<CssComponentValue>) -> CssComponentValues {
-    CssComponentValues::try_new(items).unwrap()
-}
 fn width() -> CssComponentValue {
     CssComponentValue::try_block(
         CssBlockKind::Parenthesis,

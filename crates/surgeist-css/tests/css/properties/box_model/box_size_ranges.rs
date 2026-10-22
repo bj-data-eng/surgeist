@@ -2,6 +2,9 @@
 //! references the width grammar. Calculations remain symbolic for later resolution.
 //! https://www.w3.org/TR/2026/WD-css-sizing-3-20260904/#sizing-values
 //! https://www.w3.org/TR/2025/CRD-css-flexbox-1-20251014/#flex-basis-property
+use crate::css::support::property_admission::{
+    assert_checked_rejected, assert_invalid_value, assert_style_attribute_rejected,
+};
 use surgeist_css::{
     CssErrorCode, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
     CssRecoveryAction, parse_component_values, parse_property_value, parse_style_attribute,
@@ -36,22 +39,21 @@ fn negative_literal_box_sizes_reject_in_parsing_and_checked_construction() {
                 diagnostic.error().code(),
                 CssErrorCode::InvalidPropertyValue
             );
-            assert!(
+            assert_invalid_value(diagnostic.error().kind(), property, Some(value));
+            assert_checked_rejected(
                 parse_property_value(
                     CssPropertyNameRef::Known(property),
                     parse_component_values(value).unwrap(),
                     CssImportance::Normal,
-                )
-                .is_err(),
-                "checked {}:{value}",
-                property.canonical_name()
+                ),
+                property,
+                Some(value),
             );
         }
     }
-    for source in ["flex:1 1 -1px", "flex:1 1 -50%"] {
-        let report = parse_style_attribute(source);
+    for (source, token) in [("flex:1 1 -1px", "-1px"), ("flex:1 1 -50%", "-50%")] {
+        let report = assert_style_attribute_rejected(source, CssKnownProperty::Flex, Some(token));
         assert!(report.syntax().is_empty(), "{source}: {report:?}");
-        assert!(!report.is_clean());
     }
 }
 

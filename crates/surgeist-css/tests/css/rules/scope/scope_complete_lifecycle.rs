@@ -6,13 +6,8 @@
 //! Exact output whitespace proposes the existing canonical rule convention;
 //! omission, selector/child order and declaration runs are authored contracts.
 
+use crate::css::support::rules::clean_sheet as sheet;
 use surgeist_css::*;
-
-fn sheet(source: &str) -> CssSheet {
-    let report = parse_sheet(source);
-    assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    report.syntax().clone()
-}
 
 fn scope(source: &str) -> CssScopeRule {
     let input = sheet(source);
@@ -281,7 +276,7 @@ fn checked_boundary_lists_reject_empty_and_recursive_pseudo_elements() {
 }
 
 #[test]
-fn contextual_relative_boundaries_still_reject_pseudo_elements() {
+fn contextual_relative_boundaries_reject_pseudo_elements() {
     for combinator in [">", "+", "~"] {
         for prelude in [
             format!("({combinator} .root::before)"),

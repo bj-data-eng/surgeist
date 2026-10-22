@@ -1,5 +1,6 @@
 //! Additional authored `attr()` boundary cases from pinned CSS Values 5 §§3.1.1, 3.3, 7.7.
 
+use crate::css::support::value_assertions::property_rejection;
 use surgeist_css::*;
 
 fn pending_display(text: &str) -> CssDeclaration {
@@ -47,14 +48,13 @@ fn decoded_type_names_and_comments_keep_valid_syntax_distinct_from_whitespace() 
         "attr(foo <transform-list>/**/+)",
         "attr(foo </**/length/**/ >)",
     ] {
-        assert!(
+        property_rejection(
             parse_property_value(
                 CssPropertyNameRef::Known(CssKnownProperty::Display),
                 parse_component_values(value).unwrap(),
                 CssImportance::Normal,
-            )
-            .is_err(),
-            "{value}"
+            ),
+            CssKnownProperty::Display,
         );
     }
 }
@@ -69,14 +69,13 @@ fn valid_attr_family_independently_qualifies_invalid_var_or_env_family() {
         pending_display(value);
     }
     for value in ["attr(foo) attr()", "attr(foo) attr(foo,)"] {
-        assert!(
+        property_rejection(
             parse_property_value(
                 CssPropertyNameRef::Known(CssKnownProperty::Display),
                 parse_component_values(value).unwrap(),
                 CssImportance::Normal,
-            )
-            .is_err(),
-            "{value}"
+            ),
+            CssKnownProperty::Display,
         );
     }
 }
@@ -87,14 +86,13 @@ fn strict_fallback_separators_apply_to_outer_stream_not_nested_functions() {
         pending_display(value);
     }
     for value in ["attr(foo,a,b)", "attr(foo,a {})"] {
-        assert!(
+        property_rejection(
             parse_property_value(
                 CssPropertyNameRef::Known(CssKnownProperty::Display),
                 parse_component_values(value).unwrap(),
                 CssImportance::Normal,
-            )
-            .is_err(),
-            "{value}"
+            ),
+            CssKnownProperty::Display,
         );
     }
 }

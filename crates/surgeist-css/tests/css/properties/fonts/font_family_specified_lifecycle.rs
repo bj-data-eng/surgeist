@@ -5,13 +5,9 @@
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-family-name-syntax
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#serializing
 
+use crate::css::support::important_declaration;
+use crate::css::support::named_property::{assert_invalid_replacement_at, assert_origin_at};
 use surgeist_css::*;
-
-fn declaration(text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("font-family:{text}!important"));
-    assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    report.syntax()[0].clone()
-}
 
 fn families(value: &CssDeclaration) -> &CssFontFamilyList {
     let CssKnownPropertyValueRef::FontFamily(value) =
@@ -36,7 +32,10 @@ fn literal(text: &str) -> CssFontFaceFamily {
 
 #[test]
 fn parsed_property_forms_round_trip_without_joining_identifier_tokens() {
-    let source = declaration(r#"A\ B, A B, 'serif', SeRiF, generic(kai), menu"#);
+    let source = important_declaration(
+        "font-family",
+        r#"A\ B, A B, 'serif', SeRiF, generic(kai), menu"#,
+    );
     let before = source.clone();
     let CssValueOrigin::Parsed(origin) = source.value_components().items()[0].origin() else {
         panic!("parsed first family token")
@@ -46,7 +45,7 @@ fn parsed_property_forms_round_trip_without_joining_identifier_tokens() {
     let value = families(&source);
     let css = value.serialize_specified().unwrap();
     assert_eq!(css, r#"A\ B, A B, "serif", serif, generic(kai), menu"#);
-    assert_eq!(families(&declaration(&css)), value);
+    assert_eq!(families(&important_declaration("font-family", &css)), value);
     assert_eq!(value.families()[0].identifier_tokens().unwrap(), &["A B"]);
     assert_eq!(
         value.families()[1].identifier_tokens().unwrap(),
@@ -81,7 +80,10 @@ fn checked_names_use_the_shared_cssom_escaping_and_preserve_authored_kind() {
         ),
     ] {
         assert_eq!(name.serialize_specified().unwrap(), css);
-        assert_eq!(families(&declaration(css)).families(), &[name]);
+        assert_eq!(
+            families(&important_declaration("font-family", css)).families(),
+            &[name]
+        );
     }
     for reserved in ["default", "DeFaUlT", "initial", "serif", "A"] {
         let tokens = vec!["Face".into(), reserved.into()];
@@ -98,7 +100,7 @@ fn checked_names_use_the_shared_cssom_escaping_and_preserve_authored_kind() {
 
 #[test]
 fn list_limits_are_cumulative_exact_and_atomic() {
-    let value = families(&declaration("A, serif")).clone();
+    let value = families(&important_declaration("font-family", "A, serif")).clone();
     let before = value.clone();
     // A: name + identifier; serif: one generic. Container is not a node.
     let exact = CssSpecifiedValueSerializationLimits::new(3, 3, 8);
@@ -230,7 +232,7 @@ fn metadata_globals_and_pending_reentry_keep_symbolic_lifecycle() {
         ("revert", CssGlobalKeyword::Revert),
         ("revert-layer", CssGlobalKeyword::RevertLayer),
     ] {
-        let source = declaration(text);
+        let source = important_declaration("font-family", text);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
             expand_declaration(&source).unwrap()
         else {
@@ -244,7 +246,7 @@ fn metadata_globals_and_pending_reentry_keep_symbolic_lifecycle() {
         assert!(values.items()[0].source().same_occurrence(&source));
     }
     for pending_text in ["var(--family)", "env(family)"] {
-        let source = declaration(pending_text);
+        let source = important_declaration("font-family", pending_text);
         let before = source.clone();
         let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
             panic!("pending")
@@ -267,16 +269,32 @@ fn metadata_globals_and_pending_reentry_keep_symbolic_lifecycle() {
             value.serialize_specified().unwrap(),
             r#"A\ B, "serif", serif"#
         );
-        assert!(
-            pending
-                .reenter(parse_component_values("A!important").unwrap())
-                .is_err()
-        );
-        assert!(
-            pending
+        // Fonts 4 §2.1: a trailing comma needs another family; input ends
+        // there, so the comma is the last authored token.
+        assert_invalid_replacement_at(
+            &pending
                 .reenter(parse_component_values("A,").unwrap())
-                .is_err()
+                .unwrap_err(),
+            CssKnownProperty::FontFamily,
+            "A,",
+            ",",
         );
+        // CSS Syntax 3 §5.4.6: `!important` is a declaration annotation, not
+        // part of a value, so strict reentry rejects its `!` delimiter as
+        // syntax rather than as a family name.
+        let error = pending
+            .reenter(parse_component_values("A!important").unwrap())
+            .unwrap_err();
+        let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+            panic!("invalid replacement: {error:?}")
+        };
+        let CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedToken(token)) = error.kind()
+        else {
+            panic!("unexpected `!`: {error:?}")
+        };
+        assert_eq!(token.encountered().kind(), CssTokenKind::Delim);
+        assert_eq!(token.encountered().authored(), "!");
+        assert_origin_at(error.origin(), "A!important", "!important");
         assert_eq!(source, before);
     }
 }
@@ -296,8 +314,8 @@ fn invalid_family_lists_recover_locally_without_emitting_a_partial_list() {
 }
 
 #[test]
-fn embedded_shorthand_shares_output_and_existing_cumulative_node_contract() {
-    let list = families(&declaration("A, serif")).clone();
+fn embedded_shorthand_shares_output_and_cumulative_node_contract() {
+    let list = families(&important_declaration("font-family", "A, serif")).clone();
     let font =
         CssExplicitFont::try_new(None, None, None, None, CssFontSize::Medium, None, list).unwrap();
     // Size adds one node; the family list remains three nodes as above.
@@ -480,7 +498,7 @@ fn all_generic_branches_emit_canonical_keywords_and_functions() {
         "generic(khmer-mul)",
         "generic(nastaliq)",
     ] {
-        let source = declaration(css);
+        let source = important_declaration("font-family", css);
         let [value] = families(&source).families() else {
             panic!("one generic")
         };
@@ -496,7 +514,11 @@ fn all_generic_branches_emit_canonical_keywords_and_functions() {
             css
         );
         assert_eq!(
-            families(&declaration(&value.serialize_specified().unwrap())).families(),
+            families(&important_declaration(
+                "font-family",
+                &value.serialize_specified().unwrap()
+            ))
+            .families(),
             std::slice::from_ref(value)
         );
     }

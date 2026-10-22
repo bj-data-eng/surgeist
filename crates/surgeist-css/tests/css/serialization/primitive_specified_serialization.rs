@@ -5,29 +5,14 @@
 //! TextDecor3 2022-05-05 #propdef-text-decoration-style;
 //! Transforms1 2019-02-14 #propdef-transform-box; Compositing1 2024-03-21 #propdef-mix-blend-mode, #propdef-isolation.
 //! These functional tests accompany new specified-text APIs; broader grammar admission is separate.
-use CssSpecifiedValueSerializationErrorKind as Kind;
-use CssSpecifiedValueSerializationLimits as Limits;
+use crate::css::support::serialization_limits::assert_node_limits;
 use surgeist_css::*;
 
-fn assert_limits(
-    expected: &str,
-    emit: impl Fn(Limits) -> Result<String, CssSpecifiedValueSerializationError>,
-) {
-    assert_eq!(emit(Limits::new(1, 1, expected.len())).unwrap(), expected);
-    for (limits, kind) in [
-        (Limits::new(0, 1, expected.len()), Kind::InputNodeLimit),
-        (Limits::new(1, 0, expected.len()), Kind::ProjectionNodeLimit),
-        (Limits::new(1, 1, expected.len() - 1), Kind::ByteLimit),
-    ] {
-        assert_eq!(emit(limits).unwrap_err().kind(), kind);
-        assert_eq!(emit(Limits::new(1, 1, expected.len())).unwrap(), expected);
-    }
-}
 macro_rules! cases {
     ($property:literal, $view:ident, $accessor:ident, [$(($value:expr, $expected:literal)),+ $(,)?]) => {
         for (value, expected) in [$(($value, $expected)),+] {
             assert_eq!(value.serialize_specified().unwrap(), expected);
-            assert_limits(expected, |limits| value.serialize_specified_with_limits(limits));
+            assert_node_limits(expected, 1, |limits| value.serialize_specified_with_limits(limits));
             let authored = expected.to_ascii_uppercase();
             let report = parse_declaration(&format!("{}:{}!important", $property, authored));
             assert!(report.is_clean(), "{}:{}: {:?}", $property, authored, report.diagnostics());
