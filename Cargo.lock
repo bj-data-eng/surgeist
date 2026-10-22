@@ -3843,6 +3843,7 @@ dependencies = [
  "pollster",
  "proptest",
  "skrifa",
+ "surgeist-text",
  "surgeist-window",
  "vello_encoding",
  "vello_shaders",
@@ -3897,9 +3898,7 @@ dependencies = [
  "icu_segmenter",
  "linebender_resource_handle",
  "parley",
- "pollster",
  "skrifa",
- "surgeist-render",
 ]
 
 [[package]]

@@ -78,6 +78,7 @@ Dependencies still retain their own manifest-defined defaults.
 | Feature | Forward |
 | --- | --- |
 | `dialog-system` | `surgeist-dialog/system` |
+| `render-text` | `surgeist-render/render-text` |
 | `render-web` | `surgeist-render/render-web` |
 | `render-window` | `surgeist-render/render-window` |
 | `text-accessibility` | `surgeist-text/text-accessibility` |

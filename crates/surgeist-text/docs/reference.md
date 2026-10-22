@@ -11,13 +11,11 @@ directly for catalogue registration and admission.
 | Feature | Default | Effect and dependency |
 | --- | --- | --- |
 | `text-accessibility` | Off | Enables owned `Accessibility` and layout-to-AccessKit methods; selects AccessKit `0.24.1`. |
-| `text-render` | Off | Enables `Layout::push_render_text`; requires `surgeist-render` `0.1.0` at `../surgeist-render`. |
 
-The default feature set is empty. Feature-gated methods and their tests are in
-[src/layout.rs](../src/layout.rs) and [src/tests.rs](../src/tests.rs). The render
-adapter emits glyph runs and decoration rectangles into a render scene. The
-accessibility adapter emits an AccessKit tree update and maps text positions and
-selections.
+The default feature set is empty. Owned accessibility projection is implemented in
+[src/accessibility.rs](../src/accessibility.rs). Render owns its optional standalone
+paint adapter under `render-text` and consumes this crate's borrowed layout/font
+readback directly; Text has no dependency on Render.
 
 ## Public surface
 
@@ -32,10 +30,22 @@ private implementation organization.
 | Paragraph layout | `Options`, `Alignment`, `Indent`, `ValidatedOptions` | [options.rs](../src/options.rs) |
 | Layout construction | `System`, `Builder`, `SystemOptions` | [system.rs](../src/system.rs) |
 | Font catalogue | `FontCatalogueMode`, issued `FontCatalogueIdentity`, `System::register_fonts` and `refresh_fonts` | [catalogue.rs](../src/catalogue.rs) |
+| Borrowed readback | `RunView`, `FontFace`, `EffectiveFontInstance`, `GlyphPlacement` | [views.rs](../src/views.rs) |
 | Output and interaction | `Layout`, glyph runs, line/box facts, cursors, selections, movement | [layout.rs](../src/layout.rs) |
 | Ranges and edits | `Range`, `SourcePosition`, `SourceRange`, `Edit`, `TextEdit` | [range.rs](../src/range.rs), [edit.rs](../src/edit.rs) |
 | Cache identity | `Key`, `SourceKey`, `StyleKey`, `OptionsKey`, `FontGeneration`, `Stats` | [cache.rs](../src/cache.rs) |
 | Errors | `Error`, `ErrorCode`, `ErrorDetail`, `Result` | [error.rs](../src/error.rs) |
+
+## Borrowed paint readback
+
+`Layout::run_views` and `decoration_views` traverse actual positioned output
+without allocating owned run/glyph vectors. `FontFace` identifies the actual
+font resource and collection face. `EffectiveFontInstance` exposes the canonical
+shaping size and normalized coordinates in that face's axis order, including
+validated all-zero default axes omitted by the provider. Malformed instance
+metadata and unresolved faux-bold/skew return typed failures. These views retain
+no independent layout or preparation identity; their lifetime comes from the
+original immutable Layout.
 
 ## Font catalogue publications
 

@@ -61,6 +61,7 @@ pub surgeist_text::ErrorCode::FontGenerationExhausted
 pub surgeist_text::ErrorCode::FontLoadFailed
 pub surgeist_text::ErrorCode::FontSystemUnavailable
 pub surgeist_text::ErrorCode::HitTestFailed
+pub surgeist_text::ErrorCode::InvalidFontInstance
 pub surgeist_text::ErrorCode::InvalidRange
 pub surgeist_text::ErrorCode::InvalidStyle
 pub surgeist_text::ErrorCode::LayoutFailed
@@ -72,6 +73,12 @@ pub surgeist_text::ErrorDetail::AccessibilityIdentityConflict
 pub surgeist_text::ErrorDetail::AccessibilityIdentityConflict::id: u64
 pub surgeist_text::ErrorDetail::AccessibilityIdentityExhausted
 pub surgeist_text::ErrorDetail::AccessibilityLayoutMismatch
+pub surgeist_text::ErrorDetail::FontCoordinate
+pub surgeist_text::ErrorDetail::FontCoordinate::axis: usize
+pub surgeist_text::ErrorDetail::FontCoordinate::bits: i16
+pub surgeist_text::ErrorDetail::FontCoordinateCount
+pub surgeist_text::ErrorDetail::FontCoordinateCount::actual: usize
+pub surgeist_text::ErrorDetail::FontCoordinateCount::expected: usize
 pub surgeist_text::ErrorDetail::FontFacesNotAdmitted
 pub surgeist_text::ErrorDetail::FontFacesNotAdmitted::admitted: usize
 pub surgeist_text::ErrorDetail::FontFacesNotAdmitted::expected: usize
@@ -95,11 +102,14 @@ pub surgeist_text::ErrorDetail::InvalidSourceRange::text_len: usize
 pub surgeist_text::ErrorDetail::IsolatedSurrogateLayout
 pub surgeist_text::ErrorDetail::IsolatedSurrogateLayout::index: usize
 pub surgeist_text::ErrorDetail::IsolatedSurrogateLayout::unit: u16
+pub surgeist_text::ErrorDetail::MalformedFontVariations
 pub surgeist_text::ErrorDetail::ProviderSourceRange
 pub surgeist_text::ErrorDetail::ProviderSourceRange::end: usize
 pub surgeist_text::ErrorDetail::ProviderSourceRange::start: usize
 pub surgeist_text::ErrorDetail::SourceRevisionExhausted
 pub surgeist_text::ErrorDetail::SourceRevisionExhausted::revision: u64
+pub surgeist_text::ErrorDetail::UnresolvedFontSynthesis
+pub surgeist_text::ErrorDetail::UnresolvedFontSynthesis::kind: surgeist_text::FontSynthesisKind
 pub surgeist_text::ErrorDetail::UnsupportedAccessibilityUnit
 pub surgeist_text::ErrorDetail::UnsupportedAccessibilityUnit::bytes: usize
 pub surgeist_text::ErrorDetail::UnsupportedAccessibilityUnit::range: surgeist_text::Range
@@ -115,6 +125,9 @@ pub surgeist_text::ErrorDetail::UnsupportedTextStyle::reason: surgeist_text::Uns
 pub enum surgeist_text::FontCatalogueMode
 pub surgeist_text::FontCatalogueMode::RegisteredOnly
 pub surgeist_text::FontCatalogueMode::System
+pub enum surgeist_text::FontSynthesisKind
+pub surgeist_text::FontSynthesisKind::Embolden
+pub surgeist_text::FontSynthesisKind::Skew
 pub enum surgeist_text::FontVariant
 pub surgeist_text::FontVariant::Normal
 pub enum surgeist_text::Hit
@@ -351,6 +364,12 @@ pub const fn surgeist_text::DecorationRun::rect(self) -> surgeist_text::Rect
 pub struct surgeist_text::DecorationThicknessValue(_)
 impl surgeist_text::DecorationThicknessValue
 pub const fn surgeist_text::DecorationThicknessValue::get(self) -> f32
+pub struct surgeist_text::EffectiveFontInstance<'a>
+impl<'a> surgeist_text::EffectiveFontInstance<'a>
+pub const fn surgeist_text::EffectiveFontInstance<'a>::axis_count(&self) -> usize
+pub const fn surgeist_text::EffectiveFontInstance<'a>::face(&self) -> surgeist_text::FontFace<'a>
+pub const fn surgeist_text::EffectiveFontInstance<'a>::font_size(&self) -> f32
+pub fn surgeist_text::EffectiveFontInstance<'a>::normalized_coords(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = i16> + core::clone::Clone + '_
 pub struct surgeist_text::Error
 pub surgeist_text::Error::code: surgeist_text::ErrorCode
 pub surgeist_text::Error::message: alloc::string::String
@@ -396,6 +415,13 @@ pub struct surgeist_text::FontData
 impl surgeist_text::FontData
 pub fn surgeist_text::FontData::bytes(&self) -> &[u8]
 pub const fn surgeist_text::FontData::index(&self) -> u32
+pub struct surgeist_text::FontFace<'a>
+impl<'a> surgeist_text::FontFace<'a>
+pub fn surgeist_text::FontFace<'a>::bytes(&self) -> &'a [u8]
+pub const fn surgeist_text::FontFace<'a>::index(&self) -> u32
+pub fn surgeist_text::FontFace<'a>::is_same_face(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_text::FontFace<'_>
+pub fn surgeist_text::FontFace<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_text::FontGeneration(_)
 impl surgeist_text::FontGeneration
 pub const fn surgeist_text::FontGeneration::checked_next(self) -> core::option::Option<Self>
@@ -423,6 +449,12 @@ pub const fn surgeist_text::Glyph::new(id: u32, x: f32, y: f32, advance: f32, ra
 pub const fn surgeist_text::Glyph::range(self) -> surgeist_text::Range
 pub const fn surgeist_text::Glyph::x(self) -> f32
 pub const fn surgeist_text::Glyph::y(self) -> f32
+pub struct surgeist_text::GlyphPlacement
+impl surgeist_text::GlyphPlacement
+pub const fn surgeist_text::GlyphPlacement::advance(self) -> f32
+pub const fn surgeist_text::GlyphPlacement::id(self) -> u32
+pub const fn surgeist_text::GlyphPlacement::x(self) -> f32
+pub const fn surgeist_text::GlyphPlacement::y(self) -> f32
 pub struct surgeist_text::Id(_)
 impl surgeist_text::Id
 pub const fn surgeist_text::Id::as_u64(self) -> u64
@@ -487,6 +519,9 @@ pub fn surgeist_text::Layout::move_selection(&self, selection: surgeist_text::Se
 pub fn surgeist_text::Layout::painted_selection(&self, selection: surgeist_text::Selection, paint: surgeist_text::SelectionPaint) -> surgeist_text::Result<surgeist_text::PaintedSelectionGeometry>
 pub fn surgeist_text::Layout::selection(&self, selection: surgeist_text::Selection) -> surgeist_text::Result<surgeist_text::SelectionGeometry>
 pub const fn surgeist_text::Layout::source(&self) -> &surgeist_text::Source
+impl surgeist_text::Layout
+pub fn surgeist_text::Layout::decoration_views(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::DecorationRun> + '_
+pub fn surgeist_text::Layout::run_views(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::RunView<'_>>
 impl core::fmt::Debug for surgeist_text::Layout
 pub fn surgeist_text::Layout::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_text::Line
@@ -602,6 +637,18 @@ pub const fn surgeist_text::RunMetrics::baseline(self) -> f32
 pub const fn surgeist_text::RunMetrics::font_size(self) -> f32
 pub const fn surgeist_text::RunMetrics::new(font_size: f32, baseline: f32, offset: f32, advance: f32) -> Self
 pub const fn surgeist_text::RunMetrics::offset(self) -> f32
+pub struct surgeist_text::RunView<'a>
+impl surgeist_text::RunView<'_>
+pub fn surgeist_text::RunView<'_>::brush(&self) -> surgeist_text::Brush
+pub fn surgeist_text::RunView<'_>::effective_instance(&self) -> surgeist_text::Result<surgeist_text::EffectiveFontInstance<'_>>
+pub fn surgeist_text::RunView<'_>::face(&self) -> surgeist_text::FontFace<'_>
+pub fn surgeist_text::RunView<'_>::font_size(&self) -> f32
+pub fn surgeist_text::RunView<'_>::glyphs(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::GlyphPlacement> + '_
+pub const fn surgeist_text::RunView<'_>::line(&self) -> usize
+pub fn surgeist_text::RunView<'_>::range(&self) -> surgeist_text::Range
+pub fn surgeist_text::RunView<'_>::run_index(&self) -> usize
+impl core::fmt::Debug for surgeist_text::RunView<'_>
+pub fn surgeist_text::RunView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_text::Selection
 impl surgeist_text::Selection
 pub const fn surgeist_text::Selection::anchor(self) -> surgeist_text::Cursor

@@ -24,6 +24,11 @@ layouts keep their selected font resources. See [font registration](docs/how-to.
 This catalogue foundation retains the current Parley engine; prepared text and
 layout-selected line finalization remain separate unfinished work.
 
+Borrowed run, face and effective-instance views expose actual positioned output
+without copying glyph arrays. The optional standalone paint adapter belongs to
+[Render](../surgeist-render/README.md) under its `render-text` feature; Text does
+not depend on Render.
+
 ## Start
 
 From the crate directory, run the focused layout test:

@@ -10,10 +10,6 @@ glyph runs. The executable proof is `builds_plain_text_layout` in
 - The dependencies declared in [Cargo.toml](../Cargo.toml) already available in
   the local Cargo cache. The command below uses offline mode and will fail if
   required packages are absent.
-- All sibling path dependencies required by the local manifests: currently
-  `../surgeist-render`, declared by this crate, and `../surgeist-window`, declared
-  by `surgeist-render`. Cargo resolves these optional path manifests even when
-  their features are disabled. Keep their relative workspace crate paths intact.
 - Fonts available to Parley's default font context. The test uses the default
   sans-serif request. Deterministic registered-only tests instead use the bundled
   [Ahem fixture](../tests/fixtures/fonts/ahem/PROVENANCE.md).

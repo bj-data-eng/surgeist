@@ -4,7 +4,7 @@
 
 This notice covers the direct dependencies declared for `surgeist-text`
 0.1.0 in [Cargo.toml](Cargo.toml), including the default configuration, the
-`text-accessibility` and `text-render` features, and development dependencies.
+optional `text-accessibility` feature.
 It records source-level dependency attribution, not a resolved binary, release,
 or transitive dependency inventory. A dependency declaration does not establish
 that its code is redistributed in a particular artifact. Upstream example and
@@ -72,16 +72,6 @@ AccessKit integration. The adapted projection retains the upstream copyright
 and SPDX attribution in its source; the [adaptation provenance](docs/accessibility-provenance.md)
 identifies the exact input and retained mechanisms.
 
-### pollster 0.4.0
-
-This product depends on pollster, distributed by Joshua Barretto:
-
-* License: [Apache License 2.0](licenses/pollster/LICENSE-APACHE) or
-  [MIT](licenses/pollster/LICENSE-MIT)
-* Homepage: [Pollster](https://github.com/zesterer/pollster)
-
-This development dependency is used by a renderer test under `text-render`.
-
 ### skrifa 0.42.1
 
 This product depends on Skrifa from Fontations:
@@ -91,17 +81,6 @@ This product depends on Skrifa from Fontations:
 * Homepage: [Fontations](https://github.com/googlefonts/fontations)
 
 The catalogue uses its safe font-file interface for whole-file face admission.
-
-### surgeist-render 0.1.0
-
-This product depends on surgeist-render, distributed by bj-data-eng:
-
-* License: [MIT](licenses/surgeist-render/LICENSE)
-* Homepage: [surgeist-render](https://github.com/bj-data-eng/surgeist-render)
-
-This optional sibling path dependency is enabled by `text-render`. Its license
-preserves the pre-import sibling source attribution; its dependencies are outside
-this notice's direct-dependency scope.
 
 ## Bundled test font
 

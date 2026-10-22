@@ -166,6 +166,18 @@ impl OutlineLimits {
     }
 }
 
+#[cfg(feature = "render-text")]
+impl OutlineLimits {
+    pub(crate) const fn capacities(self) -> [usize; 4] {
+        [
+            self.glyphs,
+            self.path_elements,
+            self.scratch_bytes,
+            self.retained_bytes,
+        ]
+    }
+}
+
 /// The resource for a finite admission or allocation refusal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OutlineResource {
@@ -378,6 +390,18 @@ impl FontData {
         glyphs: &[TextGlyph],
         limits: OutlineLimits,
     ) -> Result<PreparedOutline> {
+        let font_bytes = font_backing_bytes(self.bytes().len())?;
+        self.prepare_outline_inner(instance, glyphs, limits, font_bytes)
+            .map(|(outline, _)| outline)
+    }
+
+    fn prepare_outline_inner(
+        &self,
+        instance: &TextInstance,
+        glyphs: &[TextGlyph],
+        limits: OutlineLimits,
+        font_bytes: usize,
+    ) -> Result<(PreparedOutline, usize)> {
         check_limit(OutlineResource::Glyphs, glyphs.len(), limits.glyphs)?;
         let font = skrifa::FontRef::from_index(self.bytes(), self.index())
             .map_err(|_| Error::from(OutlinePreparationError::InvalidFont))?;
@@ -421,11 +445,8 @@ impl FontData {
         // Blob::from(Vec) boxes the byte slice before sharing it. Charge that
         // observable extent plus declared conservative logical owner headers,
         // never the historical input Vec's discarded spare capacity.
-        let base_bytes = self
-            .bytes()
-            .len()
-            .checked_add(size_of::<Box<[u8]>>() + 2 * size_of::<usize>())
-            .and_then(|n| n.checked_add(size_of::<PreparedOutlineData>() + 2 * size_of::<usize>()))
+        let base_bytes = font_bytes
+            .checked_add(size_of::<PreparedOutlineData>() + 2 * size_of::<usize>())
             .and_then(|n| {
                 glyphs
                     .len()
@@ -579,18 +600,91 @@ impl FontData {
                 })?;
             pen.finish_glyph()?;
         }
+        let retained_bytes = pen
+            .elements
+            .capacity()
+            .checked_mul(size_of::<kurbo::PathEl>())
+            .and_then(|bytes| bytes.checked_add(base_bytes))
+            .ok_or_else(|| Error::from(OutlinePreparationError::CapacityOverflow))?;
         let (path, bounds) = pen.finish()?;
-        Ok(PreparedOutline(Arc::new(PreparedOutlineData {
-            font: self.clone(),
-            instance: TextInstance {
-                size: instance.size,
-                coordinates: owned_coordinates,
-                synthesis: instance.synthesis,
-            },
-            glyphs: owned_glyphs,
-            path,
-            bounds,
-        })))
+        Ok((
+            PreparedOutline(Arc::new(PreparedOutlineData {
+                font: self.clone(),
+                instance: TextInstance {
+                    size: instance.size,
+                    coordinates: owned_coordinates,
+                    synthesis: instance.synthesis,
+                },
+                glyphs: owned_glyphs,
+                path,
+                bounds,
+            })),
+            retained_bytes,
+        ))
+    }
+}
+
+fn font_backing_bytes(byte_len: usize) -> Result<usize> {
+    byte_len
+        .checked_add(size_of::<Box<[u8]>>() + 2 * size_of::<usize>())
+        .ok_or_else(|| Error::from(OutlinePreparationError::CapacityOverflow))
+}
+
+/// One invocation-local face copy whose backing is funded once by the adapter.
+#[cfg(feature = "render-text")]
+#[derive(Debug)]
+pub(crate) struct AdmittedOutlineFont {
+    font: FontData,
+    retained_bytes: usize,
+}
+
+#[cfg(feature = "render-text")]
+impl AdmittedOutlineFont {
+    pub(crate) fn copy_from(
+        bytes: &[u8],
+        index: u32,
+        scratch_limit: usize,
+        retained_limit: usize,
+    ) -> Result<Self> {
+        let retained_bytes = font_backing_bytes(bytes.len())?;
+        check_limit(
+            OutlineResource::RetainedBytes,
+            retained_bytes,
+            retained_limit,
+        )?;
+        // Vec-to-box conversion may allocate while the original Vec remains live.
+        let overlap = bytes
+            .len()
+            .checked_mul(2)
+            .ok_or_else(|| Error::from(OutlinePreparationError::CapacityOverflow))?;
+        check_limit(OutlineResource::ScratchBytes, overlap, scratch_limit)?;
+        let mut copy = reserved(bytes.len(), OutlineResource::ScratchBytes)?;
+        let overlap = copy
+            .capacity()
+            .checked_add(bytes.len())
+            .ok_or_else(|| Error::from(OutlinePreparationError::CapacityOverflow))?;
+        check_limit(OutlineResource::ScratchBytes, overlap, scratch_limit)?;
+        copy.extend_from_slice(bytes);
+        let font = FontData::try_from_bytes(copy, index)?;
+        Ok(Self {
+            font,
+            retained_bytes,
+        })
+    }
+
+    pub(crate) const fn retained_bytes(&self) -> usize {
+        self.retained_bytes
+    }
+
+    pub(crate) fn prepare(
+        &self,
+        instance: &TextInstance,
+        glyphs: &[TextGlyph],
+        limits: OutlineLimits,
+    ) -> Result<(PreparedOutline, usize)> {
+        // The actual face copy above is already charged by the invocation owner.
+        // Per-run owners and geometry remain charged by the shared outline core.
+        self.font.prepare_outline_inner(instance, glyphs, limits, 0)
     }
 }
 
@@ -1095,6 +1189,13 @@ impl OutlinePen for CollectingPen {
 
 /// Qualifies the actual composed backend affine before any prepared-path encoding.
 pub(crate) fn qualify_placement(transform: kurbo::Affine, outline: &PreparedOutline) -> Result<()> {
+    qualify_bounds_placement(transform, outline.bounds().ink_rect())
+}
+
+pub(crate) fn qualify_bounds_placement(
+    transform: kurbo::Affine,
+    bounds: Option<Rect>,
+) -> Result<()> {
     let coefficients = transform.as_coeffs();
     for value in coefficients {
         let narrowed = value as f32;
@@ -1117,7 +1218,7 @@ pub(crate) fn qualify_placement(transform: kurbo::Affine, outline: &PreparedOutl
         }
         .into());
     }
-    if let Some(rect) = outline.bounds().ink_rect() {
+    if let Some(rect) = bounds {
         let coefficients = coefficients.map(|v| v as f32);
         let [a, b, c, d, e, f] = coefficients;
         let mut placed: Option<kurbo::Rect> = None;
@@ -1146,7 +1247,11 @@ pub(crate) fn qualify_placement(transform: kurbo::Affine, outline: &PreparedOutl
             }));
         }
         let placed = placed.expect("four corners are always visited");
-        if determinant != 0.0 && (placed.width() == 0.0 || placed.height() == 0.0) {
+        if determinant != 0.0
+            && rect.width() > 0.0
+            && rect.height() > 0.0
+            && (placed.width() == 0.0 || placed.height() == 0.0)
+        {
             return Err(OutlinePreparationError::Numeric {
                 phase: OutlineNumericPhase::Placement,
                 value: placed.area(),

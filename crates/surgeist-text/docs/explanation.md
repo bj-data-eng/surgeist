@@ -16,12 +16,12 @@ and low-level movement. These facts let a caller build its own surface or editor
 without making the text crate own widgets or application commands.
 
 [The public front door](../src/lib.rs) excludes rendering, widgets, document
-identity, style resolution, and application commands from the intended boundary.
-The repository guide assigns cross-Surgeist adapters and API audit generation to
-the root `surgeist` repository. There is a current ownership discrepancy:
-`Layout::push_render_text` in [src/layout.rs](../src/layout.rs) implements a
-feature-gated cross-crate render adapter in this leaf. That describes the present
-code; it does not resolve or revise the boundary stated in [AGENTS.md](../AGENTS.md).
+identity, style resolution and application commands. Each consuming subsystem
+owns its direct adapter: Render consumes Text's borrowed actual run/face/instance
+readback under its optional `render-text` feature. Text has no Render dependency.
+The adapter borrows the original immutable Layout for paint/interaction association;
+it does not choose breaks or create future selected-line identities. The root
+facade provides optional composition and shared API auditing.
 
 ## Source coordinates remain authored coordinates
 

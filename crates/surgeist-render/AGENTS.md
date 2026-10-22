@@ -34,8 +34,10 @@ CPU-visible headless pixels require explicit readback.
 Select affected checks under the root process/resource policy; commands below
 run from this crate directory.
 
-Native feature combinations are default, `render-window`, `render-web`, and
-`render-window,render-web`. Native tests include real GPU execution and require
+Native host feature combinations are default, `render-window`, `render-web`, and
+`render-window,render-web`. The independent optional `render-text` feature owns
+standalone Text-layout consumption; its focused tests are in
+`src/tests/text_layout_adapter.rs`. Native tests include real GPU execution and require
 a compatible adapter; serial test threads do not bound GPU allocation. Select
 `tests::platform::real_gpu_smoke_emits_no_uncaptured_error` for the initial 2×2
 smoke rather than assuming the full GPU suite fits the host. Wasm coverage is

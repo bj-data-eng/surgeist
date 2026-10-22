@@ -11,6 +11,7 @@ current source API.
 | --- | --- | --- |
 | Renderer and options | `Renderer`, `Options`, `Parameters`, `EffectQualityPolicy` | [Renderer](../src/renderer/mod.rs), [options](../src/renderer/options.rs), [surface parameters](../src/surface.rs) |
 | Draw data | `Scene`, geometry, shapes, paints, images, layers, and positioned text runs | [Scene](../src/scene.rs), [public reexports](../src/lib.rs) |
+| Standalone Text consumer (`render-text`) | `prepare_text_layout`, `PreparedTextScene`, `TextLayoutLimits`, `TextLayoutError` | [Adapter](../src/text_layout.rs) |
 | Surface and pixels | `Surface`, `SurfaceOptions`, `Attachment`, `ImageBuffer` | [Surfaces](../src/surface.rs), [images](../src/image.rs) |
 | Support and diagnostics | `Capabilities`, `RuntimeCapabilities`, `Error`, `ErrorCode` | [Capabilities](../src/capability.rs), [errors](../src/error.rs) |
 | Successful frame observations | `Stats`, `RenderRoute`, `EffectPrecision` | [Statistics](../src/stats.rs) |
@@ -46,6 +47,7 @@ The [error API](../src/error.rs) defines the operation and reason payloads.
 | Configuration | Leaf boundary |
 | --- | --- |
 | Default features (`[]`) | Native headless GPU execution without a window. |
+| `render-text` | Optional direct Text dependency, without Text default features; standalone immutable-layout consumption, independent of window/web/accessibility adapters. |
 | `render-window` | Enables `surgeist-window` and native window attachment; live presentation requires its graphical host lifecycle. |
 | `render-web` | Enables `wgpu/webgpu`; web-canvas support requires `wasm32`. The documented wasm leaf check compiles `--lib --tests`. |
 | `render-window,render-web` on native | Additive compiled features; uses the same native live-window smoke target. |

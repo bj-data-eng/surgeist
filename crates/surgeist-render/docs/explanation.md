@@ -14,10 +14,12 @@ long-term authored-model ownership has been settled. The separately deferred
 cross-crate ownership question does not change their current availability.
 
 The root `surgeist` repository owns the public composition facade,
-Surgeist-to-Surgeist lowering and adapters, browser-host integration, generated
-API audit artifacts, and workspace wiring. This workspace crate owns its source
-API and focused verification. Root artifacts are generated and updated by the
-root tool; the crate carries no generated copies.
+browser-host integration, generated API audit artifacts and workspace wiring.
+Each consumer owns its direct adapter: Render's optional `render-text` integration
+borrows an actual immutable Text layout and owns the resulting scene resources.
+It does not choose lines, clone the snapshot or invent captured-fragment identity.
+This workspace crate owns its source API and focused verification. Root artifacts
+are generated and updated by the root tool; the crate carries no generated copies.
 
 ## Two GPU execution routes
 

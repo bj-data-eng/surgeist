@@ -22,6 +22,8 @@ pub struct Error {
     degraded_quality: Option<Box<DegradedQuality>>,
     runtime_capability_unavailable: Option<RuntimeCapabilityUnavailable>,
     outline_preparation: Option<Box<crate::OutlinePreparationError>>,
+    #[cfg(feature = "render-text")]
+    text_layout: Option<Box<crate::TextLayoutError>>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -83,6 +85,13 @@ impl BackendErrorCode {
 }
 
 impl Error {
+    /// Reports a standalone Text-layout admission refusal with preserved item causes.
+    #[cfg(feature = "render-text")]
+    #[must_use]
+    pub fn text_layout_diagnostic(&self) -> Option<&crate::TextLayoutError> {
+        self.text_layout.as_deref()
+    }
+
     #[must_use]
     pub(crate) fn new(code: BackendErrorCode, message: impl Into<String>) -> Self {
         debug_assert!(BackendErrorCode::ALL.contains(&code));
@@ -96,6 +105,8 @@ impl Error {
             degraded_quality: None,
             runtime_capability_unavailable: None,
             outline_preparation: None,
+            #[cfg(feature = "render-text")]
+            text_layout: None,
         }
     }
 
@@ -179,6 +190,8 @@ impl Error {
             degraded_quality: None,
             runtime_capability_unavailable: None,
             outline_preparation: None,
+            #[cfg(feature = "render-text")]
+            text_layout: None,
         }
     }
 
@@ -200,6 +213,8 @@ impl Error {
             degraded_quality: None,
             runtime_capability_unavailable: None,
             outline_preparation: None,
+            #[cfg(feature = "render-text")]
+            text_layout: None,
         }
     }
 
@@ -217,6 +232,8 @@ impl Error {
             degraded_quality: None,
             runtime_capability_unavailable: None,
             outline_preparation: None,
+            #[cfg(feature = "render-text")]
+            text_layout: None,
         }
     }
 
@@ -234,6 +251,8 @@ impl Error {
             degraded_quality: Some(Box::new(diagnostic)),
             runtime_capability_unavailable: None,
             outline_preparation: None,
+            #[cfg(feature = "render-text")]
+            text_layout: None,
         }
     }
 
@@ -254,6 +273,8 @@ impl Error {
             degraded_quality: None,
             runtime_capability_unavailable: Some(value),
             outline_preparation: None,
+            #[cfg(feature = "render-text")]
+            text_layout: None,
         }
     }
 
@@ -320,6 +341,26 @@ impl From<crate::OutlinePreparationError> for Error {
             degraded_quality: None,
             runtime_capability_unavailable: None,
             outline_preparation: Some(Box::new(value)),
+            #[cfg(feature = "render-text")]
+            text_layout: None,
+        }
+    }
+}
+
+#[cfg(feature = "render-text")]
+impl From<crate::TextLayoutError> for Error {
+    fn from(value: crate::TextLayoutError) -> Self {
+        Self {
+            code: ErrorCode::TextLayout,
+            message: format!("Text layout admission refused: {value:?}"),
+            source: None,
+            invalid_value: None,
+            unsupported_primitive: None,
+            unresolved_resource: None,
+            degraded_quality: None,
+            runtime_capability_unavailable: None,
+            outline_preparation: None,
+            text_layout: Some(Box::new(value)),
         }
     }
 }
@@ -345,6 +386,9 @@ impl error::Error for Error {
 /// backend-operation failures and may expose a safe source through
 /// [`std::error::Error::source`].
 pub enum ErrorCode {
+    /// Reports atomic standalone Text-layout admission failure.
+    #[cfg(feature = "render-text")]
+    TextLayout,
     /// Reports a semantic headless outline-preparation refusal.
     OutlinePreparation,
     /// Reports failure to create a GPU device.

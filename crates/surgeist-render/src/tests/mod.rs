@@ -6,6 +6,8 @@ mod platform;
 mod style;
 mod support;
 mod surface;
+#[cfg(feature = "render-text")]
+mod text_layout_adapter;
 mod vello;
 
 trait UnwrapOrPanicForTest<T> {

@@ -30,8 +30,26 @@ Selected color/bitmap representations and nonzero emboldening explicitly refuse.
 Color/bitmap selection metadata is checked; unsupported paint/image payloads are
 not executed or claimed to be validated. The authored `TextRun` path retains its
 existing provider behavior, with `Unspecified` bounds permitted only by its direct
-route. Broader outline/representation/synthesis support and the actual Text/Layout
-identity adapter remain separate work.
+route. Broader outline/representation/synthesis support remains separate work.
+
+The optional `render-text` feature adds `prepare_text_layout`, consuming the
+actual immutable standalone `surgeist_text::Layout` without reshaping or choosing
+lines. Its result borrows that exact snapshot and owns the complete Scene. Text
+qualifies the real face and effective normalized coordinates, including
+source-proved default axes; unresolved faux-bold or skew refuse explicitly.
+One `TextLayoutLimits` budget covers all runs, font copies, mapping buffers,
+prepared paths and decoration command storage. The adapter publishes no prefix
+when a later item refuses. Failure diagnostic allocations are outside those
+successful-work limits. Font copies are shared only within that invocation;
+the caller's original Text storage remains an input loan.
+
+Glyph placement already includes Text's offsets and baselines. Existing
+rectangle decorations follow glyphs; a nonidentity placement uses one admitted
+decoration transform layer. Both glyph ink and decoration geometry receive
+numeric placement qualification. Generic Scene copies retain owned paint
+resources but carry no authority to join another Text snapshot. This standalone
+adapter does not implement #72 finalized inline fragments or captured style/text
+joins; it preserves the existing outline capability limits.
 
 ## Start
 

@@ -58,6 +58,8 @@ pub enum ErrorCode {
     SourceRevisionExhausted,
     /// Source or mapped index arithmetic exceeded its representable domain.
     SourceLengthOverflow,
+    /// Actual shaping metadata cannot describe a complete font instance.
+    InvalidFontInstance,
     InvalidRange,
     InvalidStyle,
     LayoutFailed,
@@ -67,6 +69,27 @@ pub enum ErrorCode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErrorDetail {
+    /// A present variation table failed structural or axis-range validation.
+    MalformedFontVariations,
+    /// Stored normalized coordinates do not cover the actual axis inventory.
+    FontCoordinateCount {
+        /// Actual font axes.
+        expected: usize,
+        /// Stored provider coordinates.
+        actual: usize,
+    },
+    /// A stored F2Dot14 coordinate is outside the canonical normalized interval.
+    FontCoordinate {
+        /// Actual axis ordinal.
+        axis: usize,
+        /// Unchanged stored coordinate bits.
+        bits: i16,
+    },
+    /// The provider still requires a concrete synthesis operation.
+    UnresolvedFontSynthesis {
+        /// Actual unresolved suggestion.
+        kind: FontSynthesisKind,
+    },
     IsolatedSurrogateLayout {
         index: usize,
         unit: u16,
@@ -127,6 +150,15 @@ pub enum ErrorDetail {
         feature: &'static str,
         reason: &'static str,
     },
+}
+
+/// A shaping suggestion for which no concrete outline operation was supplied.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FontSynthesisKind {
+    /// Faux bold requires a concrete emboldening operation.
+    Embolden,
+    /// Faux italic or oblique requires a concrete skew operation.
+    Skew,
 }
 
 /// A shaping input boundary that must not divide a surrogate pair.

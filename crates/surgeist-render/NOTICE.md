@@ -4,7 +4,7 @@
 
 This notice covers the Vello-derived source and Ahem font bundled in this
 checkout, and the direct dependencies pinned in [Cargo.toml](Cargo.toml) for
-`surgeist-render` 0.1.0. The inventory includes default builds, `render-window`,
+`surgeist-render` 0.1.0. The inventory includes default builds, `render-text`, `render-window`,
 `render-web`, native targets, and `wasm32-unknown-unknown` development dependencies.
 Each entry identifies its role; a manifest dependency does not establish that
 it is included in every distributed artifact. Transitive dependencies and
@@ -120,6 +120,17 @@ This product depends on skrifa 0.42.1 from Fontations:
 This is a direct library dependency with default features disabled and
 `autohint_shaping` and `std` enabled. Both included license files retain Colin
 Rothfels's copyright notice.
+
+### surgeist-text
+
+This product optionally depends on surgeist-text 0.1.0, distributed by bj-data-eng:
+
+* License: [MIT](LICENSES/surgeist-text/LICENSE)
+* Homepage: [surgeist-text](https://github.com/bj-data-eng/surgeist/tree/main/crates/surgeist-text)
+
+The `render-text` feature enables the local Text-owned layout and font readback
+consumed by Render's standalone adapter. Text's own dependency notices remain
+with that package; they are outside this direct-dependency inventory.
 
 ### surgeist-window
 

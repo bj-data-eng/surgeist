@@ -28,8 +28,9 @@
 //! and presentation path. The
 //! `wasm32-unknown-unknown` leaf boundary is compile-only under `render-web`;
 //! real canvas execution requires a browser host and is root integration work.
-//! The root `surgeist` repository owns the root facade, cross-crate adapters,
-//! generated API artifacts, browser evidence, and this leaf's gitlink.
+//! Render owns its optional `render-text` consumer of authentic standalone Text
+//! layouts. The root `surgeist` repository owns the facade, workspace wiring,
+//! generated API artifacts and browser integration evidence.
 
 mod backend;
 mod capability;
@@ -56,6 +57,8 @@ mod stats;
 mod style;
 mod surface;
 mod text;
+#[cfg(feature = "render-text")]
+mod text_layout;
 mod texture;
 mod validation;
 mod vello_engine;
@@ -115,6 +118,12 @@ pub use surface::{
     Attachment, Format, Parameters, PresentMode, Surface, SurfaceOptions, SurfaceResourceState,
     SurfaceState, WebCanvas,
 };
+#[cfg(feature = "render-text")]
+pub use text_layout::{
+    PreparedTextScene, TextLayoutCause, TextLayoutError, TextLayoutLimits, TextLayoutLocation,
+    TextLayoutResource, prepare_text_layout,
+};
+
 pub use text::{
     FontData, FontId, FontRef, NormalizedCoordinate, OutlineCapability, OutlineLimits,
     OutlineNumericPhase, OutlinePreparationError, OutlineResource, OutlineSynthesis,

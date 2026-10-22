@@ -89,51 +89,58 @@ impl Layout {
             .collect()
     }
 
-    pub fn glyph_runs(&self) -> Vec<Run> {
+    pub(crate) fn positioned_runs(
+        &self,
+    ) -> impl Iterator<Item = (usize, parley::GlyphRun<'_, Brush>)> {
         self.inner
             .lines()
             .enumerate()
             .flat_map(|(line_index, line)| {
                 line.items().filter_map(move |item| match item {
-                    PositionedLayoutItem::GlyphRun(run) => {
-                        let run_range = run.run().text_range();
-                        let fallback_range = self.projection.range(run_range);
-                        let brush = run.style().brush;
-                        let mut ranges = run.run().visual_clusters().flat_map(|cluster| {
-                            let range = cluster.text_range();
-                            let range = self.projection.range(range);
-                            cluster.glyphs().map(move |_| range)
-                        });
-                        let glyphs: Vec<Glyph> = run
-                            .positioned_glyphs()
-                            .map(|glyph| {
-                                Glyph::new(
-                                    glyph.id,
-                                    glyph.x,
-                                    glyph.y,
-                                    glyph.advance,
-                                    ranges.next().unwrap_or(fallback_range),
-                                )
-                            })
-                            .collect();
-                        let style = self.style_for_run(fallback_range, &glyphs, brush);
-                        Some(Run::new(
-                            line_index,
-                            fallback_range,
-                            FontRef::from_parley(run.run().font()),
-                            style,
-                            brush,
-                            RunMetrics::new(
-                                run.run().font_size(),
-                                run.baseline(),
-                                run.offset(),
-                                run.advance(),
-                            ),
-                            glyphs,
-                        ))
-                    }
+                    PositionedLayoutItem::GlyphRun(run) => Some((line_index, run)),
                     PositionedLayoutItem::InlineBox(_) => None,
                 })
+            })
+    }
+
+    pub fn glyph_runs(&self) -> Vec<Run> {
+        self.positioned_runs()
+            .map(|(line_index, run)| {
+                let run_range = run.run().text_range();
+                let fallback_range = self.projection.range(run_range);
+                let brush = run.style().brush;
+                let mut ranges = run.run().visual_clusters().flat_map(|cluster| {
+                    let range = cluster.text_range();
+                    let range = self.projection.range(range);
+                    cluster.glyphs().map(move |_| range)
+                });
+                let glyphs: Vec<Glyph> = run
+                    .positioned_glyphs()
+                    .map(|glyph| {
+                        Glyph::new(
+                            glyph.id,
+                            glyph.x,
+                            glyph.y,
+                            glyph.advance,
+                            ranges.next().unwrap_or(fallback_range),
+                        )
+                    })
+                    .collect();
+                let style = self.style_for_run(fallback_range, &glyphs, brush);
+                Run::new(
+                    line_index,
+                    fallback_range,
+                    FontRef::from_parley(run.run().font()),
+                    style,
+                    brush,
+                    RunMetrics::new(
+                        run.run().font_size(),
+                        run.baseline(),
+                        run.offset(),
+                        run.advance(),
+                    ),
+                    glyphs,
+                )
             })
             .collect()
     }
@@ -266,56 +273,7 @@ impl Layout {
     }
 
     pub fn decorations(&self) -> Vec<DecorationRun> {
-        let mut decorations = Vec::new();
-        for line in self.inner.lines() {
-            for item in line.items() {
-                let PositionedLayoutItem::GlyphRun(run) = item else {
-                    continue;
-                };
-                let style = run.style();
-                let x = run.offset();
-                let width = run.advance();
-                if let Some(decoration) = &style.underline {
-                    decorations.push(DecorationRun::new(
-                        Rect::new(
-                            x,
-                            decoration_top(
-                                run.baseline(),
-                                decoration
-                                    .offset
-                                    .unwrap_or_else(|| run.run().metrics().underline_offset),
-                            ),
-                            width,
-                            decoration
-                                .size
-                                .unwrap_or_else(|| run.run().metrics().underline_size),
-                        ),
-                        decoration.brush,
-                        DecorationKind::Underline,
-                    ));
-                }
-                if let Some(decoration) = &style.strikethrough {
-                    decorations.push(DecorationRun::new(
-                        Rect::new(
-                            x,
-                            decoration_top(
-                                run.baseline(),
-                                decoration
-                                    .offset
-                                    .unwrap_or_else(|| run.run().metrics().strikethrough_offset),
-                            ),
-                            width,
-                            decoration
-                                .size
-                                .unwrap_or_else(|| run.run().metrics().strikethrough_size),
-                        ),
-                        decoration.brush,
-                        DecorationKind::Strikethrough,
-                    ));
-                }
-            }
-        }
-        decorations
+        self.decoration_views().collect()
     }
 
     #[must_use]
@@ -450,50 +408,6 @@ impl Layout {
         })
     }
 
-    #[cfg(feature = "text-render")]
-    pub fn push_render_text(
-        &self,
-        scene: &mut surgeist_render::Scene,
-        transform: surgeist_render::Transform,
-    ) {
-        for run in self.glyph_runs() {
-            let glyphs: Vec<_> = run
-                .glyphs()
-                .iter()
-                .map(|glyph| {
-                    surgeist_render::TextGlyph::try_new(
-                        glyph.id(),
-                        glyph.x(),
-                        glyph.y(),
-                        glyph.advance(),
-                    )
-                    .expect("layout glyph positions and advances are finite")
-                })
-                .collect();
-            let mut font = surgeist_render::FontRef::new(run.font().id());
-            if let Some(data) = run.font().data() {
-                font = font.with_data(data.to_render());
-            }
-            let paint = surgeist_render::TextPaint::try_fill(render_color(run.brush()).into())
-                .expect("validated text brushes produce valid render paint");
-            let text_run =
-                surgeist_render::TextRun::try_new(font, run.font_size(), transform, paint, &glyphs)
-                    .expect("layout text runs use validated finite metrics");
-            scene.text_run(text_run);
-        }
-        let decorations = self.decorations();
-        if !decorations.is_empty() {
-            scene.transform(transform, |scene| {
-                for decoration in decorations {
-                    scene.fill(
-                        render_rect(decoration.rect()),
-                        render_color(decoration.brush()),
-                    );
-                }
-            });
-        }
-    }
-
     fn line_boundary(&self, index: usize, boundary: LineBoundary) -> parley::Cursor {
         let unit = self
             .projection
@@ -595,23 +509,6 @@ impl Layout {
 
 pub(crate) fn decoration_top(baseline: f32, offset_from_baseline: f32) -> f32 {
     baseline - offset_from_baseline
-}
-
-#[cfg(feature = "text-render")]
-fn render_rect(rect: Rect) -> surgeist_render::Rect {
-    surgeist_render::Rect::try_new(
-        f64::from(rect.origin.x),
-        f64::from(rect.origin.y),
-        f64::from(rect.size.width),
-        f64::from(rect.size.height),
-    )
-    .expect("text render rectangles are valid by construction")
-}
-
-#[cfg(feature = "text-render")]
-fn render_color(brush: Brush) -> surgeist_render::Color {
-    surgeist_render::Color::try_rgba(brush.r, brush.g, brush.b, brush.a)
-        .expect("validated text brushes use finite unit-interval channels")
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1091,11 +988,6 @@ impl FontData {
     #[must_use]
     pub const fn index(&self) -> u32 {
         self.data.index
-    }
-
-    #[cfg(feature = "text-render")]
-    fn to_render(&self) -> surgeist_render::FontData {
-        surgeist_render::FontData::from_bytes(self.data.data.as_ref().to_vec(), self.data.index)
     }
 }
 

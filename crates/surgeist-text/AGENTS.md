@@ -8,9 +8,8 @@ This supplement records crate facts and grants no additional authority.
 This crate owns text composition/edits, font-facing inputs, shaping, measurement, line
 layout, geometry, cursor/selection movement, and cache identity. Source IDs do
 not make this crate the document owner. Style resolution, rendering engines,
-widgets, and application commands remain outside this crate. The existing
-`text-render` dependency and `Layout::push_render_text` bridge remain a known
-boundary discrepancy; the snapshot import does not reconcile it.
+widgets, and application commands remain outside this crate. Render owns the
+optional standalone paint adapter and consumes Text directly.
 `text-accessibility` exposes AccessKit projection.
 
 ## Discover The Current Structure
@@ -24,6 +23,7 @@ boundary discrepancy; the snapshot import does not reconcile it.
 | Text style inputs, supported features, options, and diagnostics | [src/style.rs](src/style.rs), [src/style_support.rs](src/style_support.rs), [src/options.rs](src/options.rs), [src/error.rs](src/error.rs) |
 | Layout construction and cache identity | [src/system.rs](src/system.rs), [src/catalogue.rs](src/catalogue.rs), [src/cache.rs](src/cache.rs) |
 | Layout outputs, geometry, movement, and optional projections | [src/layout.rs](src/layout.rs), [src/geometry.rs](src/geometry.rs) |
+| Borrowed actual run, face and instance readback | [src/views.rs](src/views.rs) |
 | Owned optional AccessKit projection | [src/accessibility.rs](src/accessibility.rs), [provenance](docs/accessibility-provenance.md) |
 | Focused verification | [src/tests.rs](src/tests.rs), its [catalogue cases](src/tests/catalogue.rs), and owning module tests, loaded by [src/lib.rs](src/lib.rs) |
 
@@ -36,11 +36,9 @@ run from this crate directory.
 
 The deterministic registered-font fixture is [Ahem](tests/fixtures/fonts/ahem/PROVENANCE.md).
 
-Default features are empty. Optional surfaces are `text-accessibility` and
-`text-render`. The current text-render bridge has pre-existing API mismatches
-against `surgeist-render`; do not assume it or an all-features combination passes.
-Record that limitation separately from default/accessibility checks. Render
-feature tests initialize a headless renderer and require a usable GPU backend.
+Default features are empty. `text-accessibility` enables owned AccessKit
+projection. Render adapter tests belong to the consuming `surgeist-render`
+package under its `render-text` feature.
 
 ```sh
 cargo check -j 1 -p surgeist-text

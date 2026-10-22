@@ -2186,69 +2186,6 @@ fn composed_source_builds_through_layout_system() {
     assert_eq!(layout.metrics().line_count(), 1);
 }
 
-#[cfg(feature = "text-render")]
-#[test]
-fn render_projection_encodes_prepared_glyph_runs() {
-    let mut system = System::default();
-    let mut builder = system.builder("hello");
-    let layout = builder.build().expect("layout should build");
-    let mut scene = surgeist_render::Scene::new();
-
-    layout.push_render_text(&mut scene, surgeist_render::Transform::identity());
-
-    assert!(!scene.is_empty());
-}
-
-#[cfg(feature = "text-render")]
-#[test]
-fn render_projection_draws_prepared_glyph_runs() {
-    let mut system = System::default();
-    let mut builder = system.builder("hello");
-    let layout = builder.build().expect("layout should build");
-    let mut scene = surgeist_render::Scene::new();
-
-    layout.push_render_text(&mut scene, surgeist_render::Transform::identity());
-
-    let mut renderer = pollster::block_on(surgeist_render::Renderer::new(
-        surgeist_render::Options::default(),
-    ))
-    .expect("renderer should initialize");
-    let mut surface = renderer
-        .create_headless(
-            surgeist_render::Size::try_new(64.0, 32.0)
-                .expect("headless test surface size is valid"),
-            1.0,
-        )
-        .expect("headless surface should initialize");
-    let stats = renderer
-        .render(&mut surface, &scene, surgeist_render::Parameters::default())
-        .expect("prepared text should render with resolved font data");
-
-    assert!(stats.glyphs > 0);
-}
-
-#[cfg(feature = "text-render")]
-#[test]
-fn render_projection_encodes_decorations() {
-    let mut system = System::default();
-    let style = Style {
-        underline: Decoration::solid()
-            .with_brush(DecorationBrush::Color(Brush::color(1.0, 0.0, 0.0, 1.0))),
-        ..Style::default()
-    };
-    let mut builder = system.builder("hello");
-    builder.default_style(style);
-    let layout = builder.build().expect("layout should build");
-    let mut scene = surgeist_render::Scene::new();
-
-    layout.push_render_text(&mut scene, surgeist_render::Transform::identity());
-
-    assert!(
-        scene.len() > layout.glyph_runs().len(),
-        "decoration fills should be encoded in addition to glyph runs"
-    );
-}
-
 #[test]
 fn decoration_offsets_are_measured_from_baseline() {
     assert_eq!(decoration_top(20.0, 3.0), 17.0);

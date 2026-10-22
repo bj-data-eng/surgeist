@@ -24,6 +24,7 @@ mod style;
 mod style_support;
 mod system;
 mod text;
+mod views;
 
 #[cfg(feature = "text-accessibility")]
 pub use accessibility::Accessibility;
@@ -31,7 +32,9 @@ pub use cache::{FontGeneration, Key, OptionsKey, SourceKey, Stats, StyleKey};
 pub use catalogue::{FontCatalogueIdentity, FontCatalogueMode};
 pub use composer::{Composer, Mark, compose, source};
 pub use edit::{Edit, TextEdit};
-pub use error::{Error, ErrorCode, ErrorDetail, NumericRequirement, Result, ShapingBoundary};
+pub use error::{
+    Error, ErrorCode, ErrorDetail, FontSynthesisKind, NumericRequirement, Result, ShapingBoundary,
+};
 pub use geometry::{Point, Rect, Size};
 pub use id::Id;
 pub use layout::{
@@ -56,6 +59,7 @@ pub use style::{
 pub use style_support::{TextStyleFeature, TextStyleSupport, UnsupportedTextStyleReason};
 pub use system::{Builder, System, SystemOptions};
 pub use text::Text;
+pub use views::{EffectiveFontInstance, FontFace, GlyphPlacement, RunView};
 
 #[cfg(test)]
 mod tests;
