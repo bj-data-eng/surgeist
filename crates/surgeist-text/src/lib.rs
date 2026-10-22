@@ -84,7 +84,8 @@ pub use protocol::{
     PreparationOptions, PreparedAlternative, PreparedAtomic, PreparedBoundary, PreparedBreakKind,
     PreparedControl, PreparedOpportunity, PreparedOrigin, PreparedParticipant, PreparedText,
     PreparedUnit, PresentationRange, ProtocolContextField, ProtocolError, ProtocolHandleKind,
-    SelectedLine, SpacingAllocation, SpacingAllocations, SpacingPolicy, SpacingSlot, TabContext,
+    SelectedLine, SpacingAllocation, SpacingAllocations, SpacingPolicy, SpacingSlot,
+    SpacingSlotDisposition, SpacingSlotFeedback, SpacingSlotOwner, TabContext,
 };
 pub use range::{Range, SourcePosition, SourceRange};
 pub use source_model::{

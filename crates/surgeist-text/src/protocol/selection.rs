@@ -17,6 +17,9 @@ pub(crate) struct SelectedData {
 
 /// A supported logical space contribution, before any provider-independent delta.
 pub(crate) struct SpacingSlotData {
+    /// Exact selected presentation unit; replacement and original ownership
+    /// cannot be recovered from equal source ranges or insertion anchors.
+    pub(crate) unit: usize,
     pub(crate) participant: Option<usize>,
     pub(crate) presentation: super::PresentationRange,
     pub(crate) source: Range,
@@ -343,8 +346,10 @@ fn select(
         presentation
             .units
             .iter()
-            .filter(|unit| unit.eligible_space)
-            .map(|unit| SpacingSlotData {
+            .enumerate()
+            .filter(|(_, unit)| unit.eligible_space)
+            .map(|(index, unit)| SpacingSlotData {
+                unit: index,
                 participant: unit.participant,
                 presentation: PresentationRange {
                     start: unit.presentation.start,

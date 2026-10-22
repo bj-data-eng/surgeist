@@ -308,6 +308,31 @@ impl PartialEq for SpacingSlot {
     }
 }
 impl Eq for SpacingSlot {}
+
+/// The actual preparation-issued owner of one selected presentation SPACE.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SpacingSlotOwner {
+    Unit(PreparedUnit),
+    Alternative(PreparedAlternative),
+}
+
+/// The executed line-edge and trailing classification of a selected SPACE.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SpacingSlotDisposition {
+    DiscardedAtLineEdge,
+    Retained { trailing: bool },
+}
+
+/// Immutable finalization feedback for one exact selected slot. `advance` is
+/// the resulting logical contribution, including its admitted allocation;
+/// canonical provider glyph advances remain available through glyph readback.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SpacingSlotFeedback {
+    pub slot: SpacingSlot,
+    pub disposition: SpacingSlotDisposition,
+    pub advance: f64,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct SpacingAllocation {
     pub slot: SpacingSlot,

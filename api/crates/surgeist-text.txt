@@ -558,6 +558,13 @@ pub surgeist_text::SpacingAllocations::None
 pub enum surgeist_text::SpacingPolicy
 pub surgeist_text::SpacingPolicy::None
 pub surgeist_text::SpacingPolicy::Spaces
+pub enum surgeist_text::SpacingSlotDisposition
+pub surgeist_text::SpacingSlotDisposition::DiscardedAtLineEdge
+pub surgeist_text::SpacingSlotDisposition::Retained
+pub surgeist_text::SpacingSlotDisposition::Retained::trailing: bool
+pub enum surgeist_text::SpacingSlotOwner
+pub surgeist_text::SpacingSlotOwner::Alternative(surgeist_text::PreparedAlternative)
+pub surgeist_text::SpacingSlotOwner::Unit(surgeist_text::PreparedUnit)
 pub enum surgeist_text::SuppliedInlineParticipant
 pub surgeist_text::SuppliedInlineParticipant::Atomic
 pub surgeist_text::SuppliedInlineParticipant::Atomic::level: surgeist_text::BidiLevel
@@ -910,6 +917,8 @@ pub fn surgeist_text::FinalizedLine::outline_ink(&self) -> surgeist_text::Result
 pub fn surgeist_text::FinalizedLine::run_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::FinalizedRunView<'_>>
 impl surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedLine::prepared_text(&self) -> surgeist_text::PreparedText
+impl surgeist_text::FinalizedLine
+pub fn surgeist_text::FinalizedLine::spacing_slots(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::SpacingSlotFeedback> + '_
 impl core::cmp::Eq for surgeist_text::FinalizedLine
 impl core::cmp::PartialEq for surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedLine::eq(&self, other: &Self) -> bool
@@ -1655,6 +1664,8 @@ pub surgeist_text::SpacingAllocation::amount: f64
 pub surgeist_text::SpacingAllocation::slot: surgeist_text::SpacingSlot
 pub struct surgeist_text::SpacingSlot
 impl surgeist_text::SpacingSlot
+pub fn surgeist_text::SpacingSlot::owner(&self) -> surgeist_text::SpacingSlotOwner
+impl surgeist_text::SpacingSlot
 pub fn surgeist_text::SpacingSlot::participant(&self) -> core::option::Option<&surgeist_text::PreparedParticipant>
 pub fn surgeist_text::SpacingSlot::presentation_range(&self) -> surgeist_text::PresentationRange
 pub fn surgeist_text::SpacingSlot::selected_line(&self) -> surgeist_text::SelectedLine
@@ -1664,6 +1675,10 @@ impl core::cmp::PartialEq for surgeist_text::SpacingSlot
 pub fn surgeist_text::SpacingSlot::eq(&self, other: &Self) -> bool
 impl core::fmt::Debug for surgeist_text::SpacingSlot
 pub fn surgeist_text::SpacingSlot::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_text::SpacingSlotFeedback
+pub surgeist_text::SpacingSlotFeedback::advance: f64
+pub surgeist_text::SpacingSlotFeedback::disposition: surgeist_text::SpacingSlotDisposition
+pub surgeist_text::SpacingSlotFeedback::slot: surgeist_text::SpacingSlot
 pub struct surgeist_text::Span
 impl surgeist_text::Span
 pub const fn surgeist_text::Span::new(range: surgeist_text::Range, style: surgeist_text::Style) -> Self

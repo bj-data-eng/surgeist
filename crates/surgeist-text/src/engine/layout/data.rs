@@ -207,6 +207,14 @@ pub(crate) struct FinalizedAnchor {
     pub(crate) level: u8,
 }
 
+/// The actual allocation target joined by finalization, in selected-slot order.
+/// Logical advance remains on the real finalized cluster, without a copy here.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct FinalizedSpacingSlot {
+    pub(crate) cluster: usize,
+    pub(crate) disposition: crate::protocol::SpacingSlotDisposition,
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FinalizedLineData {
     pub(crate) font_runs: Vec<PreparedRun>,
@@ -218,6 +226,7 @@ pub(crate) struct FinalizedLineData {
     pub(crate) boxes: Vec<FinalizedBox>,
     pub(crate) visual_order: Vec<FinalizedVisualItem>,
     pub(crate) anchors: Vec<FinalizedAnchor>,
+    pub(crate) spacing_slots: Vec<FinalizedSpacingSlot>,
     pub(crate) metrics: LineMetrics,
     pub(crate) fragments: Vec<FinalizedFragmentData>,
 }

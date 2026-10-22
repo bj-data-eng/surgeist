@@ -23,7 +23,7 @@ use super::{add, data::*, finite};
 use crate::protocol::selection::{LineMetricPolicy, SelectedData};
 use crate::protocol::{
     AtomicAllocation, ControlAllocation, ControlStrut, LineBoxAlignment, LineContext, LineEnd,
-    ProtocolError, protocol_error,
+    ProtocolError, SpacingSlotDisposition, protocol_error,
 };
 
 pub(super) fn finalize(
@@ -36,11 +36,14 @@ pub(super) fn finalize(
     let controls = control_allocations(&selected)?;
     let (mut shaped, mapping) = shape::finalize(&selected, scratch)?;
     validate_rows(&selected, &shaped)?;
-    let discarded = collapse_edges(&selected, &mut shaped)?;
-    apply_spacing(&selected, &mut shaped, amounts, &discarded)?;
+    let mut dispositions = collapse_edges(&selected, &mut shaped)?;
+    let mut spacing_slots = apply_spacing(&selected, &mut shaped, amounts, &dispositions)?;
     let levels = line_levels(&selected, &shaped)?;
     let base = selected.presentation.analysis.base_level;
-    let mut metrics = line_metrics(&selected, &shaped, &atomics, &controls)?;
+    let mut metrics = line_metrics(&selected, &shaped, &atomics, &controls, &mut dispositions)?;
+    for row in &mut spacing_slots {
+        row.disposition = dispositions[row.cluster];
+    }
     if selected.metric_policy != LineMetricPolicy::Native {
         include_control_struts(
             &mut metrics,
@@ -85,6 +88,7 @@ pub(super) fn finalize(
         .reorder_into(&mut order)
         .map_err(|_| invalid("line order scratch does not match its actual participants"))?;
     let mut data = FinalizedLineData {
+        spacing_slots,
         clusters: shaped
             .clusters
             .iter()
@@ -188,7 +192,8 @@ pub(super) fn finalize(
                     .push(FinalizedVisualItem::Cluster(cluster_index));
                 let cluster = &shaped.clusters[cluster_index];
                 let cluster_x = pen;
-                let discarded = discarded[cluster_index];
+                let discarded =
+                    dispositions[cluster_index] == SpacingSlotDisposition::DiscardedAtLineEdge;
                 // RTL ligature/component shares are visited before their logical
                 // start. The one actual glyph belongs at the group's visual
                 // origin, not after those already-positioned component shares.
@@ -923,6 +928,7 @@ fn line_metrics(
     shaped: &ShapedData,
     atomics: &BTreeMap<usize, &AtomicAllocation>,
     controls: &BTreeMap<usize, &ControlAllocation>,
+    dispositions: &mut [SpacingSlotDisposition],
 ) -> Result<LineMetrics> {
     let mut result = LineMetrics::default();
     let mut have_metrics = false;
@@ -964,22 +970,7 @@ fn line_metrics(
             }
         }
     }
-    for item in shaped.items.iter().rev() {
-        match *item {
-            ShapedItem::Anchor { .. } => continue,
-            ShapedItem::TextCluster(index) if shaped.clusters[index].is_whitespace => {
-                if shaped.clusters[index].whitespace != Whitespace::Newline {
-                    result.trailing_whitespace = add(
-                        "line trailing advance",
-                        TextNumericPhase::Finalization,
-                        result.trailing_whitespace,
-                        shaped.clusters[index].advance,
-                    )?;
-                }
-            }
-            _ => break,
-        }
-    }
+    result.trailing_whitespace = classify_trailing(shaped, dispositions)?;
     if selected.metric_policy == LineMetricPolicy::Native {
         return native_metrics(selected, shaped, atomics, controls, result);
     }
@@ -1233,7 +1224,10 @@ fn native_metrics(
 
 /// Applicable Collapse line-edge suppression. Invisible occurrence/control
 /// anchors and out-of-flow boxes are transparent; real in-flow atomics stop it.
-fn collapse_edges(selected: &SelectedData, shaped: &mut ShapedData) -> Result<Vec<bool>> {
+fn collapse_edges(
+    selected: &SelectedData,
+    shaped: &mut ShapedData,
+) -> Result<Vec<SpacingSlotDisposition>> {
     let mut projected = Vec::new();
     let mut clusters = Vec::new();
     for item in &shaped.items {
@@ -1278,24 +1272,55 @@ fn collapse_edges(selected: &SelectedData, shaped: &mut ShapedData) -> Result<Ve
         }
     }
     let edges = SuppliedLine::new(&projected).edges();
-    let mut discarded = vec![false; shaped.clusters.len()];
+    let mut dispositions =
+        vec![SpacingSlotDisposition::Retained { trailing: false }; shaped.clusters.len()];
     for (ordinal, index) in clusters.into_iter().enumerate() {
         if let Some(index) = index
             && edges.is_discarded(ordinal) == Some(true)
         {
-            discarded[index] = true;
+            dispositions[index] = SpacingSlotDisposition::DiscardedAtLineEdge;
             shaped.clusters[index].advance = 0.0;
         }
     }
-    Ok(discarded)
+    Ok(dispositions)
+}
+
+/// One executed trailing classification supplies both aggregate metrics and
+/// per-slot readback. Real selected anchors are transparent; in-flow items stop
+/// the scan. Out-of-flow occurrences are absent from this shaped flow sequence.
+fn classify_trailing(
+    shaped: &ShapedData,
+    dispositions: &mut [SpacingSlotDisposition],
+) -> Result<f64> {
+    let mut advance = 0.0;
+    for item in shaped.items.iter().rev() {
+        match *item {
+            ShapedItem::Anchor { .. } => continue,
+            ShapedItem::TextCluster(index) if shaped.clusters[index].is_whitespace => {
+                if let SpacingSlotDisposition::Retained { trailing } = &mut dispositions[index] {
+                    *trailing = true;
+                }
+                if shaped.clusters[index].whitespace != Whitespace::Newline {
+                    advance = add(
+                        "line trailing advance",
+                        TextNumericPhase::Finalization,
+                        advance,
+                        shaped.clusters[index].advance,
+                    )?;
+                }
+            }
+            _ => break,
+        }
+    }
+    Ok(advance)
 }
 
 fn apply_spacing(
     selected: &SelectedData,
     shaped: &mut ShapedData,
     amounts: &[f64],
-    discarded: &[bool],
-) -> Result<()> {
+    dispositions: &[SpacingSlotDisposition],
+) -> Result<Vec<FinalizedSpacingSlot>> {
     if amounts.len() != selected.spacing_slots.len() {
         return Err(invalid("spacing amounts do not cover selected slots"));
     }
@@ -1315,6 +1340,7 @@ fn apply_spacing(
             ));
         }
     }
+    let mut spacing_slots = Vec::with_capacity(selected.spacing_slots.len());
     for (slot, (row, &amount)) in selected.spacing_slots.iter().zip(amounts).enumerate() {
         finite(
             "selected spacing amount",
@@ -1326,7 +1352,7 @@ fn apply_spacing(
                 slot,
             }));
         };
-        if discarded[index] && amount != 0.0 {
+        if dispositions[index] == SpacingSlotDisposition::DiscardedAtLineEdge && amount != 0.0 {
             return Err(protocol_error(ProtocolError::IneligibleSpacingSlot {
                 slot,
             }));
@@ -1343,8 +1369,12 @@ fn apply_spacing(
             cluster.advance,
             amount,
         )?;
+        spacing_slots.push(FinalizedSpacingSlot {
+            cluster: index,
+            disposition: dispositions[index],
+        });
     }
-    Ok(())
+    Ok(spacing_slots)
 }
 
 /// The standalone policy produces the same explicit logical allocations as a

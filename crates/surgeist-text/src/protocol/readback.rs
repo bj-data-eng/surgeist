@@ -6,6 +6,10 @@
 
 use std::{fmt, sync::Arc};
 
+#[cfg(test)]
+#[path = "readback/spacing_tests.rs"]
+mod spacing_tests;
+
 use crate::engine::{
     PreparedData,
     layout::data::{FinalizedFragmentData, FinalizedGlyph, FinalizedRun, PreparedRun},
@@ -19,7 +23,8 @@ use crate::{
 use super::{
     FinalizedFragment, FinalizedLine, LineSelectionRequest, PreparedAlternative, PreparedAtomic,
     PreparedBoundary, PreparedControl, PreparedOpportunity, PreparedOrigin, PreparedParticipant,
-    PreparedText, PreparedUnit, PresentationRange, SelectedLine,
+    PreparedText, PreparedUnit, PresentationRange, SelectedLine, SpacingSlot, SpacingSlotFeedback,
+    SpacingSlotOwner,
     paragraph::{
         FragmentOwner, OriginIntersection, ParagraphControlKind, ParagraphOriginKind,
         ParagraphReplacementDefinition,
@@ -29,6 +34,52 @@ use super::{
         PreparedBreakKind, SelectedMappingKind, SelectedMappingPiece, UnitData,
     },
 };
+
+impl SpacingSlot {
+    /// Retains the actual original unit or selected computed replacement that
+    /// owns this slot, even when several inserted spaces share a source anchor.
+    #[must_use]
+    pub fn owner(&self) -> SpacingSlotOwner {
+        let row = &self.selected.spacing_slots[self.index];
+        let unit = &self.selected.presentation.units[row.unit];
+        match unit.kind {
+            super::prepared::PresentationUnitKind::Replacement { alternative } => {
+                SpacingSlotOwner::Alternative(PreparedAlternative {
+                    prepared: Arc::clone(&self.selected.prepared),
+                    index: alternative,
+                })
+            }
+            super::prepared::PresentationUnitKind::Text => {
+                let Some(PreparedParticipant::Text(unit)) = self.participant() else {
+                    unreachable!("a selected original SPACE retains its issued text unit")
+                };
+                SpacingSlotOwner::Unit(unit.clone())
+            }
+            _ => unreachable!("only original or replacement SPACE units issue spacing slots"),
+        }
+    }
+}
+
+impl FinalizedLine {
+    /// Actual feedback for every issued selected slot, in that same order.
+    /// Discarded slots remain present with zero advance. Iteration clones only
+    /// the issued slot capability; it does not allocate an inventory or glyphs.
+    pub fn spacing_slots(&self) -> impl ExactSizeIterator<Item = SpacingSlotFeedback> + '_ {
+        self.inner
+            .data
+            .spacing_slots
+            .iter()
+            .enumerate()
+            .map(|(index, row)| SpacingSlotFeedback {
+                slot: SpacingSlot {
+                    selected: Arc::clone(&self.inner.selected),
+                    index,
+                },
+                disposition: row.disposition,
+                advance: self.inner.data.clusters[row.cluster].advance,
+            })
+    }
+}
 
 fn processed_range(prepared: &PreparedData, range: Range) -> ProcessedRange {
     prepared
