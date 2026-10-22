@@ -1094,6 +1094,144 @@ fn fri07_c02_collapsed_output_cache_cold_warm_and_both_round_failures_are_atomic
     assert_fri07_c02_collapsed_output_cache_and_failures_are_atomic::<f64>();
 }
 
+fn assert_flex_collapse_transition_restores_geometry_strut_and_descendants<S: LayoutScalar>() {
+    let mut tree = Fri07C02CollapsedOutputTree::<S>::new();
+    tree.tree.insert_children(2, [4]);
+    tree.tree.insert_children(4, []);
+    tree.tree.insert_input(
+        1,
+        LayoutInputOf::box_input(NodeInputOf {
+            display: Display::Flex,
+            size: Size::new(
+                PreferredSizeOf::px(S::from_f64(100.0)),
+                PreferredSizeOf::AUTO,
+            ),
+            gap: Size::new(LengthOf::px(S::from_f64(9.0)), LengthOf::ZERO),
+            align_items: Some(AlignItems::FlexStart),
+            ..NodeInputOf::default()
+        }),
+    );
+    for (node, main, cross) in [(3, 20.0, 10.0), (4, 10.0, 5.0)] {
+        tree.tree.insert_input(
+            node,
+            LayoutInputOf::box_input(fri07_c02_collapse_round_item(
+                main,
+                cross,
+                FlexItemCollapse::Normal,
+            )),
+        );
+    }
+    let request = fri07_c02_collapse_round_request();
+
+    // Flexbox 4.4/9.4: the same item keeps its first-round cross-size strut,
+    // but contributes neither its 40px main size nor the committed 9px gap.
+    // Changing its cross size must replace the strut, and uncollapsing must
+    // restore the ordinary child subtree through the same retained host.
+    for (phase, (collapse, cross, peer_x)) in [
+        (FlexItemCollapse::Normal, 30.0, 49.0),
+        (FlexItemCollapse::Collapsed, 30.0, 0.0),
+        (FlexItemCollapse::Collapsed, 45.0, 0.0),
+        (FlexItemCollapse::Normal, 45.0, 49.0),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        tree.tree.insert_input(
+            2,
+            LayoutInputOf::box_input(fri07_c02_collapse_round_item(40.0, cross, collapse)),
+        );
+        let retained_before_compute = tree.retained.clone();
+        let changed: &[u32] = if phase == 0 { &[] } else { &[2] };
+        let batch = compute_layout_invalidated(&tree, 1, request, changed)
+            .expect("normalized collapse transition computes a complete batch");
+        assert_eq!(tree.retained, retained_before_compute);
+        assert_eq!(
+            batch.invalidated_nodes(),
+            if phase == 0 { &[][..] } else { &[1, 2][..] }
+        );
+        let root = fri07_c02_collapse_round_output(&batch, 1);
+        let target = fri07_c02_collapse_round_output(&batch, 2);
+        let peer = fri07_c02_collapse_round_output(&batch, 3);
+        let descendant = fri07_c02_collapse_round_output(&batch, 4);
+        assert_eq!(root.size, Size::new(S::from_f64(100.0), S::from_f64(cross)));
+        assert_eq!(target.source_index, SourceIndex::new(0));
+        assert_eq!(peer.source_index, SourceIndex::new(1));
+        assert_eq!(descendant.source_index, SourceIndex::new(0));
+        assert_eq!(peer.location, Point::new(S::from_f64(peer_x), S::ZERO));
+        assert_eq!(peer.size, Size::new(S::from_f64(20.0), S::from_f64(10.0)));
+        if collapse == FlexItemCollapse::Collapsed {
+            assert_eq!(target, NodeOutputOf::with_source_index(SourceIndex::new(0)));
+            assert_eq!(
+                descendant,
+                NodeOutputOf::with_source_index(SourceIndex::new(0))
+            );
+            for node in [2, 4] {
+                assert!(
+                    batch
+                        .cache_clear_entries()
+                        .iter()
+                        .any(|entry| entry.node() == node)
+                );
+            }
+        } else {
+            assert_eq!(target.location, Point::ZERO);
+            assert_eq!(
+                target.size,
+                Size::new(S::from_f64(40.0), S::from_f64(cross))
+            );
+            assert_eq!(descendant.location, Point::ZERO);
+            assert_eq!(
+                descendant.size,
+                Size::new(S::from_f64(10.0), S::from_f64(5.0))
+            );
+        }
+        let expected_unrounded = batch.unrounded_entries().to_vec();
+        let expected_final = batch.final_entries().to_vec();
+        batch
+            .apply_to(&mut tree)
+            .expect("the complete transition commits atomically");
+        for entry in &expected_final {
+            assert_eq!(
+                tree.retained.final_outputs.get(&entry.node()),
+                Some(&entry.output())
+            );
+        }
+        assert_eq!(
+            Traverse::children(&tree.tree, 1).collect::<Vec<_>>(),
+            [2, 3]
+        );
+        assert_eq!(Traverse::children(&tree.tree, 2).collect::<Vec<_>>(), [4]);
+
+        tree.cache_queries.borrow_mut().clear();
+        let retained_before_warm = tree.retained.clone();
+        let warm =
+            compute_layout(&tree, 1, request).expect("each committed phase supports warm layout");
+        assert_eq!(tree.retained, retained_before_warm);
+        assert!(warm.invalidated_nodes().is_empty());
+        assert_eq!(warm.unrounded_entries(), expected_unrounded);
+        assert_eq!(warm.final_entries(), expected_final);
+        assert!(
+            tree.cache_queries
+                .borrow()
+                .iter()
+                .any(|(node, hit)| *node == 3 && *hit),
+            "phase {phase} reuses the actual retained peer cache"
+        );
+        warm.apply_to(&mut tree)
+            .expect("warm transition output commits");
+    }
+}
+
+#[test]
+fn flex_collapse_transition_restores_geometry_strut_and_descendants_f32() {
+    assert_flex_collapse_transition_restores_geometry_strut_and_descendants::<f32>();
+}
+
+#[test]
+fn flex_collapse_transition_restores_geometry_strut_and_descendants_f64() {
+    assert_flex_collapse_transition_restores_geometry_strut_and_descendants::<f64>();
+}
+
 fn fri07_c02_composition_atomic_tree<S: LayoutScalar>() -> Fri07C02CollapsedOutputTree<S> {
     let mut composition = Fri07C02CollapsedOutputTree::<S>::new();
     let mut collapsed = composition.tree.node_input(2).clone();
