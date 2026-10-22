@@ -21,6 +21,110 @@ use super::fixtures::{
 };
 use super::*;
 
+fn assert_grid_intrinsic_scrollbar_gutter_stable_and_both_edges<S: LayoutScalar>() {
+    let scalar = S::from_f64;
+    for (gutter, expected_width, expected_reserved_width, expected_content_x) in [
+        (ScrollbarGutter::Auto, 40.0, 0.0, 0.0),
+        (ScrollbarGutter::Stable, 45.0, 5.0, 0.0),
+        (ScrollbarGutter::StableBothEdges, 50.0, 10.0, 5.0),
+    ] {
+        let tree = PublicLayoutTreeOf::new()
+            .children(1, [2])
+            .children(2, [3])
+            .children(3, [])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Grid,
+                    writing_mode: WritingMode::HorizontalTb,
+                    direction: Direction::Ltr,
+                    grid_template_columns: vec![TrackComponentOf::MAX_CONTENT],
+                    grid_template_rows: vec![TrackComponentOf::px(scalar(20.0))],
+                    justify_content: Some(AlignContent::Start),
+                    align_content: Some(AlignContent::Start),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Grid,
+                    writing_mode: WritingMode::HorizontalTb,
+                    direction: Direction::Ltr,
+                    // Explicit intrinsic sizing avoids the separate scrollable
+                    // grid-item auto-minimum suppression rule.
+                    size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::AUTO),
+                    grid_template_columns: vec![TrackComponentOf::px(scalar(40.0))],
+                    grid_template_rows: vec![TrackComponentOf::px(scalar(20.0))],
+                    overflow: computed_overflow(Overflow::Hidden, Overflow::Hidden),
+                    scrollbar_gutter: gutter,
+                    scrollbar_width: ScrollbarWidthOf::try_new(scalar(5.0))
+                        .expect("finite classic scrollbar thickness"),
+                    justify_content: Some(AlignContent::Start),
+                    align_content: Some(AlignContent::Start),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                3,
+                NodeInputOf {
+                    display: Display::Block,
+                    size: Size::new(
+                        PreferredSizeOf::px(scalar(40.0)),
+                        PreferredSizeOf::px(scalar(20.0)),
+                    ),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch = compute_layout(
+            &tree,
+            1,
+            LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT))
+                .expect("intrinsic grid viewport"),
+        )
+        .expect("nested intrinsic grid lays out");
+        let root = fri08_c01_placement_output(&batch, 1);
+        let child = fri08_c01_placement_output(&batch, 2);
+        let content = fri08_c01_placement_output(&batch, 3);
+
+        // CSS Overflow adds reserved gutters to intrinsic content size. Hidden
+        // overflow contributes none under Auto, one five-unit inline gutter
+        // under Stable, and two under StableBothEdges: 40, 45, 50 respectively.
+        assert_eq!(
+            root.size,
+            Size::new(scalar(expected_width), scalar(20.0)),
+            "the parent intrinsic track must include its child's {gutter:?} reservation",
+        );
+        assert_eq!(child.size, root.size);
+        assert_eq!(content.size, Size::new(scalar(40.0), scalar(20.0)));
+        assert_eq!(
+            content.location,
+            Point::new(scalar(expected_content_x), S::ZERO)
+        );
+        let geometry = child
+            .scroll_geometry
+            .expect("child canonical scroll geometry");
+        assert_eq!(
+            geometry.content_box().size(),
+            Size::new(scalar(40.0), scalar(20.0))
+        );
+        assert_eq!(
+            child.scrollbar_size(),
+            Size::new(scalar(expected_reserved_width), S::ZERO),
+        );
+    }
+}
+
+#[test]
+fn grid_intrinsic_scrollbar_gutter_stable_and_both_edges_in_f32() {
+    assert_grid_intrinsic_scrollbar_gutter_stable_and_both_edges::<f32>();
+}
+
+#[test]
+fn grid_intrinsic_scrollbar_gutter_stable_and_both_edges_in_f64() {
+    assert_grid_intrinsic_scrollbar_gutter_stable_and_both_edges::<f64>();
+}
+
 fn fri08_c06r_inherited_placement_flow_tree<S: LayoutScalar>(
     inherited_axes: Fri08C06RInheritedAxes,
     flow: GridAutoFlow,
