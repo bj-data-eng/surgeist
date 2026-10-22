@@ -221,8 +221,8 @@ impl<S: LayoutScalar> LayoutTree for ConstraintOverflowTree<S> {
         &self.style
     }
 
-    fn layout_input(&self, _node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-        LayoutInputOf::box_input(self.style.clone())
+    fn layout_input(&self, _node: Self::Node) -> crate::LayoutInputViewOf<'_, Self::Scalar> {
+        crate::LayoutInputViewOf::Box(&self.style)
     }
 
     fn has_leaf_measurement(&self, _node: Self::Node) -> bool {

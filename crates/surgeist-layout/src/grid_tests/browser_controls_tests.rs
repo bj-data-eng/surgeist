@@ -355,12 +355,12 @@ fn fri06_c12_t08_vertical_auto_rows_preserve_full_fixture_targets() {
         .measure(4, vertical_baseline_measure(10.0, 20.0, Some(1.0), None));
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         Size::new(Available::Definite(600.0), Available::Definite(400.0)),
     )
     .expect("vertical auto-row fixture computes");
-    round_layout(&mut tree, 1).expect("vertical auto-row fixture rounds");
+    round_layout(&mut tree.borrow_compute(), 1).expect("vertical auto-row fixture rounds");
 
     assert_eq!(
         [5_u32, 6, 7].map(|node| {

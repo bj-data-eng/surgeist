@@ -1,6 +1,6 @@
 use crate::{
     AtomicInlineParticipationRoleError, FloatExclusion, FloatExclusionRoleError, LayoutErrorKindOf,
-    LayoutErrorOf, LayoutErrorSiteOf, LayoutInputOf, LayoutInvalidInputOf, LayoutOperation,
+    LayoutErrorOf, LayoutErrorSiteOf, LayoutInputViewOf, LayoutInvalidInputOf, LayoutOperation,
     LayoutResultOf, LayoutScalar, LayoutTree, NodeInputOf, NonBoxNodeRoleError, Position,
 };
 use crate::{Display, LayoutUnsupportedCapability};
@@ -155,7 +155,7 @@ where
     {
         let layout_input = tree.layout_input(node);
         let accepts_inline_text = match layout_input {
-            LayoutInputOf::Box(_) => {
+            LayoutInputViewOf::Box(_) => {
                 let input = tree.node_input(node);
                 match (
                     !is_root && input.display.is_inline_level(),
@@ -199,7 +199,7 @@ where
                 }
                 input.display == Display::None || input.display.inner_display() == Display::Block
             }
-            LayoutInputOf::InlineText(_) => {
+            LayoutInputViewOf::InlineText(_) => {
                 if let Some(reason) = non_box_node_role_error(tree, node) {
                     return Err(root_input_error(
                         node,
@@ -211,7 +211,7 @@ where
                 }
                 return Ok(());
             }
-            LayoutInputOf::LineBreak(_) | LayoutInputOf::InlineBoundary(_) => {
+            LayoutInputViewOf::LineBreak(_) | LayoutInputViewOf::InlineBoundary(_) => {
                 if let Some(reason) = non_box_node_role_error(tree, node) {
                     return Err(root_input_error(
                         node,

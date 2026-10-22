@@ -64,37 +64,37 @@ use floats::{
     ProviderBandContext, layout_floats,
 };
 
-pub(crate) fn compute_block<Tree, M>(
+pub(crate) fn compute_block<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     compute_block_with_optional_inherited_float_exclusions(tree, node, input, None)
 }
 
-pub(crate) fn compute_block_with_inherited_float_exclusions<Tree, M>(
+pub(crate) fn compute_block_with_inherited_float_exclusions<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
     inherited: InheritedFloatExclusions<Tree::Scalar, <Tree as Traverse>::Node>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     compute_block_with_optional_inherited_float_exclusions(tree, node, input, Some(inherited))
 }
 
-fn compute_block_with_optional_inherited_float_exclusions<Tree, M>(
+fn compute_block_with_optional_inherited_float_exclusions<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
     inherited: Option<InheritedFloatExclusions<Tree::Scalar, <Tree as Traverse>::Node>>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let scrollbar_width = block_container_projection::<Tree, M>(tree, node)
         .scrollbar_width
@@ -127,14 +127,14 @@ where
     }
 }
 
-fn compute_block_inner<Tree, S, M>(
+fn compute_block_inner<'input, Tree, S, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<S>,
     inherited: Option<&InheritedFloatExclusions<S, <Tree as Traverse>::Node>>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, ComputeOutputOf<S>, S, M>
 where
-    Tree: Compute<M, Scalar = S>,
+    Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
     let style = block_container_projection::<Tree, M>(tree, node);
@@ -460,14 +460,14 @@ impl<S: LayoutScalar> Constants<S> {
         self
     }
 
-    fn from_projection<Tree, M>(
+    fn from_projection<'input, Tree, M>(
         tree: &Tree,
         node: <Tree as Traverse>::Node,
         style: &BlockContainerProjection<'_, S>,
         input: ComputeInputOf<S>,
     ) -> LayoutResultOf<<Tree as Traverse>::Node, Self, S, M>
     where
-        Tree: Compute<M, Scalar = S>,
+        Tree: Compute<'input, M, Scalar = S>,
     {
         let flow_axes = style.common.flow_axes;
         let (padding, border) = resolve_containing_padding_border(
@@ -645,14 +645,14 @@ impl<S: LayoutScalar> Constants<S> {
     }
 
     #[cfg(test)]
-    fn new<Tree, M>(
+    fn new<'input, Tree, M>(
         tree: &Tree,
         node: <Tree as Traverse>::Node,
         style: &NodeInputOf<S>,
         input: ComputeInputOf<S>,
     ) -> LayoutResultOf<<Tree as Traverse>::Node, Self, S, M>
     where
-        Tree: Compute<M, Scalar = S>,
+        Tree: Compute<'input, M, Scalar = S>,
     {
         Self::from_projection(
             tree,
@@ -726,7 +726,9 @@ mod fri06_c13_t06_characterization_tests {
             border,
             ..NodeInputOf::default()
         };
-        let tree = crate::test_support::layout_tree::OracleTreeOf::new().style(7, style.clone());
+        let mut owner =
+            crate::test_support::layout_tree::OracleTreeOf::new().style(7, style.clone());
+        let tree = owner.borrow_compute();
 
         for (flow, parent, expected_padding) in [
             (
@@ -785,8 +787,9 @@ mod fri06_c13_t06_characterization_tests {
             ),
             ..NodeInputOf::default()
         };
-        let failing_tree =
+        let mut failing_owner =
             crate::test_support::layout_tree::OracleTreeOf::new().style(7, failing_style.clone());
+        let failing_tree = failing_owner.borrow_compute();
         let error = Constants::new::<_, core::convert::Infallible>(
             &failing_tree,
             7,

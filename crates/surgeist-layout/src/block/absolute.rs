@@ -33,7 +33,7 @@ pub(super) fn absolute_static_position<S: LayoutScalar>(
     )
 }
 
-pub(super) fn layout_absolute_children<Tree, S, M>(
+pub(super) fn layout_absolute_children<'input, Tree, S, M>(
     tree: &mut Tree,
     container_node: <Tree as Traverse>::Node,
     children: &[<Tree as Traverse>::Node],
@@ -43,7 +43,7 @@ pub(super) fn layout_absolute_children<Tree, S, M>(
     contributions: &mut ScrollContributionAccumulatorOf<S>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, (), S, M>
 where
-    Tree: Compute<M, Scalar = S>,
+    Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
     let area_start_x = constants.effective_border.left + constants.scrollbar_gutter.left;

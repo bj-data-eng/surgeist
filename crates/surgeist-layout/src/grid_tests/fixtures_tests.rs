@@ -18,14 +18,16 @@ macro_rules! grid_child_input {
     };
 }
 
-pub(super) fn default_grid_item_projection<S: LayoutScalar>() -> GridItemProjection<S> {
-    grid_item_projection!(&NodeInputOf::default())
+pub(super) fn default_grid_item_projection<'input, S: LayoutScalar>(
+    input: &'input NodeInputOf<S>,
+) -> GridItemProjection<'input, S> {
+    grid_item_projection!(input)
 }
 
-pub(super) fn single_grid_placement_context<S: LayoutScalar>(
+pub(super) fn single_grid_placement_context<'input, S: LayoutScalar>(
     child: u32,
-    style: &NodeInputOf<S>,
-) -> GridPlacementContext<u32, S> {
+    style: &'input NodeInputOf<S>,
+) -> GridPlacementContext<'input, u32, S> {
     GridPlacementContext::new_with_child_inputs(
         vec![child],
         vec![ResolvedGridItemPlacement {
@@ -52,14 +54,14 @@ pub(super) fn subgrid_axis_report<S: LayoutScalar>(
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct GridAxisMappingInput<'a, S: LayoutScalar = Scalar> {
+pub(super) struct GridAxisMappingInput<'input, S: LayoutScalar = Scalar> {
     pub(super) queried_axis: GridAxisKind,
-    pub(super) parent_style: &'a NodeInputOf<S>,
-    pub(super) child_style: &'a NodeInputOf<S>,
+    pub(super) parent_style: &'input NodeInputOf<S>,
+    pub(super) child_style: &'input NodeInputOf<S>,
 }
 
-pub(super) fn map_grid_axis<S: LayoutScalar>(
-    input: GridAxisMappingInput<'_, S>,
+pub(super) fn map_grid_axis<'input, S: LayoutScalar>(
+    input: GridAxisMappingInput<'input, S>,
 ) -> GridAxisMappingReport {
     super::map_grid_axis(super::axis::GridAxisMappingInput {
         queried_axis: input.queried_axis,
@@ -69,15 +71,15 @@ pub(super) fn map_grid_axis<S: LayoutScalar>(
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct SubgridEligibilityInput<'a, S: LayoutScalar = Scalar> {
+pub(super) struct SubgridEligibilityInput<'input, S: LayoutScalar = Scalar> {
     pub(super) axis: GridAxisKind,
-    pub(super) parent_style: &'a NodeInputOf<S>,
+    pub(super) parent_style: &'input NodeInputOf<S>,
     pub(super) has_parent_grid: bool,
-    pub(super) child_style: &'a NodeInputOf<S>,
+    pub(super) child_style: &'input NodeInputOf<S>,
 }
 
-pub(super) fn subgrid_eligibility<S: LayoutScalar>(
-    input: SubgridEligibilityInput<'_, S>,
+pub(super) fn subgrid_eligibility<'input, S: LayoutScalar>(
+    input: SubgridEligibilityInput<'input, S>,
 ) -> SubgridEligibility {
     let child_input = grid_child_input!(input.child_style);
     super::subgrid_eligibility(super::subgrid::SubgridEligibilityInput {
@@ -90,26 +92,26 @@ pub(super) fn subgrid_eligibility<S: LayoutScalar>(
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct SubgridChildParentContextInput<'a, Node, S: LayoutScalar = Scalar> {
+pub(super) struct SubgridChildParentContextInput<'input, Node, S: LayoutScalar = Scalar> {
     pub(super) item: SubgridItemReport<Node>,
-    pub(super) child_style: &'a NodeInputOf<S>,
+    pub(super) child_style: &'input NodeInputOf<S>,
     pub(super) area: GridArea<S>,
     pub(super) content_box_size: Size<S>,
-    pub(super) columns: &'a [S],
-    pub(super) rows: &'a [S],
+    pub(super) columns: &'input [S],
+    pub(super) rows: &'input [S],
     pub(super) gap: LogicalSizeOf<S>,
-    pub(super) parent_named_columns: &'a NamedGridLines,
-    pub(super) parent_named_rows: &'a NamedGridLines,
-    pub(super) parent_area_facts: Option<&'a GridAreaNameFacts>,
-    pub(super) parent_baseline_groups: &'a GridBaselineGroups<S>,
+    pub(super) parent_named_columns: &'input NamedGridLines,
+    pub(super) parent_named_rows: &'input NamedGridLines,
+    pub(super) parent_area_facts: Option<&'input GridAreaNameFacts>,
+    pub(super) parent_baseline_groups: &'input GridBaselineGroups<S>,
     pub(super) margin: Edges<Option<S>>,
     pub(super) border: Edges<S>,
     pub(super) padding: Edges<S>,
 }
 
-pub(super) fn with_projected_subgrid_child_input<Node: Copy, S: LayoutScalar, R>(
-    input: SubgridChildParentContextInput<'_, Node, S>,
-    consume: impl FnOnce(super::child::SubgridChildParentContextInput<'_, Node, S>) -> R,
+pub(super) fn with_projected_subgrid_child_input<'input, Node: Copy, S: LayoutScalar, R>(
+    input: SubgridChildParentContextInput<'input, Node, S>,
+    consume: impl FnOnce(super::child::SubgridChildParentContextInput<'input, '_, Node, S>) -> R,
 ) -> R {
     let child_input = grid_child_input!(input.child_style);
     let child_container_style = child_input
@@ -135,17 +137,18 @@ pub(super) fn with_projected_subgrid_child_input<Node: Copy, S: LayoutScalar, R>
     })
 }
 
-pub(super) fn subgrid_child_parent_context<Node: Copy + PartialEq, S: LayoutScalar>(
-    input: SubgridChildParentContextInput<'_, Node, S>,
+pub(super) fn subgrid_child_parent_context<'input, Node: Copy + PartialEq, S: LayoutScalar>(
+    input: SubgridChildParentContextInput<'input, Node, S>,
 ) -> Result<GridParentContext<S, Node>, SubgridChildContextError<S>> {
     with_projected_subgrid_child_input(input, super::child::subgrid_child_parent_context)
 }
 
 pub(super) fn subgrid_child_parent_context_with_geometry<
+    'input,
     Node: Copy + PartialEq,
     S: LayoutScalar,
 >(
-    input: SubgridChildParentContextInput<'_, Node, S>,
+    input: SubgridChildParentContextInput<'input, Node, S>,
     column_geometry: Option<&UsedGridAxisGeometryOf<S>>,
     row_geometry: Option<&UsedGridAxisGeometryOf<S>>,
 ) -> Result<GridParentContext<S, Node>, SubgridChildContextError<S>> {
@@ -276,7 +279,7 @@ impl<S: LayoutScalar> LayoutTree for Fri08C06RAtomicTree<S> {
         self.tree.node_input(node)
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<S> {
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
         self.tree.layout_input(node)
     }
 
@@ -797,8 +800,8 @@ impl<S: LayoutScalar> LayoutTree for Fri08C04StandaloneIntrinsicMinimumTree<S> {
             .unwrap_or_else(|| panic!("standalone intrinsic node {node} must have style"))
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-        LayoutInputOf::box_input(self.node_input(node).clone())
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, Self::Scalar> {
+        crate::LayoutInputViewOf::Box(self.node_input(node))
     }
 
     fn has_leaf_measurement(&self, node: Self::Node) -> bool {
@@ -1360,7 +1363,7 @@ impl<S: LayoutScalar> LayoutTree for Fri08C03NestedAtomicTree<S> {
         self.tree.node_input(node)
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<S> {
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
         self.tree.layout_input(node)
     }
 
@@ -1480,7 +1483,7 @@ impl<S: LayoutScalar> LayoutTree for Fri08C04BaselineTree<S> {
         self.tree.node_input(node)
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<S> {
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
         self.tree.layout_input(node)
     }
 
@@ -2409,8 +2412,12 @@ pub(super) fn assert_fri06_mr02_geometry_error_grid_own<S: LayoutScalar>() {
         let mut tree = crate::test_support::layout_tree::OracleTreeOf::<S>::new()
             .children(7, [])
             .style(7, style.clone());
-        let error = compute_grid(&mut tree, 7, fri06_mr02_geometry_error_input(run_mode))
-            .expect_err("overflowing grid geometry must fail");
+        let error = compute_grid(
+            &mut tree.borrow_compute(),
+            7,
+            fri06_mr02_geometry_error_input(run_mode),
+        )
+        .expect_err("overflowing grid geometry must fail");
 
         fri06_mr02_geometry_error_assert(error, LayoutErrorSiteOf::Node(7), operation, invariant);
     }
@@ -2493,7 +2500,7 @@ pub(super) fn fri04_c04_grid_dispatch_assert_error(
         )
     };
     let error = compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         node,
         fri04_c04_grid_dispatch_input(Size::new(Some(100.0), Some(80.0))),
     )
@@ -2649,17 +2656,17 @@ pub(super) fn vertical_baseline_measure(
 
 pub(super) fn compute_oracle_grid(tree: &mut OracleTree) {
     compute_root(
-        tree,
+        &mut tree.borrow_compute(),
         1,
         Size::new(Available::Definite(120.0), Available::Definite(120.0)),
     )
     .unwrap();
-    round_layout(tree, 1).unwrap();
+    round_layout(&mut tree.borrow_compute(), 1).unwrap();
 }
 
 pub(super) fn compute_oracle_grid_output(tree: &mut OracleTree) -> ComputeOutput {
     crate::compute_grid(
-        tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3081,10 +3088,15 @@ pub(super) fn tagged_group<S: LayoutScalar>(
     }
 }
 
-pub(super) fn traversal_leaf(node: u32, start: usize, end: usize) -> SubgridTraversalChild<u32> {
+pub(super) fn traversal_leaf<'input>(
+    default_input: &'input NodeInput,
+    node: u32,
+    start: usize,
+    end: usize,
+) -> SubgridTraversalChild<'input, u32> {
     SubgridTraversalChild::Leaf(SubgridTraversalLeaf {
         node,
-        style: default_grid_item_projection(),
+        style: default_grid_item_projection(default_input),
         span_in_parent: GridTrackSpan::new(start, end),
         available_inline_size: None,
         available_inline_size_is_known: false,

@@ -144,7 +144,7 @@ pub(super) fn fri06_c02_text_batch_with_flow<S: LayoutScalar>(
         ..NodeInputOf::default()
     };
     let mut inputs = HashMap::new();
-    inputs.insert(0, LayoutInputOf::box_input(root_input.clone()));
+    inputs.insert(0, LayoutInputOf::box_input(root_input));
     inputs.insert(
         1,
         LayoutInputOf::inline_text(InlineTextInputOf::try_new(segments).unwrap()),
@@ -164,7 +164,7 @@ pub(super) fn fri06_c02_text_nodes_batch<S: LayoutScalar>(
     available: Size<AvailableOf<S>>,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let children = text_nodes.iter().map(|(node, _)| *node).collect::<Vec<_>>();
-    let mut inputs = HashMap::from([(0, LayoutInputOf::box_input(root_input.clone()))]);
+    let mut inputs = HashMap::from([(0, LayoutInputOf::box_input(root_input))]);
     let mut tree_children = HashMap::from([(0, children)]);
     for (node, segments) in text_nodes {
         inputs.insert(
@@ -235,7 +235,7 @@ pub(super) fn fri06_c03_mixed_batch_with_root<S: LayoutScalar>(
         .iter()
         .map(|(node, _, _)| *node)
         .collect::<Vec<_>>();
-    let mut inputs = HashMap::from([(0, LayoutInputOf::box_input(root_input.clone()))]);
+    let mut inputs = HashMap::from([(0, LayoutInputOf::box_input(root_input))]);
     let mut tree_children = HashMap::from([(0, child_nodes)]);
     for (node, layout_input, _node_input) in children {
         inputs.insert(node, layout_input);
@@ -300,7 +300,7 @@ pub(super) fn fri06_c04_line_batch<S: LayoutScalar>(
         .iter()
         .map(|(node, _, _)| *node)
         .collect::<Vec<_>>();
-    let mut inputs = HashMap::from([(0, LayoutInputOf::box_input(root_input.clone()))]);
+    let mut inputs = HashMap::from([(0, LayoutInputOf::box_input(root_input))]);
     let mut tree_children = HashMap::from([(0, child_nodes)]);
     for (node, layout_input, _node_input) in children {
         inputs.insert(node, layout_input);
@@ -333,7 +333,7 @@ pub(super) fn fri06_c04_bfc_batch<S: LayoutScalar>(
     let mut inputs = HashMap::from([(0, LayoutInputOf::box_input(root_style.clone()))]);
     let mut children = HashMap::from([(0, root_children)]);
     for (node, style, node_children) in nodes {
-        inputs.insert(node, LayoutInputOf::box_input(style.clone()));
+        inputs.insert(node, LayoutInputOf::box_input(style));
         children.insert(node, node_children);
     }
     let tree = public_layout_tree(inputs, children);
@@ -451,7 +451,7 @@ pub(super) fn assert_fri06_c08_r1_mixed_unit_traversal<S: LayoutScalar>(
         .iter()
         .map(|(node, _, _)| *node)
         .collect::<Vec<_>>();
-    let mut inputs = HashMap::from([(0, LayoutInputOf::box_input(root_input.clone()))]);
+    let mut inputs = HashMap::from([(0, LayoutInputOf::box_input(root_input))]);
     let mut tree_children = HashMap::from([(0, child_nodes)]);
     for (node, layout_input, _node_input) in children {
         inputs.insert(node, layout_input);
@@ -934,13 +934,13 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
         };
         Self {
             inputs: HashMap::from([
-                (0, LayoutInputOf::box_input(root_input.clone())),
+                (0, LayoutInputOf::box_input(root_input)),
                 (
                     1,
                     LayoutInputOf::inline_text(InlineTextInputOf::try_new(segments).unwrap()),
                 ),
             ]),
-            node_inputs: HashMap::from([(0, root_input), (1, NodeInputOf::non_box())]),
+            node_inputs: HashMap::from([(1, NodeInputOf::non_box())]),
             children: HashMap::from([(0, vec![1]), (1, Vec::new())]),
             retained: Fri06C02RetainedTextState::default(),
             fragment_readbacks: Cell::new(0),
@@ -985,16 +985,14 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
         );
         Self {
             inputs: HashMap::from([
-                (0, LayoutInputOf::box_input(root_input.clone())),
+                (0, LayoutInputOf::box_input(root_input)),
                 (1, LayoutInputOf::inline_text(text)),
-                (2, LayoutInputOf::box_input(atomic.clone())),
+                (2, LayoutInputOf::box_input(atomic)),
                 (3, LayoutInputOf::inline_boundary(boundary)),
                 (4, LayoutInputOf::line_break(line_break)),
             ]),
             node_inputs: HashMap::from([
-                (0, root_input),
                 (1, NodeInputOf::non_box()),
-                (2, atomic),
                 (3, NodeInputOf::non_box()),
                 (4, NodeInputOf::non_box()),
             ]),
@@ -1042,11 +1040,11 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
         .unwrap();
         Self {
             inputs: HashMap::from([
-                (0, LayoutInputOf::box_input(root_input.clone())),
-                (1, LayoutInputOf::box_input(float.clone())),
+                (0, LayoutInputOf::box_input(root_input)),
+                (1, LayoutInputOf::box_input(float)),
                 (2, LayoutInputOf::inline_text(text)),
             ]),
-            node_inputs: HashMap::from([(0, root_input), (1, float), (2, NodeInputOf::non_box())]),
+            node_inputs: HashMap::from([(2, NodeInputOf::non_box())]),
             children: HashMap::from([(0, vec![1, 2]), (1, Vec::new()), (2, Vec::new())]),
             retained: Fri06C02RetainedTextState::default(),
             fragment_readbacks: Cell::new(0),
@@ -1059,11 +1057,9 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
 
     pub(super) fn new_shape_provider(provider: Fri06C05ShapeProvider<S>) -> Self {
         let mut tree = Self::new_float_mixed();
-        let mut float = tree.node_inputs[&1].clone();
+        let mut float = tree.node_input(1).clone();
         float.float_exclusion = FloatExclusion::Shape;
-        tree.inputs
-            .insert(1, LayoutInputOf::box_input(float.clone()));
-        tree.node_inputs.insert(1, float);
+        tree.inputs.insert(1, LayoutInputOf::box_input(float));
         tree.shape_provider = provider;
         tree
     }
@@ -1078,9 +1074,7 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
             ),
             ..NodeInputOf::default()
         };
-        self.inputs
-            .insert(1, LayoutInputOf::box_input(style.clone()));
-        self.node_inputs.insert(1, style);
+        self.inputs.insert(1, LayoutInputOf::box_input(style));
     }
 
     pub(super) fn add_failing_float_path_control(&mut self) {
@@ -1107,9 +1101,7 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
             0,
             InlineBreakOpportunityOf::prohibited(),
         );
-        self.inputs
-            .insert(2, LayoutInputOf::box_input(style.clone()));
-        self.node_inputs.insert(2, style);
+        self.inputs.insert(2, LayoutInputOf::box_input(style));
     }
 
     pub(super) fn replace_text(&mut self, segments: Vec<ShapedInlineSegmentOf<S>>) {
@@ -1138,7 +1130,10 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
 impl<S: LayoutScalar> Traverse for Fri06C02StatefulTextTree<S> {
     type Node = u32;
     type Scalar = S;
-    type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+    type Children<'a>
+        = std::iter::Copied<std::slice::Iter<'a, u32>>
+    where
+        Self: 'a;
 
     fn children(&self, node: Self::Node) -> Self::Children<'_> {
         self.children
@@ -1162,11 +1157,13 @@ impl<S: LayoutScalar> LayoutTree for Fri06C02StatefulTextTree<S> {
     type MeasureError = ();
 
     fn node_input(&self, node: Self::Node) -> &NodeInputOf<S> {
-        &self.node_inputs[&node]
+        self.inputs[&node]
+            .as_box()
+            .unwrap_or_else(|| &self.node_inputs[&node])
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<S> {
-        self.inputs[&node].clone()
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
+        self.inputs[&node].as_view()
     }
 
     fn cache_get(
@@ -1373,8 +1370,8 @@ impl<M: Clone> LayoutTree for RootSessionTree<M> {
             .expect("test root session node is a box")
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-        self.inputs[&node].clone()
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, Self::Scalar> {
+        self.inputs[&node].as_view()
     }
 
     fn has_leaf_measurement(&self, node: Self::Node) -> bool {
@@ -1483,8 +1480,8 @@ impl<S: LayoutScalar> LayoutTree for PublicFlowTree<S> {
         &self.styles[&node]
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<S> {
-        LayoutInputOf::box_input(self.styles[&node].clone())
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
+        crate::LayoutInputViewOf::Box(&self.styles[&node])
     }
 
     fn cache_get(
@@ -1550,8 +1547,8 @@ impl<S: LayoutScalar> LayoutTree for FlowRootLeafTree<S> {
         &self.style
     }
 
-    fn layout_input(&self, _node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-        LayoutInputOf::box_input(self.style.clone())
+    fn layout_input(&self, _node: Self::Node) -> crate::LayoutInputViewOf<'_, Self::Scalar> {
+        crate::LayoutInputViewOf::Box(&self.style)
     }
 
     fn has_leaf_measurement(&self, _node: Self::Node) -> bool {
@@ -1662,7 +1659,10 @@ pub(super) struct Fri05C03MeasuredLeafTree<S: LayoutScalar = f32> {
 impl<S: LayoutScalar> Traverse for Fri05C03MeasuredLeafTree<S> {
     type Node = u32;
     type Scalar = S;
-    type Children<'a> = std::iter::Empty<u32>;
+    type Children<'a>
+        = std::iter::Empty<u32>
+    where
+        Self: 'a;
 
     fn children(&self, _node: Self::Node) -> Self::Children<'_> {
         std::iter::empty()
@@ -1684,8 +1684,8 @@ impl<S: LayoutScalar> LayoutTree for Fri05C03MeasuredLeafTree<S> {
         &self.style
     }
 
-    fn layout_input(&self, _node: Self::Node) -> LayoutInputOf<S> {
-        LayoutInputOf::box_input(self.style.clone())
+    fn layout_input(&self, _node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
+        crate::LayoutInputViewOf::Box(&self.style)
     }
 
     fn has_leaf_measurement(&self, _node: Self::Node) -> bool {

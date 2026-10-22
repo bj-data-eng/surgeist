@@ -76,8 +76,12 @@ fn assert_fri06_mr02_geometry_error_block_own<S: LayoutScalar>() {
         let mut tree = crate::test_support::layout_tree::OracleTreeOf::<S>::new()
             .children(7, [])
             .style(7, style.clone());
-        let error = crate::compute_block(&mut tree, 7, fri06_mr02_geometry_error_input(run_mode))
-            .expect_err("overflowing block geometry must fail");
+        let error = crate::compute_block(
+            &mut tree.borrow_compute(),
+            7,
+            fri06_mr02_geometry_error_input(run_mode),
+        )
+        .expect_err("overflowing block geometry must fail");
 
         fri06_mr02_geometry_error_assert(error, LayoutErrorSiteOf::Node(7), operation, invariant);
     }
@@ -105,7 +109,7 @@ fn assert_fri06_mr02_geometry_error_block_child<S: LayoutScalar>() {
             ),
         );
     let error = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         7,
         ComputeInputOf::for_child(
             RunMode::PerformLayout,
@@ -169,7 +173,7 @@ fn assert_fri06_mr02_geometry_error_block_inline_child<S: LayoutScalar>() {
             ComputeOutputOf::from_outer_size(Size::new(largest, S::ONE)),
         );
     let error = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         7,
         fri06_mr02_geometry_error_input(RunMode::PerformLayout),
     )
@@ -269,7 +273,7 @@ fn assert_fri08_c07_t02_scroll_source_block_paths<S: LayoutScalar>() {
         );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         ComputeInputOf::for_child(
             RunMode::PerformLayout,
@@ -401,7 +405,7 @@ fn assert_fri06_mr02_scroll_padding_block<S: LayoutScalar>() {
             .children(0, [])
             .style(0, style);
         let output = crate::compute_block(
-            &mut tree,
+            &mut tree.borrow_compute(),
             0,
             ComputeInputOf::for_child(
                 RunMode::PerformLayout,
@@ -456,7 +460,7 @@ fn block_child_context_is_complete_for_layout_sizing_and_absolute_paths() {
 
 fn assert_block_child_context_is_complete<S: LayoutScalar>()
 where
-    crate::test_support::layout_tree::OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    crate::test_support::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let flow_axes = FlowAxes::new(WritingMode::VerticalRl, Direction::Rtl);
     let expected =
@@ -499,7 +503,7 @@ where
             );
 
         crate::compute_block(
-            &mut tree,
+            &mut tree.borrow_compute(),
             0,
             ComputeInputOf::for_child(
                 run_mode,
@@ -791,7 +795,7 @@ fn fri04_c03_block_positioned_compute_size_preserves_missing_basis_as_indefinite
         .measure(1, ComputeOutput::from_outer_size(Size::new(30.0, 20.0)));
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         ComputeInput::for_child(
             RunMode::ComputeSize,
@@ -1235,7 +1239,7 @@ fn fri04_c04_leaf_block_positioned_absolute_grid_and_block_inner_displays_are_po
 
 fn perform_scroll_block(tree: &mut ScrollBlockTree) -> ComputeOutput {
     crate::compute_block(
-        tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -1592,7 +1596,7 @@ fn block_scroll_geometry_includes_final_content_box_after_size_resolution() {
     );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -1772,7 +1776,7 @@ fn block_scroll_geometry_includes_segmented_inline_overflow_rects() {
     );
 
     let output = crate::compute_block(
-        &mut segmented,
+        &mut segmented.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2199,7 +2203,7 @@ fn block_fixed_parent_height_keeps_orthogonal_child_inline_known() {
     );
 
     compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2234,7 +2238,10 @@ struct CalcLeafTree {
 impl Traverse for CalcLeafTree {
     type Node = u32;
     type Scalar = Scalar;
-    type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+    type Children<'a>
+        = std::iter::Copied<std::slice::Iter<'a, u32>>
+    where
+        Self: 'a;
 
     fn children(&self, node: Self::Node) -> Self::Children<'_> {
         self.children
@@ -2253,13 +2260,56 @@ impl Traverse for CalcLeafTree {
     }
 }
 
-impl Compute for CalcLeafTree {
-    fn node_input(&self, node: Self::Node) -> &NodeInput {
+struct CalcLeafTreeCompute<'input> {
+    children: &'input HashMap<u32, Vec<u32>>,
+    styles: &'input HashMap<u32, NodeInput>,
+    layouts: &'input mut HashMap<u32, NodeOutput>,
+    invalid_leaf_measurement: bool,
+}
+
+impl CalcLeafTree {
+    fn borrow_compute(&mut self) -> CalcLeafTreeCompute<'_> {
+        CalcLeafTreeCompute {
+            children: &self.children,
+            styles: &self.styles,
+            layouts: &mut self.layouts,
+            invalid_leaf_measurement: self.invalid_leaf_measurement,
+        }
+    }
+}
+
+impl<'input> Traverse for CalcLeafTreeCompute<'input> {
+    type Node = u32;
+    type Scalar = Scalar;
+    type Children<'a>
+        = std::iter::Copied<std::slice::Iter<'a, u32>>
+    where
+        Self: 'a;
+
+    fn children(&self, node: Self::Node) -> Self::Children<'_> {
+        self.children
+            .get(&node)
+            .map_or([].as_slice(), Vec::as_slice)
+            .iter()
+            .copied()
+    }
+
+    fn child_count(&self, node: Self::Node) -> usize {
+        self.children.get(&node).map_or(0, Vec::len)
+    }
+
+    fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+        self.children[&node][index]
+    }
+}
+
+impl<'input> Compute<'input> for CalcLeafTreeCompute<'input> {
+    fn node_input(&self, node: Self::Node) -> &'input NodeInput {
         &self.styles[&node]
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-        LayoutInputOf::box_input(self.node_input(node).clone())
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
+        crate::LayoutInputViewOf::Box(self.node_input(node))
     }
 
     fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
@@ -2316,7 +2366,7 @@ fn calc_leaf_tree_propagates_leaf_measurement_error_instead_of_panicking() {
     tree.styles.insert(1, NodeInput::default());
 
     let error = compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2369,7 +2419,7 @@ fn block_inline_affine_leaf_uses_public_leaf_path() {
     );
 
     let output = compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2462,7 +2512,10 @@ struct Fri05C03BlockPassTree {
 impl Traverse for Fri05C03BlockPassTree {
     type Node = u32;
     type Scalar = Scalar;
-    type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+    type Children<'a>
+        = std::iter::Copied<std::slice::Iter<'a, u32>>
+    where
+        Self: 'a;
 
     fn children(&self, node: Self::Node) -> Self::Children<'_> {
         self.children
@@ -2482,13 +2535,59 @@ impl Traverse for Fri05C03BlockPassTree {
     }
 }
 
-impl Compute for Fri05C03BlockPassTree {
-    fn node_input(&self, node: Self::Node) -> &NodeInput {
+struct Fri05C03BlockPassTreeCompute<'input> {
+    children: &'input HashMap<u32, Vec<u32>>,
+    styles: &'input HashMap<u32, NodeInput>,
+    child_output: Option<ComputeOutput>,
+    child_inputs: &'input mut Vec<ComputeInput>,
+    layouts: &'input mut Vec<(u32, NodeOutput)>,
+}
+
+impl Fri05C03BlockPassTree {
+    fn borrow_compute(&mut self) -> Fri05C03BlockPassTreeCompute<'_> {
+        Fri05C03BlockPassTreeCompute {
+            children: &self.children,
+            styles: &self.styles,
+            child_output: self.child_output,
+            child_inputs: &mut self.child_inputs,
+            layouts: &mut self.layouts,
+        }
+    }
+}
+
+impl<'input> Traverse for Fri05C03BlockPassTreeCompute<'input> {
+    type Node = u32;
+    type Scalar = Scalar;
+    type Children<'a>
+        = std::iter::Copied<std::slice::Iter<'a, u32>>
+    where
+        Self: 'a;
+
+    fn children(&self, node: Self::Node) -> Self::Children<'_> {
+        self.children
+            .get(&node)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+            .iter()
+            .copied()
+    }
+
+    fn child_count(&self, node: Self::Node) -> usize {
+        self.children.get(&node).map_or(0, Vec::len)
+    }
+
+    fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+        self.children[&node][index]
+    }
+}
+
+impl<'input> Compute<'input> for Fri05C03BlockPassTreeCompute<'input> {
+    fn node_input(&self, node: Self::Node) -> &'input NodeInput {
         &self.styles[&node]
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInput {
-        LayoutInput::box_input(self.styles[&node].clone())
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputView<'input> {
+        crate::LayoutInputViewOf::Box(&self.styles[&node])
     }
 
     fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
@@ -2563,10 +2662,14 @@ fn fri05_c03_empty_block_geometry(style: NodeInput) -> ScrollGeometry {
     let mut tree = Fri05C03BlockPassTree::default();
     tree.children.insert(0, vec![]);
     tree.styles.insert(0, style);
-    crate::compute_block(&mut tree, 0, fri05_c03_block_input(size, flow_axes))
-        .expect("FRI-05 empty block layout succeeds")
-        .scroll_geometry
-        .expect("performed block layout emits geometry")
+    crate::compute_block(
+        &mut tree.borrow_compute(),
+        0,
+        fri05_c03_block_input(size, flow_axes),
+    )
+    .expect("FRI-05 empty block layout succeeds")
+    .scroll_geometry
+    .expect("performed block layout emits geometry")
 }
 
 #[test]
@@ -2669,8 +2772,12 @@ fn fri05_c03_block_auto_case(
     );
     tree.child_output = Some(ComputeOutput::from_sizes(child_size, child_size));
 
-    let output = crate::compute_block(&mut tree, 0, fri05_c03_block_input(size, flow_axes))
-        .expect("FRI-05 auto block layout succeeds");
+    let output = crate::compute_block(
+        &mut tree.borrow_compute(),
+        0,
+        fri05_c03_block_input(size, flow_axes),
+    )
+    .expect("FRI-05 auto block layout succeeds");
     assert!(
         tree.child_inputs.iter().all(|input| {
             input.settled_auto_scrollbars() == crate::scroll::SettledAutoScrollbarState::INITIAL
@@ -2788,8 +2895,12 @@ fn fri05_c03_block_tiny_saturates_opposing_reservations_before_child_layout() {
     );
     tree.child_output = Some(ComputeOutput::from_outer_size(Size::ZERO));
 
-    let output = crate::compute_block(&mut tree, 0, fri05_c03_block_input(size, flow_axes))
-        .expect("tiny block geometry remains supported");
+    let output = crate::compute_block(
+        &mut tree.borrow_compute(),
+        0,
+        fri05_c03_block_input(size, flow_axes),
+    )
+    .expect("tiny block geometry remains supported");
     assert_eq!(tree.child_inputs.len(), 1);
     assert_eq!(tree.child_inputs[0].known().width, Some(0.0));
     let geometry = output
@@ -2842,7 +2953,7 @@ fn fri05_c03_block_tiny_max_size_below_raw_edges_keeps_layout_geometry_coherent(
     tree.child_output = Some(ComputeOutput::from_outer_size(Size::ZERO));
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2929,7 +3040,7 @@ fn fri05_c03_block_tiny_max_inline_size_below_raw_edges_keeps_child_space_zero()
     tree.child_output = Some(ComputeOutput::from_outer_size(Size::ZERO));
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3366,7 +3477,7 @@ fn fri05_c06_block_reserved_gutter_retained_child_fallback_excludes_horizontal_r
     ));
 
     crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         fri05_c03_block_input(
             Size::new(200.0, 200.0),
@@ -3686,8 +3797,7 @@ fn fri05_c03_block_negative_margin_families_use_only_positive_outsets() {
 fn fri05_c03_integration_padding_seed_direct_block_retains_gutter_area_in_both_scalar_lanes() {
     fn assert_lane<S: LayoutScalar>()
     where
-        crate::test_support::layout_tree::OracleTreeOf<S>:
-            Compute + Traverse<Node = u32, Scalar = S>,
+        crate::test_support::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
     {
         fn gutter_at<S: LayoutScalar>(
             gutters: ScrollbarGutterRectsOf<S>,
@@ -3753,7 +3863,7 @@ fn fri05_c03_integration_padding_seed_direct_block_retains_gutter_area_in_both_s
                     .children(0, [])
                     .style(0, style);
                 let output = crate::compute_block(
-                    &mut tree,
+                    &mut tree.borrow_compute(),
                     0,
                     ComputeInputOf::for_child(
                         RunMode::PerformLayout,
@@ -3825,8 +3935,7 @@ fn fri05_c03_integration_absolute_top_gutter_offsets_reduced_area_margin_contrib
  {
     fn assert_lane<S: LayoutScalar>()
     where
-        crate::test_support::layout_tree::OracleTreeOf<S>:
-            Compute + Traverse<Node = u32, Scalar = S>,
+        crate::test_support::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
     {
         let scalar = scalar_value::<S>;
         let top_gutter_flows = [
@@ -3885,7 +3994,7 @@ fn fri05_c03_integration_absolute_top_gutter_offsets_reduced_area_margin_contrib
                 .style(1, child_style)
                 .measure(1, ComputeOutputOf::from_outer_size(child_size));
             let output = crate::compute_block(
-                &mut tree,
+                &mut tree.borrow_compute(),
                 0,
                 ComputeInputOf::for_child(
                     RunMode::PerformLayout,
@@ -3988,7 +4097,7 @@ fn fri05_c03_integration_absolute_top_gutter_offsets_reduced_area_margin_contrib
                 .style(1, tiny_child)
                 .measure(1, ComputeOutputOf::from_outer_size(tiny_child_size));
             let tiny_output = crate::compute_block(
-                &mut tiny_tree,
+                &mut tiny_tree.borrow_compute(),
                 0,
                 ComputeInputOf::for_child(
                     RunMode::PerformLayout,
@@ -4026,7 +4135,7 @@ fn fri05_c03_integration_absolute_top_gutter_offsets_reduced_area_margin_contrib
 
 fn assert_fri08_c07_t03_optional_math_block_results<S: LayoutScalar>()
 where
-    crate::test_support::layout_tree::OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    crate::test_support::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let scalar = S::from_f64;
     let style = NodeInputOf::<S> {
@@ -4045,7 +4154,7 @@ where
         .children(0, [])
         .style(0, style);
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         ComputeInputOf::for_child(
             RunMode::ComputeSize,
@@ -4078,7 +4187,7 @@ where
             },
         );
     let error = crate::compute_block(
-        &mut failing_tree,
+        &mut failing_tree.borrow_compute(),
         0,
         ComputeInputOf::for_child(
             RunMode::ComputeSize,

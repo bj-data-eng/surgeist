@@ -102,10 +102,10 @@ impl<S: LayoutScalar> LayoutTree for PublicLayoutTreeOf<S> {
         input.as_box().unwrap_or(&self.non_box_input)
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<S> {
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
         self.layout_inputs
             .get(&node)
-            .cloned()
+            .map(|input| input.as_view())
             .unwrap_or_else(|| panic!("public layout node {node} must define a layout input"))
     }
 
@@ -273,22 +273,6 @@ impl<S: LayoutScalar> OracleTreeOf<S> {
     pub fn output(&self, node: u32) -> Option<NodeOutputOf<S>> {
         self.final_layout(node).or_else(|| self.layout(node))
     }
-
-    fn recorded_measurement(
-        &self,
-        node: u32,
-        input: ComputeInputOf<S>,
-    ) -> Option<ComputeOutputOf<S>> {
-        self.measurements.get(&node).map(|measurements| {
-            for measurement in measurements {
-                if measurement.matches(input) {
-                    return measurement.output;
-                }
-            }
-
-            panic!("no oracle measurement matched node {node} input {input:?}");
-        })
-    }
 }
 
 impl<S: LayoutScalar> Traverse for OracleTreeOf<S> {
@@ -317,8 +301,28 @@ impl<S: LayoutScalar> Traverse for OracleTreeOf<S> {
     }
 }
 
-impl<S: LayoutScalar> Compute for OracleTreeOf<S> {
-    fn node_input(&self, node: Self::Node) -> &NodeInputOf<S> {
+pub struct OracleComputeOf<'input, S: LayoutScalar = DefaultScalar> {
+    children: &'input HashMap<u32, Vec<u32>>,
+    layout_inputs: &'input HashMap<u32, LayoutInputOf<S>>,
+    measurements: &'input HashMap<u32, Vec<OracleMeasurementOf<S>>>,
+    compute_inputs: &'input mut HashMap<u32, Vec<ComputeInputOf<S>>>,
+    layouts: &'input mut HashMap<u32, NodeOutputOf<S>>,
+    final_layouts: &'input mut HashMap<u32, NodeOutputOf<S>>,
+}
+
+impl<S: LayoutScalar> OracleTreeOf<S> {
+    pub fn borrow_compute(&mut self) -> OracleComputeOf<'_, S> {
+        OracleComputeOf {
+            children: &self.children,
+            layout_inputs: &self.layout_inputs,
+            measurements: &self.measurements,
+            compute_inputs: &mut self.compute_inputs,
+            layouts: &mut self.layouts,
+            final_layouts: &mut self.final_layouts,
+        }
+    }
+
+    pub fn node_input(&self, node: u32) -> &NodeInputOf<S> {
         match self.layout_inputs.get(&node) {
             Some(input) => input
                 .as_box()
@@ -327,10 +331,54 @@ impl<S: LayoutScalar> Compute for OracleTreeOf<S> {
         }
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<S> {
+    pub fn layout_input(&self, node: u32) -> crate::LayoutInputViewOf<'_, S> {
         self.layout_inputs
             .get(&node)
-            .cloned()
+            .map(|input| input.as_view())
+            .unwrap_or_else(|| panic!("oracle node {node} must define a layout input"))
+    }
+}
+
+impl<'input, S: LayoutScalar> Traverse for OracleComputeOf<'input, S> {
+    type Node = u32;
+    type Scalar = S;
+    type Children<'a>
+        = std::iter::Copied<std::slice::Iter<'a, u32>>
+    where
+        Self: 'a;
+
+    fn children(&self, node: Self::Node) -> Self::Children<'_> {
+        self.children
+            .get(&node)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+            .iter()
+            .copied()
+    }
+
+    fn child_count(&self, node: Self::Node) -> usize {
+        self.children.get(&node).map(Vec::len).unwrap_or(0)
+    }
+
+    fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+        self.children[&node][index]
+    }
+}
+
+impl<'input, S: LayoutScalar> Compute<'input> for OracleComputeOf<'input, S> {
+    fn node_input(&self, node: Self::Node) -> &'input NodeInputOf<S> {
+        match self.layout_inputs.get(&node) {
+            Some(input) => input
+                .as_box()
+                .unwrap_or_else(|| panic!("line break node has no box NodeInput")),
+            None => panic!("oracle node {node} must define a layout input"),
+        }
+    }
+
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, S> {
+        self.layout_inputs
+            .get(&node)
+            .map(|input| input.as_view())
             .unwrap_or_else(|| panic!("oracle node {node} must define a layout input"))
     }
 
@@ -345,7 +393,14 @@ impl<S: LayoutScalar> Compute for OracleTreeOf<S> {
     ) -> crate::LayoutResultOf<Self::Node, crate::ComputeOutputOf<Self::Scalar>, Self::Scalar> {
         self.compute_inputs.entry(node).or_default().push(input);
 
-        if let Some(output) = self.recorded_measurement(node, input) {
+        if let Some(measurements) = self.measurements.get(&node) {
+            let output = measurements
+                .iter()
+                .find(|measurement| measurement.matches(input))
+                .unwrap_or_else(|| {
+                    panic!("no oracle measurement matched node {node} input {input:?}")
+                })
+                .output;
             return Ok(output);
         }
 
@@ -367,7 +422,7 @@ impl<S: LayoutScalar> Compute for OracleTreeOf<S> {
     }
 }
 
-impl<S: LayoutScalar> Round for OracleTreeOf<S> {
+impl<'input, S: LayoutScalar> Round for OracleComputeOf<'input, S> {
     fn unrounded(&self, node: Self::Node) -> crate::LayoutResultOf<Self::Node, NodeOutputOf<S>, S> {
         self.layouts.get(&node).copied().ok_or_else(|| {
             LayoutErrorOf::new(
@@ -390,9 +445,8 @@ mod tests {
     use super::*;
     use crate::{
         ContainingLayoutContext, Direction, FlowAxes, LayoutErrorKind, LayoutErrorSite,
-        LayoutInput, LayoutInternalInvariant, LayoutOperation, LayoutRootRequestOf,
-        LineBreakDisplay, ParentFormattingContext, PreferredSizeOf, SourceIndex, WritingMode,
-        compute_layout,
+        LayoutInternalInvariant, LayoutOperation, LayoutRootRequestOf, LineBreakDisplay,
+        ParentFormattingContext, PreferredSizeOf, SourceIndex, WritingMode, compute_layout,
     };
 
     fn assert_fri06_c13_t01_public_tree_typed_contract<S: LayoutScalar>()
@@ -422,8 +476,11 @@ mod tests {
         assert_eq!(tree.child(1, 1), 3);
         assert_eq!(tree.child(1, 2), 5);
         assert_eq!(tree.node_input(1), &style);
-        assert_eq!(tree.layout_input(1), LayoutInputOf::box_input(style));
-        assert_eq!(tree.layout_input(7), LayoutInputOf::line_break(line_break));
+        assert_eq!(tree.layout_input(1), crate::LayoutInputViewOf::Box(&style));
+        assert_eq!(
+            tree.layout_input(7),
+            crate::LayoutInputViewOf::LineBreak(line_break)
+        );
         assert_eq!(tree.node_input(7), &NodeInputOf::non_box());
     }
 
@@ -513,7 +570,7 @@ mod tests {
 
     fn assert_fri06_mr01_oracle_generic_records_and_prefers_measurement<S: LayoutScalar>()
     where
-        OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+        OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
     {
         let style = NodeInputOf::<S> {
             display: Display::Grid,
@@ -527,11 +584,11 @@ mod tests {
             .measure(1, expected);
 
         assert_eq!(tree.node_input(1), &style);
+        assert_eq!(tree.layout_input(1), crate::LayoutInputViewOf::Box(&style));
         assert_eq!(
-            tree.layout_input(1),
-            LayoutInputOf::box_input(style.clone())
+            tree.borrow_compute().compute_child(1, input).unwrap(),
+            expected
         );
-        assert_eq!(tree.compute_child(1, input).unwrap(), expected);
         assert_eq!(tree.inputs(1), &[input]);
         assert_eq!(tree.layout(1), None);
     }
@@ -544,7 +601,7 @@ mod tests {
 
     fn assert_fri06_mr01_oracle_generic_hidden_and_dispatch<S: LayoutScalar>()
     where
-        OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+        OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
     {
         let input = fri06_mr01_oracle_generic_input();
         let mut hidden = OracleTreeOf::new().style(
@@ -556,7 +613,7 @@ mod tests {
         );
 
         assert_eq!(
-            hidden.compute_child(1, input).unwrap(),
+            hidden.borrow_compute().compute_child(1, input).unwrap(),
             ComputeOutputOf::HIDDEN
         );
         assert_eq!(hidden.inputs(1), &[input]);
@@ -588,7 +645,7 @@ mod tests {
                 },
             );
 
-            let output = tree.compute_child(node, input).unwrap();
+            let output = tree.borrow_compute().compute_child(node, input).unwrap();
 
             assert_eq!(tree.inputs(node), &[input]);
             assert_eq!(output.size, expected_size, "unexpected {display:?} output");
@@ -612,7 +669,7 @@ mod tests {
     fn rounding_missing_unrounded_output_returns_typed_error() {
         let mut tree = OracleTree::new();
 
-        let error = crate::round_layout(&mut tree, 41)
+        let error = crate::round_layout(&mut tree.borrow_compute(), 41)
             .expect_err("rounding without staged output must fail instead of synthesizing output");
 
         assert_eq!(error.site(), LayoutErrorSite::Node(41));
@@ -631,7 +688,10 @@ mod tests {
         let input = LineBreakInput::new().hidden();
         let tree = OracleTree::new().line_break(1, input);
 
-        assert_eq!(tree.layout_input(1), LayoutInput::LineBreak(input));
+        assert_eq!(
+            tree.layout_input(1),
+            crate::LayoutInputViewOf::LineBreak(input)
+        );
         assert_eq!(
             tree.layout_input(1).as_line_break().unwrap().display(),
             LineBreakDisplay::None

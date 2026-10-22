@@ -59,7 +59,12 @@ fn assert_fri08_c07_t02_scroll_source_root_paths<S: LayoutScalar>() {
             7,
             ComputeOutputOf::from_sizes(size, Size::new(scalar(120.0), scalar(95.0))),
         );
-    compute_root(&mut reconstructed_tree, 7, size.map(AvailableOf::definite)).unwrap();
+    compute_root(
+        &mut reconstructed_tree.borrow_compute(),
+        7,
+        size.map(AvailableOf::definite),
+    )
+    .unwrap();
     let reconstructed = reconstructed_tree
         .output(7)
         .and_then(|output| output.scroll_geometry)
@@ -107,7 +112,12 @@ fn assert_fri08_c07_t02_scroll_source_root_paths<S: LayoutScalar>() {
         .children(7, [])
         .style(7, style)
         .measure(7, child_output);
-    compute_root(&mut existing_tree, 7, size.map(AvailableOf::definite)).unwrap();
+    compute_root(
+        &mut existing_tree.borrow_compute(),
+        7,
+        size.map(AvailableOf::definite),
+    )
+    .unwrap();
     assert_eq!(
         existing_tree
             .output(7)
@@ -240,7 +250,10 @@ struct Fri06C03CachedAtomicTree<S: LayoutScalar> {
 impl<S: LayoutScalar> Traverse for Fri06C03CachedAtomicTree<S> {
     type Node = u32;
     type Scalar = S;
-    type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+    type Children<'a>
+        = std::iter::Copied<std::slice::Iter<'a, u32>>
+    where
+        Self: 'a;
 
     fn children(&self, node: Self::Node) -> Self::Children<'_> {
         Traverse::children(&self.tree, node)
@@ -262,7 +275,7 @@ impl<S: LayoutScalar> LayoutTree for Fri06C03CachedAtomicTree<S> {
         self.tree.node_input(node)
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<S> {
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
         self.tree.layout_input(node)
     }
 
@@ -4660,7 +4673,10 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
     impl Traverse for HiddenTree {
         type Node = u32;
         type Scalar = Scalar;
-        type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
 
         fn children(&self, node: Self::Node) -> Self::Children<'_> {
             self.children[&node].iter().copied()
@@ -4675,15 +4691,56 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
         }
     }
 
-    impl Compute for HiddenTree {
-        fn node_input(&self, node: Self::Node) -> &NodeInput {
+    struct HiddenTreeCompute<'input> {
+        children: &'input HashMap<u32, Vec<u32>>,
+        layouts: &'input mut HashMap<u32, NodeOutput>,
+        caches: &'input mut HashMap<u32, Cache>,
+        inputs: &'input HashMap<u32, LayoutInput>,
+        hidden_children: &'input mut Vec<u32>,
+    }
+
+    impl HiddenTree {
+        fn borrow_compute(&mut self) -> HiddenTreeCompute<'_> {
+            HiddenTreeCompute {
+                children: &self.children,
+                layouts: &mut self.layouts,
+                caches: &mut self.caches,
+                inputs: &self.inputs,
+                hidden_children: &mut self.hidden_children,
+            }
+        }
+    }
+
+    impl<'input> Traverse for HiddenTreeCompute<'input> {
+        type Node = u32;
+        type Scalar = Scalar;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
+
+        fn children(&self, node: Self::Node) -> Self::Children<'_> {
+            self.children[&node].iter().copied()
+        }
+
+        fn child_count(&self, node: Self::Node) -> usize {
+            self.children[&node].len()
+        }
+
+        fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+            self.children[&node][index]
+        }
+    }
+
+    impl<'input> Compute<'input> for HiddenTreeCompute<'input> {
+        fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             self.inputs[&node]
                 .as_box()
                 .unwrap_or_else(|| panic!("line break node {node} has no box NodeInput"))
         }
 
-        fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-            self.inputs[&node].clone()
+        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
+            self.inputs[&node].as_view()
         }
 
         fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
@@ -4714,7 +4771,7 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
         }
     }
 
-    impl CacheAccess for HiddenTree {
+    impl<'input> CacheAccess for HiddenTreeCompute<'input> {
         type Node = u32;
         type Scalar = Scalar;
 
@@ -4765,7 +4822,7 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
 
     assert_eq!(
         compute_hidden(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             SourceIndex::ZERO,
             crate::ContainingLayoutContext::new(
@@ -4807,7 +4864,10 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
     impl Traverse for HiddenTree {
         type Node = u32;
         type Scalar = Scalar;
-        type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
 
         fn children(&self, node: Self::Node) -> Self::Children<'_> {
             self.children[&node].iter().copied()
@@ -4822,15 +4882,56 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
         }
     }
 
-    impl Compute for HiddenTree {
-        fn node_input(&self, node: Self::Node) -> &NodeInput {
+    struct HiddenTreeCompute<'input> {
+        children: &'input HashMap<u32, Vec<u32>>,
+        layouts: &'input mut HashMap<u32, NodeOutput>,
+        caches: &'input mut HashMap<u32, Cache>,
+        inputs: &'input HashMap<u32, LayoutInput>,
+        hidden_children: &'input mut Vec<u32>,
+    }
+
+    impl HiddenTree {
+        fn borrow_compute(&mut self) -> HiddenTreeCompute<'_> {
+            HiddenTreeCompute {
+                children: &self.children,
+                layouts: &mut self.layouts,
+                caches: &mut self.caches,
+                inputs: &self.inputs,
+                hidden_children: &mut self.hidden_children,
+            }
+        }
+    }
+
+    impl<'input> Traverse for HiddenTreeCompute<'input> {
+        type Node = u32;
+        type Scalar = Scalar;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
+
+        fn children(&self, node: Self::Node) -> Self::Children<'_> {
+            self.children[&node].iter().copied()
+        }
+
+        fn child_count(&self, node: Self::Node) -> usize {
+            self.children[&node].len()
+        }
+
+        fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+            self.children[&node][index]
+        }
+    }
+
+    impl<'input> Compute<'input> for HiddenTreeCompute<'input> {
+        fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             self.inputs[&node]
                 .as_box()
                 .unwrap_or_else(|| panic!("inline boundary node {node} has no box NodeInput"))
         }
 
-        fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-            self.inputs[&node].clone()
+        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
+            self.inputs[&node].as_view()
         }
 
         fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
@@ -4861,7 +4962,7 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
         }
     }
 
-    impl CacheAccess for HiddenTree {
+    impl<'input> CacheAccess for HiddenTreeCompute<'input> {
         type Node = u32;
         type Scalar = Scalar;
 
@@ -4915,7 +5016,7 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
 
     assert_eq!(
         compute_hidden(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             SourceIndex::ZERO,
             crate::ContainingLayoutContext::new(
@@ -4955,7 +5056,7 @@ fn f64_tree_can_run_root_layout_smoke_test() {
     );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(AvailableOf::definite(100.0), AvailableOf::definite(50.0)),
     )
@@ -4987,7 +5088,7 @@ fn root_layout_emits_scroll_geometry_for_scroll_overflow() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         Size::new(Available::definite(100.0), Available::definite(40.0)),
     )
@@ -5025,7 +5126,7 @@ fn root_layout_emits_visible_scroll_geometry_without_range() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         Size::new(Available::definite(100.0), Available::definite(40.0)),
     )
@@ -5057,7 +5158,7 @@ fn root_layout_emits_clip_geometry_without_range() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         Size::new(Available::definite(100.0), Available::definite(40.0)),
     )
@@ -5088,7 +5189,7 @@ fn root_scroll_geometry_range_accounts_for_padding_border_and_gutter() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         Size::new(Available::definite(100.0), Available::definite(40.0)),
     )
@@ -5140,7 +5241,7 @@ fn root_scroll_geometry_preserves_child_origin_bearing_scrollable_overflow() {
         .measure(1, output);
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         Size::new(Available::definite(100.0), Available::definite(40.0)),
     )
@@ -5169,7 +5270,7 @@ fn root_layout_stores_child_output_as_root_layout() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         Size::new(Available::definite(200.0), Available::definite(100.0)),
     )
@@ -5216,7 +5317,7 @@ fn inline_level_root_keeps_intrinsic_width_under_definite_viewport() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         Size::new(Available::definite(200.0), Available::definite(100.0)),
     )
@@ -5257,7 +5358,7 @@ fn max_width_root_uses_clamped_available_width_under_definite_viewport() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         Size::new(Available::definite(800.0), Available::MAX_CONTENT),
     )
@@ -5306,7 +5407,7 @@ fn block_root_with_max_width_uses_clamped_available_outer_width() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         Size::new(Available::definite(800.0), Available::MAX_CONTENT),
     )

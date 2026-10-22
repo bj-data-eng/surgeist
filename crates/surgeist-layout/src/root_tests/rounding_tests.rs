@@ -580,7 +580,7 @@ fn f64_round_layout_preserves_large_coordinates() {
             },
         );
 
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     let final_layout = tree
         .output(0)
@@ -615,7 +615,7 @@ fn round_layout_rounds_scroll_geometry_with_node_output() {
         },
     );
 
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     let geometry = tree
         .output(0)
@@ -657,7 +657,7 @@ fn round_layout_diagnostics_rejects_invalid_rounded_scroll_geometry() {
         },
     );
 
-    let error = round_layout(&mut tree, 0)
+    let error = round_layout(&mut tree.borrow_compute(), 0)
         .expect_err("invalid rounded scroll geometry must not stage final output");
 
     assert_eq!(error.site(), LayoutErrorSite::Node(0));
@@ -697,7 +697,7 @@ fn round_layout_uses_cumulative_viewport_edges() {
             },
         );
 
-    round_layout(&mut tree, 1).unwrap();
+    round_layout(&mut tree.borrow_compute(), 1).unwrap();
 
     let root = tree.final_layout(1).expect("root final layout is staged");
     assert_eq!(root.location, Point::new(0.0, 0.0));

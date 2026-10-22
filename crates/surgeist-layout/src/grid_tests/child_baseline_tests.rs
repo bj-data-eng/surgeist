@@ -21,10 +21,11 @@ use super::fixtures::{
 use super::*;
 
 fn subgrid_child_parent_context_from_ancestor_groups_with_geometry<
+    'input,
     Node: Copy + PartialEq,
     S: LayoutScalar,
 >(
-    input: SubgridChildParentContextInput<'_, Node, S>,
+    input: SubgridChildParentContextInput<'input, Node, S>,
     ancestor_baseline_groups: &FinalAncestorBaselineGroups<Node, S>,
     parent_template_area_expanded_axes: TemplateAreaExpandedAxes,
     parent_grid: Node,
@@ -136,7 +137,7 @@ fn fri08_c03_containing_block_baseline_synthesis_survives_final_layout() {
         )
         .measure(2, child_output);
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -915,7 +916,7 @@ fn assert_fri06_mr02_geometry_error_grid_child<S: LayoutScalar>(display: Display
             ComputeOutputOf::from_outer_size(Size::new(S::from_f64(10.0), S::from_f64(10.0))),
         );
     let error = compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         7,
         ComputeInputOf::for_child(
             RunMode::PerformLayout,
@@ -993,7 +994,7 @@ fn fri05_c05_grid_alignment_uses_final_track_subject_in_all_flow_mappings() {
                 .style(1, NodeInput::default());
 
             let output = compute_grid(
-                &mut tree,
+                &mut tree.borrow_compute(),
                 0,
                 fri05_c05_grid_sizing_input(Size::new(Some(100.0), Some(80.0))),
             )
@@ -1049,7 +1050,7 @@ fn fri05_c05_grid_alignment_start_center_end_safe_distributed_and_out_of_flow_ar
             )
             .style(1, NodeInput::default());
         let geometry = compute_grid(
-            &mut tree,
+            &mut tree.borrow_compute(),
             0,
             fri05_c05_grid_sizing_input(Size::new(Some(100.0), Some(80.0))),
         )
@@ -1096,7 +1097,7 @@ fn fri05_c05_grid_alignment_start_center_end_safe_distributed_and_out_of_flow_ar
             },
         );
     let geometry = compute_grid(
-        &mut out_of_flow,
+        &mut out_of_flow.borrow_compute(),
         0,
         fri05_c05_grid_sizing_input(Size::new(Some(100.0), Some(80.0))),
     )
@@ -1171,8 +1172,12 @@ fn fri05_c05_grid_child_geometry_retains_in_flow_and_absolute_target_metadata() 
                 },
             );
 
-        compute_grid(&mut tree, 0, fri05_c05_grid_sizing_input(size.map(Some)))
-            .expect("grid child geometry case computes");
+        compute_grid(
+            &mut tree.borrow_compute(),
+            0,
+            fri05_c05_grid_sizing_input(size.map(Some)),
+        )
+        .expect("grid child geometry case computes");
 
         for (node, source_index, expected_margin, expected_align) in [
             (
@@ -1293,7 +1298,7 @@ fn fri05_c05_grid_contribution_container_origins_margins_terminal_padding_and_ab
         );
 
     let output = compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         fri05_c05_grid_sizing_input(Size::splat(Some(0.0))),
     )
@@ -1377,7 +1382,7 @@ fn ordinary_grid_replaced_normal_alignment_starts_while_explicit_stretch_remains
 
 fn assert_ordinary_grid_replaced_normal_alignment<S: LayoutScalar>()
 where
-    OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let measured =
         ComputeOutputOf::from_outer_size(Size::new(S::from_f64(30.0), S::from_f64(20.0)));
@@ -1435,7 +1440,7 @@ where
             .measure(1, measured);
 
         compute_grid(
-            &mut tree,
+            &mut tree.borrow_compute(),
             0,
             ComputeInputOf::for_child(
                 RunMode::PerformLayout,
@@ -1479,7 +1484,7 @@ fn grid_and_lanes_child_context_is_complete_for_layout_sizing_and_absolute_paths
 
 fn assert_grid_child_context_is_complete<S: LayoutScalar>()
 where
-    OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let flow_axes = FlowAxes::new(WritingMode::SidewaysRl, Direction::Rtl);
     let expected =
@@ -1531,7 +1536,7 @@ where
                 );
 
             crate::compute_grid(
-                &mut tree,
+                &mut tree.borrow_compute(),
                 0,
                 ComputeInputOf::for_child(
                     run_mode,
@@ -1608,7 +1613,7 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
         outputs: HashMap<u32, ComputeOutput>,
     }
 
-    impl RecursiveTree {
+    impl<'input> RecursiveTreeCompute<'input> {
         fn compute_node(
             &mut self,
             node: u32,
@@ -1635,7 +1640,10 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
         type Node = u32;
 
         type Scalar = Scalar;
-        type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
 
         fn children(&self, node: Self::Node) -> Self::Children<'_> {
             self.children[&node].iter().copied()
@@ -1650,13 +1658,53 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
         }
     }
 
-    impl Compute for RecursiveTree {
-        fn node_input(&self, node: Self::Node) -> &NodeInput {
+    struct RecursiveTreeCompute<'input> {
+        children: &'input HashMap<u32, Vec<u32>>,
+        styles: &'input HashMap<u32, NodeInput>,
+        layouts: &'input mut HashMap<u32, NodeOutput>,
+        outputs: &'input mut HashMap<u32, ComputeOutput>,
+    }
+
+    impl RecursiveTree {
+        fn borrow_compute(&mut self) -> RecursiveTreeCompute<'_> {
+            RecursiveTreeCompute {
+                children: &self.children,
+                styles: &self.styles,
+                layouts: &mut self.layouts,
+                outputs: &mut self.outputs,
+            }
+        }
+    }
+
+    impl<'input> Traverse for RecursiveTreeCompute<'input> {
+        type Node = u32;
+
+        type Scalar = Scalar;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
+
+        fn children(&self, node: Self::Node) -> Self::Children<'_> {
+            self.children[&node].iter().copied()
+        }
+
+        fn child_count(&self, node: Self::Node) -> usize {
+            self.children[&node].len()
+        }
+
+        fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+            self.children[&node][index]
+        }
+    }
+
+    impl<'input> Compute<'input> for RecursiveTreeCompute<'input> {
+        fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             &self.styles[&node]
         }
 
-        fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-            LayoutInputOf::box_input(self.node_input(node).clone())
+        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
+            crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
         fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
@@ -1697,6 +1745,7 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
         .insert(2, ComputeOutput::from_outer_size(Size::new(20.0, 10.0)));
 
     let output = tree
+        .borrow_compute()
         .compute_node(
             1,
             ComputeInput::for_child(
@@ -1747,7 +1796,7 @@ fn grid_lanes_reports_synthesized_container_baselines() {
 
 fn assert_physical_baseline_grid_and_lanes_preserve_an_orthogonal_child_x<S: LayoutScalar>()
 where
-    lts::layout_tree::OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    lts::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     for display in [Display::Grid, Display::GridLanes] {
         let child_baselines = ComputeOutputOf::from_sizes_and_baselines(
@@ -1791,7 +1840,7 @@ where
             .measure(2, child_baselines);
 
         let output = compute_grid(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInputOf::for_child(
                 RunMode::PerformLayout,
@@ -1858,7 +1907,7 @@ fn physical_baseline_from_logical_block<S: LayoutScalar>(
 
 fn assert_logical_grid_lanes_axes_baselines<S: LayoutScalar>()
 where
-    OracleTreeOf<S>: Compute<Node = u32, Scalar = S>,
+    OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let scalar = S::from_f64;
     let logical_container_size = LogicalSizeOf::new(scalar(70.0), scalar(110.0));
@@ -1977,7 +2026,7 @@ where
                     .measure(3, last_child);
 
                 let output = crate::compute_grid(
-                    &mut tree,
+                    &mut tree.borrow_compute(),
                     1,
                     ComputeInputOf::for_child(
                         RunMode::PerformLayout,
@@ -2032,7 +2081,7 @@ fn logical_grid_lanes_axes_baselines_f64() {
 
 fn assert_logical_ordinary_grid_in_flow_placement_baselines_and_extents<S: LayoutScalar>()
 where
-    OracleTreeOf<S>: Compute<Node = u32, Scalar = S>,
+    OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let scalar = S::from_f64;
     let logical_container_size = LogicalSizeOf::new(scalar(70.0), scalar(110.0));
@@ -2150,7 +2199,7 @@ where
                     .measure(3, child_outputs[1]);
 
                 let output = crate::compute_grid(
-                    &mut tree,
+                    &mut tree.borrow_compute(),
                     1,
                     ComputeInputOf::for_child(
                         RunMode::PerformLayout,
@@ -2376,12 +2425,12 @@ fn both_axis_subgrid_zero_gap_auto_placement_advances_fully_auto_children() {
         .style(4, NodeInput::default());
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 1).unwrap();
+    round_layout(&mut tree.borrow_compute(), 1).unwrap();
 
     assert_eq!(
         tree.final_layout(3)
@@ -2477,7 +2526,7 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
         layouts: HashMap<u32, NodeOutput>,
     }
 
-    impl RecursiveTree {
+    impl<'input> RecursiveTreeCompute<'input> {
         fn compute_node(
             &mut self,
             node: u32,
@@ -2504,7 +2553,10 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
         type Node = u32;
 
         type Scalar = Scalar;
-        type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
 
         fn children(&self, node: Self::Node) -> Self::Children<'_> {
             self.children[&node].iter().copied()
@@ -2519,13 +2571,51 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
         }
     }
 
-    impl Compute for RecursiveTree {
-        fn node_input(&self, node: Self::Node) -> &NodeInput {
+    struct RecursiveTreeCompute<'input> {
+        children: &'input HashMap<u32, Vec<u32>>,
+        styles: &'input HashMap<u32, NodeInput>,
+        layouts: &'input mut HashMap<u32, NodeOutput>,
+    }
+
+    impl RecursiveTree {
+        fn borrow_compute(&mut self) -> RecursiveTreeCompute<'_> {
+            RecursiveTreeCompute {
+                children: &self.children,
+                styles: &self.styles,
+                layouts: &mut self.layouts,
+            }
+        }
+    }
+
+    impl<'input> Traverse for RecursiveTreeCompute<'input> {
+        type Node = u32;
+
+        type Scalar = Scalar;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
+
+        fn children(&self, node: Self::Node) -> Self::Children<'_> {
+            self.children[&node].iter().copied()
+        }
+
+        fn child_count(&self, node: Self::Node) -> usize {
+            self.children[&node].len()
+        }
+
+        fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+            self.children[&node][index]
+        }
+    }
+
+    impl<'input> Compute<'input> for RecursiveTreeCompute<'input> {
+        fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             &self.styles[&node]
         }
 
-        fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-            LayoutInputOf::box_input(self.node_input(node).clone())
+        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
+            crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
         fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
@@ -2567,7 +2657,7 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
     tree.styles.insert(3, NodeInput::default());
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2618,7 +2708,7 @@ fn grid_absolute_child_with_subgrid_tracks_does_not_participate_as_subgrid() {
     tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(10.0, 10.0)));
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2712,7 +2802,7 @@ fn row_subgrid_child_inherits_parent_baseline_group() {
 
 fn assert_real_row_subgrid_baseline_projection<S: LayoutScalar>(writing_mode: WritingMode)
 where
-    OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let flow_axes = FlowAxes::new(writing_mode, Direction::Ltr);
     let root_size =
@@ -2786,7 +2876,7 @@ where
             .measure(4, baseline_output(S::from_f64(8.0)));
 
         let output = compute_grid(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInputOf::for_child(
                 RunMode::PerformLayout,
@@ -3868,12 +3958,12 @@ fn fri06_c12_t08_reversed_inherited_column_baselines(alignment: AlignItems) -> [
         .measure(5, ancestor);
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         Size::new(Available::Definite(200.0), Available::Definite(80.0)),
     )
     .expect("reversed inherited-column layout computes");
-    round_layout(&mut tree, 1).expect("reversed inherited-column layout rounds");
+    round_layout(&mut tree.borrow_compute(), 1).expect("reversed inherited-column layout rounds");
 
     let subgrid_x = tree
         .final_layout(2)
@@ -3966,7 +4056,7 @@ fn fri06_c12_t08_parent_baseline_row(
         .measure(4, baseline_measurement(nested_baseline));
 
     let output = compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4078,7 +4168,7 @@ fn fri06_c12_t08_equal_inherited_gap_keeps_the_parent_baseline_coordinate() {
 fn assert_published_baseline_group_order_keeps_compatible_axis<S: LayoutScalar>(
     incompatible_first: bool,
 ) where
-    lts::layout_tree::OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    lts::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let root_children = if incompatible_first { [2, 3] } else { [3, 2] };
     let incompatible_baselines = ComputeOutputOf::from_sizes_and_baselines(
@@ -4165,7 +4255,7 @@ fn assert_published_baseline_group_order_keeps_compatible_axis<S: LayoutScalar>(
         .measure(5, compatible_baselines);
 
     let output = compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInputOf::for_child(
             RunMode::PerformLayout,
@@ -4251,7 +4341,7 @@ fn column_subgrid_baseline_alignment_does_not_grow_auto_parent_row_twice() {
         .measure(4, baseline_measure(30.0, 30.0, Some(24.0), None));
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4270,7 +4360,7 @@ fn column_subgrid_baseline_alignment_does_not_grow_auto_parent_row_twice() {
         ),
     )
     .unwrap();
-    tree.set_unrounded(
+    tree.borrow_compute().set_unrounded(
         1,
         NodeOutput {
             size: output.size,
@@ -4278,7 +4368,7 @@ fn column_subgrid_baseline_alignment_does_not_grow_auto_parent_row_twice() {
             ..NodeOutput::new()
         },
     );
-    round_layout(&mut tree, 1).unwrap();
+    round_layout(&mut tree.borrow_compute(), 1).unwrap();
 
     assert_eq!(output.size, Size::new(45.0, 30.0));
     assert_eq!(final_height(&tree, 2), 30.0);
@@ -4306,7 +4396,7 @@ fn grid_auto_places_children_into_declared_column_tracks() {
     tree.insert_style(3, NodeInput::default());
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4371,7 +4461,7 @@ fn grid_display_none_child_does_not_consume_auto_placement_cell() {
     tree.insert_style(3, NodeInput::default());
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4445,7 +4535,7 @@ fn grid_absolute_child_does_not_consume_auto_placement_cell() {
     tree.insert_style(3, NodeInput::default());
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4577,7 +4667,7 @@ fn vertical_grid_absolute_child_maps_rows_to_physical_x_and_columns_to_y() {
         );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4628,7 +4718,7 @@ fn grid_absolute_child_without_explicit_size_uses_measured_size() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4693,7 +4783,7 @@ fn grid_absolute_child_resolves_size_from_opposing_insets() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4755,7 +4845,7 @@ fn grid_absolute_child_without_horizontal_insets_uses_rtl_start_alignment() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4817,7 +4907,7 @@ fn grid_absolute_child_with_opposing_horizontal_insets_honors_rtl_end_edge() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4878,7 +4968,7 @@ fn grid_absolute_child_expands_horizontal_auto_margins() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4951,7 +5041,7 @@ fn grid_absolute_child_expands_vertical_auto_margins() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -5015,7 +5105,7 @@ fn grid_absolute_child_percent_size_resolves_against_grid_area() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -5074,7 +5164,7 @@ fn grid_absolute_child_percent_padding_resolves_against_grid_area() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -5134,7 +5224,7 @@ fn grid_absolute_child_applies_aspect_ratio_to_authored_size() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -5188,7 +5278,7 @@ fn grid_absolute_child_clamps_authored_size_to_min_and_max() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -5243,7 +5333,7 @@ fn grid_absolute_child_content_box_size_includes_padding_and_border() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -5297,7 +5387,7 @@ fn grid_absolute_child_size_cannot_shrink_below_padding_and_border() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -5355,7 +5445,7 @@ fn grid_absolute_child_applies_aspect_ratio_to_inset_derived_width() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -5412,7 +5502,7 @@ fn grid_absolute_child_available_space_excludes_non_auto_margins() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -5466,7 +5556,7 @@ fn grid_item_with_aspect_ratio_stretches_width_and_keeps_start_aligned_height() 
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -5532,7 +5622,7 @@ fn grid_item_expands_inline_auto_margins_after_child_layout() {
     tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(20.0, 40.0)));
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -5594,7 +5684,7 @@ fn grid_auto_flow_column_places_children_down_rows_then_across_columns() {
     );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -5660,7 +5750,7 @@ fn grid_align_content_center_offsets_tracks_inside_inner_height() {
     tree.insert_style(2, NodeInput::default());
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -5710,7 +5800,7 @@ fn grid_align_items_center_offsets_smaller_child_within_grid_area() {
     tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(30.0, 10.0)));
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -5766,7 +5856,7 @@ fn grid_align_self_overrides_parent_align_items() {
     tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(30.0, 10.0)));
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -6447,7 +6537,7 @@ fn grid_justify_items_center_offsets_smaller_child_within_grid_area() {
     tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(30.0, 10.0)));
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -6509,7 +6599,7 @@ fn grid_child_affine_size_and_margin_resolve_against_grid_area() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -6609,6 +6699,7 @@ fn grid_child_pure_helpers_accept_non_default_scalar() {
 
 #[test]
 fn grid_child_pending_and_subgrid_inheritance_helpers_accept_non_default_scalar() {
+    let default_input = crate::NodeInputOf::default();
     let area = GridArea::<f64> {
         column: 0,
         row: 0,
@@ -6618,7 +6709,7 @@ fn grid_child_pending_and_subgrid_inheritance_helpers_accept_non_default_scalar(
     };
     let item = PendingGridItem::<_, f64> {
         node: "child",
-        style: grid_item_projection!(&NodeInputOf::default()),
+        style: grid_item_projection!(&default_input),
         nested_container: None,
         source_index: 0,
         area,
@@ -6836,21 +6927,32 @@ fn horizontal_baseline_flow_axes() -> crate::geometry::FlowAxes {
     crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr)
 }
 
-fn baseline_test_item(
+struct BaselineTestMetrics {
+    first: Scalar,
+    last: Scalar,
+    height: Scalar,
+}
+
+fn baseline_test_item<'input>(
+    default_input: &'input NodeInput,
     row: usize,
     column: usize,
     row_span: usize,
     align_self: AlignItems,
-    first: Scalar,
-    last: Scalar,
-    height: Scalar,
-) -> PendingGridItem<()> {
+    metrics: BaselineTestMetrics,
+) -> PendingGridItem<'input, ()> {
+    let BaselineTestMetrics {
+        first,
+        last,
+        height,
+    } = metrics;
     PendingGridItem {
         node: (),
-        style: grid_item_projection!(&NodeInput {
-            align_self: Some(align_self),
-            ..NodeInput::default()
-        }),
+        style: {
+            let mut style = grid_item_projection!(default_input);
+            style.align_self = Some(align_self);
+            style
+        },
         nested_container: None,
         source_index: 0,
         area: GridArea {
@@ -6920,9 +7022,32 @@ fn baseline_test_item(
 
 #[test]
 fn row_baselines_choose_first_baseline_for_first_group() {
+    let default_input = crate::NodeInputOf::default();
     let items = vec![
-        baseline_test_item(0, 0, 1, AlignItems::Baseline, 8.0, 22.0, 30.0),
-        baseline_test_item(0, 1, 1, AlignItems::Baseline, 14.0, 20.0, 30.0),
+        baseline_test_item(
+            &default_input,
+            0,
+            0,
+            1,
+            AlignItems::Baseline,
+            BaselineTestMetrics {
+                first: 8.0,
+                last: 22.0,
+                height: 30.0,
+            },
+        ),
+        baseline_test_item(
+            &default_input,
+            0,
+            1,
+            1,
+            AlignItems::Baseline,
+            BaselineTestMetrics {
+                first: 14.0,
+                last: 20.0,
+                height: 30.0,
+            },
+        ),
     ];
 
     let groups = baseline_groups(&items, 2, 2, horizontal_baseline_flow_axes());
@@ -6935,9 +7060,32 @@ fn row_baselines_choose_first_baseline_for_first_group() {
 
 #[test]
 fn row_baselines_choose_last_baseline_for_last_group() {
+    let default_input = crate::NodeInputOf::default();
     let items = vec![
-        baseline_test_item(0, 0, 2, AlignItems::LastBaseline, 8.0, 22.0, 30.0),
-        baseline_test_item(0, 1, 2, AlignItems::LastBaseline, 8.0, 18.0, 30.0),
+        baseline_test_item(
+            &default_input,
+            0,
+            0,
+            2,
+            AlignItems::LastBaseline,
+            BaselineTestMetrics {
+                first: 8.0,
+                last: 22.0,
+                height: 30.0,
+            },
+        ),
+        baseline_test_item(
+            &default_input,
+            0,
+            1,
+            2,
+            AlignItems::LastBaseline,
+            BaselineTestMetrics {
+                first: 8.0,
+                last: 18.0,
+                height: 30.0,
+            },
+        ),
     ];
 
     let groups = baseline_groups(&items, 2, 2, horizontal_baseline_flow_axes());
@@ -6950,9 +7098,32 @@ fn row_baselines_choose_last_baseline_for_last_group() {
 
 #[test]
 fn row_baselines_keep_first_groups_per_start_row() {
+    let default_input = crate::NodeInputOf::default();
     let items = vec![
-        baseline_test_item(0, 0, 1, AlignItems::Baseline, 8.0, 22.0, 30.0),
-        baseline_test_item(1, 0, 1, AlignItems::Baseline, 14.0, 20.0, 30.0),
+        baseline_test_item(
+            &default_input,
+            0,
+            0,
+            1,
+            AlignItems::Baseline,
+            BaselineTestMetrics {
+                first: 8.0,
+                last: 22.0,
+                height: 30.0,
+            },
+        ),
+        baseline_test_item(
+            &default_input,
+            1,
+            0,
+            1,
+            AlignItems::Baseline,
+            BaselineTestMetrics {
+                first: 14.0,
+                last: 20.0,
+                height: 30.0,
+            },
+        ),
     ];
 
     let groups = baseline_groups(&items, 2, 1, horizontal_baseline_flow_axes());
@@ -6969,9 +7140,32 @@ fn row_baselines_keep_first_groups_per_start_row() {
 
 #[test]
 fn row_baselines_keep_last_groups_per_end_row() {
+    let default_input = crate::NodeInputOf::default();
     let items = vec![
-        baseline_test_item(0, 0, 1, AlignItems::LastBaseline, 8.0, 22.0, 30.0),
-        baseline_test_item(1, 0, 1, AlignItems::LastBaseline, 8.0, 18.0, 30.0),
+        baseline_test_item(
+            &default_input,
+            0,
+            0,
+            1,
+            AlignItems::LastBaseline,
+            BaselineTestMetrics {
+                first: 8.0,
+                last: 22.0,
+                height: 30.0,
+            },
+        ),
+        baseline_test_item(
+            &default_input,
+            1,
+            0,
+            1,
+            AlignItems::LastBaseline,
+            BaselineTestMetrics {
+                first: 8.0,
+                last: 18.0,
+                height: 30.0,
+            },
+        ),
     ];
 
     let groups = baseline_groups(&items, 2, 1, horizontal_baseline_flow_axes());
@@ -6988,14 +7182,18 @@ fn row_baselines_keep_last_groups_per_end_row() {
 
 #[test]
 fn baseline_groups_columns_are_default_filled_to_grid_width() {
+    let default_input = crate::NodeInputOf::default();
     let items = vec![baseline_test_item(
+        &default_input,
         0,
         0,
         1,
         AlignItems::Baseline,
-        8.0,
-        22.0,
-        30.0,
+        BaselineTestMetrics {
+            first: 8.0,
+            last: 22.0,
+            height: 30.0,
+        },
     )];
 
     let groups = baseline_groups(&items, 1, 3, horizontal_baseline_flow_axes());
@@ -7142,9 +7340,32 @@ fn baseline_shim_for_intrinsic_contribution_synthesized_baseline_participates() 
 
 #[test]
 fn baseline_aligned_block_offset_first_single_row_item() {
+    let default_input = crate::NodeInputOf::default();
     let items = vec![
-        baseline_test_item(0, 0, 1, AlignItems::Baseline, 8.0, 16.0, 20.0),
-        baseline_test_item(0, 1, 1, AlignItems::Baseline, 14.0, 20.0, 30.0),
+        baseline_test_item(
+            &default_input,
+            0,
+            0,
+            1,
+            AlignItems::Baseline,
+            BaselineTestMetrics {
+                first: 8.0,
+                last: 16.0,
+                height: 20.0,
+            },
+        ),
+        baseline_test_item(
+            &default_input,
+            0,
+            1,
+            1,
+            AlignItems::Baseline,
+            BaselineTestMetrics {
+                first: 14.0,
+                last: 20.0,
+                height: 30.0,
+            },
+        ),
     ];
     let groups = baseline_groups(&items, 1, 2, horizontal_baseline_flow_axes());
 
@@ -7172,9 +7393,32 @@ fn baseline_aligned_block_offset_first_single_row_item() {
 
 #[test]
 fn baseline_aligned_block_offset_first_spanning_item() {
+    let default_input = crate::NodeInputOf::default();
     let items = vec![
-        baseline_test_item(0, 0, 2, AlignItems::Baseline, 8.0, 16.0, 20.0),
-        baseline_test_item(0, 1, 2, AlignItems::Baseline, 14.0, 20.0, 30.0),
+        baseline_test_item(
+            &default_input,
+            0,
+            0,
+            2,
+            AlignItems::Baseline,
+            BaselineTestMetrics {
+                first: 8.0,
+                last: 16.0,
+                height: 20.0,
+            },
+        ),
+        baseline_test_item(
+            &default_input,
+            0,
+            1,
+            2,
+            AlignItems::Baseline,
+            BaselineTestMetrics {
+                first: 14.0,
+                last: 20.0,
+                height: 30.0,
+            },
+        ),
     ];
     let groups = baseline_groups(&items, 2, 2, horizontal_baseline_flow_axes());
 
@@ -7192,9 +7436,32 @@ fn baseline_aligned_block_offset_first_spanning_item() {
 
 #[test]
 fn baseline_aligned_block_offset_last_single_row_item() {
+    let default_input = crate::NodeInputOf::default();
     let items = vec![
-        baseline_test_item(0, 0, 1, AlignItems::LastBaseline, 8.0, 16.0, 20.0),
-        baseline_test_item(0, 1, 1, AlignItems::LastBaseline, 14.0, 20.0, 30.0),
+        baseline_test_item(
+            &default_input,
+            0,
+            0,
+            1,
+            AlignItems::LastBaseline,
+            BaselineTestMetrics {
+                first: 8.0,
+                last: 16.0,
+                height: 20.0,
+            },
+        ),
+        baseline_test_item(
+            &default_input,
+            0,
+            1,
+            1,
+            AlignItems::LastBaseline,
+            BaselineTestMetrics {
+                first: 14.0,
+                last: 20.0,
+                height: 30.0,
+            },
+        ),
     ];
     let groups = baseline_groups(&items, 1, 2, horizontal_baseline_flow_axes());
 
@@ -7222,9 +7489,32 @@ fn baseline_aligned_block_offset_last_single_row_item() {
 
 #[test]
 fn baseline_aligned_block_offset_last_spanning_item() {
+    let default_input = crate::NodeInputOf::default();
     let items = vec![
-        baseline_test_item(0, 0, 2, AlignItems::LastBaseline, 8.0, 16.0, 20.0),
-        baseline_test_item(0, 1, 2, AlignItems::LastBaseline, 14.0, 20.0, 30.0),
+        baseline_test_item(
+            &default_input,
+            0,
+            0,
+            2,
+            AlignItems::LastBaseline,
+            BaselineTestMetrics {
+                first: 8.0,
+                last: 16.0,
+                height: 20.0,
+            },
+        ),
+        baseline_test_item(
+            &default_input,
+            0,
+            1,
+            2,
+            AlignItems::LastBaseline,
+            BaselineTestMetrics {
+                first: 14.0,
+                last: 20.0,
+                height: 30.0,
+            },
+        ),
     ];
     let groups = baseline_groups(&items, 2, 2, horizontal_baseline_flow_axes());
 
@@ -7242,9 +7532,32 @@ fn baseline_aligned_block_offset_last_spanning_item() {
 
 #[test]
 fn baseline_aligned_block_offset_first_and_last_include_margins() {
+    let default_input = crate::NodeInputOf::default();
     let mut first_items = vec![
-        baseline_test_item(0, 0, 1, AlignItems::Baseline, 8.0, 16.0, 20.0),
-        baseline_test_item(0, 1, 1, AlignItems::Baseline, 14.0, 20.0, 30.0),
+        baseline_test_item(
+            &default_input,
+            0,
+            0,
+            1,
+            AlignItems::Baseline,
+            BaselineTestMetrics {
+                first: 8.0,
+                last: 16.0,
+                height: 20.0,
+            },
+        ),
+        baseline_test_item(
+            &default_input,
+            0,
+            1,
+            1,
+            AlignItems::Baseline,
+            BaselineTestMetrics {
+                first: 14.0,
+                last: 20.0,
+                height: 30.0,
+            },
+        ),
     ];
     first_items[0].vertical_axis.margin_start = 3.0;
     first_items[0].vertical_axis.margin_end = 5.0;
@@ -7262,8 +7575,30 @@ fn baseline_aligned_block_offset_first_and_last_include_margins() {
     );
 
     let mut last_items = vec![
-        baseline_test_item(0, 0, 1, AlignItems::LastBaseline, 8.0, 16.0, 20.0),
-        baseline_test_item(0, 1, 1, AlignItems::LastBaseline, 14.0, 20.0, 30.0),
+        baseline_test_item(
+            &default_input,
+            0,
+            0,
+            1,
+            AlignItems::LastBaseline,
+            BaselineTestMetrics {
+                first: 8.0,
+                last: 16.0,
+                height: 20.0,
+            },
+        ),
+        baseline_test_item(
+            &default_input,
+            0,
+            1,
+            1,
+            AlignItems::LastBaseline,
+            BaselineTestMetrics {
+                first: 14.0,
+                last: 20.0,
+                height: 30.0,
+            },
+        ),
     ];
     last_items[0].vertical_axis.margin_start = 3.0;
     last_items[0].vertical_axis.margin_end = 5.0;
@@ -7283,14 +7618,18 @@ fn baseline_aligned_block_offset_first_and_last_include_margins() {
 
 #[test]
 fn baseline_aligned_block_offset_returns_none_without_group_baseline() {
+    let default_input = crate::NodeInputOf::default();
     let items = [baseline_test_item(
+        &default_input,
         0,
         0,
         1,
         AlignItems::Baseline,
-        8.0,
-        16.0,
-        20.0,
+        BaselineTestMetrics {
+            first: 8.0,
+            last: 16.0,
+            height: 20.0,
+        },
     )];
     let groups = GridBaselineGroups {
         rows: vec![TrackBaselineGroup::default()],
@@ -7366,11 +7705,13 @@ fn tagged_geometry<S: LayoutScalar>(
     }
 }
 
-fn axis_baseline_item<S: LayoutScalar>() -> PendingGridItem<(), S> {
+fn axis_baseline_item<'input, S: LayoutScalar>(
+    default_input: &'input NodeInputOf<S>,
+) -> PendingGridItem<'input, (), S> {
     let child_flow_axes = crate::geometry::FlowAxes::new(WritingMode::VerticalRl, Direction::Ltr);
     PendingGridItem {
         node: (),
-        style: default_grid_item_projection(),
+        style: default_grid_item_projection(default_input),
         nested_container: None,
         source_index: 0,
         area: GridArea {
@@ -7419,7 +7760,8 @@ fn axis_baseline_item<S: LayoutScalar>() -> PendingGridItem<(), S> {
 }
 
 fn assert_baseline_group_axis_rejects_incompatible_application<S: LayoutScalar>() {
-    let item = axis_baseline_item::<S>();
+    let default_input = crate::NodeInputOf::default();
+    let item = axis_baseline_item::<S>(&default_input);
     let groups = GridBaselineGroups {
         rows: vec![TrackBaselineGroup {
             first: Some(tagged_baseline(PhysicalAxis::Vertical, S::from_f64(45.0))),
@@ -7456,7 +7798,8 @@ fn assert_baseline_group_axis_rejects_incompatible_application<S: LayoutScalar>(
 }
 
 fn assert_baseline_group_axis_preserves_compatible_application<S: LayoutScalar>() {
-    let item = axis_baseline_item::<S>();
+    let default_input = crate::NodeInputOf::default();
+    let item = axis_baseline_item::<S>(&default_input);
     let groups = GridBaselineGroups {
         rows: vec![TrackBaselineGroup {
             first: Some(tagged_baseline(PhysicalAxis::Horizontal, S::from_f64(45.0))),
@@ -7532,7 +7875,7 @@ fn baseline_group_axis_rejects_incompatible_subgrid_application_for_f64() {
 
 fn assert_orthogonal_baseline_subgrid_rejects_inherited_physical_y<S: LayoutScalar>()
 where
-    lts::layout_tree::OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    lts::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let child_baselines = ComputeOutputOf::from_sizes_and_baselines(
         Size::new(S::from_f64(30.0), S::from_f64(20.0)),
@@ -7596,7 +7939,7 @@ where
     };
 
     let output = compute_grid_with_context(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInputOf::for_child(
             RunMode::PerformLayout,
@@ -7641,7 +7984,7 @@ fn orthogonal_baseline_subgrid_rejects_inherited_physical_y_for_f64() {
 
 fn assert_inherited_baseline_group_applies_on_the_same_physical_axis<S: LayoutScalar>()
 where
-    lts::layout_tree::OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    lts::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let mut tree = lts::layout_tree::OracleTreeOf::<S>::new()
         .children(1, [2])
@@ -7702,7 +8045,7 @@ where
     };
 
     let output = compute_grid_with_context(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInputOf::for_child(
             RunMode::PerformLayout,
@@ -7924,7 +8267,7 @@ fn vertical_grid_child_percentage_padding_uses_unequal_physical_area_height_basi
         );
 
     compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -7984,7 +8327,7 @@ fn orthogonal_subgrid_grandchild_percentage_edges_use_immediate_containing_flow(
         ),
         ..NodeInput::default()
     };
-    let tree = OracleTree::new()
+    let mut tree = OracleTree::new()
         .children(2, [3])
         .children(3, [4])
         .children(4, [])
@@ -8008,8 +8351,8 @@ fn orthogonal_subgrid_grandchild_percentage_edges_use_immediate_containing_flow(
             row: subgrid_axis_report(&parent_style, &outer_style, GridAxisKind::Row),
         }],
     };
-    let report = collect_grid_subgrid_intrinsic_traversal::<OracleTree, core::convert::Infallible>(
-        &tree,
+    let report = collect_grid_subgrid_intrinsic_traversal::<_, core::convert::Infallible>(
+        &tree.borrow_compute(),
         GridSubgridIntrinsicTraversalInput {
             axis: GridAxisKind::Row,
             containing_flow_axes: crate::geometry::FlowAxes::new(

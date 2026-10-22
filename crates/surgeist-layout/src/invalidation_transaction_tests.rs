@@ -108,8 +108,8 @@ impl LayoutTree for InvalidationTree {
         &self.styles[&node]
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInput {
-        LayoutInput::box_input(self.styles[&node].clone())
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputView<'_> {
+        crate::LayoutInputViewOf::Box(&self.styles[&node])
     }
 
     fn has_leaf_measurement(&self, node: Self::Node) -> bool {

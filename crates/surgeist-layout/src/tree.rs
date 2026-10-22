@@ -1,7 +1,7 @@
 use crate::measurement::LeafMeasureInputOf;
 use crate::{
     CacheKeyContext, CompletedLayoutBatchOf, ComputeInputOf, ComputeOutputOf,
-    FloatExclusionIntervalOf, FloatExclusionQueryOf, InlineFragmentOutputOf, LayoutInputOf,
+    FloatExclusionIntervalOf, FloatExclusionQueryOf, InlineFragmentOutputOf, LayoutInputViewOf,
     LayoutScalar, NodeInputOf, NodeOutputOf, Size,
 };
 
@@ -22,8 +22,13 @@ pub trait Traverse {
 pub trait LayoutTree: Traverse {
     type MeasureError;
 
+    /// Returns this node's canonical box facts. For a box participant this must
+    /// reference the same stored input as [`Self::layout_input`]. Non-box nodes
+    /// supply canonical non-box facts, checked by the layout front door.
     fn node_input(&self, node: Self::Node) -> &NodeInputOf<Self::Scalar>;
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar>;
+    /// Borrows the normalized participant from immutable request storage.
+    /// Read access must not clone input backing or allocate a carrier.
+    fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'_, Self::Scalar>;
 
     fn has_leaf_measurement(&self, _node: Self::Node) -> bool {
         false

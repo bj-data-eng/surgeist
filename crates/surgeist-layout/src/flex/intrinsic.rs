@@ -53,7 +53,7 @@ fn max_content_line_main_size<Node, S: LayoutScalar>(
         .fold(S::ZERO, |sum, value| sum + value)
 }
 
-pub(super) fn resolved_layout_constants<Tree, M>(
+pub(super) fn resolved_layout_constants<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
@@ -62,7 +62,7 @@ pub(super) fn resolved_layout_constants<Tree, M>(
     lines: &[FlexLine<Tree::Scalar>],
 ) -> LayoutResultOf<<Tree as Traverse>::Node, Constants<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let original_inner_size = constants.node_inner_size;
     let mut constants = *constants;
@@ -84,7 +84,7 @@ where
     Ok(constants)
 }
 
-fn determine_container_main_size<Tree, M>(
+fn determine_container_main_size<'input, Tree, M>(
     tree: &mut Tree,
     input: ComputeInputOf<Tree::Scalar>,
     constants: &mut Constants<Tree::Scalar>,
@@ -92,7 +92,7 @@ fn determine_container_main_size<Tree, M>(
     lines: &[FlexLine<Tree::Scalar>],
 ) -> LayoutResultOf<<Tree as Traverse>::Node, (), Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let fallback_outer_main_size = if constants
         .axes
@@ -189,7 +189,7 @@ fn flex_basis_line_main_size<Node, S: LayoutScalar>(
         .fold(S::ZERO, |sum, value| sum + value)
 }
 
-fn intrinsic_container_main_size<Tree, M>(
+fn intrinsic_container_main_size<'input, Tree, M>(
     tree: &mut Tree,
     input: ComputeInputOf<Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
@@ -197,7 +197,7 @@ fn intrinsic_container_main_size<Tree, M>(
     lines: &[FlexLine<Tree::Scalar>],
 ) -> LayoutResultOf<<Tree as Traverse>::Node, Tree::Scalar, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let mut largest = Tree::Scalar::ZERO;
     for line in lines {
@@ -214,14 +214,14 @@ where
     Ok(largest)
 }
 
-fn intrinsic_item_main_contribution<Tree, M>(
+fn intrinsic_item_main_contribution<'input, Tree, M>(
     tree: &mut Tree,
     input: ComputeInputOf<Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
     item: &CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, Tree::Scalar, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let style_min = constants.axes.main_size(item.min_size);
     let style_preferred = (!item.flex_basis_uses_content && item.intrinsic_flex_basis.is_none())

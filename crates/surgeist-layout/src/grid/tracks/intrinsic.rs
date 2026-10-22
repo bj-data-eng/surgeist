@@ -17,7 +17,7 @@ fn resolve_track_calculation_optional<S: LayoutScalar>(
 }
 
 #[derive(Clone, Copy)]
-pub(in crate::grid) struct IntrinsicGrid<'a, Node, S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct IntrinsicGrid<'input, 'a, Node, S: LayoutScalar = Scalar> {
     pub(in crate::grid) style: &'a GridContainerProjection<'a, S>,
     pub(in crate::grid) constants: &'a Constants<S>,
     pub(in crate::grid) sizing_flow_axes: FlowAxes,
@@ -32,10 +32,10 @@ pub(in crate::grid) struct IntrinsicGrid<'a, Node, S: LayoutScalar = Scalar> {
     pub(in crate::grid) named_rows: &'a NamedGridLines,
     pub(in crate::grid) area_facts: Option<&'a GridAreaNameFacts>,
     pub(in crate::grid) subgrid_report: &'a GridSubgridReport<Node>,
-    pub(in crate::grid) placements: &'a GridPlacementContext<Node, S>,
+    pub(in crate::grid) placements: &'a GridPlacementContext<'input, Node, S>,
 }
 
-impl<'a, Node, S: LayoutScalar> IntrinsicGrid<'a, Node, S> {
+impl<'input, 'a, Node, S: LayoutScalar> IntrinsicGrid<'input, 'a, Node, S> {
     fn gutters(self, axis: GridAxisKind) -> Option<&'a OrdinaryGridAxisGuttersOf<S>> {
         match axis {
             GridAxisKind::Column => self.column_gutters,
@@ -485,15 +485,15 @@ pub(super) struct RowIntrinsicContribution<Node, S: LayoutScalar = Scalar> {
     clippy::type_complexity,
     reason = "intrinsic sizing returns both grid axes through the session error envelope"
 )]
-pub(in crate::grid) fn intrinsic_track_sizes<Tree, M>(
+pub(in crate::grid) fn intrinsic_track_sizes<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
-    grid: IntrinsicGrid<'_, <Tree as Traverse>::Node, Tree::Scalar>,
+    grid: IntrinsicGrid<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
     available: Size<AvailableOf<Tree::Scalar>>,
     lower_bounds: IntrinsicGridLowerBounds<'_, Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, (Vec<Tree::Scalar>, Vec<Tree::Scalar>), Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let style = grid.style;
     let constants = grid.constants;
@@ -1179,7 +1179,12 @@ pub(in crate::grid) fn ancestor_baseline_member<Node: Copy, S: LayoutScalar>(
     })
 }
 
-pub(in crate::grid) struct FinalAncestorBaselineGroupInput<'a, Node, S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct FinalAncestorBaselineGroupInput<
+    'input,
+    'a,
+    Node,
+    S: LayoutScalar = Scalar,
+> {
     pub(in crate::grid) owner: Node,
     pub(in crate::grid) constants: &'a Constants<S>,
     pub(in crate::grid) axis: GridAxisKind,
@@ -1188,7 +1193,7 @@ pub(in crate::grid) struct FinalAncestorBaselineGroupInput<'a, Node, S: LayoutSc
     pub(in crate::grid) available: Size<AvailableOf<S>>,
     pub(in crate::grid) children: &'a [Node],
     pub(in crate::grid) placed_areas: &'a [Option<GridArea<S>>],
-    pub(in crate::grid) placements: &'a GridPlacementContext<Node, S>,
+    pub(in crate::grid) placements: &'a GridPlacementContext<'input, Node, S>,
     pub(in crate::grid) subgrid_report: &'a GridSubgridReport<Node>,
     pub(in crate::grid) named_columns: &'a NamedGridLines,
     pub(in crate::grid) named_rows: &'a NamedGridLines,
@@ -1214,12 +1219,12 @@ type FinalAncestorBaselineGroupLayoutResult<Tree, M> = LayoutResultOf<
     M,
 >;
 
-pub(in crate::grid) fn ancestor_baseline_group_for_final_placement<Tree, M>(
+pub(in crate::grid) fn ancestor_baseline_group_for_final_placement<'input, Tree, M>(
     tree: &mut Tree,
-    input: FinalAncestorBaselineGroupInput<'_, <Tree as Traverse>::Node, Tree::Scalar>,
+    input: FinalAncestorBaselineGroupInput<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
 ) -> FinalAncestorBaselineGroupLayoutResult<Tree, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let physical_axis = grid_axis_physical_axis(input.constants.flow_axes, input.axis);
     let mut members = input.direct_members;
@@ -1473,8 +1478,8 @@ pub(in crate::grid) fn baseline_geometry_for_intrinsic_contribution<S: LayoutSca
     }
 }
 
-pub(super) fn block_auto_margins_for_intrinsic_contribution<S: LayoutScalar>(
-    style: &GridItemProjection<S>,
+pub(super) fn block_auto_margins_for_intrinsic_contribution<'input, S: LayoutScalar>(
+    style: &GridItemProjection<'input, S>,
     constants: &Constants<S>,
     child_flow_axes: FlowAxes,
 ) -> Result<bool, LengthResolutionStatus<S>> {
@@ -1487,8 +1492,8 @@ pub(super) fn block_auto_margins_for_intrinsic_contribution<S: LayoutScalar>(
         || child_flow_axes.line_under_edge(margin)?.is_none())
 }
 
-pub(super) fn grid_axis_intrinsic_contribution_size<S: LayoutScalar>(
-    style: &GridItemProjection<S>,
+pub(super) fn grid_axis_intrinsic_contribution_size<'input, S: LayoutScalar>(
+    style: &GridItemProjection<'input, S>,
     flow_axes: FlowAxes,
     size: Size<S>,
     content_size: Size<S>,
@@ -1502,24 +1507,29 @@ pub(super) fn grid_axis_intrinsic_contribution_size<S: LayoutScalar>(
     }
 }
 
-pub(super) fn scroll_container_auto_minimum_zero_for_grid_axis<S: LayoutScalar>(
-    style: &GridItemProjection<S>,
+pub(super) fn scroll_container_auto_minimum_zero_for_grid_axis<'input, S: LayoutScalar>(
+    style: &GridItemProjection<'input, S>,
     flow_axes: FlowAxes,
     axis: GridAxisKind,
 ) -> bool {
     grid_axis_computed_overflow(style, flow_axes, axis).is_scrollable()
-        && grid_axis_size(flow_axes, style.size.clone(), axis).is_auto()
+        && grid_axis_size(
+            flow_axes,
+            Size::new(&style.size.width, &style.size.height),
+            axis,
+        )
+        .is_auto()
 }
 
-pub(in crate::grid) fn constrained_row_intrinsic_sizes<Tree, M>(
+pub(in crate::grid) fn constrained_row_intrinsic_sizes<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
-    grid: IntrinsicGrid<'_, <Tree as Traverse>::Node, Tree::Scalar>,
+    grid: IntrinsicGrid<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
     columns: &[Tree::Scalar],
     gap: LogicalSizeOf<Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, Vec<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let row_count = grid.row_tracks.len();
     let mut rows: Vec<Tree::Scalar> = vec![Tree::Scalar::ZERO; row_count];
@@ -1784,16 +1794,16 @@ where
     Ok(rows)
 }
 
-pub(in crate::grid) fn constrained_column_intrinsic_sizes<Tree, M>(
+pub(in crate::grid) fn constrained_column_intrinsic_sizes<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
-    grid: IntrinsicGrid<'_, <Tree as Traverse>::Node, Tree::Scalar>,
+    grid: IntrinsicGrid<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
     columns: &[Tree::Scalar],
     rows: &[Tree::Scalar],
     gap: LogicalSizeOf<Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, Vec<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let column_count = grid.column_tracks.len();
     let mut column_sizes: Vec<Tree::Scalar> = vec![Tree::Scalar::ZERO; column_count];
@@ -2267,8 +2277,8 @@ pub(in crate::grid) fn track_accepts_percent_min_content_span<S: LayoutScalar>(
     }
 }
 
-pub(in crate::grid) fn intrinsic_contribution_margin<S: LayoutScalar>(
-    style: &GridItemProjection<S>,
+pub(in crate::grid) fn intrinsic_contribution_margin<'input, S: LayoutScalar>(
+    style: &GridItemProjection<'input, S>,
     containing_flow_axes: crate::geometry::FlowAxes,
     containing_physical_size: Size<Option<S>>,
 ) -> Result<Edges<S>, LengthResolutionStatus<S>> {

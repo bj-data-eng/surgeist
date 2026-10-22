@@ -41,8 +41,12 @@ fn needs_intrinsic_subgrid_context<Node: Copy, S: LayoutScalar>(
     )
 }
 
-fn subgrid_child_parent_context_from_ancestor_groups<Node: Copy + PartialEq, S: LayoutScalar>(
-    input: SubgridChildParentContextInput<'_, Node, S>,
+fn subgrid_child_parent_context_from_ancestor_groups<
+    'input,
+    Node: Copy + PartialEq,
+    S: LayoutScalar,
+>(
+    input: SubgridChildParentContextInput<'input, Node, S>,
     ancestor_baseline_groups: &FinalAncestorBaselineGroups<Node, S>,
     parent_grid: Node,
 ) -> Result<GridParentContext<S, Node>, SubgridChildContextError<S>> {
@@ -666,7 +670,7 @@ fn fri08_c06_collapsed_gutter_grid_lanes_interior_collapse_keeps_zero_active_gap
 
 fn assert_fri08_c06_collapsed_gutter_inherited_grid_lanes_space_between<S: LayoutScalar>()
 where
-    OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let scalar = S::from_f64;
     for reversed in [false, true] {
@@ -766,7 +770,7 @@ where
                 },
             );
         compute_grid_with_context(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInputOf::for_child(
                 RunMode::PerformLayout,
@@ -1435,7 +1439,7 @@ fn fri05_c05_grid_geometry_measurement_remains_absent_while_grid_lanes_publish()
     };
     let mut measurement = OracleTree::new().children(0, []).style(0, style.clone());
     let measurement_output = compute_grid(
-        &mut measurement,
+        &mut measurement.borrow_compute(),
         0,
         ComputeInput::for_child(
             RunMode::ComputeSize,
@@ -1461,7 +1465,7 @@ fn fri05_c05_grid_geometry_measurement_remains_absent_while_grid_lanes_publish()
         },
     );
     let lanes_output = compute_grid(
-        &mut lanes,
+        &mut lanes.borrow_compute(),
         0,
         fri05_c05_grid_sizing_input(Size::new(Some(40.0), Some(30.0))),
     )
@@ -1513,7 +1517,7 @@ fn fri05_c05_grid_lanes_geometry_publishes_reservation_range_and_target_in_all_f
                 );
 
                 let output = compute_grid(
-                    &mut tree,
+                    &mut tree.borrow_compute(),
                     0,
                     fri05_c05_grid_sizing_input(Size::new(Some(100.0), Some(80.0))),
                 )
@@ -1601,10 +1605,14 @@ fn fri05_c05_grid_lanes_geometry_reserves_forced_stable_both_zero_tiny_and_auto(
                 ..NodeInput::default()
             },
         );
-        let geometry = compute_grid(&mut tree, 0, fri05_c05_grid_sizing_input(size.map(Some)))
-            .unwrap()
-            .scroll_geometry
-            .unwrap();
+        let geometry = compute_grid(
+            &mut tree.borrow_compute(),
+            0,
+            fri05_c05_grid_sizing_input(size.map(Some)),
+        )
+        .unwrap()
+        .scroll_geometry
+        .unwrap();
         assert_eq!(geometry.gutters().left().is_some(), expected_edges.0);
         assert_eq!(geometry.gutters().right().is_some(), expected_edges.1);
         assert_eq!(geometry.gutters().bottom().is_some(), expected_edges.2);
@@ -1643,7 +1651,7 @@ fn fri05_c05_grid_lanes_geometry_reserves_forced_stable_both_zero_tiny_and_auto(
             },
         );
     let geometry = compute_grid(
-        &mut auto,
+        &mut auto.borrow_compute(),
         0,
         fri05_c05_grid_sizing_input(Size::splat(Some(100.0))),
     )
@@ -1854,7 +1862,7 @@ fn grid_lanes_order_modified_sequence_drives_running_offsets_and_intrinsic_contr
 
 fn assert_grid_lanes_order_modified_sequence<S: LayoutScalar>()
 where
-    OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let item_style = |order, width, height| NodeInputOf::<S> {
         item_order: ItemOrder::new(order),
@@ -1918,8 +1926,9 @@ where
         absolute_row: GridPlacement::try_line(1).expect("one is a valid grid line"),
         in_flow,
     };
+    let mut compute = tree.borrow_compute();
     let item_inputs = (1..=6)
-        .map(|child| grid_child_input!(tree.node_input(child)))
+        .map(|child| grid_child_input!(compute.node_input(child)))
         .collect();
     let placements = GridPlacementContext::new_with_child_inputs(
         vec![1, 2, 3, 4, 5, 6],
@@ -1964,11 +1973,11 @@ where
         border: Edges::ZERO,
     };
     let tracks = [TrackSizingOf::AUTO, TrackSizingOf::AUTO];
-    let container_input = tree.node_input(0).clone();
-    let container_style = grid_container_projection!(&container_input);
+    let container_input = compute.node_input(0);
+    let container_style = grid_container_projection!(container_input);
     let subgrid_report = collect_subgrid_report(&container_style, &placements);
     let intrinsic_sizes = lane_intrinsic_track_sizes(
-        &mut tree,
+        &mut compute,
         0,
         LaneIntrinsicTrackSizeInput {
             container_style: &container_style,
@@ -1998,7 +2007,7 @@ where
     );
 
     let output = compute_grid(
-        &mut tree,
+        &mut compute,
         0,
         ComputeInputOf::for_child(
             RunMode::PerformLayout,
@@ -2047,7 +2056,7 @@ fn grid_lanes_replaced_normal_preplacement_starts_while_explicit_stretch_remains
 
 fn assert_grid_lanes_replaced_normal_preplacement<S: LayoutScalar>()
 where
-    OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     for grid_axis in [GridAxisKind::Column, GridAxisKind::Row] {
         for (label, replaced, item_alignment, container_alignment, stretches) in [
@@ -2104,7 +2113,7 @@ where
                 border: Edges::ZERO,
             };
             measure_lane_axis_margin_box_with_grid_axis(
-                &mut tree,
+                &mut tree.borrow_compute(),
                 1,
                 LaneAxisMarginBoxMeasureInput {
                     child_style: &child_projection,
@@ -2150,7 +2159,7 @@ fn ordinary_grid_order_modified_placement_precedes_mixed_phases_and_preserves_so
 
 fn assert_ordinary_grid_order_modified_placement<S: LayoutScalar>()
 where
-    OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     for auto_flow in [
         GridAutoFlow::Row,
@@ -2230,7 +2239,7 @@ where
             .style(8, item_style(2));
 
         let computation = compute_grid_with_report(
-            &mut tree,
+            &mut tree.borrow_compute(),
             0,
             ComputeInputOf::for_child(
                 RunMode::PerformLayout,
@@ -2315,7 +2324,7 @@ fn fri04_c03_grid_track_grid_and_lanes_consume_nested_properties_on_both_axes_an
         );
 
         let output = compute_grid(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
                 RunMode::PerformLayout,
@@ -2346,7 +2355,7 @@ fn fri04_c03_grid_track_grid_and_lanes_consume_nested_properties_on_both_axes_an
             },
         );
         let negative = compute_grid(
-            &mut negative_tree,
+            &mut negative_tree.borrow_compute(),
             1,
             ComputeInput::for_child(
                 RunMode::PerformLayout,
@@ -2389,7 +2398,7 @@ fn fri04_c03_grid_track_grid_and_lanes_preserve_missing_and_definite_property_ba
         };
         let mut definite_tree = OracleTree::new().children(1, []).style(1, style.clone());
         let definite = compute_grid(
-            &mut definite_tree,
+            &mut definite_tree.borrow_compute(),
             1,
             ComputeInput::for_child(
                 RunMode::PerformLayout,
@@ -2414,7 +2423,7 @@ fn fri04_c03_grid_track_grid_and_lanes_preserve_missing_and_definite_property_ba
 
         let mut missing_tree = OracleTree::new().children(1, []).style(1, style);
         let missing = compute_grid(
-            &mut missing_tree,
+            &mut missing_tree.borrow_compute(),
             1,
             ComputeInput::for_child(
                 RunMode::ComputeSize,
@@ -2472,7 +2481,7 @@ fn fri04_c03_grid_track_grid_and_lanes_propagate_invalid_property_numeric() {
                 }
                 let mut tree = OracleTree::new().children(1, []).style(1, style);
                 let error = compute_grid(
-                    &mut tree,
+                    &mut tree.borrow_compute(),
                     1,
                     ComputeInput::for_child(
                         RunMode::PerformLayout,
@@ -2624,7 +2633,7 @@ fn grid_lanes_content_size_uses_measured_lane_margin_boxes() {
         outputs: HashMap<u32, ComputeOutput>,
     }
 
-    impl RecursiveTree {
+    impl<'input> RecursiveTreeCompute<'input> {
         fn compute_node(
             &mut self,
             node: u32,
@@ -2651,7 +2660,10 @@ fn grid_lanes_content_size_uses_measured_lane_margin_boxes() {
         type Node = u32;
 
         type Scalar = Scalar;
-        type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
 
         fn children(&self, node: Self::Node) -> Self::Children<'_> {
             self.children[&node].iter().copied()
@@ -2666,13 +2678,53 @@ fn grid_lanes_content_size_uses_measured_lane_margin_boxes() {
         }
     }
 
-    impl Compute for RecursiveTree {
-        fn node_input(&self, node: Self::Node) -> &NodeInput {
+    struct RecursiveTreeCompute<'input> {
+        children: &'input HashMap<u32, Vec<u32>>,
+        styles: &'input HashMap<u32, NodeInput>,
+        layouts: &'input mut HashMap<u32, NodeOutput>,
+        outputs: &'input mut HashMap<u32, ComputeOutput>,
+    }
+
+    impl RecursiveTree {
+        fn borrow_compute(&mut self) -> RecursiveTreeCompute<'_> {
+            RecursiveTreeCompute {
+                children: &self.children,
+                styles: &self.styles,
+                layouts: &mut self.layouts,
+                outputs: &mut self.outputs,
+            }
+        }
+    }
+
+    impl<'input> Traverse for RecursiveTreeCompute<'input> {
+        type Node = u32;
+
+        type Scalar = Scalar;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
+
+        fn children(&self, node: Self::Node) -> Self::Children<'_> {
+            self.children[&node].iter().copied()
+        }
+
+        fn child_count(&self, node: Self::Node) -> usize {
+            self.children[&node].len()
+        }
+
+        fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+            self.children[&node][index]
+        }
+    }
+
+    impl<'input> Compute<'input> for RecursiveTreeCompute<'input> {
+        fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             &self.styles[&node]
         }
 
-        fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-            LayoutInputOf::box_input(self.node_input(node).clone())
+        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
+            crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
         fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
@@ -2720,6 +2772,7 @@ fn grid_lanes_content_size_uses_measured_lane_margin_boxes() {
         .insert(3, ComputeOutput::from_outer_size(Size::new(20.0, 15.0)));
 
     let output = tree
+        .borrow_compute()
         .compute_node(
             1,
             ComputeInput::for_child(
@@ -2762,7 +2815,7 @@ fn grid_lanes_content_size_preserves_resolved_track_sum() {
         .measure(2, ComputeOutput::from_outer_size(Size::new(20.0, 10.0)));
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2869,7 +2922,7 @@ fn named_grid_lanes_intrinsic_sizing_uses_resolved_raw_grid_axis_placement() {
         .measure(3, ComputeOutput::from_outer_size(Size::new(50.0, 20.0)));
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2934,7 +2987,7 @@ fn named_grid_lanes_resolve_repeated_named_start_and_end_lines() {
         .measure(2, ComputeOutput::from_outer_size(Size::new(70.0, 0.0)));
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2992,7 +3045,7 @@ fn grid_lanes_with_rows_template_uses_columns_as_lane_axis_for_intrinsic_width()
         .measure(5, ComputeOutput::from_outer_size(Size::new(73.0, 30.0)));
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3195,7 +3248,7 @@ fn grid_lanes_lane_measurement_honors_min_content_width() {
         );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3474,7 +3527,7 @@ fn named_grid_lanes_subgrid_axis_uses_inherited_line_names() {
 
 fn assert_logical_inherited_grid_axis_contexts<S: LayoutScalar>()
 where
-    OracleTreeOf<S>: Compute<Node = u32, Scalar = S>,
+    OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let scalar = S::from_f64;
     let parent_columns = [scalar(30.0), scalar(40.0)];
@@ -3613,7 +3666,7 @@ where
                 .children(1, [])
                 .style(1, child_style);
             let output = compute_grid_with_context(
-                &mut tree,
+                &mut tree.borrow_compute(),
                 1,
                 ComputeInputOf::for_child(
                     RunMode::PerformLayout,
@@ -3687,7 +3740,7 @@ fn subgrid_template_resolves_to_empty_explicit_tracks_and_grows_implicit_tracks(
     }
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3755,7 +3808,7 @@ fn row_subgrid_intrinsic_width_uses_inherited_rows_for_column_auto_flow() {
         );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3825,7 +3878,7 @@ fn row_subgrid_constrained_sizing_keeps_fixed_descendants_when_sibling_uses_perc
         );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3922,7 +3975,7 @@ fn row_subgrid_auto_track_sizing_fixed_then_auto_uses_descendant_contribution_on
     );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3954,7 +4007,7 @@ fn row_subgrid_auto_track_sizing_auto_then_fixed_uses_descendant_contribution_on
     );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4026,7 +4079,7 @@ fn row_subgrid_intrinsic_width_accumulates_standalone_percent_columns() {
         .style(4, NodeInput::default());
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4095,7 +4148,7 @@ fn vertical_intrinsic_subgrid_final_sizing_keeps_definite_physical_height() {
     };
 
     let output = compute_grid_with_context(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4385,7 +4438,7 @@ fn grid_subgrid_declaration_without_parent_grid_keeps_ordinary_grid_fallback() {
     tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(20.0, 10.0)));
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4752,12 +4805,12 @@ fn fri06_c12_t08_nested_inherited_row_baseline_delta(
     tree = tree.measure(3, direct).measure(5, nested);
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         Size::new(Available::Definite(140.0), Available::Definite(80.0)),
     )
     .expect("nested inherited-row layout computes");
-    round_layout(&mut tree, 1).expect("nested inherited-row layout rounds");
+    round_layout(&mut tree.borrow_compute(), 1).expect("nested inherited-row layout rounds");
 
     let direct_layout = tree.final_layout(3).expect("direct member is laid out");
     let nested_grid = tree.final_layout(4).expect("nested grid is laid out");
@@ -4934,7 +4987,7 @@ fn nested_subgrid_percent_columns_rerun_rows_after_inherited_width_and_margin() 
         .measure(4, ComputeOutput::from_outer_size(Size::new(100.0, 64.0)));
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4953,7 +5006,7 @@ fn nested_subgrid_percent_columns_rerun_rows_after_inherited_width_and_margin() 
         ),
     )
     .unwrap();
-    tree.set_unrounded(
+    tree.borrow_compute().set_unrounded(
         1,
         NodeOutput {
             size: output.size,
@@ -4961,7 +5014,7 @@ fn nested_subgrid_percent_columns_rerun_rows_after_inherited_width_and_margin() 
             ..NodeOutput::new()
         },
     );
-    round_layout(&mut tree, 1).unwrap();
+    round_layout(&mut tree.borrow_compute(), 1).unwrap();
 
     assert_eq!(output.size.height, 96.0);
     assert_eq!(tree.final_layout(2).unwrap().size, Size::new(85.0, 96.0));
@@ -5021,7 +5074,7 @@ fn row_subgrid_percent_column_leaf_uses_spanned_inline_size_for_row_contribution
         .measure(3, ComputeOutput::from_outer_size(Size::new(100.0, 40.0)));
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -5040,7 +5093,7 @@ fn row_subgrid_percent_column_leaf_uses_spanned_inline_size_for_row_contribution
         ),
     )
     .unwrap();
-    tree.set_unrounded(
+    tree.borrow_compute().set_unrounded(
         1,
         NodeOutput {
             size: output.size,
@@ -5048,7 +5101,7 @@ fn row_subgrid_percent_column_leaf_uses_spanned_inline_size_for_row_contribution
             ..NodeOutput::new()
         },
     );
-    round_layout(&mut tree, 1).unwrap();
+    round_layout(&mut tree.borrow_compute(), 1).unwrap();
 
     assert_eq!(output.size, Size::new(100.0, 90.0));
     assert_eq!(tree.final_layout(2).unwrap().size, Size::new(100.0, 90.0));
@@ -5128,7 +5181,7 @@ fn orthogonal_nested_subgrid_width_includes_full_horizontal_leaf_contribution() 
         .measure(6, ComputeOutput::from_outer_size(Size::new(72.0, 24.0)));
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -5188,7 +5241,7 @@ fn grid_auto_size_ignores_ineligible_row_subgrid_when_resolving_percent_columns(
     );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -5280,12 +5333,12 @@ fn subgrid_intrinsic_row_sizing_uses_subgrid_content_not_parent_height() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 1).unwrap();
+    round_layout(&mut tree.borrow_compute(), 1).unwrap();
     let child = tree.final_layout(2).expect("child grid should be laid out");
     let subgrid = tree.final_layout(3).expect("subgrid should be laid out");
 
@@ -5334,7 +5387,7 @@ fn lane_axis_margin_box_measurement_resolves_affine_margins_against_grid_axis() 
     let container_projection = grid_container_projection!(&container_style);
 
     let measured = measure_lane_axis_margin_box_with_grid_axis(
-        &mut tree,
+        &mut tree.borrow_compute(),
         LaneMarginMeasureTree::CHILD,
         LaneAxisMarginBoxMeasureInput {
             child_style: &child_projection,
@@ -5373,7 +5426,10 @@ impl LaneMarginMeasureTree {
 impl Traverse for LaneMarginMeasureTree {
     type Node = usize;
     type Scalar = Scalar;
-    type Children<'a> = std::vec::IntoIter<Self::Node>;
+    type Children<'a>
+        = std::vec::IntoIter<Self::Node>
+    where
+        Self: 'a;
 
     fn children(&self, node: Self::Node) -> Self::Children<'_> {
         match node {
@@ -5392,14 +5448,60 @@ impl Traverse for LaneMarginMeasureTree {
     }
 }
 
-impl Compute for LaneMarginMeasureTree {
-    fn node_input(&self, node: Self::Node) -> &NodeInput {
-        assert_eq!(node, Self::CHILD);
-        &self.child_style
+struct LaneMarginMeasureTreeCompute<'input> {
+    child_style: &'input NodeInput,
+    child_output: ComputeOutput,
+    last_input: &'input mut Option<ComputeInput>,
+}
+
+impl LaneMarginMeasureTree {
+    fn borrow_compute(&mut self) -> LaneMarginMeasureTreeCompute<'_> {
+        LaneMarginMeasureTreeCompute {
+            child_style: &self.child_style,
+            child_output: self.child_output,
+            last_input: &mut self.last_input,
+        }
+    }
+}
+
+impl LaneMarginMeasureTreeCompute<'_> {
+    const ROOT: usize = LaneMarginMeasureTree::ROOT;
+    const CHILD: usize = LaneMarginMeasureTree::CHILD;
+}
+
+impl<'input> Traverse for LaneMarginMeasureTreeCompute<'input> {
+    type Node = usize;
+    type Scalar = Scalar;
+    type Children<'a>
+        = std::vec::IntoIter<Self::Node>
+    where
+        Self: 'a;
+
+    fn children(&self, node: Self::Node) -> Self::Children<'_> {
+        match node {
+            Self::ROOT => vec![Self::CHILD].into_iter(),
+            _ => Vec::new().into_iter(),
+        }
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-        LayoutInputOf::box_input(self.node_input(node).clone())
+    fn child_count(&self, node: Self::Node) -> usize {
+        usize::from(node == Self::ROOT)
+    }
+
+    fn child(&self, _node: Self::Node, index: usize) -> Self::Node {
+        assert_eq!(index, 0);
+        Self::CHILD
+    }
+}
+
+impl<'input> Compute<'input> for LaneMarginMeasureTreeCompute<'input> {
+    fn node_input(&self, node: Self::Node) -> &'input NodeInput {
+        assert_eq!(node, Self::CHILD);
+        self.child_style
+    }
+
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
+        crate::LayoutInputViewOf::Box(self.node_input(node))
     }
 
     fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutput) {
@@ -5413,7 +5515,7 @@ impl Compute for LaneMarginMeasureTree {
     ) -> crate::LayoutResultOf<Self::Node, crate::ComputeOutputOf<Self::Scalar>, Self::Scalar> {
         Ok({
             assert_eq!(node, Self::CHILD);
-            self.last_input = Some(input);
+            *self.last_input = Some(input);
             self.child_output
         })
     }
@@ -5616,7 +5718,10 @@ fn grid_lanes_compute_result_accepts_non_default_scalar() {
     impl Traverse for F64GridTree {
         type Node = usize;
         type Scalar = f64;
-        type Children<'a> = std::iter::Copied<std::slice::Iter<'a, usize>>;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, usize>>
+        where
+            Self: 'a;
 
         fn children(&self, node: Self::Node) -> Self::Children<'_> {
             self.children[node].iter().copied()
@@ -5631,13 +5736,50 @@ fn grid_lanes_compute_result_accepts_non_default_scalar() {
         }
     }
 
-    impl Compute for F64GridTree {
-        fn node_input(&self, node: Self::Node) -> &NodeInputOf<f64> {
+    struct F64GridTreeCompute<'input> {
+        styles: &'input Vec<NodeInputOf<f64>>,
+        children: &'input Vec<Vec<usize>>,
+        layouts: &'input mut Vec<NodeOutputOf<f64>>,
+    }
+
+    impl F64GridTree {
+        fn borrow_compute(&mut self) -> F64GridTreeCompute<'_> {
+            F64GridTreeCompute {
+                styles: &self.styles,
+                children: &self.children,
+                layouts: &mut self.layouts,
+            }
+        }
+    }
+
+    impl<'input> Traverse for F64GridTreeCompute<'input> {
+        type Node = usize;
+        type Scalar = f64;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, usize>>
+        where
+            Self: 'a;
+
+        fn children(&self, node: Self::Node) -> Self::Children<'_> {
+            self.children[node].iter().copied()
+        }
+
+        fn child_count(&self, node: Self::Node) -> usize {
+            self.children[node].len()
+        }
+
+        fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+            self.children[node][index]
+        }
+    }
+
+    impl<'input> Compute<'input> for F64GridTreeCompute<'input> {
+        fn node_input(&self, node: Self::Node) -> &'input NodeInputOf<f64> {
             &self.styles[node]
         }
 
-        fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-            LayoutInputOf::box_input(self.node_input(node).clone())
+        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
+            crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
         fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutputOf<f64>) {
@@ -5693,7 +5835,7 @@ fn grid_lanes_compute_result_accepts_non_default_scalar() {
     };
 
     let computation = compute_grid_with_report(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         ComputeInputOf::for_child(
             RunMode::PerformLayout,
@@ -6475,7 +6617,7 @@ fn vertical_subgrid_percentage_edges_use_physical_area_basis() {
         padding: Edges::all(Length::percent(0.1)),
         ..NodeInput::default()
     };
-    let tree = OracleTree::new()
+    let mut tree = OracleTree::new()
         .children(2, [3])
         .children(3, [])
         .style(2, child_style.clone())
@@ -6500,8 +6642,8 @@ fn vertical_subgrid_percentage_edges_use_physical_area_basis() {
             row: subgrid_axis_report(&parent_style, &child_style, GridAxisKind::Row),
         }],
     };
-    let report = collect_grid_subgrid_intrinsic_traversal::<OracleTree, core::convert::Infallible>(
-        &tree,
+    let report = collect_grid_subgrid_intrinsic_traversal::<_, core::convert::Infallible>(
+        &tree.borrow_compute(),
         GridSubgridIntrinsicTraversalInput {
             axis: GridAxisKind::Column,
             containing_flow_axes: crate::geometry::FlowAxes::new(
@@ -6547,7 +6689,7 @@ fn orthogonal_subgrid_percentage_edges_use_containing_physical_area_basis() {
         padding: Edges::all(Length::percent(0.1)),
         ..NodeInput::default()
     };
-    let tree = OracleTree::new()
+    let mut tree = OracleTree::new()
         .children(2, [3])
         .children(3, [])
         .style(2, child_style.clone())
@@ -6572,8 +6714,8 @@ fn orthogonal_subgrid_percentage_edges_use_containing_physical_area_basis() {
             row: subgrid_axis_report(&parent_style, &child_style, GridAxisKind::Row),
         }],
     };
-    let report = collect_grid_subgrid_intrinsic_traversal::<OracleTree, core::convert::Infallible>(
-        &tree,
+    let report = collect_grid_subgrid_intrinsic_traversal::<_, core::convert::Infallible>(
+        &tree.borrow_compute(),
         GridSubgridIntrinsicTraversalInput {
             axis: GridAxisKind::Column,
             containing_flow_axes: crate::geometry::FlowAxes::new(
@@ -6651,7 +6793,7 @@ fn nested_subgrid_same_flow_projects_physical_edge_sums_before_local_track_sizin
         ),
         ..NodeInput::default()
     };
-    let tree = OracleTree::new()
+    let mut tree = OracleTree::new()
         .children(2, [3])
         .children(3, [4])
         .children(4, [])
@@ -6675,8 +6817,8 @@ fn nested_subgrid_same_flow_projects_physical_edge_sums_before_local_track_sizin
             row: subgrid_axis_report(&parent_style, &outer_style, GridAxisKind::Row),
         }],
     };
-    let report = collect_grid_subgrid_intrinsic_traversal::<OracleTree, core::convert::Infallible>(
-        &tree,
+    let report = collect_grid_subgrid_intrinsic_traversal::<_, core::convert::Infallible>(
+        &tree.borrow_compute(),
         GridSubgridIntrinsicTraversalInput {
             axis: GridAxisKind::Row,
             containing_flow_axes: crate::geometry::FlowAxes::new(
@@ -7243,15 +7385,16 @@ fn subgrid_track_inheritance_rejects_invalid_parent_spans() {
     }
 }
 
-fn traversal_subgrid(
+fn traversal_subgrid<'input>(
+    default_input: &'input NodeInput,
     node: u32,
     start: usize,
     end: usize,
-    children: Vec<SubgridTraversalChild<u32>>,
-) -> SubgridTraversalChild<u32> {
+    children: Vec<SubgridTraversalChild<'input, u32>>,
+) -> SubgridTraversalChild<'input, u32> {
     SubgridTraversalChild::Subgrid(SubgridTraversalNode {
         node,
-        style: default_grid_item_projection(),
+        style: default_grid_item_projection(default_input),
         axis: SubgridTraversalAxis::Inherited,
         reversed: false,
         span_in_parent: GridTrackSpan::new(start, end),
@@ -7271,11 +7414,12 @@ fn traversal_subgrid(
 
 #[test]
 fn subgrid_traversal_keeps_edge_lower_bounds_off_non_intrinsic_tracks() {
+    let default_input = crate::NodeInputOf::default();
     let report = traverse_subgrid_intrinsic(SubgridTraversalInput {
         ancestor_track_intrinsic_min_eligibility: IntrinsicMinTrackFacts::Known(&[false, false]),
         root_children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
             node: 1,
-            style: default_grid_item_projection(),
+            style: default_grid_item_projection(&default_input),
             axis: SubgridTraversalAxis::Inherited,
             reversed: false,
             span_in_parent: GridTrackSpan::new(1, 3),
@@ -7302,13 +7446,14 @@ fn subgrid_traversal_keeps_edge_lower_bounds_off_non_intrinsic_tracks() {
 
 #[test]
 fn subgrid_traversal_places_edge_lower_bounds_in_ancestor_track_space() {
+    let default_input = crate::NodeInputOf::default();
     let report = traverse_subgrid_intrinsic(SubgridTraversalInput {
         ancestor_track_intrinsic_min_eligibility: IntrinsicMinTrackFacts::Known(&[
             true, true, true, true,
         ]),
         root_children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
             node: 1,
-            style: default_grid_item_projection(),
+            style: default_grid_item_projection(&default_input),
             axis: SubgridTraversalAxis::Inherited,
             reversed: false,
             span_in_parent: GridTrackSpan::new(2, 5),
@@ -7325,7 +7470,7 @@ fn subgrid_traversal_places_edge_lower_bounds_in_ancestor_track_space() {
             },
             parent_gap: 20.0,
             subgrid_gap: 10.0,
-            children: vec![traversal_leaf(2, 1, 2)],
+            children: vec![traversal_leaf(&default_input, 2, 1, 2)],
         })],
     })
     .unwrap();
@@ -7335,9 +7480,10 @@ fn subgrid_traversal_places_edge_lower_bounds_in_ancestor_track_space() {
 
 #[test]
 fn subgrid_traversal_reports_missing_intrinsic_min_facts() {
+    let default_input = crate::NodeInputOf::default();
     let err = traverse_subgrid_intrinsic(SubgridTraversalInput {
         ancestor_track_intrinsic_min_eligibility: IntrinsicMinTrackFacts::Unknown,
-        root_children: vec![traversal_subgrid(1, 1, 2, Vec::new())],
+        root_children: vec![traversal_subgrid(&default_input, 1, 1, 2, Vec::new())],
     })
     .unwrap_err();
 
@@ -7346,13 +7492,14 @@ fn subgrid_traversal_reports_missing_intrinsic_min_facts() {
 
 #[test]
 fn subgrid_traversal_accumulates_edge_adjustment_in_nested_translated_span() {
+    let default_input = crate::NodeInputOf::default();
     let report = traverse_subgrid_intrinsic(SubgridTraversalInput {
         ancestor_track_intrinsic_min_eligibility: IntrinsicMinTrackFacts::Known(&[
             true, true, true,
         ]),
         root_children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
             node: 1,
-            style: default_grid_item_projection(),
+            style: default_grid_item_projection(&default_input),
             axis: SubgridTraversalAxis::Inherited,
             reversed: false,
             span_in_parent: GridTrackSpan::new(1, 4),
@@ -7371,7 +7518,7 @@ fn subgrid_traversal_accumulates_edge_adjustment_in_nested_translated_span() {
             subgrid_gap: 0.0,
             children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
                 node: 2,
-                style: default_grid_item_projection(),
+                style: default_grid_item_projection(&default_input),
                 axis: SubgridTraversalAxis::Inherited,
                 reversed: false,
                 span_in_parent: GridTrackSpan::new(2, 3),
@@ -7388,7 +7535,7 @@ fn subgrid_traversal_accumulates_edge_adjustment_in_nested_translated_span() {
                 padding: SubgridAxisEdges::default(),
                 parent_gap: 0.0,
                 subgrid_gap: 0.0,
-                children: vec![traversal_leaf(3, 1, 2)],
+                children: vec![traversal_leaf(&default_input, 3, 1, 2)],
             })],
         })],
     })
@@ -7403,13 +7550,14 @@ fn subgrid_traversal_accumulates_edge_adjustment_in_nested_translated_span() {
 
 #[test]
 fn subgrid_traversal_accumulates_gap_adjustment_through_nested_subgrids() {
+    let default_input = crate::NodeInputOf::default();
     let report = traverse_subgrid_intrinsic(SubgridTraversalInput {
         ancestor_track_intrinsic_min_eligibility: IntrinsicMinTrackFacts::Known(&[
             true, true, true,
         ]),
         root_children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
             node: 1,
-            style: default_grid_item_projection(),
+            style: default_grid_item_projection(&default_input),
             axis: SubgridTraversalAxis::Inherited,
             reversed: false,
             span_in_parent: GridTrackSpan::new(1, 4),
@@ -7425,7 +7573,7 @@ fn subgrid_traversal_accumulates_gap_adjustment_through_nested_subgrids() {
             subgrid_gap: 20.0,
             children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
                 node: 2,
-                style: default_grid_item_projection(),
+                style: default_grid_item_projection(&default_input),
                 axis: SubgridTraversalAxis::Inherited,
                 reversed: false,
                 span_in_parent: GridTrackSpan::new(2, 3),
@@ -7439,7 +7587,7 @@ fn subgrid_traversal_accumulates_gap_adjustment_through_nested_subgrids() {
                 padding: SubgridAxisEdges::default(),
                 parent_gap: 20.0,
                 subgrid_gap: 28.0,
-                children: vec![traversal_leaf(3, 1, 2)],
+                children: vec![traversal_leaf(&default_input, 3, 1, 2)],
             })],
         })],
     })
@@ -7453,13 +7601,14 @@ fn subgrid_traversal_accumulates_gap_adjustment_through_nested_subgrids() {
 
 #[test]
 fn subgrid_traversal_applies_gap_adjustment_to_internal_edges() {
+    let default_input = crate::NodeInputOf::default();
     let report = traverse_subgrid_intrinsic(SubgridTraversalInput {
         ancestor_track_intrinsic_min_eligibility: IntrinsicMinTrackFacts::Known(&[
             true, true, true,
         ]),
         root_children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
             node: 1,
-            style: default_grid_item_projection(),
+            style: default_grid_item_projection(&default_input),
             axis: SubgridTraversalAxis::Inherited,
             reversed: false,
             span_in_parent: GridTrackSpan::new(1, 4),
@@ -7473,7 +7622,7 @@ fn subgrid_traversal_applies_gap_adjustment_to_internal_edges() {
             padding: SubgridAxisEdges::default(),
             parent_gap: 10.0,
             subgrid_gap: 20.0,
-            children: vec![traversal_leaf(2, 2, 3)],
+            children: vec![traversal_leaf(&default_input, 2, 2, 3)],
         })],
     })
     .unwrap();
@@ -7487,13 +7636,14 @@ fn subgrid_traversal_applies_gap_adjustment_to_internal_edges() {
 
 #[test]
 fn subgrid_traversal_uses_positive_gap_adjustments_as_empty_track_lower_bounds() {
+    let default_input = crate::NodeInputOf::default();
     let report = traverse_subgrid_intrinsic(SubgridTraversalInput {
         ancestor_track_intrinsic_min_eligibility: IntrinsicMinTrackFacts::Known(&[
             true, true, true, true,
         ]),
         root_children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
             node: 1,
-            style: default_grid_item_projection(),
+            style: default_grid_item_projection(&default_input),
             axis: SubgridTraversalAxis::Inherited,
             reversed: false,
             span_in_parent: GridTrackSpan::new(1, 5),
@@ -7517,13 +7667,14 @@ fn subgrid_traversal_uses_positive_gap_adjustments_as_empty_track_lower_bounds()
 
 #[test]
 fn subgrid_traversal_combines_empty_edge_and_gap_lower_bounds() {
+    let default_input = crate::NodeInputOf::default();
     let report = traverse_subgrid_intrinsic(SubgridTraversalInput {
         ancestor_track_intrinsic_min_eligibility: IntrinsicMinTrackFacts::Known(&[
             true, true, true, true,
         ]),
         root_children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
             node: 1,
-            style: default_grid_item_projection(),
+            style: default_grid_item_projection(&default_input),
             axis: SubgridTraversalAxis::Inherited,
             reversed: false,
             span_in_parent: GridTrackSpan::new(1, 5),
@@ -7550,11 +7701,12 @@ fn subgrid_traversal_combines_empty_edge_and_gap_lower_bounds() {
 
 #[test]
 fn subgrid_traversal_ignores_gap_adjustment_for_single_track_subgrid() {
+    let default_input = crate::NodeInputOf::default();
     let report = traverse_subgrid_intrinsic(SubgridTraversalInput {
         ancestor_track_intrinsic_min_eligibility: IntrinsicMinTrackFacts::Known(&[true]),
         root_children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
             node: 1,
-            style: default_grid_item_projection(),
+            style: default_grid_item_projection(&default_input),
             axis: SubgridTraversalAxis::Inherited,
             reversed: false,
             span_in_parent: GridTrackSpan::new(1, 2),
@@ -7568,7 +7720,7 @@ fn subgrid_traversal_ignores_gap_adjustment_for_single_track_subgrid() {
             padding: SubgridAxisEdges::default(),
             parent_gap: 10.0,
             subgrid_gap: 30.0,
-            children: vec![traversal_leaf(2, 1, 2)],
+            children: vec![traversal_leaf(&default_input, 2, 1, 2)],
         })],
     })
     .unwrap();
@@ -7578,11 +7730,12 @@ fn subgrid_traversal_ignores_gap_adjustment_for_single_track_subgrid() {
 
 #[test]
 fn subgrid_traversal_keeps_standalone_as_one_boundary_leaf() {
+    let default_input = crate::NodeInputOf::default();
     let report = traverse_subgrid_intrinsic(SubgridTraversalInput {
         ancestor_track_intrinsic_min_eligibility: IntrinsicMinTrackFacts::Known(&[true]),
         root_children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
             node: 1,
-            style: default_grid_item_projection(),
+            style: default_grid_item_projection(&default_input),
             axis: SubgridTraversalAxis::Standalone,
             reversed: false,
             span_in_parent: GridTrackSpan::new(1, 2),
@@ -7596,7 +7749,7 @@ fn subgrid_traversal_keeps_standalone_as_one_boundary_leaf() {
             padding: SubgridAxisEdges::default(),
             parent_gap: 0.0,
             subgrid_gap: 0.0,
-            children: vec![traversal_leaf(2, 1, 2)],
+            children: vec![traversal_leaf(&default_input, 2, 1, 2)],
         })],
     })
     .unwrap();

@@ -64,6 +64,7 @@ pub(super) struct GridContainerProjection<'a, S: LayoutScalar> {
     pub(super) inset: &'a Edges<LengthAutoOf<S>>,
     pub(super) size: &'a Size<PreferredSizeOf<S>>,
     pub(super) min_size: &'a Size<MinSizeOf<S>>,
+    suppressed_intrinsic_minimum: Size<bool>,
     pub(super) max_size: &'a Size<MaxSizeOf<S>>,
     pub(super) aspect_ratio: &'a Option<AspectRatioOf<S>>,
     pub(super) margin: &'a Edges<LengthAutoOf<S>>,
@@ -86,6 +87,28 @@ pub(super) struct GridContainerProjection<'a, S: LayoutScalar> {
 }
 
 impl<'a, S: LayoutScalar> GridContainerProjection<'a, S> {
+    pub(super) fn with_minimum<R>(
+        &self,
+        axis: crate::PhysicalAxis,
+        consume: impl FnOnce(&MinSizeOf<S>) -> R,
+    ) -> R {
+        let (suppressed, minimum) = match axis {
+            crate::PhysicalAxis::Horizontal => (
+                self.suppressed_intrinsic_minimum.width,
+                &self.min_size.width,
+            ),
+            crate::PhysicalAxis::Vertical => (
+                self.suppressed_intrinsic_minimum.height,
+                &self.min_size.height,
+            ),
+        };
+        if suppressed {
+            consume(&MinSizeOf::AUTO)
+        } else {
+            consume(minimum)
+        }
+    }
+
     #[must_use]
     pub(super) fn from_node(input: &'a NodeInputOf<S>) -> Self {
         Self {
@@ -107,6 +130,7 @@ impl<'a, S: LayoutScalar> GridContainerProjection<'a, S> {
             inset: &input.inset,
             size: &input.size,
             min_size: &input.min_size,
+            suppressed_intrinsic_minimum: Size::new(false, false),
             max_size: &input.max_size,
             aspect_ratio: &input.aspect_ratio,
             margin: &input.margin,
@@ -130,32 +154,32 @@ impl<'a, S: LayoutScalar> GridContainerProjection<'a, S> {
     }
 }
 
-/// Owns the complete public snapshot only long enough to lend a container projection.
-#[derive(Clone, Debug)]
-pub(super) struct GridContainerInput<S: LayoutScalar> {
-    source: NodeInputOf<S>,
+/// Immutable container facts with a local intrinsic-probe minimum override.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct GridContainerInput<'input, S: LayoutScalar> {
+    source: &'input NodeInputOf<S>,
+    suppressed_intrinsic_minimum: Size<bool>,
 }
 
-impl<S: LayoutScalar> GridContainerInput<S> {
+impl<'input, S: LayoutScalar> GridContainerInput<'input, S> {
     #[must_use]
-    pub(super) fn from_node(source: &NodeInputOf<S>) -> Self {
+    pub(super) fn from_node(source: &'input NodeInputOf<S>) -> Self {
         Self {
-            source: source.clone(),
+            source,
+            suppressed_intrinsic_minimum: Size::new(false, false),
         }
     }
 
     #[must_use]
-    pub(super) fn projection(&self) -> GridContainerProjection<'_, S> {
-        GridContainerProjection::from_node(&self.source)
+    pub(super) fn projection(&self) -> GridContainerProjection<'input, S> {
+        let mut projection = GridContainerProjection::from_node(self.source);
+        projection.suppressed_intrinsic_minimum = self.suppressed_intrinsic_minimum;
+        projection
     }
 
     pub(super) fn suppress_intrinsic_minimum(&mut self, axes: Size<bool>) {
-        if axes.width {
-            self.source.min_size.width = MinSizeOf::AUTO;
-        }
-        if axes.height {
-            self.source.min_size.height = MinSizeOf::AUTO;
-        }
+        self.suppressed_intrinsic_minimum.width |= axes.width;
+        self.suppressed_intrinsic_minimum.height |= axes.height;
     }
 }
 
@@ -182,9 +206,9 @@ pub(super) fn order_modified_indexes(
     crate::node_input::item_order_permutation(items)
 }
 
-/// Owned grid-item facts settled once while collecting one child.
+/// Borrowed grid-item facts settled once while collecting one child.
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct GridItemProjection<S: LayoutScalar> {
+pub(super) struct GridItemProjection<'input, S: LayoutScalar> {
     pub(super) display: Display,
     pub(super) item_is_table: bool,
     pub(super) item_is_replaced: bool,
@@ -204,9 +228,9 @@ pub(super) struct GridItemProjection<S: LayoutScalar> {
     pub(super) scroll_snap_stop: ScrollSnapStop,
     pub(super) position: Position,
     pub(super) inset: Edges<LengthAutoOf<S>>,
-    pub(super) size: Size<PreferredSizeOf<S>>,
-    pub(super) min_size: Size<MinSizeOf<S>>,
-    pub(super) max_size: Size<MaxSizeOf<S>>,
+    pub(super) size: &'input Size<PreferredSizeOf<S>>,
+    pub(super) min_size: &'input Size<MinSizeOf<S>>,
+    pub(super) max_size: &'input Size<MaxSizeOf<S>>,
     pub(super) aspect_ratio: Option<AspectRatioOf<S>>,
     pub(super) margin: Edges<LengthAutoOf<S>>,
     pub(super) padding: Edges<LengthOf<S>>,
@@ -215,13 +239,13 @@ pub(super) struct GridItemProjection<S: LayoutScalar> {
     pub(super) justify_self: Option<AlignItems>,
     pub(super) grid_column: GridPlacement,
     pub(super) grid_row: GridPlacement,
-    pub(super) raw_grid_column: RawGridPlacement,
-    pub(super) raw_grid_row: RawGridPlacement,
+    pub(super) raw_grid_column: &'input RawGridPlacement,
+    pub(super) raw_grid_row: &'input RawGridPlacement,
 }
 
-impl<S: LayoutScalar> GridItemProjection<S> {
+impl<'input, S: LayoutScalar> GridItemProjection<'input, S> {
     #[must_use]
-    pub(super) fn from_node(input: &NodeInputOf<S>) -> Self {
+    pub(super) fn from_node(input: &'input NodeInputOf<S>) -> Self {
         Self {
             display: input.display,
             item_is_table: input.item_is_table,
@@ -242,9 +266,9 @@ impl<S: LayoutScalar> GridItemProjection<S> {
             scroll_snap_stop: input.scroll_snap_stop,
             position: input.position,
             inset: input.inset,
-            size: input.size.clone(),
-            min_size: input.min_size.clone(),
-            max_size: input.max_size.clone(),
+            size: &input.size,
+            min_size: &input.min_size,
+            max_size: &input.max_size,
             aspect_ratio: input.aspect_ratio,
             margin: input.margin,
             padding: input.padding,
@@ -253,8 +277,8 @@ impl<S: LayoutScalar> GridItemProjection<S> {
             justify_self: input.justify_self,
             grid_column: input.grid_column,
             grid_row: input.grid_row,
-            raw_grid_column: input.raw_grid_column.clone(),
-            raw_grid_row: input.raw_grid_row.clone(),
+            raw_grid_column: &input.raw_grid_column,
+            raw_grid_row: &input.raw_grid_row,
         }
     }
 
@@ -266,9 +290,9 @@ impl<S: LayoutScalar> GridItemProjection<S> {
         ) -> R,
     ) -> R {
         let common = CommonBoxProjection {
-            size: &self.size,
-            min_size: &self.min_size,
-            max_size: &self.max_size,
+            size: self.size,
+            min_size: self.min_size,
+            max_size: self.max_size,
             aspect_ratio: &self.aspect_ratio,
             margin: &self.margin,
             padding: &self.padding,
@@ -302,15 +326,15 @@ impl<S: LayoutScalar> GridItemProjection<S> {
 
 /// Distinct settled roles collected while the complete child input is available.
 #[derive(Clone, Debug)]
-pub(super) struct GridChildInput<S: LayoutScalar> {
-    item: GridItemProjection<S>,
-    nested_container: Option<GridContainerInput<S>>,
+pub(super) struct GridChildInput<'input, S: LayoutScalar> {
+    item: GridItemProjection<'input, S>,
+    nested_container: Option<GridContainerInput<'input, S>>,
     requested_subgrid_axes: Size<bool>,
 }
 
-impl<S: LayoutScalar> GridChildInput<S> {
+impl<'input, S: LayoutScalar> GridChildInput<'input, S> {
     #[must_use]
-    pub(super) fn from_node(input: &NodeInputOf<S>) -> Self {
+    pub(super) fn from_node(input: &'input NodeInputOf<S>) -> Self {
         Self {
             item: GridItemProjection::from_node(input),
             nested_container: input
@@ -331,12 +355,12 @@ impl<S: LayoutScalar> GridChildInput<S> {
     }
 
     #[must_use]
-    pub(super) fn item(&self) -> &GridItemProjection<S> {
+    pub(super) fn item(&self) -> &GridItemProjection<'input, S> {
         &self.item
     }
 
     #[must_use]
-    pub(super) fn nested_container(&self) -> Option<&GridContainerInput<S>> {
+    pub(super) fn nested_container(&self) -> Option<&GridContainerInput<'input, S>> {
         self.nested_container.as_ref()
     }
 
@@ -349,7 +373,7 @@ impl<S: LayoutScalar> GridChildInput<S> {
     }
 }
 
-impl<S: LayoutScalar> GridOverflowFacts for GridItemProjection<S> {
+impl<'input, S: LayoutScalar> GridOverflowFacts for GridItemProjection<'input, S> {
     fn computed_overflow(&self) -> ComputedOverflow {
         self.overflow
     }
@@ -459,6 +483,48 @@ mod tests {
     #[test]
     fn grid_container_access_reuses_backing_f64() {
         assert_grid_container_access_reuses_backing::<f64>();
+    }
+
+    #[test]
+    fn borrowed_input_grid_minimum_overlay_preserves_source_in_both_scalar_lanes() {
+        fn assert_lane<S: LayoutScalar>() {
+            let source = NodeInputOf::<S> {
+                display: Display::Grid,
+                min_size: Size::new(MinSizeOf::MIN_CONTENT, MinSizeOf::MAX_CONTENT),
+                grid_template_columns: vec![TrackComponentOf::MAX_CONTENT],
+                ..NodeInputOf::default()
+            };
+            let mut input = GridContainerInput::from_node(&source);
+            input.suppress_intrinsic_minimum(Size::new(true, false));
+            let projection = input.projection();
+            assert!(projection.with_minimum(PhysicalAxis::Horizontal, MinSizeOf::is_auto));
+            assert!(projection.with_minimum(PhysicalAxis::Vertical, |minimum| {
+                core::ptr::eq(minimum, &source.min_size.height)
+            }));
+            let phases = super::super::standalone_intrinsic_minimum_phases(
+                &projection,
+                &super::super::GridParentContext::<S, u32>::none(),
+            );
+            assert_eq!(phases.width, None);
+            assert_eq!(
+                phases.height,
+                Some(super::super::StandaloneIntrinsicMinimum::MaxContent)
+            );
+            input.suppress_intrinsic_minimum(Size::new(false, true));
+            let suppressed = input.projection();
+            assert!(suppressed.with_minimum(PhysicalAxis::Horizontal, MinSizeOf::is_auto));
+            assert!(suppressed.with_minimum(PhysicalAxis::Vertical, MinSizeOf::is_auto));
+            assert_eq!(
+                source.min_size,
+                Size::new(MinSizeOf::MIN_CONTENT, MinSizeOf::MAX_CONTENT)
+            );
+            assert!(core::ptr::eq(
+                suppressed.grid_template_columns,
+                source.grid_template_columns.as_slice()
+            ));
+        }
+        assert_lane::<f32>();
+        assert_lane::<f64>();
     }
 
     fn assert_non_default_projection_values<S: LayoutScalar>() {
@@ -822,9 +888,9 @@ mod tests {
             expected_overflow_clip_margin
         );
         assert_eq!(projection.position, Position::Absolute);
-        assert_eq!(projection.size, expected_size);
-        assert_eq!(projection.min_size, expected_min_size);
-        assert_eq!(projection.max_size, expected_max_size);
+        assert_eq!(*projection.size, expected_size);
+        assert_eq!(*projection.min_size, expected_min_size);
+        assert_eq!(*projection.max_size, expected_max_size);
         assert_eq!(projection.aspect_ratio, expected_aspect_ratio);
         assert_eq!(projection.margin, expected_margin);
         assert_eq!(projection.padding, expected_padding);
@@ -834,8 +900,8 @@ mod tests {
         assert_eq!(projection.justify_self, Some(AlignItems::SafeCenter));
         assert_eq!(projection.grid_column, expected_column);
         assert_eq!(projection.grid_row, expected_row);
-        assert_eq!(projection.raw_grid_column, expected_raw_column);
-        assert_eq!(projection.raw_grid_row, expected_raw_row);
+        assert_eq!(*projection.raw_grid_column, expected_raw_column);
+        assert_eq!(*projection.raw_grid_row, expected_raw_row);
         assert_eq!(projection.scroll_padding, expected_scroll_padding);
         assert_eq!(projection.scroll_margin, expected_scroll_margin);
         assert_eq!(projection.scroll_snap_type, expected_snap_type);

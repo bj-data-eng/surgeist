@@ -21,14 +21,14 @@ use crate::{
     ParentFormattingContext, Point, Position, RequestedAxis, RunMode, Size, SizingMode, Traverse,
 };
 
-pub(super) fn layout_absolute_children<Tree, M>(
+pub(super) fn layout_absolute_children<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     constants: &Constants<Tree::Scalar>,
     final_scroll_box: CanonicalScrollBoxOf<Tree::Scalar>,
 ) -> FlexChildContributionsResult<Tree, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let settled_constants = constants.with_final_scroll_box(final_scroll_box);
     let constants = &settled_constants;
@@ -250,14 +250,14 @@ where
     Ok(contributions)
 }
 
-pub(super) fn layout_hidden_children<Tree, M>(
+pub(super) fn layout_hidden_children<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     containing_flow_axes: crate::geometry::FlowAxes,
     settled_auto_scrollbars: crate::scroll::SettledAutoScrollbarState,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, (), Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let children = tree.children(node).collect::<Vec<_>>();
     for (source_index, child) in children.into_iter().enumerate() {

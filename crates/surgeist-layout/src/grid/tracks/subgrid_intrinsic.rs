@@ -21,10 +21,10 @@ fn axis_available<S: LayoutScalar>(
     }
 }
 
-pub(super) struct IntrinsicGridChildInput<'a, Node, S: LayoutScalar = Scalar> {
-    pub(super) child_style: &'a GridItemProjection<S>,
-    pub(super) child_container: Option<&'a GridContainerInput<S>>,
-    pub(super) grid: IntrinsicGrid<'a, Node, S>,
+pub(super) struct IntrinsicGridChildInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
+    pub(super) child_style: &'a GridItemProjection<'input, S>,
+    pub(super) child_container: Option<&'a GridContainerInput<'input, S>>,
+    pub(super) grid: IntrinsicGrid<'input, 'a, Node, S>,
     pub(super) area: GridArea<S>,
     pub(super) columns: &'a [S],
     pub(super) rows: &'a [S],
@@ -32,13 +32,13 @@ pub(super) struct IntrinsicGridChildInput<'a, Node, S: LayoutScalar = Scalar> {
     pub(super) input: ComputeInputOf<S>,
 }
 
-pub(super) fn compute_intrinsic_grid_child<Tree, M>(
+pub(super) fn compute_intrinsic_grid_child<'input, Tree, M>(
     tree: &mut Tree,
     child: <Tree as Traverse>::Node,
-    args: IntrinsicGridChildInput<'_, <Tree as Traverse>::Node, Tree::Scalar>,
+    args: IntrinsicGridChildInput<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let IntrinsicGridChildInput {
         child_style,
@@ -265,9 +265,9 @@ fn exact_static_track_span<S: LayoutScalar>(
     Some(extent + gap * S::from_f64(gap_count as f64))
 }
 
-pub(in crate::grid) fn needs_intrinsic_subgrid_context<Node, S: LayoutScalar>(
+pub(in crate::grid) fn needs_intrinsic_subgrid_context<'input, Node, S: LayoutScalar>(
     container_style: &GridContainerProjection<'_, S>,
-    style: &GridItemProjection<S>,
+    style: &GridItemProjection<'input, S>,
     item: SubgridItemReport<Node>,
     area: GridArea<S>,
 ) -> bool
@@ -374,11 +374,11 @@ fn apply_resolved_intrinsic_subgrid_area_constraints<S: LayoutScalar>(
     }
 }
 
-pub(super) struct SubgridIntrinsicContributionInput<'a, Node, S: LayoutScalar = Scalar> {
+pub(super) struct SubgridIntrinsicContributionInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
     pub(super) owner: Node,
     pub(super) constants: &'a Constants<S>,
     pub(super) container_style: &'a GridContainerProjection<'a, S>,
-    pub(super) placements: &'a GridPlacementContext<Node, S>,
+    pub(super) placements: &'a GridPlacementContext<'input, Node, S>,
     pub(super) axis: GridAxisKind,
     pub(super) tracks: &'a [TrackSizingOf<S>],
     pub(super) sizes: &'a mut [S],
@@ -409,12 +409,12 @@ pub(super) struct SubgridIntrinsicContributionReport<Node, S: LayoutScalar = Sca
 pub(super) type SubgridIntrinsicContributionResult<Node, S, M> =
     LayoutResultOf<Node, SubgridIntrinsicContributionReport<Node, S>, S, M>;
 
-pub(super) fn apply_subgrid_intrinsic_contributions<Tree, M>(
+pub(super) fn apply_subgrid_intrinsic_contributions<'input, Tree, M>(
     tree: &mut Tree,
-    input: SubgridIntrinsicContributionInput<'_, <Tree as Traverse>::Node, Tree::Scalar>,
+    input: SubgridIntrinsicContributionInput<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
 ) -> SubgridIntrinsicContributionResult<<Tree as Traverse>::Node, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     if input.tracks.is_empty() || input.subgrid_report.items.is_empty() {
         return Ok(SubgridIntrinsicContributionReport {
@@ -789,20 +789,25 @@ where
     })
 }
 
-fn scroll_container_auto_minimum_zero<S: LayoutScalar>(
-    style: &GridItemProjection<S>,
+fn scroll_container_auto_minimum_zero<'input, S: LayoutScalar>(
+    style: &GridItemProjection<'input, S>,
     flow_axes: FlowAxes,
     axis: GridAxisKind,
 ) -> bool {
     scroll_container_auto_minimum_zero_for_grid_axis(style, flow_axes, axis)
 }
 
-fn subgrid_leaf_size_depends_on_queried_axis<S: LayoutScalar>(
-    style: &GridItemProjection<S>,
+fn subgrid_leaf_size_depends_on_queried_axis<'input, S: LayoutScalar>(
+    style: &GridItemProjection<'input, S>,
     flow_axes: FlowAxes,
     axis: GridAxisKind,
 ) -> bool {
-    grid_axis_size(flow_axes, style.size.clone(), axis).depends_on_basis()
+    grid_axis_size(
+        flow_axes,
+        Size::new(&style.size.width, &style.size.height),
+        axis,
+    )
+    .depends_on_basis()
 }
 
 pub(in crate::grid) fn item_inherits_parent_axis<Node>(
@@ -824,7 +829,7 @@ where
 }
 
 #[derive(Clone, Copy)]
-pub(in crate::grid) struct PercentTrackContent<'a, Node, S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct PercentTrackContent<'input, 'a, Node, S: LayoutScalar = Scalar> {
     pub(in crate::grid) style: &'a GridContainerProjection<'a, S>,
     pub(in crate::grid) constants: &'a Constants<S>,
     pub(in crate::grid) sizing_flow_axes: FlowAxes,
@@ -837,16 +842,16 @@ pub(in crate::grid) struct PercentTrackContent<'a, Node, S: LayoutScalar = Scala
     pub(in crate::grid) column_gutters: Option<&'a OrdinaryGridAxisGuttersOf<S>>,
     pub(in crate::grid) row_gutters: Option<&'a OrdinaryGridAxisGuttersOf<S>>,
     pub(in crate::grid) lines: GridLines,
-    pub(in crate::grid) placements: &'a GridPlacementContext<Node, S>,
+    pub(in crate::grid) placements: &'a GridPlacementContext<'input, Node, S>,
 }
 
-pub(in crate::grid) fn cyclic_percent_track_content_size<Tree, M>(
+pub(in crate::grid) fn cyclic_percent_track_content_size<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
-    input: PercentTrackContent<'_, <Tree as Traverse>::Node, Tree::Scalar>,
+    input: PercentTrackContent<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, Size<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let PercentTrackContent {
         style,
@@ -1345,7 +1350,7 @@ mod tests {
         let rows = [100.0];
         let named_columns = NamedGridLines::new(GridAxisKind::Column, 1);
         let named_rows = NamedGridLines::new(GridAxisKind::Row, 1);
-        let placements = GridPlacementContext::new(Vec::<u32>::new(), Vec::new());
+        let placements = GridPlacementContext::empty();
         let subgrid_report = GridSubgridReport { items: Vec::new() };
         let parent_projection = GridContainerProjection::from_node(&parent_style);
         let child_input = GridChildInput::from_node(&child_style);
@@ -1355,7 +1360,7 @@ mod tests {
             row: subgrid_axis_report(&parent_projection, &child_input, GridAxisKind::Row),
         };
         let output = compute_intrinsic_grid_child(
-            &mut tree,
+            &mut tree.borrow_compute(),
             2,
             IntrinsicGridChildInput {
                 child_style: child_input.item(),
@@ -1460,7 +1465,7 @@ mod tests {
         let rows = [100.0];
         let named_columns = NamedGridLines::new(GridAxisKind::Column, 2);
         let named_rows = NamedGridLines::new(GridAxisKind::Row, 1);
-        let placements = GridPlacementContext::new(Vec::<u32>::new(), Vec::new());
+        let placements = GridPlacementContext::empty();
         let subgrid_report = GridSubgridReport { items: Vec::new() };
         let parent_projection = GridContainerProjection::from_node(&parent_style);
         let child_input = GridChildInput::from_node(&child_style);
@@ -1470,7 +1475,7 @@ mod tests {
             row: subgrid_axis_report(&parent_projection, &child_input, GridAxisKind::Row),
         };
         compute_intrinsic_grid_child(
-            &mut tree,
+            &mut tree.borrow_compute(),
             2,
             IntrinsicGridChildInput {
                 child_style: child_input.item(),

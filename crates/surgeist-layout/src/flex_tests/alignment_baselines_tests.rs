@@ -439,8 +439,8 @@ impl<S: LayoutScalar> LayoutTree for Fri07C02CollapseRoundBaselineTree<S> {
         &self.styles[&node]
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<S> {
-        LayoutInputOf::box_input(self.styles[&node].clone())
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
+        crate::LayoutInputViewOf::Box(&self.styles[&node])
     }
 
     fn cache_get(
@@ -1457,7 +1457,7 @@ fn flex_row_justifies_items_on_the_main_axis() {
     }
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -1510,7 +1510,7 @@ fn flex_row_aligns_items_on_the_cross_axis() {
     );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -1566,7 +1566,7 @@ fn flex_row_reports_first_child_baseline() {
     );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -1592,7 +1592,7 @@ fn flex_row_reports_first_child_baseline() {
 
 fn assert_flex_uses_the_orthogonal_child_line_over_margin_for_baselines<S: LayoutScalar>()
 where
-    crate::test_support::layout_tree::OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    crate::test_support::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let mut tree = crate::test_support::layout_tree::OracleTreeOf::<S>::new()
         .children(1, [2])
@@ -1639,7 +1639,7 @@ where
         );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInputOf::for_child(
             RunMode::ComputeSize,
@@ -1681,7 +1681,7 @@ fn orthogonal_baseline_flex_uses_line_over_margin_for_f64() {
 
 fn assert_flex_translates_orthogonal_child_baselines_on_the_child_block_axis<S: LayoutScalar>()
 where
-    crate::test_support::layout_tree::OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    crate::test_support::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let mut tree = crate::test_support::layout_tree::OracleTreeOf::<S>::new()
         .children(1, [2])
@@ -1733,7 +1733,7 @@ where
         );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInputOf::for_child(
             RunMode::PerformLayout,
@@ -1837,7 +1837,7 @@ fn assert_logical_flex_sizing_orthogonal_refreshes_mapped_main<S: LayoutScalar>(
         .measure(2, baseline_output(initial_size));
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInputOf::for_child(
             RunMode::PerformLayout,
@@ -1975,7 +1975,7 @@ fn assert_logical_flex_final_size_selector_uses_vertical_row_main_axis<S: Layout
         .measure(2, ComputeOutputOf::from_sizes(initial_size, initial_size));
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInputOf::for_child(
             RunMode::PerformLayout,
@@ -2087,7 +2087,7 @@ fn flex_row_aligns_baseline_items_by_child_baselines() {
     );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2141,7 +2141,7 @@ fn flex_row_stretches_auto_cross_size_items() {
     );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2204,7 +2204,7 @@ fn flex_row_aligns_wrapped_lines_with_align_content() {
     }
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2264,7 +2264,7 @@ fn flex_column_wrap_with_one_line_honors_align_content_end() {
     }
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2324,7 +2324,7 @@ fn flex_row_stretches_wrapped_lines_with_align_content_stretch() {
     }
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2385,7 +2385,7 @@ fn flex_row_stretched_wrapped_line_stretches_auto_cross_size_item() {
     }
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2451,7 +2451,7 @@ fn flex_row_wrap_reverse_places_lines_from_the_reversed_cross_axis() {
     }
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2504,7 +2504,7 @@ fn flex_row_wrap_reverse_flips_flex_start_item_alignment() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2562,7 +2562,7 @@ fn flex_row_wrap_reverse_respects_reversed_align_content() {
     }
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2620,7 +2620,7 @@ fn flex_row_distributes_positive_space_to_main_axis_auto_margins() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2678,7 +2678,7 @@ fn flex_row_distributes_cross_axis_auto_margins() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2745,7 +2745,7 @@ fn flex_column_rtl_aligns_cross_start_to_the_right_edge() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2804,7 +2804,7 @@ fn flex_column_rtl_cross_axis_auto_margin_uses_rtl_edges() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2873,8 +2873,12 @@ fn fri05_c04_flex_alignment_output(
             },
         );
     }
-    let output = compute_flex(&mut tree, 0, fri05_c04_flex_input(size, flow_axes))
-        .expect("alignment-aware flex layout succeeds");
+    let output = compute_flex(
+        &mut tree.borrow_compute(),
+        0,
+        fri05_c04_flex_input(size, flow_axes),
+    )
+    .expect("alignment-aware flex layout succeeds");
     (output, tree)
 }
 
@@ -2952,7 +2956,7 @@ fn fri05_c04_flex_alignment_main_subject_includes_positive_margins_and_gaps_once
             );
         }
         compute_flex(
-            &mut tree,
+            &mut tree.borrow_compute(),
             0,
             fri05_c04_flex_input(
                 size,
@@ -3101,8 +3105,12 @@ fn fri05_c04_flex_alignment_main_subject_projects_all_flows_and_orientations() {
                         ..NodeInput::default()
                     },
                 );
-            let output = compute_flex(&mut tree, 0, fri05_c04_flex_input(size, flow_axes))
-                .expect("mapped alignment flex layout succeeds");
+            let output = compute_flex(
+                &mut tree.borrow_compute(),
+                0,
+                fri05_c04_flex_input(size, flow_axes),
+            )
+            .expect("mapped alignment flex layout succeeds");
             let main = (-20.0, 20.0);
             let (inline, block) = if direction.is_row() {
                 (main, (0.0, 0.0))
@@ -3168,7 +3176,7 @@ fn fri05_c04_flex_alignment_subject_bounds_farther_absolute_and_nested_start_ove
         .style(4, absolute(160.0));
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         fri05_c04_flex_input(
             size,

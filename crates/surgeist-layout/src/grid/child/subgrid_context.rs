@@ -1,9 +1,14 @@
 use super::*;
 
 #[derive(Clone, Copy)]
-pub(in crate::grid) struct SubgridChildParentContextInput<'a, Node, S: LayoutScalar = Scalar> {
+pub(in crate::grid) struct SubgridChildParentContextInput<
+    'input,
+    'a,
+    Node,
+    S: LayoutScalar = Scalar,
+> {
     pub(in crate::grid) item: SubgridItemReport<Node>,
-    pub(in crate::grid) child_style: &'a GridItemProjection<S>,
+    pub(in crate::grid) child_style: &'a GridItemProjection<'input, S>,
     pub(in crate::grid) child_container_style: Option<GridContainerProjection<'a, S>>,
     pub(in crate::grid) area: GridArea<S>,
     pub(in crate::grid) content_box_size: Size<S>,
@@ -19,8 +24,8 @@ pub(in crate::grid) struct SubgridChildParentContextInput<'a, Node, S: LayoutSca
     pub(in crate::grid) padding: Edges<S>,
 }
 
-pub(in crate::grid) fn subgrid_child_parent_context<Node, S: LayoutScalar>(
-    input: SubgridChildParentContextInput<'_, Node, S>,
+pub(in crate::grid) fn subgrid_child_parent_context<'input, Node, S: LayoutScalar>(
+    input: SubgridChildParentContextInput<'input, '_, Node, S>,
 ) -> Result<GridParentContext<S, Node>, SubgridChildContextError<S>>
 where
     Node: Copy + PartialEq,
@@ -35,8 +40,8 @@ where
     )
 }
 
-pub(in crate::grid) fn subgrid_child_parent_context_with_geometry<Node, S: LayoutScalar>(
-    input: SubgridChildParentContextInput<'_, Node, S>,
+pub(in crate::grid) fn subgrid_child_parent_context_with_geometry<'input, Node, S: LayoutScalar>(
+    input: SubgridChildParentContextInput<'input, '_, Node, S>,
     column_geometry: Option<&UsedGridAxisGeometryOf<S>>,
     row_geometry: Option<&UsedGridAxisGeometryOf<S>>,
 ) -> Result<GridParentContext<S, Node>, SubgridChildContextError<S>>
@@ -54,8 +59,12 @@ where
 }
 
 #[cfg(test)]
-pub(in crate::grid) fn subgrid_child_parent_context_from_ancestor_groups<Node, S: LayoutScalar>(
-    input: SubgridChildParentContextInput<'_, Node, S>,
+pub(in crate::grid) fn subgrid_child_parent_context_from_ancestor_groups<
+    'input,
+    Node,
+    S: LayoutScalar,
+>(
+    input: SubgridChildParentContextInput<'input, '_, Node, S>,
     ancestor_baseline_groups: &FinalAncestorBaselineGroups<Node, S>,
     parent_grid: Node,
 ) -> Result<GridParentContext<S, Node>, SubgridChildContextError<S>>
@@ -73,10 +82,11 @@ where
 }
 
 pub(in crate::grid) fn subgrid_child_parent_context_from_ancestor_groups_with_geometry<
+    'input,
     Node,
     S: LayoutScalar,
 >(
-    input: SubgridChildParentContextInput<'_, Node, S>,
+    input: SubgridChildParentContextInput<'input, '_, Node, S>,
     ancestor_baseline_groups: &FinalAncestorBaselineGroups<Node, S>,
     parent_template_area_expanded_axes: TemplateAreaExpandedAxes,
     parent_grid: Node,
@@ -96,8 +106,8 @@ where
     )
 }
 
-fn subgrid_child_parent_context_with_ancestor_groups<Node, S: LayoutScalar>(
-    input: SubgridChildParentContextInput<'_, Node, S>,
+fn subgrid_child_parent_context_with_ancestor_groups<'input, Node, S: LayoutScalar>(
+    input: SubgridChildParentContextInput<'input, '_, Node, S>,
     ancestor_baseline_groups: Option<&FinalAncestorBaselineGroups<Node, S>>,
     parent_template_area_expanded_axes: TemplateAreaExpandedAxes,
     parent_grid: Option<Node>,
@@ -160,12 +170,12 @@ where
 }
 
 #[derive(Clone, Copy)]
-struct SubgridChildAxisContextInput<'a, Node, S: LayoutScalar = Scalar> {
+struct SubgridChildAxisContextInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
     parent_grid: Option<Node>,
     current_grid: Node,
     axis: GridAxisKind,
     report: SubgridAxisReport,
-    child_style: &'a GridItemProjection<S>,
+    child_style: &'a GridItemProjection<'input, S>,
     child_container_style: Option<GridContainerProjection<'a, S>>,
     area: GridArea<S>,
     content_box_size: Size<S>,
@@ -198,8 +208,8 @@ pub(in crate::grid) enum SubgridBaselineInheritanceError {
     Placement(InheritedCurrentGridBaselinePlacementError),
 }
 
-fn subgrid_child_axis_context<Node: Copy + PartialEq, S: LayoutScalar>(
-    input: SubgridChildAxisContextInput<'_, Node, S>,
+fn subgrid_child_axis_context<'input, Node: Copy + PartialEq, S: LayoutScalar>(
+    input: SubgridChildAxisContextInput<'input, '_, Node, S>,
 ) -> Result<Option<InheritedGridAxis<S, Node>>, SubgridChildContextError<S>> {
     if !input.report.can_inherit() {
         return Ok(None);
@@ -674,8 +684,8 @@ struct SubgridParentAxisData<'a, S: LayoutScalar = Scalar> {
     baseline_groups: &'a [TrackBaselineGroup<S>],
 }
 
-fn subgrid_parent_axis_data<'a, Node, S: LayoutScalar>(
-    input: &'a SubgridChildAxisContextInput<'a, Node, S>,
+fn subgrid_parent_axis_data<'input, 'a, Node, S: LayoutScalar>(
+    input: &'a SubgridChildAxisContextInput<'input, 'a, Node, S>,
     axis: GridAxisKind,
 ) -> SubgridParentAxisData<'a, S> {
     match axis {
@@ -855,13 +865,13 @@ pub(super) struct SubgridBaselineRefreshInput<'a, Node, S: LayoutScalar = Scalar
     pub(super) containing_auto_scrollbar_pass: crate::scroll::SettledAutoScrollbarState,
 }
 
-pub(super) fn refresh_subgrid_items_with_baselines<Tree, M>(
+pub(super) fn refresh_subgrid_items_with_baselines<'input, Tree, M>(
     tree: &mut Tree,
     input: SubgridBaselineRefreshInput<'_, <Tree as Traverse>::Node, Tree::Scalar>,
-    pending_items: &mut [PendingGridItem<<Tree as Traverse>::Node, Tree::Scalar>],
+    pending_items: &mut [PendingGridItem<'input, <Tree as Traverse>::Node, Tree::Scalar>],
 ) -> LayoutResultOf<<Tree as Traverse>::Node, (), Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let container_flow_axes = FlowAxes::new(
         input.container_style.writing_mode,

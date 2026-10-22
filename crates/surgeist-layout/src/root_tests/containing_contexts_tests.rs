@@ -337,15 +337,18 @@ fn fri06_c03_clear_all_values_accept_all_containing_flows_without_exclusions_bot
     assert_lane::<f64>();
 }
 
-struct Fri06C07DirectTree<S: LayoutScalar>(PublicLayoutTreeOf<S>);
+struct Fri06C07DirectTree<'input, S: LayoutScalar>(&'input PublicLayoutTreeOf<S>);
 
-impl<S: LayoutScalar> Traverse for Fri06C07DirectTree<S> {
+impl<'input, S: LayoutScalar> Traverse for Fri06C07DirectTree<'input, S> {
     type Node = u32;
     type Scalar = S;
-    type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+    type Children<'a>
+        = std::iter::Copied<std::slice::Iter<'a, u32>>
+    where
+        Self: 'a;
 
     fn children(&self, node: Self::Node) -> Self::Children<'_> {
-        Traverse::children(&self.0, node)
+        Traverse::children(self.0, node)
     }
 
     fn child_count(&self, node: Self::Node) -> usize {
@@ -357,12 +360,12 @@ impl<S: LayoutScalar> Traverse for Fri06C07DirectTree<S> {
     }
 }
 
-impl<S: LayoutScalar> Compute<()> for Fri06C07DirectTree<S> {
-    fn node_input(&self, node: Self::Node) -> &NodeInputOf<S> {
+impl<'input, S: LayoutScalar> Compute<'input, ()> for Fri06C07DirectTree<'input, S> {
+    fn node_input(&self, node: Self::Node) -> &'input NodeInputOf<S> {
         self.0.node_input(node)
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<S> {
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, S> {
         self.0.layout_input(node)
     }
 
@@ -374,18 +377,19 @@ impl<S: LayoutScalar> Compute<()> for Fri06C07DirectTree<S> {
         input: ComputeInputOf<S>,
     ) -> LayoutResultOf<Self::Node, ComputeOutputOf<S>, S, ()> {
         match self.0.layout_input(node) {
-            LayoutInputOf::Box(style) => {
+            crate::LayoutInputViewOf::Box(style) => {
                 assert_eq!(style.display.inner_display(), Display::Block);
                 compute_block(self, node, input)
             }
-            LayoutInputOf::InlineText(_) => {
+            crate::LayoutInputViewOf::InlineText(_) => {
                 let size = Size::new(
                     input.known().width.unwrap_or(S::ZERO),
                     input.known().height.unwrap_or(S::ZERO),
                 );
                 Ok(ComputeOutputOf::from_sizes(size, size))
             }
-            LayoutInputOf::LineBreak(_) | LayoutInputOf::InlineBoundary(_) => {
+            crate::LayoutInputViewOf::LineBreak(_)
+            | crate::LayoutInputViewOf::InlineBoundary(_) => {
                 unreachable!("block layout consumes controls without child computation")
             }
         }
@@ -524,7 +528,7 @@ fn fri06_c07_logical_clear_vertical_control_and_float_projection_both_scalars() 
         ));
         let batch =
             compute_layout(&tree, 0, LayoutRootRequestOf::viewport(available).unwrap()).unwrap();
-        let mut direct_tree = Fri06C07DirectTree(tree);
+        let mut direct_tree = Fri06C07DirectTree(&tree);
         let root_output = compute_block(
             &mut direct_tree,
             0,
@@ -5573,7 +5577,10 @@ fn assert_logical_flex_public_contexts_hidden_layout_recurses_with_containing_fl
     impl<S: LayoutScalar> Traverse for HiddenTree<S> {
         type Node = u32;
         type Scalar = S;
-        type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
 
         fn children(&self, node: Self::Node) -> Self::Children<'_> {
             self.children[&node].iter().copied()
@@ -5588,13 +5595,58 @@ fn assert_logical_flex_public_contexts_hidden_layout_recurses_with_containing_fl
         }
     }
 
-    impl<S: LayoutScalar> Compute for HiddenTree<S> {
-        fn node_input(&self, node: Self::Node) -> &NodeInputOf<S> {
+    struct HiddenTreeCompute<'input, S: LayoutScalar> {
+        children: &'input HashMap<u32, Vec<u32>>,
+        layouts: &'input mut HashMap<u32, NodeOutputOf<S>>,
+        caches: &'input mut HashMap<u32, CacheOf<S>>,
+        styles: &'input HashMap<u32, NodeInputOf<S>>,
+        calls: &'input mut Vec<(u32, ComputeInputOf<S>)>,
+        cache_get_calls: &'input Cell<usize>,
+        cache_store_calls: &'input mut usize,
+    }
+
+    impl<S: LayoutScalar> HiddenTree<S> {
+        fn borrow_compute(&mut self) -> HiddenTreeCompute<'_, S> {
+            HiddenTreeCompute {
+                children: &self.children,
+                layouts: &mut self.layouts,
+                caches: &mut self.caches,
+                styles: &self.styles,
+                calls: &mut self.calls,
+                cache_get_calls: &self.cache_get_calls,
+                cache_store_calls: &mut self.cache_store_calls,
+            }
+        }
+    }
+
+    impl<'input, S: LayoutScalar> Traverse for HiddenTreeCompute<'input, S> {
+        type Node = u32;
+        type Scalar = S;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
+
+        fn children(&self, node: Self::Node) -> Self::Children<'_> {
+            self.children[&node].iter().copied()
+        }
+
+        fn child_count(&self, node: Self::Node) -> usize {
+            self.children[&node].len()
+        }
+
+        fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+            self.children[&node][index]
+        }
+    }
+
+    impl<'input, S: LayoutScalar> Compute<'input> for HiddenTreeCompute<'input, S> {
+        fn node_input(&self, node: Self::Node) -> &'input NodeInputOf<S> {
             &self.styles[&node]
         }
 
-        fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-            LayoutInputOf::box_input(self.node_input(node).clone())
+        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
+            crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
         fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutputOf<S>) {
@@ -5626,7 +5678,7 @@ fn assert_logical_flex_public_contexts_hidden_layout_recurses_with_containing_fl
         }
     }
 
-    impl<S: LayoutScalar> CacheAccess for HiddenTree<S> {
+    impl<'input, S: LayoutScalar> CacheAccess for HiddenTreeCompute<'input, S> {
         type Node = u32;
         type Scalar = S;
 
@@ -5651,7 +5703,7 @@ fn assert_logical_flex_public_contexts_hidden_layout_recurses_with_containing_fl
             context: crate::CacheKeyContext,
             output: ComputeOutputOf<S>,
         ) {
-            self.cache_store_calls += 1;
+            *self.cache_store_calls += 1;
             self.caches
                 .get_mut(&node)
                 .expect("test hidden node cache exists")
@@ -5695,7 +5747,7 @@ fn assert_logical_flex_public_contexts_hidden_layout_recurses_with_containing_fl
     ));
     assert_eq!(
         compute_hidden(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             SourceIndex::ZERO,
             crate::ContainingLayoutContext::new(

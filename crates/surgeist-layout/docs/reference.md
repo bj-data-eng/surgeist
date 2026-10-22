@@ -59,7 +59,7 @@ Sources: [engine](../src/engine/mod.rs), [measurement](../src/measurement.rs),
 Source: [node input](../src/node_input/mod.rs) and its domain modules.
 
 - Aggregate input: `NodeInputOf` and its `NodeInput` default-scalar alias.
-- Tree participation: `LayoutInputOf`, `Display`, `Position`, and `ItemOrder`.
+- Tree participation: owned `LayoutInputOf` storage and borrowed `LayoutInputViewOf`, `Display`, `Position`, and `ItemOrder`.
 - Flow and alignment: `WritingMode`, `Direction`, `AlignItems`, and `AlignContent`.
 - Inline and flex input: `InlineTextInputOf`, `InlineBoundaryInputOf`, `FlexDirection`, `FlexWrap`, and `FlexItemCollapse`.
 - Grid input: `GridPlacement`, `GridAutoFlow`, and `GridFlowToleranceOf`.
@@ -137,6 +137,22 @@ non-negative `TrackFlexFactorOf<S>` through `try_new` and place it only in a
 maximum track breadth. A valid sizing behavior unsupported by an algorithm is
 reported through `LayoutUnsupportedCapability::SizingBehavior` with the exact
 property, behavior, algorithm, and axis instead of an automatic fallback.
+
+`LayoutTree::layout_input` returns a concrete `LayoutInputViewOf` borrowed from
+immutable request storage. Box facts and validated inline-text segment storage
+are read in place; small break and boundary records are copied. Existing owned
+`LayoutInputOf` constructors remain storage choices and expose `as_view` for
+borrowing. A box provider derives `node_input` and the box view from the same
+stored value. Non-box canonical facts and role diagnostics still cross the
+existing validation front door.
+
+The private computation retains that immutable source loan separately from
+mutable output and cache staging, so recursive child computation can keep
+borrowed projections live. Intrinsic Grid probes use local minimum-suppression
+flags without changing or cloning source inputs. Completed geometry, fragments
+and cache entries own their results and remain readable after the source is
+dropped. These access guarantees do not claim zero allocation for layout's
+working state or a measured speed improvement.
 
 `LayoutRootRequestOf<S>` validates root input for the public
 `compute_layout` front door. A successful call returns a

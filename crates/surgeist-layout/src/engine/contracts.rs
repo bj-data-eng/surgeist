@@ -1,12 +1,14 @@
 use crate::error::LayoutResultOf;
 use crate::{
-    CacheKeyContext, ComputeInputOf, ComputeOutputOf, InlineFragmentOutputOf, LayoutInputOf,
+    CacheKeyContext, ComputeInputOf, ComputeOutputOf, InlineFragmentOutputOf, LayoutInputViewOf,
     LayoutScalar, NodeInputOf, NodeOutputOf, RunMode, Traverse,
 };
 
-pub(crate) trait Compute<M = core::convert::Infallible>: Traverse {
-    fn node_input(&self, node: Self::Node) -> &NodeInputOf<Self::Scalar>;
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar>;
+// Input loans refer to immutable request storage, independently of temporary
+// borrows of the mutable output/cache computation facade.
+pub(crate) trait Compute<'input, M = core::convert::Infallible>: Traverse {
+    fn node_input(&self, node: Self::Node) -> &'input NodeInputOf<Self::Scalar>;
+    fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'input, Self::Scalar>;
     fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutputOf<Self::Scalar>);
     fn set_unrounded_inline_fragment_state(
         &mut self,

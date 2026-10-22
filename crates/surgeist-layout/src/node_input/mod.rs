@@ -393,9 +393,91 @@ pub enum LayoutInputOf<S: LayoutScalar = DefaultScalar> {
     InlineBoundary(InlineBoundaryInputOf<S>),
 }
 
+/// A read-only view of one normalized layout participant.
+///
+/// Box and text data remain borrowed from the provider. Breaks and boundaries
+/// are small validated records copied into the view. A view cannot outlive its
+/// provider and contains no separately owned input snapshot.
+///
+/// A view cannot survive its owned backing:
+///
+/// ```compile_fail,E0505
+/// use surgeist_layout::{LayoutInput, NodeInput};
+/// let input = LayoutInput::box_input(NodeInput::default());
+/// let view = input.as_view();
+/// drop(input);
+/// assert!(view.as_box().is_some());
+/// ```
+///
+/// Its backing also cannot be mutated while the view remains in use:
+///
+/// ```compile_fail,E0502
+/// use surgeist_layout::{LayoutInput, NodeInput};
+/// let mut input = LayoutInput::box_input(NodeInput::default());
+/// let view = input.as_view();
+/// if let LayoutInput::Box(box_input) = &mut input {
+///     box_input.grid_auto_columns.clear();
+/// }
+/// assert!(view.as_box().is_some());
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum LayoutInputViewOf<'input, S: LayoutScalar = DefaultScalar> {
+    Box(&'input NodeInputOf<S>),
+    InlineText(&'input InlineTextInputOf<S>),
+    LineBreak(LineBreakInputOf<S>),
+    InlineBoundary(InlineBoundaryInputOf<S>),
+}
+
+pub type LayoutInputView<'input> = LayoutInputViewOf<'input, DefaultScalar>;
+
+impl<'input, S: LayoutScalar> LayoutInputViewOf<'input, S> {
+    #[must_use]
+    pub const fn as_box(self) -> Option<&'input NodeInputOf<S>> {
+        match self {
+            Self::Box(input) => Some(input),
+            Self::InlineText(_) | Self::LineBreak(_) | Self::InlineBoundary(_) => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn as_inline_text(self) -> Option<&'input InlineTextInputOf<S>> {
+        match self {
+            Self::InlineText(input) => Some(input),
+            Self::Box(_) | Self::LineBreak(_) | Self::InlineBoundary(_) => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn as_line_break(self) -> Option<LineBreakInputOf<S>> {
+        match self {
+            Self::LineBreak(input) => Some(input),
+            Self::Box(_) | Self::InlineText(_) | Self::InlineBoundary(_) => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn as_inline_boundary(self) -> Option<InlineBoundaryInputOf<S>> {
+        match self {
+            Self::InlineBoundary(input) => Some(input),
+            Self::Box(_) | Self::InlineText(_) | Self::LineBreak(_) => None,
+        }
+    }
+}
+
 pub type LayoutInput = LayoutInputOf<DefaultScalar>;
 
 impl<S: LayoutScalar> LayoutInputOf<S> {
+    /// Borrows the existing participant without allocating or copying its backing.
+    #[must_use]
+    pub fn as_view(&self) -> LayoutInputViewOf<'_, S> {
+        match self {
+            Self::Box(input) => LayoutInputViewOf::Box(input),
+            Self::InlineText(input) => LayoutInputViewOf::InlineText(input),
+            Self::LineBreak(input) => LayoutInputViewOf::LineBreak(*input),
+            Self::InlineBoundary(input) => LayoutInputViewOf::InlineBoundary(*input),
+        }
+    }
+
     #[must_use]
     pub fn box_input(input: NodeInputOf<S>) -> Self {
         Self::Box(std::boxed::Box::new(input))

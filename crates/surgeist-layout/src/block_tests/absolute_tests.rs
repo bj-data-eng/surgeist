@@ -61,7 +61,7 @@ fn block_layout_lays_out_absolute_children_without_flow_contribution_and_hides_d
     );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -149,7 +149,7 @@ fn block_absolute_child_without_insets_uses_static_position_after_flow() {
     );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -213,7 +213,7 @@ fn block_absolute_child_auto_size_applies_aspect_ratio_to_max_size() {
     );
 
     crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -270,7 +270,7 @@ fn block_absolute_child_auto_size_resolves_from_opposing_insets() {
     );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -332,7 +332,7 @@ fn block_absolute_child_applies_aspect_ratio_to_inset_derived_width() {
     );
 
     crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -395,7 +395,7 @@ fn block_absolute_child_expands_horizontal_auto_margins() {
     );
 
     crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -470,7 +470,7 @@ fn block_absolute_child_large_width_keeps_horizontal_auto_margins_zero() {
     );
 
     crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -541,7 +541,7 @@ fn block_absolute_child_with_opposing_horizontal_insets_honors_rtl_end_edge() {
     );
 
     crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,

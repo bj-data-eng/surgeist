@@ -62,30 +62,30 @@ impl<'a, S: LayoutScalar> FlexItemProjection<'a, S> {
     }
 }
 
-pub(super) fn with_flex_container_projection<Tree, M, Output>(
+pub(super) fn with_flex_container_projection<'input, Tree, M, Output>(
     tree: &Tree,
     node: <Tree as Traverse>::Node,
     consume: impl FnOnce(FlexContainerProjection<'_, Tree::Scalar>) -> Output,
 ) -> Output
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     consume(FlexContainerProjection::from_node(tree.node_input(node)))
 }
 
-pub(super) fn with_flex_item_projection<Tree, M, Output>(
+pub(super) fn with_flex_item_projection<'input, Tree, M, Output>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     consume: impl FnOnce(&mut Tree, FlexItemProjection<'_, Tree::Scalar>) -> Output,
 ) -> Output
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
-    let complete_input = tree.node_input(node).clone();
-    consume(tree, FlexItemProjection::from_node(&complete_input))
+    let complete_input = tree.node_input(node);
+    consume(tree, FlexItemProjection::from_node(complete_input))
 }
 
-pub(super) fn with_flex_scroll_projections<Tree, M, Output>(
+pub(super) fn with_flex_scroll_projections<'input, Tree, M, Output>(
     tree: &Tree,
     node: <Tree as Traverse>::Node,
     consume: impl FnOnce(
@@ -94,7 +94,7 @@ pub(super) fn with_flex_scroll_projections<Tree, M, Output>(
     ) -> Output,
 ) -> Output
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let complete_input = tree.node_input(node);
     consume(
@@ -103,7 +103,7 @@ where
     )
 }
 
-pub(super) fn with_flex_item_scroll_projections<Tree, M, Output>(
+pub(super) fn with_flex_item_scroll_projections<'input, Tree, M, Output>(
     tree: &Tree,
     node: <Tree as Traverse>::Node,
     consume: impl FnOnce(
@@ -112,7 +112,7 @@ pub(super) fn with_flex_item_scroll_projections<Tree, M, Output>(
     ) -> Output,
 ) -> Output
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     with_flex_scroll_projections::<Tree, M, Output>(tree, node, consume)
 }

@@ -51,13 +51,13 @@ use scroll::{
     retain_flex_scroll_geometry,
 };
 
-pub(crate) fn compute_flex<Tree, M>(
+pub(crate) fn compute_flex<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let mut pass_input = input;
     loop {
@@ -81,13 +81,13 @@ where
     }
 }
 
-fn compute_flex_inner<Tree, S, M>(
+fn compute_flex_inner<'input, Tree, S, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<S>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, ComputeOutputOf<S>, S, M>
 where
-    Tree: Compute<M, Scalar = S>,
+    Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
     let constants =
@@ -249,7 +249,7 @@ type ResolvedFlexRound<Tree> = (
     Vec<FlexLine<<Tree as Traverse>::Scalar>>,
 );
 
-fn resolve_flex_round<Tree, M>(
+fn resolve_flex_round<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
@@ -258,7 +258,7 @@ fn resolve_flex_round<Tree, M>(
     mut lines: Vec<FlexLine<Tree::Scalar>>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, ResolvedFlexRound<Tree>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let mut layout_constants =
         resolved_layout_constants(tree, node, input, constants, &mut collected_items, &lines)?;
@@ -302,7 +302,7 @@ struct Constants<S: LayoutScalar> {
 }
 
 impl<S: LayoutScalar> Constants<S> {
-    fn new<Tree, M>(
+    fn new<'input, Tree, M>(
         tree: &Tree,
         node: <Tree as Traverse>::Node,
         style: &FlexContainerProjection<'_, S>,
@@ -310,7 +310,7 @@ impl<S: LayoutScalar> Constants<S> {
         input: ComputeInputOf<S>,
     ) -> LayoutResultOf<<Tree as Traverse>::Node, Self, S, M>
     where
-        Tree: Compute<M, Scalar = S>,
+        Tree: Compute<'input, M, Scalar = S>,
     {
         let flow_axes = style.common.flow_axes;
         let axes = FlexAxes::new(flow_axes, style.flex_direction, style.flex_wrap);
@@ -962,7 +962,7 @@ impl FlexAxes {
     clippy::type_complexity,
     reason = "the private flex resolver preserves node, scalar, and provider error types"
 )]
-fn resolve_lines<Tree, M>(
+fn resolve_lines<'input, Tree, M>(
     tree: &mut Tree,
     items: &[CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
     lines: &mut [FlexLine<Tree::Scalar>],
@@ -974,7 +974,7 @@ fn resolve_lines<Tree, M>(
     M,
 >
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let mut resolved_items = items
         .iter()
@@ -1073,13 +1073,13 @@ where
     Ok(resolved_items)
 }
 
-fn determine_hypothetical_cross_size<Tree, M>(
+fn determine_hypothetical_cross_size<'input, Tree, M>(
     tree: &mut Tree,
     item: &mut ResolvedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, (), Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let padding_border_cross = constants
         .axes
@@ -1379,7 +1379,9 @@ mod fri06_c13_t06_characterization_tests {
             border,
             ..NodeInputOf::default()
         };
-        let tree = crate::test_support::layout_tree::OracleTreeOf::new().style(7, style.clone());
+        let mut owner =
+            crate::test_support::layout_tree::OracleTreeOf::new().style(7, style.clone());
+        let tree = owner.borrow_compute();
 
         for (flow, parent, expected_padding) in [
             (
@@ -1451,8 +1453,9 @@ mod fri06_c13_t06_characterization_tests {
             ),
             ..NodeInputOf::default()
         };
-        let failing_tree =
+        let mut failing_owner =
             crate::test_support::layout_tree::OracleTreeOf::new().style(7, failing_style.clone());
+        let failing_tree = failing_owner.borrow_compute();
         let result = super::input::with_flex_container_projection::<_, core::convert::Infallible, _>(
             &failing_tree,
             7,

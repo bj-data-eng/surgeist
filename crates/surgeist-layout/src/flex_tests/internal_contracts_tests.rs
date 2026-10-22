@@ -254,7 +254,7 @@ fn assert_auto_margin_does_not_expand_baseline_line<S: LayoutScalar>() {
             );
     }
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         ComputeInputOf::for_child(
             RunMode::PerformLayout,

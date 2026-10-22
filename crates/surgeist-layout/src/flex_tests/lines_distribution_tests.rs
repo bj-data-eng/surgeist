@@ -536,8 +536,8 @@ impl<S: LayoutScalar> LayoutTree for Fri07C02CollapseRoundLedgerTree<S> {
         &self.styles[&node]
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<S> {
-        LayoutInputOf::box_input(self.styles[&node].clone())
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
+        crate::LayoutInputViewOf::Box(&self.styles[&node])
     }
 
     fn has_leaf_measurement(&self, node: Self::Node) -> bool {
@@ -942,7 +942,7 @@ impl<S: LayoutScalar> LayoutTree for Fri07C02CollapsedOutputTree<S> {
         self.tree.node_input(node)
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<S> {
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
         self.tree.layout_input(node)
     }
 
@@ -1271,7 +1271,7 @@ impl<S: LayoutScalar> LayoutTree for Fri07C02CompositionMatrixTree<S> {
         self.tree.node_input(node)
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<S> {
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
         self.tree.layout_input(node)
     }
 
@@ -1997,7 +1997,7 @@ fn flex_row_distributes_positive_free_space_with_flex_grow() {
     );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2068,7 +2068,7 @@ fn flex_row_with_grow_sum_below_one_uses_that_fraction_of_free_space() {
     );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2130,7 +2130,7 @@ fn flex_row_distributes_negative_free_space_with_flex_shrink() {
     );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2188,7 +2188,7 @@ fn flex_row_relayouts_content_box_percentage_item_at_shrunk_target() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2267,7 +2267,7 @@ fn flex_row_visible_item_does_not_shrink_below_automatic_min_content_width() {
         .measure(3, ComputeOutput::from_outer_size(Size::new(40.0, 20.0)));
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2332,7 +2332,7 @@ fn flex_row_with_shrink_sum_below_one_uses_that_fraction_of_negative_free_space(
     );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2391,7 +2391,7 @@ fn flex_row_wraps_items_into_multiple_lines() {
     }
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2455,7 +2455,7 @@ fn flex_row_auto_width_wraps_against_definite_available_width() {
     }
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2500,7 +2500,7 @@ fn flex_order_modified_sequence_precedes_wrapping_and_preserves_source_identity_
 
 fn assert_flex_order_modified_sequence_precedes_wrapping<S: LayoutScalar>()
 where
-    crate::test_support::layout_tree::OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    crate::test_support::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     for (direction, expected_x) in [
         (FlexDirection::Row, [0.0, 30.0, 0.0, 30.0]),
@@ -2559,7 +2559,7 @@ where
             .style(6, item_style(0));
 
         compute_flex(
-            &mut tree,
+            &mut tree.borrow_compute(),
             0,
             ComputeInputOf::for_child(
                 RunMode::PerformLayout,
@@ -2636,7 +2636,7 @@ fn flex_row_growth_respects_max_main_size() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2700,7 +2700,7 @@ fn flex_row_reverse_places_items_from_the_reversed_main_axis() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2760,7 +2760,7 @@ fn flex_row_rtl_places_items_from_the_right_edge() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2828,7 +2828,7 @@ fn flex_row_rtl_relative_insets_follow_rtl_main_axis() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2888,7 +2888,7 @@ fn flex_column_reverse_places_items_from_the_reversed_main_axis() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,

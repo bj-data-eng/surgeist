@@ -7,7 +7,7 @@ use super::sizing::{max_content_size, resolve_auto_optional, resolve_length_or_z
 use super::*;
 use crate::FlowAxes;
 
-pub(super) fn inline_run_end<Tree, M>(
+pub(super) fn inline_run_end<'input, Tree, M>(
     tree: &Tree,
     container: <Tree as Traverse>::Node,
     children: &[<Tree as Traverse>::Node],
@@ -15,7 +15,7 @@ pub(super) fn inline_run_end<Tree, M>(
     mut index: usize,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, usize, <Tree as Traverse>::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     while index < children.len() {
         let projection = InlineParticipantProjection::lookup::<Tree, M>(tree, children[index]);
@@ -53,14 +53,14 @@ where
     Ok(index)
 }
 
-pub(super) fn visible_line_break_in_flow<Tree, S, M>(
+pub(super) fn visible_line_break_in_flow<'input, Tree, S, M>(
     tree: &Tree,
     container: <Tree as Traverse>::Node,
     child: <Tree as Traverse>::Node,
     flow: FlowAxes,
 ) -> LayoutResultOf<Tree::Node, Option<LineBreakInputOf<S>>, S, M>
 where
-    Tree: Compute<M, Scalar = S>,
+    Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
     let projection = InlineParticipantProjection::lookup::<Tree, M>(tree, child);
@@ -79,14 +79,14 @@ where
     Ok(Some(line_break))
 }
 
-pub(super) fn visible_inline_boundary_in_flow<Tree, S, M>(
+pub(super) fn visible_inline_boundary_in_flow<'input, Tree, S, M>(
     tree: &Tree,
     container: <Tree as Traverse>::Node,
     child: <Tree as Traverse>::Node,
     flow: FlowAxes,
 ) -> LayoutResultOf<Tree::Node, Option<InlineBoundaryInputOf<S>>, S, M>
 where
-    Tree: Compute<M, Scalar = S>,
+    Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
     let projection = InlineParticipantProjection::lookup::<Tree, M>(tree, child);
@@ -132,7 +132,7 @@ impl VisibleInlineRunTransition {
         Self { start, end }
     }
 
-    pub(super) fn apply<Tree, S, M>(
+    pub(super) fn apply<'input, Tree, S, M>(
         self,
         tree: &mut Tree,
         node: <Tree as Traverse>::Node,
@@ -141,7 +141,7 @@ impl VisibleInlineRunTransition {
         state: InlineRunTransitionState<'_, <Tree as Traverse>::Node, S>,
     ) -> LayoutResultOf<<Tree as Traverse>::Node, (), S, M>
     where
-        Tree: Compute<M, Scalar = S>,
+        Tree: Compute<'input, M, Scalar = S>,
         S: LayoutScalar,
     {
         let InlineRunTransitionState {
@@ -287,7 +287,7 @@ fn inline_boundary_control<S: LayoutScalar>(
     )
 }
 
-fn layout_inline_run_children<Tree, S, M>(
+fn layout_inline_run_children<'input, Tree, S, M>(
     tree: &mut Tree,
     container: <Tree as Traverse>::Node,
     run: &[<Tree as Traverse>::Node],
@@ -296,7 +296,7 @@ fn layout_inline_run_children<Tree, S, M>(
     contributions: &mut ScrollContributionAccumulatorOf<S>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, InlineRunPlacement<<Tree as Traverse>::Node, S>, S, M>
 where
-    Tree: Compute<M, Scalar = S>,
+    Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
     let InlineRunContext {
@@ -455,7 +455,7 @@ where
         let child_margin = resolve_atomic_inline_margin(unresolved_margin);
         let item = atomic_inline_box_participant(
             source_index,
-            child_style.as_ref().clone(),
+            child_style.clone(),
             output,
             child_margin,
             child_padding,

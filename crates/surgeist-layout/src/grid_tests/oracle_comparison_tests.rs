@@ -2642,7 +2642,7 @@ mod root_oracle {
             );
 
         let output = crate::compute_grid(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
                 RunMode::PerformLayout,
@@ -2806,7 +2806,7 @@ mod root_oracle {
             );
 
         let output = crate::compute_grid(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
                 RunMode::PerformLayout,
@@ -5004,12 +5004,12 @@ mod root_layout_oracle {
             );
 
         compute_root(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             Size::new(Available::Definite(200.0), Available::Definite(20.0)),
         )
         .unwrap();
-        round_layout(&mut tree, 1).unwrap();
+        round_layout(&mut tree.borrow_compute(), 1).unwrap();
         let actual = tree.final_layout(2).expect("child layout");
 
         assert_layout_close(
@@ -5057,12 +5057,12 @@ mod root_layout_oracle {
                 );
 
             compute_root(
-                &mut tree,
+                &mut tree.borrow_compute(),
                 1,
                 Size::new(Available::Definite(200.0), Available::Definite(20.0)),
             )
             .unwrap();
-            round_layout(&mut tree, 1).unwrap();
+            round_layout(&mut tree.borrow_compute(), 1).unwrap();
             tree.final_layout(2).expect("child layout")
         };
 
@@ -5361,12 +5361,12 @@ mod root_layout_oracle {
             );
 
         compute_root(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             Size::new(Available::Definite(120.0), Available::Definite(20.0)),
         )
         .unwrap();
-        round_layout(&mut tree, 1).unwrap();
+        round_layout(&mut tree.borrow_compute(), 1).unwrap();
         let child = tree.final_layout(2).expect("child layout");
 
         assert_layout_close(
@@ -5495,12 +5495,12 @@ mod root_layout_oracle {
             );
 
         compute_root(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             Size::new(Available::Definite(160.0), Available::Definite(40.0)),
         )
         .unwrap();
-        round_layout(&mut tree, 1).unwrap();
+        round_layout(&mut tree.borrow_compute(), 1).unwrap();
 
         for (node, expected, label) in [
             (3, expected_local, "local area"),
@@ -5596,12 +5596,12 @@ mod root_layout_oracle {
             );
 
         compute_root(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             Size::new(Available::Definite(160.0), Available::Definite(20.0)),
         )
         .unwrap();
-        round_layout(&mut tree, 1).unwrap();
+        round_layout(&mut tree.borrow_compute(), 1).unwrap();
         let child = tree.final_layout(3).expect("child layout");
 
         assert_layout_close(
@@ -6817,12 +6817,12 @@ mod root_layout_oracle {
             );
 
         compute_root(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             Size::new(Available::Definite(40.0), Available::Definite(20.0)),
         )
         .unwrap();
-        round_layout(&mut tree, 1).unwrap();
+        round_layout(&mut tree.borrow_compute(), 1).unwrap();
 
         let child = tree
             .final_layout(3)
@@ -7365,7 +7365,7 @@ mod root_layout_oracle {
             );
 
         let output = crate::compute_grid(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
                 RunMode::PerformLayout,
@@ -7545,7 +7545,7 @@ mod root_layout_oracle {
             );
 
         crate::compute_grid(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
                 RunMode::PerformLayout,
@@ -7646,7 +7646,7 @@ mod root_layout_oracle {
             );
 
         crate::compute_grid(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
                 RunMode::PerformLayout,

@@ -1073,7 +1073,8 @@ fn fri08_c01_placement_automatic_span_capacity_is_axis_typed_without_allocation(
         named::NamedGridLines::new(GridAxisKind::Row, 1),
         None,
     );
-    let mut placements = GridPlacementContext::new(
+    let child_input = NodeInput::default();
+    let mut placements = GridPlacementContext::new_with_child_inputs(
         vec![2_u32],
         vec![ResolvedGridItemPlacement {
             column: GridPlacement::try_span(usize::MAX).expect("nonzero maximum span"),
@@ -1082,6 +1083,7 @@ fn fri08_c01_placement_automatic_span_capacity_is_axis_typed_without_allocation(
             absolute_row: GridPlacement::AUTO,
             in_flow: true,
         }],
+        vec![GridChildInput::from_node(&child_input)],
     );
 
     assert_eq!(
@@ -1140,7 +1142,7 @@ fn fri05_c05_grid_geometry_publishes_canonical_ordinary_container_output() {
         );
 
         let output = compute_grid(
-            &mut tree,
+            &mut tree.borrow_compute(),
             0,
             fri05_c05_grid_sizing_input(Size::new(Some(100.0), Some(80.0))),
         )
@@ -1228,7 +1230,7 @@ fn fri05_c05_grid_geometry_reservations_are_effective_per_axis_and_saturate_tiny
             },
         );
         let geometry = compute_grid(
-            &mut tree,
+            &mut tree.borrow_compute(),
             0,
             fri05_c05_grid_sizing_input(Size::new(Some(100.0), Some(80.0))),
         )
@@ -1252,7 +1254,7 @@ fn fri05_c05_grid_geometry_reservations_are_effective_per_axis_and_saturate_tiny
         },
     );
     let geometry = compute_grid(
-        &mut tiny,
+        &mut tiny.borrow_compute(),
         0,
         fri05_c05_grid_sizing_input(Size::new(Some(10.0), Some(6.0))),
     )
@@ -1541,7 +1543,7 @@ fn fri05_c05_grid_auto_covers_none_single_axis_and_both_induction_orders() {
             )
             .style(1, NodeInput::default());
         let geometry = compute_grid(
-            &mut tree,
+            &mut tree.borrow_compute(),
             0,
             fri05_c05_grid_sizing_input(Size::splat(Some(100.0))),
         )
@@ -1572,7 +1574,7 @@ fn fri04_c04_grid_dispatch_container_reports_exact_grid_capability() {
     );
 
     let error = compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -1605,7 +1607,7 @@ fn fri04_c04_grid_dispatch_container_reports_exact_grid_capability() {
 
 fn assert_grid_authoritative_known_width_ignores_min_max<S: LayoutScalar>()
 where
-    OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let known_width = S::from_f64(20.0);
     let containing_width = S::from_f64(100.0);
@@ -1632,7 +1634,7 @@ where
         );
 
         let output = compute_grid(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInputOf::for_child(
                 RunMode::ComputeSize,
@@ -2161,7 +2163,7 @@ fn grid_auto_placement_continues_into_declared_rows_with_gap() {
     tree.insert_style(4, NodeInput::default());
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2279,7 +2281,7 @@ fn grid_auto_placement_creates_implicit_rows_from_auto_rows() {
     tree.insert_style(4, NodeInput::default());
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2348,7 +2350,7 @@ fn grid_auto_rows_repeat_for_multiple_implicit_rows() {
     );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2415,7 +2417,10 @@ fn grid_compute_size_applies_aspect_ratio_to_max_size() {
         type Node = u32;
 
         type Scalar = Scalar;
-        type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
 
         fn children(&self, node: Self::Node) -> Self::Children<'_> {
             self.children[&node].iter().copied()
@@ -2430,13 +2435,49 @@ fn grid_compute_size_applies_aspect_ratio_to_max_size() {
         }
     }
 
-    impl Compute for NoChildMeasurementTree {
-        fn node_input(&self, node: Self::Node) -> &NodeInput {
+    struct NoChildMeasurementTreeCompute<'input> {
+        children: &'input HashMap<u32, Vec<u32>>,
+        styles: &'input HashMap<u32, NodeInput>,
+    }
+
+    impl NoChildMeasurementTree {
+        fn borrow_compute(&mut self) -> NoChildMeasurementTreeCompute<'_> {
+            NoChildMeasurementTreeCompute {
+                children: &self.children,
+                styles: &self.styles,
+            }
+        }
+    }
+
+    impl<'input> Traverse for NoChildMeasurementTreeCompute<'input> {
+        type Node = u32;
+
+        type Scalar = Scalar;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
+
+        fn children(&self, node: Self::Node) -> Self::Children<'_> {
+            self.children[&node].iter().copied()
+        }
+
+        fn child_count(&self, node: Self::Node) -> usize {
+            self.children[&node].len()
+        }
+
+        fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+            self.children[&node][index]
+        }
+    }
+
+    impl<'input> Compute<'input> for NoChildMeasurementTreeCompute<'input> {
+        fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             &self.styles[&node]
         }
 
-        fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-            LayoutInputOf::box_input(self.node_input(node).clone())
+        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
+            crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
         fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutput) {}
@@ -2465,7 +2506,7 @@ fn grid_compute_size_applies_aspect_ratio_to_max_size() {
     );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::ComputeSize,
@@ -2501,7 +2542,10 @@ fn grid_content_size_mode_ignores_authored_size() {
         type Node = u32;
 
         type Scalar = Scalar;
-        type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
 
         fn children(&self, node: Self::Node) -> Self::Children<'_> {
             self.children[&node].iter().copied()
@@ -2516,13 +2560,49 @@ fn grid_content_size_mode_ignores_authored_size() {
         }
     }
 
-    impl Compute for NoChildMeasurementTree {
-        fn node_input(&self, node: Self::Node) -> &NodeInput {
+    struct NoChildMeasurementTreeCompute<'input> {
+        children: &'input HashMap<u32, Vec<u32>>,
+        styles: &'input HashMap<u32, NodeInput>,
+    }
+
+    impl NoChildMeasurementTree {
+        fn borrow_compute(&mut self) -> NoChildMeasurementTreeCompute<'_> {
+            NoChildMeasurementTreeCompute {
+                children: &self.children,
+                styles: &self.styles,
+            }
+        }
+    }
+
+    impl<'input> Traverse for NoChildMeasurementTreeCompute<'input> {
+        type Node = u32;
+
+        type Scalar = Scalar;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
+
+        fn children(&self, node: Self::Node) -> Self::Children<'_> {
+            self.children[&node].iter().copied()
+        }
+
+        fn child_count(&self, node: Self::Node) -> usize {
+            self.children[&node].len()
+        }
+
+        fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+            self.children[&node][index]
+        }
+    }
+
+    impl<'input> Compute<'input> for NoChildMeasurementTreeCompute<'input> {
+        fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             &self.styles[&node]
         }
 
-        fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-            LayoutInputOf::box_input(self.node_input(node).clone())
+        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
+            crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
         fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutput) {}
@@ -2551,7 +2631,7 @@ fn grid_content_size_mode_ignores_authored_size() {
     );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::ComputeSize,
@@ -2614,7 +2694,7 @@ fn grid_dense_auto_flow_backfills_earlier_free_cells() {
     tree.insert_style(4, NodeInput::default());
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2742,7 +2822,7 @@ fn grid_dense_row_flow_places_definite_row_items_before_auto_items() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2810,7 +2890,7 @@ fn grid_definite_column_auto_row_stays_in_auto_placement_order() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2869,7 +2949,7 @@ fn grid_definite_column_line_span_resolves_from_start_line() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2941,7 +3021,7 @@ fn grid_definite_column_span_line_resolves_to_end_line() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3013,7 +3093,7 @@ fn grid_row_span_auto_placement_creates_enough_implicit_rows() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3069,7 +3149,7 @@ fn grid_definite_column_line_creates_required_implicit_columns() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3126,7 +3206,7 @@ fn vertical_rl_grid_places_distinct_rows_on_physical_x_axis() {
         );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3193,7 +3273,7 @@ fn grid_recomputes_min_content_columns_from_resolved_row_height() {
     tree.insert_style(3, NodeInput::default());
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3285,7 +3365,7 @@ fn grid_spanning_item_redistributes_beyond_fit_content_limit() {
     );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3355,7 +3435,7 @@ fn grid_content_size_for_later_column_uses_final_container_local_item_end() {
     );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3412,7 +3492,7 @@ fn grid_justify_self_overrides_parent_justify_items() {
     tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(30.0, 10.0)));
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3570,12 +3650,12 @@ fn fri08_c01_topology_populated_area_only_grid_uses_the_same_explicit_edges() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         Size::new(Available::Definite(120.0), Available::Definite(20.0)),
     )
     .unwrap();
-    round_layout(&mut tree, 1).unwrap();
+    round_layout(&mut tree.borrow_compute(), 1).unwrap();
 
     let root = tree.final_layout(1).expect("area-only root layout");
     let child = tree.final_layout(2).expect("area-named child layout");
@@ -3709,7 +3789,7 @@ fn invalid_named_grid_context_is_reported() {
     );
 
     let result = crate::compute_grid_with_report(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3755,7 +3835,7 @@ fn invalid_named_grid_context_fallback_is_reported() {
     );
 
     let result = crate::compute_grid_with_report(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3805,7 +3885,7 @@ fn invalid_grid_item_placement_reports_one_authored_fallback_once() {
         );
 
     let result = crate::compute_grid_with_report(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4019,7 +4099,7 @@ fn shared_grid_contexts_accept_non_default_scalar() {
     let style = NodeInputOf::<f64>::default();
     let style_projection = grid_container_projection!(&style);
     let tracks = vec![TrackSizingOf::<f64>::AUTO];
-    let placements = GridPlacementContext::new(Vec::<usize>::new(), Vec::new());
+    let placements = GridPlacementContext::empty();
     let subgrid_report = GridSubgridReport { items: Vec::new() };
     let sizing_phases = GridTrackSizingPhases;
     let column_gutters = OrdinaryGridAxisGuttersOf::new(1, &[], 1.0);
@@ -4029,7 +4109,7 @@ fn shared_grid_contexts_accept_non_default_scalar() {
         column_tracks: tracks.clone(),
         row_tracks: tracks.clone(),
         context: container_context.clone(),
-        placements: GridPlacementContext::new(Vec::new(), Vec::new()),
+        placements: GridPlacementContext::empty(),
         subgrid_report: GridSubgridReport { items: Vec::new() },
         report: GridComputationReport::default(),
     };

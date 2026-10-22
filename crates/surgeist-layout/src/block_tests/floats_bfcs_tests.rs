@@ -82,7 +82,7 @@ fn fri06_c04_block_layout_without_shape_provider<S: LayoutScalar>(
     }
 
     crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         ComputeInputOf::root_layout(
             Size::NONE,
@@ -1314,7 +1314,7 @@ fn fri06_c04_line_band_direct_compute_inherits_float_into_internal_line_both_sca
             );
 
         crate::compute_block(
-            &mut tree,
+            &mut tree.borrow_compute(),
             0,
             ComputeInputOf::root_layout(
                 Size::NONE,
@@ -1638,7 +1638,7 @@ fn block_float_contributes_to_intrinsic_width_and_places_from_right_edge() {
     }
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -1714,12 +1714,12 @@ fn block_bfc_zero_width_child_fits_between_opposing_floats() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(tree.final_layout(1).unwrap().location, Point::new(0.0, 0.0));
     assert_eq!(
@@ -1782,12 +1782,12 @@ fn block_bfc_zero_width_child_fits_between_opposing_floats_above_full_width_floa
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(3).unwrap().location,
@@ -1840,12 +1840,12 @@ fn block_bfc_overflow_clip_zero_width_child_ignores_float_exclusion_without_clea
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(tree.final_layout(3).unwrap().location, Point::new(0.0, 0.0));
 }
@@ -1874,12 +1874,12 @@ fn block_bfc_hidden_child_keeps_legacy_right_alignment_without_float_exclusion()
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(1).unwrap().location,
@@ -1911,12 +1911,12 @@ fn block_bfc_hidden_child_keeps_legacy_center_alignment_without_float_exclusion(
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(1).unwrap().location,
@@ -1955,12 +1955,12 @@ fn block_bfc_float_content_size_height_excludes_container_top_inset() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(1).unwrap().location,
@@ -2020,12 +2020,12 @@ fn block_bfc_clear_only_visible_child_keeps_normal_x_while_clearing_y() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(3).unwrap().location,
@@ -2088,12 +2088,12 @@ fn block_bfc_zero_width_child_with_clear_left_sits_below_left_float_row() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(4).unwrap().location,
@@ -2152,12 +2152,12 @@ fn block_bfc_zero_width_child_with_clear_right_sits_below_all_right_floats() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(4).unwrap().location,

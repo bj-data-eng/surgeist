@@ -9,12 +9,12 @@ use super::sizing::{
 };
 use super::*;
 
-pub(super) fn normal_flow_children_can_establish_baseline<Tree, M>(
+pub(super) fn normal_flow_children_can_establish_baseline<'input, Tree, M>(
     tree: &Tree,
     children: &[<Tree as Traverse>::Node],
 ) -> bool
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     children.iter().copied().any(|child| {
         let projection = InlineParticipantProjection::lookup::<Tree, M>(tree, child);
@@ -101,10 +101,10 @@ pub(super) struct InFlowPassContext<'a, S: LayoutScalar, Node> {
 
 enum InFlowChildStart<'a, S: LayoutScalar> {
     VisibleInlineRun(VisibleInlineRunTransition),
-    FlowBox(Box<BlockChildProjection<'a, S>>),
+    FlowBox(BlockChildProjection<'a, S>),
 }
 
-pub(super) fn layout_in_flow_children<Tree, S, M>(
+pub(super) fn layout_in_flow_children<'input, Tree, S, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     children: &[<Tree as Traverse>::Node],
@@ -113,7 +113,7 @@ pub(super) fn layout_in_flow_children<Tree, S, M>(
     pass: InFlowPassContext<'_, S, <Tree as Traverse>::Node>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, InFlowResult<<Tree as Traverse>::Node, S>, S, M>
 where
-    Tree: Compute<M, Scalar = S>,
+    Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
     let InFlowPassContext {
@@ -297,7 +297,7 @@ where
                 )?;
                 continue;
             }
-            InFlowChildStart::FlowBox(style) => *style,
+            InFlowChildStart::FlowBox(style) => style,
         };
 
         let unresolved_margin = constants.flow_axes.zip_physical_edges_with_inline_extent(
@@ -851,7 +851,7 @@ fn set_parent_inline_available<S: LayoutScalar>(
     clippy::type_complexity,
     reason = "the private child-size helper preserves the session's generic error envelope"
 )]
-fn in_flow_child_known_size<Tree, M>(
+fn in_flow_child_known_size<'input, Tree, M>(
     tree: &Tree,
     child: <Tree as Traverse>::Node,
     style: &BlockChildProjection<'_, Tree::Scalar>,
@@ -861,7 +861,7 @@ fn in_flow_child_known_size<Tree, M>(
     available_inline: Option<Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, Size<Option<Tree::Scalar>>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let parent = child_flow_axes.physical_size(parent);
     let box_sizing_adjustment = if style.common.box_sizing == BoxSizing::ContentBox {
@@ -894,8 +894,8 @@ where
     let min_size = child_flow_axes.logical_size(min_size);
     let max_size = child_flow_axes.logical_size(max_size);
     let inline_size = match child_flow_axes.inline_axis() {
-        crate::PhysicalAxis::Horizontal => style.common.size.width.clone(),
-        crate::PhysicalAxis::Vertical => style.common.size.height.clone(),
+        crate::PhysicalAxis::Horizontal => &style.common.size.width,
+        crate::PhysicalAxis::Vertical => &style.common.size.height,
     };
     if !style.common.item_is_table
         && !style.common.item_is_replaced
@@ -928,8 +928,8 @@ fn in_flow_child_available_inline<S: LayoutScalar>(
     fallback: AvailableOf<S>,
 ) -> AvailableOf<S> {
     let inline_size = match child_flow_axes.inline_axis() {
-        crate::PhysicalAxis::Horizontal => style.common.size.width.clone(),
-        crate::PhysicalAxis::Vertical => style.common.size.height.clone(),
+        crate::PhysicalAxis::Horizontal => &style.common.size.width,
+        crate::PhysicalAxis::Vertical => &style.common.size.height,
     };
     if inline_size.is_min_content() {
         AvailableOf::<S>::MIN_CONTENT

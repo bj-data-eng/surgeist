@@ -289,8 +289,8 @@ pub(in crate::grid) fn baseline_offset<S: LayoutScalar>(
 }
 
 #[cfg(test)]
-pub(in crate::grid) fn baseline_aligned_block_offset<Node: Copy, S: LayoutScalar>(
-    item: &PendingGridItem<Node, S>,
+pub(in crate::grid) fn baseline_aligned_block_offset<'input, Node: Copy, S: LayoutScalar>(
+    item: &PendingGridItem<'input, Node, S>,
     groups: &GridBaselineGroups<S>,
     rows: &[S],
     row_gap: S,
@@ -445,9 +445,9 @@ pub(super) fn owner_progression_track_frame_origins<S: LayoutScalar>(
     Some((parent_first, parent_last, current_first, current_last))
 }
 
-pub(super) struct BaselineAlignedAxisInput<'a, Node, S: LayoutScalar = Scalar> {
-    pub(super) item: &'a PendingGridItem<Node, S>,
-    pub(super) child_style: &'a GridItemProjection<S>,
+pub(super) struct BaselineAlignedAxisInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
+    pub(super) item: &'a PendingGridItem<'input, Node, S>,
+    pub(super) child_style: &'a GridItemProjection<'input, S>,
     pub(super) container_style: &'a GridContainerProjection<'a, S>,
     pub(super) group: &'a AncestorBaselineGroup<Node, S>,
     pub(super) axis: GridAxisKind,
@@ -461,8 +461,8 @@ pub(super) struct BaselineAlignedAxisInput<'a, Node, S: LayoutScalar = Scalar> {
     pub(super) current_grid: Node,
 }
 
-pub(super) fn baseline_aligned_axis_offset<Node: Copy + PartialEq, S: LayoutScalar>(
-    input: BaselineAlignedAxisInput<'_, Node, S>,
+pub(super) fn baseline_aligned_axis_offset<'input, Node: Copy + PartialEq, S: LayoutScalar>(
+    input: BaselineAlignedAxisInput<'input, '_, Node, S>,
 ) -> Result<Option<S>, InheritedCurrentGridBaselinePlacementError> {
     let BaselineAlignedAxisInput {
         item,
@@ -655,7 +655,7 @@ pub(super) fn baseline_aligned_axis_offset<Node: Copy + PartialEq, S: LayoutScal
     ))
 }
 
-impl<Node, S: LayoutScalar> PendingGridItem<Node, S> {
+impl<'input, Node, S: LayoutScalar> PendingGridItem<'input, Node, S> {
     #[cfg(test)]
     fn logical_baseline_geometry(
         &self,
@@ -723,16 +723,16 @@ struct DirectAncestorBaselineMembers<Node, S: LayoutScalar = Scalar> {
     rows: Vec<AncestorBaselineMember<Node, S>>,
 }
 
-fn direct_ancestor_baseline_members<Tree, M>(
+fn direct_ancestor_baseline_members<'input, Tree, M>(
     _tree: &Tree,
     container_style: &GridContainerProjection<'_, Tree::Scalar>,
     row_tracks: &[TrackSizingOf<Tree::Scalar>],
-    items: &[PendingGridItem<<Tree as Traverse>::Node, Tree::Scalar>],
+    items: &[PendingGridItem<'input, <Tree as Traverse>::Node, Tree::Scalar>],
     subgrid_report: &GridSubgridReport<<Tree as Traverse>::Node>,
     container_flow_axes: FlowAxes,
 ) -> DirectAncestorBaselineMembers<<Tree as Traverse>::Node, Tree::Scalar>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let mut columns = Vec::new();
     let mut rows = Vec::new();
@@ -796,7 +796,7 @@ where
     DirectAncestorBaselineMembers { columns, rows }
 }
 
-pub(super) struct FinalAncestorBaselineGroupsInput<'a, Node, S: LayoutScalar = Scalar> {
+pub(super) struct FinalAncestorBaselineGroupsInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
     pub(super) node: Node,
     pub(super) constants: &'a Constants<S>,
     pub(super) container_style: &'a GridContainerProjection<'a, S>,
@@ -808,20 +808,20 @@ pub(super) struct FinalAncestorBaselineGroupsInput<'a, Node, S: LayoutScalar = S
     pub(super) gap: LogicalSizeOf<S>,
     pub(super) children: &'a [Node],
     pub(super) placed_areas: &'a [Option<GridArea<S>>],
-    pub(super) placements: &'a GridPlacementContext<Node, S>,
+    pub(super) placements: &'a GridPlacementContext<'input, Node, S>,
     pub(super) subgrid_report: &'a GridSubgridReport<Node>,
     pub(super) named_columns: &'a NamedGridLines,
     pub(super) named_rows: &'a NamedGridLines,
     pub(super) area_facts: Option<&'a GridAreaNameFacts>,
 }
 
-pub(super) fn final_ancestor_baseline_groups<Tree, M>(
+pub(super) fn final_ancestor_baseline_groups<'input, Tree, M>(
     tree: &mut Tree,
-    input: FinalAncestorBaselineGroupsInput<'_, <Tree as Traverse>::Node, Tree::Scalar>,
-    items: &[PendingGridItem<<Tree as Traverse>::Node, Tree::Scalar>],
+    input: FinalAncestorBaselineGroupsInput<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
+    items: &[PendingGridItem<'input, <Tree as Traverse>::Node, Tree::Scalar>],
 ) -> FinalAncestorBaselineGroupsLayoutResult<Tree, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let row_intrinsic_min_track_facts = input
         .row_tracks
@@ -948,8 +948,8 @@ where
     })
 }
 
-pub(in crate::grid) fn baseline_groups<Node, S: LayoutScalar>(
-    items: &[PendingGridItem<Node, S>],
+pub(in crate::grid) fn baseline_groups<'input, Node, S: LayoutScalar>(
+    items: &[PendingGridItem<'input, Node, S>],
     row_count: usize,
     column_count: usize,
     container_flow_axes: FlowAxes,
@@ -1033,8 +1033,8 @@ fn merge_baseline<S: LayoutScalar>(
     }
 }
 
-pub(in crate::grid) fn grid_container_baselines<Node, S: LayoutScalar>(
-    items: &[PendingGridItem<Node, S>],
+pub(in crate::grid) fn grid_container_baselines<'input, Node, S: LayoutScalar>(
+    items: &[PendingGridItem<'input, Node, S>],
     groups: &GridBaselineGroups<S>,
     row_offsets: &[S],
     rows: &[S],
@@ -1111,8 +1111,8 @@ pub(in crate::grid) fn grid_container_baselines<Node, S: LayoutScalar>(
     GridContainerBaselines { baselines }
 }
 
-pub(in crate::grid) fn logical_grid_container_baselines<Node, S: LayoutScalar>(
-    items: &[PendingGridItem<Node, S>],
+pub(in crate::grid) fn logical_grid_container_baselines<'input, Node, S: LayoutScalar>(
+    items: &[PendingGridItem<'input, Node, S>],
     groups: &GridBaselineGroups<S>,
     row_offsets: &[S],
     rows: &[S],

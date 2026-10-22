@@ -113,14 +113,17 @@ impl<S: LayoutScalar> LayoutTree for PublicBlockTree<S> {
     type MeasureError = ();
 
     fn node_input(&self, node: Self::Node) -> &NodeInputOf<S> {
-        &self.styles[&node]
-    }
-
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<S> {
         self.layout_inputs
             .get(&node)
-            .cloned()
-            .unwrap_or_else(|| LayoutInputOf::box_input(self.styles[&node].clone()))
+            .and_then(LayoutInputOf::as_box)
+            .unwrap_or_else(|| &self.styles[&node])
+    }
+
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
+        self.layout_inputs
+            .get(&node)
+            .map(|input| input.as_view())
+            .unwrap_or_else(|| crate::LayoutInputViewOf::Box(&self.styles[&node]))
     }
 
     fn has_leaf_measurement(&self, node: Self::Node) -> bool {

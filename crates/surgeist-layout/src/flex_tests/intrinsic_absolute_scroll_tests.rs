@@ -545,8 +545,8 @@ impl<S: LayoutScalar> LayoutTree for Fri07C01IntrinsicTree<S> {
             .unwrap_or_else(|| panic!("intrinsic test node {node} must have style"))
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-        LayoutInputOf::box_input(self.node_input(node).clone())
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, Self::Scalar> {
+        crate::LayoutInputViewOf::Box(self.node_input(node))
     }
 
     fn has_leaf_measurement(&self, node: Self::Node) -> bool {
@@ -1086,7 +1086,7 @@ impl<S: LayoutScalar> LayoutTree for Fri07C01CompositionTree<S> {
         self.tree.node_input(node)
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<S> {
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
         self.tree.layout_input(node)
     }
 
@@ -1509,7 +1509,7 @@ impl<S: LayoutScalar> LayoutTree for Fri07C03ComposedTree<S> {
         self.tree.node_input(node)
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<S> {
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
         self.tree.layout_input(node)
     }
 
@@ -2821,8 +2821,12 @@ fn assert_fri06_mr02_geometry_error_flex_own<S: LayoutScalar>() {
         let mut tree = crate::test_support::layout_tree::OracleTreeOf::<S>::new()
             .children(7, [])
             .style(7, style.clone());
-        let error = compute_flex(&mut tree, 7, fri06_mr02_geometry_error_input(run_mode))
-            .expect_err("overflowing flex geometry must fail");
+        let error = compute_flex(
+            &mut tree.borrow_compute(),
+            7,
+            fri06_mr02_geometry_error_input(run_mode),
+        )
+        .expect_err("overflowing flex geometry must fail");
 
         fri06_mr02_geometry_error_assert(error, LayoutErrorSiteOf::Node(7), operation, invariant);
     }
@@ -2850,7 +2854,7 @@ fn assert_fri06_mr02_geometry_error_flex_child<S: LayoutScalar>() {
             ),
         );
     let error = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         7,
         ComputeInputOf::for_child(
             RunMode::PerformLayout,
@@ -2968,7 +2972,7 @@ fn assert_fri08_c07_t02_scroll_source_flex_paths<S: LayoutScalar>() {
         );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         ComputeInputOf::for_child(
             RunMode::PerformLayout,
@@ -3094,7 +3098,7 @@ fn assert_fri06_mr02_scroll_padding_flex<S: LayoutScalar>() {
             .children(0, [])
             .style(0, style);
         let output = compute_flex(
-            &mut tree,
+            &mut tree.borrow_compute(),
             0,
             ComputeInputOf::for_child(
                 RunMode::PerformLayout,
@@ -3166,7 +3170,7 @@ fn flex_content_size_includes_visible_child_overflow_content() {
     );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3233,7 +3237,7 @@ fn flex_final_content_size_uses_rerun_output() {
         );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3288,7 +3292,7 @@ fn flex_relative_child_inset_offsets_final_layout_location() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3344,7 +3348,7 @@ fn flex_relative_child_trailing_inset_offsets_negative() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3394,7 +3398,7 @@ fn flex_container_reserves_scrollbar_gutter_from_inner_size() {
     );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3450,7 +3454,7 @@ fn flex_scrollbar_gutter_uses_left_inset_for_rtl_containers() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3503,7 +3507,7 @@ fn flex_child_layout_records_scrollbar_size_for_scroll_overflow() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3571,7 +3575,7 @@ fn flex_absolute_child_uses_insets_without_affecting_flow() {
     );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3635,7 +3639,7 @@ fn flex_absolute_child_applies_aspect_ratio_to_inset_derived_width() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3699,7 +3703,7 @@ fn flex_absolute_child_with_opposing_horizontal_insets_honors_rtl_end_edge() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3767,7 +3771,7 @@ fn flex_absolute_child_max_height_shrinks_flex_grandchild() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3838,7 +3842,7 @@ fn flex_absolute_child_cross_alignment_honors_wrap_reverse() {
             .measure(2, ComputeOutput::from_outer_size(Size::splat(20.0)));
 
         compute_flex(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
                 RunMode::PerformLayout,
@@ -3908,7 +3912,7 @@ fn flex_absolute_child_cross_start_margin_uses_physical_edge_in_rtl_column() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3966,7 +3970,7 @@ fn flex_absolute_child_uses_min_size_when_min_exceeds_max_size() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4009,7 +4013,7 @@ fn flex_absolute_child_size_cannot_shrink_below_padding_and_border() {
 
     fn run(tree: &mut FlexTree) {
         compute_flex(
-            tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
                 RunMode::PerformLayout,
@@ -4101,7 +4105,7 @@ fn flex_absolute_child_layout_records_scrollbar_size_for_scroll_overflow() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4156,7 +4160,7 @@ fn flex_absolute_child_can_resolve_from_trailing_insets() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4219,7 +4223,7 @@ fn fri07_c01_absolute_auto_margin_original_auto_end_inset_zeroes_inline_margins(
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4277,7 +4281,7 @@ fn flex_absolute_child_without_insets_uses_flex_alignment() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4308,8 +4312,12 @@ fn fri05_c04_empty_flex_output(style: NodeInput, size: Size<f32>) -> ComputeOutp
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(0, [])
         .style(0, style);
-    compute_flex(&mut tree, 0, fri05_c04_flex_input(size, flow_axes))
-        .expect("FRI-05 empty flex layout succeeds")
+    compute_flex(
+        &mut tree.borrow_compute(),
+        0,
+        fri05_c04_flex_input(size, flow_axes),
+    )
+    .expect("FRI-05 empty flex layout succeeds")
 }
 
 fn fri05_c04_flex_gutter_at(
@@ -4400,8 +4408,12 @@ fn fri05_c04_flex_geometry_empty_and_simple_nonoverflowing_publish_canonical_box
                     ..NodeInput::default()
                 },
             );
-        let simple = compute_flex(&mut tree, 0, fri05_c04_flex_input(size, flow_axes))
-            .expect("FRI-05 simple flex layout succeeds");
+        let simple = compute_flex(
+            &mut tree.borrow_compute(),
+            0,
+            fri05_c04_flex_input(size, flow_axes),
+        )
+        .expect("FRI-05 simple flex layout succeeds");
         let simple_geometry = simple
             .scroll_geometry
             .expect("performed simple flex emits canonical geometry");
@@ -4605,8 +4617,12 @@ fn fri05_c04_child_geometry_source(style: NodeInput, size: Size<f32>) -> Compute
     let mut tree = crate::test_support::layout_tree::OracleTree::new()
         .children(9, [])
         .style(9, style);
-    crate::compute_block(&mut tree, 9, fri05_c04_flex_input(size, flow_axes))
-        .expect("child geometry source block lays out")
+    crate::compute_block(
+        &mut tree.borrow_compute(),
+        9,
+        fri05_c04_flex_input(size, flow_axes),
+    )
+    .expect("child geometry source block lays out")
 }
 
 #[test]
@@ -4687,7 +4703,7 @@ fn fri05_c04_flex_child_geometry_direct_retains_in_flow_and_rebuilds_absolute_ta
         .style(2, absolute_style)
         .measure(2, stale_absolute);
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         fri05_c04_flex_input(parent_size, parent_flow_axes),
     )
@@ -4792,7 +4808,7 @@ fn fri05_c04_flex_child_geometry_direct_auto_max_tiny_gutter_keeps_absolute_inpu
             .style(0, root_style)
             .style(1, absolute_style);
         let output = compute_flex(
-            &mut tree,
+            &mut tree.borrow_compute(),
             0,
             ComputeInput::for_child(
                 RunMode::PerformLayout,
@@ -4860,7 +4876,7 @@ fn fri05_c04_flex_child_geometry_direct_auto_max_tiny_gutter_keeps_absolute_inpu
             .style(0, ordinary_root)
             .style(1, ordinary_absolute);
         let ordinary = compute_flex(
-            &mut ordinary_tree,
+            &mut ordinary_tree.borrow_compute(),
             0,
             ComputeInput::for_child(
                 RunMode::PerformLayout,
@@ -4977,7 +4993,7 @@ fn fri05_c04_flex_contribution_positive_outsets_negative_margins_and_source_orde
         );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         fri05_c04_flex_input(
             size,
@@ -5042,7 +5058,7 @@ fn fri05_c04_flex_contribution_terminal_padding_extends_only_the_final_in_flow_e
             },
         );
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         fri05_c04_flex_input(
             size,
@@ -5103,7 +5119,7 @@ fn fri05_c04_flex_nested_output(
             },
         );
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         fri05_c04_flex_input(
             Size::ZERO,
@@ -5211,7 +5227,7 @@ fn fri05_c04_flex_absolute_margin_and_visible_descendant_contribute_once_without
             },
         );
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         fri05_c04_flex_input(
             size,
@@ -5277,12 +5293,16 @@ fn fri05_c04_flex_origin_output(
         );
     }
 
-    let output = compute_flex(&mut tree, 0, fri05_c04_flex_input(size, flow_axes))
-        .expect("origin-aware flex layout succeeds");
+    let output = compute_flex(
+        &mut tree.borrow_compute(),
+        0,
+        fri05_c04_flex_input(size, flow_axes),
+    )
+    .expect("origin-aware flex layout succeeds");
     let unrounded = output
         .scroll_geometry
         .expect("performed flex layout has geometry");
-    tree.set_unrounded(
+    tree.borrow_compute().set_unrounded(
         0,
         NodeOutput {
             size: output.size,
@@ -5291,7 +5311,7 @@ fn fri05_c04_flex_origin_output(
         }
         .with_scroll_geometry(Some(unrounded)),
     );
-    crate::round_layout(&mut tree, 0).expect("canonical flex geometry rounds");
+    crate::round_layout(&mut tree.borrow_compute(), 0).expect("canonical flex geometry rounds");
     let rounded = tree
         .final_layout(0)
         .and_then(|output| output.scroll_geometry)
@@ -5347,7 +5367,10 @@ struct Fri05C04FlexAutoPassTree {
 impl Traverse for Fri05C04FlexAutoPassTree {
     type Node = u32;
     type Scalar = Scalar;
-    type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+    type Children<'a>
+        = std::iter::Copied<std::slice::Iter<'a, u32>>
+    where
+        Self: 'a;
 
     fn children(&self, node: Self::Node) -> Self::Children<'_> {
         self.children
@@ -5367,13 +5390,63 @@ impl Traverse for Fri05C04FlexAutoPassTree {
     }
 }
 
-impl Compute for Fri05C04FlexAutoPassTree {
-    fn node_input(&self, node: Self::Node) -> &NodeInput {
+struct Fri05C04FlexAutoPassTreeCompute<'input> {
+    children: &'input HashMap<u32, Vec<u32>>,
+    styles: &'input HashMap<u32, NodeInput>,
+    child_output: Option<ComputeOutput>,
+    child_outputs: &'input mut HashMap<u32, ComputeOutput>,
+    child_inputs: &'input mut Vec<ComputeInput>,
+    child_requests: &'input mut Vec<(u32, ComputeInput)>,
+    layouts: &'input mut Vec<(u32, NodeOutput)>,
+}
+
+impl Fri05C04FlexAutoPassTree {
+    fn borrow_compute(&mut self) -> Fri05C04FlexAutoPassTreeCompute<'_> {
+        Fri05C04FlexAutoPassTreeCompute {
+            children: &self.children,
+            styles: &self.styles,
+            child_output: self.child_output,
+            child_outputs: &mut self.child_outputs,
+            child_inputs: &mut self.child_inputs,
+            child_requests: &mut self.child_requests,
+            layouts: &mut self.layouts,
+        }
+    }
+}
+
+impl<'input> Traverse for Fri05C04FlexAutoPassTreeCompute<'input> {
+    type Node = u32;
+    type Scalar = Scalar;
+    type Children<'a>
+        = std::iter::Copied<std::slice::Iter<'a, u32>>
+    where
+        Self: 'a;
+
+    fn children(&self, node: Self::Node) -> Self::Children<'_> {
+        self.children
+            .get(&node)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+            .iter()
+            .copied()
+    }
+
+    fn child_count(&self, node: Self::Node) -> usize {
+        self.children.get(&node).map_or(0, Vec::len)
+    }
+
+    fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+        self.children[&node][index]
+    }
+}
+
+impl<'input> Compute<'input> for Fri05C04FlexAutoPassTreeCompute<'input> {
+    fn node_input(&self, node: Self::Node) -> &'input NodeInput {
         &self.styles[&node]
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInput {
-        LayoutInput::box_input(self.styles[&node].clone())
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputView<'input> {
+        crate::LayoutInputViewOf::Box(&self.styles[&node])
     }
 
     fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
@@ -5471,7 +5544,7 @@ fn fri05_c04_flex_auto_absolute_case(
     tree.child_output = Some(ComputeOutput::from_sizes(child_size, child_size));
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         fri05_c04_flex_input(container_size, flow_axes),
     )
@@ -5611,7 +5684,7 @@ fn fri05_c04_flex_under_flex_case(
     }
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         fri05_c04_flex_input(
             Size::splat(100.0),
@@ -5765,8 +5838,12 @@ fn fri05_c04_flex_auto_alignment_subject_start_overflow_can_induce_other_axis() 
     );
     tree.child_output = Some(ComputeOutput::from_sizes(child_size, child_size));
 
-    let output = compute_flex(&mut tree, 0, fri05_c04_flex_input(size, flow_axes))
-        .expect("alignment-subject auto layout succeeds");
+    let output = compute_flex(
+        &mut tree.borrow_compute(),
+        0,
+        fri05_c04_flex_input(size, flow_axes),
+    )
+    .expect("alignment-subject auto layout succeeds");
     assert_eq!(
         fri05_c04_flex_auto_states(&tree.child_inputs),
         [(false, false), (true, false), (true, true)]
@@ -5916,7 +5993,7 @@ fn fri05_c04_flex_tiny_induced_reservations_saturate_without_extra_evaluations()
     measurement_tree.styles.insert(1, NodeInput::default());
     measurement_tree.child_output = Some(ComputeOutput::from_outer_size(Size::splat(1.0)));
     let measurement = compute_flex(
-        &mut measurement_tree,
+        &mut measurement_tree.borrow_compute(),
         0,
         ComputeInput::for_child(
             RunMode::ComputeSize,
@@ -5935,7 +6012,7 @@ fn fri05_c04_flex_tiny_induced_reservations_saturate_without_extra_evaluations()
 
 fn assert_fri08_c07_t03_optional_math_flex_results<S: LayoutScalar>()
 where
-    crate::test_support::layout_tree::OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    crate::test_support::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let scalar = S::from_f64;
     let style = NodeInputOf::<S> {
@@ -5954,7 +6031,7 @@ where
         .children(0, [])
         .style(0, style);
     let output = crate::compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         ComputeInputOf::for_child(
             RunMode::ComputeSize,
@@ -5987,7 +6064,7 @@ where
             },
         );
     let error = crate::compute_flex(
-        &mut failing_tree,
+        &mut failing_tree.borrow_compute(),
         0,
         ComputeInputOf::for_child(
             RunMode::ComputeSize,

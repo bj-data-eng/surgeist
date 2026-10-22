@@ -567,7 +567,10 @@ struct Fri05C03CacheLeafTree {
 impl Traverse for Fri05C03CacheLeafTree {
     type Node = u32;
     type Scalar = f32;
-    type Children<'a> = std::iter::Empty<u32>;
+    type Children<'a>
+        = std::iter::Empty<u32>
+    where
+        Self: 'a;
 
     fn children(&self, _node: Self::Node) -> Self::Children<'_> {
         std::iter::empty()
@@ -589,8 +592,8 @@ impl LayoutTree for Fri05C03CacheLeafTree {
         &self.style
     }
 
-    fn layout_input(&self, _node: Self::Node) -> LayoutInput {
-        LayoutInput::box_input(self.style.clone())
+    fn layout_input(&self, _node: Self::Node) -> crate::LayoutInputView<'_> {
+        crate::LayoutInputViewOf::Box(&self.style)
     }
 
     fn has_leaf_measurement(&self, _node: Self::Node) -> bool {

@@ -436,7 +436,7 @@ fn fri06_mr02_duplicate_id_competing_families_return_first_repeat_in_both_scalar
 #[derive(Clone)]
 struct Fri06C01Tree<S: LayoutScalar> {
     inputs: Vec<LayoutInputOf<S>>,
-    nodes: Vec<NodeInputOf<S>>,
+    non_box_inputs: Vec<NodeInputOf<S>>,
     children: Vec<Vec<usize>>,
     measured: Vec<bool>,
     cache_reads: std::cell::Cell<usize>,
@@ -468,11 +468,13 @@ impl<S: LayoutScalar> LayoutTree for Fri06C01Tree<S> {
     type MeasureError = core::convert::Infallible;
 
     fn node_input(&self, node: Self::Node) -> &NodeInputOf<Self::Scalar> {
-        &self.nodes[node]
+        self.inputs[node]
+            .as_box()
+            .unwrap_or(&self.non_box_inputs[node])
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-        self.inputs[node].clone()
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'_, Self::Scalar> {
+        self.inputs[node].as_view()
     }
 
     fn has_leaf_measurement(&self, node: Self::Node) -> bool {
@@ -503,9 +505,14 @@ fn fri06_c01_tree<S: LayoutScalar>(
     input: LayoutInputOf<S>,
     node: NodeInputOf<S>,
 ) -> Fri06C01Tree<S> {
+    let non_box_input = if input.as_box().is_some() {
+        NodeInputOf::non_box()
+    } else {
+        node
+    };
     Fri06C01Tree {
         inputs: vec![input],
-        nodes: vec![node],
+        non_box_inputs: vec![non_box_input],
         children: vec![Vec::new()],
         measured: vec![false],
         cache_reads: std::cell::Cell::new(0),
@@ -556,7 +563,7 @@ fn assert_fri06_c01_non_box<S: LayoutScalar>() {
     childful
         .inputs
         .push(LayoutInputOf::box_input(NodeInputOf::default()));
-    childful.nodes.push(NodeInputOf::default());
+    childful.non_box_inputs.push(NodeInputOf::non_box());
     childful.children[0].push(1);
     childful.children.push(Vec::new());
     childful.measured.push(false);
@@ -629,7 +636,7 @@ fn assert_fri06_mr01_non_box_precedence<S: LayoutScalar>(input: LayoutInputOf<S>
         if has_children {
             tree.inputs
                 .push(LayoutInputOf::box_input(NodeInputOf::default()));
-            tree.nodes.push(NodeInputOf::default());
+            tree.non_box_inputs.push(NodeInputOf::non_box());
             tree.children[0].push(1);
             tree.children.push(Vec::new());
             tree.measured.push(false);
@@ -686,9 +693,9 @@ fn assert_fri06_c01_box_roles<S: LayoutScalar>() {
     let child_tree = |style: NodeInputOf<S>| Fri06C01Tree {
         inputs: vec![
             LayoutInputOf::box_input(NodeInputOf::default()),
-            LayoutInputOf::box_input(style.clone()),
+            LayoutInputOf::box_input(style),
         ],
-        nodes: vec![NodeInputOf::default(), style],
+        non_box_inputs: vec![NodeInputOf::non_box(), NodeInputOf::non_box()],
         children: vec![vec![1], Vec::new()],
         measured: vec![false, false],
         cache_reads: std::cell::Cell::new(0),
@@ -1767,4 +1774,123 @@ fn node_input_default_retains_horizontal_tb_ltr_for_both_scalar_lanes() {
 
     assert_default_flow::<f32>();
     assert_default_flow::<f64>();
+}
+
+#[test]
+fn borrowed_input_views_reuse_validated_backing_in_both_scalar_lanes() {
+    fn assert_lane<S: LayoutScalar>() {
+        let metrics = InlineMetricsOf::try_new(S::from_f64(7.0), S::from_f64(11.0)).unwrap();
+        let segments = [(17, 23.0), (19, 31.0)].map(|(id, extent)| {
+            ShapedInlineSegmentOf::try_new(
+                InlineSegmentId::new(id),
+                S::from_f64(extent),
+                metrics,
+                BidiLevel::try_new(2).unwrap(),
+                InlineWhitespaceEdge::Preserve,
+                InlineBreakOpportunityOf::allowed(),
+            )
+            .unwrap()
+        });
+        let text = InlineTextInputOf::try_new(segments.to_vec()).unwrap();
+        let line_break = LineBreakInputOf::new().with_metrics(metrics);
+        let boundary = InlineBoundaryInputOf::new(InlineBoundaryKind::Start, metrics);
+        let tree = crate::test_support::layout_tree::PublicLayoutTreeOf::new()
+            .style(
+                0,
+                NodeInputOf::<S> {
+                    display: Display::Grid,
+                    grid_template_columns: vec![TrackComponentOf::MAX_CONTENT],
+                    grid_template_rows: vec![TrackComponentOf::MIN_CONTENT],
+                    ..NodeInputOf::default()
+                },
+            )
+            .input(1, LayoutInputOf::inline_text(text))
+            .input(2, LayoutInputOf::line_break(line_break))
+            .input(3, LayoutInputOf::inline_boundary(boundary));
+        let box_source = tree.node_input(0);
+        let text_source = tree.layout_input(1).as_inline_text().unwrap();
+
+        for _ in 0..8 {
+            let first = tree.layout_input(0);
+            let second = tree.layout_input(0);
+            assert!(core::ptr::eq(first.as_box().unwrap(), box_source));
+            assert!(core::ptr::eq(second.as_box().unwrap(), box_source));
+            assert!(core::ptr::eq(
+                first.as_box().unwrap().grid_template_columns.as_slice(),
+                box_source.grid_template_columns.as_slice(),
+            ));
+            assert_eq!(
+                first.as_box().unwrap().grid_template_columns.as_slice(),
+                &[TrackComponentOf::MAX_CONTENT]
+            );
+            let first_text = tree.layout_input(1).as_inline_text().unwrap();
+            let second_text = tree.layout_input(1).as_inline_text().unwrap();
+            assert_eq!(first_text.segments(), segments);
+            assert!(core::ptr::eq(first_text.segments(), text_source.segments()));
+            assert!(core::ptr::eq(
+                second_text.segments(),
+                text_source.segments()
+            ));
+            assert_eq!(tree.layout_input(2).as_line_break(), Some(line_break));
+            assert_eq!(tree.layout_input(3).as_inline_boundary(), Some(boundary));
+        }
+    }
+
+    assert_lane::<f32>();
+    assert_lane::<f64>();
+}
+
+#[test]
+fn borrowed_input_completed_geometry_and_caches_outlive_source_in_both_scalar_lanes() {
+    fn assert_lane<S: LayoutScalar>() {
+        let batch = {
+            let tree = crate::test_support::layout_tree::PublicLayoutTreeOf::new()
+                .children(0, [1])
+                .children(1, [])
+                .style(
+                    0,
+                    NodeInputOf::<S> {
+                        display: Display::Block,
+                        size: Size::new(
+                            PreferredSizeOf::px(S::from_f64(100.0)),
+                            PreferredSizeOf::px(S::from_f64(50.0)),
+                        ),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    1,
+                    NodeInputOf::<S> {
+                        display: Display::Block,
+                        size: Size::new(
+                            PreferredSizeOf::px(S::from_f64(20.0)),
+                            PreferredSizeOf::px(S::from_f64(10.0)),
+                        ),
+                        ..NodeInputOf::default()
+                    },
+                );
+            let request = LayoutRootRequestOf::viewport(Size::new(
+                AvailableOf::definite(S::from_f64(100.0)),
+                AvailableOf::definite(S::from_f64(50.0)),
+            ))
+            .unwrap();
+            compute_layout(&tree, 0, request).unwrap()
+        };
+        let child = batch
+            .final_entries()
+            .iter()
+            .find(|entry| entry.node() == 1)
+            .unwrap();
+        let expected = Size::new(S::from_f64(20.0), S::from_f64(10.0));
+        assert_eq!(child.output().size, expected);
+        assert!(
+            batch
+                .cache_store_entries()
+                .iter()
+                .any(|entry| { entry.node() == 1 && entry.output().size == expected })
+        );
+    }
+
+    assert_lane::<f32>();
+    assert_lane::<f64>();
 }

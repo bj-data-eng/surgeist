@@ -165,15 +165,15 @@ pub(in crate::grid) struct AbsoluteGridAxisInput<'a, S: LayoutScalar = Scalar> {
     pub(in crate::grid) explicit_start: usize,
     pub(in crate::grid) explicit_count: usize,
 }
-pub(in crate::grid) fn layout_absolute_grid_child<Tree, M>(
+pub(in crate::grid) fn layout_absolute_grid_child<'input, Tree, M>(
     tree: &mut Tree,
     child: <Tree as Traverse>::Node,
     source_index: usize,
-    child_style: &GridItemProjection<Tree::Scalar>,
+    child_style: &GridItemProjection<'input, Tree::Scalar>,
     context: AbsoluteGridContext<'_, Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, GridChildContribution<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let context = context.0;
     let container_style = context.container_style;

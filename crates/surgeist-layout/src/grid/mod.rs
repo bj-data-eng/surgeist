@@ -117,24 +117,24 @@ impl GridComputationReport {
     }
 }
 
-pub(crate) fn compute_grid<Tree, M>(
+pub(crate) fn compute_grid<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     Ok(compute_grid_with_report(tree, node, input)?.into_parts().0)
 }
 
-pub(crate) fn compute_grid_with_report<Tree, M>(
+pub(crate) fn compute_grid_with_report<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, GridComputationOf<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let result = compute_grid_with_scrollbar_settlement(
         tree,
@@ -169,7 +169,7 @@ impl<S: LayoutScalar> GridComputeResult<S> {
     }
 }
 
-fn compute_grid_with_scrollbar_settlement<Tree, M>(
+fn compute_grid_with_scrollbar_settlement<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
@@ -178,7 +178,7 @@ fn compute_grid_with_scrollbar_settlement<Tree, M>(
     measurement_boundary: GridMeasurementBoundary<Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, GridComputeResult<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let mut pass_input = input.with_settled_auto_scrollbars(initial_state);
     loop {
@@ -260,11 +260,21 @@ fn standalone_intrinsic_minimum_phases<S: LayoutScalar, Node>(
     Size::new(
         standalone_physical_axes
             .width
-            .then(|| StandaloneIntrinsicMinimum::from_minimum(&style.min_size.width))
+            .then(|| {
+                style.with_minimum(
+                    PhysicalAxis::Horizontal,
+                    StandaloneIntrinsicMinimum::from_minimum,
+                )
+            })
             .flatten(),
         standalone_physical_axes
             .height
-            .then(|| StandaloneIntrinsicMinimum::from_minimum(&style.min_size.height))
+            .then(|| {
+                style.with_minimum(
+                    PhysicalAxis::Vertical,
+                    StandaloneIntrinsicMinimum::from_minimum,
+                )
+            })
             .flatten(),
     )
 }
@@ -356,14 +366,14 @@ fn intrinsic_max_available<S: LayoutScalar>(
     )
 }
 
-fn compute_grid_with_context<Tree, M>(
+fn compute_grid_with_context<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
     parent_context: GridParentContext<Tree::Scalar, <Tree as Traverse>::Node>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let style_input = input::project_grid_container!(tree, node);
     let intrinsic_minimum =
@@ -377,7 +387,7 @@ where
     )
 }
 
-fn compute_grid_with_context_and_standalone_intrinsic_minimum<Tree, M>(
+fn compute_grid_with_context_and_standalone_intrinsic_minimum<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
@@ -385,7 +395,7 @@ fn compute_grid_with_context_and_standalone_intrinsic_minimum<Tree, M>(
     intrinsic_minimum: Size<Option<StandaloneIntrinsicMinimum>>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     Ok(
         compute_grid_with_context_settled_and_standalone_intrinsic_minimum(
@@ -399,7 +409,7 @@ where
     )
 }
 
-fn compute_grid_with_context_settled_and_standalone_intrinsic_minimum<Tree, M>(
+fn compute_grid_with_context_settled_and_standalone_intrinsic_minimum<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
@@ -407,7 +417,7 @@ fn compute_grid_with_context_settled_and_standalone_intrinsic_minimum<Tree, M>(
     intrinsic_minimum: Size<Option<StandaloneIntrinsicMinimum>>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, GridComputeResult<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let style_input = input::project_grid_container!(tree, node);
     let contextual_minimum =
@@ -435,14 +445,14 @@ where
     }
 }
 
-fn compute_standalone_grid_with_context<Tree, M>(
+fn compute_standalone_grid_with_context<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
     parent_context: GridParentContext<Tree::Scalar, <Tree as Traverse>::Node>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let style_input = input::project_grid_container!(tree, node);
     let intrinsic_minimum =
@@ -457,7 +467,7 @@ where
     .output)
 }
 
-fn compute_standalone_grid_with_context_settled<Tree, M>(
+fn compute_standalone_grid_with_context_settled<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
@@ -465,7 +475,7 @@ fn compute_standalone_grid_with_context_settled<Tree, M>(
     intrinsic_minimum: Size<Option<StandaloneIntrinsicMinimum>>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, GridComputeResult<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let intrinsic_axes = intrinsic_minimum.map(|minimum| minimum.is_some());
     let resolved_intrinsic_minimum = if intrinsic_axes.width || intrinsic_axes.height {
@@ -527,7 +537,7 @@ where
     )
 }
 
-fn compute_grid_with_context_settled<Tree, M>(
+fn compute_grid_with_context_settled<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
@@ -535,7 +545,7 @@ fn compute_grid_with_context_settled<Tree, M>(
     measurement_boundary: GridMeasurementBoundary<Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, GridComputeResult<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     compute_grid_with_scrollbar_settlement(
         tree,
@@ -547,7 +557,7 @@ where
     )
 }
 
-fn compute_grid_with_context_result<Tree, M>(
+fn compute_grid_with_context_result<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
@@ -555,7 +565,7 @@ fn compute_grid_with_context_result<Tree, M>(
     measurement_boundary: GridMeasurementBoundary<Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, GridComputeResult<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let mut style_input = input::project_grid_container!(tree, node);
     let standalone_intrinsic_minimum = match measurement_boundary {
@@ -691,7 +701,8 @@ where
             .block
             .max(cyclic_percent_content_size.block),
     );
-    let logical_style_size = sizing_flow_axes.logical_size(style.size.clone());
+    let logical_style_size =
+        sizing_flow_axes.logical_size(Size::new(&style.size.width, &style.size.height));
     let logical_node_inner_size = sizing_flow_axes.logical_size(constants.node_inner_size);
     let logical_available_inner_size =
         sizing_flow_axes.logical_size(constants.available_inner_size);
@@ -830,7 +841,7 @@ fn layout_percent_track_floor<S: LayoutScalar>(
 
 struct IntrinsicSizingAxisInput<'a, S: LayoutScalar = Scalar> {
     run_mode: RunMode,
-    style_size: PreferredSizeOf<S>,
+    style_size: &'a PreferredSizeOf<S>,
     content_size: S,
     track_content_size: S,
     definite_size: Option<S>,
@@ -860,7 +871,7 @@ fn intrinsic_sizing_axis_content_size<S: LayoutScalar>(
     ))
 }
 
-fn compute_grid_lanes_with_context_result<Tree, M>(
+fn compute_grid_lanes_with_context_result<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
@@ -869,7 +880,7 @@ fn compute_grid_lanes_with_context_result<Tree, M>(
     constants: Constants<Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, GridComputeResult<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let initialized_tracks = initialize_grid_tracks::<Tree, M>(
         tree,
@@ -1231,11 +1242,11 @@ impl<S: LayoutScalar> core::ops::Deref for GridContainerContext<S> {
     }
 }
 
-struct InitializedGridTracks<Node, S: LayoutScalar = Scalar> {
+struct InitializedGridTracks<'input, Node, S: LayoutScalar = Scalar> {
     column_tracks: Vec<TrackSizingOf<S>>,
     row_tracks: Vec<TrackSizingOf<S>>,
     context: GridContainerContext<S>,
-    placements: GridPlacementContext<Node, S>,
+    placements: GridPlacementContext<'input, Node, S>,
     subgrid_report: GridSubgridReport<Node>,
     report: GridComputationReport,
 }
@@ -1267,19 +1278,19 @@ pub(super) struct ResolvedGridItemPlacement {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct GridPlacementContext<Node, S: LayoutScalar = Scalar> {
+pub(super) struct GridPlacementContext<'input, Node, S: LayoutScalar = Scalar> {
     pub(super) children: Vec<Node>,
     pub(super) items: Vec<ResolvedGridItemPlacement>,
-    child_inputs: Vec<GridChildInput<S>>,
+    child_inputs: Vec<GridChildInput<'input, S>>,
     pub(super) order_modified_indexes: Vec<crate::SourceIndex>,
     settled_areas: Option<Vec<Option<PlacedGridArea>>>,
 }
 
-impl<Node, S: LayoutScalar> GridPlacementContext<Node, S> {
+impl<'input, Node, S: LayoutScalar> GridPlacementContext<'input, Node, S> {
     fn new_with_child_inputs(
         children: Vec<Node>,
         items: Vec<ResolvedGridItemPlacement>,
-        child_inputs: Vec<GridChildInput<S>>,
+        child_inputs: Vec<GridChildInput<'input, S>>,
     ) -> Self {
         assert_eq!(
             children.len(),
@@ -1306,11 +1317,8 @@ impl<Node, S: LayoutScalar> GridPlacementContext<Node, S> {
     }
 
     #[cfg(test)]
-    fn new(children: Vec<Node>, items: Vec<ResolvedGridItemPlacement>) -> Self {
-        let child_inputs = (0..children.len())
-            .map(|_| GridChildInput::from_node(&crate::NodeInputOf::default()))
-            .collect();
-        Self::new_with_child_inputs(children, items, child_inputs)
+    fn empty() -> Self {
+        Self::new_with_child_inputs(Vec::new(), Vec::new(), Vec::new())
     }
 
     fn with_order_modified_indexes(
@@ -1329,20 +1337,23 @@ impl<Node, S: LayoutScalar> GridPlacementContext<Node, S> {
         self.settled_areas.as_deref().unwrap_or(&[])
     }
 
-    fn item_input(&self, source_index: usize) -> &GridItemProjection<S> {
+    fn item_input(&self, source_index: usize) -> &GridItemProjection<'input, S> {
         self.child_inputs[source_index].item()
     }
 
-    fn child_input(&self, source_index: usize) -> &GridChildInput<S> {
+    fn child_input(&self, source_index: usize) -> &GridChildInput<'input, S> {
         &self.child_inputs[source_index]
     }
 
-    fn nested_container_input(&self, source_index: usize) -> Option<&GridContainerInput<S>> {
+    fn nested_container_input(
+        &self,
+        source_index: usize,
+    ) -> Option<&GridContainerInput<'input, S>> {
         self.child_inputs[source_index].nested_container()
     }
 }
 
-impl<Node: Copy + Eq, S: LayoutScalar> GridPlacementContext<Node, S> {
+impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPlacementContext<'input, Node, S> {
     fn checked_child_placements<'a>(
         &'a self,
         children: &'a [Node],
@@ -1364,7 +1375,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> GridPlacementContext<Node, S> {
     clippy::type_complexity,
     reason = "track initialization preserves the grid node, scalar, and provider error types"
 )]
-fn initialize_grid_tracks<Tree, M>(
+fn initialize_grid_tracks<'input, Tree, M>(
     tree: &Tree,
     node: <Tree as Traverse>::Node,
     style: &GridContainerProjection<'_, Tree::Scalar>,
@@ -1373,12 +1384,12 @@ fn initialize_grid_tracks<Tree, M>(
     _available: Size<AvailableOf<Tree::Scalar>>,
 ) -> LayoutResultOf<
     <Tree as Traverse>::Node,
-    InitializedGridTracks<<Tree as Traverse>::Node, Tree::Scalar>,
+    InitializedGridTracks<'input, <Tree as Traverse>::Node, Tree::Scalar>,
     Tree::Scalar,
     M,
 >
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let sizing_flow_axes = constants.flow_axes;
     let container_style = *style;
@@ -1711,18 +1722,18 @@ fn grid_placement_demand_error<Node, S: LayoutScalar, M>(
     }
 }
 
-fn resolve_grid_child_placements<Tree, M>(
+fn resolve_grid_child_placements<'input, Tree, M>(
     children: &[<Tree as Traverse>::Node],
     tree: &Tree,
     topology: &ExpandedGridTopology<Tree::Scalar>,
     subgrid_columns: bool,
     subgrid_rows: bool,
 ) -> (
-    GridPlacementContext<<Tree as Traverse>::Node, Tree::Scalar>,
+    GridPlacementContext<'input, <Tree as Traverse>::Node, Tree::Scalar>,
     NamedGridReport,
 )
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let mut report = NamedGridReport::default();
     let mut items = Vec::with_capacity(children.len());
@@ -1747,14 +1758,14 @@ where
         let (column, absolute_column, column_report) =
             resolve_grid_item_axis_placements_with_report(
                 &topology.named_columns,
-                &style.raw_grid_column,
+                style.raw_grid_column,
                 style.grid_column,
                 subgrid_columns,
             );
         report.extend(column_report);
         let (row, absolute_row, row_report) = resolve_grid_item_axis_placements_with_report(
             &topology.named_rows,
-            &style.raw_grid_row,
+            style.raw_grid_row,
             style.grid_row,
             subgrid_rows,
         );
@@ -1885,7 +1896,7 @@ fn raw_grid_line_is_numeric(line: &super::RawGridLine) -> bool {
     )
 }
 
-struct GridTrackResolutionInput<'a, Node, S: LayoutScalar = Scalar> {
+struct GridTrackResolutionInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
     style: &'a GridContainerProjection<'a, S>,
     constants: &'a Constants<S>,
     column_tracks: &'a [TrackSizingOf<S>],
@@ -1895,7 +1906,7 @@ struct GridTrackResolutionInput<'a, Node, S: LayoutScalar = Scalar> {
     sizing_flow_axes: crate::geometry::FlowAxes,
     available: LogicalSizeOf<AvailableOf<S>>,
     intrinsic_max_available: LogicalSizeOf<bool>,
-    placements: &'a GridPlacementContext<Node, S>,
+    placements: &'a GridPlacementContext<'input, Node, S>,
 }
 
 #[derive(Clone, Copy)]
@@ -1916,13 +1927,13 @@ struct GridTrackResolution<S: LayoutScalar = Scalar> {
     row_intrinsic_sizes: Vec<S>,
 }
 
-fn resolve_grid_track_sizes<Tree, M>(
+fn resolve_grid_track_sizes<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
-    input: GridTrackResolutionInput<'_, <Tree as Traverse>::Node, Tree::Scalar>,
+    input: GridTrackResolutionInput<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, GridTrackResolution<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let GridTrackResolutionInput {
         style,
@@ -2299,7 +2310,7 @@ fn merge_lane_intrinsic_lower_bounds<S: LayoutScalar>(
     }
 }
 
-struct GridChildLayoutInput<'a, Node, S: LayoutScalar = Scalar> {
+struct GridChildLayoutInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
     sizing_phases: GridTrackSizingPhases,
     style: &'a GridContainerProjection<'a, S>,
     constants: &'a Constants<S>,
@@ -2314,17 +2325,17 @@ struct GridChildLayoutInput<'a, Node, S: LayoutScalar = Scalar> {
     output_size: Size<S>,
     subgrid_report: &'a GridSubgridReport<Node>,
     parent_context: &'a GridParentContext<S, Node>,
-    placements: &'a GridPlacementContext<Node, S>,
+    placements: &'a GridPlacementContext<'input, Node, S>,
     containing_auto_scrollbar_pass: crate::scroll::SettledAutoScrollbarState,
 }
 
-fn layout_grid_container_children<Tree, M>(
+fn layout_grid_container_children<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
-    input: GridChildLayoutInput<'_, <Tree as Traverse>::Node, Tree::Scalar>,
+    input: GridChildLayoutInput<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, GridChildrenLayout<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let GridChildLayoutInput {
         sizing_phases,
@@ -2612,7 +2623,7 @@ struct AxisTrackInput<'a, S: LayoutScalar = Scalar> {
     max_intrinsic_sizes: &'a [S],
 }
 
-struct GridLayoutContext<'a, Node, S: LayoutScalar = Scalar> {
+struct GridLayoutContext<'input, 'a, Node, S: LayoutScalar = Scalar> {
     style: &'a GridContainerProjection<'a, S>,
     constants: &'a Constants<S>,
     container_content_size: Size<S>,
@@ -2633,11 +2644,11 @@ struct GridLayoutContext<'a, Node, S: LayoutScalar = Scalar> {
     inherited_row_offset: Option<S>,
     subgrid_report: &'a GridSubgridReport<Node>,
     parent_context: &'a GridParentContext<S, Node>,
-    placements: &'a GridPlacementContext<Node, S>,
+    placements: &'a GridPlacementContext<'input, Node, S>,
     containing_auto_scrollbar_pass: crate::scroll::SettledAutoScrollbarState,
 }
 
-fn resolved_logical_layout_gap<Tree, M>(
+fn resolved_logical_layout_gap<'input, Tree, M>(
     tree: &Tree,
     node: <Tree as Traverse>::Node,
     style: &GridContainerProjection<'_, Tree::Scalar>,
@@ -2647,7 +2658,7 @@ fn resolved_logical_layout_gap<Tree, M>(
     intrinsic_gap: LogicalSizeOf<Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, LogicalSizeOf<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let physical_content_box_size = sizing_flow_axes.physical_size(content_box_size);
     let physical_intrinsic_gap = sizing_flow_axes.physical_size(intrinsic_gap);
@@ -2790,19 +2801,19 @@ struct Constants<S: LayoutScalar = Scalar> {
 
 impl<S: LayoutScalar> Constants<S> {
     #[cfg(test)]
-    fn new<Tree, M>(
+    fn new<'input, Tree, M>(
         tree: &Tree,
         node: <Tree as Traverse>::Node,
         style: &GridContainerProjection<'_, S>,
         input: ComputeInputOf<S>,
     ) -> LayoutResultOf<<Tree as Traverse>::Node, Self, S, M>
     where
-        Tree: Compute<M, Scalar = S>,
+        Tree: Compute<'input, M, Scalar = S>,
     {
         Self::new_with_reservation::<Tree, M>(tree, node, style, input, false, Size::NONE)
     }
 
-    fn new_with_reservation<Tree, M>(
+    fn new_with_reservation<'input, Tree, M>(
         tree: &Tree,
         node: <Tree as Traverse>::Node,
         style: &GridContainerProjection<'_, S>,
@@ -2811,7 +2822,7 @@ impl<S: LayoutScalar> Constants<S> {
         standalone_intrinsic_minimum: Size<Option<S>>,
     ) -> LayoutResultOf<<Tree as Traverse>::Node, Self, S, M>
     where
-        Tree: Compute<M, Scalar = S>,
+        Tree: Compute<'input, M, Scalar = S>,
     {
         let (padding, border) = resolve_containing_padding_border(
             input.containing_flow_axes(),
@@ -2864,35 +2875,28 @@ impl<S: LayoutScalar> Constants<S> {
         } else {
             Size::NONE
         };
-        let minimum_for_numeric_resolution = Size::new(
-            if standalone_intrinsic_minimum.width.is_some() {
-                MinSizeOf::AUTO
+        let resolve_minimum = |axis, basis, intrinsic_minimum: Option<S>| {
+            let resolve = |minimum: &MinSizeOf<S>| {
+                resolve_minimum_optional(minimum, algorithm, axis, basis, true)
+                    .map_err(|error| sizing_resolution_error(node, error))
+            };
+            if intrinsic_minimum.is_some() {
+                resolve(&MinSizeOf::AUTO)
             } else {
-                style.min_size.width.clone()
-            },
-            if standalone_intrinsic_minimum.height.is_some() {
-                MinSizeOf::AUTO
-            } else {
-                style.min_size.height.clone()
-            },
-        );
+                style.with_minimum(axis, resolve)
+            }
+        };
         let resolved_min_size = Size::new(
-            resolve_minimum_optional(
-                &minimum_for_numeric_resolution.width,
-                algorithm,
+            resolve_minimum(
                 PhysicalAxis::Horizontal,
                 input.parent().width,
-                true,
-            )
-            .map_err(|error| sizing_resolution_error(node, error))?,
-            resolve_minimum_optional(
-                &minimum_for_numeric_resolution.height,
-                algorithm,
+                standalone_intrinsic_minimum.width,
+            )?,
+            resolve_minimum(
                 PhysicalAxis::Vertical,
                 input.parent().height,
-                true,
-            )
-            .map_err(|error| sizing_resolution_error(node, error))?,
+                standalone_intrinsic_minimum.height,
+            )?,
         )
         .apply_aspect_ratio(*style.aspect_ratio)
         .add_optional(box_sizing_adjustment);
@@ -3199,7 +3203,9 @@ mod fri06_c13_t06_characterization_tests {
             border,
             ..NodeInputOf::default()
         };
-        let tree = crate::test_support::layout_tree::OracleTreeOf::new().style(7, style.clone());
+        let mut owner =
+            crate::test_support::layout_tree::OracleTreeOf::new().style(7, style.clone());
+        let tree = owner.borrow_compute();
 
         for (flow, parent, expected_padding) in [
             (
@@ -3258,8 +3264,9 @@ mod fri06_c13_t06_characterization_tests {
             ),
             ..NodeInputOf::default()
         };
-        let failing_tree =
+        let mut failing_owner =
             crate::test_support::layout_tree::OracleTreeOf::new().style(7, failing_style.clone());
+        let failing_tree = failing_owner.borrow_compute();
         let error = match Constants::new::<_, core::convert::Infallible>(
             &failing_tree,
             7,

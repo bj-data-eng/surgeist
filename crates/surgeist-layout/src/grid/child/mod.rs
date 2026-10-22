@@ -40,13 +40,13 @@ pub(super) struct GridLines {
     pub(super) row_explicit_count: usize,
 }
 
-pub(super) fn layout_grid_children<Tree, M>(
+pub(super) fn layout_grid_children<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
-    context: GridLayoutContext<'_, <Tree as Traverse>::Node, Tree::Scalar>,
+    context: GridLayoutContext<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, GridChildrenLayout<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let GridLayoutContext {
         style,
@@ -863,10 +863,10 @@ fn grid_physical_axis_progression(
 }
 
 #[derive(Clone)]
-pub(super) struct PendingGridItem<Node, S: LayoutScalar = Scalar> {
+pub(super) struct PendingGridItem<'input, Node, S: LayoutScalar = Scalar> {
     pub(super) node: Node,
-    pub(super) style: GridItemProjection<S>,
-    pub(super) nested_container: Option<GridContainerInput<S>>,
+    pub(super) style: GridItemProjection<'input, S>,
+    pub(super) nested_container: Option<GridContainerInput<'input, S>>,
     pub(super) source_index: usize,
     pub(super) area: GridArea<S>,
     pub(super) output: ComputeOutputOf<S>,
@@ -917,9 +917,9 @@ impl<S: LayoutScalar> GridItemMinimum<S> {
     }
 }
 
-pub(super) fn grid_item_sizing_for_grid_flow<Tree, M>(
+pub(super) fn grid_item_sizing_for_grid_flow<'input, Tree, M>(
     child: <Tree as Traverse>::Node,
-    child_style: &GridItemProjection<Tree::Scalar>,
+    child_style: &GridItemProjection<'input, Tree::Scalar>,
     container_style: &GridContainerProjection<'_, Tree::Scalar>,
     subgrid_item: Option<SubgridItemReport<<Tree as Traverse>::Node>>,
     area_size: Size<Tree::Scalar>,
@@ -927,7 +927,7 @@ pub(super) fn grid_item_sizing_for_grid_flow<Tree, M>(
     grid_flow_axes: FlowAxes,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, GridItemSizing<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     grid_item_sizing_with_grid_flow_status(
         child_style,
@@ -943,8 +943,8 @@ where
     .map_err(|error| sizing_resolution_error(child, error))
 }
 
-pub(super) fn grid_item_sizing_with_grid_flow_status<S: LayoutScalar>(
-    child_style: &GridItemProjection<S>,
+pub(super) fn grid_item_sizing_with_grid_flow_status<'input, S: LayoutScalar>(
+    child_style: &GridItemProjection<'input, S>,
     container_style: &GridContainerProjection<'_, S>,
     subgrid_requests: Size<bool>,
     area_size: Size<S>,
@@ -1052,7 +1052,8 @@ pub(super) fn grid_item_sizing_with_grid_flow_status<S: LayoutScalar>(
     .apply_aspect_ratio(child_style.aspect_ratio)
     .add_optional(box_sizing_adjustment);
     let logical_inherent_size = grid_flow_axes.logical_size(inherent_size);
-    let logical_style_size = grid_flow_axes.logical_size(child_style.size.clone());
+    let logical_style_size =
+        grid_flow_axes.logical_size(Size::new(&child_style.size.width, &child_style.size.height));
     let justify_self = resolve_grid_item_normal_alignment(
         child_style.justify_self,
         container_style.justify_items,
@@ -1073,7 +1074,10 @@ pub(super) fn grid_item_sizing_with_grid_flow_status<S: LayoutScalar>(
             || !logical_style_size.block.is_auto()
             || (child_style.aspect_ratio.is_some()
                 && grid_flow_axes
-                    .logical_size(child_style.min_size.clone())
+                    .logical_size(Size::new(
+                        &child_style.min_size.width,
+                        &child_style.min_size.height,
+                    ))
                     .block
                     .is_auto())
         {
@@ -1102,7 +1106,10 @@ pub(super) fn grid_item_sizing_with_grid_flow_status<S: LayoutScalar>(
         && logical_known.block.is_some()
         && block_stretches
         && !grid_flow_axes
-            .logical_size(child_style.min_size.clone())
+            .logical_size(Size::new(
+                &child_style.min_size.width,
+                &child_style.min_size.height,
+            ))
             .block
             .is_auto()
     {
@@ -1126,9 +1133,9 @@ pub(super) fn grid_item_sizing_with_grid_flow_status<S: LayoutScalar>(
     })
 }
 
-fn resolve_standalone_subgrid_item_minimum_optional<S: LayoutScalar>(
+fn resolve_standalone_subgrid_item_minimum_optional<'input, S: LayoutScalar>(
     value: &MinSizeOf<S>,
-    child_style: &GridItemProjection<S>,
+    child_style: &GridItemProjection<'input, S>,
     subgrid_requests: Size<bool>,
     algorithm: SizingAlgorithm,
     physical_axis: PhysicalAxis,

@@ -1,31 +1,30 @@
 use crate::block::BlockChildProjection;
 use crate::{
-    Compute, InlineBoundaryInputOf, InlineTextInputOf, LayoutInputOf, LayoutScalar,
+    Compute, InlineBoundaryInputOf, InlineTextInputOf, LayoutInputViewOf, LayoutScalar,
     LineBreakInputOf, Traverse,
 };
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum InlineParticipantKindOf<'a, S: LayoutScalar> {
-    Box(Box<BlockChildProjection<'a, S>>),
-    InlineText(InlineTextInputOf<S>),
+    Box(BlockChildProjection<'a, S>),
+    InlineText(&'a InlineTextInputOf<S>),
     LineBreak(LineBreakInputOf<S>),
     InlineBoundary(InlineBoundaryInputOf<S>),
 }
 
 /// One settled box, text, break, or boundary participant in an inline context.
 ///
-/// The owned lookup result anchors the borrowed common-box facts exposed by
-/// [`Self::kind`] without copying them into another projection.
+/// The view retains the immutable source loan used by [`Self::kind`].
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct InlineParticipantProjection<S: LayoutScalar> {
-    input: LayoutInputOf<S>,
+pub(crate) struct InlineParticipantProjection<'input, S: LayoutScalar> {
+    input: LayoutInputViewOf<'input, S>,
 }
 
-impl<S: LayoutScalar> InlineParticipantProjection<S> {
+impl<'input, S: LayoutScalar> InlineParticipantProjection<'input, S> {
     #[must_use]
     pub(crate) fn lookup<Tree, M>(tree: &Tree, node: <Tree as Traverse>::Node) -> Self
     where
-        Tree: Compute<M, Scalar = S>,
+        Tree: Compute<'input, M, Scalar = S>,
     {
         Self {
             input: tree.layout_input(node),
@@ -33,84 +32,35 @@ impl<S: LayoutScalar> InlineParticipantProjection<S> {
     }
 
     #[must_use]
-    pub(crate) fn kind(&self) -> InlineParticipantKindOf<'_, S> {
-        match &self.input {
-            LayoutInputOf::Box(input) => {
-                InlineParticipantKindOf::Box(Box::new(BlockChildProjection::from_node(input)))
+    pub(crate) fn kind(&self) -> InlineParticipantKindOf<'input, S> {
+        match self.input {
+            LayoutInputViewOf::Box(input) => {
+                InlineParticipantKindOf::Box(BlockChildProjection::from_node(input))
             }
-            LayoutInputOf::InlineText(input) => InlineParticipantKindOf::InlineText(input.clone()),
-            LayoutInputOf::LineBreak(input) => InlineParticipantKindOf::LineBreak(*input),
-            LayoutInputOf::InlineBoundary(input) => InlineParticipantKindOf::InlineBoundary(*input),
+            LayoutInputViewOf::InlineText(input) => InlineParticipantKindOf::InlineText(input),
+            LayoutInputViewOf::LineBreak(input) => InlineParticipantKindOf::LineBreak(input),
+            LayoutInputViewOf::InlineBoundary(input) => {
+                InlineParticipantKindOf::InlineBoundary(input)
+            }
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use core::convert::Infallible;
-
     use super::*;
+    use crate::LayoutInputOf;
     use crate::{
-        BidiLevel, Clear, ComputeInputOf, ComputeOutputOf, Direction, InlineBoundaryKind,
-        InlineBreakOpportunityOf, InlineMetricsOf, InlineSegmentId, InlineWhitespaceEdge,
-        LayoutResultOf, NodeInputOf, NodeOutputOf, ShapedInlineSegmentOf, VerticalAlign,
-        WritingMode,
+        BidiLevel, Clear, Direction, InlineBoundaryKind, InlineBreakOpportunityOf, InlineMetricsOf,
+        InlineSegmentId, InlineWhitespaceEdge, ShapedInlineSegmentOf, VerticalAlign, WritingMode,
     };
 
-    struct ProjectionTree<S: LayoutScalar> {
-        node_input: NodeInputOf<S>,
-        layout_input: LayoutInputOf<S>,
-    }
-
-    impl<S: LayoutScalar> Traverse for ProjectionTree<S> {
-        type Node = ();
-        type Scalar = S;
-        type Children<'a>
-            = core::iter::Empty<()>
-        where
-            Self: 'a;
-
-        fn children(&self, _node: Self::Node) -> Self::Children<'_> {
-            core::iter::empty()
+    fn projection_from_input<S: LayoutScalar>(
+        input: &LayoutInputOf<S>,
+    ) -> InlineParticipantProjection<'_, S> {
+        InlineParticipantProjection {
+            input: input.as_view(),
         }
-
-        fn child_count(&self, _node: Self::Node) -> usize {
-            0
-        }
-
-        fn child(&self, _node: Self::Node, _index: usize) -> Self::Node {
-            panic!("projection test tree has no children")
-        }
-    }
-
-    impl<S: LayoutScalar> Compute<Infallible> for ProjectionTree<S> {
-        fn node_input(&self, _node: Self::Node) -> &NodeInputOf<S> {
-            &self.node_input
-        }
-
-        fn layout_input(&self, _node: Self::Node) -> LayoutInputOf<S> {
-            self.layout_input.clone()
-        }
-
-        fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutputOf<S>) {}
-
-        fn compute_child(
-            &mut self,
-            _node: Self::Node,
-            _input: ComputeInputOf<S>,
-        ) -> LayoutResultOf<Self::Node, ComputeOutputOf<S>, S, Infallible> {
-            panic!("projection lookup does not compute children")
-        }
-    }
-
-    fn lookup<S: LayoutScalar>(input: LayoutInputOf<S>) -> InlineParticipantProjection<S> {
-        InlineParticipantProjection::lookup::<_, Infallible>(
-            &ProjectionTree {
-                node_input: NodeInputOf::default(),
-                layout_input: input,
-            },
-            (),
-        )
     }
 
     fn assert_inline_kind_reuses_segment_backing<S: LayoutScalar>() {
@@ -142,7 +92,7 @@ mod tests {
             .expect("nonempty text with distinct segment identities");
         // Construct the product projection directly to exclude any provider clone.
         let projection = InlineParticipantProjection {
-            input: LayoutInputOf::inline_text(text),
+            input: LayoutInputViewOf::InlineText(&text),
         };
         let original = projection
             .input
@@ -191,11 +141,12 @@ mod tests {
         .expect("valid shaped inline segment");
         let text = InlineTextInputOf::try_new(vec![text_segment])
             .expect("nonempty inline text with unique segment identity");
-        let text_projection = lookup(LayoutInputOf::inline_text(text.clone()));
+        let text_input = LayoutInputOf::inline_text(text.clone());
+        let text_projection = projection_from_input(&text_input);
         let InlineParticipantKindOf::InlineText(projected_text) = text_projection.kind() else {
             panic!("inline text input must retain its participant kind");
         };
-        assert_eq!(projected_text, text);
+        assert_eq!(projected_text, &text);
         assert_eq!(projected_text.segments(), &[text_segment]);
 
         let break_metrics = InlineMetricsOf::try_new(S::from_f64(13.0), S::from_f64(19.0))
@@ -207,7 +158,8 @@ mod tests {
             .with_writing_mode(WritingMode::VerticalLr)
             .with_vertical_align(VerticalAlign::Top)
             .with_clear(Clear::Right);
-        let line_break_projection = lookup(LayoutInputOf::line_break(line_break));
+        let line_break_input = LayoutInputOf::line_break(line_break);
+        let line_break_projection = projection_from_input(&line_break_input);
         let InlineParticipantKindOf::LineBreak(projected_break) = line_break_projection.kind()
         else {
             panic!("line-break input must retain its participant kind");
@@ -225,7 +177,8 @@ mod tests {
             .with_writing_mode(WritingMode::SidewaysRl)
             .with_direction(Direction::Rtl)
             .with_vertical_align(VerticalAlign::Bottom);
-        let boundary_projection = lookup(LayoutInputOf::inline_boundary(boundary));
+        let boundary_input = LayoutInputOf::inline_boundary(boundary);
+        let boundary_projection = projection_from_input(&boundary_input);
         let InlineParticipantKindOf::InlineBoundary(projected_boundary) =
             boundary_projection.kind()
         else {

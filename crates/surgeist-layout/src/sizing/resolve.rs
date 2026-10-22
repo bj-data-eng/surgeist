@@ -170,25 +170,25 @@ pub(crate) fn resolution_optional_fallible<S: LayoutScalar>(
 pub(crate) trait SizeResultExt<S: LayoutScalar> {
     type Output;
 
-    fn transpose_with_node<Tree, M>(
+    fn transpose_with_node<'input, Tree, M>(
         self,
         _tree: &Tree,
         node: <Tree as Traverse>::Node,
     ) -> LayoutResultOf<<Tree as Traverse>::Node, Self::Output, S, M>
     where
-        Tree: Compute<M, Scalar = S>;
+        Tree: Compute<'input, M, Scalar = S>;
 }
 
 impl<S: LayoutScalar> SizeResultExt<S> for Size<Result<S, LengthResolutionStatus<S>>> {
     type Output = Size<S>;
 
-    fn transpose_with_node<Tree, M>(
+    fn transpose_with_node<'input, Tree, M>(
         self,
         _tree: &Tree,
         node: <Tree as Traverse>::Node,
     ) -> LayoutResultOf<<Tree as Traverse>::Node, Self::Output, S, M>
     where
-        Tree: Compute<M, Scalar = S>,
+        Tree: Compute<'input, M, Scalar = S>,
     {
         Ok(Size::new(
             self.width
@@ -202,13 +202,13 @@ impl<S: LayoutScalar> SizeResultExt<S> for Size<Result<S, LengthResolutionStatus
 impl<S: LayoutScalar> SizeResultExt<S> for Size<Result<Option<S>, LengthResolutionStatus<S>>> {
     type Output = Size<Option<S>>;
 
-    fn transpose_with_node<Tree, M>(
+    fn transpose_with_node<'input, Tree, M>(
         self,
         _tree: &Tree,
         node: <Tree as Traverse>::Node,
     ) -> LayoutResultOf<<Tree as Traverse>::Node, Self::Output, S, M>
     where
-        Tree: Compute<M, Scalar = S>,
+        Tree: Compute<'input, M, Scalar = S>,
     {
         Ok(Size::new(
             self.width
@@ -222,13 +222,13 @@ impl<S: LayoutScalar> SizeResultExt<S> for Size<Result<Option<S>, LengthResoluti
 impl<S: LayoutScalar> SizeResultExt<S> for Size<Result<Option<S>, SizingResolutionError<S>>> {
     type Output = Size<Option<S>>;
 
-    fn transpose_with_node<Tree, M>(
+    fn transpose_with_node<'input, Tree, M>(
         self,
         _tree: &Tree,
         node: <Tree as Traverse>::Node,
     ) -> LayoutResultOf<<Tree as Traverse>::Node, Self::Output, S, M>
     where
-        Tree: Compute<M, Scalar = S>,
+        Tree: Compute<'input, M, Scalar = S>,
     {
         Ok(Size::new(
             self.width
@@ -242,25 +242,25 @@ impl<S: LayoutScalar> SizeResultExt<S> for Size<Result<Option<S>, SizingResoluti
 pub(crate) trait EdgesResultExt<S: LayoutScalar> {
     type Output;
 
-    fn transpose_with_node<Tree, M>(
+    fn transpose_with_node<'input, Tree, M>(
         self,
         _tree: &Tree,
         node: <Tree as Traverse>::Node,
     ) -> LayoutResultOf<<Tree as Traverse>::Node, Self::Output, S, M>
     where
-        Tree: Compute<M, Scalar = S>;
+        Tree: Compute<'input, M, Scalar = S>;
 }
 
 impl<S: LayoutScalar> EdgesResultExt<S> for Edges<Result<S, LengthResolutionStatus<S>>> {
     type Output = Edges<S>;
 
-    fn transpose_with_node<Tree, M>(
+    fn transpose_with_node<'input, Tree, M>(
         self,
         _tree: &Tree,
         node: <Tree as Traverse>::Node,
     ) -> LayoutResultOf<<Tree as Traverse>::Node, Self::Output, S, M>
     where
-        Tree: Compute<M, Scalar = S>,
+        Tree: Compute<'input, M, Scalar = S>,
     {
         Ok(Edges::new(
             self.top
@@ -278,13 +278,13 @@ impl<S: LayoutScalar> EdgesResultExt<S> for Edges<Result<S, LengthResolutionStat
 impl<S: LayoutScalar> EdgesResultExt<S> for Edges<Result<Option<S>, LengthResolutionStatus<S>>> {
     type Output = Edges<Option<S>>;
 
-    fn transpose_with_node<Tree, M>(
+    fn transpose_with_node<'input, Tree, M>(
         self,
         _tree: &Tree,
         node: <Tree as Traverse>::Node,
     ) -> LayoutResultOf<<Tree as Traverse>::Node, Self::Output, S, M>
     where
-        Tree: Compute<M, Scalar = S>,
+        Tree: Compute<'input, M, Scalar = S>,
     {
         Ok(Edges::new(
             self.top

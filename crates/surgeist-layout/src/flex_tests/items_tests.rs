@@ -75,7 +75,7 @@ fn fri04_c04_flex_dispatch_auto_uses_preferred_main_size_but_content_bypasses_it
             .measure(2, ComputeOutput::from_outer_size(Size::new(25.0, 20.0)));
 
         compute_flex(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
                 RunMode::PerformLayout,
@@ -144,7 +144,7 @@ fn fri04_c04_flex_dispatch_first_item_input(
         .measure(2, ComputeOutput::from_outer_size(Size::new(25.0, 20.0)));
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -265,7 +265,7 @@ fn fri04_c04_flex_dispatch_assert_error(
         .style(2, child)
         .measure(2, ComputeOutput::from_outer_size(Size::splat(10.0)));
     let error = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -584,7 +584,7 @@ fn fri04_c04_flex_dispatch_container_item_root_and_absolute_report_consuming_alg
             },
         );
     let container_error = compute_flex(
-        &mut container_tree,
+        &mut container_tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -677,7 +677,7 @@ fn fri04_c04_flex_dispatch_invalid_numeric_preserves_item_node_site() {
             )
             .style(2, style);
         let error = compute_flex(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
                 RunMode::PerformLayout,
@@ -818,7 +818,7 @@ fn fri04_c03_flex_row_layout_consumes_nested_container_item_and_absolute_propert
         );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -914,7 +914,7 @@ fn fri04_c03_flex_column_layout_maps_nested_main_and_cross_calculations_to_physi
         );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -979,7 +979,7 @@ fn fri04_c03_flex_compute_size_missing_numeric_basis_uses_content_not_authored_m
         );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::ComputeSize,
@@ -1046,7 +1046,7 @@ fn fri04_c03_flex_invalid_numeric_propagates_for_every_numeric_property_role() {
             .measure(2, ComputeOutput::from_outer_size(Size::new(20.0, 10.0)));
 
         let error = compute_flex(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
                 RunMode::PerformLayout,
@@ -1087,7 +1087,7 @@ fn flex_child_context_is_complete_for_layout_sizing_and_absolute_paths() {
 
 fn assert_flex_child_context_is_complete<S: LayoutScalar>()
 where
-    crate::test_support::layout_tree::OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    crate::test_support::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let flow_axes = FlowAxes::new(WritingMode::VerticalLr, Direction::Ltr);
     let expected =
@@ -1130,7 +1130,7 @@ where
             );
 
         crate::compute_flex(
-            &mut tree,
+            &mut tree.borrow_compute(),
             0,
             ComputeInputOf::for_child(
                 run_mode,
@@ -1240,7 +1240,7 @@ fn flex_row_lays_out_fixed_children_with_gap_and_container_insets() {
     );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -1317,7 +1317,7 @@ fn f64_flex_layout_preserves_fractional_growth() {
         );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         ComputeInputOf::<f64>::for_child(
             RunMode::PerformLayout,
@@ -1393,7 +1393,7 @@ fn flex_margin_resolution_handles_invalid_affine_numeric_result_without_panickin
         .measure(2, ComputeOutput::from_outer_size(Size::new(20.0, 20.0)));
 
     let error = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -1432,7 +1432,10 @@ fn flex_compute_size_short_circuits_when_container_size_is_definite() {
         type Node = u32;
 
         type Scalar = Scalar;
-        type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
 
         fn children(&self, node: Self::Node) -> Self::Children<'_> {
             self.children[&node].iter().copied()
@@ -1447,13 +1450,49 @@ fn flex_compute_size_short_circuits_when_container_size_is_definite() {
         }
     }
 
-    impl Compute for FlexTree {
-        fn node_input(&self, node: Self::Node) -> &NodeInput {
+    struct FlexTreeCompute<'input> {
+        children: &'input HashMap<u32, Vec<u32>>,
+        styles: &'input HashMap<u32, NodeInput>,
+    }
+
+    impl FlexTree {
+        fn borrow_compute(&mut self) -> FlexTreeCompute<'_> {
+            FlexTreeCompute {
+                children: &self.children,
+                styles: &self.styles,
+            }
+        }
+    }
+
+    impl<'input> Traverse for FlexTreeCompute<'input> {
+        type Node = u32;
+
+        type Scalar = Scalar;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
+
+        fn children(&self, node: Self::Node) -> Self::Children<'_> {
+            self.children[&node].iter().copied()
+        }
+
+        fn child_count(&self, node: Self::Node) -> usize {
+            self.children[&node].len()
+        }
+
+        fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+            self.children[&node][index]
+        }
+    }
+
+    impl<'input> Compute<'input> for FlexTreeCompute<'input> {
+        fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             &self.styles[&node]
         }
 
-        fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-            LayoutInputOf::box_input(self.node_input(node).clone())
+        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
+            crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
         fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutput) {}
@@ -1481,7 +1520,7 @@ fn flex_compute_size_short_circuits_when_container_size_is_definite() {
     tree.styles.insert(2, NodeInput::default());
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::ComputeSize,
@@ -1526,7 +1565,7 @@ fn flex_compute_size_measures_children_without_perform_layout() {
     );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::ComputeSize,
@@ -1571,7 +1610,7 @@ fn flex_row_auto_main_item_uses_content_sizing_for_base_size() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -1639,7 +1678,7 @@ fn flex_row_hidden_overflow_item_has_zero_automatic_minimum() {
         .measure(3, ComputeOutput::from_outer_size(Size::new(40.0, 50.0)));
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -1713,7 +1752,7 @@ fn flex_column_hidden_overflow_aspect_item_has_zero_automatic_minimum() {
         .measure(3, ComputeOutput::from_outer_size(Size::new(20.0, 50.0)));
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -1787,7 +1826,7 @@ fn flex_column_cross_axis_hidden_overflow_aspect_item_has_zero_automatic_minimum
         .measure(3, ComputeOutput::from_outer_size(Size::new(20.0, 50.0)));
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -1829,7 +1868,10 @@ fn flex_compute_size_uses_definite_min_max_without_measuring_children() {
         type Node = u32;
 
         type Scalar = Scalar;
-        type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
 
         fn children(&self, node: Self::Node) -> Self::Children<'_> {
             self.children[&node].iter().copied()
@@ -1844,13 +1886,49 @@ fn flex_compute_size_uses_definite_min_max_without_measuring_children() {
         }
     }
 
-    impl Compute for FlexTree {
-        fn node_input(&self, node: Self::Node) -> &NodeInput {
+    struct FlexTreeCompute<'input> {
+        children: &'input HashMap<u32, Vec<u32>>,
+        styles: &'input HashMap<u32, NodeInput>,
+    }
+
+    impl FlexTree {
+        fn borrow_compute(&mut self) -> FlexTreeCompute<'_> {
+            FlexTreeCompute {
+                children: &self.children,
+                styles: &self.styles,
+            }
+        }
+    }
+
+    impl<'input> Traverse for FlexTreeCompute<'input> {
+        type Node = u32;
+
+        type Scalar = Scalar;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
+
+        fn children(&self, node: Self::Node) -> Self::Children<'_> {
+            self.children[&node].iter().copied()
+        }
+
+        fn child_count(&self, node: Self::Node) -> usize {
+            self.children[&node].len()
+        }
+
+        fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+            self.children[&node][index]
+        }
+    }
+
+    impl<'input> Compute<'input> for FlexTreeCompute<'input> {
+        fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             &self.styles[&node]
         }
 
-        fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-            LayoutInputOf::box_input(self.node_input(node).clone())
+        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
+            crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
         fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutput) {}
@@ -1879,7 +1957,7 @@ fn flex_compute_size_uses_definite_min_max_without_measuring_children() {
     tree.styles.insert(2, NodeInput::default());
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::ComputeSize,
@@ -1936,7 +2014,7 @@ fn flex_display_none_child_gets_zero_layout_and_hidden_input() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -1998,7 +2076,7 @@ fn flex_row_stretch_transfers_cross_size_through_aspect_ratio() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2056,7 +2134,7 @@ fn flex_row_stretched_aspect_ratio_item_does_not_shrink_below_transferred_size()
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2143,7 +2221,7 @@ fn assert_flex_replaced_automatic_minimum_selects_smaller_suggestion<S: LayoutSc
             );
 
         compute_flex(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInputOf::for_child(
                 RunMode::PerformLayout,
@@ -2197,7 +2275,7 @@ fn flex_row_aspect_ratio_auto_min_respects_authored_width_cap() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2249,7 +2327,7 @@ fn flex_row_uses_flex_basis_as_the_main_base_size() {
     );
 
     compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2321,7 +2399,7 @@ fn flex_row_flex_basis_zero_preserves_padding_border_without_authored_content_wi
     );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2393,7 +2471,7 @@ fn flex_row_flex_basis_padding_floor_preserves_leaf_content_intrinsic_size() {
     );
 
     let output = compute_flex(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,

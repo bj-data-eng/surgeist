@@ -225,13 +225,13 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             }));
     }
 
-    pub(super) fn place_float<Tree, M>(
+    pub(super) fn place_float<'input, Tree, M>(
         &mut self,
         provider: ProviderBandContext<'_, Tree, Node>,
         float: &PendingFloat<Node, S>,
     ) -> LayoutResultOf<Node, Point<S>, S, M>
     where
-        Tree: Compute<M, Node = Node, Scalar = S>,
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         let side = FloatLedgerSide::from_float(float.side);
         let logical_size = self.flow_axes.logical_size(float.size);
@@ -298,13 +298,13 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         }
     }
 
-    pub(super) fn place_bfc_block<Tree, M>(
+    pub(super) fn place_bfc_block<'input, Tree, M>(
         &self,
         provider: ProviderBandContext<'_, Tree, Node>,
         candidate: BfcBandCandidate<S>,
     ) -> LayoutResultOf<Node, BfcBandPlacement<S>, S, M>
     where
-        Tree: Compute<M, Node = Node, Scalar = S>,
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         let BfcBandCandidate {
             block_start,
@@ -413,7 +413,7 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         )
     }
 
-    pub(super) fn query_provider_band<Tree, M>(
+    pub(super) fn query_provider_band<'input, Tree, M>(
         &self,
         tree: &Tree,
         container: Node,
@@ -421,7 +421,7 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         block_end: S,
     ) -> LayoutResultOf<Node, FloatBand<S>, S, M>
     where
-        Tree: Compute<M, Node = Node, Scalar = S>,
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
     {
         self.query_band_for(
             block_start,
@@ -637,7 +637,7 @@ impl<S: LayoutScalar> FloatExclusions<S> {
     }
 }
 
-pub(super) fn layout_floats<Tree, S, M>(
+pub(super) fn layout_floats<'input, Tree, S, M>(
     tree: &mut Tree,
     container: <Tree as Traverse>::Node,
     floats: &[PendingFloat<<Tree as Traverse>::Node, S>],
@@ -646,7 +646,7 @@ pub(super) fn layout_floats<Tree, S, M>(
     contributions: &mut ScrollContributionAccumulatorOf<S>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, (), S, M>
 where
-    Tree: Compute<M, Scalar = S>,
+    Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
     let logical_container_size = constants.flow_axes.logical_size(container_size);

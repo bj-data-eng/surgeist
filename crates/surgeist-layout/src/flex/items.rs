@@ -158,7 +158,7 @@ impl<Node, S: LayoutScalar> From<CollectedFlexItem<Node, S>> for ResolvedFlexIte
     clippy::type_complexity,
     reason = "the private flex collector preserves node, scalar, and provider error types"
 )]
-pub(super) fn collect_items<Tree, M>(
+pub(super) fn collect_items<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     constants: &Constants<Tree::Scalar>,
@@ -170,7 +170,7 @@ pub(super) fn collect_items<Tree, M>(
     M,
 >
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let children = tree.children(node).collect::<Vec<_>>();
     let mut items = Vec::with_capacity(children.len());
@@ -213,7 +213,7 @@ where
     clippy::type_complexity,
     reason = "the private flex item builder preserves node, scalar, and provider error types"
 )]
-fn build_item<Tree, M>(
+fn build_item<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     source_index: usize,
@@ -227,7 +227,7 @@ fn build_item<Tree, M>(
     M,
 >
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let padding = constants
         .flow_axes
@@ -373,7 +373,10 @@ where
     let align_self = style.align_self.unwrap_or(constants.align_items);
     let cross_size_is_auto = constants
         .axes
-        .cross_size(style.common.size.clone())
+        .cross_size(Size::new(
+            &style.common.size.width,
+            &style.common.size.height,
+        ))
         .is_auto();
     let available_inner_size = constants.node_inner_size.or(constants.max_inner_size);
     let available = Size::new(
@@ -599,7 +602,7 @@ where
     })
 }
 
-fn automatic_min_main_size<Tree, M>(
+fn automatic_min_main_size<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     style: &FlexItemProjection<'_, Tree::Scalar>,
@@ -608,11 +611,14 @@ fn automatic_min_main_size<Tree, M>(
     child_known: Size<Option<Tree::Scalar>>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, Option<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     if !constants
         .axes
-        .main_size(style.common.min_size.clone())
+        .main_size(Size::new(
+            &style.common.min_size.width,
+            &style.common.min_size.height,
+        ))
         .is_auto()
         || flex_automatic_minimum_is_zero(style.common.overflow)
     {
@@ -762,7 +768,10 @@ fn flex_base_known_size<S: LayoutScalar>(
     if align_self == AlignItems::Stretch
         && constants
             .axes
-            .cross_size(style.common.size.clone())
+            .cross_size(Size::new(
+                &style.common.size.width,
+                &style.common.size.height,
+            ))
             .is_auto()
         && constants.axes.cross_size(known).is_none()
         && !constants.axes.cross_start_edge(margin_is_auto)
@@ -795,7 +804,7 @@ pub(super) fn clamp_available<S: LayoutScalar>(
     clippy::type_complexity,
     reason = "the private flex finalizer preserves node, scalar, and provider error types"
 )]
-pub(super) fn final_layout<Tree, M>(
+pub(super) fn final_layout<'input, Tree, M>(
     tree: &mut Tree,
     container_node: <Tree as Traverse>::Node,
     collected_items: &[CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
@@ -808,7 +817,7 @@ pub(super) fn final_layout<Tree, M>(
     M,
 >
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     for item in collected_items.iter().filter(|item| item.is_collapsed()) {
         tree.set_unrounded(
@@ -955,14 +964,14 @@ fn suppress_padding_floor_flex_basis_content_overflow<Node, S: LayoutScalar>(
     clippy::type_complexity,
     reason = "the private flex size helper preserves the session's generic error envelope"
 )]
-fn final_item_size<Tree, M>(
+fn final_item_size<'input, Tree, M>(
     tree: &Tree,
     item: &ResolvedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>,
     style: &FlexItemProjection<'_, Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, Size<Option<Tree::Scalar>>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let padding = constants
         .flow_axes

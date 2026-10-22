@@ -240,7 +240,7 @@ impl GridLayoutComparison {
         let (mut tree, identities) = self.tree();
 
         let output = compute_grid(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
                 RunMode::PerformLayout,
@@ -261,7 +261,7 @@ impl GridLayoutComparison {
         .unwrap();
 
         assert_size_close(output.size, self.container);
-        tree.set_unrounded(
+        tree.borrow_compute().set_unrounded(
             1,
             NodeOutput {
                 size: output.size,
@@ -295,7 +295,7 @@ impl GridLayoutComparison {
             .iter()
             .any(GridLayoutNode::has_expected_final_layout)
         {
-            round_layout(&mut tree, 1).unwrap();
+            round_layout(&mut tree.borrow_compute(), 1).unwrap();
             walk_grid_comparison_expectations(
                 &tree,
                 &self.children,
@@ -308,7 +308,7 @@ impl GridLayoutComparison {
     pub fn assert_layout_size(self, expected_size: Size<f32>) {
         let (mut tree, identities) = self.tree();
         let output = compute_grid(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
                 RunMode::PerformLayout,
@@ -1011,7 +1011,11 @@ mod tests {
             .unrounded(4, output((1.0, 2.0), (13.0, 17.0)))
             .unrounded(7, output((3.0, 4.0), (19.0, 23.0)))
             .unrounded(8, output((5.0, 6.0), (29.0, 31.0)));
-        <OracleTreeOf<S> as Round>::set_final(&mut tree, 7, output((3.0, 4.0), (19.0, 23.0)));
+        Round::set_final(
+            &mut tree.borrow_compute(),
+            7,
+            output((3.0, 4.0), (19.0, 23.0)),
+        );
         tree
     }
 
@@ -1083,7 +1087,10 @@ mod tests {
             [2, 4, 5, 6, 7, 3, 8]
         );
 
-        let measured = tree.compute_child(4, compute_input()).unwrap();
+        let measured = tree
+            .borrow_compute()
+            .compute_child(4, compute_input())
+            .unwrap();
         assert_eq!(measured.size, Size::new(13.0, 17.0));
         assert_eq!(tree.inputs(4), &[compute_input()]);
     }

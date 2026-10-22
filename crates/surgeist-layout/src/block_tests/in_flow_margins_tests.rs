@@ -17,8 +17,7 @@ fn scalar_percentage<S: LayoutScalar>(
 fn parent_context_gates_only_block_boundary_collapse_in_both_scalar_lanes() {
     fn assert_lane<S: LayoutScalar>()
     where
-        crate::test_support::layout_tree::OracleTreeOf<S>:
-            Compute + Traverse<Node = u32, Scalar = S>,
+        crate::test_support::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
     {
         let flow_axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
         for (parent_context, expected_collapse) in [
@@ -64,7 +63,7 @@ fn parent_context_gates_only_block_boundary_collapse_in_both_scalar_lanes() {
                 )
                 .measure(1, child_output);
             let output = crate::compute_block(
-                &mut tree,
+                &mut tree.borrow_compute(),
                 0,
                 ComputeInputOf::for_child(
                     RunMode::PerformLayout,
@@ -111,7 +110,7 @@ fn parent_context_gates_only_block_boundary_collapse_in_both_scalar_lanes() {
             .children(0, [])
             .style(0, NodeInputOf::default());
         let root_output = crate::compute_block(
-            &mut root_tree,
+            &mut root_tree.borrow_compute(),
             0,
             ComputeInputOf::root_layout(
                 Size::NONE,
@@ -143,7 +142,7 @@ fn fri06_mr02_physical_edge_value<S: LayoutScalar>(edges: Edges<S>, side: Physic
 
 fn assert_fri06_mr02_physical_edge_block_margin_selection<S: LayoutScalar>()
 where
-    crate::test_support::layout_tree::OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    crate::test_support::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let sentinels = Edges::new(
         S::from_f64(11.0),
@@ -194,7 +193,7 @@ where
             .measure(1, child_output);
 
         let output = crate::compute_block(
-            &mut tree,
+            &mut tree.borrow_compute(),
             0,
             ComputeInputOf::for_child(
                 RunMode::PerformLayout,
@@ -764,7 +763,7 @@ fn ordinary_block_boundaries_project_through_containing_flow_for_f64() {
 
 fn assert_ordinary_block_boundary_baselines<S: LayoutScalar>()
 where
-    crate::test_support::layout_tree::OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    crate::test_support::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let container_size = Size::new(S::from_f64(100.0), S::from_f64(100.0));
     let logical_size = crate::geometry::LogicalSizeOf::new(S::from_f64(20.0), S::from_f64(10.0));
@@ -809,7 +808,7 @@ where
                 },
             );
         let output = crate::compute_block(
-            &mut tree,
+            &mut tree.borrow_compute(),
             0,
             ComputeInputOf::for_child(
                 RunMode::PerformLayout,
@@ -1577,7 +1576,7 @@ fn block_layout_stacks_in_flow_children_vertically() {
     );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformRootLayout,
@@ -1655,7 +1654,7 @@ fn block_in_flow_affine_margin_resolves_against_containing_block_width() {
     tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(120.0, 10.0)));
 
     crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -1706,7 +1705,7 @@ fn block_container_affine_padding_uses_parent_basis() {
     tree.insert_style(1, NodeInput::default());
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -1762,7 +1761,7 @@ fn block_auto_width_includes_in_flow_child_horizontal_margins() {
     );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformRootLayout,
@@ -1836,7 +1835,7 @@ fn block_layout_collapses_adjacent_in_flow_vertical_margins() {
     );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -1898,7 +1897,7 @@ fn block_layout_collapses_first_child_top_margin_through_parent() {
     );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -1967,7 +1966,7 @@ fn block_scroll_container_keeps_first_child_top_margin_inside() {
     );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2037,7 +2036,7 @@ fn block_rtl_scrollbar_gutter_uses_left_inset() {
     tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(83.0, 10.0)));
 
     crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2097,7 +2096,7 @@ fn block_layout_collapses_last_child_bottom_margin_through_parent() {
     );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2162,7 +2161,7 @@ fn block_layout_keeps_grid_child_margins_inside_parent_flow() {
     tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(50.0, 20.0)));
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2250,7 +2249,7 @@ fn block_layout_collapses_margins_through_empty_in_flow_child() {
     );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2294,7 +2293,10 @@ fn block_empty_auto_height_can_collapse_through() {
         type Node = u32;
 
         type Scalar = Scalar;
-        type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
 
         fn children(&self, node: Self::Node) -> Self::Children<'_> {
             self.children[&node].iter().copied()
@@ -2309,13 +2311,49 @@ fn block_empty_auto_height_can_collapse_through() {
         }
     }
 
-    impl Compute for BlockTree {
-        fn node_input(&self, node: Self::Node) -> &NodeInput {
+    struct BlockTreeCompute<'input> {
+        children: &'input HashMap<u32, Vec<u32>>,
+        styles: &'input HashMap<u32, NodeInput>,
+    }
+
+    impl BlockTree {
+        fn borrow_compute(&mut self) -> BlockTreeCompute<'_> {
+            BlockTreeCompute {
+                children: &self.children,
+                styles: &self.styles,
+            }
+        }
+    }
+
+    impl<'input> Traverse for BlockTreeCompute<'input> {
+        type Node = u32;
+
+        type Scalar = Scalar;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
+
+        fn children(&self, node: Self::Node) -> Self::Children<'_> {
+            self.children[&node].iter().copied()
+        }
+
+        fn child_count(&self, node: Self::Node) -> usize {
+            self.children[&node].len()
+        }
+
+        fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+            self.children[&node][index]
+        }
+    }
+
+    impl<'input> Compute<'input> for BlockTreeCompute<'input> {
+        fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             &self.styles[&node]
         }
 
-        fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-            LayoutInputOf::box_input(self.node_input(node).clone())
+        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
+            crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
         fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutput) {}
@@ -2342,7 +2380,7 @@ fn block_empty_auto_height_can_collapse_through() {
     );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2382,7 +2420,10 @@ fn block_with_padding_reports_own_margins_when_child_collapse_is_blocked() {
         type Node = u32;
 
         type Scalar = Scalar;
-        type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
 
         fn children(&self, node: Self::Node) -> Self::Children<'_> {
             self.children[&node].iter().copied()
@@ -2397,13 +2438,49 @@ fn block_with_padding_reports_own_margins_when_child_collapse_is_blocked() {
         }
     }
 
-    impl Compute for BlockTree {
-        fn node_input(&self, node: Self::Node) -> &NodeInput {
+    struct BlockTreeCompute<'input> {
+        children: &'input HashMap<u32, Vec<u32>>,
+        styles: &'input HashMap<u32, NodeInput>,
+    }
+
+    impl BlockTree {
+        fn borrow_compute(&mut self) -> BlockTreeCompute<'_> {
+            BlockTreeCompute {
+                children: &self.children,
+                styles: &self.styles,
+            }
+        }
+    }
+
+    impl<'input> Traverse for BlockTreeCompute<'input> {
+        type Node = u32;
+
+        type Scalar = Scalar;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
+
+        fn children(&self, node: Self::Node) -> Self::Children<'_> {
+            self.children[&node].iter().copied()
+        }
+
+        fn child_count(&self, node: Self::Node) -> usize {
+            self.children[&node].len()
+        }
+
+        fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+            self.children[&node][index]
+        }
+    }
+
+    impl<'input> Compute<'input> for BlockTreeCompute<'input> {
+        fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             &self.styles[&node]
         }
 
-        fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-            LayoutInputOf::box_input(self.node_input(node).clone())
+        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
+            crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
         fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutput) {}
@@ -2440,7 +2517,7 @@ fn block_with_padding_reports_own_margins_when_child_collapse_is_blocked() {
     );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2482,7 +2559,7 @@ fn block_with_padding_reports_own_margins_when_child_collapse_is_blocked() {
 fn assert_collapsible_percentage_margins_use_containing_inline_extent<S: LayoutScalar>(
     writing_mode: WritingMode,
 ) where
-    crate::test_support::layout_tree::OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    crate::test_support::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let top_margin = LengthPercentageOf::<S>::from_coefficients(S::ZERO, S::from_f64(0.25))
         .expect("test coefficients are finite");
@@ -2513,7 +2590,7 @@ fn assert_collapsible_percentage_margins_use_containing_inline_extent<S: LayoutS
         );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInputOf::for_child(
             RunMode::PerformLayout,
@@ -2595,7 +2672,7 @@ fn block_in_flow_invalid_numeric_horizontal_margin_uses_zero_fallback() {
         );
 
     crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2661,7 +2738,7 @@ fn block_layout_positions_in_flow_children_from_right_edge_in_rtl() {
     );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2728,7 +2805,7 @@ fn block_layout_expands_horizontal_auto_margins_for_in_flow_children() {
     );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2795,7 +2872,7 @@ fn block_content_size_includes_visible_child_overflow_content() {
     );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2863,7 +2940,7 @@ fn block_relative_child_inset_offsets_final_layout_location() {
     );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2928,7 +3005,7 @@ fn block_layout_stretches_auto_width_in_flow_children() {
     tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(76.0, 10.0)));
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2996,7 +3073,7 @@ fn block_compute_size_uses_in_flow_children_for_auto_height() {
     tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(76.0, 10.0)));
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::ComputeSize,
@@ -3035,7 +3112,10 @@ fn block_compute_size_uses_definite_min_max_without_measuring_children() {
         type Node = u32;
 
         type Scalar = Scalar;
-        type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
 
         fn children(&self, node: Self::Node) -> Self::Children<'_> {
             self.children[&node].iter().copied()
@@ -3050,13 +3130,49 @@ fn block_compute_size_uses_definite_min_max_without_measuring_children() {
         }
     }
 
-    impl Compute for BlockTree {
-        fn node_input(&self, node: Self::Node) -> &NodeInput {
+    struct BlockTreeCompute<'input> {
+        children: &'input HashMap<u32, Vec<u32>>,
+        styles: &'input HashMap<u32, NodeInput>,
+    }
+
+    impl BlockTree {
+        fn borrow_compute(&mut self) -> BlockTreeCompute<'_> {
+            BlockTreeCompute {
+                children: &self.children,
+                styles: &self.styles,
+            }
+        }
+    }
+
+    impl<'input> Traverse for BlockTreeCompute<'input> {
+        type Node = u32;
+
+        type Scalar = Scalar;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
+
+        fn children(&self, node: Self::Node) -> Self::Children<'_> {
+            self.children[&node].iter().copied()
+        }
+
+        fn child_count(&self, node: Self::Node) -> usize {
+            self.children[&node].len()
+        }
+
+        fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+            self.children[&node][index]
+        }
+    }
+
+    impl<'input> Compute<'input> for BlockTreeCompute<'input> {
+        fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             &self.styles[&node]
         }
 
-        fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-            LayoutInputOf::box_input(self.node_input(node).clone())
+        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
+            crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
         fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutput) {}
@@ -3086,7 +3202,7 @@ fn block_compute_size_uses_definite_min_max_without_measuring_children() {
     tree.styles.insert(2, NodeInput::default());
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::ComputeSize,
@@ -3122,7 +3238,10 @@ fn block_definite_compute_size_keeps_grid_children_on_fast_path_until_grid_basel
         type Node = u32;
 
         type Scalar = Scalar;
-        type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
 
         fn children(&self, node: Self::Node) -> Self::Children<'_> {
             self.children[&node].iter().copied()
@@ -3137,13 +3256,49 @@ fn block_definite_compute_size_keeps_grid_children_on_fast_path_until_grid_basel
         }
     }
 
-    impl Compute for BlockTree {
-        fn node_input(&self, node: Self::Node) -> &NodeInput {
+    struct BlockTreeCompute<'input> {
+        children: &'input HashMap<u32, Vec<u32>>,
+        styles: &'input HashMap<u32, NodeInput>,
+    }
+
+    impl BlockTree {
+        fn borrow_compute(&mut self) -> BlockTreeCompute<'_> {
+            BlockTreeCompute {
+                children: &self.children,
+                styles: &self.styles,
+            }
+        }
+    }
+
+    impl<'input> Traverse for BlockTreeCompute<'input> {
+        type Node = u32;
+
+        type Scalar = Scalar;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
+
+        fn children(&self, node: Self::Node) -> Self::Children<'_> {
+            self.children[&node].iter().copied()
+        }
+
+        fn child_count(&self, node: Self::Node) -> usize {
+            self.children[&node].len()
+        }
+
+        fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+            self.children[&node][index]
+        }
+    }
+
+    impl<'input> Compute<'input> for BlockTreeCompute<'input> {
+        fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             &self.styles[&node]
         }
 
-        fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-            LayoutInputOf::box_input(self.node_input(node).clone())
+        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
+            crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
         fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutput) {}
@@ -3182,7 +3337,7 @@ fn block_definite_compute_size_keeps_grid_children_on_fast_path_until_grid_basel
         tree.styles.insert(3, NodeInput::default());
 
         let output = crate::compute_block(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
                 RunMode::ComputeSize,
@@ -3234,7 +3389,7 @@ fn block_auto_height_clamps_to_max_size() {
     );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3289,7 +3444,7 @@ fn block_auto_size_applies_aspect_ratio_to_max_size() {
     );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3339,7 +3494,7 @@ fn block_legacy_text_align_offsets_table_child_in_free_inline_space() {
         tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(60.0, 10.0)));
 
         crate::compute_block(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
                 RunMode::PerformLayout,

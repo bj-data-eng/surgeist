@@ -17,10 +17,10 @@ impl GridAxisKind {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct GridAxisMappingInput<'a, S: LayoutScalar = Scalar> {
+pub(super) struct GridAxisMappingInput<'input, 'a, S: LayoutScalar = Scalar> {
     pub(super) queried_axis: GridAxisKind,
     pub(super) parent_style: &'a GridContainerProjection<'a, S>,
-    pub(super) child_style: &'a GridItemProjection<S>,
+    pub(super) child_style: &'a GridItemProjection<'input, S>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -31,8 +31,8 @@ pub(super) struct GridAxisMappingReport {
     pub(super) reversed: bool,
 }
 
-pub(super) fn map_grid_axis<S: LayoutScalar>(
-    input: GridAxisMappingInput<'_, S>,
+pub(super) fn map_grid_axis<'input, S: LayoutScalar>(
+    input: GridAxisMappingInput<'input, '_, S>,
 ) -> GridAxisMappingReport {
     let parent_flow = FlowAxes::new(
         input.parent_style.writing_mode,

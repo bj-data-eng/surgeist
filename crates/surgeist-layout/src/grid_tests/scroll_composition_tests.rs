@@ -370,7 +370,10 @@ fn assert_fri08_c06r_inherited_placement_oversized_span_clamps_atomically<S: Lay
 
         let overflowing =
             fri08_c06r_inherited_placement_overflow_tree(inherited_axes, overflow_axis, 5);
-        tree.tree.insert_input(3, overflowing.layout_input(3));
+        tree.tree.insert_input(
+            3,
+            LayoutInputOf::box_input(overflowing.node_input(3).clone()),
+        );
         let retained_before_compute = tree.retained.clone();
         let invalidated = compute_layout_invalidated(&tree, 1, request, &[3])
             .expect("an oversized inherited span clamps to available tracks");
@@ -1931,7 +1934,7 @@ fn fri08_c02_auto_fit_inherited_subgrid_slices_and_reverses_geometry_with_baseli
             )
             .measure(2, baseline_measure(140.0, 20.0, Some(7.0), None));
         let output = compute_grid_with_context(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
                 RunMode::PerformLayout,
@@ -2250,8 +2253,12 @@ fn assert_fri06_mr02_scroll_padding_grid<S: LayoutScalar>() {
             ..NodeInputOf::default()
         };
         let mut tree = OracleTreeOf::<S>::new().children(0, []).style(0, style);
-        let output = compute_grid(&mut tree, 0, fri06_mr02_scroll_padding_input(size))
-            .expect("grid scroll-padding characterization succeeds");
+        let output = compute_grid(
+            &mut tree.borrow_compute(),
+            0,
+            fri06_mr02_scroll_padding_input(size),
+        )
+        .expect("grid scroll-padding characterization succeeds");
         let geometry = output
             .scroll_geometry
             .expect("performed grid layout emits geometry");
@@ -2384,7 +2391,7 @@ fn fri05_c05_subgrid_geometry_settles_local_auto_and_preserves_parent_local_outp
         );
 
     compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         fri05_c05_grid_sizing_input(Size::splat(Some(100.0))),
     )
@@ -2430,7 +2437,7 @@ fn fri05_c05_subgrid_geometry_settles_local_auto_and_preserves_parent_local_outp
 
 fn assert_fri05_c05_grid_round_cache_for_display<S: LayoutScalar>(display: Display)
 where
-    OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S> + Round,
+    OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let scalar = S::from_f64;
     let flow_axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
@@ -2469,7 +2476,8 @@ where
             AvailableOf::Definite(scalar(80.4)),
         ),
     );
-    let cold = compute_grid(&mut tree, 0, input).expect("scalar grid geometry computes");
+    let cold =
+        compute_grid(&mut tree.borrow_compute(), 0, input).expect("scalar grid geometry computes");
     let geometry = cold.scroll_geometry.expect("cold geometry is present");
     let format = match display {
         Display::Grid => "ordinary grid",
@@ -2645,7 +2653,7 @@ where
     );
 
     Compute::set_unrounded(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         NodeOutputOf {
             source_index: SourceIndex::ZERO,
@@ -2658,7 +2666,8 @@ where
             margin: Edges::ZERO,
         },
     );
-    round_layout(&mut tree, 0).expect("grid geometry rounds from canonical source");
+    round_layout(&mut tree.borrow_compute(), 0)
+        .expect("grid geometry rounds from canonical source");
     let rounded = tree.final_layout(0).expect("rounded output is staged");
     let rounded_geometry = rounded
         .scroll_geometry
@@ -2699,7 +2708,7 @@ where
             AvailableOf::Definite(scalar(80.4)),
         ),
     );
-    let measurement = compute_grid(&mut tree, 0, measurement_input)
+    let measurement = compute_grid(&mut tree.borrow_compute(), 0, measurement_input)
         .expect("grid-family measurement control computes");
     assert!(
         measurement.scroll_geometry.is_none(),
@@ -2717,7 +2726,7 @@ fn fri05_c05_grid_round_cache_ordinary_and_lanes_match_in_both_scalar_lanes() {
 
 fn assert_fri05_c05_grid_round_cache_subgrid<S: LayoutScalar>()
 where
-    OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S> + Round,
+    OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let scalar = S::from_f64;
     let flow_axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
@@ -2922,7 +2931,7 @@ where
         );
     };
 
-    let cold = compute_grid(&mut tree, 0, input).expect("cold subgrid computes");
+    let cold = compute_grid(&mut tree.borrow_compute(), 0, input).expect("cold subgrid computes");
     let cold_subgrid = tree.layout(1).expect("cold subgrid output is staged");
     assert_subgrid(
         "cold",
@@ -2932,7 +2941,7 @@ where
         Size::new(scalar(100.4), scalar(80.4)),
         (S::ZERO, S::ZERO, S::ZERO, S::ZERO),
     );
-    let warm = compute_grid(&mut tree, 0, input).expect("warm subgrid computes");
+    let warm = compute_grid(&mut tree.borrow_compute(), 0, input).expect("warm subgrid computes");
     let warm_subgrid = tree.layout(1).expect("warm subgrid output is staged");
     assert_eq!(warm, cold);
     assert_eq!(warm_subgrid, cold_subgrid);
@@ -2946,7 +2955,7 @@ where
     );
 
     Compute::set_unrounded(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         NodeOutputOf {
             source_index: SourceIndex::ZERO,
@@ -2959,7 +2968,8 @@ where
             margin: Edges::ZERO,
         },
     );
-    round_layout(&mut tree, 0).expect("subgrid geometry rounds from canonical source");
+    round_layout(&mut tree.borrow_compute(), 0)
+        .expect("subgrid geometry rounds from canonical source");
     let rounded = tree
         .final_layout(1)
         .expect("rounded subgrid output is staged");
@@ -3005,7 +3015,7 @@ fn fri05_c05_grid_auto_settles_cross_axis_induction_and_partitions_nested_pass_s
         .style(1, NodeInput::default());
 
     let output = compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         fri05_c05_grid_sizing_input(Size::splat(Some(100.0))),
     )
@@ -3080,7 +3090,7 @@ fn assert_fri08_c07_t04_grid_settlement_root_and_context_state<S: LayoutScalar>(
     )
     .with_settled_auto_scrollbars(caller_state);
 
-    let output = compute_grid(&mut tree, 0, input).unwrap();
+    let output = compute_grid(&mut tree.borrow_compute(), 0, input).unwrap();
     let geometry = output.scroll_geometry.unwrap();
     assert!(geometry.gutters().right().is_some());
     assert!(geometry.gutters().bottom().is_some());
@@ -3111,7 +3121,7 @@ fn assert_fri08_c07_t04_grid_settlement_root_and_context_state<S: LayoutScalar>(
         .children(0, [])
         .style(0, tree.node_input(0).clone());
     let measurement = compute_grid(
-        &mut measurement_tree,
+        &mut measurement_tree.borrow_compute(),
         0,
         ComputeInputOf::for_child(
             RunMode::ComputeSize,
@@ -3154,6 +3164,7 @@ fn fri08_c07_t04_grid_settlement_preserves_exact_error_mapping() {
 #[test]
 fn fri08_c08_t05_impossible_state_standalone_nested_lanes_intrinsic_scroll_and_outputs_stay_composed()
  {
+    let default_input = crate::NodeInputOf::default();
     assert_fri08_c04_standalone_nested_flows::<f32>();
     assert_fri08_c04_standalone_nested_flows::<f64>();
     fri08_c05_composition_grid010_nested_indefinite_lanes_output::<f32>();
@@ -3167,7 +3178,7 @@ fn fri08_c08_t05_impossible_state_standalone_nested_lanes_intrinsic_scroll_and_o
         ancestor_track_intrinsic_min_eligibility: IntrinsicMinTrackFacts::Known(&[true]),
         root_children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
             node: 1_u32,
-            style: default_grid_item_projection(),
+            style: default_grid_item_projection(&default_input),
             axis: SubgridTraversalAxis::Standalone,
             reversed: false,
             span_in_parent: GridTrackSpan::new(1, 2),
@@ -3181,7 +3192,7 @@ fn fri08_c08_t05_impossible_state_standalone_nested_lanes_intrinsic_scroll_and_o
             padding: SubgridAxisEdges::default(),
             parent_gap: 0.0,
             subgrid_gap: 0.0,
-            children: vec![traversal_leaf(2, 1, 2)],
+            children: vec![traversal_leaf(&default_input, 2, 1, 2)],
         })],
     })
     .unwrap();
@@ -3192,6 +3203,7 @@ fn fri08_c08_t05_impossible_state_standalone_nested_lanes_intrinsic_scroll_and_o
 
 #[test]
 fn fri08_c08_t05_impossible_state_remaining_errors_failure_atomicity_and_cache_are_exact() {
+    let default_input = crate::NodeInputOf::default();
     assert_eq!(
         inherit_subgrid_tracks(SubgridTrackInheritanceInput {
             parent_tracks: &[],
@@ -3229,7 +3241,7 @@ fn fri08_c08_t05_impossible_state_remaining_errors_failure_atomicity_and_cache_a
     assert_eq!(
         traverse_subgrid_intrinsic(SubgridTraversalInput {
             ancestor_track_intrinsic_min_eligibility: IntrinsicMinTrackFacts::Known(&[true]),
-            root_children: vec![traversal_leaf(1, 1, 1)],
+            root_children: vec![traversal_leaf(&default_input, 1, 1, 1)],
         })
         .unwrap_err(),
         SubgridTraversalError::SpanOutOfRange
@@ -3276,7 +3288,7 @@ fn fri05_c05_grid_auto_minimum_computed_scrollability_reaches_grid_and_lanes_fro
                         );
 
                         compute_grid(
-                            &mut tree,
+                            &mut tree.borrow_compute(),
                             0,
                             fri05_c05_grid_sizing_input(Size::splat(Some(40.0))),
                         )
@@ -3393,9 +3405,12 @@ fn fri05_c05_grid_intrinsic_overflow_projects_used_axes_and_traps_descendants() 
                         GridAutoFlow::Row,
                     );
 
-                    let output =
-                        compute_grid(&mut tree, 0, fri05_c05_grid_sizing_input(Size::NONE))
-                            .expect("grid intrinsic overflow case computes");
+                    let output = compute_grid(
+                        &mut tree.borrow_compute(),
+                        0,
+                        fri05_c05_grid_sizing_input(Size::NONE),
+                    )
+                    .expect("grid intrinsic overflow case computes");
 
                     assert_eq!(
                         output.size, expected,
@@ -3503,8 +3518,12 @@ fn fri05_c05_grid_intrinsic_overflow_subgrid_uses_the_parent_flow_projection() {
                         ComputeOutput::from_sizes(Size::new(20.0, 30.0), Size::new(80.0, 90.0)),
                     );
 
-                let output = compute_grid(&mut tree, 0, fri05_c05_grid_sizing_input(Size::NONE))
-                    .expect("intrinsic subgrid overflow case computes");
+                let output = compute_grid(
+                    &mut tree.borrow_compute(),
+                    0,
+                    fri05_c05_grid_sizing_input(Size::NONE),
+                )
+                .expect("intrinsic subgrid overflow case computes");
 
                 assert_eq!(
                     output.size, expected,
@@ -3549,8 +3568,12 @@ fn fri05_c05_grid_intrinsic_overflow_percentage_tracks_keep_item_priority_when_t
                 ComputeOutput::from_sizes(Size::new(20.0, 30.0), Size::new(80.0, 90.0)),
             );
 
-        let output = compute_grid(&mut tree, 0, fri05_c05_grid_sizing_input(Size::NONE))
-            .expect("percentage-track intrinsic overflow case computes");
+        let output = compute_grid(
+            &mut tree.borrow_compute(),
+            0,
+            fri05_c05_grid_sizing_input(Size::NONE),
+        )
+        .expect("percentage-track intrinsic overflow case computes");
 
         assert_eq!(output.size, expected, "{overflow:?}");
     }
@@ -3636,11 +3659,11 @@ fn grid_lanes_layout_rejects_overflowed_affine_tolerance_resolution() {
         inherited_column_offset: None,
         inherited_row_offset: None,
     };
-    let placements = GridPlacementContext::new(Vec::<u32>::new(), Vec::new());
+    let placements = GridPlacementContext::empty();
     let mut tree = OracleTree::new().children(1, []).style(1, style.clone());
 
     let err = resolve_grid_lanes_placement_with_resolved_tracks(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         &grid_container_projection!(&style),
         &constants,
@@ -3715,7 +3738,7 @@ fn grid_absolute_child_layout_records_scrollbar_size_for_scroll_overflow() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3755,7 +3778,10 @@ fn grid_content_box_compute_size_does_not_add_scrollbar_to_authored_size() {
         type Node = u32;
 
         type Scalar = Scalar;
-        type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
 
         fn children(&self, node: Self::Node) -> Self::Children<'_> {
             self.children[&node].iter().copied()
@@ -3770,13 +3796,49 @@ fn grid_content_box_compute_size_does_not_add_scrollbar_to_authored_size() {
         }
     }
 
-    impl Compute for NoChildMeasurementTree {
-        fn node_input(&self, node: Self::Node) -> &NodeInput {
+    struct NoChildMeasurementTreeCompute<'input> {
+        children: &'input HashMap<u32, Vec<u32>>,
+        styles: &'input HashMap<u32, NodeInput>,
+    }
+
+    impl NoChildMeasurementTree {
+        fn borrow_compute(&mut self) -> NoChildMeasurementTreeCompute<'_> {
+            NoChildMeasurementTreeCompute {
+                children: &self.children,
+                styles: &self.styles,
+            }
+        }
+    }
+
+    impl<'input> Traverse for NoChildMeasurementTreeCompute<'input> {
+        type Node = u32;
+
+        type Scalar = Scalar;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
+
+        fn children(&self, node: Self::Node) -> Self::Children<'_> {
+            self.children[&node].iter().copied()
+        }
+
+        fn child_count(&self, node: Self::Node) -> usize {
+            self.children[&node].len()
+        }
+
+        fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+            self.children[&node][index]
+        }
+    }
+
+    impl<'input> Compute<'input> for NoChildMeasurementTreeCompute<'input> {
+        fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             &self.styles[&node]
         }
 
-        fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-            LayoutInputOf::box_input(self.node_input(node).clone())
+        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
+            crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
         fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutput) {}
@@ -3808,7 +3870,7 @@ fn grid_content_box_compute_size_does_not_add_scrollbar_to_authored_size() {
     );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::ComputeSize,
@@ -3848,7 +3910,7 @@ fn grid_scrollbar_gutter_does_not_force_outer_size_past_authored_size() {
     );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::ComputeSize,
@@ -3897,7 +3959,7 @@ fn grid_child_layout_records_scrollbar_size_for_scroll_overflow() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3948,7 +4010,7 @@ fn grid_safe_align_content_falls_back_to_start_when_tracks_overflow() {
     tree.insert_style(2, NodeInput::default());
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4010,7 +4072,7 @@ fn grid_justify_content_space_around_and_evenly_distribute_free_width() {
         tree.insert_style(3, NodeInput::default());
 
         crate::compute_grid(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
                 RunMode::PerformLayout,
@@ -4076,7 +4138,7 @@ fn grid_content_size_includes_visible_child_overflow_content() {
     );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4132,7 +4194,7 @@ fn grid_safe_justify_self_falls_back_to_start_when_item_overflows() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,

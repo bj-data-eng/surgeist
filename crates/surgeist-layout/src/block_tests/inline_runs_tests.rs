@@ -20,7 +20,10 @@ struct Fri06C03FixedSizeTree<S: LayoutScalar> {
 impl<S: LayoutScalar> Traverse for Fri06C03FixedSizeTree<S> {
     type Node = u32;
     type Scalar = S;
-    type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+    type Children<'a>
+        = std::iter::Copied<std::slice::Iter<'a, u32>>
+    where
+        Self: 'a;
 
     fn children(&self, node: Self::Node) -> Self::Children<'_> {
         const ROOT_CHILDREN: &[u32] = &[1];
@@ -42,22 +45,70 @@ impl<S: LayoutScalar> Traverse for Fri06C03FixedSizeTree<S> {
     }
 }
 
-impl<S: LayoutScalar> Compute<()> for Fri06C03FixedSizeTree<S> {
-    fn node_input(&self, node: Self::Node) -> &NodeInputOf<S> {
+struct Fri06C03FixedSizeTreeCompute<'input, S: LayoutScalar> {
+    root: &'input NodeInputOf<S>,
+    child_input: &'input LayoutInputOf<S>,
+    child_node_input: &'input NodeInputOf<S>,
+    child_layout_input_calls: &'input Cell<usize>,
+    child_compute_calls: &'input mut usize,
+}
+
+impl<S: LayoutScalar> Fri06C03FixedSizeTree<S> {
+    fn borrow_compute(&mut self) -> Fri06C03FixedSizeTreeCompute<'_, S> {
+        Fri06C03FixedSizeTreeCompute {
+            root: &self.root,
+            child_input: &self.child_input,
+            child_node_input: &self.child_node_input,
+            child_layout_input_calls: &self.child_layout_input_calls,
+            child_compute_calls: &mut self.child_compute_calls,
+        }
+    }
+}
+
+impl<'input, S: LayoutScalar> Traverse for Fri06C03FixedSizeTreeCompute<'input, S> {
+    type Node = u32;
+    type Scalar = S;
+    type Children<'a>
+        = std::iter::Copied<std::slice::Iter<'a, u32>>
+    where
+        Self: 'a;
+
+    fn children(&self, node: Self::Node) -> Self::Children<'_> {
+        const ROOT_CHILDREN: &[u32] = &[1];
+        const NO_CHILDREN: &[u32] = &[];
         if node == 0 {
-            &self.root
+            ROOT_CHILDREN.iter().copied()
         } else {
-            &self.child_node_input
+            NO_CHILDREN.iter().copied()
         }
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<S> {
+    fn child_count(&self, node: Self::Node) -> usize {
+        usize::from(node == 0)
+    }
+
+    fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+        assert_eq!((node, index), (0, 0));
+        1
+    }
+}
+
+impl<'input, S: LayoutScalar> Compute<'input, ()> for Fri06C03FixedSizeTreeCompute<'input, S> {
+    fn node_input(&self, node: Self::Node) -> &'input NodeInputOf<S> {
         if node == 0 {
-            LayoutInputOf::box_input(self.root.clone())
+            self.root
+        } else {
+            self.child_input.as_box().unwrap_or(self.child_node_input)
+        }
+    }
+
+    fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, S> {
+        if node == 0 {
+            crate::LayoutInputViewOf::Box(self.root)
         } else {
             self.child_layout_input_calls
                 .set(self.child_layout_input_calls.get() + 1);
-            self.child_input.clone()
+            self.child_input.as_view()
         }
     }
 
@@ -68,7 +119,7 @@ impl<S: LayoutScalar> Compute<()> for Fri06C03FixedSizeTree<S> {
         _node: Self::Node,
         _input: ComputeInputOf<S>,
     ) -> LayoutResultOf<Self::Node, ComputeOutputOf<S>, S, ()> {
-        self.child_compute_calls += 1;
+        *self.child_compute_calls += 1;
         panic!("non-box inline participants must not be recursively measured")
     }
 }
@@ -91,7 +142,7 @@ fn fri06_c03_fixed_size_output<S: LayoutScalar>(
         child_compute_calls: 0,
     };
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         ComputeInputOf::for_child(
             RunMode::ComputeSize,
@@ -538,8 +589,13 @@ fn block_lays_out_atomic_inline_children_on_one_line() {
             },
         );
 
-    compute_root(&mut tree, 0, Size::splat(Available::definite(100.0))).unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    compute_root(
+        &mut tree.borrow_compute(),
+        0,
+        Size::splat(Available::definite(100.0)),
+    )
+    .unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(1).unwrap().location,
@@ -592,7 +648,7 @@ fn f64_block_layout_preserves_fractional_child_offsets() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(AvailableOf::definite(100.0), AvailableOf::MAX_CONTENT),
     )
@@ -648,7 +704,7 @@ fn f64_block_layout_resolves_affine_values_without_narrowing() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(
             AvailableOf::definite(container_width),
@@ -704,7 +760,7 @@ fn f64_inline_layout_preserves_large_atomic_inline_offsets() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(
             AvailableOf::definite(large + 20.0),
@@ -767,8 +823,13 @@ fn vertical_rl_block_places_atomic_inline_run_at_inline_start_edge() {
             },
         );
 
-    compute_root(&mut tree, 0, Size::splat(Available::definite(100.0))).unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    compute_root(
+        &mut tree.borrow_compute(),
+        0,
+        Size::splat(Available::definite(100.0)),
+    )
+    .unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(2).unwrap().location,
@@ -808,8 +869,13 @@ fn inline_grid_uses_grid_tracks_and_participates_as_atomic_inline() {
             },
         );
 
-    compute_root(&mut tree, 0, Size::splat(Available::definite(100.0))).unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    compute_root(
+        &mut tree.borrow_compute(),
+        0,
+        Size::splat(Available::definite(100.0)),
+    )
+    .unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(tree.final_layout(1).unwrap().size, Size::new(40.0, 20.0));
     assert_eq!(tree.final_layout(2).unwrap().size, Size::new(10.0, 30.0));
@@ -849,8 +915,13 @@ fn inline_grid_lanes_uses_lanes_tracks_and_participates_as_atomic_inline() {
             },
         );
 
-    compute_root(&mut tree, 0, Size::splat(Available::definite(100.0))).unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    compute_root(
+        &mut tree.borrow_compute(),
+        0,
+        Size::splat(Available::definite(100.0)),
+    )
+    .unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(tree.final_layout(1).unwrap().size, Size::new(40.0, 20.0));
     assert_eq!(tree.final_layout(2).unwrap().size, Size::new(10.0, 30.0));
@@ -898,12 +969,12 @@ fn block_wraps_atomic_inline_children_between_items() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(40.0), Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(tree.final_layout(1).unwrap().location, Point::new(0.0, 0.0));
     assert_eq!(
@@ -949,12 +1020,12 @@ fn block_atomic_inline_run_honors_line_break_child() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(100.0), Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(tree.final_layout(1).unwrap().location, Point::new(0.0, 2.0));
     assert_eq!(
@@ -988,7 +1059,7 @@ fn ordinary_block_child_receives_parent_non_horizontal_containing_flow() {
         .style(1, NodeInput::default());
 
     crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -1069,7 +1140,7 @@ fn block_line_break_metadata_positions_rtl_lines_and_preserves_two_line_extent()
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(
             Available::definite(containing_inline_extent),
@@ -1077,7 +1148,7 @@ fn block_line_break_metadata_positions_rtl_lines_and_preserves_two_line_extent()
         ),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(tree.final_layout(1).unwrap().size, first_atomic_size);
     assert_eq!(
@@ -1125,7 +1196,7 @@ fn block_line_break_metrics_create_empty_line_height() {
         .line_break(2, LineBreakInput::new().with_metrics(metrics));
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -1193,12 +1264,12 @@ fn block_inline_boundaries_are_reported_as_zero_size_inline_controls() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(100.0), Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(tree.inputs(1), &[]);
     assert_eq!(tree.inputs(3), &[]);
@@ -1248,12 +1319,12 @@ fn block_inline_boundaries_before_overwide_first_inline_block_do_not_create_lead
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(20.0), Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(1).unwrap().location,
@@ -1303,12 +1374,12 @@ fn vertical_block_inline_boundaries_use_parent_flow() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(80.0), Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(1).unwrap().location,
@@ -1362,12 +1433,12 @@ fn vertical_lr_block_inline_boundaries_use_parent_flow() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(80.0), Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(1).unwrap().location,
@@ -1414,12 +1485,12 @@ fn hidden_line_break_does_not_split_atomic_inline_run() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(100.0), Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(tree.final_layout(1).unwrap().location, Point::new(0.0, 0.0));
     assert_eq!(tree.final_layout(2).unwrap().size, Size::ZERO);
@@ -1463,7 +1534,7 @@ fn block_atomic_inline_run_never_computes_line_break_as_box() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(100.0), Available::MAX_CONTENT),
     )
@@ -1514,12 +1585,12 @@ fn vertical_rl_line_break_is_laid_out_as_zero_size_inline_control() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(80.0), Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(tree.final_layout(2).unwrap().size, Size::ZERO);
     assert_eq!(
@@ -1571,12 +1642,12 @@ fn vertical_lr_line_break_is_laid_out_as_zero_size_inline_control() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(80.0), Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(tree.final_layout(2).unwrap().size, Size::ZERO);
     assert_eq!(
@@ -1606,12 +1677,12 @@ fn vertical_line_break_clear_is_accepted_without_active_exclusions() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(80.0), Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(tree.final_layout(1).unwrap().size, Size::ZERO);
 }
@@ -1631,7 +1702,7 @@ fn vertical_parent_rejects_clear_even_when_line_break_input_defaults_horizontal(
         .line_break(1, LineBreakInput::new().with_clear(Clear::Both));
 
     let error = compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(80.0), Available::MAX_CONTENT),
     )
@@ -1783,7 +1854,7 @@ fn vertical_parent_rejects_default_line_break_flow_until_input_is_layout_ready()
         .line_break(1, LineBreakInput::new());
 
     let error = compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(80.0), Available::MAX_CONTENT),
     )
@@ -1816,7 +1887,7 @@ fn vertical_parent_rejects_default_inline_boundary_flow_until_input_is_layout_re
         );
 
     let error = compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(80.0), Available::MAX_CONTENT),
     )
@@ -1870,12 +1941,12 @@ fn hidden_vertical_line_break_does_not_create_inline_control() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(80.0), Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(tree.final_layout(2).unwrap().size, Size::ZERO);
     assert_eq!(
@@ -1939,12 +2010,12 @@ fn line_break_clear_left_moves_following_inline_segment_below_left_float() {
     let mut tree = inline_break_clear_tree(Clear::Left, Float::Left);
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(200.0), Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(2).unwrap().location,
@@ -1967,12 +2038,12 @@ fn line_break_clear_right_moves_following_inline_segment_below_right_float() {
     let mut tree = inline_break_clear_tree(Clear::Right, Float::Right);
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(200.0), Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(tree.final_layout(2).unwrap().location, Point::new(0.0, 0.0));
     assert_eq!(
@@ -2043,12 +2114,12 @@ fn line_break_clear_both_uses_greater_left_or_right_float_bottom() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(200.0), Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(3).unwrap().location,
@@ -2112,12 +2183,12 @@ fn line_break_clear_at_run_end_moves_following_block_below_float() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(200.0), Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(2).unwrap().location,
@@ -2147,12 +2218,12 @@ fn line_break_clear_left_ignores_right_float_and_preserves_alignment() {
     );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(200.0), Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(2).unwrap().location,
@@ -2182,12 +2253,12 @@ fn line_break_clear_right_ignores_left_float_and_preserves_alignment() {
     );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(200.0), Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(2).unwrap().location,
@@ -2253,12 +2324,12 @@ fn line_break_clear_that_is_noop_after_line_height_preserves_alignment() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(200.0), Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(2).unwrap().location,
@@ -2280,12 +2351,12 @@ fn line_break_clear_none_preserves_existing_single_run_layout_near_float() {
     let mut tree = inline_break_clear_tree(Clear::None, Float::Left);
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(200.0), Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(2).unwrap().location,
@@ -2342,12 +2413,12 @@ fn block_min_content_atomic_inline_run_uses_max_item_advance() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::MIN_CONTENT, Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(tree.final_layout(0).unwrap().size, Size::new(60.0, 30.0));
     assert_eq!(tree.final_layout(1).unwrap().location, Point::new(0.0, 0.0));
@@ -2388,8 +2459,13 @@ fn atomic_inline_auto_margins_resolve_to_zero() {
             },
         );
 
-    compute_root(&mut tree, 0, Size::splat(Available::definite(100.0))).unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    compute_root(
+        &mut tree.borrow_compute(),
+        0,
+        Size::splat(Available::definite(100.0)),
+    )
+    .unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     let child = tree.final_layout(1).unwrap();
     assert_eq!(child.location, Point::new(0.0, 0.0));
@@ -2426,8 +2502,13 @@ fn inline_block_intrinsic_width_shrink_wraps_children() {
             },
         );
 
-    compute_root(&mut tree, 0, Size::splat(Available::MAX_CONTENT)).unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    compute_root(
+        &mut tree.borrow_compute(),
+        0,
+        Size::splat(Available::MAX_CONTENT),
+    )
+    .unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(tree.final_layout(1).unwrap().size, Size::new(70.0, 20.0));
     assert_eq!(tree.final_layout(0).unwrap().size.width, 70.0);
@@ -2463,8 +2544,13 @@ fn inline_block_uses_bottom_synthesized_baseline_when_child_has_no_baseline() {
             },
         );
 
-    compute_root(&mut tree, 0, Size::splat(Available::definite(100.0))).unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    compute_root(
+        &mut tree.borrow_compute(),
+        0,
+        Size::splat(Available::definite(100.0)),
+    )
+    .unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(tree.final_layout(1).unwrap().location.y, 10.0);
     assert_eq!(tree.final_layout(2).unwrap().location.y, 0.0);
@@ -2508,8 +2594,13 @@ fn inline_block_uses_inner_first_baseline_for_atomic_alignment() {
         )
         .measure(1, measured_inline_block);
 
-    compute_root(&mut tree, 0, Size::splat(Available::definite(100.0))).unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    compute_root(
+        &mut tree.borrow_compute(),
+        0,
+        Size::splat(Available::definite(100.0)),
+    )
+    .unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(tree.final_layout(1).unwrap().location.y, 20.0);
     assert_eq!(tree.final_layout(2).unwrap().location.y, 0.0);
@@ -2549,8 +2640,13 @@ fn inline_block_keeps_child_margins_inside_atomic_wrapper() {
             },
         );
 
-    compute_root(&mut tree, 0, Size::splat(Available::MAX_CONTENT)).unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    compute_root(
+        &mut tree.borrow_compute(),
+        0,
+        Size::splat(Available::MAX_CONTENT),
+    )
+    .unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(tree.final_layout(1).unwrap().size, Size::new(20.0, 15.0));
     assert_eq!(tree.final_layout(2).unwrap().location.y, 5.0);
@@ -2596,6 +2692,7 @@ fn inline_grid_can_host_subgrid_descendant() {
         );
 
     let output = tree
+        .borrow_compute()
         .compute_child(
             0,
             ComputeInput::for_child(
@@ -2675,12 +2772,12 @@ fn block_positions_block_children_around_atomic_inline_run() {
         );
 
     compute_root(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         Size::new(Available::definite(100.0), Available::MAX_CONTENT),
     )
     .unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(tree.final_layout(1).unwrap().location, Point::new(0.0, 0.0));
     assert_eq!(
@@ -2748,8 +2845,13 @@ fn block_hidden_and_absolute_children_do_not_split_atomic_inline_run() {
             },
         );
 
-    compute_root(&mut tree, 0, Size::splat(Available::definite(100.0))).unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    compute_root(
+        &mut tree.borrow_compute(),
+        0,
+        Size::splat(Available::definite(100.0)),
+    )
+    .unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(tree.final_layout(1).unwrap().location, Point::new(0.0, 0.0));
     assert_eq!(tree.final_layout(3).unwrap().location, Point::new(0.0, 0.0));
@@ -2792,8 +2894,13 @@ fn block_rtl_atomic_inline_run_places_items_from_right_edge() {
             },
         );
 
-    compute_root(&mut tree, 0, Size::splat(Available::definite(100.0))).unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    compute_root(
+        &mut tree.borrow_compute(),
+        0,
+        Size::splat(Available::definite(100.0)),
+    )
+    .unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(1).unwrap().location,
@@ -2838,8 +2945,13 @@ fn block_rtl_atomic_inline_run_mirrors_line_break_output_x() {
             },
         );
 
-    compute_root(&mut tree, 0, Size::splat(Available::definite(100.0))).unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    compute_root(
+        &mut tree.borrow_compute(),
+        0,
+        Size::splat(Available::definite(100.0)),
+    )
+    .unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(1).unwrap().location,
@@ -2889,8 +3001,13 @@ fn block_legacy_right_rtl_aligns_atomic_inline_run_to_physical_right_edge() {
             },
         );
 
-    compute_root(&mut tree, 0, Size::splat(Available::definite(100.0))).unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    compute_root(
+        &mut tree.borrow_compute(),
+        0,
+        Size::splat(Available::definite(100.0)),
+    )
+    .unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(1).unwrap().location,
@@ -2925,8 +3042,13 @@ fn block_atomic_inline_run_alignment_uses_resolved_inner_width() {
             },
         );
 
-    compute_root(&mut tree, 0, Size::splat(Available::MAX_CONTENT)).unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    compute_root(
+        &mut tree.borrow_compute(),
+        0,
+        Size::splat(Available::MAX_CONTENT),
+    )
+    .unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(tree.final_layout(1).unwrap().location.x, 25.0);
 }
@@ -2963,8 +3085,13 @@ fn block_legacy_center_aligns_atomic_inline_run() {
             },
         );
 
-    compute_root(&mut tree, 0, Size::splat(Available::definite(100.0))).unwrap();
-    round_layout(&mut tree, 0).unwrap();
+    compute_root(
+        &mut tree.borrow_compute(),
+        0,
+        Size::splat(Available::definite(100.0)),
+    )
+    .unwrap();
+    round_layout(&mut tree.borrow_compute(), 0).unwrap();
 
     assert_eq!(
         tree.final_layout(1).unwrap().location,
@@ -3007,6 +3134,7 @@ fn block_inline_run_content_size_includes_visible_overflow_and_relative_inset() 
         );
 
     let output = tree
+        .borrow_compute()
         .compute_child(
             0,
             ComputeInput::for_child(
@@ -3068,6 +3196,7 @@ fn block_inline_run_content_size_accounts_for_negative_relative_inset_after_cont
         );
 
     let output = tree
+        .borrow_compute()
         .compute_child(
             0,
             ComputeInput::for_child(
@@ -3122,6 +3251,7 @@ fn block_reports_inline_run_first_and_last_baselines() {
         );
 
     let output = tree
+        .borrow_compute()
         .compute_child(
             0,
             ComputeInput::for_child(
@@ -3172,6 +3302,7 @@ fn block_reports_inline_run_baseline_including_padding() {
         );
 
     let output = tree
+        .borrow_compute()
         .compute_child(
             0,
             ComputeInput::for_child(
@@ -3219,6 +3350,7 @@ fn block_definite_compute_size_keeps_inline_run_baselines() {
         );
 
     let output = tree
+        .borrow_compute()
         .compute_child(
             0,
             ComputeInput::for_child(
@@ -3274,6 +3406,7 @@ fn block_definite_compute_size_keeps_block_child_baselines() {
         .measure(1, child_output);
 
     let output = tree
+        .borrow_compute()
         .compute_child(
             0,
             ComputeInput::for_child(
@@ -3302,7 +3435,7 @@ fn block_definite_compute_size_keeps_block_child_baselines() {
 fn assert_block_translates_orthogonal_child_baselines_on_the_child_block_axis<S: LayoutScalar>(
     writing_mode: WritingMode,
 ) where
-    crate::test_support::layout_tree::OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    crate::test_support::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let child_output = ComputeOutputOf::from_sizes_and_baselines(
         Size::new(S::from_f64(70.0), S::from_f64(110.0)),
@@ -3346,7 +3479,7 @@ fn assert_block_translates_orthogonal_child_baselines_on_the_child_block_axis<S:
         .measure(1, child_output);
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         ComputeInputOf::for_child(
             RunMode::PerformLayout,
@@ -3402,7 +3535,7 @@ fn orthogonal_baseline_block_translation_uses_physical_x_for_f64() {
 
 fn assert_block_aggregates_physical_baselines_on_both_axes<S: LayoutScalar>()
 where
-    crate::test_support::layout_tree::OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    crate::test_support::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let mut tree = crate::test_support::layout_tree::OracleTreeOf::<S>::new()
         .children(0, [1, 2])
@@ -3466,7 +3599,7 @@ where
         );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         ComputeInputOf::for_child(
             RunMode::PerformLayout,
@@ -3516,7 +3649,7 @@ fn physical_baseline_block_aggregates_both_axes_for_f64() {
 
 fn assert_block_preserves_a_child_y_baseline<S: LayoutScalar>()
 where
-    crate::test_support::layout_tree::OracleTreeOf<S>: Compute + Traverse<Node = u32, Scalar = S>,
+    crate::test_support::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let mut tree = crate::test_support::layout_tree::OracleTreeOf::<S>::new()
         .children(0, [1])
@@ -3558,7 +3691,7 @@ where
         );
 
     let output = crate::compute_block(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         ComputeInputOf::for_child(
             RunMode::PerformLayout,
@@ -3631,6 +3764,7 @@ fn block_definite_compute_size_keeps_non_empty_flex_child_baselines() {
         .measure(1, child_output);
 
     let output = tree
+        .borrow_compute()
         .compute_child(
             0,
             ComputeInput::for_child(

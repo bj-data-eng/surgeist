@@ -15,10 +15,10 @@ use crate::sizing::resolve::{
 };
 use crate::{
     AvailableOf, BoxSizing, CacheAccess, Compute, ComputeInputOf, ComputeOutputOf, Edges,
-    LayoutInputOf, LayoutScalar, NodeInputOf, NodeOutputOf, Point, Size, Traverse,
+    LayoutInputViewOf, LayoutScalar, NodeInputOf, NodeOutputOf, Point, Size, Traverse,
 };
 
-pub(crate) fn compute_hidden<Tree, M>(
+pub(crate) fn compute_hidden<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     source_index: crate::SourceIndex,
@@ -31,7 +31,7 @@ pub(crate) fn compute_hidden<Tree, M>(
     M,
 >
 where
-    Tree: Compute<M>
+    Tree: Compute<'input, M>
         + CacheAccess<M, Node = <Tree as Traverse>::Node, Scalar = <Tree as Traverse>::Scalar>,
 {
     tree.cache_clear(node);
@@ -41,7 +41,7 @@ where
     for index in 0..tree.child_count(node) {
         let child = tree.child(node, index);
         match tree.layout_input(child) {
-            LayoutInputOf::Box(_) => {
+            LayoutInputViewOf::Box(_) => {
                 tree.set_unrounded(
                     child,
                     NodeOutputOf::with_source_index(crate::SourceIndex::new(index)),
@@ -58,9 +58,9 @@ where
                     ),
                 )?;
             }
-            LayoutInputOf::InlineText(_)
-            | LayoutInputOf::LineBreak(_)
-            | LayoutInputOf::InlineBoundary(_) => {
+            LayoutInputViewOf::InlineText(_)
+            | LayoutInputViewOf::LineBreak(_)
+            | LayoutInputViewOf::InlineBoundary(_) => {
                 tree.cache_clear(child);
                 tree.set_unrounded_inline_fragment_state(child, None);
                 tree.set_unrounded(
@@ -74,15 +74,15 @@ where
     Ok(ComputeOutputOf::HIDDEN)
 }
 
-pub(crate) fn compute_root<Tree, M>(
+pub(crate) fn compute_root<'input, Tree, M>(
     tree: &mut Tree,
     root: <Tree as Traverse>::Node,
     available: Size<AvailableOf<Tree::Scalar>>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, (), <Tree as Traverse>::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
-    let style = tree.node_input(root).clone();
+    let style = tree.node_input(root);
     let containing_flow_axes = FlowAxes::new(style.writing_mode, style.direction);
     let containing_layout_context = crate::ContainingLayoutContext::new(
         containing_flow_axes,
@@ -90,13 +90,13 @@ where
     );
     let parent = available.map(AvailableOf::into_option);
     let known =
-        root_known_inline::<Tree, M>(tree, root, &style, containing_flow_axes, available, parent)?;
+        root_known_inline::<Tree, M>(tree, root, style, containing_flow_axes, available, parent)?;
     let output = tree.compute_child(
         root,
         ComputeInputOf::root_layout(known, parent, containing_layout_context, available),
     )?;
-    let root_edges = resolve_root_edges(tree, root, &style, containing_flow_axes, parent)?;
-    let scroll_geometry = root_scroll_geometry(root, &style, output, &root_edges)?;
+    let root_edges = resolve_root_edges(tree, root, style, containing_flow_axes, parent)?;
+    let scroll_geometry = root_scroll_geometry(root, style, output, &root_edges)?;
     let location = root_start_location(containing_flow_axes, output.size, available);
 
     tree.set_unrounded(
@@ -116,16 +116,16 @@ where
     Ok(())
 }
 
-pub(crate) fn compute_flex_item_root<Tree, M>(
+pub(crate) fn compute_flex_item_root<'input, Tree, M>(
     tree: &mut Tree,
     root: <Tree as Traverse>::Node,
     available: Size<AvailableOf<Tree::Scalar>>,
     context: crate::FlexItemRootContextOf<Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, (), <Tree as Traverse>::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
-    let style = tree.node_input(root).clone();
+    let style = tree.node_input(root);
     let containing_flow_axes = context.parent_flow_axes();
     let containing_layout_context = crate::ContainingLayoutContext::new(
         containing_flow_axes,
@@ -133,13 +133,13 @@ where
     );
     let parent = context.viewport_available().map(AvailableOf::into_option);
     let known =
-        root_known_inline::<Tree, M>(tree, root, &style, containing_flow_axes, available, parent)?;
+        root_known_inline::<Tree, M>(tree, root, style, containing_flow_axes, available, parent)?;
     let output = tree.compute_child(
         root,
         ComputeInputOf::flex_item_root(known, parent, containing_layout_context, available),
     )?;
-    let root_edges = resolve_root_edges(tree, root, &style, containing_flow_axes, parent)?;
-    let scroll_geometry = root_scroll_geometry(root, &style, output, &root_edges)?;
+    let root_edges = resolve_root_edges(tree, root, style, containing_flow_axes, parent)?;
+    let scroll_geometry = root_scroll_geometry(root, style, output, &root_edges)?;
     tree.set_unrounded(
         root,
         NodeOutputOf {
@@ -221,7 +221,7 @@ where
 
 type RootKnownInlineResult<Node, S, M> = LayoutResultOf<Node, Size<Option<S>>, S, M>;
 
-fn resolve_root_edges<Tree, M>(
+fn resolve_root_edges<'input, Tree, M>(
     tree: &Tree,
     node: <Tree as Traverse>::Node,
     style: &NodeInputOf<Tree::Scalar>,
@@ -229,7 +229,7 @@ fn resolve_root_edges<Tree, M>(
     parent: Size<Option<Tree::Scalar>>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, RootEdges<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let padding = containing_flow_axes
         .zip_physical_edges_with_inline_extent(style.padding, parent, |length, basis| {
@@ -254,7 +254,7 @@ where
     })
 }
 
-fn root_known_inline<Tree, M>(
+fn root_known_inline<'input, Tree, M>(
     tree: &Tree,
     node: <Tree as Traverse>::Node,
     style: &NodeInputOf<Tree::Scalar>,
@@ -263,13 +263,21 @@ fn root_known_inline<Tree, M>(
     percentage_parent: Size<Option<Tree::Scalar>>,
 ) -> RootKnownInlineResult<<Tree as Traverse>::Node, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let inline_axis = containing_flow_axes.inline_axis();
     if style.display.is_inline_level()
         || style.item_is_replaced
-        || !root_physical_axis_value(style.size.clone(), inline_axis).is_auto()
-        || !root_physical_axis_value(style.min_size.clone(), inline_axis).is_auto()
+        || !root_physical_axis_value(
+            Size::new(&style.size.width, &style.size.height),
+            inline_axis,
+        )
+        .is_auto()
+        || !root_physical_axis_value(
+            Size::new(&style.min_size.width, &style.min_size.height),
+            inline_axis,
+        )
+        .is_auto()
     {
         return Ok(Size::NONE);
     }

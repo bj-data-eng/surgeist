@@ -411,10 +411,10 @@ pub(super) fn column_flow_for_grid_lanes<S: LayoutScalar>(
     grid_axis_for_grid_lanes(style) == GridAxisKind::Row
 }
 
-pub(super) fn apply_grid_lanes_auto_fit_policy<Node, S: LayoutScalar>(
+pub(super) fn apply_grid_lanes_auto_fit_policy<'input, Node, S: LayoutScalar>(
     style: &GridContainerProjection<'_, S>,
     topology: &mut ExpandedGridTopology<S>,
-    placements: &GridPlacementContext<Node, S>,
+    placements: &GridPlacementContext<'input, Node, S>,
     track_count: usize,
     explicit_start: usize,
 ) -> Result<(), GridPlacementDemandError> {
@@ -833,7 +833,7 @@ fn span_overlaps_content_tracks(span: LaneTrackSpan, content_sized_tracks: &[usi
     clippy::type_complexity,
     reason = "lane placement preserves the session's node, scalar, and provider error types"
 )]
-pub(super) fn resolve_grid_lanes_placement_with_resolved_tracks<Tree, M>(
+pub(super) fn resolve_grid_lanes_placement_with_resolved_tracks<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     style: &GridContainerProjection<'_, Tree::Scalar>,
@@ -841,7 +841,7 @@ pub(super) fn resolve_grid_lanes_placement_with_resolved_tracks<Tree, M>(
     context: GridContainerContext<Tree::Scalar>,
     columns: &[Tree::Scalar],
     rows: &[Tree::Scalar],
-    placements: &GridPlacementContext<<Tree as Traverse>::Node, Tree::Scalar>,
+    placements: &GridPlacementContext<'input, <Tree as Traverse>::Node, Tree::Scalar>,
     grid_axis_gap: Tree::Scalar,
     container_content_box_size: LogicalSizeOf<Option<Tree::Scalar>>,
 ) -> LayoutResultOf<
@@ -851,7 +851,7 @@ pub(super) fn resolve_grid_lanes_placement_with_resolved_tracks<Tree, M>(
     M,
 >
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let grid_axis = grid_axis_for_grid_lanes(style);
     let lane_axis = lane_axis_for_grid_lanes(style);
@@ -1009,7 +1009,7 @@ where
     Ok(Ok(trace.into_report()))
 }
 
-pub(super) struct GridLanesLayoutInput<'a, Node, S: LayoutScalar = Scalar> {
+pub(super) struct GridLanesLayoutInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
     pub(super) style: &'a GridContainerProjection<'a, S>,
     pub(super) constants: &'a Constants<S>,
     pub(super) container_content_box_size: LogicalSizeOf<S>,
@@ -1018,12 +1018,12 @@ pub(super) struct GridLanesLayoutInput<'a, Node, S: LayoutScalar = Scalar> {
     pub(super) gap: LogicalSizeOf<S>,
     pub(super) context: GridContainerContext<S>,
     pub(super) subgrid_report: &'a GridSubgridReport<Node>,
-    pub(super) placements: &'a GridPlacementContext<Node, S>,
+    pub(super) placements: &'a GridPlacementContext<'input, Node, S>,
     pub(super) containing_auto_scrollbar_pass: crate::scroll::SettledAutoScrollbarState,
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct LaneIntrinsicTrackSizeInput<'a, Node, S: LayoutScalar = Scalar> {
+pub(super) struct LaneIntrinsicTrackSizeInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
     pub(super) container_style: &'a GridContainerProjection<'a, S>,
     pub(super) constants: &'a Constants<S>,
     pub(super) axis: GridAxisKind,
@@ -1033,7 +1033,7 @@ pub(super) struct LaneIntrinsicTrackSizeInput<'a, Node, S: LayoutScalar = Scalar
     pub(super) available_basis: Option<S>,
     pub(super) gutters: Option<&'a OrdinaryGridAxisGuttersOf<S>>,
     pub(super) lines: GridLines,
-    pub(super) placements: &'a GridPlacementContext<Node, S>,
+    pub(super) placements: &'a GridPlacementContext<'input, Node, S>,
     pub(super) subgrid_report: &'a GridSubgridReport<Node>,
 }
 
@@ -1041,10 +1041,10 @@ pub(super) struct LaneIntrinsicTrackSizeInput<'a, Node, S: LayoutScalar = Scalar
     clippy::type_complexity,
     reason = "lane intrinsic sizing preserves the session's node, scalar, and provider error types"
 )]
-pub(super) fn lane_intrinsic_track_sizes<Tree, M>(
+pub(super) fn lane_intrinsic_track_sizes<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
-    input: LaneIntrinsicTrackSizeInput<'_, <Tree as Traverse>::Node, Tree::Scalar>,
+    input: LaneIntrinsicTrackSizeInput<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
 ) -> LayoutResultOf<
     <Tree as Traverse>::Node,
     Result<Vec<Tree::Scalar>, LanePlacementError>,
@@ -1052,7 +1052,7 @@ pub(super) fn lane_intrinsic_track_sizes<Tree, M>(
     M,
 >
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let LaneIntrinsicTrackSizeInput {
         container_style,
@@ -1309,17 +1309,17 @@ pub(super) fn nested_lane_candidate_groups<S: LayoutScalar>(
     groups
 }
 
-fn collect_nested_lane_intrinsic_items<Tree, M>(
+fn collect_nested_lane_intrinsic_items<'input, Tree, M>(
     tree: &mut Tree,
     wrapper: <Tree as Traverse>::Node,
-    wrapper_input: &GridChildInput<Tree::Scalar>,
+    wrapper_input: &GridChildInput<'input, Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
     mut projection: NestedLaneIntrinsicProjectionOf<Tree::Scalar>,
     available: AvailableOf<Tree::Scalar>,
     items: &mut Vec<ProjectedLaneIntrinsicItemOf<Tree::Scalar>>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, (), Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     if projection.wrapper_starts.is_empty() || projection.wrapper_span == 0 {
         return Ok(());
@@ -1482,16 +1482,16 @@ where
     Ok(())
 }
 
-fn lane_child_edge_facts<Tree, M>(
+fn lane_child_edge_facts<'input, Tree, M>(
     tree: &Tree,
     child: <Tree as Traverse>::Node,
-    child_style: &GridItemProjection<Tree::Scalar>,
+    child_style: &GridItemProjection<'input, Tree::Scalar>,
     containing_flow_axes: crate::geometry::FlowAxes,
     containing_size: Size<Option<Tree::Scalar>>,
     axis: GridAxisKind,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, LaneIntrinsicEdgeFactsOf<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let margin = intrinsic_contribution_margin(child_style, containing_flow_axes, containing_size)
         .map_err(|status| crate::error::value_resolution_error(child, status))?;
@@ -1531,10 +1531,10 @@ struct LaneChildIntrinsicMeasurementContextOf<'a, S: LayoutScalar = Scalar> {
     available: AvailableOf<S>,
 }
 
-fn lane_child_contribution_facts<Tree, M>(
+fn lane_child_contribution_facts<'input, Tree, M>(
     tree: &mut Tree,
     child: <Tree as Traverse>::Node,
-    child_style: &GridItemProjection<Tree::Scalar>,
+    child_style: &GridItemProjection<'input, Tree::Scalar>,
     context: LaneChildIntrinsicMeasurementContextOf<'_, Tree::Scalar>,
 ) -> LayoutResultOf<
     <Tree as Traverse>::Node,
@@ -1543,7 +1543,7 @@ fn lane_child_contribution_facts<Tree, M>(
     M,
 >
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let LaneChildIntrinsicMeasurementContextOf {
         container_style,
@@ -1682,21 +1682,26 @@ where
     })
 }
 
-fn automatic_minimum_applies<S: LayoutScalar>(
-    style: &GridItemProjection<S>,
+fn automatic_minimum_applies<'input, S: LayoutScalar>(
+    style: &GridItemProjection<'input, S>,
     flow_axes: crate::geometry::FlowAxes,
     axis: GridAxisKind,
 ) -> bool {
     !scroll_container_auto_minimum_zero(style, flow_axes, axis)
 }
 
-fn scroll_container_auto_minimum_zero<S: LayoutScalar>(
-    style: &GridItemProjection<S>,
+fn scroll_container_auto_minimum_zero<'input, S: LayoutScalar>(
+    style: &GridItemProjection<'input, S>,
     flow_axes: crate::geometry::FlowAxes,
     axis: GridAxisKind,
 ) -> bool {
     grid_axis_computed_overflow(style, flow_axes, axis).is_scrollable()
-        && grid_axis_size(flow_axes, style.size.clone(), axis).is_auto()
+        && grid_axis_size(
+            flow_axes,
+            Size::new(&style.size.width, &style.size.height),
+            axis,
+        )
+        .is_auto()
 }
 
 fn lane_axis_size<S: LayoutScalar>(size: LogicalSizeOf<S>, axis: GridAxisKind) -> S {
@@ -1716,13 +1721,13 @@ fn lane_axis_margin_sum<S: LayoutScalar>(
     }
 }
 
-pub(super) fn layout_grid_lanes_children<Tree, M>(
+pub(super) fn layout_grid_lanes_children<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
-    input: GridLanesLayoutInput<'_, <Tree as Traverse>::Node, Tree::Scalar>,
+    input: GridLanesLayoutInput<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, GridChildrenLayout<Tree::Scalar>, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let GridLanesLayoutInput {
         style,
@@ -2370,15 +2375,16 @@ where
     })
 }
 
-fn normalize_grid_lanes_stacking_axis_sizing<S: LayoutScalar>(
-    child_style: &GridItemProjection<S>,
+fn normalize_grid_lanes_stacking_axis_sizing<'input, S: LayoutScalar>(
+    child_style: &GridItemProjection<'input, S>,
     container_style: &GridContainerProjection<'_, S>,
     lane_axis: GridAxisKind,
     flow_axes: crate::geometry::FlowAxes,
     lane_axis_margin_box: S,
     item: &mut GridItemSizing<S>,
 ) {
-    let logical_style_size = flow_axes.logical_size(child_style.size.clone());
+    let logical_style_size =
+        flow_axes.logical_size(Size::new(&child_style.size.width, &child_style.size.height));
     let mut logical_known = flow_axes.logical_size(item.known);
     let logical_margin = flow_axes.logical_edges(
         item.unresolved_margin
@@ -2418,21 +2424,21 @@ fn normalize_grid_lanes_stacking_axis_sizing<S: LayoutScalar>(
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct LaneAxisMarginBoxMeasureInput<'a, S: LayoutScalar = Scalar> {
-    pub(super) child_style: &'a GridItemProjection<S>,
+pub(super) struct LaneAxisMarginBoxMeasureInput<'input, 'a, S: LayoutScalar = Scalar> {
+    pub(super) child_style: &'a GridItemProjection<'input, S>,
     pub(super) container_style: &'a GridContainerProjection<'a, S>,
     pub(super) constants: &'a Constants<S>,
     pub(super) lane_axis: GridAxisKind,
     pub(super) containing_block: GridLanesItemContainingBlockOf<S>,
 }
 
-pub(super) fn measure_lane_axis_margin_box_with_grid_axis<Tree, M>(
+pub(super) fn measure_lane_axis_margin_box_with_grid_axis<'input, Tree, M>(
     tree: &mut Tree,
     child: <Tree as Traverse>::Node,
-    input: LaneAxisMarginBoxMeasureInput<'_, Tree::Scalar>,
+    input: LaneAxisMarginBoxMeasureInput<'input, '_, Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, Tree::Scalar, Tree::Scalar, M>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let LaneAxisMarginBoxMeasureInput {
         child_style,
@@ -2446,7 +2452,10 @@ where
     let preferred_size = grid_lanes_child_sizing_preflight(child_style, containing_physical_size)
         .map_err(|error| sizing_resolution_error(child, error))?;
     let logical_preferred_size = flow_axes.logical_size(preferred_size);
-    let logical_container_preferred_size = flow_axes.logical_size(container_style.size.clone());
+    let logical_container_preferred_size = flow_axes.logical_size(Size::new(
+        &container_style.size.width,
+        &container_style.size.height,
+    ));
     let (margin, known, parent, available) = {
         let unresolved_margin = flow_axes
             .zip_physical_edges_with_inline_extent(
@@ -2457,7 +2466,8 @@ where
             .transpose_with_node(tree, child)?;
         let margin = unresolved_margin.map(|margin| margin.unwrap_or(Tree::Scalar::ZERO));
         let logical_margin = flow_axes.logical_edges(margin);
-        let logical_style_size = flow_axes.logical_size(child_style.size.clone());
+        let logical_style_size =
+            flow_axes.logical_size(Size::new(&child_style.size.width, &child_style.size.height));
         let mut logical_known = LogicalSizeOf::new(None, None);
         let logical_parent = containing_block.logical_size();
         let mut logical_available =
@@ -2466,13 +2476,13 @@ where
             LogicalAxis::Inline => {
                 logical_available.inline = lane_axis_intrinsic_available(
                     logical_preferred_size.inline,
-                    &logical_container_preferred_size.inline,
+                    logical_container_preferred_size.inline,
                 );
             }
             LogicalAxis::Block => {
                 logical_available.block = lane_axis_intrinsic_available(
                     logical_preferred_size.block,
-                    &logical_container_preferred_size.block,
+                    logical_container_preferred_size.block,
                 );
             }
         }
@@ -2591,8 +2601,8 @@ fn definite_preferred_size<S: LayoutScalar>(dimension: ResolvedPreferredSize<S>)
     }
 }
 
-fn grid_lanes_child_sizing_preflight<S: LayoutScalar>(
-    child_style: &GridItemProjection<S>,
+fn grid_lanes_child_sizing_preflight<'input, S: LayoutScalar>(
+    child_style: &GridItemProjection<'input, S>,
     parent: Size<Option<S>>,
 ) -> Result<Size<ResolvedPreferredSize<S>>, SizingResolutionError<S>> {
     let preferred_size = Size::new(

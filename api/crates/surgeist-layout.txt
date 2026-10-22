@@ -279,10 +279,21 @@ pub fn surgeist_layout::LayoutInputOf<S>::as_box(&self) -> core::option::Option<
 pub const fn surgeist_layout::LayoutInputOf<S>::as_inline_boundary(&self) -> core::option::Option<surgeist_layout::InlineBoundaryInputOf<S>>
 pub const fn surgeist_layout::LayoutInputOf<S>::as_inline_text(&self) -> core::option::Option<&surgeist_layout::InlineTextInputOf<S>>
 pub const fn surgeist_layout::LayoutInputOf<S>::as_line_break(&self) -> core::option::Option<surgeist_layout::LineBreakInputOf<S>>
+pub fn surgeist_layout::LayoutInputOf<S>::as_view(&self) -> surgeist_layout::LayoutInputViewOf<'_, S>
 pub fn surgeist_layout::LayoutInputOf<S>::box_input(input: surgeist_layout::NodeInputOf<S>) -> Self
 pub const fn surgeist_layout::LayoutInputOf<S>::inline_boundary(input: surgeist_layout::InlineBoundaryInputOf<S>) -> Self
 pub const fn surgeist_layout::LayoutInputOf<S>::inline_text(input: surgeist_layout::InlineTextInputOf<S>) -> Self
 pub const fn surgeist_layout::LayoutInputOf<S>::line_break(input: surgeist_layout::LineBreakInputOf<S>) -> Self
+pub enum surgeist_layout::LayoutInputViewOf<'input, S: surgeist_layout::LayoutScalar>
+pub surgeist_layout::LayoutInputViewOf::Box(&'input surgeist_layout::NodeInputOf<S>)
+pub surgeist_layout::LayoutInputViewOf::InlineBoundary(surgeist_layout::InlineBoundaryInputOf<S>)
+pub surgeist_layout::LayoutInputViewOf::InlineText(&'input surgeist_layout::InlineTextInputOf<S>)
+pub surgeist_layout::LayoutInputViewOf::LineBreak(surgeist_layout::LineBreakInputOf<S>)
+impl<'input, S: surgeist_layout::LayoutScalar> surgeist_layout::LayoutInputViewOf<'input, S>
+pub const fn surgeist_layout::LayoutInputViewOf<'input, S>::as_box(self) -> core::option::Option<&'input surgeist_layout::NodeInputOf<S>>
+pub const fn surgeist_layout::LayoutInputViewOf<'input, S>::as_inline_boundary(self) -> core::option::Option<surgeist_layout::InlineBoundaryInputOf<S>>
+pub const fn surgeist_layout::LayoutInputViewOf<'input, S>::as_inline_text(self) -> core::option::Option<&'input surgeist_layout::InlineTextInputOf<S>>
+pub const fn surgeist_layout::LayoutInputViewOf<'input, S>::as_line_break(self) -> core::option::Option<surgeist_layout::LineBreakInputOf<S>>
 #[non_exhaustive] pub enum surgeist_layout::LayoutInternalInvariant
 pub surgeist_layout::LayoutInternalInvariant::InvalidBlockScrollGeometry
 pub surgeist_layout::LayoutInternalInvariant::InvalidRootScrollGeometry
@@ -1635,7 +1646,7 @@ pub fn surgeist_layout::LayoutTree::cache_context(&self) -> surgeist_layout::Cac
 pub fn surgeist_layout::LayoutTree::cache_get(&self, _node: Self::Node, _input: &surgeist_layout::ComputeInputOf<Self::Scalar>, _context: surgeist_layout::CacheKeyContext) -> core::option::Option<surgeist_layout::ComputeOutputOf<Self::Scalar>>
 pub fn surgeist_layout::LayoutTree::float_exclusion_interval(&self, _node: Self::Node, _query: surgeist_layout::FloatExclusionQueryOf<Self::Scalar>) -> core::option::Option<core::result::Result<core::option::Option<surgeist_layout::FloatExclusionIntervalOf<Self::Scalar>>, Self::MeasureError>>
 pub fn surgeist_layout::LayoutTree::has_leaf_measurement(&self, _node: Self::Node) -> bool
-pub fn surgeist_layout::LayoutTree::layout_input(&self, node: Self::Node) -> surgeist_layout::LayoutInputOf<Self::Scalar>
+pub fn surgeist_layout::LayoutTree::layout_input(&self, node: Self::Node) -> surgeist_layout::LayoutInputViewOf<'_, Self::Scalar>
 pub fn surgeist_layout::LayoutTree::measure_leaf(&self, _node: Self::Node, _input: surgeist_layout::LeafMeasureInputOf<Self::Scalar>) -> core::option::Option<core::result::Result<surgeist_layout::Size<Self::Scalar>, Self::MeasureError>>
 pub fn surgeist_layout::LayoutTree::node_input(&self, node: Self::Node) -> &surgeist_layout::NodeInputOf<Self::Scalar>
 pub fn surgeist_layout::LayoutTree::unrounded_inline_fragments(&self, _node: Self::Node) -> core::option::Option<&[surgeist_layout::InlineFragmentOutputOf<Self::Scalar>]>
@@ -1703,6 +1714,7 @@ pub type surgeist_layout::LayoutError<Node, M> = surgeist_layout::LayoutErrorOf<
 pub type surgeist_layout::LayoutErrorKind<M> = surgeist_layout::LayoutErrorKindOf<surgeist_layout::DefaultScalar, M>
 pub type surgeist_layout::LayoutErrorSite<Node> = surgeist_layout::LayoutErrorSiteOf<Node>
 pub type surgeist_layout::LayoutInput = surgeist_layout::LayoutInputOf<surgeist_layout::DefaultScalar>
+pub type surgeist_layout::LayoutInputView<'input> = surgeist_layout::LayoutInputViewOf<'input, surgeist_layout::DefaultScalar>
 pub type surgeist_layout::LayoutInvalidInput = surgeist_layout::LayoutInvalidInputOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::LayoutOutputEntry<Node> = surgeist_layout::LayoutOutputEntryOf<Node, surgeist_layout::DefaultScalar>
 pub type surgeist_layout::LayoutResult<Node, T, M> = surgeist_layout::LayoutResultOf<Node, T, surgeist_layout::DefaultScalar, M>

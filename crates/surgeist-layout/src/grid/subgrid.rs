@@ -82,11 +82,11 @@ pub(super) struct SubgridEligibility {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct SubgridEligibilityInput<'a, S: LayoutScalar = Scalar> {
+pub(super) struct SubgridEligibilityInput<'input, 'a, S: LayoutScalar = Scalar> {
     pub(super) axis: GridAxisKind,
     pub(super) parent_style: &'a GridContainerProjection<'a, S>,
     pub(super) has_parent_grid: bool,
-    pub(super) child_style: &'a GridItemProjection<S>,
+    pub(super) child_style: &'a GridItemProjection<'input, S>,
     pub(super) child_requested: bool,
 }
 
@@ -158,23 +158,24 @@ impl<S: LayoutScalar> Default for SubgridAxisEdges<S> {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct SubgridTraversalInput<'a, Node, S: LayoutScalar = Scalar> {
+pub(super) struct SubgridTraversalInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
     pub(super) ancestor_track_intrinsic_min_eligibility: IntrinsicMinTrackFacts<'a>,
-    pub(super) root_children: Vec<SubgridTraversalChild<Node, S>>,
+    pub(super) root_children: Vec<SubgridTraversalChild<'input, Node, S>>,
 }
 
 #[derive(Clone, Debug)]
-pub(super) enum SubgridTraversalChild<Node, S: LayoutScalar = Scalar> {
-    Subgrid(SubgridTraversalNode<Node, S>),
-    Leaf(SubgridTraversalLeaf<Node, S>),
+pub(super) enum SubgridTraversalChild<'input, Node, S: LayoutScalar = Scalar> {
+    Subgrid(SubgridTraversalNode<'input, Node, S>),
+    Leaf(SubgridTraversalLeaf<'input, Node, S>),
 }
 
-type SubgridTraversalChildren<Node, S = Scalar> = Vec<SubgridTraversalChild<Node, S>>;
+type SubgridTraversalChildren<'input, Node, S = Scalar> =
+    Vec<SubgridTraversalChild<'input, Node, S>>;
 
 #[derive(Clone, Debug)]
-pub(super) struct SubgridTraversalNode<Node, S: LayoutScalar = Scalar> {
+pub(super) struct SubgridTraversalNode<'input, Node, S: LayoutScalar = Scalar> {
     pub(super) node: Node,
-    pub(super) style: GridItemProjection<S>,
+    pub(super) style: GridItemProjection<'input, S>,
     pub(super) axis: SubgridTraversalAxis,
     pub(super) reversed: bool,
     pub(super) span_in_parent: GridTrackSpan,
@@ -188,13 +189,13 @@ pub(super) struct SubgridTraversalNode<Node, S: LayoutScalar = Scalar> {
     pub(super) padding: SubgridAxisEdges<S>,
     pub(super) parent_gap: S,
     pub(super) subgrid_gap: S,
-    pub(super) children: Vec<SubgridTraversalChild<Node, S>>,
+    pub(super) children: Vec<SubgridTraversalChild<'input, Node, S>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct SubgridTraversalLeaf<Node, S: LayoutScalar = Scalar> {
+pub(super) struct SubgridTraversalLeaf<'input, Node, S: LayoutScalar = Scalar> {
     pub(super) node: Node,
-    pub(super) style: GridItemProjection<S>,
+    pub(super) style: GridItemProjection<'input, S>,
     pub(super) span_in_parent: GridTrackSpan,
     pub(super) available_inline_size: Option<S>,
     pub(super) available_inline_size_is_known: bool,
@@ -202,11 +203,11 @@ pub(super) struct SubgridTraversalLeaf<Node, S: LayoutScalar = Scalar> {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct SubgridLeafContribution<Node, S: LayoutScalar = Scalar> {
+pub(super) struct SubgridLeafContribution<'input, Node, S: LayoutScalar = Scalar> {
     pub(super) root_node: Option<Node>,
     pub(super) root_axis_fully_inherited: bool,
     pub(super) node: Node,
-    pub(super) style: GridItemProjection<S>,
+    pub(super) style: GridItemProjection<'input, S>,
     pub(super) ancestor_span: GridTrackSpan,
     pub(super) available_inline_size: Option<S>,
     pub(super) available_inline_size_is_known: bool,
@@ -225,7 +226,7 @@ pub(super) struct SubgridAncestorBaselineAdjustments<S: LayoutScalar = Scalar> {
     pub(super) end: S,
 }
 
-impl<Node, S: LayoutScalar> SubgridLeafContribution<Node, S> {
+impl<'input, Node, S: LayoutScalar> SubgridLeafContribution<'input, Node, S> {
     pub(super) fn scalar_adjustment(&self) -> Option<S> {
         let start = self.ancestor_span.start.checked_sub(1)?;
         let end = self.ancestor_span.end.checked_sub(1)?;
@@ -267,9 +268,9 @@ impl<Node, S: LayoutScalar> SubgridLeafContribution<Node, S> {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct SubgridTraversalReport<Node, S: LayoutScalar = Scalar> {
+pub(super) struct SubgridTraversalReport<'input, Node, S: LayoutScalar = Scalar> {
     pub(super) edge_lower_bounds: Vec<S>,
-    pub(super) leaves: Vec<SubgridLeafContribution<Node, S>>,
+    pub(super) leaves: Vec<SubgridLeafContribution<'input, Node, S>>,
     pub(super) baseline_views: Vec<SubgridBaselineViewTransform<S>>,
 }
 
@@ -282,9 +283,9 @@ pub(super) struct SubgridBaselineViewTransform<S: LayoutScalar = Scalar> {
     pub(super) subgrid_gap: S,
 }
 
-pub(super) fn traverse_subgrid_intrinsic<Node, S: LayoutScalar>(
-    input: SubgridTraversalInput<'_, Node, S>,
-) -> Result<SubgridTraversalReport<Node, S>, SubgridTraversalError>
+pub(super) fn traverse_subgrid_intrinsic<'input, Node, S: LayoutScalar>(
+    input: SubgridTraversalInput<'input, '_, Node, S>,
+) -> Result<SubgridTraversalReport<'input, Node, S>, SubgridTraversalError>
 where
     Node: Copy,
 {
@@ -417,16 +418,16 @@ struct SubgridTraversalContext<Node, S: LayoutScalar = Scalar> {
     outer_half_gap: S,
 }
 
-type SubgridTraversalStackEntry<Node, S = Scalar> = (
-    SubgridTraversalChild<Node, S>,
+type SubgridTraversalStackEntry<'input, Node, S = Scalar> = (
+    SubgridTraversalChild<'input, Node, S>,
     SubgridTraversalContext<Node, S>,
 );
 
-fn apply_subgrid_edge_placeholders<Node, S: LayoutScalar>(
+fn apply_subgrid_edge_placeholders<'input, Node, S: LayoutScalar>(
     intrinsic_min: &[bool],
     edge_lower_bounds: &mut [S],
-    stack: &mut Vec<SubgridTraversalStackEntry<Node, S>>,
-    subgrid: SubgridTraversalNode<Node, S>,
+    stack: &mut Vec<SubgridTraversalStackEntry<'input, Node, S>>,
+    subgrid: SubgridTraversalNode<'input, Node, S>,
     mut context: SubgridTraversalContext<Node, S>,
 ) -> Result<(), SubgridTraversalError>
 where
@@ -1609,9 +1610,9 @@ fn consume_track_space<S: LayoutScalar>(tracks: &mut [S], mut amount: S, edge: T
     }
 }
 
-pub(super) fn collect_subgrid_report<Node: Copy, S: LayoutScalar>(
+pub(super) fn collect_subgrid_report<'input, Node: Copy, S: LayoutScalar>(
     parent_style: &GridContainerProjection<'_, S>,
-    placements: &GridPlacementContext<Node, S>,
+    placements: &GridPlacementContext<'input, Node, S>,
 ) -> GridSubgridReport<Node> {
     let items = placements
         .children
@@ -1631,13 +1632,13 @@ pub(super) fn collect_subgrid_report<Node: Copy, S: LayoutScalar>(
     GridSubgridReport { items }
 }
 
-pub(super) struct GridSubgridIntrinsicTraversalInput<'a, Node, S: LayoutScalar = Scalar> {
+pub(super) struct GridSubgridIntrinsicTraversalInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
     pub(super) axis: GridAxisKind,
     pub(super) containing_flow_axes: crate::geometry::FlowAxes,
     pub(super) children: &'a [Node],
     pub(super) placed_areas: &'a [Option<GridArea<S>>],
     pub(super) subgrid_report: &'a GridSubgridReport<Node>,
-    pub(super) placements: &'a GridPlacementContext<Node, S>,
+    pub(super) placements: &'a GridPlacementContext<'input, Node, S>,
     pub(super) named_columns: &'a NamedGridLines,
     pub(super) named_rows: &'a NamedGridLines,
     pub(super) area_facts: Option<&'a GridAreaNameFacts>,
@@ -1654,17 +1655,20 @@ pub(super) struct GridSubgridIntrinsicTraversalInput<'a, Node, S: LayoutScalar =
     clippy::type_complexity,
     reason = "nested traversal preserves both session errors and existing traversal outcomes"
 )]
-pub(super) fn collect_grid_subgrid_intrinsic_traversal<Tree, M>(
+pub(super) fn collect_grid_subgrid_intrinsic_traversal<'input, Tree, M>(
     tree: &Tree,
-    input: GridSubgridIntrinsicTraversalInput<'_, <Tree as Traverse>::Node, Tree::Scalar>,
+    input: GridSubgridIntrinsicTraversalInput<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
 ) -> LayoutResultOf<
     <Tree as Traverse>::Node,
-    Result<SubgridTraversalReport<<Tree as Traverse>::Node, Tree::Scalar>, SubgridTraversalError>,
+    Result<
+        SubgridTraversalReport<'input, <Tree as Traverse>::Node, Tree::Scalar>,
+        SubgridTraversalError,
+    >,
     Tree::Scalar,
     M,
 >
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let column_geometry = input.column_gutters.map(|gutters| {
         UsedGridAxisGeometryOf::from_sizing_gutters(input.column_sizes.to_vec(), gutters)
@@ -1744,11 +1748,11 @@ where
     clippy::type_complexity,
     reason = "nested child setup preserves both session errors and optional traversal outcomes"
 )]
-fn subgrid_traversal_child<Tree, M>(
+fn subgrid_traversal_child<'input, Tree, M>(
     tree: &Tree,
     node: <Tree as Traverse>::Node,
-    style: &GridItemProjection<Tree::Scalar>,
-    nested_container: Option<&GridContainerInput<Tree::Scalar>>,
+    style: &GridItemProjection<'input, Tree::Scalar>,
+    nested_container: Option<&GridContainerInput<'input, Tree::Scalar>>,
     area: GridArea<Tree::Scalar>,
     area_size: Size<Tree::Scalar>,
     item_report: SubgridItemReport<<Tree as Traverse>::Node>,
@@ -1763,12 +1767,12 @@ fn subgrid_traversal_child<Tree, M>(
     align_self: AlignItems,
 ) -> LayoutResultOf<
     <Tree as Traverse>::Node,
-    Option<SubgridTraversalChild<<Tree as Traverse>::Node, Tree::Scalar>>,
+    Option<SubgridTraversalChild<'input, <Tree as Traverse>::Node, Tree::Scalar>>,
     Tree::Scalar,
     M,
 >
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let axis_report = match queried_axis {
         GridAxisKind::Column => item_report.column,
@@ -1973,10 +1977,10 @@ where
     clippy::type_complexity,
     reason = "nested traversal preserves the session error envelope and child report"
 )]
-fn subgrid_traversal_children<Tree, M>(
+fn subgrid_traversal_children<'input, Tree, M>(
     tree: &Tree,
     node: <Tree as Traverse>::Node,
-    nested_container: &GridContainerInput<Tree::Scalar>,
+    nested_container: &GridContainerInput<'input, Tree::Scalar>,
     area: GridArea<Tree::Scalar>,
     content_box_size: Size<Tree::Scalar>,
     item_report: SubgridItemReport<<Tree as Traverse>::Node>,
@@ -1991,14 +1995,14 @@ fn subgrid_traversal_children<Tree, M>(
 ) -> LayoutResultOf<
     <Tree as Traverse>::Node,
     Option<(
-        SubgridTraversalChildren<<Tree as Traverse>::Node, Tree::Scalar>,
+        SubgridTraversalChildren<'input, <Tree as Traverse>::Node, Tree::Scalar>,
         bool,
     )>,
     Tree::Scalar,
     M,
 >
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let parent_context = GridParentContext::<Tree::Scalar, <Tree as Traverse>::Node> {
         columns: intrinsic_subgrid_axis_parent_context(
@@ -2024,7 +2028,7 @@ where
     let container_style = nested_container.projection();
     let intrinsic_minimum = standalone_intrinsic_minimum_phases(&container_style, &parent_context);
     let intrinsic_axes = intrinsic_minimum.map(|minimum| minimum.is_some());
-    let mut traversal_input = nested_container.clone();
+    let mut traversal_input = *nested_container;
     traversal_input.suppress_intrinsic_minimum(intrinsic_axes);
     let traversal_style = traversal_input.projection();
     let constants = Constants::new_with_reservation::<Tree, M>(
@@ -2441,8 +2445,8 @@ fn intrinsic_traversal_axis_area_size<S: LayoutScalar>(
     }
 }
 
-pub(super) fn subgrid_eligibility<S: LayoutScalar>(
-    input: SubgridEligibilityInput<'_, S>,
+pub(super) fn subgrid_eligibility<'input, S: LayoutScalar>(
+    input: SubgridEligibilityInput<'input, '_, S>,
 ) -> SubgridEligibility {
     let reason = if !input.child_requested {
         Some(SubgridIneligibleReason::NotRequested)
@@ -2464,9 +2468,9 @@ pub(super) fn subgrid_eligibility<S: LayoutScalar>(
     }
 }
 
-pub(super) fn subgrid_axis_report<S: LayoutScalar>(
+pub(super) fn subgrid_axis_report<'input, S: LayoutScalar>(
     parent_style: &GridContainerProjection<'_, S>,
-    child_input: &GridChildInput<S>,
+    child_input: &GridChildInput<'input, S>,
     axis: GridAxisKind,
 ) -> SubgridAxisReport {
     let child_style = child_input.item();
@@ -2490,13 +2494,15 @@ const fn subgrid_container_display_supported(display: Display) -> bool {
     display.establishes_grid_formatting_context()
 }
 
-const fn excluded_from_normal_layout<S: LayoutScalar>(style: &GridItemProjection<S>) -> bool {
+const fn excluded_from_normal_layout<'input, S: LayoutScalar>(
+    style: &GridItemProjection<'input, S>,
+) -> bool {
     matches!(style.display, Display::None) || matches!(style.position, Position::Absolute)
 }
 
-fn parent_is_lanes_in_resolved_axis<S: LayoutScalar>(
+fn parent_is_lanes_in_resolved_axis<'input, S: LayoutScalar>(
     parent_style: &GridContainerProjection<'_, S>,
-    child_style: &GridItemProjection<S>,
+    child_style: &GridItemProjection<'input, S>,
     child_axis: GridAxisKind,
 ) -> bool {
     if !parent_style
@@ -2521,9 +2527,8 @@ mod tests {
     use super::*;
     use crate::{
         Compute, ComputeInput, ComputeOutput, DefaultScalar, LayoutErrorKind, LayoutErrorSite,
-        LayoutInput, LayoutInvalidInput, LayoutOperation, LayoutResultOf, LengthPercentageOf,
-        NodeInput, NodeInputOf, NodeOutput, PreferredSize, Size, SubgridTrack, TrackComponent,
-        Traverse,
+        LayoutInvalidInput, LayoutOperation, LayoutResultOf, LengthPercentageOf, NodeInput,
+        NodeInputOf, NodeOutput, PreferredSize, Size, SubgridTrack, TrackComponent, Traverse,
     };
 
     struct TraversalTree {
@@ -2533,7 +2538,10 @@ mod tests {
     impl Traverse for TraversalTree {
         type Node = u32;
         type Scalar = DefaultScalar;
-        type Children<'a> = std::iter::Empty<u32>;
+        type Children<'a>
+            = std::iter::Empty<u32>
+        where
+            Self: 'a;
 
         fn children(&self, _node: Self::Node) -> Self::Children<'_> {
             std::iter::empty()
@@ -2548,13 +2556,44 @@ mod tests {
         }
     }
 
-    impl Compute<Infallible> for TraversalTree {
-        fn node_input(&self, _node: Self::Node) -> &NodeInput {
-            &self.input
+    struct TraversalTreeCompute<'input> {
+        input: &'input NodeInput,
+    }
+
+    impl TraversalTree {
+        fn borrow_compute(&mut self) -> TraversalTreeCompute<'_> {
+            TraversalTreeCompute { input: &self.input }
+        }
+    }
+
+    impl<'input> Traverse for TraversalTreeCompute<'input> {
+        type Node = u32;
+        type Scalar = DefaultScalar;
+        type Children<'a>
+            = std::iter::Empty<u32>
+        where
+            Self: 'a;
+
+        fn children(&self, _node: Self::Node) -> Self::Children<'_> {
+            std::iter::empty()
         }
 
-        fn layout_input(&self, _node: Self::Node) -> LayoutInput {
-            LayoutInput::box_input(self.input.clone())
+        fn child_count(&self, _node: Self::Node) -> usize {
+            0
+        }
+
+        fn child(&self, _node: Self::Node, _index: usize) -> Self::Node {
+            unreachable!("traversal test tree has no children")
+        }
+    }
+
+    impl<'input> Compute<'input, Infallible> for TraversalTreeCompute<'input> {
+        fn node_input(&self, _node: Self::Node) -> &'input NodeInput {
+            self.input
+        }
+
+        fn layout_input(&self, _node: Self::Node) -> crate::LayoutInputView<'input> {
+            crate::LayoutInputViewOf::Box(self.input)
         }
 
         fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutput) {}
@@ -2640,7 +2679,7 @@ mod tests {
             size: Size::new(PreferredSize::AUTO, PreferredSize::px(f32::MAX)),
             ..NodeInput::default()
         };
-        let tree = TraversalTree {
+        let mut tree = TraversalTree {
             input: style.clone(),
         };
         let child_input = GridChildInput::from_node(&style);
@@ -2653,8 +2692,8 @@ mod tests {
         let named_columns = NamedGridLines::new(GridAxisKind::Column, 1);
         let named_rows = NamedGridLines::new(GridAxisKind::Row, 1);
 
-        let error = subgrid_traversal_children::<TraversalTree, Infallible>(
-            &tree,
+        let error = subgrid_traversal_children::<_, Infallible>(
+            &tree.borrow_compute(),
             0,
             child_input
                 .nested_container()

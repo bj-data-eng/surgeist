@@ -1297,7 +1297,7 @@ fn assert_fri06_mr02_geometry_error_grid_track_subject<S: LayoutScalar>(display:
             },
         );
     let error = compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         7,
         ComputeInputOf::for_child(
             RunMode::PerformLayout,
@@ -1373,7 +1373,7 @@ fn fri05_c05_grid_contribution_nested(
         );
 
     compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         0,
         fri05_c05_grid_sizing_input(Size::splat(Some(0.0))),
     )
@@ -1438,8 +1438,12 @@ fn fri04_c04_grid_dispatch_supported_calc_size_and_intrinsic_geometry_in_both_ax
                 ..NodeInput::default()
             },
         );
-        let output = compute_grid(&mut auto_tree, 0, fri04_c04_grid_dispatch_input(Size::NONE))
-            .expect("supported preferred auto grid values resolve");
+        let output = compute_grid(
+            &mut auto_tree.borrow_compute(),
+            0,
+            fri04_c04_grid_dispatch_input(Size::NONE),
+        )
+        .expect("supported preferred auto grid values resolve");
         assert_eq!(output.size, Size::new(30.0, 20.0), "{display:?} auto");
 
         let mut numeric_tree = OracleTree::new().children(0, []).style(
@@ -1451,7 +1455,7 @@ fn fri04_c04_grid_dispatch_supported_calc_size_and_intrinsic_geometry_in_both_ax
             },
         );
         let output = compute_grid(
-            &mut numeric_tree,
+            &mut numeric_tree.borrow_compute(),
             0,
             fri04_c04_grid_dispatch_input(Size::new(Some(200.0), Some(160.0))),
         )
@@ -1486,7 +1490,7 @@ fn fri04_c04_grid_dispatch_supported_calc_size_and_intrinsic_geometry_in_both_ax
                 },
             );
             let output = compute_grid(
-                &mut calc_tree,
+                &mut calc_tree.borrow_compute(),
                 0,
                 fri04_c04_grid_dispatch_input(Size::new(Some(200.0), Some(160.0))),
             )
@@ -1506,7 +1510,7 @@ fn fri04_c04_grid_dispatch_supported_calc_size_and_intrinsic_geometry_in_both_ax
                 },
             );
             let output = compute_grid(
-                &mut intrinsic_tree,
+                &mut intrinsic_tree.borrow_compute(),
                 0,
                 fri04_c04_grid_dispatch_input(Size::NONE),
             )
@@ -1780,7 +1784,7 @@ fn grid_column_gap_separates_declared_tracks() {
     tree.insert_style(3, NodeInput::default());
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -1849,7 +1853,7 @@ fn grid_item_margins_reduce_stretched_grid_area() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -1929,7 +1933,7 @@ fn grid_definite_column_line_places_item_in_explicit_track() {
     tree.insert_style(3, NodeInput::default());
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2006,7 +2010,7 @@ fn grid_definite_row_line_places_item_in_explicit_track() {
     tree.insert_style(3, NodeInput::default());
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2069,7 +2073,7 @@ fn grid_definite_column_span_covers_multiple_tracks_and_gap() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2124,7 +2128,7 @@ fn grid_definite_row_span_covers_multiple_tracks_and_gap() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2184,7 +2188,7 @@ fn grid_column_span_auto_places_across_multiple_free_tracks() {
     tree.insert_style(3, NodeInput::default());
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2311,7 +2315,7 @@ fn grid_definite_column_end_line_resolves_to_previous_track() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2370,7 +2374,7 @@ fn grid_definite_row_end_line_resolves_to_previous_track() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2419,7 +2423,7 @@ fn grid_justify_content_center_offsets_tracks_inside_inner_width() {
     tree.insert_style(2, NodeInput::default());
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2479,7 +2483,7 @@ fn grid_justify_content_space_between_distributes_free_width_between_tracks() {
     tree.insert_style(3, NodeInput::default());
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2536,7 +2540,7 @@ fn grid_fraction_tracks_share_leftover_space_after_fixed_tracks_and_gaps() {
     tree.insert_style(4, NodeInput::default());
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2614,7 +2618,7 @@ fn grid_fraction_tracks_use_available_space_when_container_size_is_auto() {
     tree.insert_style(3, NodeInput::default());
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2673,7 +2677,7 @@ fn grid_fraction_tracks_clamp_available_space_to_min_size() {
     tree.insert_style(3, NodeInput::default());
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2737,7 +2741,7 @@ fn grid_auto_fraction_tracks_resolve_after_required_tracks_are_known() {
     );
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2788,7 +2792,7 @@ fn grid_stretch_distributes_free_space_to_auto_tracks() {
     tree.insert_style(3, NodeInput::default());
 
     crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2853,7 +2857,7 @@ fn grid_auto_track_uses_single_item_intrinsic_contribution() {
     tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(80.0, 24.0)));
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -2963,7 +2967,7 @@ fn grid_auto_width_does_not_stretch_auto_tracks_to_available_space() {
     tree.insert_style(3, NodeInput::default());
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3032,7 +3036,7 @@ fn grid_auto_width_uses_max_width_as_track_available_space() {
     );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3098,7 +3102,7 @@ fn grid_row_intrinsic_sizing_uses_resolved_column_width() {
     tree.insert_style(2, NodeInput::default());
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3164,7 +3168,7 @@ fn grid_layout_percent_columns_rerun_row_sizing_with_resolved_width() {
     tree.insert_style(2, NodeInput::default());
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3234,7 +3238,7 @@ fn logical_ordinary_grid_carriers_project_fixed_tracks() {
                 );
 
                 let output = crate::compute_grid(
-                    &mut tree,
+                    &mut tree.borrow_compute(),
                     1,
                     ComputeInputOf::for_child(
                         RunMode::PerformLayout,
@@ -3276,7 +3280,7 @@ fn logical_ordinary_grid_carriers_project_fixed_tracks() {
 
 fn assert_logical_ordinary_grid_intrinsic_reruns_fake_measurements<S: LayoutScalar>()
 where
-    OracleTreeOf<S>: Compute<Node = u32, Scalar = S>,
+    OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
     let scalar = S::from_f64;
     let measured_size = Size::new(scalar(17.0), scalar(31.0));
@@ -3339,7 +3343,7 @@ where
             .measure(2, ComputeOutputOf::from_outer_size(measured_size));
 
         let output = crate::compute_grid(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInputOf::for_child(
                 RunMode::PerformLayout,
@@ -3388,7 +3392,7 @@ where
         );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInputOf::for_child(
             RunMode::PerformLayout,
@@ -3472,7 +3476,7 @@ fn grid_row_intrinsic_sizing_includes_item_vertical_margins() {
     );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3531,7 +3535,7 @@ fn grid_minmax_max_content_minimum_overrides_fixed_maximum() {
     tree.insert_style(2, NodeInput::default());
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3582,7 +3586,7 @@ fn grid_auto_placed_intrinsic_items_size_their_placed_tracks() {
     tree.insert_measure(3, ComputeOutput::from_outer_size(Size::new(100.0, 20.0)));
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3661,7 +3665,7 @@ fn grid_intrinsic_column_sizing_resolves_horizontal_percent_margins_against_cont
     tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(20.0, 10.0)));
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3693,7 +3697,7 @@ fn grid_nested_stretch_resolves_block_padding_percent_against_inline_size() {
         layouts: HashMap<u32, NodeOutput>,
     }
 
-    impl RecursiveTree {
+    impl<'input> RecursiveTreeCompute<'input> {
         fn compute_node(
             &mut self,
             node: u32,
@@ -3727,7 +3731,10 @@ fn grid_nested_stretch_resolves_block_padding_percent_against_inline_size() {
         type Node = u32;
 
         type Scalar = Scalar;
-        type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
 
         fn children(&self, node: Self::Node) -> Self::Children<'_> {
             self.children[&node].iter().copied()
@@ -3742,13 +3749,51 @@ fn grid_nested_stretch_resolves_block_padding_percent_against_inline_size() {
         }
     }
 
-    impl Compute for RecursiveTree {
-        fn node_input(&self, node: Self::Node) -> &NodeInput {
+    struct RecursiveTreeCompute<'input> {
+        children: &'input HashMap<u32, Vec<u32>>,
+        styles: &'input HashMap<u32, NodeInput>,
+        layouts: &'input mut HashMap<u32, NodeOutput>,
+    }
+
+    impl RecursiveTree {
+        fn borrow_compute(&mut self) -> RecursiveTreeCompute<'_> {
+            RecursiveTreeCompute {
+                children: &self.children,
+                styles: &self.styles,
+                layouts: &mut self.layouts,
+            }
+        }
+    }
+
+    impl<'input> Traverse for RecursiveTreeCompute<'input> {
+        type Node = u32;
+
+        type Scalar = Scalar;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
+
+        fn children(&self, node: Self::Node) -> Self::Children<'_> {
+            self.children[&node].iter().copied()
+        }
+
+        fn child_count(&self, node: Self::Node) -> usize {
+            self.children[&node].len()
+        }
+
+        fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+            self.children[&node][index]
+        }
+    }
+
+    impl<'input> Compute<'input> for RecursiveTreeCompute<'input> {
+        fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             &self.styles[&node]
         }
 
-        fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-            LayoutInputOf::box_input(self.node_input(node).clone())
+        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
+            crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
         fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
@@ -3802,7 +3847,7 @@ fn grid_nested_stretch_resolves_block_padding_percent_against_inline_size() {
     );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -3836,7 +3881,7 @@ fn grid_nested_percent_margins_resolve_against_resolved_nested_inline_size() {
         layouts: HashMap<u32, NodeOutput>,
     }
 
-    impl RecursiveTree {
+    impl<'input> RecursiveTreeCompute<'input> {
         fn compute_node(
             &mut self,
             node: u32,
@@ -3870,7 +3915,10 @@ fn grid_nested_percent_margins_resolve_against_resolved_nested_inline_size() {
         type Node = u32;
 
         type Scalar = Scalar;
-        type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
 
         fn children(&self, node: Self::Node) -> Self::Children<'_> {
             self.children[&node].iter().copied()
@@ -3885,13 +3933,51 @@ fn grid_nested_percent_margins_resolve_against_resolved_nested_inline_size() {
         }
     }
 
-    impl Compute for RecursiveTree {
-        fn node_input(&self, node: Self::Node) -> &NodeInput {
+    struct RecursiveTreeCompute<'input> {
+        children: &'input HashMap<u32, Vec<u32>>,
+        styles: &'input HashMap<u32, NodeInput>,
+        layouts: &'input mut HashMap<u32, NodeOutput>,
+    }
+
+    impl RecursiveTree {
+        fn borrow_compute(&mut self) -> RecursiveTreeCompute<'_> {
+            RecursiveTreeCompute {
+                children: &self.children,
+                styles: &self.styles,
+                layouts: &mut self.layouts,
+            }
+        }
+    }
+
+    impl<'input> Traverse for RecursiveTreeCompute<'input> {
+        type Node = u32;
+
+        type Scalar = Scalar;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
+
+        fn children(&self, node: Self::Node) -> Self::Children<'_> {
+            self.children[&node].iter().copied()
+        }
+
+        fn child_count(&self, node: Self::Node) -> usize {
+            self.children[&node].len()
+        }
+
+        fn child(&self, node: Self::Node, index: usize) -> Self::Node {
+            self.children[&node][index]
+        }
+    }
+
+    impl<'input> Compute<'input> for RecursiveTreeCompute<'input> {
+        fn node_input(&self, node: Self::Node) -> &'input NodeInput {
             &self.styles[&node]
         }
 
-        fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
-            LayoutInputOf::box_input(self.node_input(node).clone())
+        fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
+            crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
         fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
@@ -3942,7 +4028,7 @@ fn grid_nested_percent_margins_resolve_against_resolved_nested_inline_size() {
     );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4001,7 +4087,7 @@ fn grid_spanning_item_grows_auto_track_after_min_content_track() {
     );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4078,7 +4164,7 @@ fn grid_clipped_spanning_item_distributes_across_min_content_and_auto_tracks() {
     );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4176,7 +4262,7 @@ fn grid_spanning_item_grows_underfilled_auto_track_first() {
     );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4266,7 +4352,7 @@ fn grid_spanning_item_reserves_percent_track_from_max_content_size() {
     }
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4289,9 +4375,9 @@ fn grid_spanning_item_reserves_percent_track_from_max_content_size() {
     let mut root_layout = NodeOutput::new();
     root_layout.size = output.size;
     root_layout.content_size = output.content_size;
-    tree.set_unrounded(1, root_layout);
+    tree.borrow_compute().set_unrounded(1, root_layout);
 
-    round_layout(&mut tree, 1).unwrap();
+    round_layout(&mut tree.borrow_compute(), 1).unwrap();
     assert_eq!(
         tree.final_layout(3)
             .expect("node final layout is staged")
@@ -4410,7 +4496,7 @@ fn grid_spanning_item_counts_definite_minmax_floors_when_reserving_percent_track
     }
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4432,9 +4518,9 @@ fn grid_spanning_item_counts_definite_minmax_floors_when_reserving_percent_track
     let mut root_layout = NodeOutput::new();
     root_layout.size = output.size;
     root_layout.content_size = output.content_size;
-    tree.set_unrounded(1, root_layout);
+    tree.borrow_compute().set_unrounded(1, root_layout);
 
-    round_layout(&mut tree, 1).unwrap();
+    round_layout(&mut tree.borrow_compute(), 1).unwrap();
     let widths = (3..=15)
         .map(|node| {
             tree.final_layout(node)
@@ -4500,7 +4586,7 @@ fn grid_auto_size_re_resolves_indefinite_percentage_tracks_from_visible_content(
     );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4558,7 +4644,7 @@ fn grid_percent_rows_resolve_against_known_layout_height() {
     );
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4624,7 +4710,7 @@ fn grid_defaults_to_implicit_auto_tracks_when_no_auto_tracks_are_authored() {
     tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(70.0, 18.0)));
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4683,7 +4769,7 @@ fn grid_spanning_item_distributes_intrinsic_contribution_across_auto_tracks() {
     tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(100.0, 20.0)));
 
     let output = crate::compute_grid(
-        &mut tree,
+        &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
             RunMode::PerformLayout,
@@ -4757,7 +4843,7 @@ fn grid_intrinsic_keyword_tracks_use_single_item_contribution() {
         tree.insert_measure(2, ComputeOutput::from_outer_size(Size::new(90.0, 22.0)));
 
         let output = crate::compute_grid(
-            &mut tree,
+            &mut tree.borrow_compute(),
             1,
             ComputeInput::for_child(
                 RunMode::PerformLayout,

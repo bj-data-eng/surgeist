@@ -62,7 +62,7 @@ pub(super) struct PublishedScrollOf<S: LayoutScalar> {
     pub(super) content_size: Size<S>,
 }
 
-pub(super) fn finish_scroll_geometry<Tree, S, M>(
+pub(super) fn finish_scroll_geometry<'input, Tree, S, M>(
     node: <Tree as Traverse>::Node,
     run_mode: RunMode,
     box_projection: ScrollBoxProjection<'_, S>,
@@ -72,7 +72,7 @@ pub(super) fn finish_scroll_geometry<Tree, S, M>(
     mut contributions: ScrollContributionAccumulatorOf<S>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, PublishedScrollOf<S>, S, M>
 where
-    Tree: Compute<M, Scalar = S>,
+    Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
     contributions
@@ -96,7 +96,7 @@ where
     })
 }
 
-fn block_scroll_geometry<Tree, S, M>(
+fn block_scroll_geometry<'input, Tree, S, M>(
     node: <Tree as Traverse>::Node,
     run_mode: RunMode,
     box_projection: ScrollBoxProjection<'_, S>,
@@ -106,7 +106,7 @@ fn block_scroll_geometry<Tree, S, M>(
     contributions: ScrollContributionAccumulatorOf<S>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, ScrollGeometryOf<S>, S, M>
 where
-    Tree: Compute<M, Scalar = S>,
+    Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
     let target_border_box = ScrollRectOf::try_new(Point::ZERO, output_size)

@@ -1594,7 +1594,7 @@ fn expect_tag(node: roxmltree::Node<'_, '_>, tag: &str) -> Result<(), Error> {
 
 #[derive(Clone, Debug)]
 struct TestNode {
-    node_input: layout::NodeInput,
+    non_box_input: layout::NodeInput,
     layout_input: layout::LayoutInput,
     is_br_source: bool,
     font_family: FontFamily,
@@ -1720,10 +1720,7 @@ impl TestTree {
         let inline_level_text = inherited.inline_level_text
             || box_display.is_some_and(layout::Display::is_inline_level);
         self.nodes.push(TestNode {
-            node_input: layout_input
-                .as_box()
-                .cloned()
-                .unwrap_or_else(layout::NodeInput::non_box),
+            non_box_input: layout::NodeInput::non_box(),
             layout_input,
             is_br_source: node.style.get("source-tag") == Some("br")
                 && matches!(node.style.get("display"), Some("inline" | "none")),
@@ -1835,7 +1832,7 @@ impl TestTree {
             ..layout::NodeInput::default()
         };
         self.nodes.push(TestNode {
-            node_input: node_input.clone(),
+            non_box_input: layout::NodeInput::non_box(),
             layout_input: layout::LayoutInput::box_input(node_input),
             is_br_source: false,
             font_family: inherited.font_family,
@@ -1874,7 +1871,7 @@ impl TestTree {
         let id = self.nodes.len();
         let line_height = inherited.line_height.resolve(inherited.font_size);
         self.nodes.push(TestNode {
-            node_input: layout::NodeInput::default(),
+            non_box_input: layout::NodeInput::non_box(),
             layout_input: layout::LayoutInput::box_input(layout::NodeInput::default()),
             is_br_source: false,
             font_family: inherited.font_family,
@@ -1944,7 +1941,10 @@ impl TestTree {
     }
 
     fn box_node_input(&self, node: usize) -> &layout::NodeInput {
-        &self.nodes[node].node_input
+        self.nodes[node]
+            .layout_input
+            .as_box()
+            .unwrap_or(&self.nodes[node].non_box_input)
     }
 }
 
@@ -2172,8 +2172,8 @@ impl layout::LayoutTree for TestTree {
         self.box_node_input(node)
     }
 
-    fn layout_input(&self, node: Self::Node) -> layout::LayoutInput {
-        self.nodes[node].layout_input.clone()
+    fn layout_input(&self, node: Self::Node) -> layout::LayoutInputView<'_> {
+        self.nodes[node].layout_input.as_view()
     }
 
     fn cache_get(
@@ -2544,7 +2544,7 @@ fn compare_expectation_in_source_order(
     };
     let browser_control_in_flex = expected.browser_control.is_some()
         && browser_control_context.is_some_and(|context| {
-            tree.nodes[context.parent].node_input.display == layout::Display::Flex
+            tree.box_node_input(context.parent).display == layout::Display::Flex
         });
     if !selected_output_is_present
         && !browser_control_in_flex
@@ -2982,7 +2982,7 @@ fn compare_browser_control_expectation(
         context.source_index,
         expected.source_index,
     )?;
-    let parent_input = &tree.nodes[context.parent].node_input;
+    let parent_input = tree.box_node_input(context.parent);
     if parent_input.display == layout::Display::Flex {
         if parent_input.flex_wrap != layout::FlexWrap::NoWrap {
             return Err(Error::new(format!(
@@ -5422,7 +5422,7 @@ mod tests {
         );
         let golden = Golden::parse(&raw)?;
         let tree = TestTree::from_golden(&golden.root)?;
-        Ok(tree.nodes[0].node_input.overflow_clip_margin)
+        Ok(tree.box_node_input(0).overflow_clip_margin)
     }
 
     #[test]
@@ -5548,8 +5548,7 @@ mod tests {
             let golden = Golden::parse(&raw).expect("collapse fixture should parse");
             TestTree::from_golden(&golden.root)
                 .expect("fixture should lower")
-                .nodes[0]
-                .node_input
+                .box_node_input(0)
                 .clone()
         }
 
@@ -5863,7 +5862,7 @@ mod tests {
     fn line_break_tree(input: layout::LineBreakInput) -> TestTree {
         TestTree {
             nodes: vec![TestNode {
-                node_input: layout::NodeInput::non_box(),
+                non_box_input: layout::NodeInput::non_box(),
                 layout_input: layout::LayoutInput::LineBreak(input),
                 is_br_source: true,
                 font_family: FontFamily::Ahem,
@@ -5911,10 +5910,7 @@ mod tests {
             output: layout::NodeOutput,
         ) -> TestNode {
             TestNode {
-                node_input: match &layout_input {
-                    layout::LayoutInput::Box(input) => input.as_ref().clone(),
-                    _ => layout::NodeInput::non_box(),
-                },
+                non_box_input: layout::NodeInput::non_box(),
                 is_br_source: matches!(layout_input, layout::LayoutInput::LineBreak(_)),
                 layout_input,
                 font_family: FontFamily::Ahem,
@@ -6183,7 +6179,7 @@ mod tests {
         };
         let source = Fri06C06FragmentTree {
             layout_inputs: vec![
-                layout::LayoutInput::box_input(root_input.clone()),
+                layout::LayoutInput::box_input(root_input),
                 layout::LayoutInput::inline_text(
                     layout::InlineTextInput::try_new(vec![
                         fri06_c06_segment(11, 10.0),
@@ -6192,7 +6188,7 @@ mod tests {
                     .unwrap(),
                 ),
             ],
-            node_inputs: vec![root_input, layout::NodeInput::non_box()],
+            node_inputs: vec![layout::NodeInput::non_box(), layout::NodeInput::non_box()],
             children: vec![vec![1], Vec::new()],
         };
         let request = layout::LayoutRootRequest::viewport(layout::Size::new(
@@ -7011,11 +7007,13 @@ mod tests {
         type MeasureError = std::convert::Infallible;
 
         fn node_input(&self, node: Self::Node) -> &layout::NodeInput {
-            &self.node_inputs[node]
+            self.layout_inputs[node]
+                .as_box()
+                .unwrap_or(&self.node_inputs[node])
         }
 
-        fn layout_input(&self, node: Self::Node) -> layout::LayoutInput {
-            self.layout_inputs[node].clone()
+        fn layout_input(&self, node: Self::Node) -> layout::LayoutInputView<'_> {
+            self.layout_inputs[node].as_view()
         }
     }
 
@@ -7045,7 +7043,7 @@ mod tests {
         let metrics = layout::InlineMetrics::from_ascent_descent(8.0, 2.0).unwrap();
         let source = Fri06C06FragmentTree {
             layout_inputs: vec![
-                layout::LayoutInput::box_input(root_input.clone()),
+                layout::LayoutInput::box_input(root_input),
                 text(11, 10.25),
                 layout::LayoutInput::inline_boundary(layout::InlineBoundaryInput::new(
                     layout::InlineBoundaryKind::Start,
@@ -7054,7 +7052,7 @@ mod tests {
                 text(22, 5.0),
             ],
             node_inputs: vec![
-                root_input,
+                layout::NodeInput::non_box(),
                 layout::NodeInput::non_box(),
                 layout::NodeInput::non_box(),
                 layout::NodeInput::non_box(),
@@ -7072,7 +7070,7 @@ mod tests {
             .iter()
             .enumerate()
             .map(|(node, layout_input)| TestNode {
-                node_input: source.node_inputs[node].clone(),
+                non_box_input: layout::NodeInput::non_box(),
                 layout_input: layout_input.clone(),
                 is_br_source: false,
                 font_family: FontFamily::Ahem,
@@ -7382,7 +7380,10 @@ mod tests {
         let input = layout::LineBreakInput::new().hidden();
         let tree = line_break_tree(input);
 
-        assert_eq!(tree.layout_input(0), layout::LayoutInput::LineBreak(input));
+        assert_eq!(
+            tree.layout_input(0),
+            layout::LayoutInputView::LineBreak(input)
+        );
         assert_eq!(tree.layout_input(0).as_line_break(), Some(input));
     }
 
@@ -7714,7 +7715,6 @@ mod tests {
             display: layout::Display::None,
             ..layout::NodeInput::default()
         };
-        tree.nodes[0].node_input = hidden_input.clone();
         tree.nodes[0].layout_input = layout::LayoutInput::box_input(hidden_input);
         let hidden_request = root_request(available, RootContext::Root)
             .expect("hidden root request should be valid");
@@ -8897,7 +8897,7 @@ mod tests {
         };
         let mut tree = TestTree {
             nodes: vec![TestNode {
-                node_input: node_input.clone(),
+                non_box_input: layout::NodeInput::non_box(),
                 layout_input: layout::LayoutInput::box_input(node_input),
                 is_br_source: false,
                 font_family: FontFamily::Ahem,
@@ -9554,7 +9554,7 @@ mod tests {
         ))
         .expect("reviewed shaped input should lower");
 
-        let layout::LayoutInput::InlineText(input) = tree.layout_input(1) else {
+        let layout::LayoutInputView::InlineText(input) = tree.layout_input(1) else {
             panic!("valid shaped text must lower as LayoutInput::InlineText");
         };
         assert_eq!(tree.node_input(1), &layout::NodeInput::non_box());

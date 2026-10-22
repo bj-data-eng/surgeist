@@ -6,7 +6,7 @@ use crate::error::{
 use crate::scroll::SettledAutoScrollbarState;
 use crate::{
     CompletedLayoutBatchOf, ComputeInputOf, ComputeOutputOf, InlineFragmentOutputEntryOf,
-    InlineFragmentOutputOf, LayoutCacheClearEntry, LayoutCacheStoreEntryOf, LayoutInputOf,
+    InlineFragmentOutputOf, LayoutCacheClearEntry, LayoutCacheStoreEntryOf, LayoutInputViewOf,
     LayoutOutputEntryOf, LayoutScalar, LayoutTree, NodeInputOf, NodeOutputOf, RunMode, Size,
     Traverse,
 };
@@ -198,9 +198,9 @@ where
         input: ComputeInputOf<Tree::Scalar>,
     ) -> LayoutResultOf<Tree::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, Tree::MeasureError>
     {
-        let style = self.node_input(node).clone();
+        let style = self.tree.node_input(node);
         if self.tree.has_leaf_measurement(node) {
-            return crate::measurement::compute_tree_leaf(self.tree, node, input, &style);
+            return crate::measurement::compute_tree_leaf(self.tree, node, input, style);
         }
 
         match style.display.inner_display() {
@@ -249,15 +249,15 @@ where
     }
 }
 
-impl<Tree> Compute<Tree::MeasureError> for ComputeSession<'_, Tree>
+impl<'input, Tree> Compute<'input, Tree::MeasureError> for ComputeSession<'input, Tree>
 where
     Tree: LayoutTree,
 {
-    fn node_input(&self, node: Self::Node) -> &NodeInputOf<Self::Scalar> {
+    fn node_input(&self, node: Self::Node) -> &'input NodeInputOf<Self::Scalar> {
         self.tree.node_input(node)
     }
 
-    fn layout_input(&self, node: Self::Node) -> LayoutInputOf<Self::Scalar> {
+    fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'input, Self::Scalar> {
         self.tree.layout_input(node)
     }
 
@@ -291,7 +291,10 @@ where
     ) -> LayoutResultOf<Self::Node, ComputeOutputOf<Self::Scalar>, Self::Scalar, Tree::MeasureError>
     {
         if input.run_mode().is_perform_layout()
-            && matches!(self.tree.layout_input(node), LayoutInputOf::InlineText(_))
+            && matches!(
+                self.tree.layout_input(node),
+                LayoutInputViewOf::InlineText(_)
+            )
         {
             let context = <Self as CacheAccess<Tree::MeasureError>>::cache_context(self);
             if self.invalidated_nodes.is_empty()
@@ -317,7 +320,7 @@ where
             return Ok(output);
         }
 
-        let style = self.node_input(node).clone();
+        let style = self.tree.node_input(node);
         if input.run_mode() == RunMode::PerformHiddenLayout || style.display == crate::Display::None
         {
             #[cfg(test)]
@@ -425,7 +428,10 @@ where
             };
         }
 
-        if matches!(self.tree.layout_input(node), LayoutInputOf::InlineText(_)) {
+        if matches!(
+            self.tree.layout_input(node),
+            LayoutInputViewOf::InlineText(_)
+        ) {
             return self.tree.unrounded_inline_fragments(node).map_or(
                 UnroundedInlineFragmentState::Missing,
                 UnroundedInlineFragmentState::Present,
@@ -538,11 +544,61 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::LayoutInputOf;
     use crate::{
         BidiLevel, DefaultScalar, InlineBreakOpportunityOf, InlineMetricsOf, InlineSegmentId,
         InlineTextInputOf, InlineWhitespaceEdge, LayoutErrorSite, NodeInput, Point, ScrollRectOf,
         ShapedInlineSegmentOf, round_layout,
     };
+
+    #[test]
+    fn borrowed_input_projection_remains_live_across_mutable_child_compute() {
+        fn assert_lane<S: LayoutScalar>() {
+            let source = crate::test_support::layout_tree::PublicLayoutTreeOf::new()
+                .children(1, [])
+                .style(
+                    1,
+                    NodeInputOf::<S> {
+                        display: crate::Display::Block,
+                        size: Size::new(
+                            crate::PreferredSizeOf::px(S::from_f64(20.0)),
+                            crate::PreferredSizeOf::px(S::from_f64(10.0)),
+                        ),
+                        ..NodeInputOf::default()
+                    },
+                );
+            let mut session = ComputeSession::new(&source, Vec::new());
+            let view = session.layout_input(1);
+            let borrowed = view.as_box().unwrap();
+            let projection = crate::node_projection::CommonBoxProjection::from_node(borrowed);
+            let output = session
+                .compute_child(
+                    1,
+                    ComputeInputOf::for_child(
+                        RunMode::PerformLayout,
+                        crate::SizingMode::InherentSize,
+                        crate::RequestedAxis::Both,
+                        Size::NONE,
+                        Size::new(Some(S::from_f64(100.0)), Some(S::from_f64(50.0))),
+                        crate::ContainingLayoutContext::new(
+                            crate::FlowAxes::new(
+                                crate::WritingMode::HorizontalTb,
+                                crate::Direction::Ltr,
+                            ),
+                            crate::ParentFormattingContext::BlockFlow,
+                        ),
+                        Size::splat(crate::AvailableOf::MAX_CONTENT),
+                    ),
+                )
+                .unwrap();
+            assert_eq!(output.size, Size::new(S::from_f64(20.0), S::from_f64(10.0)));
+            assert!(core::ptr::eq(borrowed, source.node_input(1)));
+            assert!(core::ptr::eq(projection.size, &source.node_input(1).size));
+            assert_eq!(*projection.size, borrowed.size);
+        }
+        assert_lane::<f32>();
+        assert_lane::<f64>();
+    }
 
     struct BoundedDagTree {
         input: NodeInput,
@@ -554,7 +610,10 @@ mod tests {
     impl Traverse for BoundedDagTree {
         type Node = u32;
         type Scalar = DefaultScalar;
-        type Children<'a> = std::iter::Copied<std::slice::Iter<'a, u32>>;
+        type Children<'a>
+            = std::iter::Copied<std::slice::Iter<'a, u32>>
+        where
+            Self: 'a;
 
         fn children(&self, node: Self::Node) -> Self::Children<'_> {
             let remaining = self.remaining_adjacency_budget.get();
@@ -583,8 +642,8 @@ mod tests {
             &self.input
         }
 
-        fn layout_input(&self, _node: Self::Node) -> LayoutInputOf<DefaultScalar> {
-            LayoutInputOf::box_input(self.input.clone())
+        fn layout_input(&self, _node: Self::Node) -> crate::LayoutInputViewOf<'_, DefaultScalar> {
+            crate::LayoutInputViewOf::Box(&self.input)
         }
     }
 
@@ -690,7 +749,10 @@ mod tests {
     impl<S: LayoutScalar> Traverse for FragmentTree<S> {
         type Node = u32;
         type Scalar = S;
-        type Children<'a> = std::iter::Empty<u32>;
+        type Children<'a>
+            = std::iter::Empty<u32>
+        where
+            Self: 'a;
 
         fn children(&self, _node: Self::Node) -> Self::Children<'_> {
             std::iter::empty()
@@ -712,8 +774,8 @@ mod tests {
             &self.input
         }
 
-        fn layout_input(&self, _node: Self::Node) -> LayoutInputOf<S> {
-            self.layout_input.clone()
+        fn layout_input(&self, _node: Self::Node) -> crate::LayoutInputViewOf<'_, S> {
+            self.layout_input.as_view()
         }
 
         fn unrounded_inline_fragments(

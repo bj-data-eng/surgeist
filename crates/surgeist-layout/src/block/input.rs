@@ -58,17 +58,17 @@ impl<'a, S: LayoutScalar> BlockChildProjection<'a, S> {
 }
 
 #[must_use]
-pub(super) fn block_container_projection<'a, Tree, M>(
-    tree: &'a Tree,
+pub(super) fn block_container_projection<'input, Tree, M>(
+    tree: &Tree,
     node: <Tree as Traverse>::Node,
-) -> BlockContainerProjection<'a, Tree::Scalar>
+) -> BlockContainerProjection<'input, Tree::Scalar>
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     BlockContainerProjection::from_node(tree.node_input(node))
 }
 
-pub(super) fn with_block_scroll_projections<Tree, M, Output>(
+pub(super) fn with_block_scroll_projections<'input, Tree, M, Output>(
     tree: &Tree,
     node: <Tree as Traverse>::Node,
     consume: impl FnOnce(
@@ -77,7 +77,7 @@ pub(super) fn with_block_scroll_projections<Tree, M, Output>(
     ) -> Output,
 ) -> Output
 where
-    Tree: Compute<M>,
+    Tree: Compute<'input, M>,
 {
     let input = tree.node_input(node);
     consume(
@@ -99,12 +99,11 @@ mod tests {
         Position, PreferredSizeOf, Size, WritingMode,
     };
 
-    struct ProjectionTree<S: LayoutScalar> {
-        node_input: NodeInputOf<S>,
-        layout_input: LayoutInputOf<S>,
+    struct ProjectionTree<'input, S: LayoutScalar> {
+        layout_input: &'input LayoutInputOf<S>,
     }
 
-    impl<S: LayoutScalar> Traverse for ProjectionTree<S> {
+    impl<'input, S: LayoutScalar> Traverse for ProjectionTree<'input, S> {
         type Node = ();
         type Scalar = S;
         type Children<'a>
@@ -125,13 +124,13 @@ mod tests {
         }
     }
 
-    impl<S: LayoutScalar> Compute<Infallible> for ProjectionTree<S> {
-        fn node_input(&self, _node: Self::Node) -> &NodeInputOf<S> {
-            &self.node_input
+    impl<'input, S: LayoutScalar> Compute<'input, Infallible> for ProjectionTree<'input, S> {
+        fn node_input(&self, _node: Self::Node) -> &'input NodeInputOf<S> {
+            self.layout_input.as_box().expect("box projection source")
         }
 
-        fn layout_input(&self, _node: Self::Node) -> LayoutInputOf<S> {
-            self.layout_input.clone()
+        fn layout_input(&self, _node: Self::Node) -> crate::LayoutInputViewOf<'input, S> {
+            self.layout_input.as_view()
         }
 
         fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutputOf<S>) {}
@@ -273,8 +272,7 @@ mod tests {
         assert_eq!(child.scrollbar_width, expected_scrollbar_width);
 
         let tree = ProjectionTree {
-            node_input: input.clone(),
-            layout_input: LayoutInputOf::box_input(input.clone()),
+            layout_input: &LayoutInputOf::box_input(input.clone()),
         };
         let participant = InlineParticipantProjection::lookup::<_, Infallible>(&tree, ());
         let InlineParticipantKindOf::Box(inline_child) = participant.kind() else {

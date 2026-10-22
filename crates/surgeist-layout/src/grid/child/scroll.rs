@@ -24,8 +24,8 @@ pub(in crate::grid) fn empty_grid_contributions<S: LayoutScalar>()
     )
 }
 
-pub(in crate::grid) fn retained_grid_child_scroll_geometry<S: LayoutScalar>(
-    item: &GridItemProjection<S>,
+pub(in crate::grid) fn retained_grid_child_scroll_geometry<'input, S: LayoutScalar>(
+    item: &GridItemProjection<'input, S>,
     size: Size<S>,
     content_size: Size<S>,
     padding: Edges<S>,
