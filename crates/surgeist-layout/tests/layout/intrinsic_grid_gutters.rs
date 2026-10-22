@@ -968,3 +968,177 @@ fn nested_subgrid_standalone_contribution_keeps_physical_axis_across_orthogonal_
 fn nested_subgrid_standalone_contribution_keeps_physical_axis_across_orthogonal_modes_f64() {
     qualify_orthogonal_standalone_contribution::<f64>();
 }
+
+struct OppositeTrackMeasuredGrid<S: LayoutScalar> {
+    inputs: [LayoutInputOf<S>; 2],
+    writing_mode: WritingMode,
+    observations: std::cell::RefCell<Vec<(LeafMeasureInputOf<S>, Size<S>)>>,
+}
+
+impl<S: LayoutScalar> Traverse for OppositeTrackMeasuredGrid<S> {
+    type Node = usize;
+    type Scalar = S;
+    type Children<'a>
+        = std::option::IntoIter<usize>
+    where
+        Self: 'a;
+
+    fn children(&self, node: usize) -> Self::Children<'_> {
+        (node == 0).then_some(1).into_iter()
+    }
+    fn child_count(&self, node: usize) -> usize {
+        usize::from(node == 0)
+    }
+    fn child(&self, node: usize, index: usize) -> usize {
+        assert_eq!((node, index), (0, 0));
+        1
+    }
+}
+
+impl<S: LayoutScalar> LayoutTree for OppositeTrackMeasuredGrid<S> {
+    type MeasureError = std::convert::Infallible;
+    fn node_input(&self, node: usize) -> &NodeInputOf<S> {
+        self.inputs[node].as_box().unwrap()
+    }
+    fn layout_input(&self, node: usize) -> LayoutInputViewOf<'_, S> {
+        self.inputs[node].as_view()
+    }
+    fn has_leaf_measurement(&self, node: usize) -> bool {
+        node == 1
+    }
+
+    fn measure_leaf(
+        &self,
+        node: usize,
+        request: LeafMeasureInputOf<S>,
+    ) -> Option<Result<Size<S>, Self::MeasureError>> {
+        if node != 1 {
+            return None;
+        }
+        let known = request.known_content_size();
+        let available = request.available_content_size();
+        let (known_inline, known_block, available_inline, available_block) = match self.writing_mode
+        {
+            WritingMode::HorizontalTb => {
+                (known.width, known.height, available.width, available.height)
+            }
+            _ => (known.height, known.width, available.height, available.width),
+        };
+        // A declared host-content measurement, determined only by the real
+        // public request. Unknown MIN inline is always 10. Unknown MAX inline
+        // is 40 with a 20 block constraint and 80 when unconstrained. Known
+        // content dimensions have priority; definite inline space uses the
+        // declared min/max shrink-to-fit interval. No phase/call-count input
+        // or fake compute result influences the response.
+        let opposite =
+            known_block.or_else(|| available_block.definite_value().map(|value| value.get()));
+        let natural = S::from_f64(if opposite == Some(S::from_f64(20.0)) {
+            40.0
+        } else {
+            80.0
+        });
+        let inline = known_inline.unwrap_or_else(|| match available_inline {
+            MeasurementAvailableOf::MinContent => S::from_f64(10.0),
+            MeasurementAvailableOf::MaxContent => natural,
+            MeasurementAvailableOf::Definite(value) => {
+                value.get().min(natural).max(S::from_f64(10.0))
+            }
+        });
+        let measured = physical_size(
+            self.writing_mode,
+            inline,
+            known_block.unwrap_or(S::from_f64(20.0)),
+        );
+        self.observations.borrow_mut().push((request, measured));
+        Some(Ok(measured))
+    }
+}
+
+fn qualify_first_axis_opposite_estimate<S: LayoutScalar>() {
+    let mut failures = Vec::new();
+    for writing_mode in [WritingMode::HorizontalTb, WritingMode::VerticalRl] {
+        for fixed_opposite in [true, false] {
+            let tree = OppositeTrackMeasuredGrid::<S> {
+                inputs: [
+                    LayoutInputOf::box_input(NodeInputOf {
+                        display: Display::Grid,
+                        writing_mode,
+                        size: physical_size(
+                            writing_mode,
+                            PreferredSizeOf::MAX_CONTENT,
+                            PreferredSizeOf::AUTO,
+                        ),
+                        grid_template_columns: vec![TrackComponentOf::AUTO],
+                        grid_template_rows: vec![if fixed_opposite {
+                            track(20.0)
+                        } else {
+                            TrackComponentOf::AUTO
+                        }],
+                        justify_content: Some(AlignContent::Start),
+                        align_content: Some(AlignContent::Start),
+                        ..NodeInputOf::default()
+                    }),
+                    LayoutInputOf::box_input(NodeInputOf {
+                        display: Display::Block,
+                        writing_mode,
+                        item_is_replaced: true,
+                        justify_self: Some(AlignItems::Start),
+                        align_self: Some(AlignItems::Start),
+                        ..NodeInputOf::default()
+                    }),
+                ],
+                writing_mode,
+                observations: std::cell::RefCell::new(Vec::new()),
+            };
+            // Grid2 §12.1 first-axis sizing estimates a definite 20 opposite
+            // max track as 20; an AUTO opposite track is instead unbounded.
+            // Therefore the initial inline MAX is 40 vs 80. The provider's
+            // MIN remains 10 at either basis, so the later MIN-change condition
+            // does not permit a column revisit to replace the AUTO control.
+            let batch = compute_layout(
+                &tree,
+                0,
+                LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap(),
+            )
+            .unwrap();
+            let output = |node| {
+                batch
+                    .unrounded_entries()
+                    .iter()
+                    .find(|entry| entry.node() == node)
+                    .unwrap()
+                    .output()
+            };
+            let actual = (output(0).size, output(1).size);
+            let expected = (
+                physical_size(
+                    writing_mode,
+                    S::from_f64(if fixed_opposite { 40.0 } else { 80.0 }),
+                    S::from_f64(20.0),
+                ),
+                physical_size(writing_mode, S::from_f64(40.0), S::from_f64(20.0)),
+            );
+            // Requests/returned measurements are supplementary diagnostics;
+            // the oracle is observable geometry over the declared content.
+            eprintln!(
+                "{} opposite_estimate {writing_mode:?} fixed_opposite={fixed_opposite}: actual={actual:?}, expected={expected:?}, measured={:?}",
+                std::any::type_name::<S>(),
+                tree.observations.borrow()
+            );
+            if actual != expected {
+                failures.push(format!("{writing_mode:?} fixed_opposite={fixed_opposite}: actual={actual:?}, expected={expected:?}"));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn grid_first_axis_intrinsic_contribution_uses_definite_opposite_track_estimate_f32() {
+    qualify_first_axis_opposite_estimate::<f32>();
+}
+
+#[test]
+fn grid_first_axis_intrinsic_contribution_uses_definite_opposite_track_estimate_f64() {
+    qualify_first_axis_opposite_estimate::<f64>();
+}
