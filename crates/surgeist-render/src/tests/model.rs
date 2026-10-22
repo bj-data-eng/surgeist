@@ -3,6 +3,9 @@ use std::{
     sync::Arc,
 };
 
+#[path = "model/color_bitmap.rs"]
+mod color_bitmap;
+
 use proptest::{prelude::any, prop_assert, prop_assert_eq, proptest};
 
 use crate::{
