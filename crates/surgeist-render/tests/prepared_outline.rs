@@ -642,3 +642,6 @@ fn replace_x_glyph(data: Vec<u8>) -> Vec<u8> {
 
 #[path = "prepared_outline/static_composite.rs"]
 mod static_composite;
+
+#[path = "prepared_outline/synthesis.rs"]
+mod synthesis;
