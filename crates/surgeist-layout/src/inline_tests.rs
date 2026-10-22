@@ -1775,3 +1775,76 @@ mod root_layout_oracle {
         assert_atomic_inline_layout_matches_oracle(Display::InlineGridLanes);
     }
 }
+
+#[test]
+fn resolved_bidi_level_126_preserves_l2_mixed_line_order_both_scalars() {
+    // UAX #9 rev52 distinguishes explicit levels through 125 from resolved
+    // levels through 126 after I1/I2. This carrier feeds real L2 reordering.
+    for level in 0..=125 {
+        assert_eq!(BidiLevel::try_new(level).unwrap().get(), level);
+    }
+    for level in 127..=u8::MAX {
+        assert_eq!(
+            BidiLevel::try_new(level),
+            Err(BidiLevelError::OutOfRange { level })
+        );
+    }
+    let resolved = BidiLevel::try_new(126).expect("implicit resolution can produce level 126");
+    assert_eq!(resolved.get(), 126);
+    assert!(!resolved.is_rtl());
+
+    fn assert_line<S: LayoutScalar>() {
+        let report = layout_mixed_inline_run(mr02_input(
+            AvailableOf::<S>::MAX_CONTENT,
+            vec![
+                mr02_text(
+                    0,
+                    700,
+                    3.0,
+                    125,
+                    InlineWhitespaceEdge::Preserve,
+                    InlineBreakOpportunityOf::prohibited(),
+                ),
+                mr02_atomic(
+                    1,
+                    5.0,
+                    10.0,
+                    8.0,
+                    126,
+                    InlineBreakOpportunityOf::prohibited(),
+                ),
+                mr02_text(
+                    2,
+                    702,
+                    7.0,
+                    125,
+                    InlineWhitespaceEdge::Preserve,
+                    InlineBreakOpportunityOf::prohibited(),
+                ),
+            ],
+        ));
+        // L2 first reverses the singleton 126, then the whole 125-or-higher run.
+        // Visual order is therefore [2,1,0], independently of scalar precision.
+        let mut visual: Vec<_> = report
+            .fragments
+            .iter()
+            .map(|fragment| (fragment.visual_index, fragment.source_index))
+            .collect();
+        visual.extend(
+            report
+                .atomics
+                .iter()
+                .map(|atomic| (atomic.visual_index, atomic.item.source_index)),
+        );
+        visual.sort_by_key(|&(index, _)| index);
+        assert_eq!(visual, [(0, 2), (1, 1), (2, 0)]);
+        assert_eq!(report.inline_extent, S::from_f64(15.0));
+        assert_eq!(report.fragments[0].source_index, 0);
+        assert_eq!(report.fragments[0].inline_start, S::from_f64(12.0));
+        assert_eq!(report.fragments[1].source_index, 2);
+        assert_eq!(report.fragments[1].inline_start, S::ZERO);
+        assert_eq!(report.atomics[0].inline_start, S::from_f64(7.0));
+    }
+    assert_line::<f32>();
+    assert_line::<f64>();
+}
