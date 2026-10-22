@@ -639,3 +639,6 @@ fn replace_x_glyph(data: Vec<u8>) -> Vec<u8> {
     new_loca.extend(u16::try_from(new_glyf.len() / 2).unwrap().to_be_bytes());
     replace_tables(AHEM, vec![(*b"loca", new_loca), (*b"glyf", new_glyf)])
 }
+
+#[path = "prepared_outline/static_composite.rs"]
+mod static_composite;
