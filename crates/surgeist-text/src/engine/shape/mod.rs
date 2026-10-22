@@ -21,6 +21,7 @@ use super::{
     analysis::{
         AnalysisDataSources,
         cluster::{Char, CharCluster, Status},
+        is_hard_separator,
     },
     convert,
     layout::data::{
@@ -1039,7 +1040,7 @@ fn whitespace(code_point: u32) -> Whitespace {
         0x20 => Whitespace::Space,
         0xa0 => Whitespace::NoBreakSpace,
         0x09 => Whitespace::Tab,
-        0x0a | 0x0d | 0x2028 | 0x2029 => Whitespace::Newline,
+        _ if is_hard_separator(code_point) => Whitespace::Newline,
         _ => Whitespace::None,
     }
 }

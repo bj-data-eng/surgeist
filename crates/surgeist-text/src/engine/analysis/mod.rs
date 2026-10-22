@@ -12,7 +12,7 @@ use icu_normalizer::properties::{
     CanonicalDecompositionBorrowed,
 };
 use icu_properties::props::{
-    BidiClass, BidiMirroringGlyph, GeneralCategory, GraphemeClusterBreak, Script,
+    BidiClass, BidiMirroringGlyph, GeneralCategory, GraphemeClusterBreak, LineBreak, Script,
 };
 use icu_properties::{
     CodePointMapData, CodePointMapDataBorrowed, PropertyNamesShort, PropertyNamesShortBorrowed,
@@ -71,6 +71,19 @@ pub(crate) enum Boundary {
     Word,
     Line,
     Mandatory,
+}
+
+/// The hard-break role of the actual semantic code point at this phase.
+/// Native callers pass the executed processed atom, so a collapsed document
+/// LF that became SPACE is not mistaken for an untouched hard separator.
+pub(crate) fn is_hard_separator(code_point: u32) -> bool {
+    matches!(
+        CodePointMapData::<LineBreak>::new().get32(code_point),
+        LineBreak::MandatoryBreak
+            | LineBreak::CarriageReturn
+            | LineBreak::LineFeed
+            | LineBreak::NextLine
+    )
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -248,7 +261,7 @@ pub(crate) fn analyze(
                 && !props.is_variation_selector())
                 || gcb == GraphemeClusterBreak::SpacingMark,
         };
-        mandatory = props.is_mandatory_linebreak();
+        mandatory = is_hard_separator(atom.code_point);
         infos.push((info, style));
     }
     let mut original = Vec::with_capacity(infos.len() + paragraph.anchor_order.len());

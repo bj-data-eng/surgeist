@@ -7,7 +7,7 @@ use std::ops::Range as IndexRange;
 
 use crate::engine::{
     AnalyzedData,
-    analysis::{Analysis, Boundary, anchor_atom, anchor_position},
+    analysis::{Analysis, Boundary, anchor_atom, anchor_position, is_hard_separator},
     layout::data::{ShapedData, ShapedItem},
     resolve::ResolvedStyleRun,
 };
@@ -449,8 +449,8 @@ pub(crate) fn prepare_tables(
     for (row, control) in tables.controls.iter().enumerate() {
         tables.control_rows[control.occurrence] = row;
     }
-    let atomic_breaks = apply_boundary_policies(analyzed, &mut tables)?;
-    issue_opportunities(analyzed, &mut tables, atomic_breaks.as_ref());
+    let native_breaks = apply_boundary_policies(analyzed, &mut tables)?;
+    issue_opportunities(analyzed, &mut tables, native_breaks.as_ref());
     Ok(tables)
 }
 
@@ -463,9 +463,9 @@ enum Event {
 fn apply_boundary_policies(
     analyzed: &AnalyzedData,
     tables: &mut PreparedTables,
-) -> crate::Result<Option<NativeAtomicBreaks>> {
+) -> crate::Result<Option<NativeBreaks>> {
     use super::paragraph::ParagraphBoundaryDefinition;
-    let mut atomic_breaks = NativeAtomicBreaks::new(analyzed, tables);
+    let mut native_breaks = NativeBreaks::new(analyzed, tables);
     // Original ownership prefixes give each connection its actual capture cut,
     // including distinct empty occurrences; offsets cannot select an occurrence.
     let mut origin_ends = vec![None; analyzed.paragraph.origins.len()];
@@ -528,9 +528,9 @@ fn apply_boundary_policies(
         if let ParagraphBoundaryDefinition::AtomicBefore(i)
         | ParagraphBoundaryDefinition::AtomicAfter(i) = row.definition
             && analyzed.processed.source().boxes()[i].kind() == crate::InlineBoxKind::InFlow
-            && let Some(atomic_breaks) = &mut atomic_breaks
+            && let Some(native_breaks) = &mut native_breaks
         {
-            let relation = &mut atomic_breaks.relations[atomic_breaks.boundary_relations[index]];
+            let relation = &mut native_breaks.relations[native_breaks.boundary_relations[index]];
             if relation.wrap.is_some_and(|wrap| wrap != row.ancestor_wrap) {
                 return Err(super::protocol_error(
                     super::ProtocolError::InvalidBoundaryPolicy {
@@ -558,13 +558,13 @@ fn apply_boundary_policies(
         }
         boundary.wrap = Some(row.ancestor_wrap);
     }
-    Ok(atomic_breaks)
+    Ok(native_breaks)
 }
 
 fn issue_opportunities(
     analyzed: &AnalyzedData,
     tables: &mut PreparedTables,
-    atomic_breaks: Option<&NativeAtomicBreaks>,
+    native_breaks: Option<&NativeBreaks>,
 ) {
     use super::paragraph::ParagraphReplacementDefinition;
     let source_owners: std::collections::BTreeMap<_, _> = tables
@@ -598,12 +598,10 @@ fn issue_opportunities(
             _ => None,
         });
         let source_break = previous.is_some_and(|item| match *item {
-            ParticipantData::Text(i) => tables.units[i].atoms.clone().any(|atom| {
-                matches!(
-                    analyzed.projection.atoms[atom].code_point,
-                    0xa | 0xd | 0x2028 | 0x2029
-                )
-            }),
+            ParticipantData::Text(i) => tables.units[i]
+                .atoms
+                .clone()
+                .any(|atom| is_hard_separator(analyzed.projection.atoms[atom].code_point)),
             _ => false,
         });
         let alternative_inputs = alternatives_by_owner
@@ -612,6 +610,11 @@ fn issue_opportunities(
             .unwrap_or_default();
         let kind = if control == Some(ParagraphControlKind::ForcedBreak) || source_break {
             Some(PreparedBreakKind::Forced)
+        } else if native_breaks.is_some_and(|rows| rows.before_hard_separator(index)) {
+            // UAX #14 LB4/LB5 mandatory-after rules precede LB6. Only
+            // after preserving that mandatory offer may LB6 suppress every
+            // soft owner before the next real hard separator, including CB.
+            None
         } else if matches!(
             control,
             Some(ParagraphControlKind::DiscretionaryBreak {
@@ -637,7 +640,7 @@ fn issue_opportunities(
             )
         ) {
             None
-        } else if let Some(allowed) = atomic_breaks.and_then(|rows| rows.permission(index)) {
+        } else if let Some(allowed) = native_breaks.and_then(|rows| rows.permission(index)) {
             allowed.then_some(PreparedBreakKind::Allowed)
         } else if standalone_opportunity(analyzed, tables, boundary)
             || (boundary.participant < tables.participants.len()
@@ -684,47 +687,56 @@ fn issue_opportunities(
 }
 
 /// Temporary preparation-local facts. All real mixed cuts between the same
-/// influencing neighbors lend the same permission; transparent occurrences
-/// retain their distinct participant ownership without creating permission.
-struct NativeAtomicBreaks {
+/// influencing neighbors share hard-separator precedence and atomic permission;
+/// transparent occurrences retain ownership without creating permission.
+struct NativeBreaks {
     boundary_relations: Vec<usize>,
-    relations: Vec<AtomicBreakRelation>,
+    relations: Vec<NativeBreakRelation>,
 }
 
-struct AtomicBreakRelation {
+struct NativeBreakRelation {
+    before_hard_separator: bool,
     atomic: bool,
     neighbors_permit: bool,
     space_permits: bool,
     wrap: Option<crate::Wrap>,
 }
 
-enum AtomicInfluence {
+enum BreakInfluence {
     Text {
         first: u32,
         last: u32,
         space_permits: bool,
     },
     Atomic,
-    Control,
+    Control(ParagraphControlKind),
 }
 
-impl AtomicInfluence {
+impl BreakInfluence {
     fn first(&self) -> Option<u32> {
         match *self {
             Self::Text { first, .. } => Some(first),
-            Self::Atomic | Self::Control => None,
+            Self::Atomic | Self::Control(_) => None,
         }
     }
 
     fn last(&self) -> Option<u32> {
         match *self {
             Self::Text { last, .. } => Some(last),
-            Self::Atomic | Self::Control => None,
+            Self::Atomic | Self::Control(_) => None,
+        }
+    }
+
+    fn starts_hard_separator(&self) -> bool {
+        match *self {
+            Self::Text { first, .. } => is_hard_separator(first),
+            Self::Control(kind) => kind == ParagraphControlKind::ForcedBreak,
+            Self::Atomic => false,
         }
     }
 }
 
-impl NativeAtomicBreaks {
+impl NativeBreaks {
     fn new(analyzed: &AnalyzedData, tables: &PreparedTables) -> Option<Self> {
         use icu_properties::{CodePointMapData, props::LineBreak};
 
@@ -736,7 +748,7 @@ impl NativeAtomicBreaks {
                     let atoms = &tables.units[i].atoms;
                     atoms.clone().next().map(|first| {
                         let last = atoms.end - 1;
-                        AtomicInfluence::Text {
+                        BreakInfluence::Text {
                             first: analyzed.projection.atoms[first].code_point,
                             last: analyzed.projection.atoms[last].code_point,
                             space_permits: disappearing_space_wrap(analyzed, last)
@@ -747,7 +759,7 @@ impl NativeAtomicBreaks {
                 ParticipantData::Atomic(i) => {
                     (analyzed.processed.source().boxes()[tables.atomics[i].occurrence].kind()
                         == crate::InlineBoxKind::InFlow)
-                        .then_some(AtomicInfluence::Atomic)
+                        .then_some(BreakInfluence::Atomic)
                 }
                 ParticipantData::Control(i) => match tables.controls[i].kind {
                     ParagraphControlKind::InlineBoundaryStart
@@ -764,7 +776,7 @@ impl NativeAtomicBreaks {
                     ParagraphControlKind::ForcedBreak
                     | ParagraphControlKind::OptionalBreak { .. }
                     | ParagraphControlKind::DiscretionaryBreak { .. } => {
-                        Some(AtomicInfluence::Control)
+                        Some(BreakInfluence::Control(tables.controls[i].kind))
                     }
                 },
             };
@@ -784,31 +796,28 @@ impl NativeAtomicBreaks {
             .map(|right| {
                 let before = right.checked_sub(1).map(|i| &influencing[i].1);
                 let after = influencing.get(right).map(|(_, row)| row);
-                AtomicBreakRelation {
+                NativeBreakRelation {
+                    before_hard_separator: after.is_some_and(BreakInfluence::starts_hard_separator),
                     atomic: [before, after]
                         .into_iter()
                         .flatten()
-                        .any(|row| matches!(row, AtomicInfluence::Atomic)),
+                        .any(|row| matches!(row, BreakInfluence::Atomic)),
                     // Semantic paragraph edges have no atomic-derived soft
                     // opportunity, even with trailing transparent occurrences.
                     neighbors_permit: before.is_some()
                         && after.is_some()
-                        && !before
-                            .and_then(AtomicInfluence::last)
-                            .is_some_and(forbidden)
-                        && !after
-                            .and_then(AtomicInfluence::first)
-                            .is_some_and(forbidden),
+                        && !before.and_then(BreakInfluence::last).is_some_and(forbidden)
+                        && !after.and_then(BreakInfluence::first).is_some_and(forbidden),
                     // A SPACE that actually disappears at this break retains
                     // its containing-style authority independently of the
                     // atomic-derived NCA permission. It cannot cross an atomic.
                     space_permits: matches!(
                         before,
-                        Some(AtomicInfluence::Text {
+                        Some(BreakInfluence::Text {
                             space_permits: true,
                             ..
                         })
-                    ) && matches!(after, Some(AtomicInfluence::Atomic)),
+                    ) && matches!(after, Some(BreakInfluence::Atomic)),
                     wrap: None,
                 }
             })
@@ -839,6 +848,10 @@ impl NativeAtomicBreaks {
             relation.neighbors_permit
                 && (relation.space_permits || relation.wrap == Some(crate::Wrap::Word)),
         )
+    }
+
+    fn before_hard_separator(&self, boundary: usize) -> bool {
+        self.relations[self.boundary_relations[boundary]].before_hard_separator
     }
 }
 

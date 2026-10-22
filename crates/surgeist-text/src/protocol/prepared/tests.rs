@@ -434,6 +434,121 @@ fn prepare_opportunity_inventory(input: ParagraphInput) -> Vec<(usize, PreparedB
 }
 
 #[test]
+fn native_hard_separator_precedence_uses_the_existing_transparent_neighbors() {
+    for transparent in [
+        TransparentAtomicNeighbor::OutOfFlow,
+        TransparentAtomicNeighbor::InlineBoundary,
+        TransparentAtomicNeighbor::EmptyOrigin,
+        TransparentAtomicNeighbor::Directional(ParagraphControlKind::InlineBoundaryEnd),
+        TransparentAtomicNeighbor::Directional(ParagraphControlKind::LeftToRightEmbedding),
+        TransparentAtomicNeighbor::Directional(ParagraphControlKind::RightToLeftEmbedding),
+        TransparentAtomicNeighbor::Directional(ParagraphControlKind::LeftToRightOverride),
+        TransparentAtomicNeighbor::Directional(ParagraphControlKind::RightToLeftOverride),
+        TransparentAtomicNeighbor::Directional(ParagraphControlKind::PopDirectionalFormat),
+        TransparentAtomicNeighbor::Directional(ParagraphControlKind::LeftToRightIsolate),
+        TransparentAtomicNeighbor::Directional(ParagraphControlKind::RightToLeftIsolate),
+        TransparentAtomicNeighbor::Directional(ParagraphControlKind::FirstStrongIsolate),
+        TransparentAtomicNeighbor::Directional(ParagraphControlKind::PopDirectionalIsolate),
+    ] {
+        let mut input = atomic_transparent_input("X", 0, transparent, false);
+        let control = input.controls.len();
+        input.controls.push(ParagraphControl {
+            at: 0,
+            kind: ParagraphControlKind::ForcedBreak,
+        });
+        input.anchor_order.push(ParagraphAnchor {
+            item: ParagraphAnchorItem::Control(control),
+            affinity: Affinity::Before,
+        });
+        assert_eq!(
+            prepare_opportunity_inventory(input),
+            [
+                (3, PreparedBreakKind::Forced),
+                (4, PreparedBreakKind::ParagraphEnd),
+            ]
+        );
+    }
+}
+
+#[test]
+fn native_hard_separator_precedence_keeps_earlier_soft_control_owners() {
+    for (kind, expected) in [
+        (
+            ParagraphControlKind::OptionalBreak {
+                wrap: crate::Wrap::Word,
+            },
+            PreparedBreakKind::Allowed,
+        ),
+        (
+            ParagraphControlKind::DiscretionaryBreak {
+                wrap: crate::Wrap::Word,
+            },
+            PreparedBreakKind::Discretionary,
+        ),
+    ] {
+        let mut input = paragraph(Source::new("XY"));
+        input.controls = vec![
+            ParagraphControl { at: 0, kind },
+            ParagraphControl {
+                at: 1,
+                kind: ParagraphControlKind::ForcedBreak,
+            },
+        ];
+        input.anchor_order = (0..2)
+            .map(|control| ParagraphAnchor {
+                item: ParagraphAnchorItem::Control(control),
+                affinity: Affinity::Before,
+            })
+            .collect();
+        if expected == PreparedBreakKind::Discretionary {
+            input.replacements.push(ParagraphReplacement {
+                definition: ParagraphReplacementDefinition::Control {
+                    control: 0,
+                    origin: None,
+                },
+                insertion_anchor: 0,
+                style_anchor: 0,
+                text: Text::from("-"),
+            });
+        }
+        assert_eq!(
+            prepare_opportunity_inventory(input),
+            [
+                (1, expected),
+                (3, PreparedBreakKind::Forced),
+                (4, PreparedBreakKind::ParagraphEnd),
+            ]
+        );
+    }
+}
+
+#[test]
+fn native_hard_separator_precedence_preserves_mandatory_cuts_before_transparent_rows() {
+    let mut input = paragraph(Source::new("X"));
+    input.controls = [
+        ParagraphControlKind::ForcedBreak,
+        ParagraphControlKind::InlineBoundaryStart,
+        ParagraphControlKind::ForcedBreak,
+    ]
+    .map(|kind| ParagraphControl { at: 0, kind })
+    .to_vec();
+    input.anchor_order = (0..3)
+        .map(|control| ParagraphAnchor {
+            item: ParagraphAnchorItem::Control(control),
+            affinity: Affinity::Before,
+        })
+        .collect();
+    assert_eq!(
+        prepare_opportunity_inventory(input),
+        [
+            (1, PreparedBreakKind::Forced),
+            (3, PreparedBreakKind::Forced),
+            (4, PreparedBreakKind::ParagraphEnd),
+        ]
+    );
+}
+
+#[test]
 fn native_atomic_transparent_internal_cuts_lend_the_same_permitted_relation() {
     for transparent in [
         TransparentAtomicNeighbor::OutOfFlow,
