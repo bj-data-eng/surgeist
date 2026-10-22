@@ -2,7 +2,7 @@
 //! Values4 custom-ident and selected Selectors4 attachment/context contracts.
 //! New typed APIs establish functional behavior without absent-symbol RED.
 //! Limits tariffs follow the adopted shared writer convention, not spec mandates.
-use crate::css::support::rules::{ExpectedRejection, unexpected_token};
+use crate::css::support::rules::ExpectedRejection;
 use crate::css::support::sole_declaration as declaration;
 use CssPseudoElementSegment::{PseudoClass as P, PseudoElement as E};
 use surgeist_css::*;
@@ -448,14 +448,17 @@ fn malformed_names_reject_and_implicit_function_eof_is_retained_but_not_clean() 
     ] {
         rejected(source);
     }
-    // A string, a number or a leading `.` cannot begin a <pt-name-selector>,
-    // and the argument front end rejects it before selector parsing.
+    // A string, a number or a leading `.` cannot begin a <pt-name-selector>;
+    // the selector is invalid at that token.
     for (source, token) in [
         ("::view-transition-group(\"A\")", "\"A\""),
         ("::view-transition-group(1)", "1"),
         ("::view-transition-group(.x)", "."),
     ] {
-        rejected_as(source, &unexpected_token(token));
+        rejected_as(
+            source,
+            &ExpectedRejection::new(CssErrorCode::InvalidSelector).at(token),
+        );
     }
     let source = "::view-transition-old(Card";
     let report = parse_selector(source, &CssNamespaceContext::default());

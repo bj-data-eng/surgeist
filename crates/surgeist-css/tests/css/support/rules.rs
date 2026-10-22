@@ -486,9 +486,3 @@ pub fn descriptor_rejected_at(at_rule: &str, descriptor: &str, token: &str) -> E
         invalid_descriptor(at_rule, descriptor).at(token)
     }
 }
-
-/// An `UnexpectedToken` rejection at `token`, which value fragment and
-/// selector front ends report before any descriptor grammar applies.
-pub fn unexpected_token(token: &str) -> ExpectedRejection {
-    ExpectedRejection::new(CssErrorCode::UnexpectedToken).at(token)
-}

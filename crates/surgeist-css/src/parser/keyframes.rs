@@ -13,7 +13,9 @@ use super::{
     DeclarationMode, consume_failed_rule_block, is_declaration_recovery_unit,
     parse_declaration_core, structural_recovery_production, structural_rule_diagnostic,
 };
-use crate::error::{CssFeatureId, Error, basic, invalid_at_rule_placement, unexpected_at};
+use crate::error::{
+    CssFeatureId, Error, basic, invalid_at_rule_placement, invalid_syntax, unexpected_at,
+};
 use crate::syntax::*;
 
 pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] =
@@ -283,15 +285,15 @@ fn parse_keyframe_selector<'i, 't>(
         Token::Ident(ident) => match_ignore_ascii_case! { ident,
             "from" => Ok(CssKeyframeSelector::From),
             "to" => Ok(CssKeyframeSelector::To),
-            _ => Err(unexpected_at(location)),
+            _ => Err(invalid_syntax(location)),
         },
         Token::Percentage { .. } => {
             let value = checked_percentage_value(location, input.slice_from(token_start))?;
             CssKeyframePercent::try_new(value)
                 .map(CssKeyframeSelector::Percent)
-                .ok_or_else(|| unexpected_at(location))
+                .ok_or_else(|| invalid_syntax(location))
         }
-        Token::Number { .. } => Err(unexpected_at(location)),
+        Token::Number { .. } => Err(invalid_syntax(location)),
         Token::Function(name) if crate::numeric::is_math_function(name) => {
             input.reset(&start);
             let expression = super::property_input::adapt_native(
@@ -307,7 +309,7 @@ fn parse_keyframe_selector<'i, 't>(
                 expression,
             ))
             .map(CssKeyframeSelector::Percent)
-            .ok_or_else(|| unexpected_at(location))
+            .ok_or_else(|| invalid_syntax(location))
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }

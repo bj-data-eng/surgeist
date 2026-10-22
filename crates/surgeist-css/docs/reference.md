@@ -479,11 +479,40 @@ contains concrete semantic, recovery, namespace, coordinate, and depth examples.
 
 Each diagnostic exposes a typed error and stable root code, the first responsible source position, the complete recovery-unit span, and one `CssRecoveryAction`. Source byte offsets index the original UTF-8 input; line and column indices are zero-based, and columns count UTF-16 code units. Display text is for people, not control flow—match typed variants with a wildcard for future non-exhaustive cases.
 
+The responsible position follows one rule for every grammar: values,
+functions, descriptors, at-rule preludes and selector lists.
+
+- When the input contains a token that cannot continue its production, that
+  token is responsible, including a closing `)` or `]`: `rgb(1 2)` names its
+  `)`, as do `linear()` and `linear(0,)`.
+- When the input ends before the value or function is complete (an unclosed
+  function, a value cut short at its end, a prelude ended by its block), the
+  last authored token is responsible: `rgb(1 2` names `2` and
+  `transition-property: opacity,` names the `,`. Only an input without any
+  authored token reports no token.
+- A math function whose contents parse but whose type does not check is
+  responsible as a whole ([Values 4 §10.9](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking)),
+  except that a sum names its incompatible operand: `calc(1px * 1px)` in a
+  length slot names `calc(`, while `calc(1px + 1s)` names `1s`.
+
+Whitespace and comments are never the responsible token; the next authored
+token is. In a prelude, selector list or descriptor value, whitespace after
+a comma is a list member of its own
+([Syntax 3 §5.4.10](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-comma-separated-list-of-component-values)),
+which holds no authored token and so names none; a property value's `#` list
+ignores that whitespace and names the comma. Inside a function the same
+whitespace-only member is followed by the closing `)`, which cannot continue
+it and is responsible (`:is(.valid, )` names `)`); at the end of a prelude
+or selector list it is followed only by the block, so it names no token
+(`.a, {}`). Checked construction admits no implicitly closed group before any
+grammar runs, so it reports such a group at its implicit closure instead.
+
 Property grammars built from [Values 4 §2.2](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#component-combinators)
 `||`/`&&` groups and [§2.3](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#component-multipliers)
 `#` lists share one combinator each. A rejected group reports the first
-component that no remaining operand admits (a repeated or unknown component),
-or the end of the value; nesting and component-resource failures from any
+component that no remaining operand admits (a repeated or unknown component);
+an operand committed by its first token, such as an easing or URL function,
+reports inside itself. Nesting and component-resource failures from any
 operand keep their resource kind. A `#` list bounds each item at its comma.
 Under a producer work control each admitted list item charges two work steps
 (the controlled step and the control's reservation step) and accounts its live

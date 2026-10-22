@@ -9266,7 +9266,8 @@ pub use color::*;
 mod selector;
 pub use selector::*;
 pub(crate) use selector::{
-    CssPseudoSuffixContext, CssSelectorGrammarContext, selector_is_valid_pseudo_suffix,
+    CssCompoundMember, CssCompoundMembers, CssPseudoSuffixContext, CssSelectorGrammarContext,
+    selector_is_valid_pseudo_suffix,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

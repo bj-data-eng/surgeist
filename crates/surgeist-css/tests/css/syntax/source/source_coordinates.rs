@@ -828,7 +828,8 @@ fn easing_count_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() 
         CssErrorCode::InvalidPropertyValue
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let responsible = source.find("steps(1").expect("steps function") + "steps(".len();
+    // Easing 2 §2.3: one step makes `jump-none` responsible.
+    let responsible = source.find("jump-none").expect("steps position");
     let declaration_start = source
         .find("transition-timing-function")
         .expect("timing declaration start");
@@ -862,9 +863,9 @@ fn easing_count_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() 
         detail.property(),
         CssKnownProperty::TransitionTimingFunction
     );
-    let encountered = detail.encountered().expect("responsible step count");
-    assert_eq!(encountered.kind(), CssTokenKind::Number);
-    assert_eq!(encountered.authored(), "1");
+    let encountered = detail.encountered().expect("responsible step position");
+    assert_eq!(encountered.kind(), CssTokenKind::Ident);
+    assert_eq!(encountered.authored(), "jump-none");
 
     {
         let failure = surgeist_css::validate_style_attribute(source)
@@ -1193,7 +1194,7 @@ fn undeclared_namespace_prefix_at_eof_preserves_non_bmp_coordinates() {
     };
     assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
-    assert_position(diagnostic.error().position(), 35, 0, 33);
+    assert_position(diagnostic.error().position(), 27, 0, 25);
     assert_position(diagnostic.span().start(), 27, 0, 25);
     assert_position(diagnostic.span().end(), source.len(), 0, 36);
 }

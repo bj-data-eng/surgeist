@@ -351,13 +351,14 @@ fn wildcard_length_and_endpoint_domain_boundaries_are_inclusive() {
 
 #[test]
 fn a_raw_value_requires_a_complete_nonempty_comma_list_and_consumes_no_trailing_syntax() {
-    // `<unicode-range-token>#` first fails at the leading, doubled or
-    // trailing-comma gap, at a non-range token, or at EOF after a final comma.
+    // `<unicode-range-token>#` first fails at the leading or doubled comma,
+    // at a token that cannot continue the list, or, when input ends after a
+    // final comma or inside a range, at the last authored token.
     for (source, responsible) in [
         (",u+0", Some(0)),
-        ("u+0,", None),
+        ("u+0,", Some(3)),
         ("u+0,,u+1", Some(4)),
-        ("u+0,u+", None),
+        ("u+0,u+", Some(5)),
         ("u+0 extra", Some(4)),
         ("u+0;", Some(3)),
         ("u+0{}", Some(3)),
@@ -379,15 +380,16 @@ fn a_raw_value_requires_a_complete_nonempty_comma_list_and_consumes_no_trailing_
                 .diagnostics(),
             report.diagnostics()
         );
-        // The trailing identifier is located at the whitespace before it
-        // (reported), so its location is not asserted.
-        if source != "u+0 extra" {
-            assert_eq!(
-                unicode_range_rejection_offset(source),
-                responsible,
-                "{source:?}"
-            );
-        }
+        assert_eq!(
+            diagnostic.error().position().byte_offset().value(),
+            responsible.unwrap_or(source.len()),
+            "{source:?}"
+        );
+        assert_eq!(
+            unicode_range_rejection_offset(source),
+            responsible,
+            "{source:?}"
+        );
     }
     assert_lifecycle(
         "u+10FFFF,u+0,u+0-7F,u+0",
@@ -401,10 +403,10 @@ fn invalid_members_drop_only_their_occurrence_and_keep_original_token_coordinate
     for (invalid, responsible, spelling) in [
         ("u+1,u+g", "g", "g"),
         (r"u+\61", r"\61", r"\61"),
-        (r"u+/**/\61", r"/**/\61", "/**/"),
+        (r"u+/**/\61", r"\61", r"\61"),
         ("u+110000", "+110000", "+110000"),
-        ("u+1/**/ -2", "/**/ -2", "/**/"),
-        ("u+1 /**/-2", " /**/-2", " "),
+        ("u+1/**/ -2", "-2", "-2"),
+        ("u+1 /**/-2", "-2", "-2"),
     ] {
         let source = format!(
             "/*😀*/\r\n@font-face{{unicode-range:u+0;unicode-range:{invalid};font-display:swap;unicode-range:u+2}}.after{{color:red}}"
@@ -474,8 +476,18 @@ fn invalid_members_drop_only_their_occurrence_and_keep_original_token_coordinate
 }
 
 #[test]
-fn missing_range_tokens_or_endpoints_use_actual_eof_without_an_encountered_token() {
-    for source in ["", "u", "u+", "u+/**/", "u+ab-", "/*😀*/\r\nu+ab-/**/"] {
+fn missing_range_tokens_or_endpoints_name_the_last_authored_token() {
+    // Input ends before the range is complete, so its last authored
+    // (provider) token is responsible; only an input without any authored
+    // token reports none, at its end.
+    for (source, last) in [
+        ("", None),
+        ("u", Some("u")),
+        ("u+", Some("+")),
+        ("u+/**/", Some("+")),
+        ("u+ab-", Some("ab-")),
+        ("/*😀*/\r\nu+ab-/**/", Some("ab-")),
+    ] {
         let report = parse_font_face_descriptor_value(source, Kind::UnicodeRange);
         assert!(report.syntax().is_none(), "{source:?}: {report:?}");
         let [diagnostic] = report.diagnostics() else {
@@ -488,12 +500,19 @@ fn missing_range_tokens_or_endpoints_use_actual_eof_without_an_encountered_token
         assert_eq!(diagnostic.action(), CssRecoveryAction::RejectInput);
         assert_eq!(
             diagnostic.error().position().byte_offset().value(),
-            source.len()
+            last.map_or(source.len(), |last| source.rfind(last).unwrap()),
+            "{source:?}"
         );
         let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
             panic!("descriptor error");
         };
-        assert!(detail.encountered().is_none(), "{source:?}");
+        assert_eq!(
+            detail
+                .encountered()
+                .map(surgeist_css::CssTokenSummary::authored),
+            last,
+            "{source:?}"
+        );
         assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
         assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
     }
@@ -601,4 +620,44 @@ fn checked_ranges_keep_domain_order_overlap_and_atomic_specified_limits() {
         assert_eq!(value, before);
     }
     assert_eq!(value.serialize_specified().unwrap(), expected);
+}
+
+/// Fonts 4 unicode-range: whitespace after a range may still continue the
+/// `<urange>#` list, so the first token that cannot (`extra`) is responsible;
+/// input ending after a final comma names that comma. The raw fragment, the
+/// sheet and checked construction agree.
+#[test]
+fn every_front_names_the_same_responsible_unicode_range_token() {
+    for (value, offset, spelling) in [("u+0 extra", 4, "extra"), ("u+0,", 3, ",")] {
+        let raw = parse_font_face_descriptor_value(value, Kind::UnicodeRange);
+        let [raw] = raw.diagnostics() else {
+            panic!("{value:?}: one raw rejection: {raw:?}")
+        };
+        let sheet_source = format!("@font-face{{unicode-range:{value};font-display:swap}}");
+        let sheet = parse_sheet(&sheet_source);
+        let [sheet] = sheet.diagnostics() else {
+            panic!("{value:?}: one sheet rejection: {sheet:?}")
+        };
+        let value_start = "@font-face{unicode-range:".len();
+        for (front, diagnostic, start) in [("raw", raw, 0), ("sheet", sheet, value_start)] {
+            let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
+                panic!("{value:?} {front}: descriptor rejection: {diagnostic:?}")
+            };
+            assert_eq!(
+                (
+                    diagnostic.error().position().byte_offset().value() - start,
+                    detail
+                        .encountered()
+                        .map(surgeist_css::CssTokenSummary::authored),
+                ),
+                (offset, Some(spelling)),
+                "{value:?} {front}"
+            );
+        }
+        assert_eq!(
+            unicode_range_rejection_offset(value),
+            Some(offset),
+            "{value:?} checked"
+        );
+    }
 }

@@ -377,7 +377,8 @@ fn legal_type_first_and_noninitial_repeated_anchors_have_stable_specified_output
     let namespaces = CssNamespaceContext::default();
     for (source, expected, type_name, anchors) in [
         ("div&&.Card", "div&&.Card", Some("div"), 2),
-        (".Card&&", "&&.Card", None, 2),
+        // CSSOM serializes a compound's simple selectors in authored order.
+        (".Card&&", ".Card&&", None, 2),
         ("div&", "div&", Some("div"), 1),
         // CSS Syntax hexadecimal escape 44 decodes to D; it remains a type name.
         (r"\44 iv&&.Card", "Div&&.Card", Some("Div"), 2),
@@ -426,7 +427,7 @@ fn legal_type_first_and_noninitial_repeated_anchors_have_stable_specified_output
             .unwrap()
             .to_specified_css()
             .unwrap(),
-        ".Lead > &&.Card"
+        ".Lead > .Card&&"
     );
     // Selectors 4 §3.1: a type selector must start its compound.
     for (source, token) in [("&div", "div"), ("&-suffix", "-suffix")] {

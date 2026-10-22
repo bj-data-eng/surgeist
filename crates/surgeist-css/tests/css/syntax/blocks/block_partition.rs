@@ -164,7 +164,7 @@ fn rejected_first_rule_without_pending_declarations_leaves_leading_slot_availabl
             (
                 CssErrorCode::InvalidSelector,
                 CssRecoveryAction::DropQualifiedRule,
-                8,
+                7,
             ),
         ),
         (

@@ -193,17 +193,14 @@ fn every_property_consumer_rejects_invalid_recognized_modifier_arguments() {
             let source = format!("color:red;{}:{value};width:2px", property.canonical_name());
             let report = parse_style_attribute(&source);
             assert_eq!(report.syntax().len(), 2, "{source}");
-            // The responsible token is left unasserted: some consumers
-            // (`cursor`, `content`) attribute the rejection to `src(` rather
-            // than to the modifier, which is reported as a possible defect.
+            // Values 5 request URL modifiers: the invalid modifier function is
+            // responsible in every consumer.
             crate::css::support::value_assertions::assert_first_property_rejection(
                 report.diagnostics(),
                 property,
             );
-            crate::css::support::value_assertions::property_rejection(
-                checked(property, &value),
-                property,
-            );
+            let function = &modifier[..=modifier.find('(').unwrap()];
+            assert_property_rejected(checked(property, &value), property, Some(function));
         }
     }
 }
@@ -259,16 +256,7 @@ fn nested_image_and_generated_content_consumers_reject_invalid_known_modifiers()
         (CssKnownProperty::ListStyleType, "symbols(VALUE)"),
     ] {
         let invalid = pattern.replace("VALUE", "src(\"asset\" integrity(hash))");
-        if property == CssKnownProperty::Cursor {
-            // Reported as a possible defect: `cursor` attributes the
-            // rejection to `image-set(` rather than to the modifier.
-            crate::css::support::value_assertions::property_rejection(
-                checked(property, &invalid),
-                property,
-            );
-        } else {
-            assert_property_rejected(checked(property, &invalid), property, Some("integrity("));
-        }
+        assert_property_rejected(checked(property, &invalid), property, Some("integrity("));
     }
 }
 

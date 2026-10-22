@@ -151,10 +151,9 @@ fn three_keyword_controls_accept_their_exact_selected_domains() {
     ] {
         invalid("scroll-behavior", value, rest);
     }
-    // The implemented location of these rejections differs from the
-    // grammar-derived token (held for review), so only the kind and
-    // property are asserted.
-    invalid("scrollbar-gutter", "both-edges", None);
+    // Overflow 3: `both-edges` needs `stable`, and the value ends after it,
+    // so the last authored token is responsible.
+    invalid("scrollbar-gutter", "both-edges", "both-edges");
     for (value, rest) in [
         ("auto both-edges", "both-edges"),
         ("stable auto", "auto"),

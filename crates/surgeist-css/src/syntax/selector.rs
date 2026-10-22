@@ -2001,6 +2001,95 @@ pub enum CssSimpleSelector {
     PseudoClass(CssPseudoClass),
 }
 
+/// One simple selector after a compound's type selector, in authored order.
+/// Category members index their position in that category's list.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CssCompoundMember {
+    Nesting,
+    ScopeAnchor,
+    Id(usize),
+    Class(usize),
+    Attribute(usize),
+    PseudoClass(usize),
+}
+
+/// Ordered simple-selector members of one compound under assembly. Each push
+/// records its category entry and its authored position together, so the
+/// grouped lists and the member order cannot disagree.
+#[derive(Default)]
+pub(crate) struct CssCompoundMembers {
+    scope_anchors: usize,
+    nesting_selectors: usize,
+    ids: Vec<String>,
+    classes: Vec<String>,
+    attributes: Vec<CssAttributeSelector>,
+    pseudo_classes: Vec<CssPseudoClass>,
+    order: Vec<CssCompoundMember>,
+}
+
+impl CssCompoundMembers {
+    pub(crate) fn push_nesting(&mut self) {
+        self.nesting_selectors += 1;
+        self.order.push(CssCompoundMember::Nesting);
+    }
+
+    pub(crate) fn push_scope_anchor(&mut self) {
+        self.scope_anchors += 1;
+        self.order.push(CssCompoundMember::ScopeAnchor);
+    }
+
+    pub(crate) fn push_id(&mut self, value: String) {
+        self.order.push(CssCompoundMember::Id(self.ids.len()));
+        self.ids.push(value);
+    }
+
+    pub(crate) fn push_class(&mut self, value: String) {
+        self.order
+            .push(CssCompoundMember::Class(self.classes.len()));
+        self.classes.push(value);
+    }
+
+    pub(crate) fn push_attribute(&mut self, value: CssAttributeSelector) {
+        self.order
+            .push(CssCompoundMember::Attribute(self.attributes.len()));
+        self.attributes.push(value);
+    }
+
+    pub(crate) fn push_pseudo_class(&mut self, value: CssPseudoClass) {
+        self.order
+            .push(CssCompoundMember::PseudoClass(self.pseudo_classes.len()));
+        self.pseudo_classes.push(value);
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.order.is_empty()
+    }
+
+    pub(crate) fn into_compound(
+        self,
+        type_selector: Option<CssQualifiedSelectorName>,
+        pseudo_elements: Option<CssPseudoElementSequence>,
+    ) -> CssCompoundSelector {
+        CssCompoundSelector {
+            scope_anchors: self.scope_anchors,
+            nesting_selectors: self.nesting_selectors,
+            type_selector: type_selector.map(Box::new),
+            ids: self.ids,
+            classes: self.classes,
+            attributes: self.attributes,
+            pseudo_classes: self.pseudo_classes,
+            order: self.order,
+            pseudo_elements,
+        }
+    }
+}
+
+/// A compound selector: an optional leading type selector, its other simple
+/// selectors in authored order, and an optional pseudo-element sequence.
+///
+/// The per-category accessors expose each category's members in their
+/// relative authored order; serialization emits every simple selector at
+/// its authored position (CSSOM "serialize a selector").
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssCompoundSelector {
     scope_anchors: usize,
@@ -2010,12 +2099,13 @@ pub struct CssCompoundSelector {
     classes: Vec<String>,
     attributes: Vec<CssAttributeSelector>,
     pseudo_classes: Vec<CssPseudoClass>,
+    order: Vec<CssCompoundMember>,
     pseudo_elements: Option<CssPseudoElementSequence>,
 }
 
 impl CssCompoundSelector {
     /// Assembles nonempty simple members, admitting a unique type/universal first.
-    /// Repeated IDs and classes remain ordered within their canonical groups.
+    /// Every member, including repeated IDs and classes, keeps its given order.
     ///
     /// ```
     /// use surgeist_css::{CssComplexSelector, CssComplexSelectorPart, CssCompoundSelector,
@@ -2049,10 +2139,7 @@ impl CssCompoundSelector {
             ));
         }
         let mut type_selector = None;
-        let mut ids = Vec::new();
-        let mut classes = Vec::new();
-        let mut attributes = Vec::new();
-        let mut pseudo_classes = Vec::new();
+        let mut ordered = CssCompoundMembers::default();
         for (member_index, member) in members.into_iter().enumerate() {
             match member {
                 CssSimpleSelector::Type(name) => {
@@ -2063,21 +2150,13 @@ impl CssCompoundSelector {
                     }
                     type_selector = Some(name);
                 }
-                CssSimpleSelector::Id(value) => ids.push(value.as_str().to_owned()),
-                CssSimpleSelector::Class(value) => classes.push(value.as_str().to_owned()),
-                CssSimpleSelector::Attribute(value) => attributes.push(value),
-                CssSimpleSelector::PseudoClass(value) => pseudo_classes.push(value),
+                CssSimpleSelector::Id(value) => ordered.push_id(value.as_str().to_owned()),
+                CssSimpleSelector::Class(value) => ordered.push_class(value.as_str().to_owned()),
+                CssSimpleSelector::Attribute(value) => ordered.push_attribute(value),
+                CssSimpleSelector::PseudoClass(value) => ordered.push_pseudo_class(value),
             }
         }
-        let value = Self::new_with_qualified_type_and_pseudo_elements(
-            0,
-            type_selector,
-            ids,
-            classes,
-            attributes,
-            pseudo_classes,
-            None,
-        );
+        let value = ordered.into_compound(type_selector, None);
         let mut writer = crate::specified_rule_serialization::SpecifiedRuleWriter::new(limits);
         writer
             .compound_selector(&value)
@@ -2145,6 +2224,8 @@ impl CssCompoundSelector {
         )
     }
 
+    /// Assembles category lists in category order: scope anchors, IDs,
+    /// classes, attributes, then pseudo-classes.
     #[must_use]
     pub(crate) fn new_with_qualified_type_and_pseudo_elements(
         scope_anchors: usize,
@@ -2155,21 +2236,27 @@ impl CssCompoundSelector {
         pseudo_classes: Vec<CssPseudoClass>,
         pseudo_elements: Option<CssPseudoElementSequence>,
     ) -> Self {
-        Self {
-            scope_anchors,
-            nesting_selectors: 0,
-            type_selector: type_selector.map(Box::new),
-            ids,
-            classes,
-            attributes,
-            pseudo_classes,
-            pseudo_elements,
+        let mut ordered = CssCompoundMembers::default();
+        for _ in 0..scope_anchors {
+            ordered.push_scope_anchor();
         }
+        ids.into_iter().for_each(|value| ordered.push_id(value));
+        classes
+            .into_iter()
+            .for_each(|value| ordered.push_class(value));
+        attributes
+            .into_iter()
+            .for_each(|value| ordered.push_attribute(value));
+        pseudo_classes
+            .into_iter()
+            .for_each(|value| ordered.push_pseudo_class(value));
+        ordered.into_compound(type_selector, pseudo_elements)
     }
 
-    pub(crate) fn with_nesting_selectors(mut self, count: usize) -> Self {
-        self.nesting_selectors = count;
-        self
+    /// The simple selectors after the type selector, in authored order.
+    #[must_use]
+    pub(crate) fn members(&self) -> &[CssCompoundMember] {
+        &self.order
     }
 
     /// Returns the number of symbolic nesting selectors in this compound.

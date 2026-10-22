@@ -137,11 +137,15 @@ fn descriptor_and_keyframe_only_blocks_do_not_admit_named_definitions_or_style_t
     ] {
         let report = parse_sheet(source);
         // Descriptor and keyframe block grammars admit no conditional
-        // definition, so that at-rule alone is dropped. Its error code differs
-        // between the two contexts (reported), so it is not asserted.
+        // definition, so that known at-rule alone is dropped as misplaced.
         let [diagnostic] = report.diagnostics() else {
             panic!("{source:?}: {report:?}")
         };
+        crate::css::support::rules::ExpectedRejection::new(
+            surgeist_css::CssErrorCode::InvalidAtRulePlacement,
+        )
+        .in_rule("supports-condition")
+        .assert_first(&report);
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
         assert_eq!(
             diagnostic.error().position().byte_offset().value(),

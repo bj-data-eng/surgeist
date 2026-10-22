@@ -1,6 +1,7 @@
-//! Characterization of the accepted canonical-group selector contract. These
-//! independent goldens retain repetition within each group and do not claim
-//! exact upstream CSSOM conformity for mixed authored category order.
+//! CSSOM "serialize a selector" serializes each simple selector of a compound
+//! in order (CSSOM ED 2026-08-31 §5.2). Mixed authored category order and
+//! repetition survive checked construction, parsing and rule output, while the
+//! per-category accessors keep their grouped matching-relevant view.
 
 use crate::css::support::validated_selector as parsed;
 use surgeist_css::{
@@ -9,12 +10,13 @@ use surgeist_css::{
     CssPseudoElementSegment as Segment, CssQualifiedAttributeName, CssQualifiedNamePrefix, CssRule,
     CssRuleCssomSerializationErrorKind as RuleError, CssSelector, CssSimpleSelector as Simple,
     CssSpecifiedValueSerializationErrorKind as Resource,
-    CssSpecifiedValueSerializationLimits as Limits, CssStyleSelector, CssValueOrigin, parse_rule,
-    parse_sheet,
+    CssSpecifiedValueSerializationLimits as Limits, CssStyleSelector, CssStyleSelectorContext,
+    CssValueOrigin, parse_rule, parse_sheet,
 };
 
 const AUTHORED: &str = ".One#X:hover[A='é'].Two#Y:focus[B='two'].One#X:hover[A='é']";
-const CANONICAL: &str = "#X#Y#X.One.Two.One[A=\"é\"][B=\"two\"][A=\"é\"]:hover:focus:hover";
+const SERIALIZED: &str = ".One#X:hover[A=\"é\"].Two#Y:focus[B=\"two\"].One#X:hover[A=\"é\"]";
+const GROUPED: &str = "#X#Y#X.One.Two.One[A=\"é\"][B=\"two\"][A=\"é\"]:hover:focus:hover";
 
 fn ident(value: &str) -> CssIdent {
     CssIdent::try_new(value).unwrap()
@@ -38,9 +40,9 @@ fn attribute(name: &str, value: &str) -> Simple {
 }
 
 #[test]
-fn interleaved_repetitions_keep_group_order_through_checked_parse_and_rule_output() {
-    // The accepted groups are ID, class, attribute, then ordinary pseudo-class;
-    // each group's relative order and every repeated member remain observable.
+fn interleaved_repetitions_keep_authored_order_through_checked_parse_and_rule_output() {
+    // Members serialize in authored order; the grouped accessors still expose
+    // each category's relative order and every repeated member.
     let checked = CssSelector::Compound(
         CssCompoundSelector::try_new(vec![
             Simple::Class(ident("One")),
@@ -59,8 +61,10 @@ fn interleaved_repetitions_keep_group_order_through_checked_parse_and_rule_outpu
         .unwrap(),
     );
     assert_eq!(parsed(AUTHORED), checked);
-    assert_eq!(parsed(CANONICAL), checked);
-    assert_eq!(checked.to_specified_css().unwrap(), CANONICAL);
+    assert_eq!(parsed(SERIALIZED), checked);
+    assert_ne!(parsed(GROUPED), checked);
+    assert_eq!(parsed(GROUPED).to_specified_css().unwrap(), GROUPED);
+    assert_eq!(checked.to_specified_css().unwrap(), SERIALIZED);
     let CssSelector::Compound(compound) = &checked else {
         panic!("checked compound")
     };
@@ -101,7 +105,7 @@ fn interleaved_repetitions_keep_group_order_through_checked_parse_and_rule_outpu
         original_name.span().start().column().value() as usize,
         AUTHORED.encode_utf16().count() + 1
     );
-    let expected = format!("{CANONICAL} {{ opacity: 0; }}");
+    let expected = format!("{SERIALIZED} {{ opacity: 0; }}");
     assert_eq!(rule.serialize_cssom().unwrap(), expected);
     assert_eq!(rule.to_specified_css().unwrap(), expected);
     let roundtrip = parse_rule(&expected, &CssNamespaceContext::default());
@@ -115,9 +119,9 @@ fn interleaved_repetitions_keep_group_order_through_checked_parse_and_rule_outpu
 }
 
 #[test]
-fn category_normalization_keeps_pseudo_element_attachments_order_sensitive() {
+fn authored_category_order_keeps_pseudo_element_attachments_order_sensitive() {
     let source = "Leaf:hover.c::part(first second):hover::before::marker";
-    let expected = "Leaf.c:hover::part(first second):hover::before::marker";
+    let expected = source;
     let selector = parsed(source);
     let before = selector.clone();
     assert_eq!(selector.to_specified_css().unwrap(), expected);
@@ -148,7 +152,7 @@ fn category_normalization_keeps_pseudo_element_attachments_order_sensitive() {
         source.find("first").unwrap()
     );
     // Moving the attached :hover to the originating element changes both its
-    // ordinary pseudo group and its pseudo-element sequence.
+    // ordinary pseudo-class list and its pseudo-element sequence.
     let moved = parsed("Leaf.c:hover:hover::part(first second)::before::marker");
     let CssSelector::Compound(moved) = moved else {
         panic!("moved originating compound")
@@ -193,7 +197,7 @@ fn interleaved_rule_siblings_share_exact_limits_and_failure_preserves_retry() {
     let report = parse_sheet(&format!("{AUTHORED}{{}}{AUTHORED}{{}}"));
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
-    let expected = format!("{CANONICAL} {{ }}\n{CANONICAL} {{ }}");
+    let expected = format!("{SERIALIZED} {{ }}\n{SERIALIZED} {{ }}");
     // Per selector: compound1 + ID3 + class3 + attribute3 + pseudo3 =13.
     // Per empty style: rule1 + selector-list1 + build1 + output1 =4 more.
     // Sheet1 + two complete Style17 =35 input and projection visits.
@@ -231,7 +235,7 @@ fn interleaved_rule_siblings_share_exact_limits_and_failure_preserves_retry() {
             Resource::ProjectionNodeLimit,
         ),
         (
-            Limits::new(35, 35, CANONICAL.len() + 5),
+            Limits::new(35, 35, SERIALIZED.len() + 5),
             Resource::ByteLimit,
         ),
     ] {
@@ -250,4 +254,99 @@ fn interleaved_rule_siblings_share_exact_limits_and_failure_preserves_retry() {
             expected
         );
     }
+}
+
+fn nested_selector_texts(source: &str) -> Vec<(String, String, usize)> {
+    let report = parse_sheet(source);
+    assert!(report.is_clean(), "{source}: {report:?}");
+    let [CssRule::Style(outer)] = report.syntax().rules() else {
+        panic!("{source}: one outer style rule")
+    };
+    outer
+        .rules()
+        .iter()
+        .map(|rule| {
+            let CssRule::Style(inner) = rule else {
+                panic!("{source}: nested style rule")
+            };
+            let [CssStyleSelector::Selector(selector)] = inner.selectors().selectors() else {
+                panic!("{source}: one selector")
+            };
+            let CssSelector::Compound(compound) = selector else {
+                panic!("{source}: one compound selector")
+            };
+            (
+                inner
+                    .selectors()
+                    .serialize_cssom(
+                        &CssNamespaceContext::default(),
+                        CssStyleSelectorContext::Nested,
+                    )
+                    .unwrap(),
+                selector.to_specified_css().unwrap(),
+                compound.nesting_selectors(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn nesting_selector_serializes_at_its_authored_compound_position() {
+    // CSS Nesting 1 §2: `&` is a simple selector that may appear anywhere in a
+    // compound; CSSOM serializes the compound's simple selectors in order. The
+    // nesting count, which fixes its specificity contribution, is unchanged.
+    let cases = [
+        (".class&", 1),
+        ("div&.a", 1),
+        (".a&.b", 1),
+        ("&.a&", 2),
+        (":hover&#x", 1),
+        ("[x]&:is(div)", 1),
+    ];
+    let source = format!(
+        ".foo{{{}}}",
+        cases
+            .iter()
+            .map(|(selector, _)| format!("{selector}{{color:green}}"))
+            .collect::<String>()
+    );
+    let expected: Vec<(String, String, usize)> = cases
+        .iter()
+        .map(|(selector, count)| ((*selector).to_owned(), (*selector).to_owned(), *count))
+        .collect();
+    assert_eq!(nested_selector_texts(&source), expected);
+}
+
+#[test]
+fn scope_anchor_serializes_at_its_authored_compound_position() {
+    // Inside `@scope`, `&` is a scope anchor (Cascade 6 §2.5); it keeps its
+    // authored compound position the same way.
+    let report = parse_sheet("@scope(.outer){.a&{color:green}:hover&.b{color:green}}");
+    assert!(report.is_clean(), "{report:?}");
+    let [CssRule::Scope(scope)] = report.syntax().rules() else {
+        panic!("one scope rule")
+    };
+    let actual: Vec<(String, usize)> = scope
+        .rules()
+        .rules()
+        .iter()
+        .map(|rule| {
+            let surgeist_css::CssScopedRule::Style(style) = rule else {
+                panic!("scoped style rule")
+            };
+            let [surgeist_css::CssScopedStyleSelector::Selector(selector)] =
+                style.selectors().selectors()
+            else {
+                panic!("one scoped selector")
+            };
+            let CssSelector::Compound(compound) = selector else {
+                panic!("one compound")
+            };
+            (
+                selector.to_specified_css().unwrap(),
+                compound.scope_anchors(),
+            )
+        })
+        .collect();
+    assert_eq!(actual, [(".a&".to_owned(), 1), (":hover&.b".to_owned(), 1)]);
 }

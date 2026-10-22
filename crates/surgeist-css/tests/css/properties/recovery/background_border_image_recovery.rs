@@ -578,9 +578,10 @@ fn background_border_and_image_recovery_preserves_siblings_and_boundaries() {
     assert_eq!(eof.action(), CssRecoveryAction::DropDeclaration);
     assert_eq!(eof.span().start().byte_offset().value(), 0);
     assert_eq!(eof.span().end().byte_offset().value(), eof_source.len());
+    // Input ends after the final comma, which is the last authored token.
     assert_eq!(
         eof.error().position().byte_offset().value(),
-        eof_source.len()
+        eof_source.len() - 1
     );
 
     let implicit_source = "background-image: linear-gradient(red, blue";

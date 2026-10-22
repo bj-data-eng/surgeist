@@ -1,7 +1,7 @@
 //! The selected Transitions 1 §§2.1–2.5 define the property/list production
 //! independently of contextual matching and execution. The support catalog
 //! describes that authored production; Easing owns easing-function syntax.
-use crate::css::support::property_admission::Responsible::{self, At, Disputed, End};
+use crate::css::support::property_admission::Responsible::{self, At, End};
 use crate::css::support::property_admission::{
     assert_checked_rejected, assert_style_attribute_rejected,
 };
@@ -72,11 +72,11 @@ fn property_list_catalog_covers_the_selected_identifier_and_none_production() {
         ],
         &[
             ("", End),
-            ("none, opacity", Disputed),
+            ("none, opacity", At(",")),
             ("opacity, none", At("none")),
             ("default", At("default")),
             ("revert-layer, opacity", At(",")),
-            ("opacity,", End),
+            ("opacity,", At(",")),
             ("opacity ease", At("ease")),
         ],
     );
@@ -98,11 +98,11 @@ fn shorthand_catalog_covers_selected_slots_and_whole_list_none_rejection() {
         ],
         &[
             ("", End),
-            ("none, opacity", Disputed),
+            ("none, opacity", At(",")),
             ("opacity, none 1s", At("none")),
             ("opacity -1s", At("-1s")),
             ("opacity 1s 2s 3s", At("3s")),
-            ("opacity,", End),
+            ("opacity,", At(",")),
             ("opacity 1s ease linear extra", At("linear")),
         ],
     );
@@ -117,19 +117,23 @@ fn time_and_easing_catalog_controls_cover_their_selected_lists() {
         &[
             ("", None),
             ("-1s", Some("-1s")),
-            ("1s,", None),
+            ("1s,", Some(",")),
             ("1px", Some("1px")),
         ],
     );
     grammar(
         CssKnownProperty::TransitionDelay,
         &["-250ms", "0s, calc(-1s + 250ms)"],
-        &[("", None), ("1s,", None), ("1px", Some("1px"))],
+        &[("", None), ("1s,", Some(",")), ("1px", Some("1px"))],
     );
     grammar(
         CssKnownProperty::TransitionTimingFunction,
         &["ease", "linear, cubic-bezier(.2,0,.8,1), steps(2,end)"],
-        &[("", None), ("ease,", None), ("steps(0,end)", Some("0"))],
+        &[
+            ("", None),
+            ("ease,", Some(",")),
+            ("steps(0,end)", Some("0")),
+        ],
     );
     for property in [
         CssKnownProperty::TransitionDuration,

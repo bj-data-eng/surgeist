@@ -65,17 +65,19 @@ pub(super) fn parse_overflow_clip_margin<'i, 't>(
 pub(super) fn parse_scroll_behavior<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssScrollBehavior, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssScrollBehavior::Auto),
         "smooth" => Ok(CssScrollBehavior::Smooth),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
 pub(super) fn parse_scrollbar_gutter<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssScrollbarGutter, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let first = input.expect_ident_cloned().map_err(basic)?;
     if first.eq_ignore_ascii_case("auto") {
         return Ok(CssScrollbarGutter::Auto);
@@ -93,16 +95,18 @@ pub(super) fn parse_scrollbar_gutter<'i, 't>(
         input.expect_ident_matching("stable").map_err(basic)?;
         return Ok(CssScrollbarGutter::StableBothEdges);
     }
-    Err(unexpected_at(input.current_source_location()))
+    // The unknown keyword itself cannot start the value.
+    Err(unexpected_at(keyword_location))
 }
 
 pub(super) fn parse_overflow_anchor<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<crate::CssOverflowAnchor, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(crate::CssOverflowAnchor::Auto),
         "none" => Ok(crate::CssOverflowAnchor::None),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }

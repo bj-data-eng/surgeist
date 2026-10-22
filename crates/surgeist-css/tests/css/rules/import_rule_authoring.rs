@@ -216,7 +216,7 @@ fn import_rule_parser_rejects_late_nested_unsupported_and_malformed_imports() {
             r#"@import url("theme.css") screen layer(components);"#,
             Rejection::new(CssErrorCode::InvalidMediaQuery, None, Some("layer(")),
         ),
-        ("@import;", Rejection::prelude("import", Some("@import"))),
+        ("@import;", Rejection::prelude("import", None)),
     ] {
         assert_rejection(css, rejection);
     }

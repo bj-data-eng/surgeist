@@ -3,7 +3,7 @@
 //! These specified-value contracts preserve omissions and symbolic inputs;
 //! creation/fixup and computed serialization require the later numeric phase.
 
-use crate::css::support::property_admission::Responsible::{self, At, Disputed};
+use crate::css::support::property_admission::Responsible::{self, At};
 use crate::css::support::property_admission::{
     assert_checked_closure_rejected, assert_checked_rejected, assert_reentry_rejected,
     assert_style_attribute_rejected,
@@ -199,34 +199,29 @@ fn symbolic_number_and_percentage_graphs_remain_authored_and_roundtrip() {
 
 #[test]
 fn malformed_singleton_and_wrong_domain_stops_reject_atomically_and_recover() {
-    // A shorthand's responsible token is disputed: it names the whole
-    // `linear(` component instead of the token inside it.
-    for (invalid, longhand, shorthand) in [
-        ("linear()", None, Disputed),
-        ("linear(0)", Some("0"), Disputed),
-        ("linear(0 0% 100%)", Some("100%"), Disputed),
-        ("linear(0,)", None, Disputed),
-        ("linear(,1)", Some(","), Disputed),
-        ("linear(0,,1)", Some(","), Disputed),
-        ("linear(0 1)", Some("1"), Disputed),
-        ("linear(0%, 1)", Some(","), Disputed),
-        ("linear(0 10px, 1)", Some("10px"), Disputed),
-        ("linear(1s, 1)", Some("1s"), Disputed),
-        ("linear(0 0% 20% 40%, 1)", Some("40%"), Disputed),
-        ("linear(0% 0 20%, 1)", Some("20%"), Disputed),
-        ("linear(calc(1px), 1)", Some("calc("), Disputed),
-        ("linear(0 calc(1), 1)", Some("calc("), Disputed),
-        ("linear(0, 1) junk", Some("junk"), At("junk")),
+    // An easing function token commits the shorthand's `<easing-function>`
+    // operand (Values 4 §2.2), so every consumer names the token inside it
+    // (Easing 2 §2.1): linear() needs two stops, so a `)` that ends it
+    // earlier cannot continue the function and is responsible.
+    for (invalid, token) in [
+        ("linear()", Some(")")),
+        ("linear(0)", Some(")")),
+        ("linear(0 0% 100%)", Some(")")),
+        ("linear(0,)", Some(")")),
+        ("linear(,1)", Some(",")),
+        ("linear(0,,1)", Some(",")),
+        ("linear(0 1)", Some("1")),
+        ("linear(0%, 1)", Some(",")),
+        ("linear(0 10px, 1)", Some("10px")),
+        ("linear(1s, 1)", Some("1s")),
+        ("linear(0 0% 20% 40%, 1)", Some("40%")),
+        ("linear(0% 0 20%, 1)", Some("20%")),
+        ("linear(calc(1px), 1)", Some("calc(")),
+        ("linear(0 calc(1), 1)", Some("calc(")),
+        ("linear(0, 1) junk", Some("junk")),
     ] {
         for property in CONSUMERS {
-            let token = if matches!(
-                property,
-                CssKnownProperty::Animation | CssKnownProperty::Transition
-            ) {
-                shorthand
-            } else {
-                Responsible::from(longhand)
-            };
+            let token = Responsible::from(token);
             let value = body(property, invalid);
             let components = parse_component_values(&value).unwrap();
             for result in [
@@ -340,16 +335,9 @@ fn pending_linear_reentry_is_strict_repeatable_and_preserves_replacement_origins
         };
         let reenter =
             |invalid| pending.reenter(parse_component_values(&body(property, invalid)).unwrap());
-        // A single stop is too few (Easing 2 §2.1.2); a shorthand's token is disputed.
-        let token = if matches!(
-            property,
-            CssKnownProperty::Animation | CssKnownProperty::Transition
-        ) {
-            Disputed
-        } else {
-            At("0")
-        };
-        assert_reentry_rejected(reenter("linear(0)"), property, token);
+        // A single stop is too few (Easing 2 §2.1.2), so the stop is
+        // responsible in every consumer.
+        assert_reentry_rejected(reenter("linear(0)"), property, At(")"));
         let error = reenter("linear(0, 1").unwrap_err();
         let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
             panic!("an unclosed replacement is invalid: {error:?}")

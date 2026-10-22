@@ -124,8 +124,7 @@ fn decoded_admission_retains_reserved_keywords_and_actual_authored_grammar() {
         ("@layer a. b;", prelude.clone().at(" ")),
         ("@layer a .b;", prelude.clone().at(".")),
         (r"@layer \69 nherit;", prelude.clone()),
-        // The diagnostic names the first name component, not INITIAL.
-        ("@layer safe.INITIAL;", prelude.clone()),
+        ("@layer safe.INITIAL;", prelude.clone().at("INITIAL")),
     ] {
         let report = parse_rule(invalid, &CssNamespaceContext::default());
         assert!(report.syntax().is_none(), "{invalid}");

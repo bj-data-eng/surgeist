@@ -261,9 +261,8 @@ fn copied_redeclared_context_is_immutable_and_never_inherited_by_other_sheets() 
             "undeclared prefix in {other}"
         );
         // Namespaces 3 §3.3: a selector using an undeclared prefix is
-        // invalid. The diagnostic names the local name `leaf` rather than
-        // the prefix, so only the code is checked.
-        let undeclared = ExpectedRejection::new(CssErrorCode::InvalidSelector);
+        // invalid, and that prefix is responsible.
+        let undeclared = ExpectedRejection::new(CssErrorCode::InvalidSelector).at("svg");
         undeclared.assert_first(&isolated);
         let isolated_context = CssNamespaceContext::from_sheet(isolated.syntax());
         assert!(isolated_context.named_namespace(&prefix("svg")).is_none());

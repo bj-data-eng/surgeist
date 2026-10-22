@@ -9,6 +9,8 @@ use crate::{CssBorderStyle, CssBorderStylePair, CssBorderStyleShorthand, CssBoxS
 pub(super) fn parse_border_style<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssBorderStyle, ParseError<'i, Error>> {
+    // The unadmitted keyword itself is responsible, not the token after it.
+    let location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "none" => Ok(CssBorderStyle::None),
@@ -21,7 +23,7 @@ pub(super) fn parse_border_style<'i, 't>(
         "ridge" => Ok(CssBorderStyle::Ridge),
         "inset" => Ok(CssBorderStyle::Inset),
         "outset" => Ok(CssBorderStyle::Outset),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(location)),
     }
 }
 

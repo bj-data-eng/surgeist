@@ -263,14 +263,8 @@ fn construct_import_media(
         {
             break;
         }
-        if member.iter().all(crate::supports::trivia) {
-            let origin = items
-                .get(end)
-                .or_else(|| start.checked_sub(1).and_then(|index| items.get(index)))
-                .map_or(crate::CssValueOrigin::Programmatic, |value| {
-                    value.origin().clone()
-                });
-            return Err(crate::CssMediaConstructionError::InvalidQueryGrammar { origin }.into());
+        if let Some(error) = crate::media::empty_media_member_error(items, start, end) {
+            return Err(error.into());
         }
         let values = crate::CssComponentValues::try_new_with_limits(member.to_vec(), limits)?;
         queries.push(CssMediaQuery::try_from_components_with_limits(

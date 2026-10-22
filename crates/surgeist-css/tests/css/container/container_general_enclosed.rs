@@ -216,9 +216,9 @@ fn a_recovered_lexical_operand_retains_its_eof_closure_origin() {
 #[test]
 fn lexical_errors_and_malformed_outer_boolean_grammar_are_not_hidden_by_fallback() {
     // Each prelude first fails at a lexical fault (a bad URL or an
-    // unmatched closer), or by its grammar at trailing input, the block where
-    // an operand is missing, a doubled `not`, or an `or` mixed into an `and`
-    // chain.
+    // unmatched closer), or by its grammar at trailing input, the last
+    // authored token when the block ends the prelude before an operand, a
+    // doubled `not`, or an `or` mixed into an `and` chain.
     let lexical = CssErrorCode::InvalidComponentValue;
     let grammar = CssErrorCode::InvalidAtRulePrelude;
     for (query, code, responsible) in [
@@ -226,7 +226,7 @@ fn lexical_errors_and_malformed_outer_boolean_grammar_are_not_hidden_by_fallback
         ("Future(])", lexical, 7),
         ("Future() ]", lexical, 9),
         ("Future() junk", grammar, 9),
-        ("Future() and", grammar, 13),
+        ("Future() and", grammar, 9),
         ("not not Future()", grammar, 4),
         ("Future() and Other() or Third()", grammar, 21),
     ] {

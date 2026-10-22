@@ -27,6 +27,20 @@ pub struct PropertyExpectation {
     pub accepts: &'static [(&'static str, &'static str)],
     /// Additional values the property grammar rejects at every front.
     pub rejects: &'static [&'static str],
+    /// What the grammar's first component admits of an unknown identifier.
+    pub leading: Leading,
+}
+
+/// What a grammar's first component admits of an unknown identifier.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Leading {
+    /// Only keywords, so the unknown identifier is itself responsible.
+    Keyword,
+    /// One `<custom-ident>` (Values 4 §4.2) name: a second identifier is the
+    /// first component the grammar rejects.
+    CustomIdent,
+    /// A sequence of identifiers, so a second identifier is admitted too.
+    CustomIdentList,
 }
 
 pub struct InverseExpectation {
@@ -319,6 +333,7 @@ macro_rules! property_records {
         $(mapping: $mapping:ident($group:literal),)?
         $(accepts: [$($accepted:literal $(=> $canonical:literal)?),* $(,)?],)?
         $(rejects: [$($rejected:literal),* $(,)?],)?
+        $(leading: $leading:ident,)?
     } )*) => {
         pub const CASES: &[PropertyExpectation] = &[
             $(PropertyExpectation {
@@ -334,6 +349,7 @@ macro_rules! property_records {
                 mapping: property_records!(@mapping $($mapping($group))?),
                 accepts: &[$($(property_records!(@accept $accepted $(=> $canonical)?)),*)?],
                 rejects: &[$($($rejected),*)?],
+                leading: property_records!(@leading $($leading)?),
             },)*
         ];
     };
@@ -343,6 +359,9 @@ macro_rules! property_records {
     (@dispatch $ordinary:literal) => { Some(DispatchExpectation { ordinary: $ordinary, important: $ordinary }) };
     (@dispatch $ordinary:literal => $important:literal) => { Some(DispatchExpectation { ordinary: $ordinary, important: $important }) };
     (@wrapper $variant:ident) => { None };
+    (@leading) => { Leading::Keyword };
+    (@leading custom_ident) => { Leading::CustomIdent };
+    (@leading custom_ident_list) => { Leading::CustomIdentList };
     (@mapping) => { MappingExpectation::Neutral };
     (@mapping logical($group:literal)) => { MappingExpectation::Logical($group) };
     (@mapping physical($group:literal)) => { MappingExpectation::Physical($group) };

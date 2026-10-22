@@ -269,10 +269,9 @@ fn inset_grammar_is_complete_while_four_side_reset_membership_selects_only_autho
         let source = declaration(FOUR_SIDE, value);
         assert_four_expansion(expand_declaration(&source));
     }
-    // The implemented location of these rejections differs from the
-    // grammar-derived token (held for review), so only the kind and
-    // property are asserted.
-    invalid(FOUR_SIDE, "logical", None);
+    // Logical 1: `logical` alone leaves the value ending early, so the last
+    // authored token is responsible.
+    invalid(FOUR_SIDE, "logical", "logical");
     for (value, rest) in [
         ("", ""),
         ("1px logical", "logical"),

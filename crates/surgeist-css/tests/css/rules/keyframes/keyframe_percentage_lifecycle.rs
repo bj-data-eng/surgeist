@@ -125,15 +125,16 @@ fn wrong_numeric_types_and_malformed_functions_fail_checked_percentage_construct
             "{source}"
         );
     }
-    // Values 4 #calc-type-checking (Typed OM "add two types") fails for a percentage and a length
-    // where percentages resolve against no other type, which names
-    // IncompatibleTypes; construction reports RootDomainMismatch instead,
-    // so only the rejection is asserted here.
-    assert!(
+    // Values 4 #calc-type-checking (Typed OM "add two types") fails for a
+    // percentage and a length where percentages resolve against no other
+    // type, so the sum has incompatible types.
+    assert_eq!(
         CssPercentageCalculation::try_from_components(
             parse_component_values("calc(25% + 1px)").unwrap()
         )
-        .is_err()
+        .unwrap_err()
+        .kind(),
+        &Failure::IncompatibleTypes
     );
 }
 

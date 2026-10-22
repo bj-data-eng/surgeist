@@ -2,7 +2,7 @@
 //! §§4.5.2, 4.7. Logical 1 issue 3030 leaves complete four-side reset
 //! membership unsettled, while the authored grammar remains defined.
 
-use crate::css::support::property_admission::Responsible::{At, Disputed, End};
+use crate::css::support::property_admission::Responsible::{At, End};
 use crate::css::support::property_admission::assert_declaration_rejected as rejected;
 use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
@@ -160,7 +160,7 @@ fn eight_style_longhands_accept_exact_ten_keywords_and_initial_none() {
             ("1px", At("1px")),
             ("red", At("red")),
             ("solid dashed", At("dashed")),
-            ("logical solid", Disputed),
+            ("logical solid", At("logical")),
         ] {
             rejected(name, value, token);
         }
@@ -226,7 +226,7 @@ fn logical_style_pairs_assign_start_then_end_and_repeat_omitted_end() {
         }
         for (value, token) in [
             ("", End),
-            ("logical solid", Disputed),
+            ("logical solid", At("logical")),
             ("solid dashed dotted", At("dotted")),
             ("1px", At("1px")),
             ("auto", At("auto")),
@@ -255,7 +255,7 @@ fn border_style_accepts_physical_or_prefixed_logical_one_to_four_values_and_expa
     for (value, token) in [
         ("", End),
         ("logical", At("logical")),
-        ("logical logical solid", Disputed),
+        ("logical logical solid", At("logical")),
         ("solid logical", At("logical")),
         ("logical 1px", At("1px")),
         ("solid dashed dotted double groove", At("groove")),

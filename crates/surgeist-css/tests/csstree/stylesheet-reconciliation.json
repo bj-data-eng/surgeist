@@ -880,7 +880,7 @@
         "diagnostic_positions": null,
         "diagnostic_count_status": "one per listed recovery unit"
       },
-      "rationale": "The x namespace prefix has no sheet declaration; :not uses an unforgiving selector list. This is stylesheet grammar-context validity, not downstream matching.",
+      "rationale": "The x namespace prefix has no sheet declaration; :not uses an unforgiving selector list. This is stylesheet grammar-context validity, not downstream matching. The undeclared `x` prefix is responsible (Namespaces 3 §3.3, #1446).",
       "normative_sources": [
         "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-stylesheet",
         "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#css-stylesheets",
@@ -915,7 +915,7 @@
           "code": "invalid_selector",
           "action": "drop_qualified_rule",
           "payload_relation": "intersects",
-          "byte_offset": 12,
+          "byte_offset": 10,
           "span_start": 0,
           "span_end": 18,
           "multiplicity": 1
@@ -2990,7 +2990,7 @@
           "code": "invalid_selector",
           "action": "drop_qualified_rule",
           "payload_relation": "intersects",
-          "byte_offset": 2,
+          "byte_offset": 0,
           "span_start": 0,
           "span_end": 4,
           "multiplicity": 1
@@ -3000,7 +3000,7 @@
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
         "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor.",
-        "Missing selector name error at bounded prelude end resolves through next_authored_token_at to opening curly in original source. is_bounded_end_token excludes opening curly, so responsible offset is authored opening curly, not whole-source EOF."
+        "The selector list ends at its block before the selector is complete, so its last authored token is responsible (crate location rule, reference \"Source coordinates and diagnostics\"; #1446); a selector-list colon is part of the prelude."
       ],
       "uncertainties": []
     },
@@ -3067,7 +3067,7 @@
           "code": "invalid_selector",
           "action": "drop_qualified_rule",
           "payload_relation": "intersects",
-          "byte_offset": 1,
+          "byte_offset": 0,
           "span_start": 0,
           "span_end": 3,
           "multiplicity": 1
@@ -3077,7 +3077,7 @@
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
         "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor.",
-        "Missing selector name error at bounded prelude end resolves through next_authored_token_at to opening curly in original source. is_bounded_end_token excludes opening curly, so responsible offset is authored opening curly, not whole-source EOF."
+        "The selector list ends at its block before the selector is complete, so its last authored token is responsible (crate location rule, reference \"Source coordinates and diagnostics\"; #1446); a selector-list colon is part of the prelude."
       ],
       "uncertainties": []
     },
@@ -3676,7 +3676,7 @@
           "code": "invalid_selector",
           "action": "drop_qualified_rule",
           "payload_relation": "intersects",
-          "byte_offset": 1,
+          "byte_offset": 0,
           "span_start": 0,
           "span_end": 3,
           "multiplicity": 1
@@ -3686,7 +3686,7 @@
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
         "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor.",
-        "Missing selector name error at bounded prelude end resolves through next_authored_token_at to opening curly in original source. is_bounded_end_token excludes opening curly, so responsible offset is authored opening curly, not whole-source EOF."
+        "The selector list ends at its block before the selector is complete, so its last authored token is responsible (crate location rule, reference \"Source coordinates and diagnostics\"; #1446); a selector-list colon is part of the prelude."
       ],
       "uncertainties": []
     },
@@ -6025,7 +6025,7 @@
           "code": "invalid_selector",
           "action": "drop_qualified_rule",
           "payload_relation": "intersects",
-          "byte_offset": 6,
+          "byte_offset": 4,
           "span_start": 1,
           "span_end": 8,
           "multiplicity": 1
@@ -6035,7 +6035,7 @@
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
         "Complete top-level curly block exists; selector grammar rejects malformed selector (or undeclared namespace). Consumed curly block is discarded. Interior responsible byte guarantees intersects regardless of precise selector error cursor.",
-        "Missing selector name error at bounded prelude end resolves through next_authored_token_at to opening curly in original source. is_bounded_end_token excludes opening curly, so responsible offset is authored opening curly, not whole-source EOF."
+        "The selector list ends at its block before the selector is complete, so its last authored token is responsible (crate location rule, reference \"Source coordinates and diagnostics\"; #1446); a selector-list colon is part of the prelude."
       ],
       "uncertainties": []
     }

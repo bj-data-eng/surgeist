@@ -85,10 +85,10 @@ fn rejected_rule_boundaries_preserve_distinct_scoped_runs_and_eof_retention() {
     // Selectors 4 forbids an empty list member, @unknown is not a CSS
     // at-rule, and a @layer block names exactly one <layer-name>.
     for (rejected, expected) in [
-        // The diagnostic names the block after the list, not its end.
+        // The empty last member ends at the end of the selector list.
         (
             "bad,{}",
-            ExpectedRejection::new(CssErrorCode::InvalidSelector),
+            ExpectedRejection::new(CssErrorCode::InvalidSelector).at(","),
         ),
         (
             "@unknown;",

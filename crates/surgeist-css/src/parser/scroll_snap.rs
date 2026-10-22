@@ -16,6 +16,8 @@ use crate::{
 pub(super) fn parse_scroll_snap_type<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssScrollSnapType, ParseError<'i, Error>> {
+    // Scroll Snap 1 §5.1: the unadmitted keyword itself is responsible.
+    let axis_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     let axis = match_ignore_ascii_case! { &ident,
         "none" => return Ok(CssScrollSnapType::None),
@@ -24,16 +26,17 @@ pub(super) fn parse_scroll_snap_type<'i, 't>(
         "block" => CssScrollSnapAxis::Block,
         "inline" => CssScrollSnapAxis::Inline,
         "both" => CssScrollSnapAxis::Both,
-        _ => return Err(unexpected_at(input.current_source_location())),
+        _ => return Err(unexpected_at(axis_location)),
     };
     let strictness = if input.is_exhausted() {
         None
     } else {
+        let strictness_location = input.current_source_location();
         let strictness = input.expect_ident_cloned().map_err(basic)?;
         Some(match_ignore_ascii_case! { &strictness,
             "mandatory" => CssScrollSnapStrictness::Mandatory,
             "proximity" => CssScrollSnapStrictness::Proximity,
-            _ => return Err(unexpected_at(input.current_source_location())),
+            _ => return Err(unexpected_at(strictness_location)),
         })
     };
     Ok(CssScrollSnapType::axis(axis, strictness))
@@ -42,13 +45,14 @@ pub(super) fn parse_scroll_snap_type<'i, 't>(
 fn parse_alignment<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssScrollSnapAlignment, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "none" => Ok(CssScrollSnapAlignment::None),
         "start" => Ok(CssScrollSnapAlignment::Start),
         "end" => Ok(CssScrollSnapAlignment::End),
         "center" => Ok(CssScrollSnapAlignment::Center),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
@@ -67,11 +71,12 @@ pub(super) fn parse_scroll_snap_align<'i, 't>(
 pub(super) fn parse_scroll_snap_stop<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssScrollSnapStop, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "normal" => Ok(CssScrollSnapStop::Normal),
         "always" => Ok(CssScrollSnapStop::Always),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 

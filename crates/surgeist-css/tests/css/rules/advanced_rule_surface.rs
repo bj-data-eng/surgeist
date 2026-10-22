@@ -63,9 +63,9 @@ fn advanced_css_surface_matrix_rejects_unsupported_forms() {
         ),
         (
             "[svg|href] { color: black; }",
-            Rejection::selector(Some("href")),
+            Rejection::selector(Some("svg")),
         ),
-        (".col || { color: black; }", Rejection::selector(Some("{"))),
+        (".col || { color: black; }", Rejection::selector(Some("|"))),
         (
             "@container scroll-state(stuck: top) trailing { .panel { color: black; } }",
             Rejection::prelude("container", Some("trailing")),

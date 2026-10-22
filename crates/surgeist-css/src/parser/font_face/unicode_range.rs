@@ -21,17 +21,18 @@ struct RangeToken<'i> {
     token: Token<'i>,
     spelling: &'i str,
     location: SourceLocation,
+    /// For a separator, the authored token after it: trivia ends a range
+    /// but is never itself responsible, so that token is.
+    following: Option<(Token<'i>, &'i str, SourceLocation)>,
 }
 
 impl RangeToken<'_> {
     fn error<'i>(&self) -> ParseError<'i, Error> {
-        invalid_descriptor_token_at(
-            self.location,
-            "font-face",
-            "unicode-range",
-            &self.token,
-            self.spelling,
-        )
+        let (token, spelling, location) = match &self.following {
+            Some((token, spelling, location)) => (token, *spelling, *location),
+            None => (&self.token, self.spelling, self.location),
+        };
+        invalid_descriptor_token_at(location, "font-face", "unicode-range", token, spelling)
     }
 }
 
@@ -75,6 +76,7 @@ pub(super) fn parse<'i, 't>(
             token,
             spelling: input.slice_from(start),
             location,
+            following: None,
         };
         if matches!(token.token, Token::WhiteSpace(_) | Token::Comment(_)) {
             if !tokens.is_empty() && separator.is_none() {
@@ -82,7 +84,8 @@ pub(super) fn parse<'i, 't>(
             }
             continue;
         }
-        if let Some(space) = separator.take() {
+        if let Some(mut space) = separator.take() {
+            space.following = Some((token.token.clone(), token.spelling, token.location));
             tokens.push(space);
             if tokens.len() == 9 {
                 break;

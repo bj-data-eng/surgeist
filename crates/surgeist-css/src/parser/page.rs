@@ -719,9 +719,10 @@ pub(super) fn parse_descriptor_value<'i>(
         )));
     }
     if let Ok(global) = input.try_parse(|input| {
+        let keyword_location = input.current_source_location();
         let ident = input.expect_ident_cloned().map_err(basic)?;
         let global = crate::validation::parse_global_keyword(&ident)
-            .ok_or_else(|| unexpected_at(input.current_source_location()))?;
+            .ok_or_else(|| unexpected_at(keyword_location))?;
         input.expect_exhausted().map_err(basic)?;
         Ok::<_, ParseError<'i, Error>>(global)
     }) {

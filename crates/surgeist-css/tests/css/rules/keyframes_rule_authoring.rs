@@ -147,7 +147,7 @@ fn keyframes_rule_parser_rejects_invalid_names_selectors_and_placements() {
         ("@keyframes fade;", Rejection::body("keyframes", None)),
         (
             "@keyframes { from { opacity: 0; } }",
-            Rejection::prelude("keyframes", Some("{")),
+            Rejection::prelude("keyframes", None),
         ),
         (
             "@keyframes none { from { opacity: 0; } }",
@@ -169,8 +169,9 @@ fn keyframes_rule_parser_rejects_invalid_names_selectors_and_placements() {
         assert_rejection(css, rejection);
     }
     for selector in ["0", "-1%", "101%"] {
-        assert_drops_invalid_keyframe_block(&format!(
-            "@keyframes fade {{ {selector} {{ opacity: 0; }} }}"
-        ));
+        assert_drops_invalid_keyframe_block(
+            &format!("@keyframes fade {{ {selector} {{ opacity: 0; }} }}"),
+            selector,
+        );
     }
 }

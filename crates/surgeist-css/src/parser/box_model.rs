@@ -13,11 +13,12 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] =
 pub(super) fn parse_box_decoration_break<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBoxDecorationBreak, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "slice" => Ok(CssBoxDecorationBreak::Slice),
         "clone" => Ok(CssBoxDecorationBreak::Clone),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 

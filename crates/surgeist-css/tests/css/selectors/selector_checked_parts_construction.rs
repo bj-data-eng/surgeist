@@ -321,7 +321,8 @@ fn compound_keeps_repeated_ids_classes_and_decoded_whitespace_inside_identifiers
     assert_eq!(value.scope_anchors(), 0);
     assert_eq!(value.nesting_selectors(), 0);
     let selector = CssSelector::Compound(value);
-    let literal = "#X#X.One.One.a\\ b:hover";
+    // CSSOM "serialize a selector": members serialize in their given order.
+    let literal = ".One#X.One#X.a\\ b:hover";
     assert_eq!(selector.to_specified_css().unwrap(), literal);
     assert_eq!(parsed(literal, &CssNamespaceContext::default()), selector);
     assert_ne!(

@@ -1,6 +1,6 @@
 //! Color 5 WD 2026-09-08 §5.3 and Env 1 WD 2025-09-23 §3.
 //! Construction checks the same authored grammar; callers supply replacements.
-use crate::css::support::rules::{ExpectedRejection, descriptor_rejected_at, unexpected_token};
+use crate::css::support::rules::{ExpectedRejection, descriptor_rejected_at, invalid_descriptor};
 use surgeist_css::{
     CssColorProfileDescriptor, CssColorProfileDescriptorKind as Kind,
     CssColorProfileDescriptorValue as Value, CssColorProfileDescriptorValueRef as View,
@@ -184,13 +184,16 @@ fn environment_only_admission_defers_whole_grammar_without_a_var_veto() {
             assert!(matches!(value(kind, source).view(), View::Pending(_)));
         }
         // Variables 1 §3 admits var() only in property values; Env 1 §3
-        // requires env( <custom-ident> <integer [0,∞]>* , ... ), and a
-        // malformed env() function is itself the responsible component.
+        // defers only a syntactically valid env( <custom-ident>
+        // <integer [0,∞]>* , ... ), so a malformed one leaves the ordinary
+        // descriptor grammar, which rejects the function token itself.
+        // Every front names @color-profile and the descriptor (#1446).
+        let rejected = |token| invalid_descriptor("color-profile", kind.css_name()).at(token);
         for (invalid, expected) in [
-            ("var(--x)", unexpected_token("var(")),
-            ("env()", unexpected_token("env(")),
-            ("env(selection -1)", unexpected_token("env(")),
-            ("env(selection) env()", unexpected_token("env(")),
+            ("var(--x)", rejected("var(")),
+            ("env()", rejected("env(")),
+            ("env(selection -1)", rejected("env(")),
+            ("env(selection) env()", rejected("env(")),
         ] {
             let report = fragment(invalid, kind);
             assert!(report.syntax().is_none(), "{kind:?}: {invalid}");
@@ -259,11 +262,14 @@ fn replacement_reentry_returns_ordinary_values_or_typed_errors_never_pending() {
                 let Failure::Grammar(detail) = error.kind() else {
                     panic!("{invalid}: grammar failure: {error:?}")
                 };
-                // Reentry reports `auto` as an InvalidQualifiedRule, which
-                // names no descriptor; only its grammar failure is checked.
-                if invalid != "auto" {
-                    unexpected_token("saturation").assert_kind(detail);
-                }
+                let token = if invalid == "auto" {
+                    "auto"
+                } else {
+                    "saturation"
+                };
+                invalid_descriptor("color-profile", "rendering-intent")
+                    .at(token)
+                    .assert_kind(detail);
             }
             _ => assert_eq!(error.kind(), &Failure::ResidualSubstitution, "{invalid}"),
         }
@@ -352,7 +358,9 @@ fn separately_constructed_adjacent_tokens_do_not_merge_into_an_identifier() {
     let Failure::Grammar(detail) = error.kind() else {
         panic!("grammar failure: {error:?}")
     };
-    unexpected_token("green").assert_kind(detail);
+    invalid_descriptor("color-profile", "components")
+        .at("green")
+        .assert_kind(detail);
     let values = CssComponentValues::try_new(vec![
         CssComponentValue::try_ident("red").unwrap(),
         CssComponentValue::try_token(",").unwrap(),
@@ -426,7 +434,9 @@ fn matched_root_blocks_remain_data_under_environment_whole_grammar_deferral() {
     for ordinary in ["{}", "perceptual {}"] {
         let report = fragment(ordinary, Kind::RenderingIntent);
         assert!(report.syntax().is_none());
-        unexpected_token("{").assert_first(&report);
+        invalid_descriptor("color-profile", "rendering-intent")
+            .at("{")
+            .assert_first(&report);
     }
 }
 
@@ -529,13 +539,12 @@ fn descriptor_and_component_limits_are_checked_at_construction_and_emission() {
 
 #[test]
 fn descriptor_and_keyframe_bodies_reject_profile_children_without_losing_following_rule() {
-    // Fonts 4 §4.1 and Animations 1 §3 bodies are declaration lists: the
-    // font-face body recognizes no at-rule, and a keyframe block admits
-    // none in its place.
+    // Fonts 4 §4.1 and Animations 1 §3 bodies are declaration lists, so a
+    // recognized at-rule is misplaced in either.
     for (source, code) in [
         (
             "@font-face { @color-profile --x {} font-family: Demo; src: url(a); } .after { color: red; }",
-            CssErrorCode::UnknownAtRule,
+            CssErrorCode::InvalidAtRulePlacement,
         ),
         (
             "@keyframes k { from { @color-profile --x {} color: red; } } .after { color: red; }",

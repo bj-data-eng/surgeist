@@ -718,9 +718,9 @@ fn every_invalid_timing_category_has_exact_public_diagnostics_and_strict_parity(
         InvalidTimingCase {
             source: "transition-duration: 1s,; color: red",
             property: CssKnownProperty::TransitionDuration,
-            position: 24,
+            position: 23,
             span_end: 25,
-            encountered: None,
+            encountered: Some((CssTokenKind::Comma, ",")),
         },
         InvalidTimingCase {
             source: "animation-delay: -1s,,2s; color: red",

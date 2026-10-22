@@ -164,7 +164,7 @@ fn forgiving_selector_lists_drop_only_undeclared_namespace_members() {
         CssRecoveryAction::DropSelectorListItem,
         start,
         start + "missing|a".len(),
-        start + "missing|".len(),
+        start,
     );
 }
 

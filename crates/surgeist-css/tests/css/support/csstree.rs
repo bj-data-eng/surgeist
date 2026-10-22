@@ -2989,10 +2989,11 @@ mod tests {
     }
 
     #[test]
-    fn raw_font_face_value_observation_keeps_incomplete_range_eof_in_payload() {
+    fn raw_font_face_value_observation_names_the_last_token_of_an_incomplete_range() {
         // Original UnicodeRange fixtures: Syntax 3 sections 4.3.11 and 4.3.14 require a
-        // continuation after u and +. Missing input belongs to the raw EOF,
-        // not an injected descriptor terminator or surrounding font-face rule.
+        // continuation after u and +. Input ends first, so its last authored
+        // token is responsible, not an injected descriptor terminator or
+        // surrounding font-face rule.
         let path = "expectations/value/UnicodeRange.json";
         for source in ["U+", "u"] {
             let value = raw_fragment_observation(path, Context::Value, source);
@@ -3002,10 +3003,10 @@ mod tests {
             let error = &value["diagnostics"][0];
             assert_eq!(error["code"], "invalid_descriptor_value");
             assert_eq!(error["action"], "reject_input");
-            assert_eq!(error["byte_offset"], source.len());
+            assert_eq!(error["byte_offset"], source.len() - 1);
             assert_eq!(error["span_start"], 0);
             assert_eq!(error["span_end"], source.len());
-            assert_eq!(error["payload_relation"], "recovery_ends_at");
+            assert_eq!(error["payload_relation"], "intersects");
         }
         let value = raw_fragment_observation(path, Context::Value, "u+?");
         assert_eq!(value["syntax_count"], 1);
@@ -3039,6 +3040,7 @@ mod tests {
         assert_eq!(value["syntax_count"], 2);
         assert_eq!(value["is_clean"], true);
         assert_eq!(value["diagnostics"], serde_json::json!([]));
+        // Input ends after the comma, which is the last authored token.
         let value = raw_fragment_observation(path, Context::SelectorList, ".a,");
         assert_eq!(value["syntax_count"], 0);
         assert_eq!(value["is_clean"], false);
@@ -3046,10 +3048,10 @@ mod tests {
         let error = &value["diagnostics"][0];
         assert_eq!(error["code"], "invalid_selector");
         assert_eq!(error["action"], "reject_input");
-        assert_eq!(error["byte_offset"], 3);
+        assert_eq!(error["byte_offset"], 2);
         assert_eq!(error["span_start"], 0);
         assert_eq!(error["span_end"], 3);
-        assert_eq!(error["payload_relation"], "recovery_ends_at");
+        assert_eq!(error["payload_relation"], "intersects");
     }
 
     #[test]

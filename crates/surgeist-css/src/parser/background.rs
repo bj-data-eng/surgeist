@@ -203,15 +203,17 @@ fn next_starts_background_repeat<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
 pub(super) fn parse_background_repeat<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBackgroundRepeat, ParseError<'i, Error>> {
+    let first_location = input.current_source_location();
     let first = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &first,
         "repeat-x" => Ok(CssBackgroundRepeat::RepeatX),
         "repeat-y" => Ok(CssBackgroundRepeat::RepeatY),
         _ => {
-            let x = parse_background_repeat_style_from_ident(input, first.as_ref())?;
+            let x = parse_background_repeat_style_from_ident(first_location, first.as_ref())?;
             let y = attempt(input, |input| {
+                let second_location = input.current_source_location();
                 let second = input.expect_ident_cloned().map_err(basic)?;
-                parse_background_repeat_style_from_ident(input, second.as_ref())
+                parse_background_repeat_style_from_ident(second_location, second.as_ref())
             })?
             .unwrap_or(x);
             Ok(CssBackgroundRepeat::Axes { x, y })
@@ -225,12 +227,13 @@ pub(super) fn parse_background_size<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssBackgroundSize, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let width = if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
         match_ignore_ascii_case! { &ident,
             "cover" => return Ok(CssBackgroundSize::Cover),
             "contain" => return Ok(CssBackgroundSize::Contain),
             "auto" => CssBackgroundSizeComponent::Auto,
-            _ => return Err(unexpected_at(input.current_source_location())),
+            _ => return Err(unexpected_at(keyword_location)),
         }
     } else {
         parse_background_size_component(input, numeric)?
@@ -500,13 +503,14 @@ pub(super) fn parse_border_image_repeat<'i, 't>(
 fn parse_border_image_repeat_keyword<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBorderImageRepeatKeyword, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "stretch" => Ok(CssBorderImageRepeatKeyword::Stretch),
         "repeat" => Ok(CssBorderImageRepeatKeyword::Repeat),
         "round" => Ok(CssBorderImageRepeatKeyword::Round),
         "space" => Ok(CssBorderImageRepeatKeyword::Space),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
@@ -626,6 +630,7 @@ pub(super) fn parse_image_orientation<'i, 't>(
 pub(super) fn parse_image_rendering<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssImageRendering, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssImageRendering::Auto),
@@ -635,13 +640,14 @@ pub(super) fn parse_image_rendering<'i, 't>(
         "pixelated" => Ok(CssImageRendering::Pixelated),
         "optimizespeed" => Ok(CssImageRendering::OptimizeSpeed),
         "optimizequality" => Ok(CssImageRendering::OptimizeQuality),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
 pub(super) fn parse_object_fit<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssObjectFit, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "fill" => Ok(CssObjectFit::Fill),
@@ -649,7 +655,7 @@ pub(super) fn parse_object_fit<'i, 't>(
         "cover" => Ok(CssObjectFit::Cover),
         "none" => Ok(CssObjectFit::None),
         "scale-down" => Ok(CssObjectFit::ScaleDown),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
@@ -1196,8 +1202,10 @@ pub(super) fn parse_background_repeat_list<'i, 't>(
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
-pub(super) fn parse_background_repeat_style_from_ident<'i, 't>(
-    input: &Parser<'i, 't>,
+/// The repeat style `ident`, whose own `location` is responsible when it is
+/// unknown.
+pub(super) fn parse_background_repeat_style_from_ident<'i>(
+    location: super::property_input::Site<'i>,
     ident: &str,
 ) -> std::result::Result<CssBackgroundRepeatStyle, ParseError<'i, Error>> {
     match ident.to_ascii_lowercase().as_str() {
@@ -1205,19 +1213,20 @@ pub(super) fn parse_background_repeat_style_from_ident<'i, 't>(
         "space" => Ok(CssBackgroundRepeatStyle::Space),
         "round" => Ok(CssBackgroundRepeatStyle::Round),
         "no-repeat" => Ok(CssBackgroundRepeatStyle::NoRepeat),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(location)),
     }
 }
 
 pub(super) fn parse_background_box<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBackgroundBox, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "border-box" => Ok(CssBackgroundBox::BorderBox),
         "padding-box" => Ok(CssBackgroundBox::PaddingBox),
         "content-box" => Ok(CssBackgroundBox::ContentBox),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
@@ -1240,12 +1249,13 @@ pub(super) fn parse_background_attachment_list<'i, 't>(
 pub(super) fn parse_background_attachment<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBackgroundAttachment, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "scroll" => Ok(CssBackgroundAttachment::Scroll),
         "fixed" => Ok(CssBackgroundAttachment::Fixed),
         "local" => Ok(CssBackgroundAttachment::Local),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 

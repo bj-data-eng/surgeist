@@ -16124,7 +16124,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "payload_relation": "recovery_ends_at"
+            "payload_relation": "intersects"
           }
         ]
       }
@@ -16538,7 +16538,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "payload_relation": "recovery_ends_at"
+            "payload_relation": "intersects"
           }
         ]
       }

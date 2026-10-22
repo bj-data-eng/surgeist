@@ -412,7 +412,7 @@ fn font_face_rule_parser_rejects_invalid_descriptor_blocks() {
         ),
         (
             "@font-face { font-family: Inter; src: url(a.woff2); @media screen {} }",
-            Rejection::unknown_at_rule("media"),
+            Rejection::placement("media"),
         ),
         (
             "@font-face { font-family: Inter; src: url(a.woff2); .nested {} }",

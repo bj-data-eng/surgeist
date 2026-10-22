@@ -177,12 +177,45 @@ fn numeric_error<'i>(
     unexpected_at(numeric.property_error_location(error, location, location))
 }
 
+/// Whether the next component starts a `<url>` (a URL token, `url()` or
+/// `src()`), which commits it to the URL grammar (Values 5 request URL
+/// modifiers report inside the function).
+pub(super) fn starts_url(input: &mut Parser<'_, '_>) -> bool {
+    let state = input.state();
+    let starts = match input.next() {
+        Ok(Token::UnquotedUrl(_)) => true,
+        Ok(Token::Function(name)) => {
+            name.eq_ignore_ascii_case("url") || name.eq_ignore_ascii_case("src")
+        }
+        _ => false,
+    };
+    input.reset(&state);
+    starts
+}
+
+fn starts_cursor_image(input: &mut Parser<'_, '_>) -> bool {
+    if starts_url(input) {
+        return true;
+    }
+    let state = input.state();
+    let starts = matches!(
+        input.next(),
+        Ok(Token::Function(name)) if name.eq_ignore_ascii_case("image-set")
+            || name.eq_ignore_ascii_case("-webkit-image-set")
+    );
+    input.reset(&state);
+    starts
+}
+
 pub(super) fn parse_cursor<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssCursor, ParseError<'i, Error>> {
     let mut images = Vec::new();
-    while let Ok(source) = input.try_parse(|input| parse_cursor_image_source(input, numeric)) {
+    // A URL or image-set() commits its cursor image, so a failure inside it
+    // is the value's failure.
+    while starts_cursor_image(input) {
+        let source = parse_cursor_image_source(input, numeric)?;
         let hotspot = if let Ok(x) =
             input.try_parse(|input| super::values::parse_specified_number(input, numeric))
         {
@@ -208,8 +241,8 @@ fn parse_cursor_image_source<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<CssCursorImageSource, ParseError<'i, Error>> {
-    if let Ok(url) = input.try_parse(|input| parse_url(input, numeric)) {
-        return Ok(CssCursorImageSource::Url(url));
+    if starts_url(input) {
+        return parse_url(input, numeric).map(CssCursorImageSource::Url);
     }
     let name = input.expect_function().map_err(basic)?.clone();
     if !name.eq_ignore_ascii_case("image-set") && !name.eq_ignore_ascii_case("-webkit-image-set") {
@@ -218,8 +251,8 @@ fn parse_cursor_image_source<'i, 't>(
     let options = input.parse_nested_block(|input| {
         let mut options = Vec::new();
         loop {
-            let reference = if let Ok(url) = input.try_parse(|input| parse_url(input, numeric)) {
-                CssCursorUrlSetReference::Url(url)
+            let reference = if starts_url(input) {
+                CssCursorUrlSetReference::Url(parse_url(input, numeric)?)
             } else {
                 let string = input.expect_string_cloned().map_err(basic)?;
                 let string = CssContentString::try_new(string.to_string())
@@ -274,6 +307,7 @@ fn parse_cursor_image_type<'i, 't>(
 pub(super) fn parse_cursor_keyword<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssCursorKeyword, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssCursorKeyword::Auto),
@@ -312,24 +346,26 @@ pub(super) fn parse_cursor_keyword<'i, 't>(
         "nwse-resize" => Ok(CssCursorKeyword::NwseResize),
         "zoom-in" => Ok(CssCursorKeyword::ZoomIn),
         "zoom-out" => Ok(CssCursorKeyword::ZoomOut),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
 pub(super) fn parse_pointer_events<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssPointerEvents, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssPointerEvents::Auto),
         "none" => Ok(CssPointerEvents::None),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
 pub(super) fn parse_user_select<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssUserSelect, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssUserSelect::Auto),
@@ -337,7 +373,7 @@ pub(super) fn parse_user_select<'i, 't>(
         "none" => Ok(CssUserSelect::None),
         "all" => Ok(CssUserSelect::All),
         "contain" => Ok(CssUserSelect::Contain),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 

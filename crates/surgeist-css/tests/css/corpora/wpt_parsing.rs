@@ -618,27 +618,12 @@ fn wpt_vectors_bind_declared_sources_and_keep_deferred_assertions_explicit() {
     }
     // The replayed cases run in `wpt_nested_selector_text_*` and
     // `wpt_font_face_src_tech_*`; every other source-only case stays deferred.
-    let compound_order: Vec<&str> = deferred
-        .iter()
-        .filter(|case| case.disposition == "deferred-compound-simple-selector-order")
-        .map(|case| case.id.as_str())
-        .collect();
-    assert_eq!(
-        compound_order,
-        [
-            "nesting-selector-019-cssom",
-            "nesting-selector-021-cssom",
-            "nesting-selector-023-cssom",
-            "nesting-selector-025-cssom",
-            "nesting-selector-027-cssom",
-        ]
-    );
     assert_eq!(
         dispositions,
         BTreeMap::from([
-            ("deferred", 89),
+            ("deferred", 84),
             (FONT_SRC_TECH_SET, 1),
-            (NESTED_SELECTOR_TEXT, 26),
+            (NESTED_SELECTOR_TEXT, 31),
         ])
     );
 }
@@ -669,11 +654,10 @@ fn text_field<'a>(value: &'a serde_json::Value, field: &str, id: &str) -> &'a st
 #[test]
 fn wpt_nested_selector_text_absolutizes_relative_selectors() {
     let cases = replayed(NESTED_SELECTOR_TEXT);
-    // Five further testNestedSelector rows (`.class&`, `[attr]&`, `#id&`,
-    // `:hover&`, `:is(div)&`) stay deferred as a recorded defect: the
-    // compound model does not retain the authored simple-selector order
-    // that CSSOM "serialize a selector" emits.
-    assert_eq!(cases.len(), 26);
+    // The rows include `.class&`, `[attr]&`, `#id&`, `:hover&` and
+    // `:is(div)&`: CSSOM "serialize a selector" emits a compound's simple
+    // selectors, including `&`, in authored order.
+    assert_eq!(cases.len(), 31);
     let mut failures = Vec::new();
     for case in cases {
         assert_source_binding(&case.source);

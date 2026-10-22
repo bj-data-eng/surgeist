@@ -6,8 +6,8 @@ use crate::css::support::value_assertions::assert_first_code;
 use surgeist_css::{
     CssErrorCode, CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName,
     CssNamespacePrefix, CssNormalizedItem, CssRecoveryAction, CssRule, CssRuleContextKindRef,
-    CssSelector, CssSelectorCombinator, normalize_report, parse_selector, parse_selector_list,
-    parse_sheet, validate_sheet,
+    CssSelector, CssSelectorCombinator, CssTokenKind, ErrorKind, normalize_report, parse_selector,
+    parse_selector_list, parse_sheet, validate_sheet,
 };
 
 fn context() -> CssNamespaceContext {
@@ -200,6 +200,50 @@ fn qualified_names_allow_comments_but_keep_whitespace_and_local_wildcards_host_s
         part.selector().type_selector().unwrap().namespace(),
         &CssNamespaceConstraint::ExplicitNone
     );
+}
+
+/// Selectors 4 §6.1 / Namespaces 3 §4: inside an attribute selector, a
+/// `<wq-name>` is followed only by `]` or a matcher, and `ns|`, `*|` and `|`
+/// need an identifier. The token that cannot continue is itself responsible,
+/// not the closing `]` after it.
+#[test]
+fn attribute_names_name_the_token_that_cannot_continue_them() {
+    let context = context();
+    for (source, offset, kind, spelling) in [
+        ("[b i]", 3, CssTokenKind::Ident, "i"),
+        ("[svg|*]", 5, CssTokenKind::Delim, "*"),
+        ("[*x]", 2, CssTokenKind::Ident, "x"),
+        ("[*|*]", 3, CssTokenKind::Delim, "*"),
+        ("[|*]", 2, CssTokenKind::Delim, "*"),
+    ] {
+        let report = parse_selector(source, &context);
+        assert!(report.syntax().is_none(), "{source}: {report:?}");
+        let [diagnostic] = report.diagnostics() else {
+            panic!("{source}: one rejection: {report:?}")
+        };
+        let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
+            panic!("{source}: selector rejection: {diagnostic:?}")
+        };
+        let encountered = detail
+            .encountered()
+            .map(|token| (token.kind(), token.authored()));
+        assert_eq!(
+            (
+                diagnostic.error().position().byte_offset().value(),
+                encountered
+            ),
+            (offset, Some((kind, spelling))),
+            "{source}"
+        );
+    }
+    // The same rejection in a sheet, where `ns` is undeclared: the missing
+    // local name is found before the prefix is resolved.
+    let report = parse_sheet("[ns|*] {}");
+    let [diagnostic] = report.diagnostics() else {
+        panic!("one sheet rejection: {report:?}")
+    };
+    assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);
+    assert_eq!(diagnostic.error().position().byte_offset().value(), 4);
 }
 
 #[test]

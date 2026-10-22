@@ -211,9 +211,11 @@ fn mixed_transition_none_diagnostic_identifies_the_property_after_a_duration() {
         panic!("transition grammar error");
     };
     assert_eq!(detail.property(), CssKnownProperty::Transition);
+    // Transitions 1 §2.5: `1s none` is a valid single transition, so the
+    // comma that continues the list is responsible.
     assert_eq!(
         diagnostic.error().position().byte_offset().value(),
-        source.find(r"\6e one").unwrap()
+        source.find(',').unwrap()
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     let [color] = report.syntax().as_slice() else {

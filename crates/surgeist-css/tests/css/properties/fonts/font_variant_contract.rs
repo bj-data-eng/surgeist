@@ -201,14 +201,13 @@ fn full_shorthand_preserves_groups_but_serializes_in_fonts_four_order() {
 
 #[test]
 fn longhands_and_shorthand_reject_duplicate_or_malformed_alternates() {
-    // The implemented location of these rejections differs from the
-    // grammar-derived token (held for review), so only the kind and
-    // property are asserted.
+    // Fonts 4 font-variant-alternates: stylistic() and ornaments() take one
+    // feature-value name, so the comma after it is responsible.
     for name in ["font-variant-alternates", "font-variant"] {
-        invalid(name, "stylistic(A, B)", None);
+        invalid(name, "stylistic(A, B)", ", B)");
     }
     for name in ["font-variant-alternates", "font-variant"] {
-        invalid(name, "ornaments(A, B)", None);
+        invalid(name, "ornaments(A, B)", ", B)");
     }
     for (value, rest) in [
         ("stylistic()", ")"),

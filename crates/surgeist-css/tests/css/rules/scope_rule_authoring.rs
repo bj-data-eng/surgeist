@@ -303,19 +303,19 @@ fn scope_rule_parser_rejects_malformed_scope_syntax() {
         ),
         (
             "@scope (.card) to { .title { color: black; } }",
-            Rejection::prelude("scope", Some("{")),
+            Rejection::prelude("scope", Some("to")),
         ),
         (
             "@scope to { .title { color: black; } }",
-            Rejection::prelude("scope", Some("{")),
+            Rejection::prelude("scope", Some("to")),
         ),
         (
             "@scope () { .title { color: black; } }",
-            Rejection::prelude("scope", None),
+            Rejection::prelude("scope", Some(")")),
         ),
         (
             "@scope (.card,) { .title { color: black; } }",
-            Rejection::prelude("scope", None),
+            Rejection::prelude("scope", Some(")")),
         ),
         (
             "@scope (.card) to (.stop) extra { .title { color: black; } }",

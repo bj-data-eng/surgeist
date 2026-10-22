@@ -60,6 +60,8 @@ fn alignment<'i, 't>(
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssTextAlignAllValue, ParseError<'i, Error>> {
     let start = input.state();
+    // A token that starts no alignment is itself responsible.
+    let token_location = input.current_source_location();
     let token = input.next().map_err(basic)?.clone();
     match token {
         Token::QuotedString(_) => {
@@ -68,9 +70,10 @@ fn alignment<'i, 't>(
             if input.is_exhausted() {
                 return Ok(CssTextAlignAllValue::Character(component));
             }
+            let keyword_location = input.current_source_location();
             let ident = input.expect_ident_cloned().map_err(basic)?;
-            let fallback = position(ident.as_ref())
-                .ok_or_else(|| unexpected_at(input.current_source_location()))?;
+            let fallback =
+                position(ident.as_ref()).ok_or_else(|| unexpected_at(keyword_location))?;
             let component = CssCharacterAlignment::try_from_component(
                 component.component().clone(),
                 Some(fallback),
@@ -79,8 +82,7 @@ fn alignment<'i, 't>(
             Ok(CssTextAlignAllValue::Character(component))
         }
         Token::Ident(ident) => {
-            let value = keyword(ident.as_ref())
-                .ok_or_else(|| unexpected_at(input.current_source_location()))?;
+            let value = keyword(ident.as_ref()).ok_or_else(|| unexpected_at(token_location))?;
             if let Some(fallback) = position(ident.as_ref())
                 && !input.is_exhausted()
             {
@@ -92,7 +94,7 @@ fn alignment<'i, 't>(
             }
             Ok(CssTextAlignAllValue::Keyword(value))
         }
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(token_location)),
     }
 }
 
@@ -119,11 +121,12 @@ pub(super) fn parse_text_align_all<'i, 't>(
 pub(super) fn parse_text_align_last<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssTextAlignLastValue, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     if ident.eq_ignore_ascii_case("auto") {
         return Ok(CssTextAlignLastValue::Auto);
     }
     keyword(ident.as_ref())
         .map(CssTextAlignLastValue::Keyword)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(keyword_location))
 }

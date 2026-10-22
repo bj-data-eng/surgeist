@@ -124,10 +124,9 @@ fn emoji_has_four_independent_keyword_choices() {
 
 #[test]
 fn alternates_reject_empty_extra_duplicate_and_bad_separator_forms() {
-    // The implemented location of these rejections differs from the
-    // grammar-derived token (held for review), so only the kind and
-    // property are asserted.
-    rejected("font-variant-alternates", "stylistic(A, B)", None);
+    // Fonts 4: stylistic() takes one feature-value name, so the comma after
+    // it is responsible.
+    rejected("font-variant-alternates", "stylistic(A, B)", ", B)");
     for (value, rest) in [
         ("stylistic()", ")"),
         ("styleset()", ")"),

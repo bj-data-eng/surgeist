@@ -605,5 +605,10 @@ pub(crate) fn construct_descriptor_value(
             parse_value_data(input, kind, components, &numeric)
         })
     })();
-    result.map_err(|error| crate::error::from_parse_error(serialized.as_css(), error))
+    result.map_err(|error| {
+        crate::error::from_parse_error(
+            serialized.as_css(),
+            crate::error::with_descriptor_value_context(error, "counter-style", kind.css_name()),
+        )
+    })
 }

@@ -1171,20 +1171,11 @@ fn descriptor_value_fragment<T: Send>(
             state.retain_component_closures(openings);
             Ok(value)
         })()
-        .map_err(|error| {
-            if crate::error::is_resource_parse_error(&error)
-                || matches!(
-                    &error.kind,
-                    cssparser::ParseErrorKind::Custom(error)
-                        if matches!(error.kind(), crate::ErrorKind::InvalidComponentValue(_))
-                )
-            {
-                error
-            } else if let Some((owner, descriptor)) = descriptor {
-                crate::error::with_descriptor_context(error, owner, descriptor)
-            } else {
-                error
+        .map_err(|error| match descriptor {
+            Some((owner, descriptor)) => {
+                crate::error::with_descriptor_value_context(error, owner, descriptor)
             }
+            None => error,
         });
         let (syntax, diagnostics) = match result {
             Ok(value) => (Some(value), state.take_implicit_closure_diagnostics(source)),
@@ -1313,7 +1304,14 @@ pub fn parse_font_palette_descriptor_value(
             input.expect_exhausted().map_err(basic)?;
             state.retain_component_closures(openings);
             Ok(value)
-        })();
+        })()
+        .map_err(|error| {
+            crate::error::with_descriptor_value_context(
+                error,
+                "font-palette-values",
+                descriptor.css_name(),
+            )
+        });
         let (syntax, diagnostics) = match result {
             Ok(value) => (Some(value), state.take_implicit_closure_diagnostics(source)),
             Err(error) => (
@@ -1342,7 +1340,14 @@ pub fn parse_color_profile_descriptor_value(
             input.expect_exhausted().map_err(basic)?;
             state.retain_component_closures(openings);
             Ok(value)
-        })();
+        })()
+        .map_err(|error| {
+            crate::error::with_descriptor_value_context(
+                error,
+                "color-profile",
+                descriptor.css_name(),
+            )
+        });
         let (syntax, diagnostics) = match result {
             Ok(value) => (Some(value), state.take_implicit_closure_diagnostics(source)),
             Err(error) => (

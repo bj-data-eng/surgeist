@@ -141,10 +141,7 @@ fn media_query_parser_preserves_unknown_and_rejects_malformed_conditions() {
     // `and` needs a following condition and a media type takes no `or`. No
     // token is responsible for a truncated query; its diagnostic names the
     // query's first token (an implementation-defined choice).
-    for (css, encountered) in [
-        ("screen and", Some("screen")),
-        ("screen or print", Some("or")),
-    ] {
+    for (css, encountered) in [("screen and", Some("and")), ("screen or print", Some("or"))] {
         let error = parse_media_query_list(css).expect_err("invalid media query list");
         assert_rejection_matches(
             css,

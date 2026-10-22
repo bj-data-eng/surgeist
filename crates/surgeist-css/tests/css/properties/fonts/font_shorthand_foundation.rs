@@ -286,13 +286,12 @@ fn font_grammar_retains_pinned_controls_and_neighbor_recovery() {
     }
     // Fonts 4 §2.7: at most four `normal` prefix components and one weight;
     // `75%` is a <'font-size'>, after which `16px` cannot extend a family name.
-    // The implemented location of the fifth `normal` differs from the
-    // grammar-derived token (held for review), so only its kind and
-    // property are asserted.
+    // The fifth `normal` is the first component no remaining prefix operand
+    // admits.
     assert_checked_value_rejected_at(
         CssKnownProperty::Font,
         "normal normal normal normal normal 16px serif",
-        None,
+        "normal 16px serif",
     );
     for (value, rest) in [
         ("bold 700 16px serif", "700 16px serif"),

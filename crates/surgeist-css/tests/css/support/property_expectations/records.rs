@@ -140,6 +140,7 @@ property_records! {
         dispatch: "fade 1s ease-in 200ms 3 alternate both running",
         wrapper: yes,
         inverse: ("fade 1s", "1s fade"),
+        leading: custom_ident,
     }
     AnimationDelay, "animation-delay" {
         metadata: longhand(false, |v| {
@@ -196,6 +197,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.animation-name", "fade, none", rejected("default")),
         dispatch: "fade, none",
         wrapper: yes,
+        leading: custom_ident,
     }
     AnimationPlayState, "animation-play-state" {
         metadata: longhand(false, |v| {
@@ -942,6 +944,7 @@ property_records! {
         source: "R-COLORADJUST1",
         dispatch: "only light Future light",
         wrapper: yes,
+        leading: custom_ident_list,
     }
     ColumnCount, "column-count" {
         metadata: longhand(false, |v| assert_eq!(*v, CssColumnCount::Auto)),
@@ -1121,9 +1124,11 @@ property_records! {
     Container, "container" {
         metadata: shorthand([ContainerName, ContainerType], []),
         inverse: ("box / inline-size", "box / inline-size"),
+        leading: custom_ident_list,
     }
     ContainerName, "container-name" {
         metadata: longhand(false, |v| assert_eq!(*v, CssContainerNames::None)),
+        leading: custom_ident_list,
     }
     ContainerType, "container-type" {
         metadata: longhand(false, |v| assert_eq!(*v, CssContainerType::Normal)),
@@ -1141,6 +1146,7 @@ property_records! {
         source: "X-CONTENT3",
         dispatch: "Chapter \"Title\"",
         wrapper: yes,
+        leading: custom_ident,
     }
     BookmarkLevel, "bookmark-level" {
         metadata: longhand(false, |v| assert!(v.level().is_none())),
@@ -1181,12 +1187,14 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.counter-increment", "section 1" => "section", rejected("1")),
         dispatch: "section 1",
         wrapper: yes,
+        leading: custom_ident_list,
     }
     CounterReset, "counter-reset" {
         metadata: longhand(false, |v| assert!(v.changes().is_none())),
         catalog: grammar_catalog!("baseline.property.counter-reset", "section 2", rejected("none item")),
         dispatch: "section 2",
         wrapper: yes,
+        leading: custom_ident_list,
     }
     CounterSet, "counter-set" {
         metadata: longhand(false, |v| assert!(v.changes().is_none())),
@@ -1194,6 +1202,7 @@ property_records! {
         source: "I-LISTS3",
         dispatch: "section 3",
         wrapper: yes,
+        leading: custom_ident_list,
     }
     Cue, "cue" {
         metadata: shorthand([CueBefore, CueAfter], []),
@@ -1397,6 +1406,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.font-family", "\"Avenir Next\", sans-serif", rejected("sans-serif,")),
         dispatch: "\"Avenir Next\", sans-serif",
         wrapper: yes,
+        leading: custom_ident_list,
     }
     FontFeatureSettings, "font-feature-settings" {
         metadata: longhand(true, |v| {
@@ -1603,6 +1613,7 @@ property_records! {
         dispatch: "header / 1 / span 2 / main",
         wrapper: yes,
         inverse: ("1 / 2 / 3 / 4", "1 / 2 / 3 / 4"),
+        leading: custom_ident,
     }
     GridAutoColumns, "grid-auto-columns" {
         metadata: longhand(false, |v| {
@@ -1646,6 +1657,7 @@ property_records! {
         dispatch: "nav / main",
         wrapper: yes,
         inverse: ("1 / 3", "1 / 3"),
+        leading: custom_ident,
     }
     GridColumnEnd, "grid-column-end" {
         metadata: longhand(false, |v| {
@@ -1654,6 +1666,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.grid-column-end", "4", rejected("0")),
         dispatch: "4",
         wrapper: yes,
+        leading: custom_ident,
     }
     GridColumnStart, "grid-column-start" {
         metadata: longhand(false, |v| {
@@ -1662,6 +1675,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.grid-column-start", "nav", rejected("0")),
         dispatch: "nav",
         wrapper: yes,
+        leading: custom_ident,
     }
     GridRow, "grid-row" {
         metadata: shorthand([GridRowStart, GridRowEnd], []),
@@ -1669,6 +1683,7 @@ property_records! {
         dispatch: "1 / span 2",
         wrapper: yes,
         inverse: ("2 / 4", "2 / 4"),
+        leading: custom_ident,
     }
     GridRowEnd, "grid-row-end" {
         metadata: longhand(false, |v| {
@@ -1677,6 +1692,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.grid-row-end", "auto", rejected("0")),
         dispatch: "auto",
         wrapper: yes,
+        leading: custom_ident,
     }
     GridRowStart, "grid-row-start" {
         metadata: longhand(false, |v| {
@@ -1685,6 +1701,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.grid-row-start", "span 2 main", rejected("0")),
         dispatch: "span 2 main",
         wrapper: yes,
+        leading: custom_ident,
     }
     GridTemplate, "grid-template" {
         metadata: shorthand([GridTemplateRows, GridTemplateColumns, GridTemplateAreas], []),
@@ -1958,6 +1975,7 @@ property_records! {
         dispatch: "url(marker.svg) inside square",
         wrapper: yes,
         inverse: ("square inside none", "inside square"),
+        leading: custom_ident,
     }
     ListStyleImage, "list-style-image" {
         metadata: longhand(true, |v| assert_eq!(v, &CssImageValue::None)),
@@ -1980,6 +1998,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.list-style-type", "square", rejected("symbols(numeric \"*\")")),
         dispatch: "square",
         wrapper: yes,
+        leading: custom_ident,
     }
     Margin, "margin" {
         metadata: four_side(),
@@ -3208,6 +3227,7 @@ property_records! {
         dispatch: "opacity 150ms ease-in 20ms, transform 2s linear",
         wrapper: yes,
         inverse: ("opacity 1s", "opacity 1s"),
+        leading: custom_ident,
     }
     TransitionDelay, "transition-delay" {
         metadata: longhand(false, |v| {
@@ -3238,6 +3258,7 @@ property_records! {
         catalog: grammar_catalog!("baseline.property.transition-property", "opacity, transform", rejected("default")),
         dispatch: "opacity, transform",
         wrapper: yes,
+        leading: custom_ident,
     }
     TransitionTimingFunction, "transition-timing-function" {
         metadata: longhand(false, |v| {
@@ -3302,6 +3323,7 @@ property_records! {
     VoiceFamily, "voice-family" {
         metadata: longhand(true, ua(CssUserAgentInitial::VoiceFamily)),
         wrapper: yes,
+        leading: custom_ident_list,
     }
     VoicePitch, "voice-pitch" {
         metadata: longhand(true, |value| {
@@ -3383,6 +3405,7 @@ property_records! {
         catalog: grammar_catalog!("official.property.view-transition-name", "Card", rejected("auto")),
         dispatch: "Card",
         wrapper: yes,
+        leading: custom_ident,
     }
     WillChange, "will-change" {
         metadata: longhand(false, |v| assert_eq!(*v, CssWillChange::Auto)),
@@ -3398,6 +3421,7 @@ property_records! {
             "", "none", "all", "will-change", "default", "auto,opacity", "inherit,contents",
             "scroll-position contents", "opacity,", ",opacity", "1", r#""opacity""#,
         ],
+        leading: custom_ident,
     }
     WordBreak, "word-break" {
         metadata: longhand(true, |v| assert_eq!(*v, CssWordBreak::Normal)),

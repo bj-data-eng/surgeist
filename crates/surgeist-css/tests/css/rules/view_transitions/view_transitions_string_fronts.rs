@@ -1,6 +1,6 @@
 //! Public string fronts: VT1 CRD20240328 §§2.1,3.1,3.2;
 //! selected Selectors4 §3.6.4 and the adopted scoped attachment disposition.
-use crate::css::support::rules::{ExpectedRejection, unexpected_token};
+use crate::css::support::rules::ExpectedRejection;
 use crate::css::support::sole_declaration;
 use surgeist_css::*;
 
@@ -208,8 +208,11 @@ fn malformed_function_forms_and_lexical_controls_stay_rejected() {
         ("::view-transition-group()", invalid.clone()),
         ("::view-transition-group(A B)", invalid.clone().at("B")),
         ("::view-transition-group(A,B)", invalid.clone().at(",")),
-        ("::view-transition-group(\"A\")", unexpected_token("\"A\"")),
-        ("::view-transition-group(1)", unexpected_token("1")),
+        (
+            "::view-transition-group(\"A\")",
+            invalid.clone().at("\"A\""),
+        ),
+        ("::view-transition-group(1)", invalid.clone().at("1")),
         (
             "::view-transition-group(default)",
             invalid.clone().at("default"),
@@ -220,12 +223,12 @@ fn malformed_function_forms_and_lexical_controls_stay_rejected() {
         ),
         ("::view-transition-group(**)", invalid.clone()),
         ("::view-transition-group(A.x)", invalid.clone()),
-        ("::view-transition-group(.x)", unexpected_token(".")),
+        ("::view-transition-group(.x)", invalid.clone().at(".")),
         ("::view-transition-group (A)", invalid.clone()),
         (":: view-transition", invalid.clone()),
         (":unknown()", invalid.clone()),
-        // The diagnostic names `child` rather than the combinator.
-        ("::before > .child", invalid.clone()),
+        // The combinator after the pseudo-element is responsible.
+        ("::before > .child", invalid.clone().at(">")),
     ] {
         let report = parse_selector(source, &CssNamespaceContext::default());
         assert!(report.syntax().is_none(), "{source}: {report:?}");

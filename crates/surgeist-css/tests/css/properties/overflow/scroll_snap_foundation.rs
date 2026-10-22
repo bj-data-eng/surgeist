@@ -163,10 +163,9 @@ fn snap_type_requires_an_axis_before_optional_strictness_and_align_has_two_roles
         declaration("scroll-snap-stop", value);
         checked("scroll-snap-stop", value);
     }
-    // The implemented location of these rejections differs from the
-    // grammar-derived token (held for review), so only the kind and
-    // property are asserted.
-    assert_invalid("scroll-snap-type", "mandatory x", None);
+    // Scroll Snap 1 §5.1: the axis comes first, so the leading strictness
+    // keyword is responsible.
+    assert_invalid("scroll-snap-type", "mandatory x", "mandatory x");
     for (name, value, rest) in [
         ("scroll-snap-type", "mandatory", "mandatory"),
         ("scroll-snap-type", "proximity", "proximity"),

@@ -1825,6 +1825,29 @@ pub(crate) fn is_resource_parse_error(error: &ParseError<'_, Error>) -> bool {
         )
 }
 
+/// Names the owning at-rule and descriptor on a standalone descriptor-value
+/// grammar failure, as the enclosing rule body does. Resource and component
+/// failures keep their own kinds.
+pub(crate) fn with_descriptor_value_context<'i>(
+    error: ParseError<'i, Error>,
+    at_rule: &str,
+    descriptor: &str,
+) -> ParseError<'i, Error> {
+    if is_resource_parse_error(&error)
+        || matches!(
+            &error.kind,
+            ParseErrorKind::Custom(Error {
+                kind: ErrorKind::InvalidComponentValue(_),
+                ..
+            })
+        )
+    {
+        error
+    } else {
+        with_descriptor_context(error, at_rule, descriptor)
+    }
+}
+
 pub(crate) fn with_descriptor_context<'i>(
     mut error: ParseError<'i, Error>,
     at_rule: &str,
@@ -2100,6 +2123,8 @@ fn production_for_at_rule(name: &str) -> CssProductionId {
         CssProductionId::new("baseline.rule.font-face")
     } else if name.eq_ignore_ascii_case("font-palette-values") {
         CssProductionId::new("later.rule.font-palette-values")
+    } else if name.eq_ignore_ascii_case("font-feature-values") {
+        CssProductionId::new("later.rule.font-feature-values")
     } else if name.eq_ignore_ascii_case("keyframes") {
         CssProductionId::new("baseline.rule.keyframes")
     } else if name.eq_ignore_ascii_case("media") {
@@ -2155,6 +2180,7 @@ fn is_page_margin_box_name(name: &str) -> bool {
 
 fn at_rule_requires_block(name: &str) -> bool {
     name.eq_ignore_ascii_case("font-face")
+        || name.eq_ignore_ascii_case("font-feature-values")
         || name.eq_ignore_ascii_case("font-palette-values")
         || name.eq_ignore_ascii_case("keyframes")
         || name.eq_ignore_ascii_case("media")

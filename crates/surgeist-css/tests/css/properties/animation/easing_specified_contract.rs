@@ -2,7 +2,7 @@
 //! §§10.12–10.13 defer math range checks and integer rounding beyond specified values.
 //! https://www.w3.org/TR/2023/CRD-css-easing-1-20230213/#serialization
 
-use crate::css::support::property_admission::Responsible::{At, Disputed, End};
+use crate::css::support::property_admission::Responsible::At;
 use crate::css::support::property_admission::{assert_invalid_value, assert_numeric_rejected};
 use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::*;
@@ -258,9 +258,9 @@ fn checked_composition_retains_original_components_and_origins() {
 #[test]
 fn invalid_grammar_drops_only_easing_and_strict_validation_agrees() {
     for (invalid, token) in [
-        ("linear(0)", At("0")),
-        ("spring(1,1,1,1)", Disputed),
-        ("cubic-bezier(0,1,1)", At("1")),
+        ("linear(0)", At(")")),
+        ("spring(1,1,1,1)", At("spring(")),
+        ("cubic-bezier(0,1,1)", At(")")),
         ("cubic-bezier(0 1 1 1)", At("1")),
         ("cubic-bezier(0,1,1,1,0)", At(",")),
         ("cubic-bezier(-0.0000000001,0,1,1)", At("-0.0000000001")),
@@ -269,11 +269,11 @@ fn invalid_grammar_drops_only_easing_and_strict_validation_agrees() {
         ("steps(-1)", At("-1")),
         ("steps(1.0)", At("1.0")),
         ("steps(1e0)", At("1e0")),
-        ("steps(1,jump-none)", Disputed),
+        ("steps(1,jump-none)", At("jump-none")),
         ("steps(2 start)", At("start")),
         ("steps(2,unknown)", At("unknown")),
         ("steps(2,start,end)", At(",")),
-        ("ease,", End),
+        ("ease,", At(",")),
         ("cubic-bezier(calc((1px + 1%) / 1px),0,1,1)", At("calc(")),
         ("steps(calc((1px + 1%) / 1px))", At("calc(")),
     ] {

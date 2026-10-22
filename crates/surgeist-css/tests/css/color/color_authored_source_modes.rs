@@ -4,8 +4,9 @@
 //! Color 4 (CRD 2026-09-08) and Color 5 (WD 2026-09-08) define the accepted
 //! forms; the values stay symbolic, keep their exact numeric spellings and
 //! origins, and a rejection is located at its responsible authored token. CSS
-//! Syntax 3 (CRD 2026-10-01) §5.5.10 closes a function at EOF, so an unclosed
-//! function's responsible site is the end of the input.
+//! Syntax 3 (CRD 2026-10-01) §5.5.10 closes a function at EOF, so parsed text
+//! names an unclosed function's last authored token, while checked
+//! construction refuses the implicit closure itself.
 
 use surgeist_css::*;
 
@@ -60,8 +61,12 @@ fn parsed_error(text: &str) -> Error {
 }
 
 /// The authored byte offset a component-value rejection reports.
+fn checked_value_error(text: &str) -> CssPropertyValueParseError {
+    checked(parse_component_values(text).unwrap()).unwrap_err()
+}
+
 fn checked_error_offset(text: &str) -> usize {
-    let error = checked(parse_component_values(text).unwrap()).unwrap_err();
+    let error = checked_value_error(text);
     let origin = match error.origin() {
         CssSerializedOrigin::Token(origin) | CssSerializedOrigin::End(Some(origin)) => origin,
         other => panic!("{text}: rejection names an authored token: {other:?}"),
@@ -382,12 +387,28 @@ fn grammar_failures_and_prefix_consumption_use_actual_boundaries() {
     // takes numbers only after a number (Color 4 §5.1), legacy hsl() takes
     // percentages (Color 4 §7), modern syntax takes no commas, color-mix()
     // weights are `<percentage [0,100]>` (Color 5 §3), and light-dark() takes
-    // two colors (Color 5 §7). `rgb(none, 2, 3)` (expected at its first `,`)
-    // and the argument lists cut short at `)` are left out: the parser
-    // currently reports a later or dangling token for them.
+    // two colors (Color 5 §7). Legacy rgb() admits no `none`, so modern
+    // syntax reaches furthest in `rgb(none, 2, 3)` and fails at its first
+    // `,`; an argument list cut short fails at its `)`.
     for (text, token, at) in [
         ("rgb(1, 2%, 3)", "2%", "rgb(1, ".len()),
+        ("rgb(none, 2, 3)", ",", "rgb(none".len()),
+        ("rgb(1 2)", ")", "rgb(1 2".len()),
+        ("rgb(1, 2)", ")", "rgb(1, 2".len()),
+        ("hsl(1 2%)", ")", "hsl(1 2%".len()),
+        ("lab(1 2)", ")", "lab(1 2".len()),
+        ("color(srgb 1 2)", ")", "color(srgb 1 2".len()),
+        ("rgb(1 2 3 /)", ")", "rgb(1 2 3 /".len()),
+        ("rgb(from red r g)", ")", "rgb(from red r g".len()),
+        ("light-dark(red)", ")", "light-dark(red".len()),
+        ("rgb(1 2 3 4)", "4", "rgb(1 2 3 ".len()),
+        ("rgb(1, 2 3)", "3", "rgb(1, 2 ".len()),
         ("rgb(1 2 3, .5)", ",", "rgb(1 2 3".len()),
+        (
+            "color-mix(in srgb, red 50% blue)",
+            "blue",
+            "color-mix(in srgb, red 50% ".len(),
+        ),
         ("hsl(1, 2, 3)", "2", "hsl(1, ".len()),
         ("rgb(1 x 3)", "x", "rgb(1 ".len()),
         (
@@ -455,27 +476,59 @@ fn source_positions_keep_utf16_columns_and_constructor_limits_stay_typed() {
 }
 
 #[test]
-fn closing_and_eof_failures_stay_inside_their_function_in_both_source_modes() {
+fn closing_and_eof_failures_use_actual_end_sites_in_both_source_modes() {
     // Each rgb() has two channels, so Color 4 (CRD 2026-09-08) §5.1 rejects
-    // it where its arguments end. The responsible site is the authored `)`,
-    // or EOF when CSS Syntax 3 (CRD 2026-10-01) §5.5.10 closes the function
-    // implicitly. The parser currently reports the last channel instead (in
-    // parsed text always, in component values when the `)` is explicit), so
-    // the exact site is not asserted; only that the rejection lies inside the
-    // rejected rgb().
-    for text in [
-        "rgb(1 2)",
-        "rgb(1 2",
-        "/*😀*/light-dark(red, rgb(1 2))",
-        "/*😀*/light-dark(red, rgb(1 2",
+    // it where its arguments end. An authored `)` cannot continue the
+    // function and is responsible; when input ends first (CSS Syntax 3 CRD
+    // 2026-10-01 §5.5.10 closes the function implicitly), the last authored
+    // token is. Columns are zero-based UTF-16 code units. Checked
+    // construction admits no implicitly closed group before any grammar
+    // runs, so it names the implicit closure at the end instead.
+    let emoji = "/*😀*/light-dark(red, rgb(1 2".len();
+    for (text, at, column, checked) in [
+        ("rgb(1 2)", 7, 7, 7),
+        ("rgb(1 2", 6, 6, 7),
+        ("/*😀*/light-dark(red, rgb(1 2))", emoji, 29, emoji),
+        ("/*😀*/light-dark(red, rgb(1 2", emoji - 1, 28, emoji),
     ] {
-        let function = text.find("rgb(").unwrap()..=text.len();
-        let parsed = parsed_error(text).position().byte_offset().value();
-        assert!(function.contains(&parsed), "{text:?} Parsed at {parsed}");
-        let checked = checked_error_offset(text);
-        assert!(
-            function.contains(&checked),
-            "{text:?} Components at {checked}"
+        let error = parsed_error(text);
+        assert_eq!(
+            (
+                error.position().byte_offset().value(),
+                error.position().column().value() as usize,
+                checked_error_offset(text),
+            ),
+            (at, column, checked),
+            "{text:?}: {:?}",
+            error.kind()
+        );
+        // The checked refusal of an implicit closure is its own kind, not
+        // the colour grammar's rejection.
+        let checked = checked_value_error(text);
+        let implicit = !text.ends_with(')');
+        assert_eq!(
+            matches!(
+                checked.kind(),
+                CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
+            ),
+            implicit,
+            "{text:?}: {checked:?}"
+        );
+        assert_eq!(
+            matches!(
+                checked.kind(),
+                CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidColorSyntax(_))
+            ),
+            !implicit,
+            "{text:?}: {checked:?}"
+        );
+        assert_eq!(
+            matches!(
+                checked.origin(),
+                CssSerializedOrigin::End(Some(CssValueOrigin::ImplicitClosure { .. }))
+            ),
+            implicit,
+            "{text:?}: {checked:?}"
         );
     }
 }

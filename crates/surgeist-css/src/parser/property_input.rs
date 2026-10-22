@@ -105,6 +105,71 @@ impl<'i> Site<'i> {
         }
         Some(site)
     }
+    /// Whether an operator follows this component in its list, so that it
+    /// starts a multi-term calculation.
+    pub(crate) fn begins_expression(self) -> bool {
+        let nodes = &self.document.lists[self.list];
+        let Some(index) = (self.index + 1..nodes.len())
+            .find(|index| !self.document.nodes[nodes[*index]].is_trivia())
+        else {
+            return false;
+        };
+        matches!(
+            Self {
+                index,
+                closing: false,
+                ..self
+            }
+            .token(),
+            Some(Token::Delim('+' | '-' | '*' | '/'))
+        )
+    }
+    /// The end of this component's list when it is an operator that follows
+    /// an operand and that no further component follows: the operand it
+    /// requires is missing there. An operator that starts its argument is
+    /// itself responsible.
+    pub(crate) fn trailing_operator_end(self) -> Option<Self> {
+        if !matches!(self.token(), Some(Token::Delim('+' | '-' | '*' | '/'))) {
+            return None;
+        }
+        let nodes = &self.document.lists[self.list];
+        let operand = (0..self.index)
+            .rev()
+            .find(|index| !self.document.nodes[nodes[*index]].is_trivia())
+            .is_some_and(|index| {
+                !matches!(
+                    Self {
+                        index,
+                        closing: false,
+                        ..self
+                    }
+                    .token(),
+                    Some(Token::Comma)
+                )
+            });
+        if !operand {
+            return None;
+        }
+        (self.index + 1..nodes.len())
+            .all(|index| self.document.nodes[nodes[index]].is_trivia())
+            .then_some(Self {
+                index: nodes.len(),
+                closing: false,
+                ..self
+            })
+    }
+    /// The end of the group at `path`'s children, before its closing
+    /// boundary: where a function cut short of its grammar ends.
+    pub(crate) fn descendant_children_end(self, path: &[usize]) -> Option<Self> {
+        let group = self.descendant(path, false)?;
+        let list = group.node()?.children()?;
+        Some(Self {
+            document: self.document,
+            list,
+            index: self.document.lists[list].len(),
+            closing: false,
+        })
+    }
     /// Locate an explicit source fault only within this cursor's original snapshot.
     /// Checked input deliberately has no reverse lookup by origin identity.
     pub(crate) fn source_origin(self, origin: &CssValueOrigin) -> Option<Self> {

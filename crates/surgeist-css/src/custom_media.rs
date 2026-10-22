@@ -328,6 +328,11 @@ impl CssCustomMediaRule {
                                     CssComponentValueRef::Token(CssValueTokenRef::Comma)
                                 )
                             {
+                                if let Some(error) =
+                                    crate::media::empty_media_member_error(tail, start, end)
+                                {
+                                    return Err(error.into());
+                                }
                                 queries.push(CssMediaQuery::try_from_components_with_limits(
                                     CssComponentValues::try_new(tail[start..end].to_vec())?,
                                     limits,

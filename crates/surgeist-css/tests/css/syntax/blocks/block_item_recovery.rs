@@ -487,8 +487,10 @@ fn block_item_recovery_each_font_face_descriptor_value_failure_has_exact_scope()
         );
         let report = parse_sheet(&source);
         let child = &report.diagnostics()[0];
+        // A value without any authored token is located at the `;` that
+        // ends it, as an empty property value is.
         let responsible = if unit.ends_with(": ;") {
-            source.find(unit).unwrap() + unit.find(' ').unwrap()
+            source.find(unit).unwrap() + unit.find(';').unwrap()
         } else {
             source.find("nope").unwrap()
         };

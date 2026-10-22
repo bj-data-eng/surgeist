@@ -293,16 +293,15 @@ fn pending_reentry_and_shorthand_share_strict_authored_grammar() {
             ),
         }
     }
-    // The implemented location of the number-plus-percentage sum differs from
-    // the grammar-derived whole function (held for review), so only its kind
-    // and property are asserted.
+    // Values 4 §10.9: the number-plus-percentage sum stops type checking at
+    // its percentage operand.
     assert_invalid_replacement_at(
         &handle
             .reenter(parse_component_values("calc(1 + 2%)").unwrap())
             .unwrap_err(),
         CssKnownProperty::LineHeight,
         "calc(1 + 2%)",
-        None,
+        "2%)",
     );
     assert_eq!(
         handle

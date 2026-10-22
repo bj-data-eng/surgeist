@@ -20,7 +20,9 @@
 
 use crate::css::support::authored_property::{self, assert_source};
 use crate::css::support::property_admission::assert_implicit_closure;
-use crate::css::support::property_expectations::{self, MetadataExpectation, PropertyExpectation};
+use crate::css::support::property_expectations::{
+    self, Leading, MetadataExpectation, PropertyExpectation,
+};
 use crate::css::support::serialization_limits::LimitLadder;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use surgeist_css::CssKnownProperty as P;
@@ -1451,4 +1453,113 @@ fn every_record_substitution_after_an_ordinary_value_defers_the_whole_value() {
             }
         }
     });
+}
+
+/// A grammar diagnostic's kind and the responsible token it names, as
+/// `Kind:token`.
+fn token_of_kind(kind: &ErrorKind) -> String {
+    let (label, token) = match kind {
+        ErrorKind::InvalidPropertyValue(detail) => ("InvalidPropertyValue", detail.encountered()),
+        ErrorKind::InvalidColorSyntax(detail) => ("InvalidColorSyntax", detail.encountered()),
+        other => return format!("<{other:?}>"),
+    };
+    let token = token.map_or("<none>", CssTokenSummary::authored);
+    format!("{label}:{token}")
+}
+
+/// The responsible token the stylesheet front reports for `value` declared
+/// inside a style rule, or `None` when it admits it.
+fn sheet_responsible_token(case: &PropertyExpectation, value: &str) -> Option<String> {
+    parse_sheet(&format!(".a{{{}: {value}}}", case.name))
+        .diagnostics()
+        .first()
+        .map(|diagnostic| token_of_kind(diagnostic.error().kind()))
+}
+
+/// The responsible token a front reports for `value`, or `None` when the
+/// front admits it.
+fn responsible_token(case: &PropertyExpectation, front: Front, value: &str) -> Option<String> {
+    let of_kind = token_of_kind;
+    let diagnostics = match front {
+        Front::Attribute | Front::UppercaseAttribute => {
+            let name = if matches!(front, Front::Attribute) {
+                case.name.to_owned()
+            } else {
+                case.name.to_ascii_uppercase()
+            };
+            parse_style_attribute(&format!("{name}:{value}"))
+                .diagnostics()
+                .to_vec()
+        }
+        Front::CheckedName | Front::CheckedGrammar => {
+            return authored_property::checked_components(
+                case.property,
+                parse_component_values(value).unwrap(),
+                matches!(front, Front::CheckedGrammar),
+                CssImportance::Normal,
+            )
+            .err()
+            .map(|error| match error.kind() {
+                CssPropertyValueErrorKind::Grammar(kind) => of_kind(kind),
+                other => format!("<{other:?}>"),
+            });
+        }
+        Front::TextName | Front::TextGrammar => text_report(
+            case,
+            value,
+            matches!(front, Front::TextGrammar),
+            CssImportance::Normal,
+        )
+        .diagnostics()
+        .to_vec(),
+    };
+    diagnostics
+        .first()
+        .map(|diagnostic| of_kind(diagnostic.error().kind()))
+}
+
+/// The crate's location rule: a token that cannot continue the production
+/// is responsible. An unknown identifier cannot start a keyword grammar, so
+/// it names itself rather than the token after it. A grammar whose record
+/// declares a leading `<custom-ident>` (Values 4 §4.2) takes it as a name and
+/// rejects the second identifier, and one that declares an identifier
+/// sequence admits the whole value.
+#[test]
+fn every_record_unknown_first_keyword_names_itself_unless_a_custom_ident_is_admitted() {
+    let value = "zzfoo zzbar";
+    let mut failures = Vec::new();
+    for case in property_expectations::CASES {
+        let fronts = FRONTS
+            .into_iter()
+            .map(|front| (format!("{front:?}"), responsible_token(case, front, value)))
+            .chain([("Sheet".to_owned(), sheet_responsible_token(case, value))]);
+        for (front, responsible) in fronts {
+            let held = match case.leading {
+                // The shared Color 4 grammar reports colour properties.
+                Leading::Keyword => responsible
+                    .as_deref()
+                    .and_then(|outcome| outcome.split_once(':'))
+                    .is_some_and(|(kind, token)| {
+                        token == "zzfoo"
+                            && matches!(kind, "InvalidPropertyValue" | "InvalidColorSyntax")
+                    }),
+                Leading::CustomIdent => {
+                    responsible.as_deref() == Some("InvalidPropertyValue:zzbar")
+                }
+                Leading::CustomIdentList => responsible.is_none(),
+            };
+            if !held {
+                failures.push(format!(
+                    "{} via {front}: {responsible:?} (leading {:?})",
+                    case.name, case.leading
+                ));
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} first-keyword failures:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }

@@ -58,10 +58,8 @@ fn invalid_range_derivations_can_use_general_enclosed_grammar() {
 fn malformed_outer_queries_recover_each_list_member() {
     // Each first member fails at the comma where a condition is missing,
     // at a second operand without an operator, or at `or` mixed into `and`.
-    // The missing condition is not located at its comma (reported), so only
-    // its error and recovery are asserted.
     for (source, responsible) in [
-        ("screen and", None),
+        ("screen and", Some(10)),
         ("future() future()", Some(9)),
         ("future() and (color) or (hover)", Some(21)),
     ] {

@@ -1,9 +1,7 @@
 use crate::css::support::descriptor_phases;
 use descriptor_phases::*;
 
-use crate::css::support::rules::{
-    ExpectedRejection, invalid_descriptor, rejected_bang, unexpected_token,
-};
+use crate::css::support::rules::{ExpectedRejection, invalid_descriptor, rejected_bang};
 use surgeist_css::{CssNamespaceContext, parse_rule, parse_sheet, validate_sheet};
 
 // Fonts 4 (7 September 2026), section 6.9.2 and frozen WebKit select the
@@ -48,11 +46,11 @@ fn font_feature_values_rejects_missing_or_generic_family_preludes() {
     let prelude =
         ExpectedRejection::new(CssErrorCode::InvalidAtRulePrelude).in_rule("font-feature-values");
     for (source, expected) in [
-        // The diagnostic names the block after the prelude rather than the
-        // violating member, so only the at-rule is checked.
-        ("@font-feature-values {}", prelude.clone()),
-        ("@font-feature-values serif {}", prelude.clone()),
-        ("@font-feature-values Demo, {}", prelude.clone()),
+        // A missing member ends at the prelude end; a generic family is the
+        // violating member itself.
+        ("@font-feature-values {}", prelude.clone().at_end()),
+        ("@font-feature-values serif {}", prelude.clone().at("serif")),
+        ("@font-feature-values Demo, {}", prelude.clone().at_end()),
     ] {
         let report = parse_rule(source, &CssNamespaceContext::default());
         assert!(report.syntax().is_none(), "{source}");
@@ -412,9 +410,15 @@ fn malformed_blocks_and_descriptors_leave_valid_siblings_and_empty_containers() 
     let prelude =
         ExpectedRejection::new(CssErrorCode::InvalidAtRulePrelude).in_rule("font-feature-values");
     for (source, expected) in [
-        // The rule requires a {}-block, so its `;` is unexpected.
-        ("@font-feature-values Demo;", unexpected_token(";")),
-        ("@font-feature-values Demo, serif {}", prelude.clone()),
+        // The rule requires a {}-block, as every block at-rule does.
+        (
+            "@font-feature-values Demo;",
+            ExpectedRejection::new(CssErrorCode::InvalidAtRuleBody).in_rule("font-feature-values"),
+        ),
+        (
+            "@font-feature-values Demo, serif {}",
+            prelude.clone().at("serif"),
+        ),
         (
             "@font-feature-values Demo,,Other {}",
             prelude.clone().at(","),

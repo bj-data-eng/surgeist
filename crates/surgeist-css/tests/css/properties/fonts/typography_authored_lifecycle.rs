@@ -432,10 +432,9 @@ fn tab_math_retains_pure_root_graph_origins_and_deferred_negative_ranges() {
         // value is out of range or of another type.
         assert_checked_value_rejected_at(P::TabSize, text, text);
     }
-    // The implemented location of the mixed-type sum differs from the
-    // grammar-derived whole function (held for review), so only its kind and
-    // property are asserted.
-    assert_checked_value_rejected_at(P::TabSize, "calc(0 + 1px)", None);
+    // Values 4 §10.9: the sum stops type checking at its length operand,
+    // the first token where the prefix stops being valid.
+    assert_checked_value_rejected_at(P::TabSize, "calc(0 + 1px)", "1px)");
 }
 #[test]
 fn tab_reentry_borrows_the_supplied_numeric_children_and_preserves_original_occurrence() {

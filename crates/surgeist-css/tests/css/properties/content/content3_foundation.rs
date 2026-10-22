@@ -156,7 +156,7 @@ fn content_three_function_families_accept_their_finite_arguments() {
 fn ordinary_counter_names_reject_decoded_reserved_and_default_names() {
     for (invalid, token) in [
         ("counter(default)", Responsible::At("default")),
-        ("counters(DEFAULT, \".\")", Responsible::Disputed),
+        ("counters(DEFAULT, \".\")", Responsible::At("DEFAULT")),
         (r"counter(\64 efault)", Responsible::At("\\64 efault")),
     ] {
         assert_recovered(invalid, token);
@@ -174,14 +174,14 @@ fn invalid_combinations_and_function_arguments_recover_without_losing_neighbors(
         ("\"caption\" / open-quote", Some("open-quote")),
         ("\"caption\" / contents", Some("contents")),
         ("\"caption\" / leader(dotted)", Some("leader(")),
-        ("leader()", None),
+        ("leader()", Some(")")),
         ("leader(dashed)", Some("dashed")),
-        ("target-counter(\"#ch\")", Some("\"#ch\"")),
+        ("target-counter(\"#ch\")", Some(")")),
         (
             "target-counter(\"#ch\", chapter, decimal, extra)",
             Some(","),
         ),
-        ("target-counters(\"#ch\", chapter)", Some("chapter")),
+        ("target-counters(\"#ch\", chapter)", Some(")")),
         ("target-text(\"#ch\", marker)", Some("marker")),
         ("string(chapter, middle)", Some("middle")),
         ("content(chapter)", Some("chapter")),
@@ -190,12 +190,12 @@ fn invalid_combinations_and_function_arguments_recover_without_losing_neighbors(
         ("target-counter(\"#ch\", default)", Some("default")),
         ("string(INHERIT)", Some("INHERIT")),
         (r"string(\64 efault)", Some("\\64 efault")),
-        ("counter(chapter, symbols())", None),
-        ("counter(chapter, symbols(numeric \"0\"))", Some("\"0\"")),
-        ("counter(chapter, symbols(alphabetic \"a\"))", Some("\"a\"")),
+        ("counter(chapter, symbols())", Some(")")),
+        ("counter(chapter, symbols(numeric \"0\"))", Some(")")),
+        ("counter(chapter, symbols(alphabetic \"a\"))", Some(")")),
         ("counter(chapter, symbols(cyclic none))", Some("none")),
         ("counter(chapter, symbols(symbolic star))", Some("star")),
-        ("target-counter(\"#ch\", chapter,)", None),
+        ("target-counter(\"#ch\", chapter,)", Some(")")),
     ] {
         assert_recovered(invalid, token);
     }

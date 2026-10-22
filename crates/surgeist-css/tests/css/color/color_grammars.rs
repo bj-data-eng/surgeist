@@ -249,7 +249,7 @@ fn color_mix_nesting_preserves_the_exact_parser_boundary() {
 }
 
 #[test]
-fn relative_color_families_expose_their_closed_current_environments_and_i01_projection() {
+fn relative_color_families_expose_their_function_closed_environment_and_three_channels() {
     for (source, expected_function, expected_environment) in [
         (
             "color: rgb(from red r g b / alpha)",

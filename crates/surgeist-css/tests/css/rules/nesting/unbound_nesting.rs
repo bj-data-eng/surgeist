@@ -291,10 +291,11 @@ fn anchors_do_not_invent_types_or_discard_authored_namespace_constraints() {
         assert_eq!(name.namespace(), &namespace);
         assert_eq!(name.local_name(), Some("leaf"));
     }
-    // Namespaces 3 §3.3: the default context declares no `svg` prefix. The
-    // diagnostic names the local name `leaf` rather than the prefix, so
-    // only the code is checked.
+    // Namespaces 3 §3.3: the default context declares no `svg` prefix,
+    // which is therefore responsible.
     let report = parse_selector("svg|leaf&", &CssNamespaceContext::default());
     assert!(report.syntax().is_none());
-    ExpectedRejection::new(CssErrorCode::InvalidSelector).assert_first(&report);
+    ExpectedRejection::new(CssErrorCode::InvalidSelector)
+        .at("svg")
+        .assert_first(&report);
 }

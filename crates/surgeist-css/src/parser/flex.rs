@@ -15,13 +15,14 @@ use crate::{
 pub(super) fn parse_flex_direction<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFlexDirection, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "row" => Ok(CssFlexDirection::Row),
         "column" => Ok(CssFlexDirection::Column),
         "row-reverse" => Ok(CssFlexDirection::RowReverse),
         "column-reverse" => Ok(CssFlexDirection::ColumnReverse),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
@@ -50,12 +51,13 @@ pub(super) fn parse_flex_flow<'i, 't>(
 pub(super) fn parse_flex_wrap<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFlexWrap, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "nowrap" => Ok(CssFlexWrap::NoWrap),
         "wrap" => Ok(CssFlexWrap::Wrap),
         "wrap-reverse" => Ok(CssFlexWrap::WrapReverse),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 

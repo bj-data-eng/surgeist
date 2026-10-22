@@ -4,7 +4,7 @@
 //! Exact raw time-child provenance and contribution order are Surgeist contracts.
 //! These functional tests exercise the four new borrowed longhand variants.
 
-use crate::css::support::property_admission::Responsible::{At, Disputed, End};
+use crate::css::support::property_admission::Responsible::{At, End};
 use crate::css::support::property_admission::{
     assert_checked_rejected, assert_implicit_closure, assert_style_attribute_rejected,
 };
@@ -504,9 +504,9 @@ fn each_property_rejects_intrinsic_negatives_through_all_admission_front_doors()
             vec![
                 ("", End),
                 (",opacity", At(",")),
-                ("opacity,", End),
+                ("opacity,", At(",")),
                 ("opacity,,transform", At(",")),
-                ("none, opacity", Disputed),
+                ("none, opacity", At(",")),
                 ("opacity none", At("none")),
                 ("1s", At("1s")),
                 ("initial, opacity", At(",")),
@@ -520,7 +520,7 @@ fn each_property_rejects_intrinsic_negatives_through_all_admission_front_doors()
                 ("-1s", At("-1s")),
                 ("0", At("0")),
                 ("1px", At("1px")),
-                ("1s,", End),
+                ("1s,", At(",")),
                 ("1s,,2s", At(",")),
                 ("inherit, 1s", At(",")),
                 ("calc(1px)", At("calc(")),
@@ -533,7 +533,7 @@ fn each_property_rejects_intrinsic_negatives_through_all_admission_front_doors()
                 ("", End),
                 ("0", At("0")),
                 ("1px", At("1px")),
-                ("1s,", End),
+                ("1s,", At(",")),
                 ("1s,,2s", At(",")),
                 ("unset, 1s", At(",")),
                 ("calc(1px)", At("calc(")),
@@ -545,11 +545,11 @@ fn each_property_rejects_intrinsic_negatives_through_all_admission_front_doors()
             vec![
                 ("", End),
                 ("1s", At("1s")),
-                ("ease,", End),
+                ("ease,", At(",")),
                 ("ease,,linear", At(",")),
                 ("ease ease-in", At("ease-in")),
                 ("cubic-bezier(-1,0,1,1)", At("-1")),
-                ("steps(1,jump-none)", Disputed),
+                ("steps(1,jump-none)", At("jump-none")),
                 ("revert, ease", At(",")),
             ],
         ),
@@ -561,9 +561,9 @@ fn each_property_rejects_intrinsic_negatives_through_all_admission_front_doors()
                 ("opacity 1s 2s 3s", At("3s")),
                 ("opacity transform 1s", At("transform")),
                 ("opacity 1s ease linear", At("linear")),
-                ("opacity 1s,", End),
+                ("opacity 1s,", At(",")),
                 ("opacity 1s,,transform 2s", At(",")),
-                ("none 1s, opacity 2s", Disputed),
+                ("none 1s, opacity 2s", At(",")),
                 ("inherit, opacity 1s", At(",")),
                 ("opacity calc(1px)", At("calc(")),
             ],

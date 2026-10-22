@@ -294,23 +294,23 @@ fn rejects_invalid_pseudo_element_forms_and_non_terminal_positions() {
         ),
         (
             ".button::before span { color: black; }",
-            Rejection::selector(Some("{")),
+            Rejection::selector(Some("span")),
         ),
         (
             ".button::before > span { color: black; }",
-            Rejection::selector(Some("{")),
+            Rejection::selector(Some(">")),
         ),
         (
             ".button::marker::before { color: black; }",
-            Rejection::selector(Some("{")),
+            Rejection::selector(Some("before")),
         ),
         (
             ".button::before::after { color: black; }",
-            Rejection::selector(Some("{")),
+            Rejection::selector(Some("after")),
         ),
         (
             ".button::selection::marker { color: black; }",
-            Rejection::selector(Some("{")),
+            Rejection::selector(Some("marker")),
         ),
     ] {
         assert_rejection(css, rejection);
@@ -551,7 +551,7 @@ fn nth_child_accepts_strict_of_selector_lists() {
 fn nth_child_of_selector_lists_reject_invalid_entries_strictly() {
     assert_rejection(
         ":nth-child(odd of) { color: black; }",
-        Rejection::selector(Some("of")),
+        Rejection::selector(Some(")")),
     );
     assert_rejection(
         ":nth-child(odd of .valid, .bad..selector) { color: black; }",
@@ -573,14 +573,17 @@ fn nth_child_of_selector_lists_reject_invalid_entries_strictly() {
 
 #[test]
 fn rejects_unsupported_nth_patterns_and_of_selector_forms() {
-    assert_rejection(":nth-child() { color: black; }", Rejection::selector(None));
+    assert_rejection(
+        ":nth-child() { color: black; }",
+        Rejection::selector(Some(")")),
+    );
     assert_rejection(
         ":nth-child(foo) { color: black; }",
         Rejection::selector(Some("foo")),
     );
     assert_rejection(
         ":nth-child(2n +) { color: black; }",
-        Rejection::selector(Some("+")),
+        Rejection::selector(Some(")")),
     );
     assert_rejection(
         ":nth-child(2n + +1) { color: black; }",
@@ -757,7 +760,7 @@ fn functional_selector_lists_reject_invalid_entries_strictly() {
     );
     assert_rejection(
         ":where(.valid, .col ||) { color: black; }",
-        Rejection::selector(Some("|")),
+        Rejection::selector(Some(")")),
     );
     assert_rejection(
         ":not(.valid, ::before) { color: black; }",
@@ -766,7 +769,10 @@ fn functional_selector_lists_reject_invalid_entries_strictly() {
     // Selectors 4 "parse a list" splits with Syntax 3 (2026 CRD) §5.4.10, so a
     // final comma followed by no token adds no failing member; whitespace does.
     assert!(parse_sheet(":is(.valid,) { color: black; }").is_clean());
-    assert_rejection(":is(.valid, ) { color: black; }", Rejection::selector(None));
+    assert_rejection(
+        ":is(.valid, ) { color: black; }",
+        Rejection::selector(Some(")")),
+    );
 }
 
 #[test]
@@ -817,13 +823,16 @@ fn selector_argument_surface_rejects_invalid_entries_without_recovery() {
         ),
         (
             ":where(.valid, .col ||) { color: black; }",
-            Rejection::selector(Some("|")),
+            Rejection::selector(Some(")")),
         ),
         (
             ":not(.valid, ::before) { color: black; }",
             Rejection::selector(Some("before")),
         ),
-        (".card:has() { color: black; }", Rejection::selector(None)),
+        (
+            ".card:has() { color: black; }",
+            Rejection::selector(Some(")")),
+        ),
         (
             ".card:has(:has(.nested)) { color: black; }",
             Rejection::selector(Some(".")),
@@ -846,7 +855,7 @@ fn selector_argument_surface_rejects_invalid_entries_without_recovery() {
         ),
         (
             ":nth-child(odd of) { color: black; }",
-            Rejection::selector(Some("of")),
+            Rejection::selector(Some(")")),
         ),
         (
             ":nth-child(odd of .valid, .bad..selector) { color: black; }",
@@ -910,7 +919,10 @@ fn has_accepts_strict_relative_selector_lists() {
 
 #[test]
 fn has_rejects_invalid_relative_selector_entries_strictly() {
-    assert_rejection(".card:has() { color: black; }", Rejection::selector(None));
+    assert_rejection(
+        ".card:has() { color: black; }",
+        Rejection::selector(Some(")")),
+    );
     assert_rejection(
         ".card:has(.valid, .bad..selector) { color: black; }",
         Rejection::selector(Some(".")),
@@ -937,7 +949,7 @@ fn has_rejects_invalid_relative_selector_entries_strictly() {
     );
     assert_rejection(
         ".card:has(.valid,) { color: black; }",
-        Rejection::selector(None),
+        Rejection::selector(Some(")")),
     );
 }
 
@@ -963,10 +975,10 @@ fn functional_pseudo_class_arguments_are_publicly_inspectable() {
 
 #[test]
 fn rejects_empty_selector_list_functional_pseudo_classes() {
-    assert_rejection(":not() { color: black; }", Rejection::selector(None));
-    assert_rejection(":is() { color: black; }", Rejection::selector(None));
-    assert_rejection(":where() { color: black; }", Rejection::selector(None));
-    assert_rejection(":has() { color: black; }", Rejection::selector(None));
+    assert_rejection(":not() { color: black; }", Rejection::selector(Some(")")));
+    assert_rejection(":is() { color: black; }", Rejection::selector(Some(")")));
+    assert_rejection(":where() { color: black; }", Rejection::selector(Some(")")));
+    assert_rejection(":has() { color: black; }", Rejection::selector(Some(")")));
 }
 
 #[test]
@@ -1037,11 +1049,11 @@ fn rejects_function_syntax_for_runtime_state_pseudo_classes() {
 fn rejects_invalid_relative_or_combinator_selector_forms() {
     assert_rejection(
         ".field:has(.col ||) { color: black; }",
-        Rejection::selector(Some("|")),
+        Rejection::selector(Some(")")),
     );
     assert_rejection(
         ".field:has(||) { color: black; }",
-        Rejection::selector(Some("|")),
+        Rejection::selector(Some(")")),
     );
     assert_rejection(
         ".field:has(::before) { color: black; }",
@@ -1097,8 +1109,8 @@ fn rejects_invalid_combinator_selectors() {
         ".a > > .b { color: black; }",
         Rejection::selector(Some(">")),
     );
-    assert_rejection(".a > { color: black; }", Rejection::selector(Some("{")));
-    assert_rejection(".col || { color: black; }", Rejection::selector(Some("{")));
+    assert_rejection(".a > { color: black; }", Rejection::selector(Some(">")));
+    assert_rejection(".col || { color: black; }", Rejection::selector(Some("|")));
     assert_rejection(
         ".field:has(> > .icon) { color: black; }",
         Rejection::selector(Some(">")),
@@ -1234,17 +1246,17 @@ fn parses_attribute_selector_case_modifiers_and_compound_position() {
 fn rejects_invalid_attribute_selectors() {
     assert_rejection(
         "[svg|href] { color: black; }",
-        Rejection::selector(Some("href")),
+        Rejection::selector(Some("svg")),
     );
     assert_rejection(
         "[data-state=] { color: black; }",
-        Rejection::selector(Some("=")),
+        Rejection::selector(Some("]")),
     );
     assert_rejection(
         "[data-state=open q] { color: black; }",
         Rejection::selector(Some("q")),
     );
-    assert_rejection("[] { color: black; }", Rejection::selector(None));
+    assert_rejection("[] { color: black; }", Rejection::selector(Some("]")));
     assert_rejection(
         "[data-state=open extra] { color: black; }",
         Rejection::selector(Some("extra")),
@@ -1335,14 +1347,14 @@ fn practical_pseudo_class_matrix_accepts_supported_and_rejects_unsupported_forms
             ":hover() { color: black; }",
             Rejection::selector(Some("hover(")),
         ),
-        (":not() { color: black; }", Rejection::selector(None)),
+        (":not() { color: black; }", Rejection::selector(Some(")"))),
         (
             ":nth-of-type(2n of .item) { color: black; }",
             Rejection::selector(Some("of")),
         ),
         (
             ".field:has(.col ||) { color: black; }",
-            Rejection::selector(Some("|")),
+            Rejection::selector(Some(")")),
         ),
         (
             ".field:has(:has(.nested)) { color: black; }",

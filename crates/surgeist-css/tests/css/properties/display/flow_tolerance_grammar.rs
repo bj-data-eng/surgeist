@@ -8,7 +8,7 @@
 //! These tests use the existing public lookup and parser APIs, so the missing
 //! canonical property is an executed assertion failure, not a compiler error.
 
-use crate::css::support::property_admission::Responsible::{At, Disputed};
+use crate::css::support::property_admission::Responsible::At;
 use crate::css::support::property_admission::{assert_checked_rejected, assert_invalid_value};
 use surgeist_css::{
     CssErrorCode, CssGlobalKeyword, CssImportance, CssKnownProperty, CssPropertyNameRef,
@@ -200,9 +200,9 @@ fn invalid_keywords_dimensions_and_combinations_drop_only_the_offending_declarat
         ("1px 2px", At("2px")),
         ("1px, 2px", At(",")),
         ("1px / 2px", At("/")),
-        ("calc()", Disputed),
-        ("calc(1px +)", At("+")),
-        ("calc(1px + 1s)", Disputed),
+        ("calc()", At(")")),
+        ("calc(1px +)", At(")")),
+        ("calc(1px + 1s)", At("1s")),
         ("calc(1px * 1px)", At("calc(")),
         ("calc(1 + 2)", At("calc(")),
     ] {

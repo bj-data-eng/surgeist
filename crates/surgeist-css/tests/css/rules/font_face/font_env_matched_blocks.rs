@@ -3,9 +3,7 @@
 //! permits matched blocks in declaration-value, while excluding unmatched
 //! closers and root semicolons/bangs. These tests use the public string and component fronts.
 
-use crate::css::support::rules::{
-    ExpectedRejection, descriptor_rejected_at, invalid_descriptor, unexpected_token,
-};
+use crate::css::support::rules::{ExpectedRejection, descriptor_rejected_at, invalid_descriptor};
 use surgeist_css::{
     CssAuthoredFontFaceDescriptorValue as FaceValue, CssComponentValues,
     CssFontFaceDescriptorKind as FaceKind, CssFontFaceValueErrorKind,
@@ -188,21 +186,17 @@ fn palette_rule_retains_pending_matched_blocks_and_following_rule() {
 
 #[test]
 fn malformed_env_and_ordinary_root_blocks_remain_invalid_in_raw_and_checked_fronts() {
-    // A root block opens no production of either ordinary grammar. Where
-    // env() itself is malformed, Env 1 §3 does not say whether the env()
-    // grammar or the ordinary grammar names the responsible token, so only
-    // the rejecting descriptor is checked.
+    // A root block opens no production of either ordinary grammar. Env 1
+    // §3 defers only a syntactically valid env(), so a malformed one leaves
+    // the ordinary grammar, which rejects the env() function token itself.
     for (value, token) in [
-        ("{}", Some("{")),
-        ("{hello}", Some("{")),
-        ("env() {}", None),
-        ("env(123) {}", None),
-        ("env(choice) env() {}", None),
+        ("{}", "{"),
+        ("{hello}", "{"),
+        ("env() {}", "env("),
+        ("env(123) {}", "env("),
+        ("env(choice) env() {}", "env("),
     ] {
-        let at = |expected: ExpectedRejection| match token {
-            Some(token) => expected.at(token),
-            None => expected,
-        };
+        let at = |expected: ExpectedRejection| expected.at(token);
         let face_rejection = at(invalid_descriptor("font-face", "font-width"));
         let face = parse_font_face_descriptor_value(value, FaceKind::FontWidth);
         assert!(face.syntax().is_none(), "{value}: {face:?}");
@@ -214,10 +208,9 @@ fn malformed_env_and_ordinary_root_blocks_remain_invalid_in_raw_and_checked_fron
             panic!("{value}: grammar failure: {error:?}")
         };
         face_rejection.assert_kind(detail);
-        // The palette front ends reject the root block, or the malformed
-        // env() function, before any descriptor grammar applies.
-        let palette_rejection = unexpected_token(token.unwrap_or("env("));
+        // The palette fronts name their at-rule and descriptor too.
         for kind in PALETTE_KINDS {
+            let palette_rejection = at(invalid_descriptor("font-palette-values", kind.css_name()));
             let palette = parse_font_palette_descriptor_value(value, kind);
             assert!(
                 palette.syntax().is_none(),

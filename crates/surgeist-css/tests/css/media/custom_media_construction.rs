@@ -172,13 +172,11 @@ fn reference_inspection_agrees_across_parsed_and_mixed_origin_checked_admission(
         CssMediaConditionKind::CustomMediaReference(_)
     ));
     // A dashed name is only a boolean custom-media reference, so as a
-    // feature name that name first violates the condition. The range form is
-    // not located at its dashed name (reported), so only its error variant is
-    // asserted.
+    // feature name that name first violates the condition, in either form.
     for (source, responsible) in [
         ("(--x: 1)", Some(1)),
         ("not ((--x: 1))", Some(6)),
-        ("(1 < --x)", None),
+        ("(1 < --x)", Some(5)),
     ] {
         let Err(CssMediaConstructionError::InvalidConditionGrammar { origin }) =
             CssMediaCondition::try_from_components(components(source))

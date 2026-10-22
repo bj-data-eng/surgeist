@@ -175,16 +175,17 @@ fn checked_pending_env_math_reentry_is_reusable_and_rejects_residual_var_and_env
         )
         .unwrap();
         let before = pending.clone();
-        // Counter Styles 3 §3.6: literal weights must strictly descend.
-        // Reentry reports this complete input as an UnexpectedEnd, so only
-        // its grammar failure is checked.
+        // Counter Styles 3 §3.6: literal weights must strictly descend, so
+        // the second weight is responsible.
         let error = pending
             .reparse_after_substitution(parse_component_values("2 X, 2 Y").unwrap())
             .unwrap_err();
-        assert!(
-            matches!(error.kind(), CssCounterStyleValueErrorKind::Grammar(_)),
-            "grammar failure: {error:?}"
-        );
+        let CssCounterStyleValueErrorKind::Grammar(detail) = error.kind() else {
+            panic!("grammar failure: {error:?}")
+        };
+        crate::css::support::rules::invalid_descriptor("counter-style", "additive-symbols")
+            .at("2")
+            .assert_kind(detail);
         for residual in ["calc(var(--weight)) X", "calc(env(weight)) X"] {
             assert_eq!(
                 pending

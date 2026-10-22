@@ -20,33 +20,56 @@ impl Error {
             CssSourcePosition::from_source_location_in(source, source_location)
         };
 
-        // Explicit token spellings and missing-input positions are already paired
-        // by their grammar owner. Inference would replace whitespace tokens or
-        // rewind bounded EOF to a token from the preceding production.
+        // The crate's location rule (reference "Source coordinates and
+        // diagnostics"): a token that cannot continue the production is
+        // responsible, including a closing `)` or `]`; when input ends first,
+        // the last authored token is. A grammar owner that already names its
+        // token keeps it; one that names the end of input still yields the
+        // last authored token of the value.
+        let end_of_input = matches!(&self.kind, ErrorKind::InvalidDescriptorValue(detail)
+            if detail.origin == DiagnosticOrigin::EndOfInput);
         if matches!(&self.kind, ErrorKind::InvalidDescriptorValue(detail)
-            if detail.origin != DiagnosticOrigin::Inferred)
+            if detail.origin == DiagnosticOrigin::Token)
         {
             return self;
         }
 
-        if let Some((start, summary)) = next_authored_token_at(source, self.position) {
+        // An at-rule prelude or a style rule's selector list ends at its block
+        // (Syntax 3 §5.4.7–§5.4.8), and an at-rule's own at-keyword opens
+        // rather than belongs to its prelude.
+        let prelude = matches!(
+            self.kind,
+            ErrorKind::InvalidAtRulePrelude(_) | ErrorKind::InvalidSelector(_)
+        );
+        if !end_of_input
+            && let Some((start, summary)) = next_authored_token_at(source, self.position)
+        {
             if let Some(token) = encountered_mut(&mut self.kind) {
                 if token.kind == summary.kind {
                     token.authored = summary.authored;
                     self.position = CssSourcePosition::from_byte_offset_in(source, start);
                 }
-            } else if let Some(slot) = optional_encountered_mut(&mut self.kind)
-                && !is_bounded_end_token(summary.kind)
-            {
-                *slot = Some(summary);
-                self.position = CssSourcePosition::from_byte_offset_in(source, start);
+            } else if let Some(slot) = optional_encountered_mut(&mut self.kind) {
+                let ending = ends_input(summary.kind)
+                    || (prelude && summary.kind == CssTokenKind::CurlyBracketBlock);
+                if !ending {
+                    *slot = Some(summary);
+                }
+                // An ending token is no violating token, but it locates an
+                // input that holds no authored token of its own.
+                if !ending || slot.is_none() {
+                    self.position = CssSourcePosition::from_byte_offset_in(source, start);
+                }
             }
         }
 
         if let Some(slot) = optional_encountered_mut(&mut self.kind)
             && slot.is_none()
             && let Some((start, summary)) = previous_authored_token_before(source, self.position)
-            && !is_boundary_token(summary.kind)
+            // A colon in a prelude belongs to it (a pseudo-class or feature),
+            // rather than separating a declaration name from its value.
+            && (!precedes_input(summary.kind) || (prelude && summary.kind == CssTokenKind::Colon))
+            && !(prelude && summary.kind == CssTokenKind::AtKeyword)
         {
             *slot = Some(summary);
             self.position = CssSourcePosition::from_byte_offset_in(source, start);
@@ -93,26 +116,18 @@ fn next_authored_token_at(
     }
 }
 
-pub(super) const fn is_bounded_end_token(kind: CssTokenKind) -> bool {
+/// A token that ends a declaration value or rule rather than belonging to it.
+pub(super) const fn ends_input(kind: CssTokenKind) -> bool {
     matches!(
         kind,
-        CssTokenKind::Semicolon
-            | CssTokenKind::CloseParenthesis
-            | CssTokenKind::CloseSquareBracket
-            | CssTokenKind::CloseCurlyBracket
+        CssTokenKind::Semicolon | CssTokenKind::CloseCurlyBracket
     )
 }
 
-pub(super) const fn is_boundary_token(kind: CssTokenKind) -> bool {
-    is_bounded_end_token(kind)
-        || matches!(
-            kind,
-            CssTokenKind::Colon
-                | CssTokenKind::Comma
-                | CssTokenKind::ParenthesisBlock
-                | CssTokenKind::SquareBracketBlock
-                | CssTokenKind::CurlyBracketBlock
-        )
+/// A token before a value's own input (its name separator or enclosing
+/// block), which is never the value's last authored token.
+pub(super) const fn precedes_input(kind: CssTokenKind) -> bool {
+    ends_input(kind) || matches!(kind, CssTokenKind::Colon | CssTokenKind::CurlyBracketBlock)
 }
 
 fn previous_authored_token_before(
@@ -120,14 +135,57 @@ fn previous_authored_token_before(
     position: CssSourcePosition,
 ) -> Option<(usize, CssTokenSummary)> {
     let end = position.byte_offset().value().min(source.len());
-    let window_start = source[..end]
-        .char_indices()
-        .rev()
-        .find_map(|(index, character)| {
-            matches!(character, '{' | ';' | ':' | ',' | '(' | '[').then_some(index + 1)
-        })
-        .unwrap_or(0);
-    let window = source.get(window_start..end)?;
+    let boundary = |end: usize| {
+        source
+            .get(..end)?
+            .char_indices()
+            .rev()
+            .find_map(|(index, character)| {
+                matches!(character, '{' | ';' | ':' | ',' | '(' | '[').then_some(index)
+            })
+    };
+    match boundary(end) {
+        // Nothing authored follows the last boundary, so the token that the
+        // boundary ends (a comma, or a function or block opening) is last.
+        // Whitespace after a comma is a list member of its own (Syntax 3
+        // §5.4.10), which holds no authored token.
+        Some(index)
+            if source.get(index + 1..end).is_some_and(|rest| {
+                last_token_in(source, index + 1, rest).is_none()
+                    && !(source[index..].starts_with(',')
+                        && begins_with_whitespace_token(&source[index + 1..]))
+            }) =>
+        {
+            let start = boundary(index).map_or(0, |before| before + 1);
+            last_token_in(source, start, source.get(start..=index)?)
+        }
+        Some(index) => last_token_in(source, index + 1, source.get(index + 1..end)?),
+        None => last_token_in(source, 0, source.get(..end)?),
+    }
+}
+
+/// Whether the first token of `rest`, past any comments, is whitespace.
+fn begins_with_whitespace_token(mut rest: &str) -> bool {
+    while let Some(comment) = rest.strip_prefix("/*") {
+        let Some(end) = comment.find("*/") else {
+            return false;
+        };
+        rest = &comment[end + 2..];
+    }
+    rest.starts_with([' ', '\t', '\n', '\r', '\u{c}'])
+}
+
+/// The last authored token of `window`, which starts at `window_start` in
+/// `source`.
+fn last_token_in(
+    source: &str,
+    window_start: usize,
+    window: &str,
+) -> Option<(usize, CssTokenSummary)> {
+    debug_assert_eq!(
+        source.get(window_start..window_start + window.len()),
+        Some(window)
+    );
     let working_source = crate::tokenization::prepare(window);
     let mut input = ParserInput::new(&working_source);
     let mut parser = Parser::new(&mut input);

@@ -1,7 +1,7 @@
 //! Fonts 4 §9.2 authored palette definitions, not font lookup or evaluation.
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-palette-values
 
-use crate::css::support::rules::{ExpectedRejection, unexpected_token};
+use crate::css::support::rules::{ExpectedRejection, invalid_descriptor};
 use surgeist_css::{
     CssComponentValue, CssComponentValueErrorKind, CssComponentValueLimits, CssComponentValueRef,
     CssComponentValues, CssErrorCode, CssFontPaletteBase, CssFontPaletteConstructionError,
@@ -456,7 +456,9 @@ fn substitution_defers_the_whole_descriptor_before_ordinary_grammar() {
     // neither defers and base-palette's ordinary grammar rejects var(.
     let neither = parse_font_palette_descriptor_value("var(bad) env(123)", Kind::BasePalette);
     assert!(neither.syntax().is_none());
-    unexpected_token("var(").assert_first(&neither);
+    invalid_descriptor("font-palette-values", "base-palette")
+        .at("var(")
+        .assert_first(&neither);
 }
 
 #[test]
@@ -500,22 +502,19 @@ fn index_grammar_keeps_exact_literals_and_delays_integer_math_ranges() {
             "{source}"
         );
     }
-    // Fonts 4 §9.2.2: base-palette is light | dark | <integer [0,∞]>.
-    // The diagnostics for -1, 1.5 and 1e2 report an UnexpectedEnd with no
-    // responsible token, so only their rejection is checked.
+    // Fonts 4 §9.2.2: base-palette is light | dark | <integer [0,∞]>, so
+    // the non-integer or negative token is responsible.
+    let rejected = || invalid_descriptor("font-palette-values", "base-palette");
     for source in ["-1", "1.5", "1e2"] {
         let report = parse_font_palette_descriptor_value(source, Kind::BasePalette);
         assert!(report.syntax().is_none(), "{source}");
-        assert!(!report.is_clean(), "{source}");
+        rejected().at(source).assert_first(&report);
     }
     // <declaration-value> needs at least one token, and CSS-wide keywords
     // are property-value forms.
     for (source, expected) in [
-        (
-            "",
-            ExpectedRejection::new(CssErrorCode::UnexpectedEnd).at_end(),
-        ),
-        ("inherit", unexpected_token("inherit")),
+        ("", rejected().at_end()),
+        ("inherit", rejected().at("inherit")),
     ] {
         let report = parse_font_palette_descriptor_value(source, Kind::BasePalette);
         assert!(report.syntax().is_none(), "{source}");

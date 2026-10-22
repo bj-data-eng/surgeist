@@ -144,10 +144,8 @@ fn small_integer_values_keep_omitted_operands_and_duplicates_distinct() {
 #[test]
 fn invalid_names_operands_and_reversed_function_drop_only_their_declaration() {
     for property in PROPERTIES {
-        // The implemented location of these rejections differs from the
-        // grammar-derived token (held for review), so only the kind and
-        // property are asserted.
-        rejected(property, "chapter calc(1 +)", None);
+        // The `)` cannot continue the sum, so it is responsible.
+        rejected(property, "chapter calc(1 +)", ")");
         for (value, rest) in [
             ("", ""),
             ("1", "1"),

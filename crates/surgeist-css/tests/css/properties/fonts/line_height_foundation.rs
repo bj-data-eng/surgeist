@@ -137,10 +137,9 @@ fn font_slash_uses_the_same_exact_ordinary_line_height_boundaries() {
             CssKnownProperty::Font
         );
     }
-    // The implemented location of these rejections differs from the
-    // grammar-derived token (held for review), so only the kind and
-    // property are asserted.
-    rejected_locally("font", "16px/1.2", None);
+    // Fonts 4 §2.7: the family is missing, so the value ends early and its
+    // last authored token is responsible.
+    rejected_locally("font", "16px/1.2", "1.2");
     for (invalid, rest) in [
         ("16px/-1e-999 serif", "-1e-999 serif"),
         ("16px/-1e-999px serif", "-1e-999px serif"),

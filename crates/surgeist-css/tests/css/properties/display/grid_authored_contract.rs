@@ -19,7 +19,7 @@
 //! Catalog source completeness and downstream execution are not test oracles.
 
 use crate::css::support::authored_property::{checked, parsed};
-use crate::css::support::property_admission::Responsible::{self, At, Disputed, End};
+use crate::css::support::property_admission::Responsible::{self, At};
 use crate::css::support::property_admission::implicit_closing_origin as implicit_origin;
 use crate::css::support::property_admission::{
     assert_checked_rejected, assert_implicit_closure, assert_invalid_value,
@@ -240,7 +240,8 @@ fn none_subgrid_and_name_repeat_admit_the_selected_axis_language() {
             ("subgrid [default]", At("default")),
             (
                 "subgrid repeat(auto-fill, [a]) repeat(auto-fill, [b])",
-                Disputed,
+                // Grid 2 §7.2: one <auto-repeat> only, so the second is responsible.
+                At("auto-fill"),
             ),
         ] {
             invalid(property, value, token);
@@ -331,9 +332,12 @@ fn track_auto_flow_precision_and_empty_group_policies_are_controls() {
             accepted(property, value, value);
         }
         for (value, token) in [
-            ("[]", End),
+            ("[]", At("]")),
             ("[a] [b] 10px", At("[")),
-            ("repeat(auto-fill, 1fr) repeat(auto-fit, 10px)", Disputed),
+            (
+                "repeat(auto-fill, 1fr) repeat(auto-fit, 10px)",
+                At("auto-fit"),
+            ),
             ("minmax(1fr, 10px)", At("1fr")),
             ("fit-content(1fr)", At("1fr")),
         ] {

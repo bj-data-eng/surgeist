@@ -317,7 +317,7 @@
         "line": 67,
         "case": "testNestedSelector(\".class&\");"
       },
-      "disposition": "deferred-compound-simple-selector-order",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": ".class&"
@@ -325,7 +325,7 @@
       "expectation": {
         "selector_text": ".class&"
       },
-      "reason": "Defect: CSSOM serialize a selector appends a compound's simple selectors in order, but the compound model retains anchors and other simple selectors grouped by kind, so the serializer emits the nesting selector first. Replay once the compound model keeps authored order."
+      "reason": "CSSOM serialize a selector appends a compound's simple selectors in authored order, including the nesting selector; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-020-cssom",
@@ -353,7 +353,7 @@
         "line": 69,
         "case": "testNestedSelector(\"[attr]&\");"
       },
-      "disposition": "deferred-compound-simple-selector-order",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "[attr]&"
@@ -361,7 +361,7 @@
       "expectation": {
         "selector_text": "[attr]&"
       },
-      "reason": "Defect: CSSOM serialize a selector appends a compound's simple selectors in order, but the compound model retains anchors and other simple selectors grouped by kind, so the serializer emits the nesting selector first. Replay once the compound model keeps authored order."
+      "reason": "CSSOM serialize a selector appends a compound's simple selectors in authored order, including the nesting selector; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-022-cssom",
@@ -389,7 +389,7 @@
         "line": 71,
         "case": "testNestedSelector(\"#id&\");"
       },
-      "disposition": "deferred-compound-simple-selector-order",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": "#id&"
@@ -397,7 +397,7 @@
       "expectation": {
         "selector_text": "#id&"
       },
-      "reason": "Defect: CSSOM serialize a selector appends a compound's simple selectors in order, but the compound model retains anchors and other simple selectors grouped by kind, so the serializer emits the nesting selector first. Replay once the compound model keeps authored order."
+      "reason": "CSSOM serialize a selector appends a compound's simple selectors in authored order, including the nesting selector; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-024-cssom",
@@ -425,7 +425,7 @@
         "line": 73,
         "case": "testNestedSelector(\":hover&\");"
       },
-      "disposition": "deferred-compound-simple-selector-order",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": ":hover&"
@@ -433,7 +433,7 @@
       "expectation": {
         "selector_text": ":hover&"
       },
-      "reason": "Defect: CSSOM serialize a selector appends a compound's simple selectors in order, but the compound model retains anchors and other simple selectors grouped by kind, so the serializer emits the nesting selector first. Replay once the compound model keeps authored order."
+      "reason": "CSSOM serialize a selector appends a compound's simple selectors in authored order, including the nesting selector; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-026-cssom",
@@ -461,7 +461,7 @@
         "line": 75,
         "case": "testNestedSelector(\":is(div)&\");"
       },
-      "disposition": "deferred-compound-simple-selector-order",
+      "disposition": "replayed-nested-selector-text",
       "input": {
         "parent": ".foo",
         "selector": ":is(div)&"
@@ -469,7 +469,7 @@
       "expectation": {
         "selector_text": ":is(div)&"
       },
-      "reason": "Defect: CSSOM serialize a selector appends a compound's simple selectors in order, but the compound model retains anchors and other simple selectors grouped by kind, so the serializer emits the nesting selector first. Replay once the compound model keeps authored order."
+      "reason": "CSSOM serialize a selector appends a compound's simple selectors in authored order, including the nesting selector; replayed through the nested-role CSSOM selector serializer."
     },
     {
       "id": "nesting-selector-028-cssom",

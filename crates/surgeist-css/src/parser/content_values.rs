@@ -99,19 +99,27 @@ fn parse_item<'i, 't>(
     if let Ok(string) = input.try_parse(parse_content_string) {
         return Ok(CssContentValueItem::String(string));
     }
+    // A URL commits its image (Values 5 request URL modifiers report inside
+    // the function).
+    if super::ui::starts_url(input) {
+        return parse_image(input, numeric).map(CssContentValueItem::Image);
+    }
     match input.try_parse(|input| parse_image(input, numeric)) {
         Ok(image) => return Ok(CssContentValueItem::Image(image)),
         Err(error) if crate::error::property::is_resource_parse_error(&error) => return Err(error),
         Err(_) => {}
     }
+    input.skip_whitespace();
+    let ident_location = input.current_source_location();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+        // An unadmitted keyword is itself responsible (Content 3).
         return match ident.to_ascii_lowercase().as_str() {
             "contents" => Ok(CssContentValueItem::Contents),
             "open-quote" => Ok(CssContentValueItem::OpenQuote),
             "close-quote" => Ok(CssContentValueItem::CloseQuote),
             "no-open-quote" => Ok(CssContentValueItem::NoOpenQuote),
             "no-close-quote" => Ok(CssContentValueItem::NoCloseQuote),
-            _ => Err(unexpected_at(input.current_source_location())),
+            _ => Err(unexpected_at(ident_location)),
         };
     }
     let location = input.current_source_location();
@@ -144,21 +152,24 @@ fn parse_item<'i, 't>(
     }
 }
 
+// Values 4 §4.2: an excluded <custom-ident> is itself responsible, not the
+// token after it.
 pub(super) fn parse_generic_name<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, CssContentName> {
+    input.skip_whitespace();
+    let location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
-    let checked = CssIdent::try_new(ident.to_string())
-        .map_err(|_| unexpected_at(input.current_source_location()))?;
-    CssContentName::try_new(checked).ok_or_else(|| unexpected_at(input.current_source_location()))
+    let checked = CssIdent::try_new(ident.to_string()).map_err(|_| unexpected_at(location))?;
+    CssContentName::try_new(checked).ok_or_else(|| unexpected_at(location))
 }
 
 pub(super) fn parse_counter_name<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<'i, CssContentCounterName> {
+    input.skip_whitespace();
+    let location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
-    let checked = CssIdent::try_new(ident.to_string())
-        .map_err(|_| unexpected_at(input.current_source_location()))?;
-    CssContentCounterName::try_new(checked)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+    let checked = CssIdent::try_new(ident.to_string()).map_err(|_| unexpected_at(location))?;
+    CssContentCounterName::try_new(checked).ok_or_else(|| unexpected_at(location))
 }
 
 fn parse_counter<'i, 't>(
@@ -195,11 +206,12 @@ pub(super) fn parse_style<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> Result<'i, CssCounterStyleValue> {
+    let keyword_location = input.current_source_location();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        let checked = CssIdent::try_new(ident.to_string())
-            .map_err(|_| unexpected_at(input.current_source_location()))?;
+        let checked =
+            CssIdent::try_new(ident.to_string()).map_err(|_| unexpected_at(keyword_location))?;
         return CssCounterStyleValue::try_named(checked)
-            .ok_or_else(|| unexpected_at(input.current_source_location()));
+            .ok_or_else(|| unexpected_at(keyword_location));
     }
     let location = input.current_source_location();
     match input.next().map_err(basic)?.clone() {
@@ -293,15 +305,15 @@ fn parse_target_text<'i, 't>(
 ) -> Result<'i, CssTargetText> {
     let target = parse_target(input, numeric)?;
     let mode = if input.try_parse(Parser::expect_comma).is_ok() {
+        let location = input.current_source_location();
         let ident = input.expect_ident_cloned().map_err(basic)?;
         Some(match ident.to_ascii_lowercase().as_str() {
             "content" => CssTargetTextMode::Content,
             "before" => CssTargetTextMode::Before,
             "after" => CssTargetTextMode::After,
             "first-letter" => CssTargetTextMode::FirstLetter,
-            _ => {
-                return Err(unexpected_at(input.current_source_location()));
-            }
+            // The unknown keyword itself cannot continue the function.
+            _ => return Err(unexpected_at(location)),
         })
     } else {
         None
@@ -313,15 +325,15 @@ fn parse_target_text<'i, 't>(
 fn parse_named_string<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, CssNamedString> {
     let name = parse_generic_name(input)?;
     let mode = if input.try_parse(Parser::expect_comma).is_ok() {
+        let location = input.current_source_location();
         let ident = input.expect_ident_cloned().map_err(basic)?;
         Some(match ident.to_ascii_lowercase().as_str() {
             "first" => CssNamedStringMode::First,
             "start" => CssNamedStringMode::Start,
             "last" => CssNamedStringMode::Last,
             "first-except" => CssNamedStringMode::FirstExcept,
-            _ => {
-                return Err(unexpected_at(input.current_source_location()));
-            }
+            // The unknown keyword itself cannot continue the function.
+            _ => return Err(unexpected_at(location)),
         })
     } else {
         None
@@ -336,6 +348,7 @@ fn parse_content_reference<'i, 't>(
     let mode = if input.is_exhausted() {
         None
     } else {
+        let location = input.current_source_location();
         let ident = input.expect_ident_cloned().map_err(basic)?;
         Some(match ident.to_ascii_lowercase().as_str() {
             "text" => CssContentReferenceMode::Text,
@@ -343,9 +356,8 @@ fn parse_content_reference<'i, 't>(
             "after" => CssContentReferenceMode::After,
             "first-letter" => CssContentReferenceMode::FirstLetter,
             "marker" => CssContentReferenceMode::Marker,
-            _ => {
-                return Err(unexpected_at(input.current_source_location()));
-            }
+            // The unknown keyword itself cannot continue the function.
+            _ => return Err(unexpected_at(location)),
         })
     };
     input.expect_exhausted().map_err(basic)?;
@@ -357,12 +369,13 @@ fn parse_leader<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, CssLeaderValue
         input.expect_exhausted().map_err(basic)?;
         return Ok(CssLeaderValue::String(string));
     }
+    let location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     let mode = match ident.to_ascii_lowercase().as_str() {
         "dotted" => CssLeaderValue::Dotted,
         "solid" => CssLeaderValue::Solid,
         "space" => CssLeaderValue::Space,
-        _ => return Err(unexpected_at(input.current_source_location())),
+        _ => return Err(unexpected_at(location)),
     };
     input.expect_exhausted().map_err(basic)?;
     Ok(mode)

@@ -285,8 +285,7 @@ fn missing_numeric_and_lexically_bad_targets_reject_without_losing_styles() {
     // and bad string tokens are neither.
     let prelude = ExpectedRejection::new(CssErrorCode::InvalidAtRulePrelude).in_rule("import");
     for (invalid, expected) in [
-        // The diagnostic names the at-keyword rather than the prelude end.
-        ("@import;", prelude.clone()),
+        ("@import;", prelude.clone().at_end()),
         ("@import 1;", prelude.clone().at("1")),
         ("@import url(a b);", prelude.clone()),
         ("@import \"a\n;", prelude.clone()),

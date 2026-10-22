@@ -234,12 +234,25 @@ fn parse_media_query_inner<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
 ) -> Result<CssMediaQuery, ParseError<'i, Error>> {
-    match input.try_parse(|p| parse_typed_media_query(source, p, numeric)) {
+    let typed = match input.try_parse(|p| parse_typed_media_query(source, p, numeric)) {
         Ok(query) => return Ok(CssMediaQuery::Typed(query)),
         Err(error) if media_committed_error(&error) => return Err(error),
-        Err(_) => {}
-    }
-    parse_media_condition(source, input, numeric).map(CssMediaQuery::Condition)
+        Err(error) => error,
+    };
+    // Media Queries 4 §3: when neither form matches, the alternative that
+    // reached further names the responsible token (`screen and` fails at its
+    // end as a typed query, not at `screen` as a condition).
+    parse_media_condition(source, input, numeric)
+        .map(CssMediaQuery::Condition)
+        .map_err(|condition| {
+            let reach =
+                |error: &ParseError<'i, Error>| (error.location.line, error.location.column);
+            if reach(&typed) > reach(&condition) {
+                typed
+            } else {
+                condition
+            }
+        })
 }
 fn parse_typed_media_query<'i, 't>(
     source: &str,
@@ -501,9 +514,12 @@ fn parse_media_in_parens<'i, 't>(
                 }
             };
             if syntax.name_text.starts_with("--") {
+                // MQ5 §3: a dashed name is only a boolean custom-media
+                // reference, so as a feature name that name is responsible,
+                // wherever the range form places it.
                 if !matches!(syntax.shape, MediaFeatureShape::Boolean) {
                     return Err(crate::error::custom_media_context_error(
-                        initial.source_location(),
+                        syntax.name_location,
                         &syntax.name_text,
                     ));
                 }

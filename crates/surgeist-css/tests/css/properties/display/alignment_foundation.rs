@@ -3,7 +3,7 @@
 //! The nine authored properties retain their distinct grammars and expand to
 //! the six specified longhands before any layout-dependent interpretation.
 
-use crate::css::support::property_admission::Responsible::{At, Disputed};
+use crate::css::support::property_admission::Responsible::At;
 use crate::css::support::property_admission::assert_declaration_rejected as rejected;
 use crate::css::support::{important_declaration as parsed, selected_grammar as grammar};
 use surgeist_css::*;
@@ -100,7 +100,7 @@ fn content_axes_accept_their_own_positions_and_baseline_domain() {
         ("left", At("left")),
         ("right", At("right")),
         ("self-start", At("self-start")),
-        ("safe normal", Disputed),
+        ("safe normal", At("normal")),
         ("unsafe stretch", At("stretch")),
     ] {
         rejected(CONTENT, value, token);
@@ -112,7 +112,7 @@ fn content_axes_accept_their_own_positions_and_baseline_domain() {
         ("baseline", At("baseline")),
         ("first baseline", At("first")),
         ("self-end", At("self-end")),
-        ("safe normal", Disputed),
+        ("safe normal", At("normal")),
     ] {
         rejected(JUSTIFY_CONTENT, value, token);
     }
@@ -133,7 +133,7 @@ fn item_and_self_axes_admit_only_their_own_prefixed_positions() {
     for (value, token) in [
         ("auto", At("auto")),
         ("left", At("left")),
-        ("safe normal", Disputed),
+        ("safe normal", At("normal")),
         ("unsafe stretch", At("stretch")),
         ("space-between", At("space-between")),
     ] {
@@ -155,7 +155,7 @@ fn item_and_self_axes_admit_only_their_own_prefixed_positions() {
     for (value, token) in [
         ("left", At("left")),
         ("right", At("right")),
-        ("unsafe left", Disputed),
+        ("unsafe left", At("left")),
     ] {
         accepted(JUSTIFY_SELF, value);
         rejected(SELF, value, token);
@@ -180,7 +180,7 @@ fn justify_items_legacy_is_unordered_but_confined_to_its_own_grammar() {
         ("safe legacy", At("legacy")),
         ("legacy safe left", At("safe")),
         ("auto", At("auto")),
-        ("safe normal", Disputed),
+        ("safe normal", At("normal")),
     ] {
         rejected(JUSTIFY_ITEMS, value, token);
     }
@@ -275,7 +275,7 @@ fn place_items_and_self_copy_valid_omissions_and_enforce_component_domains() {
     );
     for (value, token) in [
         ("legacy", At("legacy")),
-        ("legacy normal", Disputed),
+        ("legacy normal", At("legacy")),
         ("auto", At("auto")),
         ("left right", At("left")),
     ] {

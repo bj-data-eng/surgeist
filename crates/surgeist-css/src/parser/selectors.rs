@@ -412,6 +412,13 @@ fn parse_selector_after_first_compound<'i, 't>(
     loop {
         let had_whitespace = consume_selector_whitespace(input)?;
         let state = input.state();
+        // Selectors 4 §3.6.3: no combinator may follow a pseudo-element, so
+        // that combinator is responsible.
+        let after_pseudo_element = rest
+            .last()
+            .map_or(&first, CssComplexSelectorPart::selector)
+            .has_pseudo_elements();
+        let reject_combinator = || invalid_selector_at(state.source_location());
         match input.next_including_whitespace().cloned() {
             Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
                 input.reset(&state);
@@ -423,6 +430,9 @@ fn parse_selector_after_first_compound<'i, 't>(
                 break;
             }
             Ok(Token::Delim('>')) => {
+                if after_pseudo_element {
+                    return Err(reject_combinator());
+                }
                 rest.push(parse_complex_selector_part_with_options(
                     input,
                     CssSelectorCombinator::Child,
@@ -431,6 +441,9 @@ fn parse_selector_after_first_compound<'i, 't>(
                 )?);
             }
             Ok(Token::Delim('+')) => {
+                if after_pseudo_element {
+                    return Err(reject_combinator());
+                }
                 rest.push(parse_complex_selector_part_with_options(
                     input,
                     CssSelectorCombinator::NextSibling,
@@ -439,6 +452,9 @@ fn parse_selector_after_first_compound<'i, 't>(
                 )?);
             }
             Ok(Token::Delim('~')) => {
+                if after_pseudo_element {
+                    return Err(reject_combinator());
+                }
                 rest.push(parse_complex_selector_part_with_options(
                     input,
                     CssSelectorCombinator::SubsequentSibling,
@@ -447,6 +463,9 @@ fn parse_selector_after_first_compound<'i, 't>(
                 )?);
             }
             Ok(Token::Delim('|')) if input.try_parse(expect_adjacent_bar).is_ok() => {
+                if after_pseudo_element {
+                    return Err(reject_combinator());
+                }
                 rest.push(parse_complex_selector_part_with_options(
                     input,
                     CssSelectorCombinator::Column,
@@ -455,6 +474,9 @@ fn parse_selector_after_first_compound<'i, 't>(
                 )?);
             }
             Ok(_) if had_whitespace => {
+                if after_pseudo_element {
+                    return Err(reject_combinator());
+                }
                 input.reset(&state);
                 let selector =
                     parse_compound_selector_model_with_options(input, options, recovery)?;
@@ -536,11 +558,10 @@ fn parse_type_selector<'i, 't>(
         Token::Ident(prefix_or_name) => {
             let prefix_or_name = prefix_or_name.to_string();
             if consume_namespace_separator(input)? {
-                let local_start = input.state();
                 let local_name = parse_qualified_local_name(input)?;
+                // Namespaces 3 §3.3: the undeclared prefix is responsible.
                 let Some(prefix) = recovery.named_namespace(&prefix_or_name) else {
-                    input.reset(&local_start);
-                    return Err(invalid_selector(input));
+                    return Err(invalid_selector_at(start.source_location()));
                 };
                 (
                     CssNamespaceConstraint::Named(prefix.clone()),
@@ -591,10 +612,12 @@ fn parse_type_selector<'i, 't>(
 fn parse_qualified_local_name<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<Option<String>, ParseError<'i, Error>> {
+    // A token that is neither an identifier nor `*` cannot follow `|`.
+    let location = input.current_source_location();
     match input.next_including_whitespace() {
         Ok(Token::Ident(name)) => Ok(Some(name.to_string())),
         Ok(Token::Delim('*')) => Ok(None),
-        Ok(_) => Err(invalid_selector(input)),
+        Ok(_) => Err(invalid_selector_at(location)),
         Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
             Err(invalid_selector(input))
         }
@@ -624,12 +647,7 @@ fn parse_compound_selector_model_with_options<'i, 't>(
     }
 
     let type_selector = parse_type_selector(input, recovery)?;
-    let mut scope_anchors = 0;
-    let mut nesting_selectors = 0;
-    let mut id_names = Vec::new();
-    let mut class_names = Vec::new();
-    let mut attributes = Vec::new();
-    let mut pseudo_classes = Vec::new();
+    let mut members = CssCompoundMembers::default();
     let mut pseudo_elements = None;
 
     loop {
@@ -650,21 +668,21 @@ fn parse_compound_selector_model_with_options<'i, 't>(
 
         if input.try_parse(|input| input.expect_delim('&')).is_ok() {
             match options.anchors {
-                SelectorAnchorMode::Nesting => nesting_selectors += 1,
-                SelectorAnchorMode::Scope => scope_anchors += 1,
+                SelectorAnchorMode::Nesting => members.push_nesting(),
+                SelectorAnchorMode::Scope => members.push_scope_anchor(),
             }
             continue;
         }
 
         if input.try_parse(|input| input.expect_delim('.')).is_ok() {
-            class_names.push(parse_adjacent_class_name(input)?);
+            members.push_class(parse_adjacent_class_name(input)?);
             continue;
         }
 
         if input.try_parse(Parser::expect_square_bracket_block).is_ok() {
             let attribute =
                 input.parse_nested_block(|input| parse_attribute_selector(input, recovery))?;
-            attributes.push(attribute);
+            members.push_attribute(attribute);
             continue;
         }
 
@@ -684,7 +702,7 @@ fn parse_compound_selector_model_with_options<'i, 't>(
                 )?);
             } else {
                 let pseudo_class = parse_pseudo_class_with_options(input, options, recovery)?;
-                pseudo_classes.push(pseudo_class);
+                members.push_pseudo_class(pseudo_class);
             }
             continue;
         }
@@ -692,28 +710,20 @@ fn parse_compound_selector_model_with_options<'i, 't>(
         let state = input.state();
         match input.next() {
             Ok(Token::IDHash(key)) => {
-                let key = key.to_string();
-                id_names.push(key);
+                members.push_id(key.to_string());
             }
             Ok(Token::Delim('|')) => {
                 if input.try_parse(expect_adjacent_bar).is_ok() {
                     input.reset(&state);
                     break;
                 }
-                return Err(invalid_selector(input));
+                // A lone `|` cannot continue the compound.
+                return Err(invalid_selector_at(state.source_location()));
             }
             Ok(token) => {
                 let token = token.clone();
                 input.reset(&state);
-                if type_selector.is_none()
-                    && scope_anchors == 0
-                    && nesting_selectors == 0
-                    && id_names.is_empty()
-                    && class_names.is_empty()
-                    && attributes.is_empty()
-                    && pseudo_classes.is_empty()
-                    && pseudo_elements.is_none()
-                {
+                if type_selector.is_none() && members.is_empty() && pseudo_elements.is_none() {
                     return Err(selector_basic(
                         state
                             .source_location()
@@ -727,29 +737,10 @@ fn parse_compound_selector_model_with_options<'i, 't>(
         }
     }
 
-    if type_selector.is_none()
-        && scope_anchors == 0
-        && nesting_selectors == 0
-        && id_names.is_empty()
-        && class_names.is_empty()
-        && attributes.is_empty()
-        && pseudo_classes.is_empty()
-        && pseudo_elements.is_none()
-    {
+    if type_selector.is_none() && members.is_empty() && pseudo_elements.is_none() {
         return Err(invalid_selector(input));
     }
-    Ok(
-        CssCompoundSelector::new_with_qualified_type_and_pseudo_elements(
-            scope_anchors,
-            type_selector,
-            id_names,
-            class_names,
-            attributes,
-            pseudo_classes,
-            pseudo_elements,
-        )
-        .with_nesting_selectors(nesting_selectors),
-    )
+    Ok(members.into_compound(type_selector, pseudo_elements))
 }
 
 fn compound_selector_to_selector(selector: CssCompoundSelector) -> CssSelector {
@@ -1030,6 +1021,9 @@ fn parse_attribute_selector<'i, 't>(
     consume_selector_whitespace(input)?;
     let name = parse_attribute_selector_name(input, recovery)?;
 
+    // Each rejection below names the consumed token that cannot continue the
+    // attribute selector, not the token after it.
+    let matcher_location = input.current_source_location();
     let matcher = match input.next() {
         Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
             return Ok(CssAttributeSelector::new_qualified(
@@ -1078,7 +1072,7 @@ fn parse_attribute_selector<'i, 't>(
             CssAttributeMatcher::Substring(parse_attribute_selector_value(input)?)
         }
         Ok(_) => {
-            return Err(invalid_selector(input));
+            return Err(invalid_selector_at(matcher_location));
         }
     };
 
@@ -1095,6 +1089,7 @@ fn parse_attribute_selector_name<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &SelectorRecovery<'_>,
 ) -> std::result::Result<CssQualifiedAttributeName, ParseError<'i, Error>> {
+    let prefix_location = input.current_source_location();
     match input.next_including_whitespace() {
         Ok(Token::Ident(prefix_or_name)) => {
             let prefix_or_name = prefix_or_name.to_string();
@@ -1111,12 +1106,12 @@ fn parse_attribute_selector_name<'i, 't>(
                             CssAttributeName::new(prefix_or_name),
                         ));
                     }
-                    let local_start = input.state();
+                    let local_location = input.current_source_location();
                     let local_name = input.next_including_whitespace();
                     let local_name = match local_name {
                         Ok(Token::Ident(name)) => name.to_string(),
                         Ok(_) => {
-                            return Err(invalid_selector(input));
+                            return Err(invalid_selector_at(local_location));
                         }
                         Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
                             return Err(invalid_selector(input));
@@ -1124,8 +1119,7 @@ fn parse_attribute_selector_name<'i, 't>(
                         Err(error) => return Err(selector_basic(error)),
                     };
                     let Some(prefix) = recovery.named_namespace(&prefix_or_name) else {
-                        input.reset(&local_start);
-                        return Err(invalid_selector(input));
+                        return Err(invalid_selector_at(prefix_location));
                     };
                     Ok(CssQualifiedAttributeName::new(
                         CssNamespaceConstraint::Named(prefix.clone()),
@@ -1153,16 +1147,18 @@ fn parse_attribute_selector_name<'i, 't>(
             }
         }
         Ok(Token::Delim('*')) => {
+            let bar_location = input.current_source_location();
             match input.next_including_whitespace() {
                 Ok(Token::Delim('|')) => {}
                 Ok(_) => {
-                    return Err(invalid_selector(input));
+                    return Err(invalid_selector_at(bar_location));
                 }
                 Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
                     return Err(invalid_selector(input));
                 }
                 Err(error) => return Err(selector_basic(error)),
             }
+            let name_location = input.current_source_location();
             let name = input.next_including_whitespace();
             match name {
                 Ok(Token::Ident(name)) => Ok(CssQualifiedAttributeName::new(
@@ -1170,26 +1166,29 @@ fn parse_attribute_selector_name<'i, 't>(
                     CssQualifiedNamePrefix::Any,
                     CssAttributeName::new(name.to_string()),
                 )),
-                Ok(_) => Err(invalid_selector(input)),
+                Ok(_) => Err(invalid_selector_at(name_location)),
                 Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
                     Err(invalid_selector(input))
                 }
                 Err(error) => Err(selector_basic(error)),
             }
         }
-        Ok(Token::Delim('|')) => match input.next_including_whitespace() {
-            Ok(Token::Ident(name)) => Ok(CssQualifiedAttributeName::new(
-                CssNamespaceConstraint::ExplicitNone,
-                CssQualifiedNamePrefix::ExplicitNone,
-                CssAttributeName::new(name.to_string()),
-            )),
-            Ok(_) => Err(invalid_selector(input)),
-            Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-                Err(invalid_selector(input))
+        Ok(Token::Delim('|')) => {
+            let name_location = input.current_source_location();
+            match input.next_including_whitespace() {
+                Ok(Token::Ident(name)) => Ok(CssQualifiedAttributeName::new(
+                    CssNamespaceConstraint::ExplicitNone,
+                    CssQualifiedNamePrefix::ExplicitNone,
+                    CssAttributeName::new(name.to_string()),
+                )),
+                Ok(_) => Err(invalid_selector_at(name_location)),
+                Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
+                    Err(invalid_selector(input))
+                }
+                Err(error) => Err(selector_basic(error)),
             }
-            Err(error) => Err(selector_basic(error)),
-        },
-        Ok(_) => Err(invalid_selector(input)),
+        }
+        Ok(_) => Err(invalid_selector_at(prefix_location)),
         Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
             Err(invalid_selector(input))
         }
@@ -1211,6 +1210,7 @@ fn parse_attribute_case_sensitivity<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssAttributeCaseSensitivity, ParseError<'i, Error>> {
     let state = input.state();
+    let location = input.current_source_location();
     match input.next() {
         Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
             input.reset(&state);
@@ -1223,7 +1223,8 @@ fn parse_attribute_case_sensitivity<'i, 't>(
         Ok(Token::Ident(modifier)) if modifier.eq_ignore_ascii_case("s") => {
             Ok(CssAttributeCaseSensitivity::ExplicitSensitive)
         }
-        Ok(_) => Err(invalid_selector(input)),
+        // The modifier itself cannot continue the attribute selector.
+        Ok(_) => Err(invalid_selector_at(location)),
     }
 }
 
@@ -1418,12 +1419,7 @@ fn parse_view_transition_name_selector<'i>(
             CssCustomIdent::try_new(name.to_string())
                 .ok_or_else(|| invalid_selector_at(start.source_location()))?,
         ),
-        token => {
-            return Err(start
-                .source_location()
-                .new_basic_unexpected_token_error(token.clone())
-                .into());
-        }
+        _ => return Err(invalid_selector_at(start.source_location())),
     };
     input.expect_exhausted().map_err(selector_basic)?;
     Ok(argument)

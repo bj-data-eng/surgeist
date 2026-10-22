@@ -366,7 +366,7 @@ fn nested_structural_keyframes_recover_blocks_and_declarations_in_authored_order
         &report.diagnostics()[1],
         invalid_selector,
         0,
-        CssErrorCode::UnexpectedEnd,
+        CssErrorCode::InvalidQualifiedRule,
         CssRecoveryAction::DropKeyframeBlock,
         source.find(invalid_selector).unwrap(),
     );

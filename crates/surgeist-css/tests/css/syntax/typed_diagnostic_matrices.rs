@@ -89,7 +89,7 @@ fn malformed_authored_surfaces_emit_recovery_diagnostics() {
         ),
         (
             ".ok { color: black; } .bad::before .later { color: red; } .after { color: blue; }",
-            Rejection::selector(Some("{")),
+            Rejection::selector(Some(".")),
         ),
         (
             ".ok { content: \"good\"; content: normal \"bad\"; color: red; }",

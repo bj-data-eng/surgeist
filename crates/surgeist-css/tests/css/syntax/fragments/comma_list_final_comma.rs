@@ -140,11 +140,11 @@ fn checked_media_lists_share_the_final_comma_boundary() {
         let rule = import(source).unwrap();
         assert_eq!(rule.media().unwrap().queries().len(), 1, "{source:?}");
     }
-    // A second comma is the first token where a `<media-query>` must start.
-    // A whitespace-only member is located inconsistently between the two
-    // owners (reported), so its location is not asserted.
+    // An empty member names no token; its rejection carries the empty
+    // member's position (its whitespace, or the second comma ending it), and
+    // both owners locate it alike.
     for (source, responsible) in [
-        ("@import 'x.css' screen, ;", None),
+        ("@import 'x.css' screen, ;", Some(23)),
         ("@import 'x.css' screen,,;", Some(23)),
     ] {
         let Err(CssImportConstructionError::Media(error)) = import(source) else {
@@ -161,16 +161,11 @@ fn checked_media_lists_share_the_final_comma_boundary() {
         panic!("{rule:?}")
     };
     assert_eq!(list.queries().len(), 1);
-    // Custom-media construction does not locate the failing member in the
-    // parsed source (reported), so only the grammar failure is asserted.
     for source in ["--narrow screen, ", "--narrow screen,,"] {
         let Err(CssCustomMediaConstructionError::Media(error)) = custom(source) else {
             panic!("{source:?}: {:?}", custom(source))
         };
-        assert!(
-            matches!(error, CssMediaConstructionError::InvalidQueryGrammar { .. }),
-            "{source:?}: {error:?}"
-        );
+        assert_invalid_member(&error, source, Some(16));
     }
 }
 

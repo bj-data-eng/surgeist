@@ -331,16 +331,21 @@ fn parser_recovered_closures_keep_their_provenance_through_checked_preludes() {
 }
 
 #[test]
-fn incomplete_queries_keep_the_parser_end_of_prelude_diagnostic_position() {
+fn incomplete_queries_name_the_last_authored_token_before_the_block() {
+    // The block ends each prelude before its query is complete, so the last
+    // authored token is responsible (reference "Source coordinates and
+    // diagnostics").
     for prelude in ["not", "card not", "(width:1px) and", "card, not"] {
         let source = format!("@container {prelude} {{}} .after {{}}");
         let report = parse_sheet(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one incomplete-query diagnostic: {source}: {report:?}");
         };
+        let last = prelude.rfind(' ').map_or(0, |space| space + 1);
         assert_eq!(
             diagnostic.error().position().byte_offset().value(),
-            source.find('{').unwrap()
+            "@container ".len() + last,
+            "{source}"
         );
         assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
     }

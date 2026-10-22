@@ -151,14 +151,13 @@ fn feature_indices_accept_unbounded_integer_literals_and_symbolic_integer_math()
 
 #[test]
 fn feature_settings_reject_empty_and_malformed_lists() {
-    // The implemented location of `normal, "kern"` differs from the
-    // grammar-derived `,` (held for review), so only its kind and property
-    // are asserted.
-    rejected("font-feature-settings", "normal, \"kern\"", None);
+    // Fonts 4: `normal` is a whole value, so the comma after it is
+    // responsible.
+    rejected("font-feature-settings", "normal, \"kern\"", r#", "kern""#);
     descriptor_rejected("font-feature-settings", "normal, \"kern\"");
     for (value, rest) in [
         ("", ""),
-        ("\"kern\",", ""),
+        ("\"kern\",", ","),
         ("\"kern\" \"liga\"", r#""liga""#),
     ] {
         rejected("font-feature-settings", value, rest);
@@ -254,12 +253,16 @@ fn variation_settings_accept_signed_fractional_and_duplicate_axes_in_both_contex
 
 #[test]
 fn variation_settings_reject_bad_tags_and_number_domains_in_both_contexts() {
-    // The implemented location of these rejections differs from the
-    // grammar-derived token (held for review), so only the kind and
-    // property are asserted.
-    rejected("font-variation-settings", "\"wght\"", None);
+    // Fonts 4: a tag needs its number, so a value ending after the tag
+    // names that last token; `normal` is a whole value, so the comma after it
+    // is responsible.
+    rejected("font-variation-settings", "\"wght\"", r#""wght""#);
     descriptor_rejected("font-variation-settings", "\"wght\"");
-    rejected("font-variation-settings", "normal, \"wght\" 1", None);
+    rejected(
+        "font-variation-settings",
+        "normal, \"wght\" 1",
+        r#", "wght" 1"#,
+    );
     descriptor_rejected("font-variation-settings", "normal, \"wght\" 1");
     for (value, rest) in [
         ("\"abc\" 1", r#""abc" 1"#),
@@ -269,7 +272,7 @@ fn variation_settings_reject_bad_tags_and_number_domains_in_both_contexts() {
         (r#""\7f abc" 1"#, r#""\7f abc" 1"#),
         ("\"wght\" 2%", "2%"),
         ("\"wght\" 2px", "2px"),
-        ("\"wght\" 1,", ""),
+        ("\"wght\" 1,", ","),
     ] {
         rejected("font-variation-settings", value, rest);
         descriptor_rejected("font-variation-settings", value);

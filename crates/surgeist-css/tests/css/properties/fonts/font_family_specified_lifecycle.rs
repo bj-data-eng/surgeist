@@ -269,14 +269,15 @@ fn metadata_globals_and_pending_reentry_keep_symbolic_lifecycle() {
             value.serialize_specified().unwrap(),
             r#"A\ B, "serif", serif"#
         );
-        // Fonts 4 §2.1: a trailing comma needs another family.
+        // Fonts 4 §2.1: a trailing comma needs another family; input ends
+        // there, so the comma is the last authored token.
         assert_invalid_replacement_at(
             &pending
                 .reenter(parse_component_values("A,").unwrap())
                 .unwrap_err(),
             CssKnownProperty::FontFamily,
             "A,",
-            "",
+            ",",
         );
         // CSS Syntax 3 §5.4.6: `!important` is a declaration annotation, not
         // part of a value, so strict reentry rejects its `!` delimiter as

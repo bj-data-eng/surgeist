@@ -474,11 +474,10 @@ pub fn assert_drops_sole_declaration(input: &str) -> Error {
 /// CSS Animations 1 §3 admits only `from`, `to` and percentages in
 /// `[0%, 100%]` as `<keyframe-selector>`, so another prelude makes that
 /// qualified rule invalid, and CSS Syntax 3 (CRD 2026-10-01) §5.5.5 discards
-/// only the invalid rule. The parser currently classifies that diagnostic as
-/// an unexpected end expecting a declaration value, not as an invalid
-/// qualified rule at the selector, so its kind is not asserted.
+/// only the invalid rule. The diagnostic is an invalid qualified rule at the
+/// `selector` token.
 #[track_caller]
-pub fn assert_drops_invalid_keyframe_block(input: &str) {
+pub fn assert_drops_invalid_keyframe_block(input: &str, selector: &str) {
     let report = parse_sheet(input);
     assert_eq!(
         report.diagnostics().len(),
@@ -486,6 +485,9 @@ pub fn assert_drops_invalid_keyframe_block(input: &str) {
         "{input}: one diagnostic: {:?}",
         report.diagnostics()
     );
+    crate::css::support::rules::ExpectedRejection::new(CssErrorCode::InvalidQualifiedRule)
+        .at(selector)
+        .assert_first(&report);
     let [CssRule::Keyframes(rule)] = report.syntax().rules() else {
         panic!("{input}: the @keyframes rule is retained");
     };

@@ -25,6 +25,7 @@ the selected specifications; consult the pinned references when adding coverage.
 | `wrapper` | `yes` checks the independently named property and typed value variant, then its retained authored text |
 | `accepts` | Additional ordinary `authored => specified` rows (a bare row is already specified), added to the catalog's positive sample |
 | `rejects` | Additional values the grammar rejects, added to the catalog's rejected boundary sample |
+| `leading` | `custom_ident` when the grammar's first component is one `<custom-ident>` name (`X: zzfoo zzbar` is rejected at `zzbar`), `custom_ident_list` when it admits an identifier sequence (that value is accepted); omission means keywords only (rejected at `zzfoo`) |
 
 Coverage is optional per contract. A metadata-only property need not invent a
 parser sample, and catalog and dispatch samples may differ. `all` deliberately
@@ -65,7 +66,9 @@ schema macros. It is shared by:
   admission and strict, residual-first, repeatable reentry; original closure
   at the end of input in checked, text, sheet and reentry paths with exact
   normalization budgets; alias and escaped-name lookup; and every `accepts`
-  and `rejects` row with re-parse idempotence;
+  and `rejects` row with re-parse idempotence; and that an unknown first
+  identifier names itself unless `leading` declares a `<custom-ident>` name
+  (rejected at the next identifier) or identifier list (accepted);
 - [known_property_original_closure_contract.rs](../../properties/metadata/known_property_original_closure_contract.rs),
   for original comment and function closure witnesses, programmatic globals
   and legacy grammar owners;

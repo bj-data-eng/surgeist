@@ -647,11 +647,13 @@ fn repeated_opacity_domain_failures_make_progress_to_a_valid_sibling() {
 
 #[test]
 fn basic_shape_failures_report_clip_path_and_retain_valid_siblings() {
+    // A shape missing its second radius or coordinate names the `)` that
+    // cannot supply it (reference "Source coordinates and diagnostics").
     for (value, responsible, token_kind) in [
         ("circle(-1px)", "-1px", CssTokenKind::Dimension),
-        ("ellipse(1px)", "1px", CssTokenKind::Dimension),
+        ("ellipse(1px)", ")", CssTokenKind::CloseParenthesis),
         ("polygon(round 10%, 0 0)", "10%", CssTokenKind::Percentage),
-        ("polygon(0 0, 100%)", "100%", CssTokenKind::Percentage),
+        ("polygon(0 0, 100%)", ")", CssTokenKind::CloseParenthesis),
     ] {
         let source = format!("clip-path: {value}; color: red");
         let report = parse_style_attribute(&source);
@@ -798,7 +800,7 @@ fn undeclared_selector_namespace_exposes_exact_payload_span_action_and_siblings(
     let failed_start = source.find(failed).unwrap();
     assert_eq!(
         diagnostic.error().position().byte_offset().value(),
-        failed_start + "SVG|".len()
+        failed_start
     );
     assert_eq!(
         diagnostic.span().start().byte_offset().value(),
@@ -817,8 +819,11 @@ fn undeclared_selector_namespace_exposes_exact_payload_span_action_and_siblings(
     );
     assert_eq!(detail.expectation().as_str(), "a supported selector");
     assert_eq!(
-        detail.encountered().expect("local-name token").authored(),
-        "a"
+        detail
+            .encountered()
+            .expect("undeclared prefix token")
+            .authored(),
+        "SVG"
     );
 }
 

@@ -239,14 +239,13 @@ fn relative_children_retain_namespace_constraints_without_a_fabricated_parent() 
     let missing = parse("{svg|leaf{color:red}}");
     assert!(missing.syntax().is_some());
     assert!(missing.syntax().as_ref().unwrap().rules().is_empty());
-    // The undeclared prefix fails at the name after `svg|`, dropping the
-    // nested rule.
+    // The undeclared prefix fails at that prefix, dropping the nested rule.
     assert_diagnostics(
         missing.diagnostics(),
         &[(
             surgeist_css::CssErrorCode::InvalidSelector,
             surgeist_css::CssRecoveryAction::DropQualifiedRule,
-            "{svg|".len(),
+            "{".len(),
         )],
     );
 }

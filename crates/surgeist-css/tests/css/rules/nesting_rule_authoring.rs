@@ -224,7 +224,7 @@ fn nesting_validates_each_authored_selector_without_combining_pseudo_elements() 
     assert!(parse_sheet(".card::before { .icon { color: red; } }").is_clean());
     assert_rejection(
         ".card { &::before .icon { color: red; } }",
-        Rejection::selector(Some("{")),
+        Rejection::selector(Some(".")),
     );
 }
 
@@ -341,11 +341,11 @@ fn keyframes_and_nesting_reject_browser_recovery_forms() {
         ),
         (
             ".card { svg|a { color: black; } }",
-            Rejection::selector(Some("a")),
+            Rejection::selector(Some("svg")),
         ),
         (
             ".card { .col || { color: black; } }",
-            Rejection::selector(Some("{")),
+            Rejection::selector(Some("|")),
         ),
         (
             r#".card { @import url("theme.css"); }"#,
@@ -364,7 +364,7 @@ fn keyframes_and_nesting_reject_browser_recovery_forms() {
     for (css, rejection) in rejected {
         assert_rejection(css, rejection);
     }
-    assert_drops_invalid_keyframe_block("@keyframes fade { 0 { opacity: 0; } }");
+    assert_drops_invalid_keyframe_block("@keyframes fade { 0 { opacity: 0; } }", "0");
 }
 
 #[test]

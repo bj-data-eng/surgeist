@@ -1125,6 +1125,15 @@ profile_source!(
     CssSpecificationTier::SurgeistExtension,
     "https://www.w3.org/TR/2025/WD-css-pseudo-4-20250627/"
 );
+// Position 4 §3.2 defines ::backdrop; only that definition is imported.
+profile_source!(
+    X_POSITION4,
+    "X-POSITION4",
+    "CSS Positioned Layout",
+    "4",
+    CssSpecificationTier::SurgeistExtension,
+    "https://www.w3.org/TR/2025/WD-css-position-4-20251007/"
+);
 const X_VALUES4: CssSpecificationSource = CssSpecificationSource::from_repository(
     "X-VALUES4",
     "CSS Values and Units",
@@ -1362,6 +1371,7 @@ static SPECIFICATION_SOURCES: &[CssSpecificationSource] = &[
     X_CONDITIONAL5,
     X_CASCADE6,
     X_PSEUDO4,
+    X_POSITION4,
     X_VALUES4,
     I_VALUES4_20240312,
     X_MEDIA5,
@@ -4944,7 +4954,7 @@ static FEATURE_CATALOG: [CssFeatureMetadata; 794] = [
         "ext.pseudo-element.backdrop",
         CssFeatureKind::Selector,
         "::backdrop",
-        X_PSEUDO4,
+        X_POSITION4,
         "#selectordef-backdrop",
     ),
     CssFeatureMetadata::complete(

@@ -4,7 +4,7 @@
 //! propagation. Exact child provenance, ordered intrinsic contributions and
 //! bounded atomic failures are Surgeist contracts, before contextual execution.
 
-use crate::css::support::property_admission::Responsible::{At, Disputed, End};
+use crate::css::support::property_admission::Responsible::{At, End};
 use crate::css::support::property_admission::eof_closure_origin as implicit_origin;
 use crate::css::support::property_admission::{
     assert_checked_rejected, assert_implicit_closure, assert_style_attribute_rejected,
@@ -878,7 +878,7 @@ fn each_animation_role_rejects_intrinsic_grammar_negatives_through_all_fronts() 
                 ("", End),
                 ("1s", At("1s")),
                 ("fade slide", At("slide")),
-                ("fade,", End),
+                ("fade,", At(",")),
                 ("fade,,slide", At(",")),
                 ("initial, fade", At(",")),
                 ("default", At("default")),
@@ -892,7 +892,7 @@ fn each_animation_role_rejects_intrinsic_grammar_negatives_through_all_fronts() 
                 ("-1e-999s", At("-1e-999s")),
                 ("0", At("0")),
                 ("1px", At("1px")),
-                ("1s,", End),
+                ("1s,", At(",")),
                 ("inherit, 1s", At(",")),
                 ("calc(1px)", At("calc(")),
                 ("1s 2s", At("2s")),
@@ -904,7 +904,7 @@ fn each_animation_role_rejects_intrinsic_grammar_negatives_through_all_fronts() 
                 ("", End),
                 ("0", At("0")),
                 ("1px", At("1px")),
-                ("1s,", End),
+                ("1s,", At(",")),
                 ("1s,,2s", At(",")),
                 ("unset, 1s", At(",")),
                 ("calc(1px)", At("calc(")),
@@ -916,10 +916,10 @@ fn each_animation_role_rejects_intrinsic_grammar_negatives_through_all_fronts() 
             vec![
                 ("", End),
                 ("1s", At("1s")),
-                ("ease,", End),
+                ("ease,", At(",")),
                 ("ease ease-in", At("ease-in")),
                 ("cubic-bezier(-1,0,1,1)", At("-1")),
-                ("steps(1,jump-none)", Disputed),
+                ("steps(1,jump-none)", At("jump-none")),
                 ("revert, ease", At(",")),
             ],
         ),
@@ -931,7 +931,7 @@ fn each_animation_role_rejects_intrinsic_grammar_negatives_through_all_fronts() 
                 ("-1e-999", At("-1e-999")),
                 ("1px", At("1px")),
                 ("1 2", At("2")),
-                ("1,", End),
+                ("1,", At(",")),
                 ("infinite,,2", At(",")),
                 ("initial, 1", At(",")),
                 ("calc(1s)", At("calc(")),
@@ -943,7 +943,7 @@ fn each_animation_role_rejects_intrinsic_grammar_negatives_through_all_fronts() 
                 ("", End),
                 ("sideways", At("sideways")),
                 ("normal reverse", At("reverse")),
-                ("normal,", End),
+                ("normal,", At(",")),
                 ("normal,,reverse", At(",")),
                 ("inherit, normal", At(",")),
             ],
@@ -954,7 +954,7 @@ fn each_animation_role_rejects_intrinsic_grammar_negatives_through_all_fronts() 
                 ("", End),
                 ("filled", At("filled")),
                 ("none both", At("both")),
-                ("both,", End),
+                ("both,", At(",")),
                 ("both,,none", At(",")),
                 ("unset, none", At(",")),
             ],
@@ -965,7 +965,7 @@ fn each_animation_role_rejects_intrinsic_grammar_negatives_through_all_fronts() 
                 ("", End),
                 ("stopped", At("stopped")),
                 ("paused running", At("running")),
-                ("paused,", End),
+                ("paused,", At(",")),
                 ("running,,paused", At(",")),
                 ("revert-layer, running", At(",")),
             ],
@@ -982,7 +982,7 @@ fn each_animation_role_rejects_intrinsic_grammar_negatives_through_all_fronts() 
                 ("fade normal reverse", At("reverse")),
                 ("fade both forwards", At("forwards")),
                 ("fade running paused", At("paused")),
-                ("fade 1s,", End),
+                ("fade 1s,", At(",")),
                 ("fade 1s,,slide 2s", At(",")),
                 ("inherit, fade 1s", At(",")),
                 ("fade calc(1px)", At("calc(")),

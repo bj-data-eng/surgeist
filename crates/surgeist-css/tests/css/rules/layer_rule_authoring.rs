@@ -87,14 +87,14 @@ fn layer_rule_parser_rejects_malformed_layer_syntax() {
             Rejection::new(CssErrorCode::UnexpectedToken, None, Some(";")),
         ),
         ("@layer , theme;", Rejection::prelude("layer", Some(","))),
-        ("@layer theme,;", Rejection::prelude("layer", None)),
+        ("@layer theme,;", Rejection::prelude("layer", Some(","))),
         (
             "@layer theme..components;",
             Rejection::prelude("layer", Some(".")),
         ),
         (
             "@layer theme, { .x { color: black; } }",
-            Rejection::prelude("layer", Some("{")),
+            Rejection::prelude("layer", None),
         ),
         (
             "@layer theme.components extra { .x { color: black; } }",

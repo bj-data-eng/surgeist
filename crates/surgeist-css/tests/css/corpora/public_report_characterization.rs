@@ -674,7 +674,7 @@ fn parse_authored_declarations<'a>(
             let (importance_capability, importance) = importance_observation
                 .split_once(':')
                 .ok_or_else(|| format!("{case_id}: missing importance capability in `{item}`"))?;
-            if !matches!(value_capability, "public" | "deferred-i01") {
+            if !matches!(value_capability, "public" | "typed-value") {
                 return Err(format!(
                     "{case_id}: unknown authored-value capability `{value_capability}`"
                 ));
@@ -1352,7 +1352,7 @@ fn assert_declaration_value(
         } else {
             let keyword = custom.value().global().expect("symbolic custom global");
             assert_eq!(
-                authored.value_capability, "deferred-i01",
+                authored.value_capability, "typed-value",
                 "{} {} authored-value capability",
                 frozen.case_id, authored.id
             );
@@ -1374,7 +1374,7 @@ fn assert_declaration_value(
 
     let Some(known) = known else {
         assert_eq!(
-            authored.value_capability, "deferred-i01",
+            authored.value_capability, "typed-value",
             "{} {} future authored-value capability",
             frozen.case_id, authored.id
         );
@@ -1397,7 +1397,7 @@ fn assert_declaration_value(
         }
         surgeist_css::CssKnownDeclaredValueRef::Global(value) => {
             assert_eq!(
-                authored.value_capability, "deferred-i01",
+                authored.value_capability, "typed-value",
                 "{} {} authored-value capability",
                 frozen.case_id, authored.id
             );
@@ -1430,7 +1430,7 @@ fn assert_declaration_value(
         }
         _ => {
             assert_eq!(
-                authored.value_capability, "deferred-i01",
+                authored.value_capability, "typed-value",
                 "{} {} future authored-value capability",
                 frozen.case_id, authored.id
             );
@@ -1541,7 +1541,7 @@ fn assert_captured_font_metadata(
         authored.id, id,
         "{case_id}: captured font property identity"
     );
-    assert_eq!(authored.value_capability, "deferred-i01");
+    assert_eq!(authored.value_capability, "typed-value");
     assert_ne!(authored.value, "<unavailable>");
     assert_eq!(
         current_css, authored.value,
@@ -1655,7 +1655,7 @@ fn assert_captured_sum_calculation(
 
 fn assert_captured_numeric_metadata(id: &str, css: &str, authored: &AuthoredDeclaration<'_>) {
     assert_eq!(authored.id, id);
-    assert_eq!(authored.value_capability, "deferred-i01");
+    assert_eq!(authored.value_capability, "typed-value");
     assert_eq!(css, authored.value);
 }
 
@@ -1783,7 +1783,7 @@ fn assert_known_property_value(
     };
     if let Some(css) = scalar_authored {
         assert_eq!(authored.id, property.stable_id());
-        assert_eq!(authored.value_capability, "deferred-i01");
+        assert_eq!(authored.value_capability, "typed-value");
         assert_eq!(css, authored.value);
         return;
     }
@@ -2131,7 +2131,7 @@ fn assert_known_property_value(
     };
     if let Some(css) = migrated_authored {
         assert_eq!(authored.id, property.stable_id());
-        assert_eq!(authored.value_capability, "deferred-i01");
+        assert_eq!(authored.value_capability, "typed-value");
         assert_eq!(css, authored.value);
         return;
     }
@@ -2873,7 +2873,7 @@ fn assert_known_property_value(
     };
     if let Some(css) = timing_authored {
         assert_eq!(authored.id, property.stable_id());
-        assert_eq!(authored.value_capability, "deferred-i01");
+        assert_eq!(authored.value_capability, "typed-value");
         assert_eq!(css, authored.value);
         return;
     }
@@ -3194,7 +3194,7 @@ fn assert_known_property_value(
     };
     if let Some(css) = grid_authored {
         assert_eq!(authored.id, property.stable_id());
-        assert_eq!(authored.value_capability, "deferred-i01");
+        assert_eq!(authored.value_capability, "typed-value");
         assert_eq!(css, authored.value);
         return;
     }
@@ -3284,7 +3284,7 @@ fn assert_known_property_value(
     };
     if let Some(css) = position_authored {
         assert_eq!(authored.id, property.stable_id());
-        assert_eq!(authored.value_capability, "deferred-i01");
+        assert_eq!(authored.value_capability, "typed-value");
         assert_eq!(css, authored.value);
         return;
     }
@@ -3304,7 +3304,7 @@ fn assert_known_property_value(
     if let Some((css, images)) = image_authored {
         use surgeist_css::CssImageValue;
         assert_eq!(authored.id, property.stable_id());
-        assert_eq!(authored.value_capability, "deferred-i01");
+        assert_eq!(authored.value_capability, "typed-value");
         assert_eq!(css, authored.value);
         match (property, authored.value) {
             (_, "url(\"\")") => assert!(
@@ -4832,7 +4832,7 @@ fn assert_archive_wrapper(
     authored: &AuthoredDeclaration<'_>,
 ) {
     assert_eq!(authored.id, property.stable_id());
-    assert_eq!(authored.value_capability, "deferred-i01");
+    assert_eq!(authored.value_capability, "typed-value");
     assert_ne!(authored.value, "<unavailable>");
     assert_eq!(css, authored.value);
 }

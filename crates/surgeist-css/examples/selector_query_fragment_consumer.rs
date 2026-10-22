@@ -279,7 +279,8 @@ fn selector_admission_and_semantics() {
     for (source, offset, kind, spelling) in [
         (".a,.b", 2, CssTokenKind::Comma, ","),
         (".a,:is(.ok", 2, CssTokenKind::Comma, ","),
-        ("[a|] {}", 2, CssTokenKind::Delim, "|"),
+        // `a|` may still continue as a namespace prefix; `]` cannot.
+        ("[a|] {}", 3, CssTokenKind::CloseSquareBracket, "]"),
         (":has(.a{)", 7, CssTokenKind::CurlyBracketBlock, "{"),
         (":test", 1, CssTokenKind::Ident, "test"),
     ] {
@@ -309,14 +310,17 @@ fn selector_admission_and_semantics() {
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::RejectInput);
     assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);
-    assert_position(diagnostic.error().position(), (3, 0, 3));
+    // Input ends after the comma, the list's last authored token; no
+    // wrapper token is injected at EOF.
+    assert_position(diagnostic.error().position(), (2, 0, 2));
     assert_span(diagnostic, 0, 3);
     let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
         panic!("typed missing selector")
     };
-    assert!(
-        detail.encountered().is_none(),
-        "actual EOF has no wrapper token"
+    let encountered = detail.encountered().expect("the final comma");
+    assert_eq!(
+        (encountered.kind(), encountered.authored()),
+        (CssTokenKind::Comma, ",")
     );
     assert_validation_parity(&trailing);
     println!("selector exact admission and authored semantics: ok");

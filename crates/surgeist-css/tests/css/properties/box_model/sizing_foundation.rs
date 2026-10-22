@@ -1,7 +1,7 @@
 //! Authored sizing values from Sizing 3 (2026-09-04) §§3.1–3.2, Sizing 4
 //! (2026-09-04) §3.2, and its Values 5 (2024-11-11) §10 dependency.
 
-use crate::css::support::property_admission::Responsible::{At, Disputed};
+use crate::css::support::property_admission::Responsible::At;
 use crate::css::support::property_admission::assert_declaration_rejected as rejected;
 use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
@@ -120,7 +120,7 @@ fn all_twelve_accept_shared_intrinsic_keywords_and_sizing4_extensions() {
             accepted(name, value);
         }
         for (value, token) in [
-            ("fit-content()", None),
+            ("fit-content()", Some(")")),
             ("fit-content(-1px)", Some("-1px")),
             ("fit-content(-1e-999%)", Some("-1e-999%")),
         ] {
@@ -178,20 +178,20 @@ fn calc_size_basis_and_size_keyword_follow_the_values5_function_grammar() {
         }
         for (value, token) in [
             ("calc-size(any, size)", At("size")),
-            ("calc-size(any, 0)", Disputed),
-            ("calc-size(0, size)", Disputed),
+            ("calc-size(any, 0)", At("0")),
+            ("calc-size(0, size)", At("0")),
             ("calc-size(any, size * 0)", At("size")),
             ("calc-size(size, 1px)", At("size")),
             ("calc-size(none, 1px)", At("none")),
             ("calc-size(fit-content(1px), size)", At("fit-content(")),
-            ("calc-size(min-content)", Disputed),
-            ("calc-size(min-content, 1)", Disputed),
+            ("calc-size(min-content)", At(")")),
+            ("calc-size(min-content, 1)", At("1")),
             (
                 "calc-size(min-content, calc-size(min-content, size))",
                 At("calc-size("),
             ),
-            ("calc-size(any, 1px / 1px)", Disputed),
-            ("calc-size(any, 1px * 1px)", Disputed),
+            ("calc-size(any, 1px / 1px)", At("calc-size(")),
+            ("calc-size(any, 1px * 1px)", At("calc-size(")),
             ("calc(size + 1px)", At("size")),
             ("calc(calc-size(min-content, size) + 1px)", At("calc-size(")),
         ] {

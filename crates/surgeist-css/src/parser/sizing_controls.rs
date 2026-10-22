@@ -37,6 +37,7 @@ pub(super) fn parse_max_size_pair<'i, 't>(
 pub(super) fn parse_frame_sizing<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssFrameSizing, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssFrameSizing::Auto),
@@ -44,13 +45,14 @@ pub(super) fn parse_frame_sizing<'i, 't>(
         "content-height" => Ok(CssFrameSizing::ContentHeight),
         "content-block-size" => Ok(CssFrameSizing::ContentBlockSize),
         "content-inline-size" => Ok(CssFrameSizing::ContentInlineSize),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(keyword_location)),
     }
 }
 
 pub(super) fn parse_min_intrinsic_sizing<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssMinIntrinsicSizing, ParseError<'i, Error>> {
+    let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     if ident.eq_ignore_ascii_case("legacy") {
         return Ok(CssMinIntrinsicSizing::Legacy);
@@ -60,7 +62,7 @@ pub(super) fn parse_min_intrinsic_sizing<'i, 't>(
     } else if ident.eq_ignore_ascii_case("zero-if-extrinsic") {
         false
     } else {
-        return Err(unexpected_at(input.current_source_location()));
+        return Err(unexpected_at(keyword_location));
     };
     if input.is_exhausted() {
         return Ok(if first_scroll {
@@ -69,12 +71,13 @@ pub(super) fn parse_min_intrinsic_sizing<'i, 't>(
             CssMinIntrinsicSizing::ZeroIfExtrinsic
         });
     }
+    let keyword_location = input.current_source_location();
     let second = input.expect_ident_cloned().map_err(basic)?;
     if (first_scroll && second.eq_ignore_ascii_case("zero-if-extrinsic"))
         || (!first_scroll && second.eq_ignore_ascii_case("zero-if-scroll"))
     {
         Ok(CssMinIntrinsicSizing::ZeroIfScrollAndExtrinsic)
     } else {
-        Err(unexpected_at(input.current_source_location()))
+        Err(unexpected_at(keyword_location))
     }
 }

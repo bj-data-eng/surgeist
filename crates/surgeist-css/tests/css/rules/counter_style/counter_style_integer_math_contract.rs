@@ -276,15 +276,17 @@ fn strict_checked_math_rejects_recovered_closures_and_residual_substitution() {
         assert_eq!(error.kind(), &expected, "{input}");
     }
     // Counter Styles 3 §3.1.5: fixed takes an <integer>; calc(1px) is a
-    // <length>. Reentry reports this complete input as an UnexpectedEnd,
-    // so only its grammar failure is checked.
+    // <length>, and a math function of the wrong type is responsible as a
+    // whole (Values 4 §10.9).
     let error = pending
         .reparse_after_substitution(parse_component_values("fixed calc(1px)").unwrap())
         .unwrap_err();
-    assert!(
-        matches!(error.kind(), Failure::Grammar(_)),
-        "grammar failure: {error:?}"
-    );
+    let Failure::Grammar(detail) = error.kind() else {
+        panic!("grammar failure: {error:?}")
+    };
+    crate::css::support::rules::invalid_descriptor("counter-style", "system")
+        .at("calc(")
+        .assert_kind(detail);
     assert_eq!(
         Value::try_from_components(
             Kind::System,

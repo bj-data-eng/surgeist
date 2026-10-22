@@ -187,13 +187,14 @@ fn shorthand_accepts_unordered_members_and_allocates_ambiguous_none() {
 
 #[test]
 fn invalid_longhand_domains_and_shorthand_duplicates_drop_only_their_declaration() {
-    // The implemented location of these rejections differs from the
-    // grammar-derived token (held for review), so only the kind and
-    // property are asserted.
-    rejected(TYPE, "symbols(numeric \"0\")", None);
-    rejected(SHORTHAND, "none none url(\"a\")", None);
-    rejected(SHORTHAND, "none square url(\"a\")", None);
-    rejected(SHORTHAND, "linear-gradient(red,)", None);
+    // Counter Styles 3 §6.1: numeric symbols() needs two symbols, so the `)`
+    // that ends it after one cannot continue it. In the shorthand,
+    // url() is the first component no remaining operand admits, and a
+    // committed image fails inside itself as list-style-image does.
+    rejected(TYPE, "symbols(numeric \"0\")", ")");
+    rejected(SHORTHAND, "none none url(\"a\")", r#"url("a")"#);
+    rejected(SHORTHAND, "none square url(\"a\")", r#"url("a")"#);
+    rejected(SHORTHAND, "linear-gradient(red,)", ")");
     for (property, value, rest) in [
         (TYPE, "inherit disc", "disc"),
         (TYPE, "default", "default"),

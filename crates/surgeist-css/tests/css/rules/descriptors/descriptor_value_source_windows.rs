@@ -2,7 +2,6 @@
 //! Fonts4 WD20260907 §9.2 and Color5 WD20260908 §5.3 require their local values;
 //! #504/public source contracts retain original value windows and typed depth256.
 
-use crate::css::support::rules::unexpected_token;
 use std::fmt::Debug;
 use surgeist_css::*;
 
@@ -340,5 +339,7 @@ fn each_family_retains_its_own_pending_eof_closure_and_fails_clean_validation() 
     );
     assert!(invalid_profile.syntax().is_none());
     // Variables 1 §3 admits var() only in property values.
-    unexpected_token("var(").assert_first(&invalid_profile);
+    crate::css::support::rules::invalid_descriptor("color-profile", "components")
+        .at("var(")
+        .assert_first(&invalid_profile);
 }

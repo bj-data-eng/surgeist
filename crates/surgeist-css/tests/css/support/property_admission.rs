@@ -3,19 +3,18 @@
 //! An accepted value is clean and validates to the same declarations. A
 //! rejection names its error kind, the rejecting property and the
 //! responsible authored token. Each suite derives the expected token from the
-//! grammar it tests: the first token at which the value stops being a prefix
-//! of its production, or, when the value or a nested function ends before
-//! the production is satisfied, the last authored token before that end;
-//! `None` only for an empty value. A math function whose contents are
-//! grammatical but whose resolved type or range is invalid is responsible as
-//! a whole (CSS Values 4 §10.9).
+//! grammar it tests by the crate's location rule (reference "Source
+//! coordinates and diagnostics"): a token that cannot continue the
+//! production is responsible, including a closing `)`; when input ends
+//! before the value or function is complete, the last authored token is;
+//! `None` only for an input without any authored token. A math function
+//! whose contents parse but whose type does not check is responsible as a
+//! whole (CSS Values 4 §10.9), except that a sum names its incompatible
+//! operand.
 //!
 //! No specification defines the responsible token, so it is an
-//! implementation-defined part of the diagnostic. Where the expectation
-//! derived from the grammar disagrees with the implementation, a case says
-//! [`Responsible::Disputed`]: it still asserts the kind and property, and the
-//! disagreement is reported for a decision instead of being copied from the
-//! implementation's output.
+//! implementation-defined part of the diagnostic; every case asserts the
+//! token this rule derives from its grammar.
 
 use surgeist_css::*;
 
@@ -26,9 +25,6 @@ pub enum Responsible<'a> {
     At(&'a str),
     /// The value is empty, so no authored token is responsible.
     End,
-    /// The grammar-derived token disagrees with the implementation; only the
-    /// kind and property are asserted.
-    Disputed,
 }
 
 impl<'a> From<Option<&'a str>> for Responsible<'a> {
@@ -184,7 +180,6 @@ pub fn assert_invalid_value<'a>(
     let token = match token.into() {
         Responsible::At(token) => Some(token),
         Responsible::End => None,
-        Responsible::Disputed => return,
     };
     assert_eq!(actual, token, "{property:?}: responsible token");
 }

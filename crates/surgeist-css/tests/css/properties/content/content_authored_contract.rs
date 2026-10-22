@@ -4,7 +4,7 @@
 //! Published source basis: cfffe14a4e5371a1b09e9a0a37b56dd74cf712e0.
 //! No missing-symbol/constructor RED or execution evidence is claimed.
 
-use crate::css::support::property_admission::Responsible::{self, At, Disputed, End};
+use crate::css::support::property_admission::Responsible::{self, At};
 use crate::css::support::property_admission::implicit_closure_origin as implicit_origin;
 use crate::css::support::property_admission::{assert_checked_rejected, assert_invalid_value};
 use crate::css::support::serialization_limits::LimitLadder;
@@ -130,7 +130,7 @@ fn string_sets_reject_missing_leaves_empty_entries_and_reserved_decoded_names() 
         &[
             ("chapter", At("chapter")),
             ("\"text\"", At("\"text\"")),
-            ("chapter \"a\",", End),
+            ("chapter \"a\",", At(",")),
             (",chapter \"a\"", At(",")),
             ("chapter \"a\",,author \"b\"", At(",")),
             ("chapter \"a\" author \"b\"", At("author")),
@@ -139,9 +139,9 @@ fn string_sets_reject_missing_leaves_empty_entries_and_reserved_decoded_names() 
             ("unset \"a\"", At("\"a\"")),
             ("revert \"a\"", At("\"a\"")),
             ("revert-layer \"a\"", At("\"a\"")),
-            ("default \"a\"", Disputed),
-            ("DEFAULT \"a\"", Disputed),
-            (r#"\64 efault "a""#, Disputed),
+            ("default \"a\"", At("default")),
+            ("DEFAULT \"a\"", At("DEFAULT")),
+            (r#"\64 efault "a""#, At(r"\64 efault")),
             (r#"\69 nherit "a""#, At("\"a\"")),
             ("chapter 1", At("1")),
             ("chapter url(\"#x\")", At("url(")),
@@ -296,7 +296,7 @@ fn bookmark_labels_reject_content_keywords_slash_alternatives_and_malformed_func
         &[
             ("normal", At("normal")),
             ("none", At("none")),
-            ("none \"caption\"", Disputed),
+            ("none \"caption\"", At("none")),
             ("\"caption\" / \"spoken\"", At("/")),
             (",", At(",")),
             ("1", At("1")),
@@ -304,10 +304,10 @@ fn bookmark_labels_reject_content_keywords_slash_alternatives_and_malformed_func
             ("string(chapter,middle)", At("middle")),
             ("counter(none)", At("none")),
             ("counter(default)", At("default")),
-            ("target-counter(\"#x\")", At("\"#x\"")),
+            ("target-counter(\"#x\")", At(")")),
             ("target-text(\"#x\",marker)", At("marker")),
-            ("counter(chapter,symbols(numeric \"0\"))", At("\"0\"")),
-            ("leader()", End),
+            ("counter(chapter,symbols(numeric \"0\"))", At(")")),
+            ("leader()", At(")")),
             ("leader(dashed)", At("dashed")),
             ("url(\"#x\"),url(\"#y\")", At(",")),
             ("inherit contents", At("contents")),

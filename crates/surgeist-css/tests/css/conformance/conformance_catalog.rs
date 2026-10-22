@@ -161,58 +161,126 @@ fn reference_copies() -> BTreeMap<String, String> {
     copies
 }
 
-// Records whose cited anchor is absent from the retained copy of their source.
-// Each is a catalog data defect reported for correction; the anchor invariant
-// still holds for every other record.
-const UNRESOLVED_PRODUCTION_ANCHORS: &[(&str, &str)] = &[
-    // Pseudo 4 (2025-06-27) does not define ::backdrop; Position 4 section 3.2
-    // owns `#selectordef-backdrop`, and the source registry has no Position 4
-    // source to cite.
-    ("ext.pseudo-element.backdrop", "#selectordef-backdrop"),
-];
-
 // The WebKit CSSProperties witness is retained as metadata only.
 const METADATA_ONLY_SOURCES: &[&str] = &["I-WEBKIT-SVG-GLYPH"];
+
+/// The retained copy of `record`'s source for one production anchor's page.
+fn cited_copy<'a>(
+    copies: &'a BTreeMap<String, String>,
+    record: &CssFeatureMetadata,
+    page: &str,
+) -> Option<&'a String> {
+    let id = record.id().as_str();
+    let source = record.source();
+    match (source.url(), source.repository_provenance()) {
+        (Some(url), None) => copies.get(&format!("{url}{page}")),
+        (None, Some(provenance)) => {
+            // Repository provenance is `revision:path`; the anchor's page
+            // names that same path.
+            let (revision, path) = provenance.split_once(':').expect("revision:path");
+            assert!(page.is_empty() || page == path, "{id} page `{page}`");
+            copies
+                .iter()
+                .find(|(snapshot, _)| snapshot.contains(revision) && snapshot.ends_with(path))
+                .map(|(_, text)| text)
+        }
+        _ => panic!("{id} source has exactly one provenance form"),
+    }
+}
+
+/// Production anchors of `record` that its cited reference copy does not define.
+fn unresolved_anchors<'r>(
+    copies: &BTreeMap<String, String>,
+    record: &'r CssFeatureMetadata,
+) -> Vec<&'r str> {
+    let id = record.id().as_str();
+    record
+        .production()
+        .split(',')
+        .filter(|anchor| {
+            let (page, fragment) = anchor
+                .split_once('#')
+                .unwrap_or_else(|| panic!("{id} production `{anchor}` is not an anchor"));
+            assert!(!fragment.is_empty(), "{id} empty anchor");
+            let copy = cited_copy(copies, record, page)
+                .unwrap_or_else(|| panic!("{id} has no retained copy for `{anchor}`"));
+            !copy.contains(&format!("id=\"{fragment}\""))
+        })
+        .collect()
+}
 
 #[test]
 fn every_production_anchor_exists_in_the_cited_reference_copy() {
     let copies = reference_copies();
     let mut unresolved = Vec::new();
     for record in feature_catalog() {
-        let id = record.id().as_str();
         let source = record.source();
         if METADATA_ONLY_SOURCES.contains(&source.id().as_str()) {
-            assert!(source.url().is_some(), "{id} metadata-only source URL");
+            assert!(
+                source.url().is_some(),
+                "{} metadata-only source URL",
+                record.id().as_str()
+            );
             continue;
         }
-        for anchor in record.production().split(',') {
-            let (page, fragment) = anchor
-                .split_once('#')
-                .unwrap_or_else(|| panic!("{id} production `{anchor}` is not an anchor"));
-            assert!(!fragment.is_empty(), "{id} empty anchor");
-            let copy = match (source.url(), source.repository_provenance()) {
-                (Some(url), None) => copies.get(&format!("{url}{page}")),
-                (None, Some(provenance)) => {
-                    // Repository provenance is `revision:path`; the anchor's page
-                    // names that same path.
-                    let (revision, path) = provenance.split_once(':').expect("revision:path");
-                    assert!(page.is_empty() || page == path, "{id} page `{page}`");
-                    copies
-                        .iter()
-                        .find(|(snapshot, _)| {
-                            snapshot.contains(revision) && snapshot.ends_with(path)
-                        })
-                        .map(|(_, text)| text)
+        for anchor in unresolved_anchors(&copies, record) {
+            unresolved.push((record.id().as_str(), anchor));
+        }
+    }
+    assert_eq!(unresolved, []);
+}
+
+/// Pseudo-element names a record spells as `::name` or `::name()`.
+fn spelled_pseudo_elements(spelling: &str) -> Vec<&str> {
+    spelling
+        .split("::")
+        .skip(1)
+        .map(|rest| {
+            let end = rest
+                .find(|character: char| !(character.is_ascii_alphanumeric() || character == '-'))
+                .unwrap_or(rest.len());
+            &rest[..end]
+        })
+        .collect()
+}
+
+#[test]
+fn every_pseudo_element_record_cites_a_source_that_defines_it() {
+    let copies = reference_copies();
+    let mut unsourced = Vec::new();
+    let mut records = 0;
+    for record in feature_catalog()
+        .iter()
+        .filter(|record| record.id().as_str().contains(".pseudo-element."))
+    {
+        records += 1;
+        let id = record.id().as_str();
+        assert_eq!(record.kind(), CssFeatureKind::Selector, "{id} kind");
+        assert!(
+            !METADATA_ONLY_SOURCES.contains(&record.source().id().as_str()),
+            "{id} cites a metadata-only source"
+        );
+        for anchor in unresolved_anchors(&copies, record) {
+            unsourced.push(format!(
+                "{id}: anchor `{anchor}` is absent from its cited source"
+            ));
+        }
+        for page in record
+            .production()
+            .split(',')
+            .filter_map(|anchor| anchor.split_once('#').map(|(page, _)| page))
+            .collect::<BTreeSet<_>>()
+        {
+            let copy = cited_copy(&copies, record, page).expect("cited copy");
+            for name in spelled_pseudo_elements(record.spelling()) {
+                if !copy.contains(&format!("::{name}")) {
+                    unsourced.push(format!("{id}: cited source never names `::{name}`"));
                 }
-                _ => panic!("{id} source has exactly one provenance form"),
-            };
-            let copy = copy.unwrap_or_else(|| panic!("{id} has no retained copy for `{anchor}`"));
-            if !copy.contains(&format!("id=\"{fragment}\"")) {
-                unresolved.push((id, anchor));
             }
         }
     }
-    assert_eq!(unresolved, UNRESOLVED_PRODUCTION_ANCHORS);
+    assert!(records > 0, "the catalog lists pseudo-element records");
+    assert!(unsourced.is_empty(), "{}", unsourced.join("\n"));
 }
 
 #[test]
@@ -2119,7 +2187,7 @@ fn every_pseudo_element_and_media_feature_record_has_public_parser_evidence() {
         ),
         (
             "ext.pseudo-element.backdrop",
-            "X-PSEUDO4",
+            "X-POSITION4",
             ".dialog::backdrop { color: red; }",
         ),
         (
