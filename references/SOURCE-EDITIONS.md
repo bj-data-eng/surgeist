@@ -1222,3 +1222,13 @@ Original legal material is covered by the
 ## Layered DOM sharing investigation
 
 The [Blink witness](blink-layered-dom-sharing--389904a08e57.md) and [WebKit witness](webkit-layered-dom-sharing--5b2e266b2aa8.md) retain sparse rare-state and attribute-storage headers. WebKit’s four-entry vector belongs to UniqueElementData; ShareableElementData uses a separate sized attribute array. These are representation comparisons, not HTML edition changes, new #1264 requirements, or performance results. Original file-specific licenses remain in each source block and the existing Chromium/WebKit legal collection applies.
+
+## Horizontal outline synthetic bold
+
+The [WebKit extracted-path witness](webkit-synthetic-bold-outline--73aa6c89e2cb.md)
+retains exact FontCoreText.cpp excerpts at revision
+`73aa6c89e2cb77c46184a81aec944e4ab99d114d`, including its complete original
+two-clause notice. The [Text/Render contract](../docs/text-layout-contract.md#concrete-outline-synthesis)
+selects the corresponding horizontal translated-contour operation and owns its
+numerical and admission rules. This is an implementation-source determination,
+not a CSS edition change or native CoreText raster-equivalence claim.

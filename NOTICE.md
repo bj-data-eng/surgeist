@@ -378,6 +378,10 @@ preserves its [file-specific BSD notices](licenses/webkit/NOTICE.md#contrast-col
 not compiled or linked dependencies. Each retained file preserves its original
 copyright, redistribution conditions and disclaimer.
 
+The [synthetic-bold outline witness](references/webkit-synthetic-bold-outline--73aa6c89e2cb.md)
+retains bounded FontCoreText.cpp excerpts with its complete
+[file-specific notice](licenses/webkit/NOTICE.md#synthetic-bold-outline-witness).
+
 * Licenses and exact covered files: [WebKit reference attribution](licenses/webkit/NOTICE.md)
 * Homepage: [WebKit](https://webkit.org/)
 

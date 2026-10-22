@@ -214,6 +214,18 @@ compile or link these files into Surgeist. The
 uses this bounded evidence while explicitly distinguishing the local finite-Y
 clamp, white ties and numerical representation from browser behavior.
 
+## Synthetic-bold outline witness
+
+The [bounded FontCoreText.cpp witness](../../references/webkit-synthetic-bold-outline--73aa6c89e2cb.md)
+retains physical lines 1–25, 101–112, 581–590 and 787–802 at immutable revision
+`73aa6c89e2cb77c46184a81aec944e4ab99d114d`. Its complete original header is
+also retained in [font-coretext-bsd-2-clause.txt](font-coretext-bsd-2-clause.txt):
+Copyright (C) 2005–2026 Apple Inc., all rights reserved, and Copyright (C) 2006
+Alexey Proskuryakov, with both redistribution conditions and the full disclaimer.
+The exact source excerpts are unchanged. Added provenance and interpretation are
+documentation; the copied C++ is not compiled or linked. Separately linked native
+paint files are not copied or covered by this file's notice.
+
 ## Fresh Document focus initialization
 
 The [focus-initialization witness](../../references/webkit-document-focus-initialization--73aa6c89e2cb.md)
