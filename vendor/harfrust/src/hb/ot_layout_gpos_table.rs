@@ -24,7 +24,7 @@ fn propagate_attachment_offsets(
     i: usize,
     direction: Direction,
     nesting_level: usize,
-) {
+) -> bool {
     // Adjusts offsets of attached glyphs (both cursive and mark) to accumulate
     // offset of glyph they are attached to.
     let chain = pos[i].attach_chain();
@@ -34,16 +34,15 @@ fn propagate_attachment_offsets(
 
     let j = (i as isize + isize::from(chain)) as usize;
     if j >= len {
-        return;
+        return false;
     }
 
     if nesting_level == 0 {
-        return;
+        return true;
     }
 
-    if pos[j].attach_chain() != 0 {
-        propagate_attachment_offsets(pos, len, j, direction, nesting_level - 1);
-    }
+    let truncated = pos[j].attach_chain() != 0
+        && propagate_attachment_offsets(pos, len, j, direction, nesting_level - 1);
 
     match kind {
         attach_type::MARK => {
@@ -90,6 +89,7 @@ fn propagate_attachment_offsets(
         }
         _ => {}
     }
+    truncated
 }
 
 pub mod GPOS {
@@ -119,28 +119,36 @@ pub mod GPOS {
             if buffer.direction.is_forward() {
                 for i in 0..len {
                     if buffer.pos[i].attach_chain() != 0 {
-                        propagate_attachment_offsets(
+                        if propagate_attachment_offsets(
                             &mut buffer.pos,
                             len,
                             i,
                             direction,
                             MAX_NESTING_LEVEL,
-                        );
+                        ) {
+                            buffer.refuse(ShapingRefusal::AttachmentNestingLimit);
+                        }
                     }
                 }
             } else {
                 for i in (0..len).rev() {
                     if buffer.pos[i].attach_chain() != 0 {
-                        propagate_attachment_offsets(
+                        if propagate_attachment_offsets(
                             &mut buffer.pos,
                             len,
                             i,
                             direction,
                             MAX_NESTING_LEVEL,
-                        );
+                        ) {
+                            buffer.refuse(ShapingRefusal::AttachmentNestingLimit);
+                        }
                     }
                 }
             }
         }
     }
 }
+
+#[cfg(test)]
+#[path = "ot_layout_gpos_completion_tests.rs"]
+mod completion_tests;

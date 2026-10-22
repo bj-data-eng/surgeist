@@ -90,6 +90,20 @@ pub(crate) fn apply(c: &mut AatApplyContext) -> Option<()> {
             c.reverse_buffer();
         }
 
+        let consumes_mask = match &kind {
+            SubtableKind::Format0(_) | SubtableKind::Format2(_) | SubtableKind::Format6(_) => true,
+            SubtableKind::Format1(_) => !subtable.is_cross_stream(),
+            SubtableKind::Format4(_) => false,
+        };
+        if consumes_mask
+            && c.plan.ot_map.native_kerning_capacity_loss(
+                &c.plan.user_features,
+                c.buffer.direction.is_horizontal(),
+            )
+        {
+            c.buffer.refuse(ShapingRefusal::FeatureCapacityLimit);
+        }
+
         match &kind {
             SubtableKind::Format0(format0) => {
                 if !c.plan.requested_kerning {
@@ -477,6 +491,9 @@ fn apply_state_machine_kerning<T, E, Driver: StateTableDriver<T, E>>(
         }
 
         if entry.has_advance() || c.buffer.max_ops <= 0 {
+            if !entry.has_advance() {
+                c.buffer.refuse(ShapingRefusal::WorkLimit);
+            }
             c.buffer.next_glyph();
         }
         c.buffer.max_ops -= 1;
@@ -518,6 +535,7 @@ impl StateTableDriver<Subtable1<'_>, BigEndian<u16>> for Driver1 {
                 self.stack[self.depth] = c.buffer.idx;
                 self.depth += 1;
             } else {
+                c.buffer.refuse(ShapingRefusal::ContextLimit);
                 self.depth = 0; // Probably not what CoreText does, but better?
             }
         }
@@ -711,3 +729,7 @@ impl KerxSubtableCache {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "kerx_completion_tests.rs"]
+mod completion_tests;

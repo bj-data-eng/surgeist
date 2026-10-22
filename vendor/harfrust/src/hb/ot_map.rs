@@ -6,6 +6,7 @@ use super::buffer::{glyph_flag, hb_buffer_t};
 use super::common::TagExt;
 use super::ot_layout::TableIndex;
 use super::ot_shape_plan::hb_ot_shape_plan_t;
+use super::Feature;
 use super::{hb_font_t, hb_mask_t, hb_tag_t, tag, Language, Script};
 
 // TODO: Remove once MSRV is 1.80+
@@ -19,6 +20,31 @@ pub struct hb_ot_map_t {
     lookups: [Vec<lookup_map_t>; 2],
     stages: [Vec<StageMap>; 2],
     feature_variations: [Option<u32>; 2],
+    capacity_loss: FeatureCapacityLoss,
+}
+
+// Source-owned observations of the existing bit-allocation decisions. These
+// do not alter allocation, masks, stages or selection. Qualification happens on
+// each actual nonempty invocation, and native masks at their consuming paths.
+#[derive(Default)]
+struct FeatureCapacityLoss {
+    tables: [bool; 2],
+    kerning: [bool; 2],
+}
+
+impl FeatureCapacityLoss {
+    fn record(&mut self, info: &feature_info_t, indices: [Option<u16>; 2]) {
+        for side in 0..2 {
+            self.tables[side] |= indices[side].is_some();
+        }
+        if info.flags & F_HAS_FALLBACK != 0 || indices.iter().any(Option::is_some) {
+            if info.tag == hb_tag_t::new(b"kern") {
+                self.kerning[0] = true;
+            } else if info.tag == hb_tag_t::new(b"vkrn") {
+                self.kerning[1] = true;
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -74,6 +100,44 @@ pub type pause_func_t = fn(&hb_ot_shape_plan_t, &hb_font_t, &mut hb_buffer_t) ->
 impl hb_ot_map_t {
     pub const MAX_BITS: u32 = 8;
     pub const MAX_VALUE: u32 = (1 << Self::MAX_BITS) - 1;
+
+    pub(crate) fn selected_capacity_loss(&self, requests: &[Feature], selected: [bool; 2]) -> bool {
+        if (0..2).any(|side| selected[side] && self.capacity_loss.tables[side]) {
+            return true;
+        }
+        requests.iter().any(|request| {
+            !request.is_global()
+                && self
+                    .features
+                    .binary_search_by_key(&request.tag, |f| f.tag)
+                    .is_ok_and(|index| {
+                        let feature = &self.features[index];
+                        request.value > feature.mask >> feature.shift
+                            && (0..2).any(|side| selected[side] && feature.index[side].is_some())
+                    })
+        })
+    }
+
+    pub(crate) fn native_kerning_capacity_loss(
+        &self,
+        requests: &[Feature],
+        horizontal: bool,
+    ) -> bool {
+        let side = usize::from(!horizontal);
+        if self.capacity_loss.kerning[side] {
+            return true;
+        }
+        let tag = if horizontal {
+            hb_tag_t::new(b"kern")
+        } else {
+            hb_tag_t::new(b"vkrn")
+        };
+        let (mask, shift) = self.get_mask(tag);
+        mask != 0
+            && requests.iter().any(|request| {
+                !request.is_global() && request.tag == tag && request.value > mask >> shift
+            })
+    }
 
     #[inline]
     pub fn found_script(&self, table_index: TableIndex) -> bool {
@@ -328,7 +392,8 @@ impl<'a> hb_ot_map_builder_t<'a> {
             }
         }
 
-        let (features, required_stage, global_mask) = self.collect_feature_maps(required_tag);
+        let (features, required_stage, global_mask, capacity_loss) =
+            self.collect_feature_maps(required_tag);
 
         self.add_gsub_pause(None);
         self.add_gpos_pause(None);
@@ -344,13 +409,20 @@ impl<'a> hb_ot_map_builder_t<'a> {
             lookups,
             stages,
             feature_variations: self.face.ot_tables.feature_variations,
+            capacity_loss,
         }
     }
 
     fn collect_feature_maps(
         &mut self,
         required_tag: [Option<hb_tag_t>; 2],
-    ) -> (Vec<feature_map_t>, [usize; 2], hb_mask_t) {
+    ) -> (
+        Vec<feature_map_t>,
+        [usize; 2],
+        hb_mask_t,
+        FeatureCapacityLoss,
+    ) {
+        let mut capacity_loss = FeatureCapacityLoss::default();
         let mut map_features = Vec::new();
         let mut required_stage = [0; 2];
         let mut global_mask = GLOBAL_BIT_MASK;
@@ -370,40 +442,30 @@ impl<'a> hb_ot_map_builder_t<'a> {
                 hb_ot_map_t::MAX_BITS.min(num_bits)
             };
 
-            if info.max_value == 0 || next_bit + bits_needed >= GLOBAL_BIT_SHIFT {
-                // Feature disabled, or not enough bits.
+            if info.max_value == 0 {
+                continue;
+            }
+            if next_bit + bits_needed >= GLOBAL_BIT_SHIFT {
+                // Preserve the original early allocation refusal and stage state;
+                // resolve real feature presence only for diagnostic metadata.
+                capacity_loss.record(info, self.feature_indices(info));
                 continue;
             }
 
-            let mut found = false;
-            let mut feature_index = [None; 2];
-
-            for (table_index, table) in self.face.layout_tables() {
+            for (table_index, _) in self.face.layout_tables() {
                 if required_tag[table_index] == Some(info.tag) {
                     required_stage[table_index] = info.stage[table_index];
                 }
-
-                if let Some(script) = self.script_index[table_index] {
-                    let lang = self.lang_index[table_index];
-                    if let Some(idx) = table.find_language_feature(script, lang, info.tag) {
-                        feature_index[table_index] = Some(idx);
-                        found = true;
-                    }
-                }
             }
-
-            if !found && info.flags & F_GLOBAL_SEARCH != 0 {
-                // hb_ot_layout_table_find_feature
-                for (table_index, table) in self.face.layout_tables() {
-                    if let Some(idx) = table.feature_index(info.tag) {
-                        feature_index[table_index] = Some(idx);
-                        found = true;
-                    }
-                }
-            }
+            let feature_index = self.feature_indices(info);
+            let found = feature_index.iter().any(Option::is_some);
 
             if !found && !info.flags & F_HAS_FALLBACK != 0 {
                 continue;
+            }
+
+            if info.max_value > hb_ot_map_t::MAX_VALUE {
+                capacity_loss.record(info, feature_index);
             }
 
             let (shift, mask) = if info.flags & F_GLOBAL != 0 && info.max_value == 1 {
@@ -435,7 +497,23 @@ impl<'a> hb_ot_map_builder_t<'a> {
             map_features.sort();
         }
 
-        (map_features, required_stage, global_mask)
+        (map_features, required_stage, global_mask, capacity_loss)
+    }
+
+    fn feature_indices(&self, info: &feature_info_t) -> [Option<u16>; 2] {
+        let mut indices = [None; 2];
+        for (side, table) in self.face.layout_tables() {
+            if let Some(script) = self.script_index[side] {
+                indices[side] =
+                    table.find_language_feature(script, self.lang_index[side], info.tag);
+            }
+        }
+        if indices.iter().all(Option::is_none) && info.flags & F_GLOBAL_SEARCH != 0 {
+            for (side, table) in self.face.layout_tables() {
+                indices[side] = table.feature_index(info.tag);
+            }
+        }
+        indices
     }
 
     fn dedup_feature_infos(&mut self) {
@@ -608,3 +686,7 @@ impl<'a> hb_ot_map_builder_t<'a> {
         Some(())
     }
 }
+
+#[cfg(test)]
+#[path = "ot_map_completion_tests.rs"]
+mod completion_tests;

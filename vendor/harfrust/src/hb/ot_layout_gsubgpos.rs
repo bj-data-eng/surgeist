@@ -1,7 +1,7 @@
 //! Matching of glyph patterns.
 
 use super::buffer::GlyphInfo;
-use super::buffer::{hb_buffer_t, GlyphPropsFlags};
+use super::buffer::{hb_buffer_t, GlyphPropsFlags, ShapingRefusal};
 use super::cache::hb_cache_t;
 use super::hb_font_t;
 use super::hb_mask_t;
@@ -75,6 +75,7 @@ pub fn match_input(
     }
 
     if count > MAX_CONTEXT_LENGTH {
+        ctx.buffer.refuse(ShapingRefusal::ContextLimit);
         return false;
     }
     ctx.match_positions_len = count;
@@ -555,6 +556,7 @@ pub(crate) fn apply_lookup(
         }
 
         if ctx.buffer.max_ops <= 0 {
+            ctx.buffer.refuse(ShapingRefusal::WorkLimit);
             break;
         }
 
@@ -610,6 +612,7 @@ pub(crate) fn apply_lookup(
 
         if delta > 0 {
             if delta as usize + count > MAX_CONTEXT_LENGTH {
+                ctx.buffer.refuse(ShapingRefusal::ContextLimit);
                 break;
             }
 
@@ -924,12 +927,14 @@ pub mod OT {
 
         pub fn recurse(&mut self, sub_lookup_index: u16) -> Option<()> {
             if self.nesting_level_left == 0 {
+                self.buffer.refuse(ShapingRefusal::LookupNestingLimit);
                 self.buffer.successful = false;
                 return None;
             }
 
             self.buffer.max_ops -= 1;
             if self.buffer.max_ops < 0 {
+                self.buffer.refuse(ShapingRefusal::WorkLimit);
                 self.buffer.successful = false;
                 return None;
             }
@@ -1162,3 +1167,7 @@ pub fn ligate_input(
         }
     }
 }
+
+#[cfg(test)]
+#[path = "ot_layout_gsubgpos_completion_tests.rs"]
+mod completion_tests;

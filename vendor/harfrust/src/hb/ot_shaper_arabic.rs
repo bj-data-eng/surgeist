@@ -303,6 +303,7 @@ fn arabic_joining(buffer: &mut hb_buffer_t) {
     let mut state = 0;
 
     // Check pre-context.
+    let mut pre_terminal = false;
     for i in 0..buffer.context_len[0] {
         let c = buffer.context[0][i] as Codepoint;
         let this_type = get_joining_type(c, c.general_category());
@@ -310,8 +311,13 @@ fn arabic_joining(buffer: &mut hb_buffer_t) {
             continue;
         }
 
+        pre_terminal = true;
         state = STATE_TABLE[state][this_type as usize].2 as usize;
         break;
+    }
+
+    if !pre_terminal && buffer.context_truncated(0) {
+        buffer.refuse(ShapingRefusal::ContextLimit);
     }
 
     for i in 0..buffer.len {
@@ -350,6 +356,7 @@ fn arabic_joining(buffer: &mut hb_buffer_t) {
         state = entry.2 as usize;
     }
 
+    let mut post_terminal = false;
     for i in 0..buffer.context_len[1] {
         let c = buffer.context[1][i] as Codepoint;
         let this_type = get_joining_type(c, c.general_category());
@@ -357,6 +364,7 @@ fn arabic_joining(buffer: &mut hb_buffer_t) {
             continue;
         }
 
+        post_terminal = true;
         let entry = &STATE_TABLE[state][this_type as usize];
         if entry.0 != arabic_action_t::NONE && prev.is_some() {
             if let Some(prev) = prev {
@@ -372,6 +380,9 @@ fn arabic_joining(buffer: &mut hb_buffer_t) {
         }
 
         break;
+    }
+    if !post_terminal && buffer.context_truncated(1) && prev.is_some() && (2..=5).contains(&state) {
+        buffer.refuse(ShapingRefusal::ContextLimit);
     }
 }
 
@@ -711,3 +722,7 @@ pub const ARABIC_SHAPER: hb_ot_shaper_t = hb_ot_shaper_t {
     zero_width_marks: HB_OT_SHAPE_ZERO_WIDTH_MARKS_BY_GDEF_LATE,
     fallback_position: true,
 };
+
+#[cfg(test)]
+#[path = "ot_shaper_arabic_completion_tests.rs"]
+mod completion_tests;

@@ -396,6 +396,41 @@ pub const HB_BUFFER_CLUSTER_LEVEL_CHARACTERS: u32 = 2;
 pub const HB_BUFFER_CLUSTER_LEVEL_GRAPHEMES: u32 = 3;
 pub const HB_BUFFER_CLUSTER_LEVEL_DEFAULT: u32 = HB_BUFFER_CLUSTER_LEVEL_MONOTONE_GRAPHEMES;
 
+/// Whether the provider completed the requested shaping work.
+///
+/// A refusal can accompany nonempty, plausible partial glyph output. It records
+/// logical implementation limits, not recovery from physical allocation failure.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ShapingStatus {
+    /// No observed resource limit affected work or selected-plan representation.
+    Complete,
+    /// The first resource guard that limited this buffer lifecycle.
+    Refused(ShapingRefusal),
+}
+
+/// The first actual resource limit encountered during shaping or input growth.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ShapingRefusal {
+    /// Required buffer growth exceeded the provider's length limit.
+    GrowthLimit,
+    /// The operation budget prevented required work or forced progress.
+    WorkLimit,
+    /// A recursive layout lookup exceeded the nesting limit.
+    LookupNestingLimit,
+    /// Required normalization or layout context exceeded its bounded capacity.
+    ContextLimit,
+    /// An attachment chain exceeded the propagation nesting limit.
+    AttachmentNestingLimit,
+    /// The selected nonempty plan cannot represent a real feature request.
+    ///
+    /// This is conservative plan qualification, not proof that a lookup was
+    /// truncated. It may refuse even when a range does not select input or a
+    /// later range overrides the value. Existing feature masks are unchanged.
+    FeatureCapacityLimit,
+    /// A ligature action required overwritten bounded component history.
+    ComponentHistoryLimit,
+}
+
 pub struct hb_buffer_t {
     // Information about how the text in the buffer should be treated.
     pub flags: BufferFlags,
@@ -410,6 +445,7 @@ pub struct hb_buffer_t {
 
     /// Allocations successful.
     pub successful: bool,
+    shaping_refusal: Option<ShapingRefusal>,
     /// Whether we have an output buffer going on.
     pub(crate) have_output: bool,
     pub have_separate_output: bool,
@@ -428,6 +464,7 @@ pub struct hb_buffer_t {
     // Index 0 is for "pre-context", 1 for "post-context".
     pub context: [[Codepoint; CONTEXT_LENGTH]; 2],
     pub context_len: [usize; 2],
+    context_truncated: [bool; 2],
 
     pub(crate) digest: hb_set_digest_t,
     pub(crate) glyph_set: U32Set,
@@ -467,6 +504,7 @@ impl hb_buffer_t {
             script: None,
             language: None,
             successful: true,
+            shaping_refusal: None,
             have_output: false,
             have_positions: false,
             idx: 0,
@@ -479,9 +517,19 @@ impl hb_buffer_t {
             serial: 0,
             context: Default::default(),
             context_len: [0, 0],
+            context_truncated: [false, false],
             digest: hb_set_digest_t::new(),
             glyph_set: U32Set::default(),
         }
+    }
+
+    pub(crate) fn refuse(&mut self, reason: ShapingRefusal) {
+        self.shaping_refusal.get_or_insert(reason);
+    }
+
+    pub(crate) fn shaping_status(&self) -> ShapingStatus {
+        self.shaping_refusal
+            .map_or(ShapingStatus::Complete, ShapingStatus::Refused)
     }
 
     #[inline]
@@ -599,6 +647,7 @@ impl hb_buffer_t {
         self.language = None;
 
         self.successful = true;
+        self.shaping_refusal = None;
         self.have_output = false;
         self.have_positions = false;
 
@@ -611,6 +660,7 @@ impl hb_buffer_t {
 
         self.context = Default::default();
         self.context_len = [0, 0];
+        self.context_truncated = [false, false];
 
         self.serial = 0;
         self.scratch_flags = HB_BUFFER_SCRATCH_FLAG_DEFAULT;
@@ -952,6 +1002,7 @@ impl hb_buffer_t {
 
         self.max_ops -= self.len as i32;
         if self.max_ops < 0 {
+            self.refuse(ShapingRefusal::WorkLimit);
             self.successful = false;
         }
 
@@ -987,6 +1038,7 @@ impl hb_buffer_t {
     fn merge_clusters_impl(&mut self, mut start: usize, mut end: usize) {
         self.max_ops -= (end - start) as i32;
         if self.max_ops < 0 {
+            self.refuse(ShapingRefusal::WorkLimit);
             self.successful = false;
         }
 
@@ -1064,6 +1116,7 @@ impl hb_buffer_t {
     fn merge_out_clusters_impl(&mut self, mut start: usize, mut end: usize) {
         self.max_ops -= (end - start) as i32;
         if self.max_ops < 0 {
+            self.refuse(ShapingRefusal::WorkLimit);
             self.successful = false;
         }
 
@@ -1268,6 +1321,7 @@ impl hb_buffer_t {
         // But if range *is* specified, reject if range is too large.
         if let (Some(start), Some(end)) = (start, end) {
             if end.wrapping_sub(start) > 255 {
+                self.refuse(ShapingRefusal::ContextLimit);
                 return;
             }
         }
@@ -1376,6 +1430,7 @@ impl hb_buffer_t {
     #[must_use]
     fn enlarge(&mut self, size: usize) -> bool {
         if size > self.max_len {
+            self.refuse(ShapingRefusal::GrowthLimit);
             self.successful = false;
             return false;
         }
@@ -1411,6 +1466,7 @@ impl hb_buffer_t {
 
         self.max_ops -= (self.len - self.idx) as i32;
         if self.max_ops < 0 {
+            self.refuse(ShapingRefusal::WorkLimit);
             self.successful = false;
             return false;
         }
@@ -1433,6 +1489,11 @@ impl hb_buffer_t {
 
     fn clear_context(&mut self, side: usize) {
         self.context_len[side] = 0;
+        self.context_truncated[side] = false;
+    }
+
+    pub(crate) fn context_truncated(&self, side: usize) -> bool {
+        self.context_truncated[side]
     }
 
     pub fn sort(&mut self, start: usize, end: usize, cmp: impl Fn(&GlyphInfo, &GlyphInfo) -> bool) {
@@ -1595,18 +1656,22 @@ impl hb_buffer_t {
 
     fn set_pre_context(&mut self, text: &str) {
         self.clear_context(0);
-        for (i, c) in text.chars().rev().enumerate().take(CONTEXT_LENGTH) {
+        let mut chars = text.chars().rev();
+        for (i, c) in chars.by_ref().take(CONTEXT_LENGTH).enumerate() {
             self.context[0][i] = c as Codepoint;
             self.context_len[0] += 1;
         }
+        self.context_truncated[0] = chars.next().is_some();
     }
 
     fn set_post_context(&mut self, text: &str) {
         self.clear_context(1);
-        for (i, c) in text.chars().enumerate().take(CONTEXT_LENGTH) {
+        let mut chars = text.chars();
+        for (i, c) in chars.by_ref().take(CONTEXT_LENGTH).enumerate() {
             self.context[1][i] = c as Codepoint;
             self.context_len[1] += 1;
         }
+        self.context_truncated[1] = chars.next().is_some();
     }
 
     pub fn next_syllable(&self, mut start: usize) -> usize {
@@ -1768,12 +1833,18 @@ impl UnicodeBuffer {
     }
 
     /// Sets the pre-context for this buffer.
+    ///
+    /// Retains the nearest five characters. A selected shaping operation that
+    /// needs additional context reports [`ShapingRefusal::ContextLimit`].
     #[inline]
     pub fn set_pre_context(&mut self, str: &str) {
         self.0.set_pre_context(str);
     }
 
     /// Sets the post-context for this buffer.
+    ///
+    /// Retains the nearest five characters. A selected shaping operation that
+    /// needs additional context reports [`ShapingRefusal::ContextLimit`].
     #[inline]
     pub fn set_post_context(&mut self, str: &str) {
         self.0.set_post_context(str);
@@ -1783,7 +1854,7 @@ impl UnicodeBuffer {
     #[inline]
     pub fn add(&mut self, codepoint: char, cluster: u32) {
         self.0.add(codepoint as u32, cluster);
-        self.0.context_len[1] = 0;
+        self.0.clear_context(1);
     }
 
     /// Set the text direction of the `Buffer`'s contents.
@@ -1903,6 +1974,20 @@ impl Default for UnicodeBuffer {
 pub struct GlyphBuffer(pub(crate) hb_buffer_t);
 
 impl GlyphBuffer {
+    /// Reports completion for this actual result, including any input-growth
+    /// refusal before shaping. The first refusal survives shaping and reads;
+    /// [`Self::clear`] starts a new input lifecycle and resets it.
+    ///
+    /// Partial glyph output remains available on refusal. Its size or appearance
+    /// is not evidence of completion. Ordinary font recovery and no-match are
+    /// complete unless a resource guard limited work or the selected nonempty
+    /// plan could not represent a real feature request. The latter is reported
+    /// conservatively as [`ShapingRefusal::FeatureCapacityLimit`], even if a range
+    /// would not activate the feature.
+    pub fn shaping_status(&self) -> ShapingStatus {
+        self.0.shaping_status()
+    }
+
     /// Returns the length of the data of the buffer.
     ///
     /// When called before shaping this is the number of unicode codepoints
@@ -2025,3 +2110,7 @@ impl core::fmt::Debug for GlyphBuffer {
             .finish()
     }
 }
+
+#[cfg(test)]
+#[path = "buffer_completion_tests.rs"]
+mod completion_tests;

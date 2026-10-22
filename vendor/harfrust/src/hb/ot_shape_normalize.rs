@@ -413,6 +413,8 @@ pub fn _hb_ot_shape_normalize(
                 if let Some(reorder_marks) = ctx.plan.shaper.reorder_marks {
                     reorder_marks(ctx.plan, ctx.buffer, i, end);
                 }
+            } else {
+                ctx.buffer.refuse(ShapingRefusal::ContextLimit);
             }
 
             i = end + 1;
@@ -498,3 +500,7 @@ pub fn _hb_ot_shape_normalize(
         ctx.buffer.sync();
     }
 }
+
+#[cfg(test)]
+#[path = "ot_shape_normalize_completion_tests.rs"]
+mod completion_tests;

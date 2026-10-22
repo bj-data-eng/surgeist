@@ -5,6 +5,7 @@ use crate::hb::aat::layout_common::{
 };
 use crate::hb::ot_layout::MAX_CONTEXT_LENGTH;
 use crate::hb::{hb_font_t, GlyphInfo};
+use crate::ShapingRefusal;
 use crate::U32Set;
 use alloc::vec;
 use read_fonts::tables::aat;
@@ -384,6 +385,7 @@ fn drive<T: bytemuck::AnyBitPattern + FixedSize + core::fmt::Debug, Ctx: DriverC
             ac.buffer.next_glyph();
         } else {
             if ac.buffer.max_ops <= 0 {
+                ac.buffer.refuse(ShapingRefusal::WorkLimit);
                 ac.buffer.next_glyph();
             }
             ac.buffer.max_ops -= 1;
@@ -414,6 +416,7 @@ fn apply_subtable<'a>(kind: SubtableKind<'a>, ac: &mut AatApplyContext<'a>) {
                 table: table.clone(),
                 match_length: 0,
                 match_positions: [0; LIGATURE_MAX_MATCHES],
+                match_indices: [None; LIGATURE_MAX_MATCHES],
             };
             drive(&table.state_table, &mut c, ac);
         }
@@ -541,6 +544,9 @@ impl DriverContext<NoPayload> for RearrangementCtx {
             let reverse_l = 3 == (m >> 4);
             let reverse_r = 3 == (m & 0x0F);
 
+            if self.end - self.start >= l + r && self.end - self.start > MAX_CONTEXT_LENGTH {
+                buffer.refuse(ShapingRefusal::ContextLimit);
+            }
             if (self.end - self.start >= l + r) && (self.end - self.start <= MAX_CONTEXT_LENGTH) {
                 buffer.merge_clusters(self.start, (buffer.idx + 1).min(buffer.len));
                 buffer.merge_clusters(self.start, self.end);
@@ -720,6 +726,7 @@ impl DriverContext<InsertionEntryData> for InsertionCtx<'_> {
             let count = flags & Self::MARKED_INSERT_COUNT;
             ac.buffer.max_ops -= i32::from(count);
             if ac.buffer.max_ops <= 0 {
+                ac.buffer.refuse(ShapingRefusal::WorkLimit);
                 return Some(());
             }
 
@@ -763,6 +770,7 @@ impl DriverContext<InsertionEntryData> for InsertionCtx<'_> {
             let count = (flags & Self::CURRENT_INSERT_COUNT) >> 5;
             ac.buffer.max_ops -= i32::from(count);
             if ac.buffer.max_ops < 0 {
+                ac.buffer.refuse(ShapingRefusal::WorkLimit);
                 return Some(());
             }
 
@@ -817,9 +825,20 @@ struct LigatureCtx<'a> {
     table: LigatureSubtable<'a>,
     match_length: usize,
     match_positions: [usize; LIGATURE_MAX_MATCHES],
+    match_indices: [Option<usize>; LIGATURE_MAX_MATCHES],
 }
 
 impl LigatureCtx<'_> {
+    // Observe the actual logical read without changing the original modulo-ring
+    // shaping behavior. Overcapture alone is not a refusal until history is used.
+    fn position(&self, index: usize, buffer: &mut crate::hb::buffer::hb_buffer_t) -> usize {
+        let slot = index % LIGATURE_MAX_MATCHES;
+        if self.match_indices[slot] != Some(index) {
+            buffer.refuse(ShapingRefusal::ComponentHistoryLimit);
+        }
+        self.match_positions[slot]
+    }
+
     const SET_COMPONENT: u16 = 0x8000;
     const DONT_ADVANCE: u16 = 0x4000;
     const PERFORM_ACTION: u16 = 0x2000;
@@ -855,13 +874,13 @@ impl DriverContext<BigEndian<u16>> for LigatureCtx<'_> {
         if entry.flags & Self::SET_COMPONENT != 0 {
             // Never mark same index twice, in case DONT_ADVANCE was used...
             if self.match_length != 0
-                && self.match_positions[(self.match_length - 1) % LIGATURE_MAX_MATCHES]
-                    == ac.buffer.out_len
+                && self.position(self.match_length - 1, ac.buffer) == ac.buffer.out_len
             {
                 self.match_length -= 1;
             }
 
             self.match_positions[self.match_length % LIGATURE_MAX_MATCHES] = ac.buffer.out_len;
+            self.match_indices[self.match_length % LIGATURE_MAX_MATCHES] = Some(self.match_length);
             self.match_length += 1;
         }
 
@@ -888,10 +907,8 @@ impl DriverContext<BigEndian<u16>> for LigatureCtx<'_> {
                 }
 
                 cursor -= 1;
-                if !ac
-                    .buffer
-                    .move_to(self.match_positions[cursor % LIGATURE_MAX_MATCHES])
-                {
+                let position = self.position(cursor, ac.buffer);
+                if !ac.buffer.move_to(position) {
                     return Some(());
                 }
 
@@ -926,15 +943,12 @@ impl DriverContext<BigEndian<u16>> for LigatureCtx<'_> {
 
                     ac.replace_glyph(u32::from(lig.to_u16()));
 
-                    let lig_end =
-                        self.match_positions[(self.match_length - 1) % LIGATURE_MAX_MATCHES] + 1;
+                    let lig_end = self.position(self.match_length - 1, ac.buffer) + 1;
                     // Now go and delete all subsequent components.
                     while self.match_length - 1 > cursor {
                         self.match_length -= 1;
-                        if !ac
-                            .buffer
-                            .move_to(self.match_positions[self.match_length % LIGATURE_MAX_MATCHES])
-                        {
+                        let position = self.position(self.match_length, ac.buffer);
+                        if !ac.buffer.move_to(position) {
                             return Some(());
                         }
                         ac.delete_glyph();
@@ -943,10 +957,8 @@ impl DriverContext<BigEndian<u16>> for LigatureCtx<'_> {
                     if !ac.buffer.move_to(lig_end) {
                         return Some(());
                     }
-                    ac.buffer.merge_out_clusters(
-                        self.match_positions[cursor % LIGATURE_MAX_MATCHES],
-                        ac.buffer.out_len,
-                    );
+                    let position = self.position(cursor, ac.buffer);
+                    ac.buffer.merge_out_clusters(position, ac.buffer.out_len);
                 }
 
                 ligature_actions_index += 1;
@@ -1025,3 +1037,7 @@ impl MorxSubtableCache {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "morx_completion_tests.rs"]
+mod completion_tests;

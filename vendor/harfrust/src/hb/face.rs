@@ -310,6 +310,12 @@ impl<'a> crate::Shaper<'a> {
         );
 
         if buffer.len > 0 {
+            if plan
+                .ot_map
+                .selected_capacity_loss(features, [!plan.apply_morx, plan.apply_gpos])
+            {
+                buffer.refuse(crate::ShapingRefusal::FeatureCapacityLimit);
+            }
             // Save the original direction, we use it later.
             let target_direction = buffer.direction;
             shape_internal(&mut hb_ot_shape_context_t {

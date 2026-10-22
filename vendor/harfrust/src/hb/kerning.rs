@@ -96,6 +96,19 @@ pub fn hb_ot_layout_kern(
             c.reverse_buffer();
         }
 
+        let consumes_mask = match &kind {
+            SubtableKind::Format0(_) | SubtableKind::Format2(_) | SubtableKind::Format3(_) => true,
+            SubtableKind::Format1(_) => !is_cross_stream,
+        };
+        if consumes_mask
+            && plan.ot_map.native_kerning_capacity_loss(
+                &plan.user_features,
+                c.buffer.direction.is_horizontal(),
+            )
+        {
+            c.buffer.refuse(ShapingRefusal::FeatureCapacityLimit);
+        }
+
         match kind {
             SubtableKind::Format0(format0) if plan.requested_kerning => {
                 apply_simple_kerning(&mut c, &format0, is_cross_stream);
@@ -404,6 +417,9 @@ fn apply_state_machine_kerning(
 
         c.buffer.max_ops -= 1;
         if entry.has_advance() || c.buffer.max_ops <= 0 {
+            if !entry.has_advance() {
+                c.buffer.refuse(ShapingRefusal::WorkLimit);
+            }
             c.buffer.next_glyph();
         }
     }
@@ -425,6 +441,7 @@ fn state_machine_transition(
             driver.stack[driver.depth] = buffer.idx;
             driver.depth += 1;
         } else {
+            buffer.refuse(ShapingRefusal::ContextLimit);
             driver.depth = 0; // Probably not what CoreText does, but better?
         }
     }
@@ -617,3 +634,7 @@ impl KernSubtableCache {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "kerning_completion_tests.rs"]
+mod completion_tests;

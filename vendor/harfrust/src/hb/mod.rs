@@ -83,3 +83,6 @@ use self::face::hb_font_t;
 type hb_mask_t = u32;
 
 use self::common::{script, Direction, Feature, Language, Script};
+
+#[cfg(test)]
+mod completion_fixture;

@@ -21,7 +21,9 @@ pub(crate) type U32Set = digest_u32_set::DigestU32Set;
 
 pub use read_fonts::{types::Tag, FontRef};
 
-pub use hb::buffer::{GlyphBuffer, GlyphInfo, GlyphPosition, UnicodeBuffer};
+pub use hb::buffer::{
+    GlyphBuffer, GlyphInfo, GlyphPosition, ShapingRefusal, ShapingStatus, UnicodeBuffer,
+};
 pub use hb::common::{script, Direction, Feature, Language, Script, Variation};
 pub use hb::face::{hb_font_t as Shaper, ShaperBuilder, ShaperData, ShaperInstance};
 pub use hb::ot_shape_plan::{hb_ot_shape_plan_t as ShapePlan, ShapePlanKey};
