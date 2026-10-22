@@ -125,6 +125,244 @@ fn grid_intrinsic_scrollbar_gutter_stable_and_both_edges_in_f64() {
     assert_grid_intrinsic_scrollbar_gutter_stable_and_both_edges::<f64>();
 }
 
+#[derive(Clone, Copy)]
+enum IntrinsicGutterInheritedAxis {
+    Columns,
+    Rows,
+}
+
+fn intrinsic_gutter_subgrid_tree<S: LayoutScalar>(
+    display: Display,
+    writing_mode: WritingMode,
+    child_direction: Direction,
+    inherited_axis: IntrinsicGutterInheritedAxis,
+    depth: u32,
+    gutter: ScrollbarGutter,
+) -> PublicLayoutTreeOf<S> {
+    let scalar = S::from_f64;
+    let mut tree = PublicLayoutTreeOf::new().children(1, [2]).style(
+        1,
+        NodeInputOf {
+            display: Display::Grid,
+            writing_mode,
+            direction: Direction::Ltr,
+            grid_template_columns: vec![TrackComponentOf::MAX_CONTENT],
+            grid_template_rows: vec![TrackComponentOf::px(scalar(20.0))],
+            justify_content: Some(AlignContent::Start),
+            align_content: Some(AlignContent::Start),
+            ..NodeInputOf::default()
+        },
+    );
+    for node in 2..depth + 2 {
+        let (columns, rows, preferred_inline, flow) = match inherited_axis {
+            IntrinsicGutterInheritedAxis::Columns => (
+                subgrid_track_of(),
+                vec![TrackComponentOf::px(scalar(20.0))],
+                PreferredSizeOf::AUTO,
+                GridAutoFlow::Row,
+            ),
+            IntrinsicGutterInheritedAxis::Rows => (
+                vec![TrackComponentOf::px(scalar(40.0))],
+                subgrid_track_of(),
+                PreferredSizeOf::MAX_CONTENT,
+                GridAutoFlow::Column,
+            ),
+        };
+        tree = tree.children(node, [node + 1]).style(
+            node,
+            NodeInputOf {
+                display,
+                writing_mode,
+                // Column inheritance reverses twice through a two-level RTL
+                // chain; each level still owns its own edge reservation.
+                direction: if node % 2 == 0 {
+                    child_direction
+                } else {
+                    Direction::Ltr
+                },
+                size: if writing_mode.is_vertical() {
+                    Size::new(PreferredSizeOf::AUTO, preferred_inline)
+                } else {
+                    Size::new(preferred_inline, PreferredSizeOf::AUTO)
+                },
+                grid_template_columns: columns,
+                grid_template_rows: rows,
+                grid_auto_flow: flow,
+                overflow: computed_overflow(Overflow::Hidden, Overflow::Hidden),
+                scrollbar_gutter: gutter,
+                scrollbar_width: ScrollbarWidthOf::try_new(scalar(5.0))
+                    .expect("finite classic scrollbar thickness"),
+                justify_content: Some(AlignContent::Start),
+                align_content: Some(AlignContent::Start),
+                ..NodeInputOf::default()
+            },
+        );
+    }
+    tree.children(depth + 2, []).style(
+        depth + 2,
+        NodeInputOf {
+            display: Display::Block,
+            writing_mode,
+            size: if writing_mode.is_vertical() {
+                Size::new(
+                    PreferredSizeOf::px(scalar(20.0)),
+                    PreferredSizeOf::px(scalar(40.0)),
+                )
+            } else {
+                Size::new(
+                    PreferredSizeOf::px(scalar(40.0)),
+                    PreferredSizeOf::px(scalar(20.0)),
+                )
+            },
+            ..NodeInputOf::default()
+        },
+    )
+}
+
+fn assert_grid_intrinsic_gutter_opposite_axis_inheritance<S: LayoutScalar>(display: Display) {
+    let scalar = S::from_f64;
+    let mut observed = Vec::new();
+    let mut expected = Vec::new();
+    for (writing_mode, child_direction, vertical) in [
+        (WritingMode::HorizontalTb, Direction::Ltr, false),
+        (WritingMode::HorizontalTb, Direction::Rtl, false),
+        (WritingMode::VerticalRl, Direction::Rtl, true),
+    ] {
+        for (gutter, inline) in [
+            (ScrollbarGutter::Auto, 40.0),
+            (ScrollbarGutter::Stable, 45.0),
+            (ScrollbarGutter::StableBothEdges, 50.0),
+        ] {
+            let tree = intrinsic_gutter_subgrid_tree::<S>(
+                display,
+                writing_mode,
+                child_direction,
+                IntrinsicGutterInheritedAxis::Rows,
+                1,
+                gutter,
+            );
+            let batch = compute_layout(
+                &tree,
+                1,
+                LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT))
+                    .expect("intrinsic opposite-axis viewport"),
+            )
+            .expect("opposite-axis subgrid lays out");
+            let actual_size = fri08_c01_placement_output(&batch, 1).size;
+            let expected_size = if vertical {
+                Size::new(scalar(20.0), scalar(inline))
+            } else {
+                Size::new(scalar(inline), scalar(20.0))
+            };
+            if gutter == ScrollbarGutter::Auto {
+                assert_eq!(actual_size, expected_size, "Auto/Hidden control");
+            }
+            observed.push((writing_mode, child_direction, gutter, actual_size));
+            expected.push((writing_mode, child_direction, gutter, expected_size));
+        }
+    }
+    // Overflow's intrinsic reservation rule also applies to a standalone
+    // inline axis when the opposite row axis is genuinely inherited.
+    assert_eq!(
+        observed, expected,
+        "{display:?} opposite-axis gutter sizing"
+    );
+}
+
+#[test]
+fn grid_intrinsic_gutter_opposite_axis_inheritance_in_f32() {
+    assert_grid_intrinsic_gutter_opposite_axis_inheritance::<f32>(Display::Grid);
+}
+
+#[test]
+fn grid_intrinsic_gutter_opposite_axis_inheritance_in_f64() {
+    assert_grid_intrinsic_gutter_opposite_axis_inheritance::<f64>(Display::Grid);
+}
+
+#[test]
+fn grid_lanes_intrinsic_gutter_opposite_axis_inheritance_in_f32() {
+    assert_grid_intrinsic_gutter_opposite_axis_inheritance::<f32>(Display::GridLanes);
+}
+
+#[test]
+fn grid_lanes_intrinsic_gutter_opposite_axis_inheritance_in_f64() {
+    assert_grid_intrinsic_gutter_opposite_axis_inheritance::<f64>(Display::GridLanes);
+}
+
+fn assert_grid_subgrid_scrollbar_gutter_edge_accumulation<S: LayoutScalar>(display: Display) {
+    let scalar = S::from_f64;
+    let mut observed = Vec::new();
+    let mut expected = Vec::new();
+    for (writing_mode, child_direction, vertical) in [
+        (WritingMode::HorizontalTb, Direction::Ltr, false),
+        (WritingMode::HorizontalTb, Direction::Rtl, false),
+        (WritingMode::VerticalRl, Direction::Rtl, true),
+    ] {
+        for (depth, gutter, inline) in [
+            (1, ScrollbarGutter::Auto, 40.0),
+            (1, ScrollbarGutter::Stable, 45.0),
+            (1, ScrollbarGutter::StableBothEdges, 50.0),
+            (2, ScrollbarGutter::Auto, 40.0),
+            (2, ScrollbarGutter::Stable, 50.0),
+            (2, ScrollbarGutter::StableBothEdges, 60.0),
+        ] {
+            let tree = intrinsic_gutter_subgrid_tree::<S>(
+                display,
+                writing_mode,
+                child_direction,
+                IntrinsicGutterInheritedAxis::Columns,
+                depth,
+                gutter,
+            );
+            let batch = compute_layout(
+                &tree,
+                1,
+                LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT))
+                    .expect("intrinsic inherited-edge viewport"),
+            )
+            .expect("nested column subgrids lay out");
+            let actual_size = fri08_c01_placement_output(&batch, 1).size;
+            let expected_size = if vertical {
+                Size::new(scalar(20.0), scalar(inline))
+            } else {
+                Size::new(scalar(inline), scalar(20.0))
+            };
+            if gutter == ScrollbarGutter::Auto {
+                assert_eq!(actual_size, expected_size, "Auto/Hidden control");
+            }
+            observed.push((writing_mode, child_direction, depth, gutter, actual_size));
+            expected.push((writing_mode, child_direction, depth, gutter, expected_size));
+        }
+    }
+    // CSS Grid2 #subgrid-margins explicitly includes scrollbar gutters among
+    // the edge margins applied to descendants, accumulating through levels:
+    // content40 + one/two five-unit edges per level yields45/50, then50/60.
+    assert_eq!(
+        observed, expected,
+        "{display:?} inherited gutter edge layers"
+    );
+}
+
+#[test]
+fn grid_subgrid_scrollbar_gutter_edge_accumulation_in_f32() {
+    assert_grid_subgrid_scrollbar_gutter_edge_accumulation::<f32>(Display::Grid);
+}
+
+#[test]
+fn grid_subgrid_scrollbar_gutter_edge_accumulation_in_f64() {
+    assert_grid_subgrid_scrollbar_gutter_edge_accumulation::<f64>(Display::Grid);
+}
+
+#[test]
+fn grid_lanes_subgrid_scrollbar_gutter_edge_accumulation_in_f32() {
+    assert_grid_subgrid_scrollbar_gutter_edge_accumulation::<f32>(Display::GridLanes);
+}
+
+#[test]
+fn grid_lanes_subgrid_scrollbar_gutter_edge_accumulation_in_f64() {
+    assert_grid_subgrid_scrollbar_gutter_edge_accumulation::<f64>(Display::GridLanes);
+}
+
 fn fri08_c06r_inherited_placement_flow_tree<S: LayoutScalar>(
     inherited_axes: Fri08C06RInheritedAxes,
     flow: GridAutoFlow,
