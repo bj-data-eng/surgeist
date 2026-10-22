@@ -5,8 +5,6 @@
 [Cargo.toml](../Cargo.toml) defines package `surgeist-text` version `0.1.0`, library
 name `surgeist_text`, and Rust edition 2024. No `rust-version` minimum is declared.
 The implementation uses Parley `0.9.0` in [src/system.rs](../src/system.rs).
-The manifest also declares `cosmic-text` `0.19.0` and `fontdb` `0.23.0`; these are
-not selectable alternate backends in the current public API.
 
 | Feature | Default | Effect and dependency |
 | --- | --- | --- |

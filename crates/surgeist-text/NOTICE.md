@@ -2,7 +2,7 @@
 
 ## Dependencies
 
-This notice covers the six direct dependencies declared for `surgeist-text`
+This notice covers the four direct dependencies declared for `surgeist-text`
 0.1.0 in [Cargo.toml](Cargo.toml), including the default configuration, the
 `text-accessibility` and `text-render` features, and development dependencies.
 It records source-level dependency attribution, not a resolved binary, release,
@@ -27,27 +27,6 @@ This product depends on accesskit, distributed by The AccessKit contributors:
 This optional dependency is enabled by `text-accessibility`. AccessKit contains
 code derived from Chromium and kurbo; the accompanying source notices retain
 those attributions and their applicable license terms.
-
-### cosmic-text 0.19.0
-
-This product depends on cosmic-text, distributed by Jeremy Soller:
-
-* License: [MIT](licenses/cosmic-text/LICENSE-MIT) or
-  [Apache License 2.0](licenses/cosmic-text/LICENSE-APACHE)
-* Homepage: [COSMIC Text](https://github.com/pop-os/cosmic-text)
-
-This is a declared normal dependency with no direct use in the current `src/`
-tree. The MIT license retains System76's copyright notice.
-
-### fontdb 0.23.0
-
-This product depends on fontdb, distributed by Yevhenii Reizner:
-
-* License: [MIT](licenses/fontdb/LICENSE)
-* Homepage: [fontdb](https://github.com/RazrFalcon/fontdb)
-
-This is a declared normal dependency with no direct use in the current `src/`
-tree.
 
 ### parley 0.9.0
 
