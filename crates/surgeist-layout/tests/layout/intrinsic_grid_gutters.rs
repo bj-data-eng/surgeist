@@ -322,3 +322,395 @@ fn inherited_columns_include_child_settled_auto_gutter_f32() {
 fn inherited_columns_include_child_settled_auto_gutter_f64() {
     qualify_inherited_columns::<f64>();
 }
+
+// Writing Modes4 §6.1: horizontal-tb has horizontal inline/vertical block;
+// vertical-* and sideways-* have vertical inline/horizontal block. Only
+// sizes are mapped here; no production FlowAxes or direction helper is used.
+fn physical_size<T>(writing_mode: WritingMode, inline: T, block: T) -> Size<T> {
+    match writing_mode {
+        WritingMode::HorizontalTb => Size::new(inline, block),
+        WritingMode::VerticalRl
+        | WritingMode::VerticalLr
+        | WritingMode::SidewaysRl
+        | WritingMode::SidewaysLr => Size::new(block, inline),
+    }
+}
+
+fn qualify_reciprocal_axis_modes<S: LayoutScalar>() {
+    let mut failures = Vec::new();
+    for writing_mode in [
+        WritingMode::HorizontalTb,
+        WritingMode::VerticalRl,
+        WritingMode::VerticalLr,
+        WritingMode::SidewaysRl,
+        WritingMode::SidewaysLr,
+    ] {
+        for columns in [true, false] {
+            for display in [Display::Grid, Display::GridLanes] {
+                for overflowing in [false, true] {
+                    let extra = if overflowing { 5.0 } else { 0.0 };
+                    let (inline, block) = if columns { (40.0, 20.0) } else { (20.0, 40.0) };
+                    let leaf_inline = if !columns && overflowing {
+                        30.0
+                    } else {
+                        inline
+                    };
+                    let leaf_block = if columns && overflowing { 30.0 } else { block };
+                    let tree = InheritedColumnGrid::<S> {
+                        inputs: [
+                            LayoutInputOf::box_input(NodeInputOf {
+                                display: Display::Grid,
+                                writing_mode,
+                                size: physical_size(
+                                    writing_mode,
+                                    if columns {
+                                        PreferredSizeOf::MAX_CONTENT
+                                    } else {
+                                        preferred(inline)
+                                    },
+                                    if columns {
+                                        preferred(block)
+                                    } else {
+                                        PreferredSizeOf::MAX_CONTENT
+                                    },
+                                ),
+                                grid_template_columns: vec![if columns {
+                                    TrackComponentOf::MAX_CONTENT
+                                } else {
+                                    track(inline)
+                                }],
+                                grid_template_rows: vec![if columns {
+                                    track(block)
+                                } else {
+                                    TrackComponentOf::MAX_CONTENT
+                                }],
+                                justify_content: Some(AlignContent::Start),
+                                align_content: Some(AlignContent::Start),
+                                ..NodeInputOf::default()
+                            }),
+                            LayoutInputOf::box_input(NodeInputOf {
+                                display,
+                                writing_mode,
+                                size: physical_size(
+                                    writing_mode,
+                                    if columns {
+                                        PreferredSizeOf::AUTO
+                                    } else {
+                                        preferred(inline)
+                                    },
+                                    if columns {
+                                        preferred(block)
+                                    } else {
+                                        PreferredSizeOf::AUTO
+                                    },
+                                ),
+                                grid_template_columns: vec![if columns {
+                                    TrackComponentOf::Subgrid(SubgridTrack::new(vec![]))
+                                } else {
+                                    track(inline)
+                                }],
+                                grid_template_rows: vec![if columns {
+                                    track(block)
+                                } else {
+                                    TrackComponentOf::Subgrid(SubgridTrack::new(vec![]))
+                                }],
+                                // The inherited dimension is the lanes/grid axis.
+                                grid_auto_flow: if columns {
+                                    GridAutoFlow::Row
+                                } else {
+                                    GridAutoFlow::Column
+                                },
+                                overflow: ComputedOverflow::try_new(Overflow::Auto, Overflow::Auto)
+                                    .unwrap(),
+                                scrollbar_width: ScrollbarWidthOf::try_new(S::from_f64(5.0))
+                                    .unwrap(),
+                                justify_content: Some(AlignContent::Start),
+                                align_content: Some(AlignContent::Start),
+                                ..NodeInputOf::default()
+                            }),
+                            LayoutInputOf::box_input(NodeInputOf {
+                                display: Display::Block,
+                                writing_mode,
+                                size: physical_size(
+                                    writing_mode,
+                                    preferred(leaf_inline),
+                                    preferred(leaf_block),
+                                ),
+                                ..NodeInputOf::default()
+                            }),
+                        ],
+                    };
+                    let batch = match compute_layout(
+                        &tree,
+                        0,
+                        LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT))
+                            .unwrap(),
+                    ) {
+                        Ok(batch) => batch,
+                        Err(error) => {
+                            failures.push(format!("{writing_mode:?} columns={columns} {display:?} overflowing={overflowing}: {error:?}"));
+                            continue;
+                        }
+                    };
+                    let output = |node| {
+                        batch
+                            .unrounded_entries()
+                            .iter()
+                            .find(|entry| entry.node() == node)
+                            .unwrap()
+                            .output()
+                    };
+                    let child_geometry = output(1).scroll_geometry.unwrap();
+                    let actual = (
+                        output(0).size,
+                        output(1).size,
+                        output(2).size,
+                        child_geometry.content_box().size(),
+                        child_geometry.scrollbar_size(),
+                    );
+                    let outer = physical_size(
+                        writing_mode,
+                        S::from_f64(inline + if columns { extra } else { 0.0 }),
+                        S::from_f64(block + if columns { 0.0 } else { extra }),
+                    );
+                    let expected = (
+                        outer,
+                        outer,
+                        physical_size(
+                            writing_mode,
+                            S::from_f64(leaf_inline),
+                            S::from_f64(leaf_block),
+                        ),
+                        physical_size(writing_mode, S::from_f64(inline), S::from_f64(block)),
+                        physical_size(
+                            writing_mode,
+                            S::from_f64(if columns { extra } else { 0.0 }),
+                            S::from_f64(if columns { 0.0 } else { extra }),
+                        ),
+                    );
+                    eprintln!(
+                        "{} reciprocal {writing_mode:?} columns={columns} {display:?} overflowing={overflowing}: actual={actual:?}, expected={expected:?}",
+                        std::any::type_name::<S>()
+                    );
+                    if actual != expected {
+                        failures.push(format!("{writing_mode:?} columns={columns} {display:?} overflowing={overflowing}: actual={actual:?}, expected={expected:?}"));
+                    }
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn inherited_auto_gutter_tracks_both_axes_and_all_writing_modes_f32() {
+    qualify_reciprocal_axis_modes::<f32>();
+}
+
+#[test]
+fn inherited_auto_gutter_tracks_both_axes_and_all_writing_modes_f64() {
+    qualify_reciprocal_axis_modes::<f64>();
+}
+
+struct WrappingColumnSubgrid<S: LayoutScalar> {
+    boxes: [LayoutInputOf<S>; 3],
+    text: LayoutInputOf<S>,
+    non_box: NodeInputOf<S>,
+}
+
+impl<S: LayoutScalar> Traverse for WrappingColumnSubgrid<S> {
+    type Node = usize;
+    type Scalar = S;
+    type Children<'a>
+        = std::option::IntoIter<usize>
+    where
+        Self: 'a;
+
+    fn children(&self, node: usize) -> Self::Children<'_> {
+        (node < 3).then_some(node + 1).into_iter()
+    }
+
+    fn child_count(&self, node: usize) -> usize {
+        usize::from(node < 3)
+    }
+    fn child(&self, node: usize, index: usize) -> usize {
+        assert!(node < 3);
+        assert_eq!(index, 0);
+        node + 1
+    }
+}
+
+impl<S: LayoutScalar> LayoutTree for WrappingColumnSubgrid<S> {
+    type MeasureError = std::convert::Infallible;
+    fn node_input(&self, node: usize) -> &NodeInputOf<S> {
+        if node == 3 {
+            &self.non_box
+        } else {
+            self.boxes[node].as_box().unwrap()
+        }
+    }
+    fn layout_input(&self, node: usize) -> LayoutInputViewOf<'_, S> {
+        if node == 3 {
+            self.text.as_view()
+        } else {
+            self.boxes[node].as_view()
+        }
+    }
+}
+
+fn qualify_wrapping_min_max<S: LayoutScalar>() {
+    let mut failures = Vec::new();
+    for minimum in [true, false] {
+        // The longest unbreakable segment is25; max-content is25+20=45.
+        // At tentativeMIN25 the allowed break yields two10px lines, which
+        // overflow the child's fixed15 block size and require5 inline gutter.
+        // Thus intrinsicMIN is30. MAX45 fits one10px line and needs no gutter.
+        let metrics =
+            InlineMetricsOf::from_ascent_descent(S::from_f64(8.0), S::from_f64(2.0)).unwrap();
+        let tree = WrappingColumnSubgrid {
+            boxes: [
+                LayoutInputOf::box_input(NodeInputOf {
+                    display: Display::Grid,
+                    size: Size::new(
+                        if minimum {
+                            PreferredSizeOf::MIN_CONTENT
+                        } else {
+                            PreferredSizeOf::MAX_CONTENT
+                        },
+                        preferred(15.0),
+                    ),
+                    grid_template_columns: vec![TrackComponentOf::AUTO],
+                    grid_template_rows: vec![track(15.0)],
+                    justify_content: Some(AlignContent::Start),
+                    align_content: Some(AlignContent::Start),
+                    ..NodeInputOf::default()
+                }),
+                LayoutInputOf::box_input(NodeInputOf {
+                    display: Display::Grid,
+                    size: Size::new(PreferredSizeOf::AUTO, preferred(15.0)),
+                    grid_template_columns: vec![TrackComponentOf::Subgrid(SubgridTrack::new(
+                        vec![],
+                    ))],
+                    grid_template_rows: vec![track(15.0)],
+                    overflow: ComputedOverflow::try_new(Overflow::Auto, Overflow::Auto).unwrap(),
+                    scrollbar_width: ScrollbarWidthOf::try_new(S::from_f64(5.0)).unwrap(),
+                    justify_content: Some(AlignContent::Start),
+                    align_content: Some(AlignContent::Start),
+                    ..NodeInputOf::default()
+                }),
+                LayoutInputOf::box_input(NodeInputOf {
+                    display: Display::Block,
+                    ..NodeInputOf::default()
+                }),
+            ],
+            text: LayoutInputOf::inline_text(
+                InlineTextInputOf::try_new(vec![
+                    ShapedInlineSegmentOf::try_new(
+                        InlineSegmentId::new(1),
+                        S::from_f64(25.0),
+                        metrics,
+                        BidiLevel::try_new(0).unwrap(),
+                        InlineWhitespaceEdge::Preserve,
+                        InlineBreakOpportunityOf::allowed(),
+                    )
+                    .unwrap(),
+                    ShapedInlineSegmentOf::try_new(
+                        InlineSegmentId::new(2),
+                        S::from_f64(20.0),
+                        metrics,
+                        BidiLevel::try_new(0).unwrap(),
+                        InlineWhitespaceEdge::Preserve,
+                        InlineBreakOpportunityOf::prohibited(),
+                    )
+                    .unwrap(),
+                ])
+                .unwrap(),
+            ),
+            non_box: NodeInputOf::non_box(),
+        };
+        let batch = compute_layout(
+            &tree,
+            0,
+            LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap(),
+        )
+        .unwrap();
+        let output = |node| {
+            batch
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == node)
+                .unwrap()
+                .output()
+        };
+        let child = output(1);
+        let geometry = child.scroll_geometry.unwrap();
+        let actual = (
+            output(0).size,
+            child.size,
+            output(2).size,
+            geometry.content_box().size(),
+            geometry.scrollbar_size(),
+        );
+        let (width, content_width, gutter) = if minimum {
+            (30.0, 25.0, 5.0)
+        } else {
+            (45.0, 45.0, 0.0)
+        };
+        // Grid1 §6.2/§10: normal alignment stretches this ordinary item to
+        // the fixed15 row. Under §6.6 its automatic block minimum is zero:
+        // the fixed row has no auto minimum track. The inline fragments below
+        // retain their distinct 20/10 line extents, even outside that box.
+        let expected = (
+            Size::new(S::from_f64(width), S::from_f64(15.0)),
+            Size::new(S::from_f64(width), S::from_f64(15.0)),
+            Size::new(S::from_f64(content_width), S::from_f64(15.0)),
+            Size::new(S::from_f64(content_width), S::from_f64(15.0)),
+            Size::new(S::from_f64(gutter), S::ZERO),
+        );
+        let fragments: Vec<_> = batch
+            .unrounded_inline_fragments()
+            .iter()
+            .filter(|entry| entry.node() == 3)
+            .map(|entry| (entry.fragment().segment_id().get(), entry.fragment().rect()))
+            .collect();
+        let expected_fragments = [
+            (
+                1,
+                ScrollRectOf::try_new(
+                    Point::new(S::ZERO, S::ZERO),
+                    Size::new(S::from_f64(25.0), S::from_f64(10.0)),
+                )
+                .unwrap(),
+            ),
+            (
+                2,
+                ScrollRectOf::try_new(
+                    Point::new(
+                        S::from_f64(if minimum { 0.0 } else { 25.0 }),
+                        S::from_f64(if minimum { 10.0 } else { 0.0 }),
+                    ),
+                    Size::new(S::from_f64(20.0), S::from_f64(10.0)),
+                )
+                .unwrap(),
+            ),
+        ];
+        eprintln!(
+            "{} wrapping minimum={minimum}: actual={actual:?}, expected={expected:?}, fragments={fragments:?}, expected_fragments={expected_fragments:?}",
+            std::any::type_name::<S>()
+        );
+        if actual != expected || fragments != expected_fragments {
+            failures.push(format!("minimum={minimum}: actual={actual:?}, expected={expected:?}, fragments={fragments:?}, expected_fragments={expected_fragments:?}"));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn inherited_columns_keep_minimum_and_maximum_auto_overflow_sources_distinct_f32() {
+    qualify_wrapping_min_max::<f32>();
+}
+
+#[test]
+fn inherited_columns_keep_minimum_and_maximum_auto_overflow_sources_distinct_f64() {
+    qualify_wrapping_min_max::<f64>();
+}
