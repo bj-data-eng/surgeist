@@ -161,10 +161,6 @@ pub surgeist_text::ErrorDetail::UnsupportedAccessibilityUnit::range: surgeist_te
 pub surgeist_text::ErrorDetail::UnsupportedCombination
 pub surgeist_text::ErrorDetail::UnsupportedCombination::feature: &'static str
 pub surgeist_text::ErrorDetail::UnsupportedCombination::reason: &'static str
-pub surgeist_text::ErrorDetail::UnsupportedProcessingMode
-pub surgeist_text::ErrorDetail::UnsupportedProcessingMode::mode: surgeist_text::WhiteSpace
-pub surgeist_text::ErrorDetail::UnsupportedProcessingMode::range: surgeist_text::Range
-pub surgeist_text::ErrorDetail::UnsupportedProcessingMode::span: core::option::Option<usize>
 pub surgeist_text::ErrorDetail::UnsupportedShapingBoundary
 pub surgeist_text::ErrorDetail::UnsupportedShapingBoundary::index: usize
 pub surgeist_text::ErrorDetail::UnsupportedShapingBoundary::kind: surgeist_text::ShapingBoundary

@@ -5,16 +5,18 @@ abstractions, and text layout in Surgeist surfaces. It turns text, resolved styl
 and layout options into glyph runs, lines, inline boxes, and interaction geometry
 through Parley. The current package is version `0.1.0`, using Rust edition 2024.
 
-The API has explicit limits: whitespace collapse and explicit base direction are
+Paragraph layout has explicit limits: whitespace collapse and explicit base direction are
 unsupported, and inline-box alignment requests do not imply backend placement.
 See the [support reference](docs/reference.md) for the current contract.
 
-`process_source_whitespace` executes source-local Discard, Preserve and
+`process_source_whitespace` executes source-local Collapse, Discard, Preserve and
 PreserveSpaces before fonts, retaining exact original source, document delimiter
 facts and UTF-16 correspondence. Explicit affinity projects contraction interiors
 and transparent box anchors. Its partial plaintext iterator returns same-result
 slices and real box occurrences, without document serialization or opportunity
-analysis. Paragraph layout does not yet consume this phase: Discard and
+analysis. Collapse retains executed deletion causes and uses a selected Unicode
+context policy for segment breaks, without selected-line trimming. Paragraph
+layout does not yet consume this phase: Collapse, Discard and
 PreserveSpaces still refuse there; standalone Preserve layout remains unchanged.
 
 `Text` retains exact UTF-16 code units, and public source positions and ranges

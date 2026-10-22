@@ -32,14 +32,13 @@ Caret geometry uses legal grapheme/provider stops and affinity, while partial-un
 selection geometry covers the complete typographic unit. Isolated-source layout
 currently refuses before font/cache work and never analyzes replacement text.
 
-This contract helps explain why whitespace collapse is explicitly rejected:
-transforming the string would need an additional mapping back to authored
-coordinates and its own operation semantics. The separate
-[source-processing phase](../src/processing.rs) executes Discard, Preserve and
-PreserveSpaces and retains
-that exact correspondence without fonts. Its partial plaintext consumer borrows
-the same result; paragraph layout has not yet integrated it. Similarly, style
-resolution and symbolic colors require caller
+The separate [source-processing phase](../src/processing.rs) executes lexical
+Collapse, Discard, Preserve and PreserveSpaces with exact authored correspondence
+before fonts. It retains actual deletion reasons and original scalar context;
+its partial plaintext consumer borrows the same result. Paragraph layout still
+rejects Collapse because it has not integrated this phase with its own wrapping,
+selected-line trimming and finalization. Having a source map does not supply
+those missing semantic steps. Similarly, style resolution and symbolic colors require caller
 policy beyond the concrete values accepted here. The
 [support matrix](reference.md) makes those limits observable instead of silently
 substituting behavior.

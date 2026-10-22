@@ -109,15 +109,6 @@ pub enum ErrorDetail {
         /// Actual rejected value before clamping or substitution.
         value: f64,
     },
-    /// The first nonempty effective interval outside the admitted processing mode.
-    UnsupportedProcessingMode {
-        /// Original UTF-16 interval.
-        range: super::Range,
-        /// Actual effective mode.
-        mode: WhiteSpace,
-        /// Winning original span ordinal, or the captured base style.
-        span: Option<usize>,
-    },
     /// An actual supplied document delimiter is invalid.
     InvalidDocumentSegmentBreak {
         /// Original delimiter-vector ordinal.

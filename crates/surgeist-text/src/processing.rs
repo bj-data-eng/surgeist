@@ -1,5 +1,7 @@
 use std::collections::BTreeSet;
 
+mod lexical;
+
 use crate::{
     Affinity, DocumentSegmentBreakError, Error, ErrorCode, ErrorDetail, InlineBox, InlineBoxKind,
     ProcessingCapacityError, Range, Result, Source, SourcePosition, Span, Style, Text, WhiteSpace,
@@ -61,8 +63,18 @@ impl ProcessedRange {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum MappingKind {
     Copy,
-    Delete,
+    Delete(DeletionCause),
     Replace,
+}
+
+/// Executed lexical reason, retained for later semantic owners without replay.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DeletionCause {
+    Discard,
+    SpaceAroundSegmentBreak,
+    DuplicateSegmentBreak,
+    ContextualSegmentBreak,
+    CollapsedSpace,
 }
 
 #[derive(Debug)]
@@ -77,7 +89,7 @@ impl MappingPiece {
         self.processed
             + match self.kind {
                 MappingKind::Copy => self.source.len(),
-                MappingKind::Delete => 0,
+                MappingKind::Delete(_) => 0,
                 MappingKind::Replace => 1,
             }
     }
@@ -98,10 +110,11 @@ pub struct ProcessedSource {
     box_order: Vec<usize>,
 }
 
-/// Executes source-only Discard, Preserve or PreserveSpaces into one immutable result.
+/// Executes source-local Collapse, Discard, Preserve or PreserveSpaces.
 ///
-/// Intrinsic source and document-delimiter validation precedes mode admission.
-/// Nonempty effective Collapse intervals remain unsupported. Unused font/style
+/// Intrinsic source and document-delimiter validation precedes execution.
+/// Collapse uses actual Unicode context and preserves lexical deletion causes;
+/// it does not perform selected-line trimming or opportunity analysis. Unused font/style
 /// fields are retained without validating them for a later semantic owner.
 /// No partial result escapes. Checked capacities and fallible vector reserves
 /// do not imply a physical allocator/OOM guarantee or a successful-work quota.
@@ -136,72 +149,7 @@ pub fn process_source_whitespace(
     let modes = effective_modes(&source, &base_style)?;
     validate_modes(&modes, &segment_breaks)?;
 
-    let mut units = Vec::new();
-    let mut map: Vec<MappingPiece> = Vec::new();
-    let mut delimiter = 0;
-    let mut interval = 0;
-    let mut at = 0;
-    while at < source.text().len() {
-        while modes[interval].range.end <= at {
-            interval += 1;
-        }
-        let mode = modes[interval].mode;
-        let unit = source.text().code_units()[at];
-        let end = at.checked_add(1).ok_or_else(overflow)?;
-        let delimiter_end = match &segment_breaks {
-            DocumentSegmentBreaks::LineFeedDefault => (unit == 0x000a).then_some(end),
-            DocumentSegmentBreaks::Defined(ranges) => {
-                if let Some(range) = ranges.get(delimiter).filter(|range| range.start == at) {
-                    delimiter += 1;
-                    Some(range.end)
-                } else {
-                    None
-                }
-            }
-        };
-        let (end, kind, replacement) = if let Some(end) = delimiter_end {
-            match mode {
-                WhiteSpace::Discard => (end, MappingKind::Delete, None),
-                WhiteSpace::Preserve => (end, MappingKind::Replace, Some(0x000a)),
-                WhiteSpace::PreserveSpaces => (end, MappingKind::Replace, Some(0x0020)),
-                WhiteSpace::Collapse => unreachable!("effective-mode admission excludes Collapse"),
-            }
-        } else {
-            match (mode, unit) {
-                (WhiteSpace::Discard, 0x0020 | 0x0009 | 0x000d) => (end, MappingKind::Delete, None),
-                (WhiteSpace::Preserve | WhiteSpace::PreserveSpaces, 0x000d)
-                | (WhiteSpace::PreserveSpaces, 0x0009) => (end, MappingKind::Replace, Some(0x0020)),
-                _ => (end, MappingKind::Copy, None),
-            }
-        };
-        if let Some(last) = map
-            .last_mut()
-            .filter(|piece| piece.kind == kind && kind != MappingKind::Replace)
-        {
-            last.source.end = end;
-        } else {
-            reserve(&mut map, 1)?;
-            map.push(MappingPiece {
-                source: Range::new(at, end),
-                processed: units.len(),
-                kind,
-            });
-        }
-        match kind {
-            MappingKind::Copy => {
-                reserve(&mut units, end - at)?;
-                units.extend_from_slice(&source.text().code_units()[at..end]);
-            }
-            MappingKind::Replace => {
-                reserve(&mut units, 1)?;
-                units.push(
-                    replacement.expect("Replace construction supplies its actual output unit"),
-                );
-            }
-            MappingKind::Delete => {}
-        }
-        at = end;
-    }
+    let (units, map) = lexical::execute(&source, &segment_breaks, &modes, &box_order)?;
     Ok(ProcessedSource {
         source,
         base_style,
@@ -298,7 +246,7 @@ impl ProcessedSource {
             };
             match piece.kind {
                 MappingKind::Copy => piece.source.start + (at.0 - piece.processed),
-                MappingKind::Delete => match affinity {
+                MappingKind::Delete(_) => match affinity {
                     Affinity::Before => piece.source.start,
                     Affinity::After => piece.source.end,
                 },
@@ -357,7 +305,7 @@ impl ProcessedSource {
             piece.processed
                 + match piece.kind {
                     MappingKind::Copy => at - piece.source.start,
-                    MappingKind::Delete => 0,
+                    MappingKind::Delete(_) => 0,
                     MappingKind::Replace => {
                         usize::from(at > piece.source.start && affinity == Affinity::After)
                     }
@@ -629,19 +577,6 @@ fn effective_modes(source: &Source, base: &Style) -> Result<Vec<EffectiveInterva
 fn validate_modes(intervals: &[EffectiveInterval], breaks: &DocumentSegmentBreaks) -> Result<()> {
     let mut delimiter = 0;
     for (ordinal, interval) in intervals.iter().enumerate() {
-        // At an equal offset, unsupported processing wins over delimiter mode
-        // inconsistency. Earlier intervals have already been admitted.
-        if interval.mode == WhiteSpace::Collapse {
-            return Err(Error::new(
-                ErrorCode::UnsupportedFeature,
-                "unsupported effective source-processing mode",
-            )
-            .with_detail(ErrorDetail::UnsupportedProcessingMode {
-                range: interval.range,
-                mode: interval.mode,
-                span: interval.span,
-            }));
-        }
         if ordinal == 0 || intervals[ordinal - 1].mode == interval.mode {
             continue;
         }

@@ -53,8 +53,7 @@ original immutable Layout.
 
 `process_source_whitespace` consumes an actual `Source`, base `Style` and explicit
 `DocumentSegmentBreaks`, returning immutable `ProcessedSource`. It currently
-executes effective Discard, Preserve and PreserveSpaces; Collapse remains
-unsupported. A document delimiter is one original occurrence: Preserve replaces
+executes effective Collapse, Discard, Preserve and PreserveSpaces. A document delimiter is one original occurrence: Preserve replaces
 it by one LF, PreserveSpaces by one space, and Discard deletes it. Outside those
 occurrences, Preserve and PreserveSpaces convert CR to space; PreserveSpaces also
 converts TAB to space, while Preserve retains TAB and ordinary spaces. Discard
@@ -93,10 +92,45 @@ Text slices partition the sole processed backing exactly once under either query
 No
 separator, alternative content, U+FFFC or opportunity is invented. This is partial
 source-local plaintext, not a document serializer or a line-analysis result.
-Paragraph layout still rejects Discard and PreserveSpaces precisely; standalone
+Paragraph layout still rejects Collapse, Discard and PreserveSpaces precisely; standalone
 Preserve layout is unchanged and does not secretly consume normalized source.
-Collapse/trim, preparation,
+Trim, preparation,
 opportunity analysis and layout-selected line finalization remain unfinished.
+
+### Lexical Collapse
+
+Collapse runs before wrapping or bidi placement. Discard deletion is applied
+first. Eligible Collapse SPACE/TAB/CR runs around surviving original document
+breaks are removed, including around preserved breaks. Following duplicate
+Collapse breaks are removed. Remaining Collapse breaks become SPACE or disappear
+under the context rule below, TAB/CR become SPACE, and following duplicate
+Collapse spaces are deleted. The first surviving representative retains its
+original range/style; retained bidi controls keep their exact units and order.
+Preserve/PreserveSpaces output spaces are not eligible duplicates. Leading and
+trailing representatives remain: this phase does not perform line trimming.
+
+The selected Surgeist UA rule removes a break next to U+200B; otherwise it removes
+one between two scalars whose actual Unicode East_Asian_Width is F/W/H and whose
+Script is not Hangul. Other contexts produce SPACE. Actual Bidi_Control scalars
+and OutOfFlow occurrences are transparent for adjacency; InFlow occurrences are
+barriers. NBSP, WJ/ZWJ, marks and other format controls are real context. Isolated
+surrogates are opaque and cannot become property lookup scalars by deleting or
+ignoring intervening original units. Only actual contiguous original pairs are
+decoded, and an InFlow occurrence or document delimiter can separate them.
+The compiled ICU properties are version 2.2.0; no font or repaired text is used.
+This is a selected UA policy under the current standard's contextual discretion,
+with [historical precedent](../../../references/css-text-4-character-alignment-grammar--WD-css3-text-20121113--cc1cba0eebc9.md#line-break-transform),
+not a claim of whole-language wrapping or browser equivalence.
+
+Private map records distinguish Discard, around-break, duplicate-break,
+contextual-break and duplicate-space deletion. Equal causes may coalesce;
+different causes remain distinct even at the same processed anchor. All existing
+forward/inverse affinity and borrowed original span/box laws still apply. These
+are actual lexical outcomes, not computed soft opportunities or preparation IDs.
+Source-local input does not provide ordinary host box edges, NCA wrap permissions,
+trim/block facts or selected lines. Those producers remain necessary for the
+full document/line pipeline. All four current whitespace modes execute in this
+source-processing phase; actual cross-delimiter mode errors remain precise.
 
 ## Font catalogue publications
 

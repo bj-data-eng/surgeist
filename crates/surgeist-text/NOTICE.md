@@ -39,6 +39,16 @@ This product depends on Fontique, distributed by the Parley Authors:
 Fontique supplies safe catalogue, registration and font selection interfaces.
 Its native implementation remains an external dependency.
 
+### icu_properties 2.2.0
+
+This product depends on ICU4X properties, distributed by the ICU4X Project Developers:
+
+* License: [Unicode License 3.0](licenses/icu4x/LICENSE)
+* Homepage: [ICU4X](https://icu4x.unicode.org/)
+
+Source-local whitespace processing uses compiled Unicode bidi-control,
+East Asian Width and Script properties.
+
 ### icu_segmenter 2.2.0
 
 This product depends on ICU4X segmentation, distributed by the ICU4X Project Developers:

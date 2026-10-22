@@ -14,6 +14,7 @@ path = "src/lib.rs"
 [dependencies]
 accesskit = { version = "=0.24.1", optional = true }
 fontique = { version = "=0.9.0", default-features = false, features = ["std", "system"] }
+icu_properties = { version = "=2.2.0", default-features = false, features = ["compiled_data"] }
 icu_segmenter = { version = "=2.2.0", default-features = false, features = ["compiled_data"] }
 linebender_resource_handle = { version = "=0.1.1", default-features = false, features = ["std"] }
 parley = "=0.9.0"

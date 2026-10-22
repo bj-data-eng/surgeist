@@ -171,34 +171,21 @@ fn last_span_policy_and_original_borrowed_records_are_exact_without_font_admissi
         WhiteSpace::Preserve
     );
     assert_eq!(result.source(), &source);
-    {
-        let mode = WhiteSpace::Collapse;
-        let mut unsupported = source.clone();
-        unsupported.span(
-            Range::new(2, 4),
-            Style {
-                white_space: mode,
-                ..Style::default()
-            },
-        );
-        let retained = unsupported.clone();
-        let error = process_source_whitespace(
-            unsupported,
-            discard(),
-            DocumentSegmentBreaks::LineFeedDefault,
-        )
-        .unwrap_err();
-        assert_eq!(
-            error.detail(),
-            Some(&ErrorDetail::UnsupportedProcessingMode {
-                range: Range::new(2, 4),
-                mode,
-                span: Some(3)
-            })
-        );
-        assert_eq!(retained.text().code_units(), [0x41, 0x20, 0x09, 0x42]);
-    }
-    let error = process_source_whitespace(
+    let mut collapsed = source.clone();
+    collapsed.span(
+        Range::new(2, 4),
+        Style {
+            white_space: WhiteSpace::Collapse,
+            ..Style::default()
+        },
+    );
+    let retained = collapsed.clone();
+    let admitted =
+        process_source_whitespace(collapsed, discard(), DocumentSegmentBreaks::LineFeedDefault)
+            .unwrap();
+    assert_eq!(admitted.source(), &retained);
+    assert_eq!(admitted.processed_text().code_units(), [0x41, 0x20, 0x42]);
+    let admitted = process_source_whitespace(
         Source::new(" \t"),
         Style {
             white_space: WhiteSpace::Collapse,
@@ -206,15 +193,8 @@ fn last_span_policy_and_original_borrowed_records_are_exact_without_font_admissi
         },
         DocumentSegmentBreaks::LineFeedDefault,
     )
-    .unwrap_err();
-    assert_eq!(
-        error.detail(),
-        Some(&ErrorDetail::UnsupportedProcessingMode {
-            range: Range::new(0, 2),
-            mode: WhiteSpace::Collapse,
-            span: None
-        })
-    );
+    .unwrap();
+    assert_eq!(admitted.processed_text().code_units(), [0x20]);
     let mut reversed = Source::new("AB");
     reversed.span(Range::new(0, 2), Style::default());
     reversed.span(Range::new(0, 2), discard());
@@ -524,3 +504,5 @@ fn intrinsic_validation_and_result_relative_bounds_remain_precise_before_modes()
 }
 
 mod preservation;
+
+mod collapse;

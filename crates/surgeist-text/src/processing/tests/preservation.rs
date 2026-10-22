@@ -221,10 +221,12 @@ fn effective_mode_changes_refuse_one_delimiter_in_source_order_with_precise_prec
         )
         .unwrap_err()
         .detail(),
-        Some(&ErrorDetail::UnsupportedProcessingMode {
-            range: Range::new(2, 4),
-            mode: WhiteSpace::Collapse,
-            span: Some(0)
+        Some(&ErrorDetail::SegmentBreakCrossesProcessingMode {
+            occurrence: 0,
+            range: Range::new(1, 3),
+            at: 2,
+            before: WhiteSpace::Preserve,
+            after: WhiteSpace::Collapse
         })
     );
     tie.inline_box(box_(9, InlineBoxKind::InFlow, 2));
